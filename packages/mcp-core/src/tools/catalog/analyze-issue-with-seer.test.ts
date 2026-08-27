@@ -93,6 +93,53 @@ describe("analyze_issue_with_seer", () => {
     expect(result).toContain("</seer_analysis>");
   });
 
+  it("returns a mismatch message when runId differs from the current run", async () => {
+    const result = await analyzeIssueWithSeer.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        instruction: undefined,
+        issueId: "CLOUDFLARE-MCP-45",
+        issueUrl: undefined,
+        runId: 99,
+      },
+      {
+        constraints: {
+          organizationSlug: undefined,
+        },
+        accessToken: "access-token",
+        userId: "1",
+      },
+    );
+
+    expect(result).toContain("No analysis found for Run ID 99.");
+    expect(result).toContain("current analysis is Run ID 13.");
+    expect(result).not.toContain("## Analysis Complete");
+  });
+
+  it("returns the run when runId matches the current run", async () => {
+    const result = await analyzeIssueWithSeer.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        instruction: undefined,
+        issueId: "CLOUDFLARE-MCP-45",
+        issueUrl: undefined,
+        runId: 13,
+      },
+      {
+        constraints: {
+          organizationSlug: undefined,
+        },
+        accessToken: "access-token",
+        userId: "1",
+      },
+    );
+
+    expect(result).toContain("Found existing analysis (Run ID: 13)");
+    expect(result).toContain("## Analysis Complete");
+  });
+
   it("wraps completed Seer-authored sections with provenance tags", async () => {
     mswServer.use(
       http.get(
