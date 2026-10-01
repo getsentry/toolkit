@@ -1,6 +1,4 @@
-import { setTag } from "@sentry/core";
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
@@ -9,6 +7,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 export const findDsnsOutputSchema = z.object({
@@ -53,8 +52,8 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setOrganizationContext(organizationSlug);
-    setTag("project.slug", params.projectSlug);
+    setTagAndAttribute("organization.slug", organizationSlug);
+    setTagAndAttribute("project.slug", params.projectSlug);
 
     const clientKeys = await apiService.listClientKeys({
       organizationSlug,

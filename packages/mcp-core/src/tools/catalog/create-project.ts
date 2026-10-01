@@ -1,19 +1,18 @@
 import { z } from "zod";
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
-import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import type { ClientKey, SentryApiService } from "../../api-client/index";
 import { UserInputError } from "../../errors";
-import { logWarn } from "../../telem/logging";
-import type { ServerContext } from "../../types";
+import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
 import {
   ParamOrganizationSlug,
+  ParamPlatform,
   ParamProjectSlug,
   ParamRegionUrl,
   ParamTeamSlug,
-  ParamPlatform,
 } from "../../schema";
-import type { ClientKey, SentryApiService } from "../../api-client/index";
+import { logWarn } from "../../telem/logging";
+import { setTagAndAttribute } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 
 type RepositoryMatch = {
   name: string;
@@ -174,8 +173,8 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setOrganizationContext(organizationSlug);
-    setTag("team.slug", params.teamSlug);
+    setTagAndAttribute("organization.slug", organizationSlug);
+    setTagAndAttribute("team.slug", params.teamSlug);
 
     // Resolve repository intent before creating the project so bad or ambiguous
     // repo input cannot leave behind an otherwise unwanted project.

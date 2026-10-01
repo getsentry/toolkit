@@ -1,13 +1,12 @@
 import { z } from "zod";
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
 import type { DashboardListItem, SentryApiService } from "../../api-client";
 import { UserInputError } from "../../errors";
-import { defineTool } from "../../internal/tool-helpers/define";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
-import type { ServerContext } from "../../types";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 import {
   filterDashboardsByProjectConstraint,
   resolveDashboardProjectConstraint,
@@ -285,7 +284,7 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setOrganizationContext(organizationSlug);
+    setTagAndAttribute("organization.slug", organizationSlug);
 
     const scopedProject = await resolveDashboardProjectConstraint({
       apiService,
@@ -293,8 +292,8 @@ export default defineTool({
       scopedProjectSlug: context.constraints.projectSlug,
     });
     if (scopedProject) {
-      setTag("project.slug", scopedProject.slug);
-      setTag("project.id", String(scopedProject.id));
+      setTagAndAttribute("project.slug", scopedProject.slug);
+      setTagAndAttribute("project.id", String(scopedProject.id));
     }
 
     let dashboards: DashboardListItem[];

@@ -8,9 +8,8 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setOrganizationContext } from "../../telem/organization";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { resolveAlertRuleConnections } from "../support/alert-rule-connections";
 import {
   alertRuleConfigFields,
   alertRuleSummarySchema,
@@ -19,6 +18,7 @@ import {
   ParamNewAlertTriggers,
   toAlertRuleSummary,
 } from "../support/alert-rule-config";
+import { resolveAlertRuleConnections } from "../support/alert-rule-connections";
 
 export default defineTool({
   name: "create_alert_rule",
@@ -76,7 +76,7 @@ export default defineTool({
     const api = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });
-    setOrganizationContext(params.organizationSlug);
+    setTagAndAttribute("organization.slug", params.organizationSlug);
     const project = context.constraints.projectSlug
       ? await api.getProject({
           organizationSlug: params.organizationSlug,

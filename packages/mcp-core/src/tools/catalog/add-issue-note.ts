@@ -1,20 +1,19 @@
 import { z } from "zod";
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
+import type { IssueComment } from "../../api-client/types";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
 import {
   ensureIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
-import type { IssueComment } from "../../api-client/types";
-import type { ServerContext } from "../../types";
 import {
   ParamIssueShortId,
   ParamIssueUrl,
   ParamOrganizationSlug,
   ParamRegionUrl,
 } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 import {
   formatActor,
   formatDate,
@@ -86,8 +85,8 @@ export default defineTool({
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? context.constraints.regionUrl ?? undefined,
     });
-    setOrganizationContext(parsed.organizationSlug);
-    setTag("issue.id", parsed.issueId);
+    setTagAndAttribute("organization.slug", parsed.organizationSlug);
+    setTagAndAttribute("issue.id", parsed.issueId);
 
     await ensureIssueWithinProjectConstraint({
       apiService,

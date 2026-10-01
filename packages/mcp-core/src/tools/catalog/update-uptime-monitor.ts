@@ -1,6 +1,4 @@
-import { setTag } from "@sentry/core";
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -10,6 +8,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { assertProjectRefWithinConstraint } from "./support/project-constraints";
 import {
@@ -106,9 +105,9 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
-    setOrganizationContext(organizationSlug);
-    setTag("project.slug", params.projectSlug);
-    setTag("uptime.monitor_id", params.uptimeMonitorId);
+    setTagAndAttribute("organization.slug", organizationSlug);
+    setTagAndAttribute("project.slug", params.projectSlug);
+    setTagAndAttribute("uptime.monitor_id", params.uptimeMonitorId);
 
     assertProjectRefWithinConstraint({
       resourceLabel: "Uptime monitor",

@@ -1,4 +1,3 @@
-import { setTag } from "@sentry/core";
 import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -8,7 +7,7 @@ import {
   ParamProjectSlugOrAll,
   ParamRegionUrl,
 } from "../../schema";
-import { setOrganizationContext } from "../../telem/organization";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   listMetricMonitors,
@@ -68,8 +67,8 @@ export default defineTool({
       });
     }
     const projectSlug = context.constraints.projectSlug ?? requestedProject;
-    setOrganizationContext(params.organizationSlug);
-    if (projectSlug) setTag("project.slug", projectSlug);
+    setTagAndAttribute("organization.slug", params.organizationSlug);
+    if (projectSlug) setTagAndAttribute("project.slug", projectSlug);
     const api = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });

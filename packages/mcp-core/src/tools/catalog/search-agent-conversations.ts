@@ -2,20 +2,20 @@
 // Sentry's conversation list endpoint and intentionally exposes backend default
 // ordering until alternate sorting is applied by the API.
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
+import type { AIConversationSummary, SentryApiService } from "../../api-client";
+import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamPeriod,
-  ParamRegionUrl,
   ParamProjectSlug,
+  ParamRegionUrl,
 } from "../../schema";
-import { UserInputError } from "../../errors";
-import { structuredResult } from "../../internal/tool-helpers/results";
-import { isNumericId } from "../../utils/slug-validation";
-import type { AIConversationSummary, SentryApiService } from "../../api-client";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
+import { isNumericId } from "../../utils/slug-validation";
 
 const PREVIEW_LENGTH = 240;
 const TRACE_ID_SAMPLE_SIZE = 3;
@@ -270,7 +270,7 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setOrganizationContext(organizationSlug);
+    setTagAndAttribute("organization.slug", organizationSlug);
 
     const projectIds = await resolveProjectIds({
       apiService,

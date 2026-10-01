@@ -3,7 +3,6 @@ import type {
   ImageContent,
   TextContent,
 } from "@modelcontextprotocol/sdk/types.js";
-import { setOrganizationContext } from "../../telem/organization";
 import { DEFAULT_MAX_INLINE_ATTACHMENT_BYTES } from "../../api-client";
 import { bytesToBase64 } from "../../internal/blob-utils";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -16,6 +15,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 function formatMegabytes(bytes: number): string {
@@ -131,7 +131,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    setOrganizationContext(params.organizationSlug);
+    setTagAndAttribute("organization.slug", params.organizationSlug);
 
     // If attachmentId is provided, download the specific attachment
     if (params.attachmentId) {

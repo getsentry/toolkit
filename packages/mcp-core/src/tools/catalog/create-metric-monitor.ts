@@ -1,4 +1,3 @@
-import { setTag } from "@sentry/core";
 import { z } from "zod";
 import type { Detector } from "../../api-client/types";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -9,7 +8,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setOrganizationContext } from "../../telem/organization";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   metricMonitorCreateFields,
@@ -60,8 +59,8 @@ export default defineTool({
     const api = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });
-    setOrganizationContext(params.organizationSlug);
-    setTag("project.slug", params.projectSlug);
+    setTagAndAttribute("organization.slug", params.organizationSlug);
+    setTagAndAttribute("project.slug", params.projectSlug);
     const { timeWindowSeconds, ...query } = params.query;
     const body = {
       type: "metric_issue" as const,

@@ -1,20 +1,19 @@
 import { z } from "zod";
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
-import { apiServiceFromContext } from "../../internal/tool-helpers/api";
-import { structuredResult } from "../../internal/tool-helpers/results";
-import { logIssue } from "../../telem/logging";
-import { UserInputError } from "../../errors";
 import { ApiClientError } from "../../api-client";
-import type { ServerContext } from "../../types";
 import type { Project } from "../../api-client/index";
+import { UserInputError } from "../../errors";
+import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
-  ParamRegionUrl,
-  ParamProjectSlug,
   ParamPlatform,
+  ParamProjectSlug,
+  ParamRegionUrl,
 } from "../../schema";
+import { logIssue } from "../../telem/logging";
+import { setTagAndAttribute } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 
 export const updateProjectOutputSchema = z.object({
   project: z.object({
@@ -91,8 +90,8 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setOrganizationContext(organizationSlug);
-    setTag("project.slug", params.projectSlug);
+    setTagAndAttribute("organization.slug", organizationSlug);
+    setTagAndAttribute("project.slug", params.projectSlug);
 
     const hasProjectUpdates = params.name || params.slug || params.platform;
     if (!hasProjectUpdates) {

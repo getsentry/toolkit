@@ -1,5 +1,3 @@
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
 import type { SentryApiService, Trace, TraceSpan } from "../../api-client";
 import { UserInputError } from "../../errors";
 import { hasAgentProvider } from "../../internal/agents/provider-factory";
@@ -17,6 +15,7 @@ import {
   ParamSpanId,
   ParamTraceId,
 } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { formatSemanticSpanDisplay } from "../support/traces/semantic-display.js";
 
@@ -131,14 +130,14 @@ export default defineTool({
       regionUrl: regionUrl ?? undefined,
     });
 
-    setOrganizationContext(params.organizationSlug);
-    setTag("trace.id", params.traceId);
+    setTagAndAttribute("organization.slug", params.organizationSlug);
+    setTagAndAttribute("trace.id", params.traceId);
     if (params.spanId) {
-      setTag("trace.span_id", params.spanId);
+      setTagAndAttribute("trace.span_id", params.spanId);
     }
 
     if (context.constraints.projectSlug) {
-      setTag("project.slug", context.constraints.projectSlug);
+      setTagAndAttribute("project.slug", context.constraints.projectSlug);
     }
 
     // Get trace metadata for overview

@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
-import type { ServerContext } from "../../types";
+import { defineTool } from "../../internal/tool-helpers/define";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 import { isNumericId } from "../../utils/slug-validation";
 import { renderSnapshotImageTreeSection } from "../support/snapshots/formatting";
 
@@ -77,7 +76,7 @@ export default defineTool({
     openWorldHint: true,
   },
   async handler(params, context: ServerContext) {
-    setOrganizationContext(params.organizationSlug);
+    setTagAndAttribute("organization.slug", params.organizationSlug);
 
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
@@ -86,8 +85,8 @@ export default defineTool({
     const project = params.project ?? undefined;
     const projectId = project && isNumericId(project) ? project : undefined;
     const projectSlug = project && !isNumericId(project) ? project : undefined;
-    if (projectId) setTag("project.id", projectId);
-    if (projectSlug) setTag("project.slug", projectSlug);
+    if (projectId) setTagAndAttribute("project.id", projectId);
+    if (projectSlug) setTagAndAttribute("project.slug", projectSlug);
 
     const data = (await apiService.getLatestBaseSnapshot({
       organizationSlug: params.organizationSlug,

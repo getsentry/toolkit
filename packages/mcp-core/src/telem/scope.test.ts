@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../server";
 import { getServerContext } from "../test-setup";
 import findProjects from "../tools/catalog/find-projects";
+import type { ServerContext } from "../types";
 
 const beforeSendSpan = vi.fn((span: StreamedSpanJSON) => span);
 const beforeSend = vi.fn((event: ErrorEvent) => event);
@@ -45,6 +46,27 @@ afterEach(async () => {
   getIsolationScope().setTag("organization.slug", undefined);
 });
 
+async function callTool(
+  context: ServerContext,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<void> {
+  const server = buildServer({ context });
+  const client = new Client({ name: "telemetry-test", version: "1.0.0" });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    const result = await client.callTool({ name, arguments: args });
+    expect(result.isError).not.toBe(true);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+  await sentry.flush();
+}
+
 describe("organization telemetry", () => {
   it.each([
     {
@@ -74,25 +96,14 @@ describe("organization telemetry", () => {
   ])(
     "includes $description on streamed root spans",
     async ({ name, args, constraints }) => {
-      const server = buildServer({
-        context: getServerContext({
+      await callTool(
+        getServerContext({
           constraints,
           grantedSkills: new Set(["inspect"]),
         }),
-      });
-      const client = new Client({ name: "telemetry-test", version: "1.0.0" });
-      const [clientTransport, serverTransport] =
-        InMemoryTransport.createLinkedPair();
-      try {
-        await server.connect(serverTransport);
-        await client.connect(clientTransport);
-        const result = await client.callTool({ name, arguments: args });
-        expect(result.isError).not.toBe(true);
-      } finally {
-        await client.close();
-        await server.close();
-      }
-      await sentry.flush();
+        name,
+        args,
+      );
       expect(beforeSendSpan).toHaveBeenCalledWith(
         expect.objectContaining({
           is_segment: true,
@@ -123,6 +134,34 @@ describe("organization telemetry", () => {
         }),
       }),
       expect.anything(),
+    );
+  });
+});
+
+describe("request and tool telemetry", () => {
+  it("includes request and tool context on streamed root spans", async () => {
+    await callTool(
+      getServerContext({
+        clientId: "telemetry-test-client",
+        grantedSkills: new Set(["inspect"]),
+      }),
+      "execute_sentry_tool",
+      {
+        name: "get_issue_breadcrumbs",
+        arguments: {
+          issueUrl:
+            "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/",
+        },
+      },
+    );
+    expect(beforeSendSpan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        is_segment: true,
+        attributes: expect.objectContaining({
+          "client.id": "telemetry-test-client",
+          "issue.id": "CLOUDFLARE-MCP-41",
+        }),
+      }),
     );
   });
 });

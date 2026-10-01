@@ -2,14 +2,13 @@
 // transcript projection and keeps detail output chronological and debugger
 // oriented instead of mirroring every raw span attribute.
 import { z } from "zod";
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
+import type { AIConversationSpan, SentryApiService } from "../../api-client";
+import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
-import { UserInputError } from "../../errors";
-import type { AIConversationSpan, SentryApiService } from "../../api-client";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 type ToolCall = {
@@ -704,8 +703,8 @@ export default defineTool({
   outputSchema: aiConversationDetailsOutputSchema,
 
   async handler(params, context: ServerContext) {
-    setOrganizationContext(params.organizationSlug);
-    setTag("ai_conversation.id", params.conversationId);
+    setTagAndAttribute("organization.slug", params.organizationSlug);
+    setTagAndAttribute("ai_conversation.id", params.conversationId);
 
     if ((params.start && !params.end) || (!params.start && params.end)) {
       throw new UserInputError("`start` and `end` must be provided together.");

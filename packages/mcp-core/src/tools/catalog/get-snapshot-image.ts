@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { fetchSnapshotImage } from "../support/snapshots/handlers";
 
@@ -74,7 +74,7 @@ export default defineTool({
       );
     }
 
-    setOrganizationContext(params.organizationSlug);
+    setTagAndAttribute("organization.slug", params.organizationSlug);
 
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,

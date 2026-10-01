@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
 import {
-  AgenticOnboardingRunTokenSchema,
   AgenticOnboardingRunStatusUpdateSchema,
+  AgenticOnboardingRunTokenSchema,
   AgenticOnboardingStageSchema,
   AgenticOnboardingStageStatusUpdateSchema,
   AgenticOnboardingStatusUpdateSchema,
@@ -11,6 +10,7 @@ import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { ALL_SKILLS } from "../../skills";
+import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 const updateBaseSchema = z
@@ -130,7 +130,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? context.constraints.regionUrl ?? undefined,
     });
 
-    setOrganizationContext(params.organizationSlug);
+    setTagAndAttribute("organization.slug", params.organizationSlug);
 
     const update = AgenticOnboardingStatusUpdateSchema.parse({
       schemaVersion: 1,

@@ -21,12 +21,7 @@ import { McpServer as LegacyMcpServer } from "@modelcontextprotocol/sdk/server/m
  */
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
-import {
-  getActiveSpan,
-  type SpanAttributeValue,
-  setTag,
-  setUser,
-} from "@sentry/core";
+import { getActiveSpan, type SpanAttributeValue, setUser } from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
 import { MCP_SERVER_NAME } from "./constants";
@@ -37,6 +32,7 @@ import {
 } from "./internal/error-handling";
 import type { Skill } from "./skills";
 import { type LogIssueOptions, logIssue } from "./telem/logging";
+import { setTagAndAttribute } from "./telem/scope";
 import {
   executeToolHandler,
   getAvailableTools,
@@ -302,15 +298,15 @@ function configureServer({
         setUser(user);
       }
       if (context.clientId) {
-        setTag("client.id", context.clientId);
+        setTagAndAttribute("client.id", context.clientId);
       }
       if (context.clientFamily) {
-        setTag("app.client.family", context.clientFamily);
+        setTagAndAttribute("app.client.family", context.clientFamily);
       }
       if (context.transport) {
-        setTag("app.transport", context.transport);
+        setTagAndAttribute("app.transport", context.transport);
       }
-      setTag("app.server.mode.experimental", experimentalMode);
+      setTagAndAttribute("app.server.mode.experimental", experimentalMode);
 
       // Hoisted so both the handler path and the catch (onError) share one
       // narrowing instead of re-casting `params`.

@@ -1,16 +1,15 @@
 import { z } from "zod";
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
-import { apiServiceFromContext } from "../../internal/tool-helpers/api";
-import { structuredResult } from "../../internal/tool-helpers/results";
 import type { Monitor } from "../../api-client/types";
-import type { ServerContext } from "../../types";
+import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamProjectSlugOrAll,
   ParamRegionUrl,
 } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 import { assertProjectRefWithinConstraint } from "./support/project-constraints";
 
 const ENVIRONMENT_LIMIT = 5;
@@ -197,7 +196,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
-    setOrganizationContext(organizationSlug);
+    setTagAndAttribute("organization.slug", organizationSlug);
     const requestedProjectSlug =
       params.projectSlug && params.projectSlug !== "all"
         ? params.projectSlug
@@ -211,7 +210,7 @@ export default defineTool({
     }
     const projectSlug = context.constraints.projectSlug ?? requestedProjectSlug;
     if (projectSlug) {
-      setTag("project.slug", projectSlug);
+      setTagAndAttribute("project.slug", projectSlug);
     }
 
     const monitors = await apiService.listMonitors({

@@ -1,26 +1,25 @@
-import { setTag } from "@sentry/core";
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
-import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { UserInputError } from "../../errors";
-import type { ServerContext } from "../../types";
+import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
+import { isProfileUrl, parseSentryUrl } from "../../internal/url-helpers";
+import {
+  resolveScopedOrganizationSlug,
+  resolveScopedProjectSlugOrId,
+} from "../../internal/url-scope";
 import {
   ParamOrganizationSlug,
   ParamPeriod,
   ParamRegionUrl,
 } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
+import { hasProfileData } from "../support/profile/analyzer";
 import {
   formatFlamegraphAnalysis,
   formatFlamegraphComparison,
 } from "../support/profile/formatter";
-import { hasProfileData } from "../support/profile/analyzer";
-import { parseSentryUrl, isProfileUrl } from "../../internal/url-helpers";
-import {
-  resolveScopedOrganizationSlug,
-  resolveScopedProjectSlugOrId,
-} from "../../internal/url-scope";
 
 interface ResolvedProfileParams {
   organizationSlug: string;
@@ -228,7 +227,7 @@ export default defineTool({
       isNumericId(String(projectSlugOrId))
     ) {
       projectId = projectSlugOrId;
-      setTag("project.id", String(projectSlugOrId));
+      setTagAndAttribute("project.id", String(projectSlugOrId));
     } else {
       // It's a slug, resolve to ID
       const project = await apiService.getProject({
@@ -236,17 +235,17 @@ export default defineTool({
         projectSlugOrId: String(projectSlugOrId),
       });
       projectId = project.id;
-      setTag("project.slug", String(projectSlugOrId));
-      setTag("project.id", String(project.id));
+      setTagAndAttribute("project.slug", String(projectSlugOrId));
+      setTagAndAttribute("project.id", String(project.id));
     }
 
-    setOrganizationContext(organizationSlug);
-    setTag("transaction.name", transactionName);
+    setTagAndAttribute("organization.slug", organizationSlug);
+    setTagAndAttribute("transaction.name", transactionName);
 
     // Comparison mode: compare two time periods
     if (params.compareAgainstPeriod) {
-      setTag("baseline.period", params.compareAgainstPeriod);
-      setTag("current.period", params.period);
+      setTagAndAttribute("baseline.period", params.compareAgainstPeriod);
+      setTagAndAttribute("current.period", params.period);
 
       // Fetch both flamegraphs in parallel
       const [baselineFlamegraph, currentFlamegraph] = await Promise.all([

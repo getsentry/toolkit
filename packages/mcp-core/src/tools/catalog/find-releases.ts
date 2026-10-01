@@ -1,14 +1,14 @@
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
-import type { ServerContext } from "../../types";
 import {
   ParamOrganizationSlug,
-  ParamRegionUrl,
   ParamProjectSlugOrAll,
+  ParamRegionUrl,
 } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 
 const RESULT_LIMIT = 25;
 
@@ -98,7 +98,7 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setOrganizationContext(organizationSlug);
+    setTagAndAttribute("organization.slug", organizationSlug);
 
     const releases = await apiService.listReleases({
       organizationSlug,

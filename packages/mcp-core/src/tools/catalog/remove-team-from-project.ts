@@ -1,18 +1,17 @@
-import { setTag } from "@sentry/core";
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
-import { apiServiceFromContext } from "../../internal/tool-helpers/api";
-import { structuredResult } from "../../internal/tool-helpers/results";
-import { UserInputError } from "../../errors";
 import type { Team } from "../../api-client/index";
-import type { ServerContext } from "../../types";
+import { UserInputError } from "../../errors";
+import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamProjectSlug,
   ParamRegionUrl,
   ParamTeamSlug,
 } from "../../schema";
+import { setTagAndAttribute } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 
 const assignedTeamSchema = z.object({
   id: z.string(),
@@ -74,9 +73,9 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setOrganizationContext(organizationSlug);
-    setTag("project.slug", params.projectSlug);
-    setTag("team.slug", params.teamSlug);
+    setTagAndAttribute("organization.slug", organizationSlug);
+    setTagAndAttribute("project.slug", params.projectSlug);
+    setTagAndAttribute("team.slug", params.teamSlug);
 
     const currentTeams = await apiService.listProjectTeams({
       organizationSlug,
