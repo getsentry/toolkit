@@ -12,6 +12,7 @@ mcpServers:
 allowedTools:
   - analyze_issue_with_seer
   - execute_sentry_tool
+  - find_dropped_events
   - find_organizations
   - find_projects
   - get_sentry_resource

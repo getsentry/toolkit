@@ -2454,3 +2454,40 @@ export const EventsStatsResponseSchema = z
     end: z.number().optional(),
   })
   .passthrough();
+
+/**
+ * One time bucket from the events-dropped endpoint. `outcome` is the drop kind
+ * (rate_limited, filtered, invalid, abuse, client_discard, cardinality_limited)
+ * and `reason` the sub-cause; both are "accepted" on accepted buckets.
+ */
+export const DroppedEventsBucketSchema = z
+  .object({
+    type: z.string(),
+    category: z.string(),
+    outcome: z.string(),
+    reason: z.string(),
+    start: z.number(),
+    end: z.number(),
+    count: z.number(),
+  })
+  .passthrough();
+
+/**
+ * Response from the events-dropped endpoint: dropped and accepted event volume
+ * bucketed over the requested interval. `acceptedEvents` is the share
+ * denominator for the drops in the same window.
+ */
+export const DroppedEventsResponseSchema = z
+  .object({
+    meta: z
+      .object({
+        dataset: z.string(),
+        start: z.number(),
+        end: z.number(),
+        interval: z.number(),
+      })
+      .passthrough(),
+    droppedEvents: z.array(DroppedEventsBucketSchema),
+    acceptedEvents: z.array(DroppedEventsBucketSchema),
+  })
+  .passthrough();

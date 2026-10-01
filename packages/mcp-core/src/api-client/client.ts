@@ -58,6 +58,7 @@ import {
   DashboardSchema,
   DeployListSchema,
   DetectorSchema,
+  DroppedEventsResponseSchema,
   ErrorsSearchResponseSchema,
   EventAttachmentListSchema,
   EventSchema,
@@ -5210,6 +5211,50 @@ export class SentryApiService {
       `?${queryParams.toString()}`;
     const body = await this.requestJSON(apiUrl, undefined, opts);
     return EventsStatsResponseSchema.parse(body);
+  }
+
+  /**
+   * Fetch dropped (and accepted) event volume from the events-dropped endpoint,
+   * bucketed over time. This is ground-truth data-fidelity information: what
+   * Sentry received but discarded, and why. Unlike events-stats, this runs no
+   * chart query and takes no search filter — it reads Outcomes directly.
+   */
+  async getDroppedEvents(
+    {
+      organizationSlug,
+      interval,
+      projectId,
+      dataset = "spans",
+      statsPeriod,
+      start,
+      end,
+    }: {
+      organizationSlug: string;
+      interval?: string;
+      projectId?: string;
+      dataset?: EventsDataset;
+      statsPeriod?: string;
+      start?: string;
+      end?: string;
+    },
+    opts?: RequestOptions,
+  ) {
+    const queryParams = new URLSearchParams();
+    queryParams.set("dataset", normalizeEventsDataset(dataset));
+    if (interval) {
+      queryParams.set("interval", interval);
+    }
+    this.applyTimeParams(queryParams, statsPeriod, start, end);
+    if (projectId) {
+      queryParams.set("project", projectId);
+    }
+    queryParams.set("referrer", SENTRY_MCP_SEARCH_EVENTS_REFERRER);
+
+    const apiUrl =
+      apiPath`/organizations/${organizationSlug}/events-dropped/` +
+      `?${queryParams.toString()}`;
+    const body = await this.requestJSON(apiUrl, undefined, opts);
+    return DroppedEventsResponseSchema.parse(body);
   }
 
   // POST https://us.sentry.io/api/0/issues/5485083130/autofix/

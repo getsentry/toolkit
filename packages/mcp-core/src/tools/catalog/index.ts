@@ -45,6 +45,7 @@ import searchTraces from "./search-traces";
 import searchMetrics from "./search-metrics";
 import searchProfiles from "./search-profiles";
 import searchReplays from "./search-replays";
+import findDroppedEvents from "./find-dropped-events";
 import createTeam from "./create-team";
 import createProject from "./create-project";
 import updateProject from "./update-project";
@@ -161,6 +162,7 @@ const catalogTools = {
   get_doc: getDoc,
   search_issues: searchIssues,
   search_issue_events: searchIssueEvents,
+  find_dropped_events: findDroppedEvents,
   get_profile: getProfile,
   get_profile_details: getProfileDetails,
   get_sentry_mcp_info: getSentryMcpInfo,
