@@ -125,6 +125,10 @@ omits the section. Commit lookup is optional: failures do not prevent issue
 details from loading, but unexpected server or response-validation failures
 are reported to Sentry.
 
+The event API's legacy `context` field (extra data) can be `null`. Issue details
+must still load; omit the `Extra Data` section for null or empty values while
+preserving the event's error, stacktrace, and structured `contexts` data.
+
 ## Structured Content
 
 MCP tools may expose `structuredContent` alongside generated text `content`.

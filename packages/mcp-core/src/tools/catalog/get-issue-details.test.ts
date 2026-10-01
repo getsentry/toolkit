@@ -8,6 +8,7 @@ import {
   createRegressedIssue,
   createUnknownEvent,
   createUnsupportedIssue,
+  eventFixture,
   issueNullCulpritFixture,
   mswServer,
 } from "@sentry/mcp-server-mocks";
@@ -2053,6 +2054,37 @@ describe("get_issue_details", () => {
     expect(result).toContain('**environment_info**: "production"');
     // Verify contexts are still displayed
     expect(result).toContain("### Additional Context");
+  });
+
+  it("returns event details when legacy context is null", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/latest/",
+        () => HttpResponse.json({ ...eventFixture, context: null }),
+        { once: true },
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        eventId: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      baseContext,
+    );
+
+    expect(result).toContain("## Event Details");
+    expect(result).toContain(`**Event ID**: ${eventFixture.id}`);
+    expect(result).toContain(
+      "Error: Tool list_organizations is already registered",
+    );
+    expect(result).toContain("index.js:19631:28 (Object.fetch)");
+    expect(result).toContain("### Additional Context");
+    expect(result).toContain('name: "cloudflare"');
+    expect(result).not.toContain("### Extra Data");
   });
 
   it("handles regressed performance issues (generic type with empty entries)", async () => {
