@@ -352,13 +352,13 @@ sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --js
 `--dry-run` discovers the integration and prepares the link without submitting a
 write. The provider validates the remote issue when the link is submitted.
 An existing matching link succeeds with `changed: false`. A Sentry App that
-already links this issue to a different resource must be unlinked in Sentry first.
+already links this issue to a different resource must be unlinked first.
 App callbacks must return the exact supplied URL; use the issue URL copied from
 the tracker, including its title suffix. A mismatch fails without saving the link.
 
 GitHub and GitHub Enterprise pull requests are stored as external references.
 Their `/pull/NUMBER` and `/issues/NUMBER` URLs identify the same resource for
-duplicate detection. Linking a PR does not mark it as a fix or
+duplicate detection and unlinking. Linking a PR does not mark it as a fix or
 resolve the Sentry issue.
 
 This command does not create a tracker issue or link a commit. Existing
@@ -372,3 +372,33 @@ OAuth login. If an older OAuth session lacks the
 requested scopes, the CLI offers reauthorization after a permission error.
 Use `sentry auth login` to request the current default scopes. Environment tokens must
 be updated separately.
+
+### Unlink an external issue
+
+Remove an association without deleting either issue:
+
+```bash
+sentry issue unlink FRONT-123 https://github.com/example/app/issues/42
+sentry issue unlink FRONT-123 https://github.com/example/app/pull/43 --yes
+sentry issue unlink my-org/FRONT-123 https://example.atlassian.net/browse/APP-42 --yes
+sentry issue unlink FRONT-123 https://linear.app/example/issue/APP-42/fix-error --dry-run
+```
+
+Use `--yes` for non-interactive execution. `--dry-run` shows whether the link
+exists without removing it. If the association is already absent, the command
+succeeds with `changed: false`.
+
+Unlink matches the URL against stored associations and sends Sentry's internal
+link ID to the existing DELETE endpoint. It does not require fetching the ticket
+from the remote tracker, so a deleted remote ticket can still be unlinked.
+For a custom Sentry App, select it with `--app <slug>`; unlink does not require
+the app to expose a link form. Use `--integration <id>` to disambiguate native
+integration links.
+
+#### Unlink permissions
+
+Unlink requires **`event:write` and access to the Sentry project**; `event:admin`
+is also accepted. The organization's “Let Members Delete Events” setting does
+not restrict unlinking on updated Sentry versions.
+
+Granting a token more scopes does not override project-access policy.

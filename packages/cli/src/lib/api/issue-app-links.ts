@@ -4,6 +4,7 @@
  */
 
 import {
+  deleteOrganizationIssueExternalIssue,
   executeSentryAppInstallationExternalIssueAction,
   type GroupExternalIssueResponse,
   getSentryAppInstallationExternalRequestOptions,
@@ -693,4 +694,28 @@ export async function linkAppIssue(
     link: unwrapResult(result, "Failed to link app issue"),
     changed: result.response?.status === 201,
   };
+}
+
+/** Remove only the selected local app association, using event:write or event:admin. */
+export async function unlinkAppIssueLink(
+  orgSlug: string,
+  issueId: string,
+  linkId: string
+): Promise<void> {
+  if (!isAllDigits(linkId)) {
+    throw new ValidationError(
+      "App unlink requires the numeric association ID",
+      "linkId"
+    );
+  }
+  requireIssueTarget(orgSlug, issueId);
+  const result = await deleteOrganizationIssueExternalIssue({
+    ...getSdkConfig(await resolveOrgRegion(orgSlug)),
+    path: {
+      organization_id_or_slug: orgSlug,
+      issue_id: issueId,
+      external_issue_id: linkId,
+    },
+  });
+  unwrapResult(result, "Failed to unlink app issue");
 }

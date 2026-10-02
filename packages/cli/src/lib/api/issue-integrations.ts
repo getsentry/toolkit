@@ -1,5 +1,6 @@
 /** Existing issue-tracker links through Sentry's native integrations. */
 import {
+  deleteOrganizationIssueIntegration,
   type ExternalIssueLinkResponse,
   type IssueIntegrationsResponse,
   listOrganizationIssueIntegrations,
@@ -239,6 +240,14 @@ function flattenLinks(integrations: NativeIntegration[]): NativeIssueLink[] {
   );
 }
 
+/** List every link, including links whose provider is no longer supported. */
+export async function listNativeIssueLinks(
+  orgSlug: string,
+  issueId: string
+): Promise<NativeIssueLink[]> {
+  return flattenLinks(await listIntegrations(orgSlug, issueId));
+}
+
 function matchesNativeUrl(link: NativeIssueLink, target: URL): boolean {
   const existing = storedUrl(link.url);
   if (!existing) {
@@ -376,4 +385,28 @@ export async function linkNativeIssue(
     },
     changed: result.response.status === 201,
   };
+}
+
+/** The DELETE identifier is Sentry's ExternalIssue ID, not the provider key. */
+export async function unlinkNativeIssueLink(
+  orgSlug: string,
+  issueId: string,
+  link: NativeIssueLink
+): Promise<void> {
+  const externalIssue = Number(link.id);
+  if (!Number.isSafeInteger(externalIssue) || externalIssue <= 0) {
+    throw new ValidationError(
+      "External issue link ID must be a safe positive integer."
+    );
+  }
+  const result = await deleteOrganizationIssueIntegration({
+    ...getSdkConfig(await resolveOrgRegion(orgSlug)),
+    path: {
+      organization_id_or_slug: orgSlug,
+      issue_id: issueId,
+      integration_id: link.integrationId,
+    },
+    query: { externalIssue },
+  });
+  unwrapResult<void>(result, "Failed to unlink external issue");
 }

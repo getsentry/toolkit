@@ -392,4 +392,24 @@ sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --dr
 sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --json
 ```
 
+### `sentry issue unlink <issue> <url>`
+
+Unlink an external issue
+
+**Flags:**
+- `--integration <value> - Native integration ID, when multiple installations match`
+- `--app <value> - Sentry App slug (automatically detected for Linear URLs)`
+- `-y, --yes - Skip confirmation prompt`
+- `-f, --force - Force the operation without confirmation`
+- `-n, --dry-run - Show what would happen without making changes`
+
+**Examples:**
+
+```bash
+sentry issue unlink FRONT-123 https://github.com/example/app/issues/42
+sentry issue unlink FRONT-123 https://github.com/example/app/pull/43 --yes
+sentry issue unlink my-org/FRONT-123 https://example.atlassian.net/browse/APP-42 --yes
+sentry issue unlink FRONT-123 https://linear.app/example/issue/APP-42/fix-error --dry-run
+```
+
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

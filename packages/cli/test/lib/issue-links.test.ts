@@ -2,15 +2,24 @@
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  findAppIssueLink,
   linkAppIssue,
+  listAppIssueLinks,
   resolveAppIssueLink,
+  unlinkAppIssueLink,
 } from "../../src/lib/api/issue-app-links.js";
 import {
+  findNativeIssueLink,
   linkNativeIssue,
+  listNativeIssueLinks,
   resolveNativeIssueLink,
+  unlinkNativeIssueLink,
 } from "../../src/lib/api/issue-integrations.js";
 import { ApiError } from "../../src/lib/errors.js";
-import { linkExternalIssue } from "../../src/lib/issue-links.js";
+import {
+  linkExternalIssue,
+  unlinkExternalIssue,
+} from "../../src/lib/issue-links.js";
 import { invalidateCachedResponsesMatching } from "../../src/lib/response-cache.js";
 
 vi.mock("../../src/lib/api/issue-app-links.js");
@@ -56,6 +65,8 @@ beforeEach(() => {
     link: nativeLink,
     changed: true,
   });
+  vi.mocked(listNativeIssueLinks).mockResolvedValue([nativeLink]);
+  vi.mocked(findNativeIssueLink).mockReturnValue(nativeLink);
   vi.mocked(resolveAppIssueLink).mockResolvedValue({
     ...options,
     url: appLink.webUrl,
@@ -65,6 +76,8 @@ beforeEach(() => {
     fields: { issueId: "remote-uuid" },
   });
   vi.mocked(linkAppIssue).mockResolvedValue({ link: appLink, changed: true });
+  vi.mocked(listAppIssueLinks).mockResolvedValue([appLink]);
+  vi.mocked(findAppIssueLink).mockReturnValue(appLink);
 });
 
 describe("external issue associations", () => {
@@ -159,6 +172,62 @@ describe("external issue associations", () => {
     const result = await linkExternalIssue(options);
     expect(result).toMatchObject({ linked: true, changed: false });
     expect(invalidateCachedResponsesMatching).not.toHaveBeenCalled();
+  });
+
+  test("unlink selects a stored native association, without resolving the remote issue", async () => {
+    const result = await unlinkExternalIssue(options);
+    expect(unlinkNativeIssueLink).toHaveBeenCalledWith(
+      "example",
+      "123",
+      nativeLink
+    );
+    expect(resolveNativeIssueLink).not.toHaveBeenCalled();
+    expect(resolveAppIssueLink).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ linked: false, changed: true });
+  });
+
+  test("unlink uses the stored app record ID, without invoking a link workflow", async () => {
+    const result = await unlinkExternalIssue({
+      ...options,
+      url: appLink.webUrl,
+    });
+    expect(unlinkAppIssueLink).toHaveBeenCalledWith("example", "123", "910");
+    expect(resolveAppIssueLink).not.toHaveBeenCalled();
+    expect(linkAppIssue).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ linked: false, changed: true });
+  });
+
+  test.each([
+    nativeLink.url,
+    appLink.webUrl,
+  ])("dry-run unlink preserves the link: %s", async (url) => {
+    const result = await unlinkExternalIssue({ ...options, url, dryRun: true });
+    expect(result).toMatchObject({
+      linked: true,
+      changed: false,
+      dryRun: true,
+    });
+    expect(unlinkNativeIssueLink).not.toHaveBeenCalled();
+    expect(unlinkAppIssueLink).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    nativeLink.url,
+    appLink.webUrl,
+  ])("missing association is already unlinked: %s", async (url) => {
+    vi.mocked(findNativeIssueLink).mockReturnValue(undefined);
+    vi.mocked(findAppIssueLink).mockReturnValue(undefined);
+    const result = await unlinkExternalIssue({ ...options, url });
+    expect(result).toMatchObject({ linked: false, changed: false });
+    expect(unlinkNativeIssueLink).not.toHaveBeenCalled();
+    expect(unlinkAppIssueLink).not.toHaveBeenCalled();
+  });
+
+  test("a failed link read is not treated as an empty list", async () => {
+    const error = new ApiError("Forbidden", 403);
+    vi.mocked(listNativeIssueLinks).mockRejectedValue(error);
+    await expect(unlinkExternalIssue(options)).rejects.toBe(error);
+    expect(unlinkNativeIssueLink).not.toHaveBeenCalled();
   });
 
   test("a failed write propagates without claiming success or falling back to another provider", async () => {

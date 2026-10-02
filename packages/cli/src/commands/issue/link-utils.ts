@@ -1,9 +1,9 @@
-/** Arguments for linking external issues. */
+/** Shared arguments for external issue association commands. */
 
 import { ValidationError } from "../../lib/errors.js";
 import { issueIdPositional } from "./utils.js";
 
-/** Required source issue and existing external resource URL for linking. */
+/** Required source issue and existing external resource URL for link and unlink. */
 export const EXTERNAL_ISSUE_POSITIONALS = {
   kind: "tuple",
   parameters: [

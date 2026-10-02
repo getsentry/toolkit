@@ -1,4 +1,4 @@
-/** Contract tests for installed app callbacks, singleton protection, and regional discovery. */
+/** Contract tests for installed app callbacks, singleton protection, and regional unlinking. */
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   type AppIssueLink,
@@ -6,6 +6,7 @@ import {
   linkAppIssue,
   listAppIssueLinks,
   resolveAppIssueLink,
+  unlinkAppIssueLink,
 } from "../../../src/lib/api/issue-app-links.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
@@ -98,6 +99,9 @@ beforeEach(async () => {
         actionStatus < 300 ? actionLink : { detail: "Provider failed" },
         actionStatus
       );
+    }
+    if (request.method === "DELETE") {
+      return new Response(null, { status: 204 });
     }
     throw new Error(`Unexpected request: ${request.method} ${request.url}`);
   });
@@ -613,7 +617,7 @@ describe("app issue-link action", () => {
   });
 });
 
-describe("list and match app associations", () => {
+describe("list and unlink app associations", () => {
   test("follows cursor pages and never uses a pagination URL as a request target", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const request = new Request(input, init);
@@ -640,6 +644,36 @@ describe("list and match app associations", () => {
     await expect(listAppIssueLinks(ORG, ISSUE)).rejects.toThrow(
       "repeated a cursor"
     );
+  });
+
+  test("deletes the group association ID in its region without an app schema", async () => {
+    await unlinkAppIssueLink(ORG, ISSUE, LINK.id);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(
+      "https://de.sentry.io/api/0/organizations/example-org/issues/123/external-issues/99/"
+    );
+    expect(calls[0]?.method).toBe("DELETE");
+  });
+
+  test("rejects relative path segments before issuing an unlink", async () => {
+    await expect(unlinkAppIssueLink(ORG, ISSUE, "..")).rejects.toThrow(
+      ValidationError
+    );
+    await expect(unlinkAppIssueLink(ORG, "..", LINK.id)).rejects.toThrow(
+      ValidationError
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  test("propagates unlink permissions without falling back to installation registration", async () => {
+    globalThis.fetch = mockFetch(async (input, init) => {
+      calls.push(new Request(input, init));
+      return json({ detail: "Requires event:admin" }, 403);
+    });
+    await expect(
+      unlinkAppIssueLink(ORG, ISSUE, LINK.id)
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(calls).toHaveLength(1);
   });
 
   test("matches generic URLs and refuses ambiguity across apps", () => {

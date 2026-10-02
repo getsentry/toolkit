@@ -1,17 +1,23 @@
 /**
- * Link existing external issues through Sentry's native integrations
+ * Link and unlink existing external issues through Sentry's native integrations
  * and Sentry Apps. These operations leave the Sentry issue's status unchanged.
  */
 
 import {
   type AppIssueLink,
+  findAppIssueLink,
   linkAppIssue,
+  listAppIssueLinks,
   resolveAppIssueLink,
+  unlinkAppIssueLink,
 } from "./api/issue-app-links.js";
 import {
+  findNativeIssueLink,
   linkNativeIssue,
+  listNativeIssueLinks,
   type NativeIssueLink,
   resolveNativeIssueLink,
+  unlinkNativeIssueLink,
 } from "./api/issue-integrations.js";
 import { ValidationError } from "./errors.js";
 import { resolveOrgRegion } from "./region.js";
@@ -46,7 +52,7 @@ export type ExternalIssueLinkResult = {
   /** Numeric Sentry issue ID. */
   issueId: string;
   /** Requested operation. */
-  action: "link";
+  action: "link" | "unlink";
   /** Whether the external issue remains linked after the operation. */
   linked: boolean;
   /** Whether this invocation changed an association. */
@@ -76,6 +82,13 @@ type LinkPlan = {
   preview: ExternalIssueRef;
   /** Submit the link; the backend decides whether it changed anything. */
   submit: () => Promise<{ ref: ExternalIssueRef; changed: boolean }>;
+};
+
+/** A stored association matching the requested URL. */
+type StoredLink = {
+  ref: ExternalIssueRef;
+  /** Delete the association, leaving the remote issue untouched. */
+  remove: () => Promise<void>;
 };
 
 /** Validate the URL and return the Sentry App slug, or undefined for a native integration. */
@@ -164,14 +177,43 @@ async function planLink(
   };
 }
 
+async function findStoredLink(
+  options: ExternalIssueLinkOptions,
+  appSlug: string | undefined
+): Promise<StoredLink | undefined> {
+  const { orgSlug, issueId, url } = options;
+  if (appSlug) {
+    const links = await listAppIssueLinks(orgSlug, issueId);
+    // Only an explicit --app narrows the match: another App may store a Linear URL.
+    const link = findAppIssueLink(links, url, options.appSlug);
+    if (!link) {
+      return;
+    }
+    return {
+      ref: appRef(link),
+      remove: () => unlinkAppIssueLink(orgSlug, issueId, link.id),
+    };
+  }
+  const links = await listNativeIssueLinks(orgSlug, issueId);
+  const link = findNativeIssueLink(links, url, options.integrationId);
+  if (!link) {
+    return;
+  }
+  return {
+    ref: nativeRef(link),
+    remove: () => unlinkNativeIssueLink(orgSlug, issueId, link),
+  };
+}
+
 function toResult(
   options: ExternalIssueLinkOptions,
+  action: ExternalIssueLinkResult["action"],
   outcome: Pick<ExternalIssueLinkResult, "linked" | "changed" | "externalIssue">
 ): ExternalIssueLinkResult {
   return {
     org: options.orgSlug,
     issueId: options.issueId,
-    action: "link",
+    action,
     dryRun: options.dryRun,
     ...outcome,
   };
@@ -200,7 +242,7 @@ export async function linkExternalIssue(
 ): Promise<ExternalIssueLinkResult> {
   const plan = await planLink(options, selectSentryApp(options));
   if (options.dryRun) {
-    return toResult(options, {
+    return toResult(options, "link", {
       linked: plan.linked,
       changed: false,
       externalIssue: plan.preview,
@@ -210,9 +252,26 @@ export async function linkExternalIssue(
   if (changed) {
     await invalidateIssueLinks(options);
   }
-  return toResult(options, {
+  return toResult(options, "link", {
     linked: true,
     changed,
     externalIssue: ref,
+  });
+}
+
+/** Remove a stored association without contacting or deleting the remote ticket. */
+export async function unlinkExternalIssue(
+  options: ExternalIssueLinkOptions
+): Promise<ExternalIssueLinkResult> {
+  const appSlug = selectSentryApp(options);
+  const link = await findStoredLink(options, appSlug);
+  if (link && !options.dryRun) {
+    await link.remove();
+    await invalidateIssueLinks(options);
+  }
+  return toResult(options, "unlink", {
+    linked: Boolean(link && options.dryRun),
+    changed: Boolean(link && !options.dryRun),
+    externalIssue: link?.ref ?? { url: options.url, provider: appSlug },
   });
 }

@@ -46,6 +46,20 @@ describe("generated SDK positional arguments", () => {
     });
   });
 
+  test("issue unlink forwards the issue and URL as separate positionals", async () => {
+    const { calls, sdk } = createRecordingSDK();
+    await sdk.issue.unlink({
+      issue: "example/APP-42",
+      url: "https://github.com/example/app/pull/123",
+      yes: true,
+    });
+    expect(calls[0]).toMatchObject({
+      path: ["issue", "unlink"],
+      positional: ["example/APP-42", "https://github.com/example/app/pull/123"],
+      flags: { yes: true },
+    });
+  });
+
   test("release deploy passes version, environment and name as separate tokens", async () => {
     const { calls, sdk } = createRecordingSDK();
 

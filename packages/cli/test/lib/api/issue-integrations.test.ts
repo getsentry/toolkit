@@ -5,11 +5,15 @@ import {
   type NativeIssueLink,
   resolveNativeIssueLink,
   selectNativeIntegration,
+  unlinkNativeIssueLink,
 } from "../../../src/lib/api/issue-integrations.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { ApiError } from "../../../src/lib/errors.js";
-import { linkExternalIssue } from "../../../src/lib/issue-links.js";
+import {
+  linkExternalIssue,
+  unlinkExternalIssue,
+} from "../../../src/lib/issue-links.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
 const REGION = "https://eu.sentry.io";
@@ -443,6 +447,26 @@ describe("native link API", () => {
     expect(prepared.existing).toEqual(LINK);
   });
 
+  test("unlinks by Sentry's association ID in the organization's region", async () => {
+    const requests = mockApi(() => new Response(null, { status: 204 }));
+    await unlinkNativeIssueLink(SOURCE.orgSlug, SOURCE.issueId, LINK);
+    const url = new URL(requests[0]?.url ?? "");
+    expect(requests.map((request) => request.method)).toEqual(["DELETE"]);
+    expect(`${url.origin}${url.pathname}`).toBe(`${REGION}${INTEGRATIONS}10/`);
+    expect(url.searchParams.get("externalIssue")).toBe("1234");
+  });
+
+  test("rejects an unlink ID that the SDK numeric query cannot represent exactly", async () => {
+    const requests = mockApi(() => new Response(null, { status: 204 }));
+    await expect(
+      unlinkNativeIssueLink(SOURCE.orgSlug, SOURCE.issueId, {
+        ...LINK,
+        id: "9007199254740993",
+      })
+    ).rejects.toThrow("safe positive integer");
+    expect(requests).toHaveLength(0);
+  });
+
   test.each([
     "https://username:secret@tracker.example.com/browse/PROJ-7",
     "javascript:alert(1)",
@@ -453,7 +477,7 @@ describe("native link API", () => {
     expect(requests).toHaveLength(0);
   });
 
-  test("links a GitHub PR and returns its canonical URL", async () => {
+  test("links a GitHub PR and unlinks it through its other URL form", async () => {
     const pullUrl = "https://github.com/Owner/Repo/pull/7";
     const storedLink = {
       ...LINK,
@@ -462,19 +486,25 @@ describe("native link API", () => {
       displayName: "Owner/Repo#7",
       url: "https://github.com/Owner/Repo/issues/7",
     };
+    let linked = false;
     const requests = mockApi((request) => {
       if (request.method === "PUT") {
+        linked = true;
         // The mutation returns GitHub's html_url; listing reconstructs /issues/N.
         return Response.json(
           { ...storedLink, id: 1234, integrationId: 10, url: pullUrl },
           { status: 201 }
         );
       }
+      if (request.method === "DELETE") {
+        linked = false;
+        return new Response(null, { status: 204 });
+      }
       return json([
         integration({
           provider: "github",
           domainName: "github.com/owner",
-          externalIssues: [],
+          externalIssues: linked ? [storedLink] : [],
         }),
       ]);
     });
@@ -487,10 +517,17 @@ describe("native link API", () => {
       changed: true,
       externalIssue: { id: "1234", identifier: "Owner/Repo#7", url: pullUrl },
     });
+    expect(await unlinkExternalIssue(options)).toMatchObject({
+      changed: true,
+      externalIssue: { id: "1234" },
+    });
+    expect(await unlinkExternalIssue(options)).toMatchObject({
+      changed: false,
+    });
     expect(
       requests
         .filter((request) => request.method !== "GET")
         .map((request) => request.method)
-    ).toEqual(["PUT"]);
+    ).toEqual(["PUT", "DELETE"]);
   });
 });
