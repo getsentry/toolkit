@@ -510,6 +510,50 @@ export function paginate<T>(
 }
 
 /**
+ * Fetch and validate every page of a list endpoint, or fail.
+ *
+ * Unlike {@link autoPaginate}, a partial result is an error: use this when a
+ * missing page could hide the record a mutation depends on. Throws on an
+ * invalid page, a repeated cursor, or more than {@link MAX_PAGINATION_PAGES}.
+ *
+ * @param fetchPage - Fetches one page given a cursor
+ * @param schema - Validates each page's items
+ * @param context - Operation for error messages, e.g. "listing issue integrations"
+ * @returns All validated items, in page order
+ */
+export async function fetchAllPages<T>(
+  fetchPage: (
+    cursor: string | undefined
+  ) => Promise<PaginatedResponse<unknown>>,
+  schema: GenericSchema<unknown, T[]>,
+  context: string
+): Promise<T[]> {
+  const items: T[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
+    const { data, nextCursor } = await fetchPage(cursor);
+    const parsed = safeParse(schema, data);
+    if (!parsed.success) {
+      throw new ApiError(`Unexpected response format when ${context}`, 0);
+    }
+    items.push(...parsed.output);
+    if (!nextCursor) {
+      return items;
+    }
+    if (seen.has(nextCursor)) {
+      throw new ApiError(`Pagination repeated a cursor when ${context}`, 0);
+    }
+    seen.add(nextCursor);
+    cursor = nextCursor;
+  }
+  throw new ApiError(
+    `Pagination exceeded ${MAX_PAGINATION_PAGES} pages when ${context}`,
+    0
+  );
+}
+
+/**
  * Make an authenticated request to a specific Sentry region.
  * Returns both parsed response data and raw headers for pagination support.
  * Used for internal endpoints not covered by @sentry/api SDK functions.
