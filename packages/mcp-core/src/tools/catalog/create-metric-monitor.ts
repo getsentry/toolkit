@@ -8,7 +8,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   metricMonitorCreateFields,
@@ -59,8 +59,7 @@ export default defineTool({
     const api = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });
-    setTagAndAttribute("organization.slug", params.organizationSlug);
-    setTagAndAttribute("project.slug", params.projectSlug);
+    setTargetTagsAndAttributes(params);
     const { timeWindowSeconds, ...query } = params.query;
     const body = {
       type: "metric_issue" as const,

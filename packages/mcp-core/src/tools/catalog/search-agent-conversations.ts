@@ -13,7 +13,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId } from "../../utils/slug-validation";
 
@@ -270,7 +270,7 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setTagAndAttribute("organization.slug", organizationSlug);
+    setTargetTagsAndAttributes({ organizationSlug });
 
     const projectIds = await resolveProjectIds({
       apiService,

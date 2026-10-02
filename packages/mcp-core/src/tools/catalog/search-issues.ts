@@ -6,7 +6,7 @@ import { withProviderFallback } from "../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
 import { searchIssuesAgent } from "../support/search-issues/agent";
@@ -120,14 +120,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    setTagAndAttribute("organization.slug", params.organizationSlug);
-    if (params.projectSlugOrId) {
-      if (isNumericId(params.projectSlugOrId)) {
-        setTagAndAttribute("project.id", params.projectSlugOrId);
-      } else {
-        setTagAndAttribute("project.slug", params.projectSlugOrId);
-      }
-    }
+    setTargetTagsAndAttributes(params);
 
     let query: string;
     let sort: "date" | "freq" | "new" | "user" | "recommended";

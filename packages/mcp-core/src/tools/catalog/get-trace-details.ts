@@ -15,7 +15,7 @@ import {
   ParamSpanId,
   ParamTraceId,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { formatSemanticSpanDisplay } from "../support/traces/semantic-display.js";
 
@@ -130,15 +130,12 @@ export default defineTool({
       regionUrl: regionUrl ?? undefined,
     });
 
-    setTagAndAttribute("organization.slug", params.organizationSlug);
-    setTagAndAttribute("trace.id", params.traceId);
-    if (params.spanId) {
-      setTagAndAttribute("trace.span_id", params.spanId);
-    }
-
-    if (context.constraints.projectSlug) {
-      setTagAndAttribute("project.slug", context.constraints.projectSlug);
-    }
+    setTargetTagsAndAttributes({
+      organizationSlug: params.organizationSlug,
+      projectSlug: context.constraints.projectSlug,
+      traceId: params.traceId,
+      spanId: params.spanId,
+    });
 
     // Get trace metadata for overview
     const traceMeta = await apiService.getTraceMeta({

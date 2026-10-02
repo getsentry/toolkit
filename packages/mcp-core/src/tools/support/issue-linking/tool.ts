@@ -12,7 +12,7 @@ import {
   ParamOrganizationSlug,
   ParamRegionUrl,
 } from "../../../schema";
-import { setTagAndAttribute } from "../../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import type { ServerContext } from "../../../types";
 
 export const issueLinkInputSchema = {
@@ -68,7 +68,7 @@ export async function resolveIssueLinkContext(
   const apiService = apiServiceFromContext(context, {
     regionUrl: context.constraints.regionUrl ?? params.regionUrl ?? undefined,
   });
-  setTagAndAttribute("organization.slug", organizationSlug);
+  setTargetTagsAndAttributes({ organizationSlug });
   const issue = await apiService.getIssue({ organizationSlug, issueId });
   assertIssueWithinProjectConstraint({
     issue,

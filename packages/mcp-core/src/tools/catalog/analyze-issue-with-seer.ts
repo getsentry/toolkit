@@ -27,7 +27,7 @@ import {
   ParamOrganizationSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 export default defineTool({
@@ -102,7 +102,7 @@ export default defineTool({
         issueUrl: params.issueUrl,
       });
 
-    setTagAndAttribute("organization.slug", orgSlug);
+    setTargetTagsAndAttributes({ organizationSlug: orgSlug });
 
     const issue = await apiService.getIssue({
       organizationSlug: orgSlug,

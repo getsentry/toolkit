@@ -12,7 +12,7 @@ import {
   ParamPeriod,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
 import {
@@ -161,18 +161,14 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
-    setTagAndAttribute("organization.slug", organizationSlug);
-    setTagAndAttribute("monitor.slug", params.monitorSlug);
     const requestedProjectSlugOrId = params.projectSlugOrId ?? undefined;
     const projectSlugOrId =
       requestedProjectSlugOrId ?? context.constraints.projectSlug ?? null;
-    if (projectSlugOrId) {
-      if (isNumericId(projectSlugOrId)) {
-        setTagAndAttribute("project.id", projectSlugOrId);
-      } else {
-        setTagAndAttribute("project.slug", projectSlugOrId);
-      }
-    }
+    setTargetTagsAndAttributes({
+      organizationSlug,
+      projectSlugOrId,
+      monitorSlug: params.monitorSlug,
+    });
     if (requestedProjectSlugOrId && !isNumericId(requestedProjectSlugOrId)) {
       assertProjectRefWithinConstraint({
         resourceLabel: "Monitor",

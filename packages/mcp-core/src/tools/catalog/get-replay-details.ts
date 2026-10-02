@@ -18,7 +18,7 @@ import {
   ParamReplayId,
   ParamReplayUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 interface ResolvedReplayParams {
@@ -97,8 +97,10 @@ export default defineTool({
       regionUrl: regionUrl ?? undefined,
     });
 
-    setTagAndAttribute("organization.slug", resolved.organizationSlug);
-    setTagAndAttribute("replay.id", resolved.replayId);
+    setTargetTagsAndAttributes({
+      organizationSlug: resolved.organizationSlug,
+      replayId: resolved.replayId,
+    });
 
     const replay = await apiService.getReplayDetails({
       organizationSlug: resolved.organizationSlug,

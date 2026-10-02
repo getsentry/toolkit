@@ -4,9 +4,9 @@ import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
+import { validateSlugOrId } from "../../utils/slug-validation";
 import {
   compactLines,
   formatActor,
@@ -140,19 +140,14 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
-    setTagAndAttribute("organization.slug", organizationSlug);
-    setTagAndAttribute("release.version", params.releaseVersion);
     const scopedProjectSlug = context.constraints.projectSlug ?? undefined;
     const requestedProjectSlugOrId = params.projectSlugOrId ?? undefined;
     const projectSlugOrId = scopedProjectSlug ?? requestedProjectSlugOrId;
-
-    if (projectSlugOrId) {
-      if (isNumericId(projectSlugOrId)) {
-        setTagAndAttribute("project.id", projectSlugOrId);
-      } else {
-        setTagAndAttribute("project.slug", projectSlugOrId);
-      }
-    }
+    setTargetTagsAndAttributes({
+      organizationSlug,
+      projectSlugOrId,
+      releaseVersion: params.releaseVersion,
+    });
 
     if (
       scopedProjectSlug &&

@@ -10,7 +10,7 @@ import {
   ParamRegionUrl,
   ParamTeamSlug,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 const assignedTeamSchema = z.object({
@@ -73,9 +73,7 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setTagAndAttribute("organization.slug", organizationSlug);
-    setTagAndAttribute("project.slug", params.projectSlug);
-    setTagAndAttribute("team.slug", params.teamSlug);
+    setTargetTagsAndAttributes(params);
 
     const currentTeams = await apiService.listProjectTeams({
       organizationSlug,

@@ -12,7 +12,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { formatErrorResults } from "../support/search-events/formatters";
 import { searchIssueEventsAgent } from "../support/search-issue-events/agent";
@@ -143,11 +143,11 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    setTagAndAttribute("organization.slug", organizationSlug);
-    setTagAndAttribute("issue.id", issueId);
-    if (params.projectSlug) {
-      setTagAndAttribute("project.slug", params.projectSlug);
-    }
+    setTargetTagsAndAttributes({
+      organizationSlug,
+      projectSlug: params.projectSlug,
+      issueId,
+    });
 
     await ensureIssueWithinProjectConstraint({
       apiService,

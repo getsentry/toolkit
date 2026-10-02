@@ -1,9 +1,9 @@
+import { setAttributes, setTags } from "@sentry/core";
 import { z } from "zod";
 import { ApiError } from "../../api-client/index";
 import { UserInputError } from "../../errors";
 import { fetchWithTimeout } from "../../internal/fetch-utils";
 import { defineTool } from "../../internal/tool-helpers/define";
-import { setTagAndAttribute } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { USER_AGENT } from "../../version";
 
@@ -47,7 +47,9 @@ export default defineTool({
     openWorldHint: true,
   },
   async handler(params, context: ServerContext) {
-    setTagAndAttribute("doc.path", params.path);
+    const docContext = { "doc.path": params.path };
+    setTags(docContext);
+    setAttributes(docContext);
 
     let output = `# Documentation Content\n\n`;
     output += `**Path**: ${params.path}\n\n`;

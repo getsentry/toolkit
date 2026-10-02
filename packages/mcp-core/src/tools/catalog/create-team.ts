@@ -3,7 +3,7 @@ import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 export const createTeamOutputSchema = z.object({
@@ -56,7 +56,7 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setTagAndAttribute("organization.slug", organizationSlug);
+    setTargetTagsAndAttributes({ organizationSlug });
 
     const team = await apiService.createTeam({
       organizationSlug,

@@ -1,3 +1,4 @@
+import { setAttributes, setTags } from "@sentry/core";
 import { z } from "zod";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -12,7 +13,7 @@ import {
   ParamPeriod,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
 import { hasProfileData } from "../support/profile/analyzer";
@@ -227,7 +228,6 @@ export default defineTool({
       isNumericId(String(projectSlugOrId))
     ) {
       projectId = projectSlugOrId;
-      setTagAndAttribute("project.id", String(projectSlugOrId));
     } else {
       // It's a slug, resolve to ID
       const project = await apiService.getProject({
@@ -235,18 +235,27 @@ export default defineTool({
         projectSlugOrId: String(projectSlugOrId),
       });
       projectId = project.id;
-      setTagAndAttribute("project.slug", String(projectSlugOrId));
-      setTagAndAttribute("project.id", String(project.id));
     }
 
-    setTagAndAttribute("organization.slug", organizationSlug);
-    setTagAndAttribute("transaction.name", transactionName);
+    setTargetTagsAndAttributes({
+      organizationSlug,
+      projectSlugOrId: String(projectSlugOrId),
+      projectId,
+    });
+    const profileContext = {
+      "transaction.name": transactionName,
+      ...(params.compareAgainstPeriod
+        ? {
+            "baseline.period": params.compareAgainstPeriod,
+            "current.period": params.period,
+          }
+        : {}),
+    };
+    setTags(profileContext);
+    setAttributes(profileContext);
 
     // Comparison mode: compare two time periods
     if (params.compareAgainstPeriod) {
-      setTagAndAttribute("baseline.period", params.compareAgainstPeriod);
-      setTagAndAttribute("current.period", params.period);
-
       // Fetch both flamegraphs in parallel
       const [baselineFlamegraph, currentFlamegraph] = await Promise.all([
         apiService.getFlamegraph({

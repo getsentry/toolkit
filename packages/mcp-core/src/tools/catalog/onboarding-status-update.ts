@@ -10,7 +10,7 @@ import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { ALL_SKILLS } from "../../skills";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 const updateBaseSchema = z
@@ -130,7 +130,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? context.constraints.regionUrl ?? undefined,
     });
 
-    setTagAndAttribute("organization.slug", params.organizationSlug);
+    setTargetTagsAndAttributes(params);
 
     const update = AgenticOnboardingStatusUpdateSchema.parse({
       schemaVersion: 1,

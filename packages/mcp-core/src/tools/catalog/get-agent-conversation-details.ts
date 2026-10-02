@@ -8,7 +8,7 @@ import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 type ToolCall = {
@@ -703,8 +703,10 @@ export default defineTool({
   outputSchema: aiConversationDetailsOutputSchema,
 
   async handler(params, context: ServerContext) {
-    setTagAndAttribute("organization.slug", params.organizationSlug);
-    setTagAndAttribute("ai_conversation.id", params.conversationId);
+    setTargetTagsAndAttributes({
+      organizationSlug: params.organizationSlug,
+      aiConversationId: params.conversationId,
+    });
 
     if ((params.start && !params.end) || (!params.start && params.end)) {
       throw new UserInputError("`start` and `end` must be provided together.");

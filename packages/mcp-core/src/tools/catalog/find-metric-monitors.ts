@@ -7,7 +7,7 @@ import {
   ParamProjectSlugOrAll,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   listMetricMonitors,
@@ -67,8 +67,10 @@ export default defineTool({
       });
     }
     const projectSlug = context.constraints.projectSlug ?? requestedProject;
-    setTagAndAttribute("organization.slug", params.organizationSlug);
-    if (projectSlug) setTagAndAttribute("project.slug", projectSlug);
+    setTargetTagsAndAttributes({
+      organizationSlug: params.organizationSlug,
+      projectSlug,
+    });
     const api = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });

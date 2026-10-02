@@ -9,7 +9,7 @@ import {
   ParamRegionUrl,
   ParamSearchQuery,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 const RESULT_LIMIT = 25;
@@ -63,7 +63,7 @@ export default defineTool({
       );
     }
 
-    setTagAndAttribute("organization.slug", organizationSlug);
+    setTargetTagsAndAttributes({ organizationSlug });
 
     const { teams, nextCursor } = await apiService.listTeams(organizationSlug, {
       query: params.query ?? undefined,

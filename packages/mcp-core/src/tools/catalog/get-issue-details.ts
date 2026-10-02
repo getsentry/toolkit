@@ -44,7 +44,7 @@ import {
   ParamRegionUrl,
 } from "../../schema";
 import { logError, logIssue } from "../../telem/logging";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { resolveCodeLocation } from "../support/code-location";
 
@@ -390,7 +390,7 @@ export default defineTool({
         );
       }
 
-      setTagAndAttribute("organization.slug", orgSlug);
+      setTargetTagsAndAttributes({ organizationSlug: orgSlug });
       // Use issueId directly if provided (e.g., from URL parsing), otherwise search by eventId
       let issue: Awaited<ReturnType<typeof apiService.getIssue>>;
       if (params.issueId) {
@@ -510,7 +510,7 @@ export default defineTool({
         issueUrl: params.issueUrl,
       });
 
-    setTagAndAttribute("organization.slug", orgSlug);
+    setTargetTagsAndAttributes({ organizationSlug: orgSlug });
 
     // For the main issue lookup, provide parameter context on 404
     let issue: Awaited<ReturnType<typeof apiService.getIssue>>;

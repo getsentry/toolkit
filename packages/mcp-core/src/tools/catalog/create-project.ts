@@ -11,7 +11,7 @@ import {
   ParamTeamSlug,
 } from "../../schema";
 import { logWarn } from "../../telem/logging";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 type RepositoryMatch = {
@@ -173,8 +173,7 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setTagAndAttribute("organization.slug", organizationSlug);
-    setTagAndAttribute("team.slug", params.teamSlug);
+    setTargetTagsAndAttributes(params);
 
     // Resolve repository intent before creating the project so bad or ambiguous
     // repo input cannot leave behind an otherwise unwanted project.

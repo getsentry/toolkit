@@ -10,7 +10,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   alertRuleConfigFields,
@@ -172,8 +172,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
-    setTagAndAttribute("organization.slug", organizationSlug);
-    if (projectSlug) setTagAndAttribute("project.slug", projectSlug);
+    setTargetTagsAndAttributes({ organizationSlug, projectSlug });
     let ruleId = params.ruleIdOrName;
     if (!isNumericAlertRuleId(ruleId)) {
       const matches = await findExactIssueAlertRuleMatches(apiService, {

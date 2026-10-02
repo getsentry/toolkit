@@ -12,7 +12,7 @@ import {
   ParamOrganizationSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   formatActor,
@@ -85,8 +85,10 @@ export default defineTool({
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? context.constraints.regionUrl ?? undefined,
     });
-    setTagAndAttribute("organization.slug", parsed.organizationSlug);
-    setTagAndAttribute("issue.id", parsed.issueId);
+    setTargetTagsAndAttributes({
+      organizationSlug: parsed.organizationSlug,
+      issueId: parsed.issueId,
+    });
 
     await ensureIssueWithinProjectConstraint({
       apiService,

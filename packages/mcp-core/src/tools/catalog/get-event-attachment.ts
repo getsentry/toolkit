@@ -15,7 +15,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 function formatMegabytes(bytes: number): string {
@@ -131,7 +131,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    setTagAndAttribute("organization.slug", params.organizationSlug);
+    setTargetTagsAndAttributes(params);
 
     // If attachmentId is provided, download the specific attachment
     if (params.attachmentId) {

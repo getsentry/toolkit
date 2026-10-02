@@ -1,4 +1,4 @@
-import { getActiveSpan } from "@sentry/core";
+import { getActiveSpan, setAttributes, setTags } from "@sentry/core";
 import { z } from "zod";
 import type { SentryApiService } from "../../api-client";
 import { UserInputError } from "../../errors";
@@ -14,7 +14,7 @@ import {
   resolveScopedProjectSlug,
 } from "../../internal/url-scope";
 import { ParamOrganizationSlug } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId } from "../../utils/slug-validation";
 import getAIConversationDetails from "./get-agent-conversation-details";
@@ -528,11 +528,13 @@ export default defineTool({
       projectSlug: context.constraints.projectSlug,
     });
 
-    setTagAndAttribute("resource.type", resolved.type);
-    setTagAndAttribute("organization.slug", resolved.organizationSlug);
-    if (resolved.spanId) {
-      setTagAndAttribute("trace.span_id", resolved.spanId);
-    }
+    const resourceContext = { "resource.type": resolved.type };
+    setTags(resourceContext);
+    setAttributes(resourceContext);
+    setTargetTagsAndAttributes({
+      organizationSlug: resolved.organizationSlug,
+      spanId: resolved.spanId,
+    });
 
     getActiveSpan()?.setAttribute("app.resource.type", resolved.type);
 

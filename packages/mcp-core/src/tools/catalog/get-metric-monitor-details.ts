@@ -2,7 +2,7 @@ import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   getMetricMonitor,
@@ -35,8 +35,10 @@ export default defineTool({
   },
   async handler(params, context: ServerContext) {
     const projectSlug = context.constraints.projectSlug ?? params.projectSlug;
-    setTagAndAttribute("organization.slug", params.organizationSlug);
-    if (projectSlug) setTagAndAttribute("project.slug", projectSlug);
+    setTargetTagsAndAttributes({
+      organizationSlug: params.organizationSlug,
+      projectSlug,
+    });
     const api = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });

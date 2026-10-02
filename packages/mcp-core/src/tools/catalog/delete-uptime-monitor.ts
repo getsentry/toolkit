@@ -7,7 +7,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { assertProjectRefWithinConstraint } from "./support/project-constraints";
 
@@ -54,9 +54,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
-    setTagAndAttribute("organization.slug", organizationSlug);
-    setTagAndAttribute("project.slug", params.projectSlug);
-    setTagAndAttribute("uptime.monitor_id", params.uptimeMonitorId);
+    setTargetTagsAndAttributes(params);
 
     assertProjectRefWithinConstraint({
       resourceLabel: "Uptime monitor",

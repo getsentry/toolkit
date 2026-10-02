@@ -23,7 +23,7 @@ import {
   ParamRegionUrl,
 } from "../../schema";
 import { logIssue } from "../../telem/logging";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 type IgnoreMode =
@@ -710,7 +710,7 @@ export default defineTool({
         issueUrl: params.issueUrl,
       });
 
-    setTagAndAttribute("organization.slug", orgSlug);
+    setTargetTagsAndAttributes({ organizationSlug: orgSlug });
 
     // Get current issue details first
     const currentIssue = await apiService.getIssue({

@@ -8,7 +8,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   alertRuleConfigFields,
@@ -76,7 +76,7 @@ export default defineTool({
     const api = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });
-    setTagAndAttribute("organization.slug", params.organizationSlug);
+    setTargetTagsAndAttributes(params);
     const project = context.constraints.projectSlug
       ? await api.getProject({
           organizationSlug: params.organizationSlug,

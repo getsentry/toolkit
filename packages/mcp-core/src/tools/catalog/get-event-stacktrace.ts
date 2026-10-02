@@ -10,7 +10,7 @@ import {
   ParamOrganizationSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { fetchAndFormatEventStacktrace } from "../support/event-stacktrace";
 
@@ -60,8 +60,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    setTagAndAttribute("organization.slug", params.organizationSlug);
-    setTagAndAttribute("issue.id", params.issueId);
+    setTargetTagsAndAttributes(params);
 
     try {
       await ensureIssueWithinProjectConstraint({

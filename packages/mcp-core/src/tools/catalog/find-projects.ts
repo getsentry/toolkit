@@ -10,7 +10,7 @@ import {
   ParamSearchQuery,
 } from "../../schema";
 import { ALL_SKILLS } from "../../skills";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 const RESULT_LIMIT = 25;
@@ -63,7 +63,7 @@ export default defineTool({
       );
     }
 
-    setTagAndAttribute("organization.slug", organizationSlug);
+    setTargetTagsAndAttributes({ organizationSlug });
 
     const { projects, nextCursor } = await apiService.listProjects(
       organizationSlug,

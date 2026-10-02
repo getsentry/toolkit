@@ -21,7 +21,13 @@ import { McpServer as LegacyMcpServer } from "@modelcontextprotocol/sdk/server/m
  */
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
-import { getActiveSpan, type SpanAttributeValue, setUser } from "@sentry/core";
+import {
+  getActiveSpan,
+  type SpanAttributeValue,
+  setUser,
+  setAttributes,
+  setTags,
+} from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
 import { MCP_SERVER_NAME } from "./constants";
@@ -32,7 +38,6 @@ import {
 } from "./internal/error-handling";
 import type { Skill } from "./skills";
 import { type LogIssueOptions, logIssue } from "./telem/logging";
-import { setTagAndAttribute } from "./telem/scope";
 import {
   executeToolHandler,
   getAvailableTools,
@@ -297,16 +302,16 @@ function configureServer({
         };
         setUser(user);
       }
-      if (context.clientId) {
-        setTagAndAttribute("client.id", context.clientId);
-      }
-      if (context.clientFamily) {
-        setTagAndAttribute("app.client.family", context.clientFamily);
-      }
-      if (context.transport) {
-        setTagAndAttribute("app.transport", context.transport);
-      }
-      setTagAndAttribute("app.server.mode.experimental", experimentalMode);
+      const requestContext = {
+        ...(context.clientId ? { "client.id": context.clientId } : {}),
+        ...(context.clientFamily
+          ? { "app.client.family": context.clientFamily }
+          : {}),
+        ...(context.transport ? { "app.transport": context.transport } : {}),
+        "app.server.mode.experimental": experimentalMode,
+      };
+      setTags(requestContext);
+      setAttributes(requestContext);
 
       // Hoisted so both the handler path and the catch (onError) share one
       // narrowing instead of re-casting `params`.

@@ -12,7 +12,7 @@ import {
   ParamRegionUrl,
 } from "../../schema";
 import { logIssue } from "../../telem/logging";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 export const updateProjectOutputSchema = z.object({
@@ -90,8 +90,7 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setTagAndAttribute("organization.slug", organizationSlug);
-    setTagAndAttribute("project.slug", params.projectSlug);
+    setTargetTagsAndAttributes(params);
 
     const hasProjectUpdates = params.name || params.slug || params.platform;
     if (!hasProjectUpdates) {

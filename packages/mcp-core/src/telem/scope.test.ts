@@ -14,15 +14,41 @@ import { buildServer } from "../server";
 import { getServerContext } from "../test-setup";
 import findProjects from "../tools/catalog/find-projects";
 import type { ServerContext } from "../types";
+import { type Target, setTargetTagsAndAttributes } from "./scope";
 
 const beforeSendSpan = vi.fn((span: StreamedSpanJSON) => span);
 const beforeSend = vi.fn((event: ErrorEvent) => event);
 let sentry: ServerRuntimeClient;
 
+// Without an async context strategy, withIsolationScope does not fork the
+// isolation scope, so values set by one test stay there for the next one.
+function resetScopeContext(): void {
+  const scope = getIsolationScope();
+  for (const key of [
+    "organization.slug",
+    "project.slug",
+    "project.id",
+    "team.slug",
+    "issue.id",
+    "trace.id",
+    "trace.span_id",
+    "monitor.slug",
+    "uptime.monitor_id",
+    "release.version",
+    "replay.id",
+    "profile.id",
+    "profiler.id",
+    "ai_conversation.id",
+    "client.id",
+  ]) {
+    scope.setAttribute(key, undefined);
+    scope.setTag(key, undefined);
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  getIsolationScope().setAttribute("organization.slug", undefined);
-  getIsolationScope().setTag("organization.slug", undefined);
+  resetScopeContext();
   sentry = new ServerRuntimeClient({
     dsn: "https://public@example.com/1",
     integrations: [],
@@ -42,8 +68,7 @@ beforeEach(() => {
 afterEach(async () => {
   await sentry.close();
   getCurrentScope().setClient(undefined);
-  getIsolationScope().setAttribute("organization.slug", undefined);
-  getIsolationScope().setTag("organization.slug", undefined);
+  resetScopeContext();
 });
 
 async function callTool(
@@ -163,5 +188,82 @@ describe("request and tool telemetry", () => {
         }),
       }),
     );
+  });
+});
+
+describe("setTargetTagsAndAttributes", () => {
+  function scopeValuesFor(target: Target) {
+    setTargetTagsAndAttributes(target);
+    const { tags, attributes } = getIsolationScope().getScopeData();
+    return { tags, attributes };
+  }
+
+  it("sets every target field as a tag and an attribute", () => {
+    const { tags, attributes } = scopeValuesFor({
+      organizationSlug: "sentry",
+      projectSlug: "javascript",
+      projectId: 42,
+      teamSlug: "sdk",
+      issueId: "JAVASCRIPT-1",
+      traceId: "a".repeat(32),
+      spanId: "b".repeat(16),
+      monitorSlug: "nightly",
+      uptimeMonitorId: "7",
+      releaseVersion: "1.0.0",
+      replayId: "c".repeat(32),
+      profileId: "d".repeat(32),
+      profilerId: "e".repeat(32),
+      aiConversationId: "conversation-1",
+    });
+    const expected = {
+      "organization.slug": "sentry",
+      "project.slug": "javascript",
+      "project.id": "42",
+      "team.slug": "sdk",
+      "issue.id": "JAVASCRIPT-1",
+      "trace.id": "a".repeat(32),
+      "trace.span_id": "b".repeat(16),
+      "monitor.slug": "nightly",
+      "uptime.monitor_id": "7",
+      "release.version": "1.0.0",
+      "replay.id": "c".repeat(32),
+      "profile.id": "d".repeat(32),
+      "profiler.id": "e".repeat(32),
+      "ai_conversation.id": "conversation-1",
+    };
+    expect(tags).toMatchObject(expected);
+    expect(attributes).toMatchObject(expected);
+  });
+
+  it.each([
+    { projectSlugOrId: "42", key: "project.id", other: "project.slug" },
+    { projectSlugOrId: "javascript", key: "project.slug", other: "project.id" },
+  ])(
+    "maps projectSlugOrId $projectSlugOrId to $key",
+    ({ projectSlugOrId, key, other }) => {
+      const { tags, attributes } = scopeValuesFor({
+        organizationSlug: "sentry",
+        projectSlugOrId,
+      });
+      expect(tags[key]).toBe(projectSlugOrId);
+      expect(attributes[key]).toBe(projectSlugOrId);
+      expect(tags[other]).toBeUndefined();
+      expect(attributes[other]).toBeUndefined();
+    },
+  );
+
+  it("skips empty project and team values", () => {
+    const { tags, attributes } = scopeValuesFor({
+      organizationSlug: "sentry",
+      projectSlug: null,
+      projectId: undefined,
+      projectSlugOrId: "",
+      teamSlug: null,
+    });
+    for (const key of ["project.slug", "project.id", "team.slug"]) {
+      expect(tags[key]).toBeUndefined();
+      expect(attributes[key]).toBeUndefined();
+    }
+    expect(attributes["organization.slug"]).toBe("sentry");
   });
 });

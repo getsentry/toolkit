@@ -7,7 +7,7 @@ import {
   ParamProjectSlugOrAll,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { assertProjectRefWithinConstraint } from "./support/project-constraints";
 import {
@@ -84,8 +84,6 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
-    setTagAndAttribute("organization.slug", organizationSlug);
-
     const requestedProjectSlug =
       params.projectSlug && params.projectSlug !== "all"
         ? params.projectSlug
@@ -98,9 +96,7 @@ export default defineTool({
       });
     }
     const projectSlug = context.constraints.projectSlug ?? requestedProjectSlug;
-    if (projectSlug) {
-      setTagAndAttribute("project.slug", projectSlug);
-    }
+    setTargetTagsAndAttributes({ organizationSlug, projectSlug });
 
     const monitors = await apiService.listUptimeMonitors({
       organizationSlug,

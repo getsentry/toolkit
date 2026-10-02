@@ -9,7 +9,7 @@ import {
   resolveScopedProjectSlugOrId,
 } from "../../internal/url-scope";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   isNumericId,
@@ -302,10 +302,13 @@ export default defineTool({
       regionUrl: regionUrl ?? undefined,
     });
 
-    setTagAndAttribute("organization.slug", resolved.organizationSlug);
+    setTargetTagsAndAttributes({ organizationSlug: resolved.organizationSlug });
 
     if (resolved.mode === "transaction") {
-      setTagAndAttribute("profile.id", resolved.profileId);
+      setTargetTagsAndAttributes({
+        organizationSlug: resolved.organizationSlug,
+        profileId: resolved.profileId,
+      });
       const isNumericProjectInput =
         typeof resolved.projectSlugOrId === "number" ||
         isNumericId(String(resolved.projectSlugOrId));
@@ -336,7 +339,10 @@ export default defineTool({
         });
       }
 
-      setTagAndAttribute("project.slug", projectSlug);
+      setTargetTagsAndAttributes({
+        organizationSlug: resolved.organizationSlug,
+        projectSlug,
+      });
 
       const profileUrl =
         params.profileUrl ??
@@ -361,7 +367,10 @@ export default defineTool({
       });
     }
 
-    setTagAndAttribute("profiler.id", resolved.profilerId);
+    setTargetTagsAndAttributes({
+      organizationSlug: resolved.organizationSlug,
+      profilerId: resolved.profilerId,
+    });
 
     const { projectId, projectSlug } = await resolveProjectContext(
       apiService,
@@ -370,8 +379,11 @@ export default defineTool({
       { requireNumericId: true },
     );
 
-    setTagAndAttribute("project.slug", projectSlug);
-    setTagAndAttribute("project.id", String(projectId));
+    setTargetTagsAndAttributes({
+      organizationSlug: resolved.organizationSlug,
+      projectSlug,
+      projectId,
+    });
 
     const chunk = await apiService.getProfileChunk({
       organizationSlug: resolved.organizationSlug,

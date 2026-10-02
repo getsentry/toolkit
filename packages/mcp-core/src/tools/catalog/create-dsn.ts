@@ -7,7 +7,7 @@ import {
   ParamProjectSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 export const createDsnOutputSchema = z.object({
@@ -67,8 +67,7 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setTagAndAttribute("organization.slug", organizationSlug);
-    setTagAndAttribute("project.slug", params.projectSlug);
+    setTargetTagsAndAttributes(params);
 
     const clientKey = await apiService.createClientKey({
       organizationSlug,

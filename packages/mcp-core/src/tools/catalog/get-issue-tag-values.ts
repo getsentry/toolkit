@@ -15,7 +15,7 @@ import {
   ParamOrganizationSlug,
   ParamRegionUrl,
 } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
 export const getIssueTagValuesOutputSchema = z.object({
@@ -133,7 +133,7 @@ export default defineTool({
         issueUrl: params.issueUrl,
       });
 
-    setTagAndAttribute("organization.slug", orgSlug);
+    setTargetTagsAndAttributes({ organizationSlug: orgSlug });
 
     await ensureIssueWithinProjectConstraint({
       apiService,

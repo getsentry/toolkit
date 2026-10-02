@@ -1,6 +1,6 @@
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
-import { setTagAndAttribute } from "../../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import { UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
 import { withProviderFallback } from "../../../internal/agents/provider-fallback";
@@ -608,9 +608,7 @@ export async function runSearchEvents(
   });
   const organizationSlug = params.organizationSlug;
 
-  setTagAndAttribute("organization.slug", organizationSlug);
-  if (params.projectSlug)
-    setTagAndAttribute("project.slug", params.projectSlug);
+  setTargetTagsAndAttributes(params);
 
   const inputDataset = params.dataset ?? "errors";
   const hasStructuredQuery = looksLikeSentrySearchSyntax(params.query);

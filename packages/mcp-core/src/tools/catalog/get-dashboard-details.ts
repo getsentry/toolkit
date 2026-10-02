@@ -2,7 +2,7 @@ import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
-import { setTagAndAttribute } from "../../telem/scope";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   assertDashboardWithinProjectConstraint,
@@ -54,7 +54,7 @@ export default defineTool({
     });
     const organizationSlug = params.organizationSlug;
 
-    setTagAndAttribute("organization.slug", organizationSlug);
+    setTargetTagsAndAttributes({ organizationSlug });
 
     const scopedProject = await resolveDashboardProjectConstraint({
       apiService,
@@ -62,8 +62,11 @@ export default defineTool({
       scopedProjectSlug: context.constraints.projectSlug,
     });
     if (scopedProject) {
-      setTagAndAttribute("project.slug", scopedProject.slug);
-      setTagAndAttribute("project.id", String(scopedProject.id));
+      setTargetTagsAndAttributes({
+        organizationSlug,
+        projectSlug: scopedProject.slug,
+        projectId: scopedProject.id,
+      });
     }
 
     const dashboardId = await resolveDashboardId({
