@@ -251,8 +251,13 @@ describe("app issue-link action", () => {
     expect(writes()).toHaveLength(1);
   });
 
-  test("preserves query and fragment identity in the backend URL guard", async () => {
-    const url = "https://tracker.example/view?id=42#issue";
+  test.each([
+    "https://tracker.example/view?id=42#issue",
+    "https://TRACKER.example/tasks/42",
+    "https://tracker.example:443/tasks/42",
+    "https://tracker.example",
+    "https://tracker.example/tasks/42#some text",
+  ])("preserves the requested URL in the form and backend guard: %s", async (url) => {
     installation = {
       ...INSTALLATION,
       app: { ...INSTALLATION.app, slug: "custom" },
@@ -265,6 +270,7 @@ describe("app issue-link action", () => {
       url,
     });
     await linkAppIssue(prepared);
+    expect(await writes()[0]!.json()).toMatchObject({ url });
     expect(
       new globalThis.URL(writes()[0]!.url).searchParams.get(
         "expectedExternalIssueUrl"

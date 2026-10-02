@@ -142,7 +142,7 @@ function parseTarget(raw: string) {
   const identity = linear
     ? `linear.app/${linear[1]?.toLowerCase()}/${linear[2]?.toUpperCase()}`
     : `${url.origin}${url.pathname.replace(TRAILING_SLASHES, "")}${url.search}${url.hash}`;
-  return { url: url.href, identity, key: linear?.[2]?.toUpperCase() };
+  return { identity, key: linear?.[2]?.toUpperCase() };
 }
 
 /** Match a stored target by URL, ignoring Linear title suffixes; reject ambiguous matches. */
@@ -681,8 +681,7 @@ export async function linkAppIssue(
     ...getSdkConfig(getControlSiloUrl()),
     path: { uuid: prepared.installationUuid },
     query: {
-      expectedExternalIssueUrl:
-        prepared.existing?.webUrl ?? parseTarget(prepared.url).url,
+      expectedExternalIssueUrl: prepared.existing?.webUrl ?? prepared.url,
     },
     body: {
       ...prepared.fields,
