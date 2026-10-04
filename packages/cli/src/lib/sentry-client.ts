@@ -54,6 +54,15 @@ import {
 
 const log = logger.withTag("http");
 
+/**
+ * Matches any character outside the printable ASCII range that is valid in an
+ * HTTP header-field-value (tab + 0x20-0x7E). Node.js's undici enforces the
+ * ByteString constraint (≤ 255) on Headers.set(), but HTTP requires ASCII, so
+ * we guard at the ASCII boundary to be both correct and safe.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: \x09 is the tab character, intentionally included as a valid HTTP header byte.
+const NON_HTTP_HEADER_CHAR_RE = /[^\x09\x20-\x7e]/;
+
 /** Default request timeout in milliseconds */
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -170,7 +179,19 @@ function prepareHeaders(
     headers.set("sentry-trace", traceData["sentry-trace"]);
   }
   if (traceData.baggage) {
-    headers.set("baggage", traceData.baggage);
+    // Node.js undici enforces the HTTP ByteString constraint: every character
+    // in a header value must have a code point ≤ 255. The Sentry SDK embeds
+    // the release name verbatim into the baggage value, so a release name
+    // containing a non-Latin-1 character (e.g. Turkish dotless ı = U+0131)
+    // triggers a TypeError from Headers.set. Skip the header rather than
+    // crashing — distributed tracing is best-effort telemetry.
+    if (NON_HTTP_HEADER_CHAR_RE.test(traceData.baggage)) {
+      log.debug(
+        "Skipping baggage header: value contains non-ASCII characters that are not valid HTTP header bytes"
+      );
+    } else {
+      headers.set("baggage", traceData.baggage);
+    }
   }
 
   // Inject user-configured custom headers for self-hosted proxies (IAP,
