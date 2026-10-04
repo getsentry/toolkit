@@ -71,7 +71,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # === BUILD AND DEPLOY CANARY WORKER ===
+      # Upload one production Worker version. A version includes code, assets,
+      # bindings and compatibility settings; the upload does not move traffic.
       - name: Build
         run: pnpm --filter '@sentry/mcp-cloudflare...' run build
         env:
@@ -79,73 +80,100 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_SENTRY_ENVIRONMENT: production
 
-      - name: Deploy to Canary Worker
-        id: deploy_canary
-        working-directory: packages/mcp-cloudflare
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm exec wrangler deploy --config wrangler.canary.jsonc
-
-      - name: Wait for Canary to Propagate
-        if: success()
-        run: |
-          echo "Waiting 30 seconds for canary deployment to propagate..."
-          sleep 30
-
-      # === SMOKE TEST CANARY ===
-      - name: Run Smoke Tests on Canary
-        id: canary_smoke_tests
-        if: success()
-        env:
-          PREVIEW_URL: https://sentry-mcp-canary.getsentry.workers.dev
-        run: |
-          echo "Running smoke tests against canary worker..."
-          cd packages/smoke-tests
-          pnpm test:ci
-
-      - name: Publish Canary Smoke Test Report
-        uses: mikepenz/action-junit-report@cf701569b05ccdd861a76b8607a66d76f6fd4857
-        if: always() && steps.canary_smoke_tests.outcome != 'skipped'
-        with:
-          report_paths: "packages/smoke-tests/tests.junit.xml"
-          check_name: "Canary Smoke Test Results"
-          fail_on_failure: false
-
-      # === DEPLOY PRODUCTION WORKER (only if canary tests pass) ===
-      - name: Require tested revision on main before production
-        if: steps.canary_smoke_tests.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
-          if [[ "$current_sha" != "$EXPECTED_SHA" ]]; then
-            echo 'Main advanced during canary testing; refusing production deployment.' >&2
-            exit 1
-          fi
-
       - name: Capture active production version
-        if: steps.canary_smoke_tests.outcome == 'success'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: node scripts/cloudflare-deployment.mjs capture
 
-      - name: Deploy to Production Worker
-        id: deploy_production
-        if: steps.canary_smoke_tests.outcome == 'success'
+      - name: Upload production version without moving traffic
+        id: upload
         working-directory: packages/mcp-cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: pnpm exec wrangler deploy --message "toolkit-mcp:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT:$TESTED_SHA"
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-upload.jsonl
+        run: |
+          pnpm exec wrangler versions upload --experimental-auto-create=false \
+            --config wrangler.jsonc \
+            --message "toolkit-mcp:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT:$TESTED_SHA:upload"
+
+      - name: Identify uploaded production version
+        id: uploaded
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-upload.jsonl
+        run: node scripts/cloudflare-deployment.mjs uploaded
+
+      - name: Require tested revision on main before staging
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_sha" != "$EXPECTED_SHA" ]]; then
+            echo 'Main advanced before candidate staging; refusing deployment.' >&2
+            exit 1
+          fi
+
+      - name: Stage exact candidate at zero percent
+        id: stage
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node scripts/cloudflare-deployment.mjs stage
+
+      - name: Wait for staged candidate to propagate
+        run: sleep 30
+
+      - name: Smoke test exact production Worker version
+        id: candidate_smoke_tests
+        env:
+          PREVIEW_URL: https://mcp.sentry.dev
+          CLOUDFLARE_WORKER_NAME: sentry-mcp
+          CLOUDFLARE_VERSION_OVERRIDE: ${{ steps.uploaded.outputs.candidate_version }}
+          EXPECTED_VERSION_ID: ${{ steps.uploaded.outputs.candidate_version }}
+        run: |
+          cd packages/smoke-tests
+          pnpm test:ci
+
+      - name: Publish Candidate Smoke Test Report
+        uses: mikepenz/action-junit-report@cf701569b05ccdd861a76b8607a66d76f6fd4857
+        if: always() && steps.candidate_smoke_tests.outcome != 'skipped'
+        with:
+          report_paths: "packages/smoke-tests/tests.junit.xml"
+          check_name: "Candidate Smoke Test Results"
+          fail_on_failure: false
+
+      - name: Require tested revision on main before promotion
+        if: steps.candidate_smoke_tests.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_sha" != "$EXPECTED_SHA" ]]; then
+            echo 'Main advanced during candidate testing; refusing promotion.' >&2
+            exit 1
+          fi
+
+      - name: Promote tested version to production
+        id: promote
+        if: steps.candidate_smoke_tests.outcome == 'success'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node scripts/cloudflare-deployment.mjs promote
 
       - name: Verify production deployment ownership
         id: verify_production
-        if: steps.deploy_production.outcome == 'success'
+        if: steps.promote.outcome == 'success'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -164,6 +192,7 @@ jobs:
         if: steps.verify_production.outcome == 'success'
         env:
           PREVIEW_URL: https://mcp.sentry.dev
+          EXPECTED_VERSION_ID: ${{ steps.uploaded.outputs.candidate_version }}
         run: |
           echo "Running smoke tests on production..."
           cd packages/smoke-tests
@@ -177,16 +206,10 @@ jobs:
           check_name: "Production Smoke Test Results"
           fail_on_failure: false
 
-      - name: Recover captured previous version after smoke failure
-        if: failure() && steps.production_smoke_tests.outcome == 'failure' && steps.verify_production.outcome == 'success'
+      - name: Recover captured previous version if owned transition fails
+        if: failure() && steps.uploaded.outcome == 'success' && steps.stage.outcome != 'skipped'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: node scripts/cloudflare-deployment.mjs recover
-
-      - name: Fail Job if Production Smoke Tests Failed
-        if: failure() && steps.production_smoke_tests.outcome == 'failure'
-        run: |
-          echo 'Production smoke tests failed. Inspect the deployment before changing traffic.' >&2
-          exit 1

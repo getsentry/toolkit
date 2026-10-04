@@ -142,13 +142,15 @@ Production deployments run only from the trusted `Deploy to Cloudflare` workflow
 after the `Test` workflow succeeds for the current `main` commit:
 
 1. Merge a PR into `main`; GitHub Actions tests that exact commit.
-2. The workflow builds and deploys `sentry-mcp-canary`, then runs canary smoke tests.
-3. After canary succeeds, it records the currently active production version
-   and deploys the tested commit to `sentry-mcp`.
-4. It verifies that this run owns the new deployment and runs production smoke
-   tests. On failure it restores the captured previous version **only if**
-   production still serves this run's exact candidate. External changes or
-   ambiguous traffic allocation stop recovery rather than overwrite them.
+2. The workflow builds once, captures the live production version, and uploads
+   a new version of the production Worker without shifting traffic.
+3. It stages that version at 0% while the prior version serves 100%, then tests
+   it with a version override through the production route. The version probe
+   confirms that the candidate handled the overridden request.
+4. It promotes the tested version to 100% and checks both ownership and live
+   smoke tests. If a step fails, it restores the captured prior version only
+   while the latest Cloudflare deployment is still owned by that run. External
+   changes or ambiguous traffic stop recovery.
 
 The `production` GitHub environment allows only `main`. Store
 `CLOUDFLARE_API_TOKEN` there with Workers deployment permissions. Configure
@@ -158,7 +160,10 @@ repository-level copy of `CLOUDFLARE_API_TOKEN`.
 
 See `github-actions.md` for detailed setup instructions.
 
-Production traffic changes must use the protected workflow. Do not use bare
+Manual recovery is available through `Recover Cloudflare Deployment` on
+`main`, with the original deployment run ID and attempt. It checks the source
+run and contiguous live Cloudflare history before restoring the explicit prior
+version. Production traffic changes must use a protected workflow. Do not use bare
 `wrangler rollback`: it selects from mutable deployment history and can undo
 someone else's deployment. If recovery declines because production changed,
 inspect the active version and use a new reviewed workflow run to fix forward.

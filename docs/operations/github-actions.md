@@ -19,12 +19,24 @@ Package-specific exceptions live in `package.json#sentryCi`; the standalone
 smoke-test suite remains in its own workflow.
 
 ### deploy.yml
-Runs after a successful `Test` push run on `main`. Checks out the tested commit,
-requires that it is still the tip of `main`, then deploys and tests canary.
-Records the active production version before changing traffic, deploys the
-tested commit, and verifies the run-owned candidate before production smoke
-tests. If those fail, restores the captured version only while this run's
-candidate remains active. External changes stop recovery.
+Runs after a successful `Test` push run on `main`. Checks out the tested commit
+and requires that it is still the tip of `main`. Builds once, records the active
+production version, and uploads one new version of `sentry-mcp`. It stages the
+candidate at 0% alongside the old version at 100%, then runs smoke tests
+through the production route with a version override on every request. The
+version endpoint confirms the override reaches the candidate. Only then does
+it promotes the tested version to 100% and repeats the smoke tests. On failure
+it restores the exact captured prior version only if the live deployments still
+belong to this run.
+
+### recover-cloudflare-deployment.yml
+Manual `workflow_dispatch` recovery accepts a deployment run ID and attempt.
+It runs trusted current-`main` code in the protected `production` environment,
+checks the completed source run, and derives the prior version from contiguous
+run-owned Cloudflare deployment history. It refuses an intervening deployment,
+split or ambiguous traffic, or a marker mismatch. A successful restore is
+verified against Cloudflare and the live Worker. Recovery never builds or
+deploys source code from the old run.
 
 ### migrate-cloudflare-token.yml
 Moves the Cloudflare API token from a repository secret into the protected
@@ -77,10 +89,11 @@ Other configuration:
 
 ### Workers
 - **`sentry-mcp`** - Production worker at `https://mcp.sentry.dev`
-- **`sentry-mcp-canary`** - Canary worker at `https://sentry-mcp-canary.getsentry.workers.dev`
+- The candidate is tested on the production Worker at 0% traffic before promotion.
 
 ### Resource Isolation
-Canary and production use separate resources for complete isolation:
+The existing canary Worker has separate resources; exact-version rollout does
+not deploy it. The production candidate uses the production bindings:
 
 | Resource | Production | Canary |
 |----------|------------|---------|
@@ -96,9 +109,12 @@ confirm the restored version fails the job rather than guessing a recovery.
 
 ## Manual Deployment
 
-Manual production dispatch is unavailable. Use a reviewed change and its
-passing `Test` run to deploy. Never run bare `wrangler rollback` against
-production; that command chooses from mutable history.
+Manual dispatch cannot deploy a new revision. Use a reviewed change and its
+passing `Test` run to deploy. To restore an owned deployment after its runner
+has stopped, dispatch `Recover Cloudflare Deployment` from `main` with the
+failed deployment run ID and attempt. Verify the active Cloudflare version and
+live smoke-test result; if ownership has changed, investigate rather than
+retrying against mutable history. Never run bare `wrangler rollback`.
 
 ## Cloudflare token migration
 

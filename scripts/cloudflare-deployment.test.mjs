@@ -4,7 +4,11 @@ import {
   assertOwnedCandidate,
   capturePrevious,
   restorePreviousVersion,
+  parseUploadedVersion,
   verifyCandidate,
+  verifyStagedCandidate,
+  verifyPromotedCandidate,
+  recoverManualSnapshot,
 } from "./cloudflare-deployment.mjs";
 
 const previousVersion = "11111111-1111-4111-8111-111111111111";
@@ -22,6 +26,139 @@ const candidate = {
   versions: [{ version_id: candidateVersion, percentage: 100 }],
   annotations: { "workers/message": marker },
 };
+
+const stagedId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const staged = {
+  id: stagedId,
+  versions: [
+    { version_id: previousVersion, percentage: 100 },
+    { version_id: candidateVersion, percentage: 0 },
+  ],
+  annotations: { "workers/message": `${marker}:stage` },
+};
+const promoted = {
+  ...candidate,
+  annotations: { "workers/message": `${marker}:promote` },
+};
+
+test("extracts only a confirmed upload of the production Worker", () => {
+  const session = {
+    type: "wrangler-session",
+    command_line_args: [
+      "versions",
+      "upload",
+      "--experimental-auto-create=false",
+      "--config",
+      "wrangler.jsonc",
+    ],
+  };
+  const success = {
+    type: "version-upload",
+    worker_name: "sentry-mcp",
+    worker_name_overridden: false,
+    version_id: candidateVersion,
+  };
+  assert.equal(
+    parseUploadedVersion(
+      `${JSON.stringify(session)}\n${JSON.stringify(success)}\n`,
+    ),
+    candidateVersion,
+  );
+  assert.throws(
+    () =>
+      parseUploadedVersion(
+        `${JSON.stringify(session)}\n${JSON.stringify({ ...success, worker_name: "sentry-mcp-canary" })}\n`,
+      ),
+    /production Worker/,
+  );
+  assert.throws(
+    () =>
+      parseUploadedVersion(
+        `${JSON.stringify(session)}\n${JSON.stringify(success)}\n{}\n`,
+      ),
+    /Incomplete/,
+  );
+});
+
+test("stages the uploaded candidate at zero percent and promotes that exact version", () => {
+  const uploaded = {
+    ...capturePrevious([previous], marker),
+    candidateVersion,
+  };
+  const journal = verifyStagedCandidate([staged, previous], uploaded);
+  assert.equal(journal.staged.id, stagedId);
+  assert.equal(journal.candidateVersion, candidateVersion);
+  const complete = verifyPromotedCandidate(
+    [promoted, staged, previous],
+    journal,
+  );
+  assert.equal(complete.candidate.version, candidateVersion);
+});
+
+test("rejects a different version, ownership marker, or earlier deployment", () => {
+  const uploaded = {
+    ...capturePrevious([previous], marker),
+    candidateVersion,
+  };
+  const journal = verifyStagedCandidate([staged, previous], uploaded);
+  assert.throws(
+    () =>
+      verifyStagedCandidate(
+        [
+          {
+            ...staged,
+            versions: [{ version_id: candidateVersion, percentage: 100 }],
+          },
+          previous,
+        ],
+        uploaded,
+      ),
+    /stage|traffic|ownership/i,
+  );
+  assert.throws(
+    () => verifyPromotedCandidate([candidate, staged, previous], journal),
+    /ownership|marker/i,
+  );
+  assert.throws(
+    () =>
+      verifyPromotedCandidate(
+        [promoted, staged, { ...previous, id: candidateId }],
+        journal,
+      ),
+    /prior|ownership/i,
+  );
+  assert.throws(
+    () =>
+      verifyPromotedCandidate(
+        [promoted, { ...staged, id: priorId }, previous],
+        journal,
+      ),
+    /stage|ownership/i,
+  );
+});
+
+test("manual recovery derives the prior version only from contiguous owned history", () => {
+  const journal = recoverManualSnapshot([promoted, staged, previous], marker);
+  assert.equal(journal.previous.version, previousVersion);
+  assert.equal(journal.candidateVersion, candidateVersion);
+  assert.equal(journal.candidate.id, candidateId);
+  assert.throws(
+    () =>
+      recoverManualSnapshot(
+        [promoted, staged, previous],
+        marker.replace(":123:", ":124:"),
+      ),
+    /ownership|marker/i,
+  );
+  assert.throws(
+    () =>
+      recoverManualSnapshot(
+        [promoted, { ...staged, annotations: {} }, previous],
+        marker,
+      ),
+    /ownership|marker/i,
+  );
+});
 
 test("captures the live version before mutation and restores only the owned candidate", () => {
   const captured = capturePrevious([previous], marker);
