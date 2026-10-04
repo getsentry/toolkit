@@ -13,6 +13,10 @@ const recovery = readFileSync(
   ),
   "utf8",
 );
+const smoke = readFileSync(
+  new URL("../packages/smoke-tests/src/smoke.test.ts", import.meta.url),
+  "utf8",
+);
 
 test("production deploy requires a successful Test run on this repository's main branch", () => {
   assert.doesNotMatch(workflow, /if:\s*\$\{\{\s*false\s*\}\}/);
@@ -78,6 +82,19 @@ test("deployment failures never invoke an unqualified rollback", () => {
   assert.doesNotMatch(recovery, /(?:command:|pnpm exec wrangler)\s+rollback\b/);
 });
 
+test("JUnit publication cannot trigger recovery after a successful deployment", () => {
+  const restore = workflow.indexOf(
+    "name: Recover captured previous version if owned transition fails",
+  );
+  assert.ok(restore !== -1);
+  assert.ok(
+    workflow.indexOf("name: Publish Candidate Smoke Test Report") < restore,
+  );
+  assert.ok(
+    workflow.indexOf("name: Publish Production Smoke Test Report") > restore,
+  );
+});
+
 test("manual recovery requires the current main and a completed same-repo deploy run", () => {
   assert.match(recovery, /^\s*workflow_dispatch:/m);
   assert.match(recovery, /github\.ref == 'refs\/heads\/main'/);
@@ -85,6 +102,15 @@ test("manual recovery requires the current main and a completed same-repo deploy
   assert.match(recovery, /\.repository_id == \$repository/);
   assert.match(recovery, /\.status == "completed"/);
   assert.match(recovery, /\.path == "\.github\/workflows\/deploy\.yml"/);
+  assert.match(
+    recovery,
+    /actions\/runs\/\$SOURCE_RUN_ID\/attempts\/\$SOURCE_RUN_ATTEMPT/,
+  );
+  assert.match(recovery, /ALLOW_LEGACY_VERSION_ENDPOINT: "1"/);
+  assert.match(recovery, /Wait for restored version to propagate/);
+  assert.match(recovery, /sleep 30/);
+  assert.match(smoke, /ALLOW_LEGACY_VERSION_ENDPOINT/);
+  assert.match(smoke, /response\.status === 404/);
   assert.match(recovery, /cloudflare-deployment\.mjs manual/);
   assert.match(recovery, /group:\s*mcp-production-deploy/);
   assert.match(recovery, /environment:\s*production/);

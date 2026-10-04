@@ -36,7 +36,11 @@ checks the completed source run, and derives the prior version from contiguous
 run-owned Cloudflare deployment history. It refuses an intervening deployment,
 split or ambiguous traffic, or a marker mismatch. A successful restore is
 verified against Cloudflare and the live Worker. Recovery never builds or
-deploys source code from the old run.
+deploys source code from the old run. The first restored version may predate
+`/_health/version`; in that case, Cloudflare's active-version check and the
+functional smoke tests verify recovery while the version-route test accepts
+only its 404 response. When the route exists, the smoke test compares its
+version ID with the restored version.
 
 ### migrate-cloudflare-token.yml
 Moves the Cloudflare API token from a repository secret into the protected

@@ -3,6 +3,8 @@ import pkg from "../package.json";
 
 const PREVIEW_URL = process.env.PREVIEW_URL;
 const EXPECTED_VERSION_ID = process.env.EXPECTED_VERSION_ID;
+const ALLOW_LEGACY_VERSION_ENDPOINT =
+  process.env.ALLOW_LEGACY_VERSION_ENDPOINT === "1";
 const CLOUDFLARE_VERSION_OVERRIDE = process.env.CLOUDFLARE_VERSION_OVERRIDE;
 const CLOUDFLARE_WORKER_NAME = process.env.CLOUDFLARE_WORKER_NAME;
 const UUID_PATTERN =
@@ -130,6 +132,10 @@ describeIfPreviewUrl(
       const { response, data } = await safeFetch(
         `${PREVIEW_URL}/_health/version`,
       );
+      // The first rollout may restore a Worker built before this route existed.
+      // Manual recovery has already verified its version in Cloudflare's live
+      // deployment state; still run the remaining functional smoke tests.
+      if (ALLOW_LEGACY_VERSION_ENDPOINT && response.status === 404) return;
       expect(response.status).toBe(200);
       if (IS_LOCAL_DEV && data?.id === null && !EXPECTED_VERSION_ID) {
         expect(data).toEqual({ id: null });

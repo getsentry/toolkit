@@ -90,9 +90,14 @@ jobs:
                 .status == "completed" and
                 .conclusion == "success" and
                 (. as $job | [
-                  "Deploy to Canary Worker",
-                  "Run Smoke Tests on Canary",
-                  "Deploy to Production Worker",
+                  "Capture active production version",
+                  "Upload production version without moving traffic",
+                  "Identify uploaded production version",
+                  "Require tested revision on main before staging",
+                  "Stage exact candidate at zero percent",
+                  "Smoke test exact production Worker version",
+                  "Require tested revision on main before promotion",
+                  "Promote tested version to production",
                   "Verify production deployment ownership",
                   "Run Smoke Tests on Production"
                 ] | all(.[]; . as $name | ($job.steps | map(select(.name == $name and .status == "completed" and .conclusion == "success")) | length) == 1))

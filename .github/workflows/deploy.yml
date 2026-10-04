@@ -198,14 +198,6 @@ jobs:
           cd packages/smoke-tests
           pnpm test:ci
 
-      - name: Publish Production Smoke Test Report
-        uses: mikepenz/action-junit-report@cf701569b05ccdd861a76b8607a66d76f6fd4857
-        if: always() && steps.production_smoke_tests.outcome != 'skipped'
-        with:
-          report_paths: "packages/smoke-tests/tests.junit.xml"
-          check_name: "Production Smoke Test Results"
-          fail_on_failure: false
-
       - name: Recover captured previous version if owned transition fails
         if: failure() && steps.uploaded.outcome == 'success' && steps.stage.outcome != 'skipped'
         env:
@@ -213,3 +205,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: node scripts/cloudflare-deployment.mjs recover
+
+      # Report publication must not turn a verified promotion into a rollback.
+      - name: Publish Production Smoke Test Report
+        uses: mikepenz/action-junit-report@cf701569b05ccdd861a76b8607a66d76f6fd4857
+        if: always() && steps.production_smoke_tests.outcome != 'skipped'
+        with:
+          report_paths: "packages/smoke-tests/tests.junit.xml"
+          check_name: "Production Smoke Test Results"
+          fail_on_failure: false

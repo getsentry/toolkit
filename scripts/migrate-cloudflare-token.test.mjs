@@ -18,12 +18,30 @@ const script = step.split("        run: |\n")[1]?.replace(/^ {10}/gm, "");
 assert.ok(script, `Missing ${stepName} script`);
 
 const requiredSteps = [
-  "Deploy to Canary Worker",
-  "Run Smoke Tests on Canary",
-  "Deploy to Production Worker",
+  "Capture active production version",
+  "Upload production version without moving traffic",
+  "Identify uploaded production version",
+  "Require tested revision on main before staging",
+  "Stage exact candidate at zero percent",
+  "Smoke test exact production Worker version",
+  "Require tested revision on main before promotion",
+  "Promote tested version to production",
   "Verify production deployment ownership",
   "Run Smoke Tests on Production",
 ];
+
+test("required migration proof names every live deployment gate", () => {
+  const deploy = readFileSync(
+    new URL("../.github/workflows/deploy.yml", import.meta.url),
+    "utf8",
+  );
+  for (const name of requiredSteps) {
+    assert.equal(deploy.split(`- name: ${name}\n`).length - 1, 1, name);
+  }
+  for (const name of requiredSteps) {
+    assert.ok(script.includes(`"${name}"`), name);
+  }
+});
 
 function runValidation(jobs) {
   const directory = mkdtempSync(join(tmpdir(), "cloudflare-token-migration-"));

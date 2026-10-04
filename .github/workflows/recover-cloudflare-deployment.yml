@@ -49,7 +49,7 @@ jobs:
             echo 'Main advanced before manual recovery; retry from current main.' >&2
             exit 1
           fi
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" \
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/attempts/$SOURCE_RUN_ATTEMPT" \
             --jq '{id,run_attempt,head_sha,head_branch,event,status,path,repository_id:.repository.id}' \
             > "$RUNNER_TEMP/source-run.json"
           if ! jq -e --argjson id "$SOURCE_RUN_ID" --argjson attempt "$SOURCE_RUN_ATTEMPT" \
@@ -93,8 +93,12 @@ jobs:
           fi
           node scripts/cloudflare-deployment.mjs manual
 
+      - name: Wait for restored version to propagate
+        run: sleep 30
+
       - name: Verify recovered production Worker
         env:
           PREVIEW_URL: https://mcp.sentry.dev
           EXPECTED_VERSION_ID: ${{ steps.restore.outputs.previous_version }}
+          ALLOW_LEGACY_VERSION_ENDPOINT: "1"
         run: pnpm --dir packages/smoke-tests test:ci
