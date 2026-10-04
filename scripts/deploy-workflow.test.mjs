@@ -72,6 +72,16 @@ test("production deploy requires a successful Test run on this repository's main
   );
 });
 
+test("version upload includes the built Worker and SPA assets", () => {
+  const upload = workflow.match(
+    /- name: Upload production version without moving traffic[\s\S]*?(?=\n {6}- name: Identify uploaded production version)/,
+  )?.[0];
+  assert.ok(upload);
+  assert.match(upload, /test -s dist\/client\/index\.html/);
+  assert.match(upload, /--config dist\/sentry_mcp\/wrangler\.json/);
+  assert.match(upload, /--assets dist\/client/);
+});
+
 test("deployment failures never invoke an unqualified rollback", () => {
   assert.doesNotMatch(workflow, /(?:command:|pnpm exec wrangler)\s+rollback\b/);
   assert.match(

@@ -21,11 +21,13 @@ smoke-test suite remains in its own workflow.
 ### deploy.yml
 Runs after a successful `Test` push run on `main`. Checks out the tested commit
 and requires that it is still the tip of `main`. Builds once, records the active
-production version, and uploads one new version of `sentry-mcp`. It stages the
-candidate at 0% alongside the old version at 100%, then runs smoke tests
-through the production route with a version override on every request. The
-version endpoint confirms the override reaches the candidate. Only then does
-it promotes the tested version to 100% and repeats the smoke tests. On failure
+production version, and uploads one new version of `sentry-mcp` from Vite's
+generated Worker config and `dist/client` assets. The source `public` directory
+does not contain the built SPA's `index.html`. It stages the candidate at 0%
+alongside the old version at 100%, then runs smoke tests through the production
+route with a version override on every request. The version endpoint confirms
+the override reaches the candidate. Only then does it promote the tested
+version to 100% and repeat the smoke tests. On failure,
 it restores the exact captured prior version only if the live deployments still
 belong to this run.
 
