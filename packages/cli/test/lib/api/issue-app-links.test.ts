@@ -113,8 +113,11 @@ function writes(): Request[] {
 }
 
 describe("app issue-link action", () => {
-  test("resolves Linear key to UUID read-only, then sends the schema URI and fields top-level", async () => {
-    const prepared = await resolveAppIssueLink(OPTIONS);
+  test.each([
+    undefined,
+    { issueId: "" },
+  ])("resolves Linear key to UUID with target fields %j, then sends the schema URI and fields top-level", async (fields) => {
+    const prepared = await resolveAppIssueLink({ ...OPTIONS, fields });
     expect(writes()).toHaveLength(0);
     expect(prepared.fields).toEqual({ issueId: "linear-uuid" });
     const search = calls.find((request) =>
@@ -300,12 +303,16 @@ describe("app issue-link action", () => {
   });
 
   test.each([
-    "https://tracker.example/view?id=42#issue",
-    "https://TRACKER.example/tasks/42",
-    "https://tracker.example:443/tasks/42",
-    "https://tracker.example",
-    "https://tracker.example/tasks/42#some text",
-  ])("preserves the requested URL in the form and backend guard: %s", async (url) => {
+    { url: "https://tracker.example/view?id=42#issue" },
+    { url: "https://TRACKER.example/tasks/42" },
+    { url: "https://tracker.example:443/tasks/42" },
+    { url: "https://tracker.example" },
+    { url: "https://tracker.example/tasks/42#some text" },
+    { url: "https://tracker.example/tasks/42", fields: { url: "" } },
+  ])("preserves the requested URL in the form and backend guard: %j", async ({
+    url,
+    fields,
+  }) => {
     installation = {
       ...INSTALLATION,
       app: { ...INSTALLATION.app, slug: "custom" },
@@ -316,6 +323,7 @@ describe("app issue-link action", () => {
       ...OPTIONS,
       appSlug: "custom",
       url,
+      fields,
     });
     await linkAppIssue(prepared);
     expect(await writes()[0]!.json()).toMatchObject({ url });

@@ -608,7 +608,9 @@ async function resolveFieldValue({
   installationUuid: string;
 }): Promise<string | number> {
   const isTarget = field === targetField;
-  const supplied = isTarget ? options.fields?.[field.name] : undefined;
+  const supplied = isTarget
+    ? options.fields?.[field.name] || undefined
+    : undefined;
   // Generic targets can use provider IDs that cannot be inferred from the URL.
   const suppliedTarget =
     field.type === "select" || !URL_FIELD.test(field.name)
