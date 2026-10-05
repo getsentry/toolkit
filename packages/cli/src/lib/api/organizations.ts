@@ -15,20 +15,35 @@ import {
   type UserRegionsResponse,
   UserRegionsResponseSchema,
 } from "../../types/index.js";
-
-import { ApiError } from "../errors.js";
-import { getControlSiloUrl, getSdkConfig } from "../sentry-client.js";
+import { type CredentialContext, getCredentialContext } from "../db/auth.js";
+import { ApiError, AuthError } from "../errors.js";
+import {
+  getControlSiloUrl,
+  getResponseCredentialIdentity,
+  getResponseRequestOrigin,
+  getSdkConfig,
+} from "../sentry-client.js";
+import { normalizeRegionBaseUrl } from "../sentry-urls.js";
 
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
-  autoPaginate,
   getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
+
+function normalizeOrganizationRegion(
+  raw: string | undefined,
+  responseOrigin: string
+): string | undefined {
+  if (!raw) {
+    return responseOrigin;
+  }
+  return normalizeRegionBaseUrl(raw, responseOrigin);
+}
 
 /**
  * Get the list of regions the user has organization membership in.
@@ -41,11 +56,12 @@ import {
  * @returns Array of regions with name and URL
  */
 export async function getUserRegions(): Promise<Region[]> {
+  const credential = getCredentialContext();
   // /users/me/regions/ is an internal endpoint - use raw request
   const { data } = await apiRequestToRegion<UserRegionsResponse>(
-    getControlSiloUrl(),
+    getControlSiloUrl(credential),
     "/users/me/regions/",
-    { schema: UserRegionsResponseSchema }
+    { schema: UserRegionsResponseSchema, credential, validatedRedirects: true }
   );
   return data.regions;
 }
@@ -63,9 +79,13 @@ export async function getUserRegions(): Promise<Region[]> {
  */
 export async function listOrganizationsPage(
   baseUrl: string,
-  options: { cursor?: string; perPage?: number } = {}
+  options: { cursor?: string; perPage?: number } = {},
+  credential = getCredentialContext()
 ): Promise<PaginatedResponse<SentryOrganization[]>> {
-  const config = getSdkConfig(baseUrl);
+  const config = getSdkConfig(baseUrl, {
+    credential,
+    validatedRedirects: true,
+  });
 
   const result = await sdkListOrganizations({
     ...config,
@@ -104,9 +124,12 @@ export async function listOrganizationsPage(
  * should use {@link listOrganizationsUncached} instead.
  */
 export async function listOrganizations(): Promise<SentryOrganization[]> {
+  const credential = getCredentialContext();
   const { getCachedOrganizations } = await import("../db/regions.js");
 
-  const cached = getCachedOrganizations();
+  const cached = credential
+    ? getCachedOrganizations(getControlSiloUrl(credential), credential.identity)
+    : [];
   if (cached.length > 0) {
     return cached.map((org) => ({
       id: org.id,
@@ -117,7 +140,72 @@ export async function listOrganizations(): Promise<SentryOrganization[]> {
   }
 
   // Cache miss — fetch from API (also populates cache for next time)
-  return listOrganizationsUncached();
+  return listOrganizationsUncached(credential);
+}
+
+type OrganizationPageContext = {
+  baseUrl: string;
+  credential: CredentialContext;
+  setOrgRegions: typeof import("../db/regions.js").setOrgRegions;
+  organizations?: SentryOrganization[];
+  cursor?: string;
+  pageIndex?: number;
+};
+
+async function listOrganizationPages({
+  baseUrl,
+  credential,
+  setOrgRegions,
+  organizations = [],
+  cursor,
+  pageIndex = 0,
+}: OrganizationPageContext): Promise<SentryOrganization[]> {
+  if (pageIndex >= MAX_PAGINATION_PAGES) {
+    return organizations;
+  }
+  const page = await listOrganizationsPage(
+    baseUrl,
+    { cursor, perPage: API_MAX_PER_PAGE },
+    credential
+  );
+  const responseOrigin =
+    page.response && getResponseRequestOrigin(page.response);
+  const responseIdentity =
+    page.response && getResponseCredentialIdentity(page.response);
+  if (responseOrigin && responseIdentity === credential.identity) {
+    const entries = page.data.flatMap((org) => {
+      const region = normalizeOrganizationRegion(
+        org.links?.regionUrl,
+        responseOrigin
+      );
+      return region
+        ? [
+            {
+              slug: org.slug,
+              regionUrl: region,
+              sourceOrigin: responseOrigin,
+              cacheOrigin: baseUrl,
+              identity: credential.identity,
+              orgId: org.id,
+              orgName: org.name,
+              ...(org.orgRole ? { orgRole: org.orgRole } : {}),
+            },
+          ]
+        : [];
+    });
+    setOrgRegions(entries);
+  }
+  const accumulated = [...organizations, ...page.data];
+  return page.nextCursor
+    ? await listOrganizationPages({
+        baseUrl,
+        credential,
+        setOrgRegions,
+        organizations: accumulated,
+        cursor: page.nextCursor,
+        pageIndex: pageIndex + 1,
+      })
+    : accumulated;
 }
 
 /**
@@ -136,35 +224,18 @@ export async function listOrganizations(): Promise<SentryOrganization[]> {
  * Use this when you need guaranteed-fresh data (e.g., `org list`, `auth status`).
  * Most callers should use {@link listOrganizations} instead.
  */
-export async function listOrganizationsUncached(): Promise<
-  SentryOrganization[]
-> {
+export async function listOrganizationsUncached(
+  credential = getCredentialContext()
+): Promise<SentryOrganization[]> {
   const { setOrgRegions } = await import("../db/regions.js");
-
-  const controlSiloUrl = getControlSiloUrl();
-
-  const { data: orgs } = await autoPaginate(
-    (cursor) =>
-      listOrganizationsPage(controlSiloUrl, {
-        cursor,
-        perPage: API_MAX_PER_PAGE,
-      }),
-    MAX_PAGINATION_PAGES * API_MAX_PER_PAGE
-  );
-
-  const regionEntries = orgs.map((org) => ({
-    slug: org.slug,
-    // Each org carries its own regionUrl (added to the control serializer
-    // in getsentry/sentry#115513); fall back to the control silo URL for
-    // any older/self-hosted response that omits it.
-    regionUrl: org.links?.regionUrl ?? controlSiloUrl,
-    orgId: org.id,
-    orgName: org.name,
-    orgRole: org.orgRole,
-  }));
-  setOrgRegions(regionEntries);
-
-  return orgs;
+  if (!credential) {
+    throw new AuthError("not_authenticated");
+  }
+  return await listOrganizationPages({
+    baseUrl: getControlSiloUrl(credential),
+    credential,
+    setOrgRegions,
+  });
 }
 
 /**

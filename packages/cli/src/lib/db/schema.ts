@@ -19,7 +19,7 @@ import type { Database } from "./sqlite.js";
 
 const _require = createRequire(import.meta.url);
 
-export const CURRENT_SCHEMA_VERSION = 16;
+export const CURRENT_SCHEMA_VERSION = 17;
 
 /** Environment variable to disable auto-repair */
 const NO_AUTO_REPAIR_ENV = "SENTRY_CLI_NO_AUTO_REPAIR";
@@ -163,17 +163,21 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
   },
   org_regions: {
     columns: {
-      org_slug: { type: "TEXT", primaryKey: true },
+      org_slug: { type: "TEXT", notNull: true },
       org_id: { type: "TEXT", addedInVersion: 8 },
       org_name: { type: "TEXT", addedInVersion: 9 },
       org_role: { type: "TEXT", addedInVersion: 10 },
       region_url: { type: "TEXT", notNull: true },
+      credential_identity: { type: "TEXT", notNull: true, addedInVersion: 17 },
+      source_origin: { type: "TEXT", notNull: true, addedInVersion: 17 },
+      response_origin: { type: "TEXT", notNull: true, addedInVersion: 17 },
       updated_at: {
         type: "INTEGER",
         notNull: true,
         default: "(unixepoch() * 1000)",
       },
     },
+    compositePrimaryKey: ["credential_identity", "source_origin", "org_slug"],
   },
   user_info: {
     columns: {
@@ -863,12 +867,20 @@ export function runMigrations(db: Database): void {
   }
 
   // Migration 15 -> 16: Add host column to auth table for host-scoped tokens.
-  // The column is NULL for existing rows; getAuthConfig lazily backfills it
-  // with the currently-configured host on first access after upgrade, so
-  // users who already have SENTRY_HOST/SENTRY_URL set at upgrade time are
-  // migrated cleanly to the host-scoped model.
+  // The column is NULL for existing rows; the first credential read backfills
+  // it from the boot-time explicit host (or SaaS), before later config shims
+  // can change SENTRY_URL.
   if (currentVersion < 16) {
     addColumnIfMissing(db, "auth", "host", "TEXT");
+  }
+
+  // Legacy region rows have no credential or response provenance. Rebuild the
+  // reconstructible cache rather than assigning foreign data to a new login.
+  if (currentVersion < 17) {
+    db.transaction(() => {
+      db.exec("DROP TABLE IF EXISTS org_regions");
+      db.exec(EXPECTED_TABLES.org_regions as string);
+    })();
   }
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {

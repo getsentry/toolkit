@@ -6,13 +6,22 @@
  */
 
 import { getOrganization } from "@sentry/api";
-import { getConfiguredSentryUrl } from "./constants.js";
+import { type CredentialContext, getCredentialContext } from "./db/auth.js";
 import { getOrgByNumericId, getOrgRegion, setOrgRegion } from "./db/regions.js";
 import { stripDsnOrgPrefix } from "./dsn/index.js";
-import { withAuthGuard } from "./errors.js";
+import { AuthError, withAuthGuard } from "./errors.js";
 import { logger } from "./logger.js";
-import { getSdkConfig } from "./sentry-client.js";
-import { getSentryBaseUrl, isSentrySaasUrl } from "./sentry-urls.js";
+import {
+  getApiBaseUrl,
+  getResponseCredentialIdentity,
+  getResponseRequestOrigin,
+  getSdkConfig,
+} from "./sentry-client.js";
+import {
+  isSentrySaasUrl,
+  normalizeHttpOrigin,
+  normalizeRegionBaseUrl,
+} from "./sentry-urls.js";
 
 /**
  * Promise cache for org region resolution, keyed by orgSlug.
@@ -24,7 +33,8 @@ import { getSentryBaseUrl, isSentrySaasUrl } from "./sentry-urls.js";
  * Rejected promises (e.g., AuthError) are automatically evicted so that
  * retries after re-authentication can succeed without restarting the CLI.
  */
-const regionCache = new Map<string, Promise<string>>();
+type RegionResolution = { cacheable: boolean; url: string };
+const regionCache = new Map<string, Promise<RegionResolution>>();
 
 /**
  * Resolve the region URL for an organization.
@@ -45,18 +55,28 @@ const regionCache = new Map<string, Promise<string>>();
  * @returns The region URL for the organization
  */
 export function resolveOrgRegion(orgSlug: string): Promise<string> {
-  const existing = regionCache.get(orgSlug);
+  const credential = getCredentialContext();
+  if (!credential) {
+    return Promise.reject(new AuthError("not_authenticated"));
+  }
+  const baseUrl = getApiBaseUrl(credential);
+  const key = `${credential.identity}\0${baseUrl}\0${orgSlug}`;
+  const existing = regionCache.get(key);
   if (existing) {
-    return existing;
+    return existing.then((resolution) => resolution.url);
   }
 
-  const promise = resolveOrgRegionUncached(orgSlug);
-  regionCache.set(orgSlug, promise);
-  // Evict on rejection (AuthError) so retries after re-login work.
-  // Non-auth errors already resolve to baseUrl fallback, so only
-  // AuthError re-throws can leave a rejected promise in the cache.
-  promise.catch(() => regionCache.delete(orgSlug));
-  return promise;
+  const promise = resolveOrgRegionUncached(orgSlug, credential, baseUrl);
+  regionCache.set(key, promise);
+  promise.then(
+    (resolution) => {
+      if (!resolution.cacheable) {
+        regionCache.delete(key);
+      }
+    },
+    () => regionCache.delete(key)
+  );
+  return promise.then((resolution) => resolution.url);
 }
 
 /**
@@ -67,37 +87,49 @@ export function resolveOrgRegion(orgSlug: string): Promise<string> {
  * a relative value against baseUrl so it becomes absolute instead of being
  * discarded; an already-absolute value is returned unchanged.
  */
-function toAbsoluteRegionUrl(rawRegionUrl: string, baseUrl: string): string {
-  // Already absolute — use verbatim.
-  if (URL.canParse(rawRegionUrl)) {
-    return rawRegionUrl;
-  }
+function normalizeRegionUrl(
+  raw: string,
+  responseOrigin: string
+): string | undefined {
+  return normalizeRegionBaseUrl(raw, responseOrigin);
+}
 
-  // Relative (e.g. "/") — resolve against baseUrl to get an absolute origin.
-  if (URL.canParse(rawRegionUrl, baseUrl)) {
-    return new URL(rawRegionUrl, baseUrl).origin;
+function getResolvedRegionUrl(
+  raw: string | undefined,
+  responseOrigin: string | undefined,
+  baseUrl: string
+): string | undefined {
+  if (!responseOrigin) {
+    return;
   }
-
-  logger.debug(
-    `regionUrl "${rawRegionUrl}" from API could not be resolved to an absolute URL; falling back to baseUrl`
-  );
-  return baseUrl;
+  if (raw) {
+    return normalizeRegionUrl(raw, responseOrigin);
+  }
+  return normalizeHttpOrigin(baseUrl) === responseOrigin
+    ? baseUrl
+    : responseOrigin;
 }
 
 /**
  * Resolve org region from SQLite cache or API.
  * Called at most once per orgSlug per process lifetime.
  */
-async function resolveOrgRegionUncached(orgSlug: string): Promise<string> {
+async function resolveOrgRegionUncached(
+  orgSlug: string,
+  credential: CredentialContext,
+  baseUrl: string
+): Promise<RegionResolution> {
   // 1. Check SQLite cache first
-  const cached = getOrgRegion(orgSlug);
+  const cached = getOrgRegion(orgSlug, baseUrl, credential.identity);
   if (cached) {
-    return cached;
+    return { cacheable: true, url: cached };
   }
 
   // 2. Fetch org details via SDK to discover the region URL
-  const baseUrl = getSentryBaseUrl();
-  const config = getSdkConfig(baseUrl);
+  const config = getSdkConfig(baseUrl, {
+    credential,
+    validatedRedirects: true,
+  });
 
   const result = await withAuthGuard(async () => {
     const response = await getOrganization({
@@ -115,22 +147,43 @@ async function resolveOrgRegionUncached(orgSlug: string): Promise<string> {
     // is truthy but would break fetch calls that depend on an absolute base
     // URL. Resolve it against baseUrl so a relative value becomes absolute
     // instead of being discarded; keep an already-absolute value as-is.
+    const rawResponse = (response as { response?: Response }).response;
+    const responseOrigin = rawResponse
+      ? getResponseRequestOrigin(rawResponse)
+      : undefined;
+    const responseIdentity = rawResponse
+      ? getResponseCredentialIdentity(rawResponse)
+      : undefined;
     const rawRegionUrl = response.data?.links?.regionUrl;
-    const regionUrl = rawRegionUrl
-      ? toAbsoluteRegionUrl(rawRegionUrl, baseUrl)
-      : baseUrl;
+    const regionUrl = getResolvedRegionUrl(
+      rawRegionUrl,
+      responseOrigin,
+      baseUrl
+    );
+    if (!(responseOrigin && regionUrl)) {
+      return { cacheable: false, url: responseOrigin ?? baseUrl };
+    }
+    if (responseIdentity !== credential.identity) {
+      return { cacheable: false, url: regionUrl };
+    }
 
     // Cache for future use. setOrgRegion also extends the in-process
     // trust class so the subsequent request to this region passes the
     // fetch-layer guard without needing a separate registration call.
-    setOrgRegion(orgSlug, regionUrl);
+    setOrgRegion(
+      orgSlug,
+      regionUrl,
+      responseOrigin,
+      baseUrl,
+      credential.identity
+    );
 
-    return regionUrl;
+    return { cacheable: true, url: regionUrl };
   });
 
   // Other errors (network, 404, etc.) fall back to default
   // This handles self-hosted instances without multi-region
-  return result.ok ? result.value : baseUrl;
+  return result.ok ? result.value : { cacheable: false, url: baseUrl };
 }
 
 /**
@@ -138,12 +191,9 @@ async function resolveOrgRegionUncached(orgSlug: string): Promise<string> {
  * Returns false for self-hosted instances that don't have regional URLs.
  */
 export function isMultiRegionEnabled(): boolean {
-  // Self-hosted instances (custom SENTRY_HOST/SENTRY_URL) typically don't have multi-region
-  const baseUrl = getConfiguredSentryUrl();
-  if (baseUrl && !isSentrySaasUrl(baseUrl)) {
-    return false;
-  }
-  return true;
+  // Self-hosted instances, including those selected by the active token's
+  // host, typically do not have multiple regions.
+  return isSentrySaasUrl(getApiBaseUrl());
 }
 
 /**
@@ -156,8 +206,13 @@ export function isMultiRegionEnabled(): boolean {
  * @returns The resolved slug if found in cache, `undefined` on cache miss
  */
 function resolveOrgFromCache(orgSlug: string): string | undefined {
+  const credential = getCredentialContext();
+  if (!credential) {
+    return;
+  }
+  const sourceOrigin = getApiBaseUrl(credential);
   // Check if slug is directly cached
-  const cached = getOrgRegion(orgSlug);
+  const cached = getOrgRegion(orgSlug, sourceOrigin, credential.identity);
   if (cached) {
     return orgSlug;
   }
@@ -165,7 +220,11 @@ function resolveOrgFromCache(orgSlug: string): string | undefined {
   // Try DSN-style numeric ID lookup (e.g., `o1081365` → `1081365` → slug)
   const numericId = stripDsnOrgPrefix(orgSlug);
   if (numericId !== orgSlug) {
-    const match = getOrgByNumericId(numericId);
+    const match = getOrgByNumericId(
+      numericId,
+      sourceOrigin,
+      credential.identity
+    );
     if (match) {
       return match.slug;
     }

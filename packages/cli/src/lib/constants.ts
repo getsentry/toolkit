@@ -3,6 +3,7 @@
  */
 
 import { getEnv } from "./env.js";
+import { ConfigError } from "./errors.js";
 
 /** Build-time constant injected by esbuild/bun */
 declare const SENTRY_CLI_VERSION: string | undefined;
@@ -34,6 +35,7 @@ export const NODE_MODULES_DIRNAME = "node_modules";
 
 /** Matches strings that already start with http:// or https:// */
 const HAS_PROTOCOL_RE = /^https?:\/\//i;
+const EXPLICIT_SCHEME_RE = /^([a-z][a-z\d+.-]*):\/\//i;
 
 /**
  * Normalize a URL string by ensuring it has a protocol prefix.
@@ -71,8 +73,32 @@ export function normalizeUrl(url: string | undefined): string | undefined {
  * with `https://` to prevent invalid URL construction downstream.
  */
 export function getConfiguredSentryUrl(): string | undefined {
-  const raw = getEnv().SENTRY_HOST || getEnv().SENTRY_URL || undefined;
-  return normalizeUrl(raw);
+  const env = getEnv();
+  const raw = env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim();
+  if (!raw) {
+    return;
+  }
+  const scheme = raw.match(EXPLICIT_SCHEME_RE)?.[1]?.toLowerCase();
+  const normalized = normalizeUrl(raw);
+  try {
+    if (scheme && scheme !== "http" && scheme !== "https") {
+      throw new TypeError("Unsupported URL scheme");
+    }
+    const parsed = new URL(normalized as string);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      !parsed.hostname ||
+      parsed.username ||
+      parsed.password
+    ) {
+      throw new TypeError("Invalid Sentry URL");
+    }
+    return normalized;
+  } catch {
+    throw new ConfigError(
+      "SENTRY_HOST/SENTRY_URL is not a valid URL; use a credential-free HTTP(S) URL."
+    );
+  }
 }
 
 /** CLI version string, available for help output and other uses */

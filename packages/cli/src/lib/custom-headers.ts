@@ -25,6 +25,7 @@
  * ```
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getDefaultHeaders } from "./db/defaults.js";
 import { getEnv } from "./env.js";
@@ -79,6 +80,9 @@ let untrustedDestinationWarningLogged = false;
  * `undefined` = not set, fall through to the env var / SQLite defaults.
  */
 let overrideHeaders: readonly [string, string][] | undefined;
+const scopedHeadersOverride = new AsyncLocalStorage<{
+  value: readonly [string, string][] | undefined;
+}>();
 
 /**
  * Validate a header name against RFC 7230 token rules and the reserved list.
@@ -160,11 +164,10 @@ export function parseCustomHeaders(raw: string): readonly [string, string][] {
  * @param headers - Header name/value map from `SentryOptions.headers`
  * @throws {ConfigError} On invalid or reserved header names
  */
-export function setCustomHeadersOverride(
+function validateCustomHeadersOverride(
   headers: Record<string, string> | undefined
-): void {
+): readonly [string, string][] | undefined {
   if (headers === undefined) {
-    overrideHeaders = undefined;
     return;
   }
 
@@ -179,7 +182,23 @@ export function setCustomHeadersOverride(
     assertValidHeaderName(name, "SentryOptions.headers");
     entries.push([name, rawValue.trim()]);
   }
-  overrideHeaders = entries;
+  return entries;
+}
+
+export function setCustomHeadersOverride(
+  headers: Record<string, string> | undefined
+): void {
+  overrideHeaders = validateCustomHeadersOverride(headers);
+}
+
+export function withCustomHeadersOverride<T>(
+  headers: Record<string, string> | undefined,
+  callback: () => T
+): T {
+  return scopedHeadersOverride.run(
+    { value: validateCustomHeadersOverride(headers) },
+    callback
+  );
 }
 
 /**
@@ -242,10 +261,10 @@ function passesSelfHostedGuard(): boolean {
  * because `SENTRY_HOST` can be set dynamically by URL argument parsing.
  */
 export function getCustomHeaders(): readonly [string, string][] {
-  if (overrideHeaders !== undefined) {
-    return overrideHeaders.length > 0 && passesSelfHostedGuard()
-      ? overrideHeaders
-      : [];
+  const scoped = scopedHeadersOverride.getStore();
+  const effective = scoped ? scoped.value : overrideHeaders;
+  if (effective !== undefined) {
+    return effective.length > 0 && passesSelfHostedGuard() ? effective : [];
   }
 
   const raw = resolveRawHeaders();
@@ -284,14 +303,15 @@ export function getCustomHeaders(): readonly [string, string][] {
  */
 export function applyCustomHeaders(
   headers: Headers,
-  requestUrl: string | URL | Request
+  requestUrl: string | URL | Request,
+  isTrusted = isRequestOriginTrustedForCustomHeaders(requestUrl)
 ): void {
   const customHeaders = getCustomHeaders();
   if (customHeaders.length === 0) {
     return;
   }
 
-  if (!isRequestOriginTrustedForCustomHeaders(requestUrl)) {
+  if (!isTrusted) {
     if (!untrustedDestinationWarningLogged) {
       untrustedDestinationWarningLogged = true;
       log.warn(
