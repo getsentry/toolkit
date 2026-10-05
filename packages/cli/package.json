@@ -67,7 +67,7 @@
     "test": "pnpm run test:unit",
     "test:unit": "pnpm run generate:docs && pnpm run generate:sdk && vitest run test/lib test/commands test/types test/script --coverage",
     "test:changed": "pnpm run generate:docs && pnpm run generate:sdk && vitest run --changed",
-    "test:e2e": "pnpm run generate:docs && pnpm run generate:sdk && vitest run test/e2e",
+    "test:e2e": "pnpm tsx script/prepare-e2e-bundle.ts && vitest run test/e2e",
     "test:init-eval": "vitest run test/init-eval --testTimeout 600000",
     "generate:parser": "pnpm tsx script/generate-parser.ts",
     "generate:sdk": "pnpm tsx script/generate-sdk.ts",
