@@ -5213,12 +5213,6 @@ export class SentryApiService {
     return EventsStatsResponseSchema.parse(body);
   }
 
-  /**
-   * Fetch dropped (and accepted) event volume from the events-dropped endpoint,
-   * bucketed over time. This is ground-truth data-fidelity information: what
-   * Sentry received but discarded, and why. Unlike events-stats, this runs no
-   * chart query and takes no search filter — it reads Outcomes directly.
-   */
   async getDroppedEvents(
     {
       organizationSlug,

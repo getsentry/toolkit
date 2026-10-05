@@ -10,7 +10,6 @@ import {
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
-// events-dropped only supports the datasets in its DATASET_TO_CATEGORY map.
 const DROPPED_EVENTS_DATASETS = ["spans", "logs", "metrics"] as const;
 
 const droppedBucketSchema = z.object({
