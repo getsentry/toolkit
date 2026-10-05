@@ -43,7 +43,6 @@ import {
   getAutofixArtifactSummaries,
   getStatusDisplayName,
   isTerminalStatus,
-  wrapSeerContent,
 } from "./tool-helpers/seer";
 import { formatToolCallInstruction } from "./tool-helpers/tool-call-formatting";
 import { isPlainObject } from "./type-guards";
@@ -182,15 +181,6 @@ export function formatFrameHeader(
 }
 
 /**
- * Whether the shared formatter covers this event type, and so whether its body should be used
- * instead of the local rendering.
- *
- * "default" is an error event without exception data, "generic" a performance regression or
- * metric issue, "csp" a Content Security Policy violation. Anything else (a transaction, most
- * notably) keeps the local path, which renders things the shared body does not carry such as
- * the fetched performance trace.
- */
-/**
  * Whether to read the issue's metadata instead of its top level fields. Performance issues can
  * have various categories such as 'db_query', but the issueType starts with 'performance_'.
  *
@@ -208,10 +198,15 @@ export function isPerformanceIssueType(issue: {
   );
 }
 
-export function usesSharedFormatterBody(event: { type?: unknown }): boolean {
+/**
+ * Whether this server renders the event type. The Event union is ErrorEvent | DefaultEvent |
+ * TransactionEvent | GenericEvent | CspEvent, but in practice other types arrive as UnknownEvent.
+ */
+export function isSupportedEventType(event: { type?: unknown }): boolean {
   return (
     event.type === "error" ||
     event.type === "default" ||
+    event.type === "transaction" ||
     event.type === "generic" ||
     event.type === "csp"
   );
@@ -237,6 +232,9 @@ export function formatEventOutput(
       availableToolNames?: ReadonlySet<string>;
       directToolNames?: ReadonlySet<string>;
     };
+    // strip the replay ids without rendering the note, for callers that report replays
+    // themselves and would otherwise repeat them in tags and contexts
+    stripReplayIds?: boolean;
   },
 ) {
   let output = "";
@@ -245,10 +243,10 @@ export function formatEventOutput(
       user?: z.infer<typeof EventSchema>["user"];
     }
   ).user;
-  const eventWithReplayMetadataStripped = options?.replaySummary
-    ? stripReplayMetadata(event)
-    : event;
-  const eventToRender = eventWithReplayMetadataStripped;
+  const eventToRender =
+    options?.replaySummary || options?.stripReplayIds
+      ? stripReplayMetadata(event)
+      : event;
 
   if (options?.replaySummary) {
     output += formatIssueReplayOutput({
@@ -1954,24 +1952,17 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
     parts.push("");
   }
 
-  // Prefer the shared formatter's analysis for the body when the endpoint provides it, but
-  // keep the status handling around it: a run that failed or needs input must say so either
-  // way. Seer content is LLM-generated, so wrap it in the untrusted-data boundary.
-  if (autofixState.formatted?.content) {
-    parts.push(wrapSeerContent(autofixState.formatted.content, autofix.run_id));
-  } else {
-    // Summarize from the run's artifacts: the solution if available, otherwise
-    // the root cause if it has been identified.
-    const { rootCause, solution } = getAutofixArtifactSummaries(autofix);
-    if (solution) {
-      parts.push("**Summary:**");
-      parts.push(solution);
-    } else if (rootCause) {
-      parts.push("**Root Cause Identified:**");
-      parts.push(rootCause);
-    } else if (!isTerminalStatus(autofix.status)) {
-      parts.push("Analysis has started but no results yet.");
-    }
+  // Summarize from the run's artifacts: the solution if available, otherwise
+  // the root cause if it has been identified.
+  const { rootCause, solution } = getAutofixArtifactSummaries(autofix);
+  if (solution) {
+    parts.push("**Summary:**");
+    parts.push(solution);
+  } else if (rootCause) {
+    parts.push("**Root Cause Identified:**");
+    parts.push(rootCause);
+  } else if (!isTerminalStatus(autofix.status)) {
+    parts.push("Analysis has started but no results yet.");
   }
 
   if (autofix.status === "error") {
@@ -2128,18 +2119,8 @@ export function formatIssueOutput({
 
   output += "## Event Details\n\n";
 
-  // Check if this is an unsupported event type
-  // Event type union is: ErrorEvent | DefaultEvent | TransactionEvent | GenericEvent | CspEvent
-  // But in practice we may have other types returned as UnknownEvent
   const eventType = event.type;
-  const isUnsupportedType =
-    eventType !== "error" &&
-    eventType !== "default" &&
-    eventType !== "transaction" &&
-    eventType !== "generic" &&
-    eventType !== "csp";
-
-  if (isUnsupportedType) {
+  if (!isSupportedEventType(event)) {
     // Log to Sentry for tracking new/unknown event types
     const sentryEventId = logIssue(
       `Unsupported event type encountered: ${String(eventType)}`,
@@ -2185,8 +2166,15 @@ export function formatIssueOutput({
 
   output += `**Event ID**: ${event.id}\n`;
   output += `**Type**: ${event.type}\n`;
-  const isSharedFormatterType = usesSharedFormatterBody(event);
-  if (isSharedFormatterType) {
+  // "default" type represents error events without exception data
+  // "generic" type represents performance regressions and metric-based issues
+  // "csp" type represents Content Security Policy violations
+  if (
+    event.type === "error" ||
+    event.type === "default" ||
+    event.type === "generic" ||
+    event.type === "csp"
+  ) {
     const typedEvent = event as
       | z.infer<typeof ErrorEventSchema>
       | z.infer<typeof DefaultEventSchema>
@@ -2200,40 +2188,17 @@ export function formatIssueOutput({
     output += `**Message**:\n${event.message}\n`;
   }
   output += "\n";
-  // only a markdown body belongs in this output; a json body is for structuredContent, and
-  // pasting it here would put a serialized object in the middle of the prose
-  if (
-    isSharedFormatterType &&
-    event.formatted?.format === "markdown" &&
-    event.formatted.content
-  ) {
-    // the shared formatter body doesn't include the replay note — add it here to match formatEventOutput
-    output += formatIssueReplayOutput({
+  output += formatEventOutput(event, {
+    performanceTrace,
+    replaySummary: {
       apiService,
       organizationSlug,
-      event,
       relatedReplayIds,
       experimentalMode: experimentalMode ?? false,
       availableToolNames,
       directToolNames,
-    });
-    const formattedContent = event.formatted.content;
-    output += formattedContent.endsWith("\n")
-      ? formattedContent
-      : `${formattedContent}\n`;
-  } else {
-    output += formatEventOutput(event, {
-      performanceTrace,
-      replaySummary: {
-        apiService,
-        organizationSlug,
-        relatedReplayIds,
-        experimentalMode: experimentalMode ?? false,
-        availableToolNames,
-        directToolNames,
-      },
-    });
-  }
+    },
+  });
 
   // Add Seer context if available
   if (autofixState) {
@@ -2249,27 +2214,74 @@ export function formatIssueOutput({
     output += "\n";
   }
 
+  output += "## Response Notes\n\n";
+  for (const note of buildIssueResponseNotes({
+    organizationSlug,
+    issue,
+    event,
+    apiService,
+    aiConversations,
+    experimentalMode,
+    availableToolNames,
+    directToolNames,
+  })) {
+    output += `- ${note}\n`;
+  }
+  return output;
+}
+
+/**
+ * The response notes as individual lines, without bullets.
+ *
+ * Both the markdown output and the structured payload need these, and they are mostly
+ * tool-call instructions whose availability depends on the session, so they are built once
+ * here rather than restated per output shape.
+ */
+export function buildIssueResponseNotes({
+  organizationSlug,
+  issue,
+  event,
+  apiService,
+  aiConversations,
+  experimentalMode,
+  availableToolNames,
+  directToolNames,
+}: {
+  organizationSlug: string;
+  issue: Issue;
+  event: Event;
+  apiService: SentryApiService;
+  aiConversations?: AIConversationReference[];
+  experimentalMode?: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+}): string[] {
+  const notes: string[] = [];
   const traceId =
     typeof event.contexts?.trace?.trace_id === "string" &&
     event.contexts.trace.trace_id.length > 0
       ? event.contexts.trace.trace_id
       : undefined;
 
-  output += "## Response Notes\n\n";
   const commitIssueReference = /^\d+$/.test(issue.shortId)
     ? apiService.getIssueUrl(organizationSlug, issue.shortId)
     : issue.shortId;
-  output += `- Commit message issue reference: \`Fixes ${commitIssueReference}\` automatically closes the issue when the commit is merged.\n`;
-  output +=
-    "- The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.\n";
+  notes.push(
+    `Commit message issue reference: \`Fixes ${commitIssueReference}\` automatically closes the issue when the commit is merged.`,
+  );
+  notes.push(
+    "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
+  );
   if (aiConversations && aiConversations.length > 0) {
-    output += formatAIConversationResponseNote({
-      aiConversations,
-      organizationSlug,
-      experimentalMode: experimentalMode ?? false,
-      availableToolNames,
-      directToolNames,
-    });
+    notes.push(
+      ...buildAIConversationResponseNotes({
+        aiConversations,
+        organizationSlug,
+        experimentalMode: experimentalMode ?? false,
+        availableToolNames,
+        directToolNames,
+      }),
+    );
   }
   const issueEventSearchInstruction = formatToolCallInstruction({
     toolName: "search_issue_events",
@@ -2283,7 +2295,7 @@ export function formatIssueOutput({
     directToolNames,
     fallbackInstruction: "Issue event search is not available in this session",
   });
-  output += `- Issue event search: ${issueEventSearchInstruction}\n`;
+  notes.push(`Issue event search: ${issueEventSearchInstruction}`);
   const hasMultipleThreads = event.entries?.some((entry) => {
     if (entry.type !== "threads") {
       return false;
@@ -2308,7 +2320,7 @@ export function formatIssueOutput({
         "to fetch a full thread stacktrace by numeric Thread ID or exact thread Name. Omit `thread` to use Sentry's default selected thread",
     });
     if (stacktraceInstruction) {
-      output += `- Thread stacktrace lookup: ${stacktraceInstruction}\n`;
+      notes.push(`Thread stacktrace lookup: ${stacktraceInstruction}`);
     }
   }
   if (traceId) {
@@ -2349,9 +2361,11 @@ export function formatIssueOutput({
       fallbackInstruction:
         "Related log search is not available in this session",
     });
-    output += `- Full distributed trace and span tree: ${traceDetailsInstruction}\n`;
-    output += `- Related span search: ${spanSearchInstruction}\n`;
-    output += `- Related log search: ${logSearchInstruction}\n`;
+    notes.push(
+      `Full distributed trace and span tree: ${traceDetailsInstruction}`,
+    );
+    notes.push(`Related span search: ${spanSearchInstruction}`);
+    notes.push(`Related log search: ${logSearchInstruction}`);
   }
   if (experimentalMode) {
     const breadcrumbsInstruction = formatToolCallInstruction({
@@ -2365,12 +2379,14 @@ export function formatIssueOutput({
       fallbackInstruction:
         "Issue breadcrumbs are not available in this session",
     });
-    output += `- Breadcrumb trail leading up to this error: ${breadcrumbsInstruction}\n`;
+    notes.push(
+      `Breadcrumb trail leading up to this error: ${breadcrumbsInstruction}`,
+    );
   }
-  return output;
+  return notes;
 }
 
-function formatAIConversationResponseNote({
+function buildAIConversationResponseNotes({
   aiConversations,
   organizationSlug,
   experimentalMode,
@@ -2382,7 +2398,7 @@ function formatAIConversationResponseNote({
   experimentalMode: boolean;
   availableToolNames?: ReadonlySet<string>;
   directToolNames?: ReadonlySet<string>;
-}): string {
+}): string[] {
   const instructions = formatAIConversationActionInstructions({
     organizationSlug,
     aiConversations,
@@ -2396,13 +2412,31 @@ function formatAIConversationResponseNote({
     const spanSuffix = conversation.spanId
       ? ` Matching span: \`${conversation.spanId}\`.`
       : "";
-    return `- Agent conversation found in this trace: \`${conversation.conversationId}\`.${spanSuffix}\n${instructions.map((instruction) => `- ${instruction}`).join("\n")}\n`;
+    return [
+      `Agent conversation found in this trace: \`${conversation.conversationId}\`.${spanSuffix}`,
+      ...instructions,
+    ];
   }
 
   const conversationIds = aiConversations
     .map((conversation) => `\`${conversation.conversationId}\``)
     .join(", ");
-  return `- Multiple agent conversations were found in this trace: ${conversationIds}.\n${instructions.map((instruction) => `- ${instruction}`).join("\n")}\n`;
+  return [
+    `Multiple agent conversations were found in this trace: ${conversationIds}.`,
+    ...instructions,
+  ];
+}
+
+function formatAIConversationResponseNote(args: {
+  aiConversations: AIConversationReference[];
+  organizationSlug: string;
+  experimentalMode: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+}): string {
+  return `${buildAIConversationResponseNotes(args)
+    .map((note) => `- ${note}`)
+    .join("\n")}\n`;
 }
 
 const MAX_DISPLAY_REPLAYS = 5;

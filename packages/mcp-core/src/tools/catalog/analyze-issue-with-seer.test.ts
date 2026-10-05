@@ -4,7 +4,7 @@ import {
   createUnsupportedIssue,
   mswServer,
 } from "@sentry/mcp-server-mocks";
-import { http, HttpResponse } from "msw";
+import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import analyzeIssueWithSeer from "./analyze-issue-with-seer.js";
 
@@ -55,42 +55,6 @@ describe("analyze_issue_with_seer", () => {
     expect(result).toContain("## Analysis Complete");
     expect(result).toContain('<seer_analysis run_id="13" step="root_cause">');
     expect(result).toContain("The analysis has completed successfully.");
-  });
-
-  it("uses formatted.content from the autofix endpoint when present", async () => {
-    mswServer.use(
-      http.get(
-        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-FMT/autofix/",
-        () =>
-          HttpResponse.json({
-            autofix: { run_id: 42, status: "completed", blocks: [] },
-            formatted: {
-              format: "markdown",
-              content: "## Root Cause\n\nSHARED-AUTOFIX-MARKER",
-            },
-          }),
-      ),
-    );
-
-    const result = await analyzeIssueWithSeer.handler(
-      {
-        organizationSlug: "sentry-mcp-evals",
-        regionUrl: null,
-        instruction: undefined,
-        issueId: "CLOUDFLARE-MCP-FMT",
-        issueUrl: undefined,
-      },
-      {
-        constraints: { organizationSlug: undefined },
-        accessToken: "access-token",
-        userId: "1",
-      },
-    );
-
-    expect(result).toContain("SHARED-AUTOFIX-MARKER"); // body from the shared /autofix/ formatter
-    // LLM-generated content is still wrapped in the untrusted-data boundary
-    expect(result).toContain('<seer_analysis run_id="42" step="analysis">');
-    expect(result).toContain("</seer_analysis>");
   });
 
   it("wraps completed Seer-authored sections with provenance tags", async () => {
