@@ -135,7 +135,7 @@ LOGS TEXT MATCHING (LOGS DATASET ONLY):
 - The pattern ends at the first // followed by a space, ) or the end of the query. Spaces, parentheses, and a // followed by anything else (https?://host) are fine unquoted; write \\/\\/ for a literal // followed by a space or )
 - Regex uses RE2 syntax (no lookarounds or backreferences), matches anywhere unless anchored, and is case sensitive; prefix the pattern with (?i) to ignore case
 - Patterns are limited to 64 characters (an escape like \\d counts as one)
-- Regex only works on string and array attributes, and only in the logs dataset; other datasets treat //...// as a literal value
+- Regex only works on string attributes, and only in the logs dataset; other datasets treat //...// as a literal value
 
 MATHEMATICAL QUERY PATTERNS:
 When user asks mathematical questions like "how many X", "total Y used", "sum of Z":
