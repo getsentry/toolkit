@@ -35,6 +35,20 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
 
 // biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
+
+vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../src/lib/browser.js")>();
+  return Object.fromEntries(
+    Object.entries(actual).map(([k, v]) => [
+      k,
+      typeof v === "function" ? vi.fn(v) : v,
+    ])
+  );
+});
+
+// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+import * as browser from "../../../src/lib/browser.js";
 import { ContextError } from "../../../src/lib/errors.js";
 
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
@@ -141,9 +155,13 @@ describe("logsCommand.func", () => {
   let resolveOrgSpy: ReturnType<typeof spyOn>;
   let resolveOrgOnlyTargetSpy: ReturnType<typeof spyOn>;
   let withProgressSpy: ReturnType<typeof spyOn>;
+  let openInBrowserSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     listTraceLogsSpy = vi.spyOn(apiClient, "listTraceLogs");
+    openInBrowserSpy = vi
+      .spyOn(browser, "openInBrowser")
+      .mockResolvedValue(undefined);
     resolveOrgSpy = vi.spyOn(resolveTarget, "resolveOrg");
     resolveOrgOnlyTargetSpy = vi
       .spyOn(resolveTarget, "resolveOrgOnlyTarget")
@@ -163,6 +181,7 @@ describe("logsCommand.func", () => {
     resolveOrgSpy.mockRestore();
     resolveOrgOnlyTargetSpy.mockRestore();
     withProgressSpy.mockRestore();
+    openInBrowserSpy.mockRestore();
   });
 
   describe("JSON output mode", () => {
@@ -511,23 +530,22 @@ describe("logsCommand.func", () => {
 
       const { context } = createMockContext();
       const func = await logsCommand.loader();
-      // --web would call openInBrowser which needs a real browser; catch any error
-      try {
-        await func.call(
-          context,
-          {
-            json: false,
-            web: true,
-            period: parsePeriod("14d"),
-            limit: 100,
-            sort: "newest",
-          },
-          TRACE_ID
-        );
-      } catch {
-        // openInBrowser may throw in test environment — that's OK
-      }
+      await func.call(
+        context,
+        {
+          json: false,
+          web: true,
+          period: parsePeriod("14d"),
+          limit: 100,
+          sort: "newest",
+        },
+        TRACE_ID
+      );
 
+      expect(openInBrowserSpy).toHaveBeenCalledWith(
+        expect.stringContaining(TRACE_ID),
+        "trace"
+      );
       expect(listTraceLogsSpy).not.toHaveBeenCalled();
     });
   });
