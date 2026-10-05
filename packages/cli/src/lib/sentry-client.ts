@@ -574,6 +574,9 @@ async function fetchWithRetry(
   throw new Error("Exhausted all retry attempts");
 }
 
+// Node's RequestInit types omit cache; Request exposes the supported values.
+type CacheRequestInit = RequestInit & { cache?: Request["cache"] };
+
 /**
  * Create a fetch function with authentication, timeout, retry, caching, and 401 refresh.
  *
@@ -595,11 +598,11 @@ async function fetchWithRetry(
  */
 function createAuthenticatedFetch(): (
   input: Request | string | URL,
-  init?: RequestInit
+  init?: CacheRequestInit
 ) => Promise<Response> {
   return function authenticatedFetch(
     input: Request | string | URL,
-    init?: RequestInit
+    init?: CacheRequestInit
   ): Promise<Response> {
     // Reset cache-hit age so it reflects only this request's outcome.
     // Commands read it after their primary API call to show cache-age hints.
@@ -614,6 +617,9 @@ function createAuthenticatedFetch(): (
 
     const method =
       init?.method ?? (input instanceof Request ? input.method : "GET");
+    const reload =
+      (init?.cache ?? (input instanceof Request ? input.cache : undefined)) ===
+      "reload";
     const urlPath = extractUrlPath(input);
 
     return withTracingSpan(
@@ -625,11 +631,9 @@ function createAuthenticatedFetch(): (
 
         // Check cache before auth/retry for GET requests.
         // Uses current token (no refresh) so lookups are fast but Vary-correct.
-        const cached = await tryCacheHit(
-          method,
-          fullUrl,
-          authHeaders(getAuthToken())
-        );
+        const cached = reload
+          ? undefined
+          : await tryCacheHit(method, fullUrl, authHeaders(getAuthToken()));
         if (cached) {
           span.setAttribute("http.response.status_code", cached.status);
           log.debug(

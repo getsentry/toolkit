@@ -211,9 +211,11 @@ export const planCommand = buildCommand({
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7, sentry/cli-G\n" +
       "  <org>/@selector  - Selector with org: my-org/@latest\n" +
       "  <project>-suffix - Project + suffix: cli-G, spotlight-electron-4Y\n" +
-      "  ID               - Short ID: CLI-G (searches across orgs)\n" +
+      "  ID               - Short ID: CLI-G (uses configured org when set)\n" +
       "  suffix           - Suffix only: G (requires DSN context)\n" +
       "  numeric          - Numeric ID: 123456789\n\n" +
+      "Full short IDs use SENTRY_ORG, .sentryclirc, or 'sentry cli defaults' for the org.\n" +
+      "Without a configured org, the CLI uses a matching DSN or searches accessible orgs.\n\n" +
       "Prerequisites:\n" +
       "  - GitHub integration configured for your organization\n" +
       "  - Code mappings set up for your project\n\n" +

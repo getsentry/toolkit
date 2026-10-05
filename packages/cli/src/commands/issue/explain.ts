@@ -95,9 +95,11 @@ export const explainCommand = buildCommand({
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7, sentry/cli-G\n" +
       "  <org>/@selector  - Selector with org: my-org/@latest\n" +
       "  <project>-suffix - Project + suffix: cli-G, spotlight-electron-4Y\n" +
-      "  ID               - Short ID: CLI-G (searches across orgs)\n" +
+      "  ID               - Short ID: CLI-G (uses configured org when set)\n" +
       "  suffix           - Suffix only: G (requires DSN context)\n" +
       "  numeric          - Numeric ID: 123456789\n\n" +
+      "Full short IDs use SENTRY_ORG, .sentryclirc, or 'sentry cli defaults' for the org.\n" +
+      "Without a configured org, the CLI uses a matching DSN or searches accessible orgs.\n\n" +
       "Multiple issue IDs can be passed as separate arguments or newline-separated\n" +
       "within a single argument.\n\n" +
       "Examples:\n" +

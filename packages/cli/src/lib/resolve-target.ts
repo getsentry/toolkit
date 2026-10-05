@@ -1841,20 +1841,8 @@ export async function resolveOrgProjectOrGuide(
   return resolved ?? (await guideOrgProjectFailure(options));
 }
 
-/**
- * Resolve organization only from multiple sources.
- *
- * Resolution priority:
- * 1. Positional argument
- * 2. SENTRY_ORG / SENTRY_PROJECT env vars
- * 3. `.sentryclirc` config file
- * 4. Config defaults
- * 5. DSN auto-detection
- *
- * @param options - Resolution options with flag and cwd
- * @returns Resolved org, or null if resolution failed
- */
-export async function resolveOrg(
+/** Resolve an explicitly configured org, without inferring one from a DSN. */
+export async function resolveConfiguredOrg(
   options: ResolveOrgOptions
 ): Promise<ResolvedOrg | null> {
   const { org, cwd } = options;
@@ -1889,10 +1877,25 @@ export async function resolveOrg(
     return { org: defaultOrg };
   }
 
+  return null;
+}
+
+/**
+ * Resolve an org from arguments, environment, .sentryclirc, defaults, then DSN.
+ * Configured context takes precedence over automatic detection.
+ */
+export async function resolveOrg(
+  options: ResolveOrgOptions
+): Promise<ResolvedOrg | null> {
+  const configured = await resolveConfiguredOrg(options);
+  if (configured) {
+    return configured;
+  }
+
   // 5. DSN auto-detection
   // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const result = await resolveOrgFromDsn(cwd);
+    const result = await resolveOrgFromDsn(options.cwd);
     if (result) {
       // resolveOrgFromDsn may return a bare numeric org ID when the project
       // cache is cold. Normalize to a slug so API endpoints that reject

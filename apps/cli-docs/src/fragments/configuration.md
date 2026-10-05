@@ -55,6 +55,11 @@ When the CLI needs to determine your org and project, it checks these sources in
 
 The first source that provides both org and project wins. For org-only commands, only the org is needed.
 
+Full issue short IDs, such as `sentry issue view FRONT-ABC`, only need the org:
+`SENTRY_ORG`, `.sentryclirc`, and persistent defaults scope the lookup in that order.
+Use `sentry issue view other-org/FRONT-ABC` to override the configured organization.
+Project aliases retain their associated organization. See [View an issue](./commands/issue/#view-an-issue).
+
 ### Backward Compatibility
 
 If you previously used the legacy `sentry-cli` and have a `~/.sentryclirc` file, the new CLI reads it automatically. The `[defaults]` and `[auth]` sections are fully compatible. The `[auth] token` value is mapped to the `SENTRY_AUTH_TOKEN` environment variable internally (only if the env var is not already set).

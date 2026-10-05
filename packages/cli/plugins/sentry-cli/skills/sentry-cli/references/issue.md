@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-issue
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Manage Sentry issues
 requires:
   bins: ["sentry"]
@@ -231,6 +231,8 @@ sentry issue view FRONT-ABC
 
 # Multiple issues in one invocation (space-separated, not commas)
 sentry issue view FRONT-ABC BACK-2
+
+sentry issue view my-org/FRONT-ABC
 
 # Open one or more issues in the browser (up to 5 tabs by default)
 sentry issue view FRONT-ABC BACK-2 -w

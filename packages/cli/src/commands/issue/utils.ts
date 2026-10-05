@@ -16,6 +16,7 @@ import {
   type IssueSort,
   listIssuesPaginated,
   listOrganizations,
+  listOrganizationsUncached,
   ORG_FANOUT_CONCURRENCY,
   triggerRootCauseAnalysis,
   tryGetIssueByShortId,
@@ -32,6 +33,7 @@ import {
   setCachedIssueOrg,
 } from "../../lib/db/issue-org-cache.js";
 import { getProjectByAlias } from "../../lib/db/project-aliases.js";
+import { getCachedOrganizations } from "../../lib/db/regions.js";
 import { detectAllDsns } from "../../lib/dsn/index.js";
 import {
   ApiError,
@@ -46,6 +48,7 @@ import { logger } from "../../lib/logger.js";
 import { poll } from "../../lib/polling.js";
 import { resolveEffectiveOrg } from "../../lib/region.js";
 import {
+  resolveConfiguredOrg,
   resolveFromDsn,
   resolveOrg,
   resolveOrgAndProject,
@@ -331,14 +334,60 @@ async function resolveProjectSearchFallback(
   );
 }
 
+/** Search the supplied orgs and preserve failures when none could be queried. */
+async function findIssuesByShortId(
+  orgSlugs: readonly string[],
+  fullShortId: string
+): Promise<StrictResolvedIssue[]> {
+  const limit = pLimit(ORG_FANOUT_CONCURRENCY);
+  const results = await Promise.all(
+    orgSlugs.map((org) =>
+      limit(() =>
+        withAuthGuard(() =>
+          tryGetIssueByShortId(org, fullShortId, {
+            collapse: ISSUE_DETAIL_COLLAPSE,
+          })
+        )
+      )
+    )
+  );
+
+  const successes: StrictResolvedIssue[] = [];
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    const org = orgSlugs[i];
+    if (result && org && result.ok && result.value) {
+      successes.push({ org, issue: result.value });
+    }
+  }
+
+  // If every org failed with a real error (403, 5xx, network timeout),
+  // surface it instead of falling through to a misleading "not found".
+  // Only throw when ALL results are errors — if some orgs returned clean
+  // 404s ({ok: true, value: null}), fall through to the fallback for a
+  // precise error message.
+  const realErrors = results.filter(
+    (r): r is AuthGuardFailure => r !== undefined && !r.ok
+  );
+  if (realErrors.length === results.length && realErrors.length > 0) {
+    const firstError = realErrors[0]?.error;
+    if (firstError instanceof Error) {
+      throw firstError;
+    }
+  }
+
+  return successes;
+}
+
 /**
  * Resolve project-search type: search for project across orgs, then fetch issue.
  *
  * Resolution order:
  * 1. Try alias cache (fast, local)
- * 2. Check DSN detection cache
- * 3. Try shortid endpoint directly across all orgs (fast path)
- * 4. Fall back to findProjectsBySlug for precise error messages
+ * 2. Use the configured organization, if any
+ * 3. Check DSN detection cache for the matching project
+ * 4. Search accessible orgs, refreshing a cached list once on a miss
+ * 5. Fall back to findProjectsBySlug for precise error messages
  *
  * @param projectSlug - Project slug to search for
  * @param suffix - Issue suffix (uppercase)
@@ -362,7 +411,17 @@ async function resolveProjectSearch(
     return aliasResult;
   }
 
-  // 2. Check if DSN detection already resolved this project.
+  const fullShortId = expandToFullShortId(suffix, projectSlug);
+  const configured = await resolveConfiguredOrg({ cwd });
+  if (configured) {
+    const org = await resolveEffectiveOrg(configured.org);
+    const issue = await getIssueByShortId(org, fullShortId, {
+      collapse: ISSUE_DETAIL_COLLAPSE,
+    });
+    return { org, issue };
+  }
+
+  // Check if DSN detection already resolved this project.
   //    resolveFromDsn() reads from the DSN cache (populated by detectAllDsns
   //    in tryResolveFromAlias above) + project cache. This avoids the expensive
   //    listOrganizations() fan-out when the DSN matches the target project.
@@ -378,40 +437,33 @@ async function resolveProjectSearch(
     dsnTarget &&
     dsnTarget.project.toLowerCase() === projectSlug.toLowerCase()
   ) {
-    const fullShortId = expandToFullShortId(suffix, dsnTarget.project);
     const issue = await getIssueByShortId(dsnTarget.org, fullShortId, {
       collapse: ISSUE_DETAIL_COLLAPSE,
     });
     return { org: dsnTarget.org, issue };
   }
 
-  // 3. Fast path: try resolving the short ID directly across all orgs.
+  // Try resolving the short ID directly across all orgs.
   //    The shortid endpoint validates both project existence and issue existence
   //    in a single call, eliminating the separate getProject() round-trip.
   //    Concurrency-limited to avoid overwhelming the API for enterprise users.
-  const fullShortId = expandToFullShortId(suffix, projectSlug);
+  const hadCachedOrganizations = getCachedOrganizations().length > 0;
   const orgs = await listOrganizations();
 
-  const limit = pLimit(ORG_FANOUT_CONCURRENCY);
-  const results = await Promise.all(
-    orgs.map((org) =>
-      limit(() =>
-        withAuthGuard(() =>
-          tryGetIssueByShortId(org.slug, fullShortId, {
-            collapse: ISSUE_DETAIL_COLLAPSE,
-          })
-        )
-      )
-    )
+  let successes = await findIssuesByShortId(
+    orgs.map((org) => org.slug),
+    fullShortId
   );
 
-  const successes: StrictResolvedIssue[] = [];
-  for (let i = 0; i < results.length; i++) {
-    const result = results[i];
-    const org = orgs[i];
-    if (result && org && result.ok && result.value) {
-      successes.push({ org: org.slug, issue: result.value });
-    }
+  // A nonempty cache need not include every accessible org. Refresh once on
+  // a miss, and only search orgs not already queried in this invocation.
+  if (successes.length === 0 && hadCachedOrganizations) {
+    const searchedOrgs = new Set(orgs.map((org) => org.slug));
+    const freshOrgs = await listOrganizationsUncached();
+    const newOrgSlugs = freshOrgs
+      .map((org) => org.slug)
+      .filter((org) => !searchedOrgs.has(org));
+    successes = await findIssuesByShortId(newOrgSlugs, fullShortId);
   }
 
   if (successes.length === 1 && successes[0]) {
@@ -431,22 +483,7 @@ async function resolveProjectSearch(
     );
   }
 
-  // If every org failed with a real error (403, 5xx, network timeout),
-  // surface it instead of falling through to a misleading "not found".
-  // Only throw when ALL results are errors — if some orgs returned clean
-  // 404s ({ok: true, value: null}), fall through to the fallback for a
-  // precise error message.
-  const realErrors = results.filter(
-    (r): r is AuthGuardFailure => r !== undefined && !r.ok
-  );
-  if (realErrors.length === results.length && realErrors.length > 0) {
-    const firstError = realErrors[0]?.error;
-    if (firstError instanceof Error) {
-      throw firstError;
-    }
-  }
-
-  // 4. Fall back to findProjectsBySlug for precise error messages
+  // Fall back to findProjectsBySlug for precise error messages
   //    and retry the issue lookup (handles transient failures).
   return resolveProjectSearchFallback(projectSlug, suffix, commandContext);
 }

@@ -63,14 +63,19 @@ export async function getUserRegions(): Promise<Region[]> {
  */
 export async function listOrganizationsPage(
   baseUrl: string,
-  options: { cursor?: string; perPage?: number } = {}
+  options: { cursor?: string; perPage?: number; cache?: "reload" } = {}
 ): Promise<PaginatedResponse<SentryOrganization[]>> {
   const config = getSdkConfig(baseUrl);
 
-  const result = await sdkListOrganizations({
+  // Node's RequestInit types omit cache, although the SDK forwards it to Request.
+  const requestOptions = {
     ...config,
+    cache: options.cache,
     query: { cursor: options.cursor, per_page: options.perPage },
-  });
+  } satisfies Parameters<typeof sdkListOrganizations>[0] & {
+    cache?: "reload";
+  };
+  const result = await sdkListOrganizations(requestOptions);
 
   // 403 enrichment (CLI-89, 24 users) is now handled centrally by
   // throwApiError() in infrastructure.ts — no per-endpoint catch needed.
@@ -148,6 +153,7 @@ export async function listOrganizationsUncached(): Promise<
       listOrganizationsPage(controlSiloUrl, {
         cursor,
         perPage: API_MAX_PER_PAGE,
+        cache: "reload",
       }),
     MAX_PAGINATION_PAGES * API_MAX_PER_PAGE
   );

@@ -108,6 +108,19 @@ sentry issue view FRONT-ABC
 sentry issue view FRONT-ABC BACK-2
 ```
 
+Full short IDs such as `FRONT-ABC` use your configured organization: `SENTRY_ORG`,
+then `.sentryclirc`, then the default set with `sentry cli defaults org`. The lookup
+stays within that organization. To select another organization, include it explicitly:
+
+```bash
+sentry issue view my-org/FRONT-ABC
+```
+
+Project aliases such as `f-abc` keep the organization associated with the alias.
+Without a configured organization, the CLI uses a matching detected project or
+searches your accessible organizations. If the short ID matches in multiple
+organizations, specify the organization explicitly.
+
 ```
 Issue: TypeError: Cannot read property 'foo' of undefined
 Short ID: FRONT-ABC
