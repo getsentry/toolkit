@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["jsx-a11y"],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": [
+    "apps/cli-docs/**",
+    "packages/cli/**",
+    "**/worker-configuration.d.ts",
+    "**/tsconfig*.json",
+    "packages/mcp-server-mocks/src/fixtures/**"
+  ],
+  "rules": {
+    "no-unused-vars": "off",
+    "jsx-a11y/interactive-supports-focus": "off"
+  },
+  "overrides": [
+    {
+      "files": ["packages/mcp-cloudflare/src/client/**/*.tsx"],
+      "rules": {
+        "jsx-a11y/no-static-element-interactions": "off"
+      }
+    }
+  ]
+}

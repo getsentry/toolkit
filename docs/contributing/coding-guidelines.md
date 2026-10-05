@@ -20,18 +20,24 @@ Essential patterns and standards for Sentry MCP development.
 
 ## Code Style
 
-### Biome Configuration
+### Formatting and linting
+
 - 2 spaces, double quotes, semicolons
-- Max line: 100 chars
+- Formatter width: 80 characters
 - Trailing commas in multiline
+- MCP and root files use Oxfmt and Oxlint; CLI files still use their own Biome rules.
+- CLI's custom Grit rules and inline suppressions remain active until their
+  equivalents are available in the new linter.
 
 ### Naming Conventions
+
 - Files: `kebab-case.ts`
 - Functions: `camelCase`
 - Types/Classes: `PascalCase`
 - Constants: `UPPER_SNAKE_CASE`
 
 ### Import Order
+
 ```typescript
 // 1. Node built-ins
 import { readFile } from "node:fs/promises";
@@ -50,14 +56,14 @@ export const toolName = {
   description: "Clear, concise description",
   parameters: z.object({
     required: z.string().describe("Description"),
-    optional: z.string().optional()
+    optional: z.string().optional(),
   }),
   execute: async (params, context) => {
     // 1. Validate inputs
     // 2. Call API
     // 3. Format output
     return formatResponse(data);
-  }
+  },
 };
 ```
 
@@ -68,10 +74,10 @@ describe("Component", () => {
   it("handles normal case", async () => {
     // Arrange
     const input = createTestInput();
-    
+
     // Act
     const result = await method(input);
-    
+
     // Assert
     expect(result).toMatchInlineSnapshot();
   });
@@ -79,6 +85,7 @@ describe("Component", () => {
 ```
 
 Key practices:
+
 - Use inline snapshots for formatting
 - Mock with MSW
 - Test success and error paths
@@ -87,9 +94,12 @@ Key practices:
 ## Quality Checklist
 
 Before committing:
+
 ```bash
-pnpm -w run lint        # Biome check
+pnpm -w run lint        # Oxlint and ast-grep checks for MCP and root files
 pnpm -w run lint:fix    # Fix issues
+pnpm -w run format      # Format MCP and root files with Oxfmt
+pnpm --filter sentry run lint  # CLI Biome rules
 pnpm tsc --noEmit       # Type check
 pnpm test               # Run tests
 pnpm -w run build       # Build all
@@ -97,19 +107,19 @@ pnpm -w run build       # Build all
 
 ## JSDoc Pattern
 
-```typescript
+````typescript
 /**
  * Brief description.
- * 
+ *
  * @param param - Description
  * @returns What it returns
- * 
+ *
  * @example
  * ```typescript
  * const result = func(param);
  * ```
  */
-```
+````
 
 ## Security Essentials
 
@@ -121,6 +131,7 @@ pnpm -w run build       # Build all
 ## Common Patterns
 
 For shared patterns see:
+
 - Error handling: [common-patterns.md](common-patterns.md#error-handling)
 - Zod schemas: [common-patterns.md](common-patterns.md#zod-schema-patterns)
 - API usage: [api-patterns.md](api-patterns.md)

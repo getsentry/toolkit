@@ -109,7 +109,7 @@ export default function StepsList({
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             if (globalIndex === 6) {
-              typeof restart === "function" && restart();
+              if (typeof restart === "function") restart();
             } else {
               onSelectAction(Math.min(globalIndex + 1, steps.length - 1));
             }

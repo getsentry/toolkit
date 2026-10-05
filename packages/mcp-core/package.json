@@ -151,7 +151,7 @@
     "test:ci": "pnpm run generate-definitions && pnpm run validate-skills && vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "test:watch": "pnpm run generate-definitions && vitest",
     "tsc": "tsc --noEmit",
-    "generate-definitions": "tsx scripts/generate-definitions.ts && biome format --write src/toolDefinitions.json src/skillDefinitions.json",
+    "generate-definitions": "tsx scripts/generate-definitions.ts && oxfmt --write src/toolDefinitions.json src/skillDefinitions.json",
     "generate-otel-namespaces": "tsx scripts/generate-otel-namespaces.ts",
     "measure-tokens": "tsx scripts/measure-token-cost.ts",
     "validate-skills": "tsx scripts/validate-skills-mapping.ts"

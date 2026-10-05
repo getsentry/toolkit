@@ -38,7 +38,6 @@ catalog:
   "@ai-sdk/mcp": ^1.0.16
   "@ai-sdk/openai": ^3.0.23
   "@ai-sdk/react": ^3.0.232
-  "@biomejs/biome": ^2.5.5
   "@cloudflare/vite-plugin": ^1.31.0
   "@cloudflare/vitest-pool-workers": 0.14.1
   "@cloudflare/workers-oauth-provider": ^0.10.3
@@ -74,6 +73,8 @@ catalog:
   miniflare: 4.20260401.0
   msw: ^2.10.2
   open: ^10.1.2
+  oxfmt: 0.72.0
+  oxlint: 1.87.0
   react: ^19.2.8
   react-dom: ^19.2.8
   react-markdown: ^9.1.0
@@ -94,21 +95,61 @@ catalog:
   zod: ^4.4.3
 
 minimumReleaseAgeExclude:
-  - '@ai-sdk/gateway@3.0.153'
-  - '@ai-sdk/provider-utils@4.0.40'
-  - '@ai-sdk/react@3.0.232'
+  - "@ai-sdk/gateway@3.0.153"
+  - "@ai-sdk/provider-utils@4.0.40"
+  - "@ai-sdk/react@3.0.232"
   - ai@6.0.230
   - agents@0.20.1
-  - '@sentry/browser-utils@11.1.0'
-  - '@sentry/browser@11.1.0'
-  - '@sentry/bundler-plugins@11.1.0'
-  - '@sentry/cloudflare@11.1.0'
-  - '@sentry/core@11.1.0'
-  - '@sentry/feedback@11.1.0'
-  - '@sentry/node@11.1.0'
-  - '@sentry/opentelemetry@11.1.0'
-  - '@sentry/react@11.1.0'
-  - '@sentry/replay-canvas@11.1.0'
-  - '@sentry/replay@11.1.0'
-  - '@sentry/server-runtime-injection@11.1.0'
-  - '@sentry/server-utils@11.1.0'
+  - "@sentry/browser-utils@11.1.0"
+  - "@sentry/browser@11.1.0"
+  - "@sentry/bundler-plugins@11.1.0"
+  - "@sentry/cloudflare@11.1.0"
+  - "@sentry/core@11.1.0"
+  - "@sentry/feedback@11.1.0"
+  - "@sentry/node@11.1.0"
+  - "@sentry/opentelemetry@11.1.0"
+  - "@sentry/react@11.1.0"
+  - "@sentry/replay-canvas@11.1.0"
+  - "@sentry/replay@11.1.0"
+  - "@sentry/server-runtime-injection@11.1.0"
+  - "@sentry/server-utils@11.1.0"
+  - "@oxfmt/binding-android-arm-eabi@0.72.0"
+  - "@oxfmt/binding-android-arm64@0.72.0"
+  - "@oxfmt/binding-darwin-arm64@0.72.0"
+  - "@oxfmt/binding-darwin-x64@0.72.0"
+  - "@oxfmt/binding-freebsd-x64@0.72.0"
+  - "@oxfmt/binding-linux-arm-gnueabihf@0.72.0"
+  - "@oxfmt/binding-linux-arm-musleabihf@0.72.0"
+  - "@oxfmt/binding-linux-arm64-gnu@0.72.0"
+  - "@oxfmt/binding-linux-arm64-musl@0.72.0"
+  - "@oxfmt/binding-linux-ppc64-gnu@0.72.0"
+  - "@oxfmt/binding-linux-riscv64-gnu@0.72.0"
+  - "@oxfmt/binding-linux-riscv64-musl@0.72.0"
+  - "@oxfmt/binding-linux-s390x-gnu@0.72.0"
+  - "@oxfmt/binding-linux-x64-gnu@0.72.0"
+  - "@oxfmt/binding-linux-x64-musl@0.72.0"
+  - "@oxfmt/binding-openharmony-arm64@0.72.0"
+  - "@oxfmt/binding-win32-arm64-msvc@0.72.0"
+  - "@oxfmt/binding-win32-ia32-msvc@0.72.0"
+  - "@oxfmt/binding-win32-x64-msvc@0.72.0"
+  - "@oxlint/binding-android-arm-eabi@1.87.0"
+  - "@oxlint/binding-android-arm64@1.87.0"
+  - "@oxlint/binding-darwin-arm64@1.87.0"
+  - "@oxlint/binding-darwin-x64@1.87.0"
+  - "@oxlint/binding-freebsd-x64@1.87.0"
+  - "@oxlint/binding-linux-arm-gnueabihf@1.87.0"
+  - "@oxlint/binding-linux-arm-musleabihf@1.87.0"
+  - "@oxlint/binding-linux-arm64-gnu@1.87.0"
+  - "@oxlint/binding-linux-arm64-musl@1.87.0"
+  - "@oxlint/binding-linux-ppc64-gnu@1.87.0"
+  - "@oxlint/binding-linux-riscv64-gnu@1.87.0"
+  - "@oxlint/binding-linux-riscv64-musl@1.87.0"
+  - "@oxlint/binding-linux-s390x-gnu@1.87.0"
+  - "@oxlint/binding-linux-x64-gnu@1.87.0"
+  - "@oxlint/binding-linux-x64-musl@1.87.0"
+  - "@oxlint/binding-openharmony-arm64@1.87.0"
+  - "@oxlint/binding-win32-arm64-msvc@1.87.0"
+  - "@oxlint/binding-win32-ia32-msvc@1.87.0"
+  - "@oxlint/binding-win32-x64-msvc@1.87.0"
+  - oxfmt@0.72.0
+  - oxlint@1.87.0
