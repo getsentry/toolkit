@@ -27,8 +27,16 @@ export type FlexibleEventData = Record<string, unknown>;
 
 const DEFAULT_MAX_VALUE_LENGTH = 200;
 const DEFAULT_MAX_ARRAY_ITEMS = 20;
-const SENTRY_SEARCH_TOKEN_PATTERN =
-  /(^|\s)!?([A-Za-z_][A-Za-z0-9_.[\],-]*):(?=\S)(?!\/\/)/g;
+const REGEX_FILTER_VALUE_SOURCE = String.raw`\/\/(?!\/\/(?:[\t\n )]|$))[^\n]{1,1024}?\/\/(?=[\t\n )]|$)`;
+const REGEX_FILTER_VALUE_PATTERN = new RegExp(`^${REGEX_FILTER_VALUE_SOURCE}`);
+const SEARCH_FILTER_KEY_SOURCE = String.raw`(^|\s)!?([A-Za-z_][A-Za-z0-9_.[\],-]*):`;
+const SEARCH_FILTER_KEY_BEFORE_PATTERN = new RegExp(
+  `${SEARCH_FILTER_KEY_SOURCE}$`,
+);
+const SENTRY_SEARCH_TOKEN_PATTERN = new RegExp(
+  String.raw`${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?:(?!\/\/)|(?=${REGEX_FILTER_VALUE_SOURCE}))`,
+  "g",
+);
 const KNOWN_SENTRY_SEARCH_KEYS = new Set([
   "browser",
   "device",
@@ -116,19 +124,34 @@ export function looksLikeSentrySearchSyntax(query?: string): boolean {
   return false;
 }
 
+export function readRegexFilterValue(
+  query: string,
+  index: number,
+): string | undefined {
+  if (
+    !query.startsWith("//", index) ||
+    !SEARCH_FILTER_KEY_BEFORE_PATTERN.test(query.slice(0, index))
+  ) {
+    return undefined;
+  }
+  return REGEX_FILTER_VALUE_PATTERN.exec(query.slice(index))?.[0];
+}
+
 const FULL_TEXT_SEARCH_KEYS = new Set(["message", "log.body"]);
 
 /**
- * Replace quoted regions with same-length placeholders so colons inside quotes
- * are not treated as filter-key separators (e.g. transaction:"handle message:hello").
- * Length is preserved so offsets still map back to the original query.
+ * Replace quoted regions and regex values with same-length placeholders so
+ * colons inside them are not treated as filter-key separators (e.g.
+ * transaction:"handle message:hello"). Length is preserved so offsets still
+ * map back to the original query.
  */
 function maskQuotedRegions(query: string): string {
   let out = "";
   let quote: '"' | "'" | null = null;
   let escaped = false;
 
-  for (const char of query) {
+  for (let i = 0; i < query.length; i += 1) {
+    const char = query[i];
     if (escaped) {
       escaped = false;
       out += quote ? "x" : char;
@@ -149,6 +172,12 @@ function maskQuotedRegions(query: string): string {
       }
       continue;
     }
+    const regexValue = readRegexFilterValue(query, i);
+    if (regexValue) {
+      out += `//${regexValue.slice(2, -2).replace(/[:\s]/g, "x")}//`;
+      i += regexValue.length - 1;
+      continue;
+    }
     if (char === '"' || char === "'") {
       quote = char;
       out += char;
@@ -163,6 +192,7 @@ function maskQuotedRegions(query: string): string {
 type SearchFilterOccurrence = {
   key: string;
   value: string;
+  regex: boolean;
 };
 
 function normalizeFilterValue(rawValue: string): string {
@@ -228,6 +258,16 @@ function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
     // Read the real value from the original query at the same offset so quotes
     // and multi-word quoted values are preserved before normalization.
     const valueStart = match.index + match[0].indexOf(":") + 1;
+    const regexValue = readRegexFilterValue(query, valueStart);
+    if (regexValue) {
+      occurrences.push({
+        key,
+        value: regexValue.slice(2, -2).toLowerCase(),
+        regex: true,
+      });
+      continue;
+    }
+
     const rawValue = readRawFilterValue(query, valueStart);
     if (!rawValue) {
       continue;
@@ -238,7 +278,7 @@ function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
       continue;
     }
 
-    occurrences.push({ key, value });
+    occurrences.push({ key, value, regex: false });
   }
 
   return occurrences;
@@ -257,7 +297,7 @@ function fullTextFilterValues(query: string): string[] {
 }
 
 function filterOccurrenceIdentity(occurrence: SearchFilterOccurrence): string {
-  return `${occurrence.key}\0${occurrence.value}`;
+  return `${occurrence.key}\0${occurrence.regex}\0${occurrence.value}`;
 }
 
 function escapeRegExp(value: string): string {
@@ -316,9 +356,36 @@ function unmatchedStructuredFilters(
   return unmatched;
 }
 
+function isRegexFilterDowngrade(
+  originalQuery: string,
+  repairedQuery: string,
+): boolean {
+  const originalRegexFilters = searchFilterOccurrences(originalQuery).filter(
+    (occurrence) => occurrence.regex,
+  );
+  if (originalRegexFilters.length === 0) {
+    return false;
+  }
+
+  const repairedFilters = searchFilterOccurrences(repairedQuery);
+  const repairedPlainFilters = repairedFilters.filter(
+    (occurrence) => !occurrence.regex,
+  );
+  return unmatchedStructuredFilters(originalRegexFilters, repairedFilters).some(
+    (filter) =>
+      repairedPlainFilters.some(
+        (repaired) =>
+          repaired.key === filter.key ||
+          (FULL_TEXT_SEARCH_KEYS.has(repaired.key) &&
+            isRelatedFilterValue(filter.value, repaired.value)),
+      ),
+  );
+}
+
 /**
  * True when a structured field:value filter was replaced with message/log.body
- * full-text matching (false-success path). Allows real attribute renames.
+ * full-text matching (false-success path), or a `key://pattern//` regex filter
+ * was replaced with a plain or wildcard filter. Allows real attribute renames.
  *
  * Uses multiset key+value matching so dropping one of several identical keys
  * (e.g. `custom:foo custom:bar` → `custom:bar message:"*foo*"`) is still caught.
@@ -331,6 +398,10 @@ export function isSemanticFilterDowngrade(
 ): boolean {
   if (!looksLikeSentrySearchSyntax(originalQuery)) {
     return false;
+  }
+
+  if (isRegexFilterDowngrade(originalQuery, repairedQuery)) {
+    return true;
   }
 
   const originalFilters = structuredFilterOccurrences(originalQuery);

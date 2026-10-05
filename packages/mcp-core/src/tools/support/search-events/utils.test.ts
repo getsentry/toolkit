@@ -297,6 +297,53 @@ describe("search query helpers", () => {
     expect(looksLikeSentrySearchSyntax("ERROR: service is down")).toBe(false);
   });
 
+  it("should detect regex filters", () => {
+    expect(looksLikeSentrySearchSyntax("message://^Timeout//")).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax("message://^Timeout after \\d+ms//"),
+    ).toBe(true);
+    expect(looksLikeSentrySearchSyntax("!message://(?i)healthcheck//")).toBe(
+      true,
+    );
+    expect(looksLikeSentrySearchSyntax("open http://example.com/a//b")).toBe(
+      false,
+    );
+  });
+
+  it("detects regex filters rewritten into plain or wildcard filters", () => {
+    expect(
+      isSemanticFilterDowngrade("message://^Timeout//", 'message:"*Timeout*"'),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "message://can't connect to \\w+//",
+        "message:*connect*",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "custom://^order-\\d+$// level:error",
+        'level:error message:"*order-*"',
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade("custom://^order-\\d+$//", "custom:order-*"),
+    ).toBe(true);
+
+    expect(
+      isSemanticFilterDowngrade(
+        "message://^Timeout//",
+        "message://^Timeout// severity:error",
+      ),
+    ).toBe(false);
+    expect(
+      isSemanticFilterDowngrade(
+        "custom://^order-\\d+$//",
+        "tags[custom]://^order-\\d+$//",
+      ),
+    ).toBe(false);
+  });
+
   it("detects message full-text downgrades but allows real field renames", () => {
     expect(
       isSemanticFilterDowngrade("conv_id:ZYGC-86ZR", 'message:"*ZYGC-86ZR*"'),

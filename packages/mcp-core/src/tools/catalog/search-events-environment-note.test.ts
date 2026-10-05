@@ -59,6 +59,18 @@ describe("collectRequestedEnvironments", () => {
       ),
     ).toEqual(["qa"]);
   });
+
+  it("keeps regex values with spaces and apostrophes as one token", () => {
+    expect(
+      collectRequestedEnvironments(
+        null,
+        "message://can't connect// environment:qa",
+      ),
+    ).toEqual(["qa"]);
+    expect(
+      collectRequestedEnvironments(null, "message://a environment:foo b//"),
+    ).toEqual([]);
+  });
 });
 
 describe("formatUnknownEnvironmentNote", () => {

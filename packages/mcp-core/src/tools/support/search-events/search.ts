@@ -52,6 +52,7 @@ import {
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
   validateEventsSearch,
 } from "./utils";
@@ -262,7 +263,8 @@ function tokenizeSearchQuery(query: string): string[] {
   let quote: '"' | "'" | null = null;
   let escaped = false;
 
-  for (const char of query) {
+  for (let i = 0; i < query.length; i += 1) {
+    const char = query[i];
     if (escaped) {
       currentToken += char;
       escaped = false;
@@ -280,6 +282,13 @@ function tokenizeSearchQuery(query: string): string[] {
       if (char === quote) {
         quote = null;
       }
+      continue;
+    }
+
+    const regexValue = readRegexFilterValue(query, i);
+    if (regexValue) {
+      currentToken += regexValue;
+      i += regexValue.length - 1;
       continue;
     }
 
