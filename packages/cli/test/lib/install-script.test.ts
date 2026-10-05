@@ -287,11 +287,18 @@ esac
       `#!/usr/bin/env bash
 set -euo pipefail
 url="\${!#}"
+printf '%s\\n' "$url" >> "$SENTRY_TEST_DIR/curl-urls"
 case "$url" in
   *"/token?"*)
+    if [[ "\${SENTRY_TEST_NIGHTLY_TOKEN_FAIL:-0}" != "0" ]]; then
+      exit 22
+    fi
     printf '{"token":"test-token"}'
     ;;
   *"/manifests/nightly")
+    if [[ "\${SENTRY_TEST_NIGHTLY_MANIFEST_FAIL:-0}" != "0" ]]; then
+      exit 22
+    fi
     cat <<'JSON'
 ${manifest}
 JSON
@@ -450,6 +457,44 @@ process.exitCode = result.status ?? 1;
     ]);
     expect(existsSync(join(installDir, "sentry"))).toBe(true);
     expect(installerTempFiles()).toEqual([]);
+    expect(recorded("curl-urls").slice(0, 3)).toEqual([
+      "https://ghcr.io/token?scope=repository:getsentry/toolkit:pull",
+      "https://ghcr.io/v2/getsentry/toolkit/manifests/nightly",
+      "https://ghcr.io/v2/getsentry/toolkit/blobs/sha256:test",
+    ]);
+  });
+
+  test.each([
+    { failure: "token", flag: "SENTRY_TEST_NIGHTLY_TOKEN_FAIL" },
+    { failure: "manifest", flag: "SENTRY_TEST_NIGHTLY_MANIFEST_FAIL" },
+  ])("does not fall back to legacy GHCR when Toolkit $failure fails", ({
+    flag,
+  }) => {
+    configureNightlyDownload(false);
+    env[flag] = "1";
+    const result = spawnSync("bash", [installScript, "--version", "nightly"], {
+      env,
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      flag === "SENTRY_TEST_NIGHTLY_TOKEN_FAIL"
+        ? "Failed to get GHCR token"
+        : "Failed to fetch nightly manifest from GHCR"
+    );
+    expect(result.stderr).not.toContain("Unexpected failure at line");
+    expect(recorded("curl-urls")).toEqual(
+      flag === "SENTRY_TEST_NIGHTLY_TOKEN_FAIL"
+        ? ["https://ghcr.io/token?scope=repository:getsentry/toolkit:pull"]
+        : [
+            "https://ghcr.io/token?scope=repository:getsentry/toolkit:pull",
+            "https://ghcr.io/v2/getsentry/toolkit/manifests/nightly",
+          ]
+    );
+    expect(recorded("setup-args")).toEqual([]);
+    expect(existsSync(join(installDir, "sentry"))).toBe(false);
   });
 
   test("uses the legacy release only after a Toolkit tag returns HTTP 404", () => {

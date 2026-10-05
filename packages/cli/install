@@ -202,18 +202,22 @@ if [[ "$requested_version" == "nightly" ]]; then
   echo -e "${MUTED}Fetching nightly build from GHCR...${NC}"
 
   # Step 1: Get anonymous pull token
-  GHCR_TOKEN=$(curl -sf \
-    "https://ghcr.io/token?scope=repository:getsentry/cli:pull" \
-    | awk -F'"' '{for(i=1;i<=NF;i++) if($i=="token"){print $(i+2);exit}}')
+  if ! GHCR_TOKEN=$(curl -sf \
+    "https://ghcr.io/token?scope=repository:getsentry/toolkit:pull" \
+    | awk -F'"' '{for(i=1;i<=NF;i++) if($i=="token"){print $(i+2);exit}}'); then
+    die "Failed to get GHCR token" "ghcr-token"
+  fi
   if [[ -z "$GHCR_TOKEN" ]]; then
     die "Failed to get GHCR token" "ghcr-token"
   fi
 
   # Step 2: Fetch the OCI manifest for the :nightly tag
-  MANIFEST=$(curl -sf \
+  if ! MANIFEST=$(curl -sf \
     -H "Authorization: Bearer $GHCR_TOKEN" \
     -H "Accept: application/vnd.oci.image.manifest.v1+json" \
-    "https://ghcr.io/v2/getsentry/cli/manifests/nightly")
+    "https://ghcr.io/v2/getsentry/toolkit/manifests/nightly"); then
+    die "Failed to fetch nightly manifest from GHCR" "ghcr-manifest"
+  fi
   if [[ -z "$MANIFEST" ]]; then
     die "Failed to fetch nightly manifest from GHCR" "ghcr-manifest"
   fi
@@ -248,7 +252,7 @@ if [[ "$requested_version" == "nightly" ]]; then
   # the redirect target.
   if ! blob_status=$(curl -sS -D "$blob_headers" -o "$blob_file" -w '%{http_code}' \
     -H "Authorization: Bearer $GHCR_TOKEN" \
-    "https://ghcr.io/v2/getsentry/cli/blobs/${digest}"); then
+    "https://ghcr.io/v2/getsentry/toolkit/blobs/${digest}"); then
     die "Failed to fetch nightly blob from GHCR" "ghcr-blob"
   fi
 
