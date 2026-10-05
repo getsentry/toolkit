@@ -15,7 +15,7 @@ import { isatty } from "node:tty";
 import { getProductTrials, startProductTrial } from "./api-client.js";
 import { SeerError, type SeerErrorReason } from "./errors.js";
 import { logger } from "./logger.js";
-import { buildBillingUrl } from "./sentry-urls.js";
+import { buildBillingUrl } from "./sentry-web-urls.js";
 import { findAvailableTrial } from "./trials.js";
 
 /** Seer error reasons eligible for trial prompt */

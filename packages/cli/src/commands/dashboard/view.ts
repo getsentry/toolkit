@@ -21,7 +21,7 @@ import {
 import { logger } from "../../lib/logger.js";
 import { withProgress } from "../../lib/polling.js";
 import { resolveOrgRegion } from "../../lib/region.js";
-import { buildDashboardUrl } from "../../lib/sentry-urls.js";
+import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { GraphicsRendererPreference } from "../../lib/sixel.js";
 import {
   formatTimeRangeFlag,

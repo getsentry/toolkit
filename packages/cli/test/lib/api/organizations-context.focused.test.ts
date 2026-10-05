@@ -25,10 +25,11 @@ useEnvSandbox([
 const originalFetch = globalThis.fetch;
 
 function identity(token: string): string {
-  return createHash("md5")
-    .update(`oauth-access|${token}`)
-    .digest("hex")
-    .slice(0, 16);
+  return createHash("sha256")
+    .update("oauth-access")
+    .update("\0")
+    .update(token)
+    .digest("hex");
 }
 
 describe("organization discovery credential context", () => {
@@ -212,6 +213,25 @@ describe("organization discovery credential context", () => {
         "path-region-org",
         "https://sentry.example.com",
         identity("path-region-token")
+      )
+    ).toBe("https://sentry.example.com/sentry");
+  });
+
+  test("keeps the installation path when organization metadata omits regionUrl", async () => {
+    process.env.SENTRY_URL = "https://sentry.example.com/sentry";
+    setAuthToken("pathless-region-token", undefined, undefined, {
+      host: "https://sentry.example.com",
+    });
+    globalThis.fetch = vi.fn(async () =>
+      Response.json([{ id: "6", slug: "pathless-org", name: "Pathless" }])
+    );
+
+    await listOrganizationsUncached();
+    expect(
+      getOrgRegion(
+        "pathless-org",
+        "https://sentry.example.com",
+        identity("pathless-region-token")
       )
     ).toBe("https://sentry.example.com/sentry");
   });

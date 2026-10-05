@@ -5,6 +5,7 @@
  * Supports self-hosted instances via SENTRY_URL environment variable.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   DEFAULT_SENTRY_HOST,
   DEFAULT_SENTRY_URL,
@@ -14,13 +15,19 @@ import {
 
 const HTTP_URL_RE = /^https?:\/\//i;
 const TRAILING_SLASHES_RE = /\/+$/;
+const scopedBaseUrl = new AsyncLocalStorage<string>();
+
+/** Render one web URL against the same credential host used for API calls. */
+export function withSentryBaseUrl<T>(baseUrl: string, build: () => T): T {
+  return scopedBaseUrl.run(baseUrl, build);
+}
 
 /**
  * Get the Sentry web base URL.
  * Supports self-hosted instances via SENTRY_URL env var.
  */
 export function getSentryBaseUrl(): string {
-  return getConfiguredSentryUrl() ?? DEFAULT_SENTRY_URL;
+  return scopedBaseUrl.getStore() ?? getConfiguredSentryUrl() ?? DEFAULT_SENTRY_URL;
 }
 
 /**

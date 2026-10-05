@@ -51,7 +51,7 @@ import {
   resolveOrgAndProject,
 } from "../../lib/resolve-target.js";
 import { parseSentryUrl } from "../../lib/sentry-url-parser.js";
-import { buildIssueUrl } from "../../lib/sentry-urls.js";
+import { buildIssueUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits } from "../../lib/utils.js";
 import type { SentryIssue } from "../../types/index.js";

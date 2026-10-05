@@ -5,7 +5,7 @@ import { buildCommand } from "../../../lib/command.js";
 import { ContextError } from "../../../lib/errors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
-import { buildIssueAlertsUrl } from "../../../lib/sentry-urls.js";
+import { buildIssueAlertsUrl } from "../../../lib/sentry-web-urls.js";
 import {
   type IssueRuleResolution,
   parseIssueRuleArg,

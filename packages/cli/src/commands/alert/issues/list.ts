@@ -71,7 +71,7 @@ import {
   type ResolvedTarget,
   resolveProjectBoundTargets,
 } from "../../../lib/resolve-target.js";
-import { buildIssueAlertsUrl } from "../../../lib/sentry-urls.js";
+import { buildIssueAlertsUrl } from "../../../lib/sentry-web-urls.js";
 import type { ProjectAliasEntry, Writer } from "../../../types/index.js";
 import {
   assertAlertListLimit,

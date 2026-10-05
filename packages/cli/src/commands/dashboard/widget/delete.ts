@@ -18,7 +18,7 @@ import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetDeleted } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { buildDeleteCommand } from "../../../lib/mutate-command.js";
-import { buildDashboardUrl } from "../../../lib/sentry-urls.js";
+import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
   type DashboardDetail,
   prepareDashboardForUpdate,

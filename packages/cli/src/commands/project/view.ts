@@ -32,7 +32,7 @@ import {
   resolveAllTargets,
   resolveProjectBoundSlug,
 } from "../../lib/resolve-target.js";
-import { buildProjectUrl } from "../../lib/sentry-urls.js";
+import { buildProjectUrl } from "../../lib/sentry-web-urls.js";
 import type { SentryProject } from "../../types/index.js";
 
 type ViewFlags = {

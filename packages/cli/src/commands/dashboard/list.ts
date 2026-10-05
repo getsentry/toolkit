@@ -34,7 +34,7 @@ import { withProgress } from "../../lib/polling.js";
 import {
   buildDashboardsListUrl,
   buildDashboardUrl,
-} from "../../lib/sentry-urls.js";
+} from "../../lib/sentry-web-urls.js";
 import type { DashboardListItem } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {

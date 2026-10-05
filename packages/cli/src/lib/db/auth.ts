@@ -559,15 +559,12 @@ function computeIdentityFingerprint(): string {
 }
 
 /**
- * 16-char MD5 hex of `kind|secret`. Not used for auth — just a cheap
- * cache namespace. Collisions are benign (identities would share a
- * cache slot, same as the anonymous case).
+ * Stable SHA-256 namespace for high-entropy OAuth and organization tokens.
+ * A collision would mix credentials' cached responses, so retain the full
+ * digest. This fingerprint is never a password verifier or a bearer token.
  */
 function hashIdentity(kind: string, secret: string): string {
-  return createHash("md5")
-    .update(`${kind}|${secret}`)
-    .digest("hex")
-    .slice(0, 16);
+  return createHash("sha256").update(kind).update("\0").update(secret).digest("hex");
 }
 
 /** Immutable token, host, and namespace captured from one auth state. */

@@ -23,7 +23,10 @@ import {
   getResponseRequestOrigin,
   getSdkConfig,
 } from "../sentry-client.js";
-import { normalizeRegionBaseUrl } from "../sentry-urls.js";
+import {
+  normalizeHttpOrigin,
+  normalizeRegionBaseUrl,
+} from "../sentry-urls.js";
 
 import {
   API_MAX_PER_PAGE,
@@ -37,9 +40,13 @@ import {
 
 function normalizeOrganizationRegion(
   raw: string | undefined,
-  responseOrigin: string
+  responseOrigin: string,
+  baseUrl: string
 ): string | undefined {
   if (!raw) {
+    if (normalizeHttpOrigin(baseUrl) === responseOrigin) {
+      return normalizeRegionBaseUrl(baseUrl, responseOrigin) ?? responseOrigin;
+    }
     return responseOrigin;
   }
   return normalizeRegionBaseUrl(raw, responseOrigin);
@@ -176,7 +183,8 @@ async function listOrganizationPages({
     const entries = page.data.flatMap((org) => {
       const region = normalizeOrganizationRegion(
         org.links?.regionUrl,
-        responseOrigin
+        responseOrigin,
+        baseUrl
       );
       return region
         ? [

@@ -68,7 +68,7 @@ import {
   applySentryUrlContext,
   parseSentryUrl,
 } from "../../lib/sentry-url-parser.js";
-import { buildEventSearchUrl } from "../../lib/sentry-urls.js";
+import { buildEventSearchUrl } from "../../lib/sentry-web-urls.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits } from "../../lib/utils.js";

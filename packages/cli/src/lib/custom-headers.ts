@@ -32,7 +32,10 @@ import { getEnv } from "./env.js";
 import { ConfigError } from "./errors.js";
 import { logger } from "./logger.js";
 import { isSentrySaasUrl } from "./sentry-urls.js";
-import { isRequestOriginTrustedForCustomHeaders } from "./token-host.js";
+import {
+  getActiveTokenHost,
+  isRequestOriginTrustedForCustomHeaders,
+} from "./token-host.js";
 
 const log = logger.withTag("custom-headers");
 
@@ -204,16 +207,15 @@ export function withCustomHeadersOverride<T>(
 /**
  * Check whether the current target is a self-hosted Sentry instance.
  *
- * Self-hosted = `SENTRY_HOST` or `SENTRY_URL` is set to a non-SaaS URL.
- * Returns false if no custom URL is configured (implying SaaS) or if the
- * configured URL points to `*.sentry.io`.
+ * The explicit URL wins; otherwise use the active credential's host. A
+ * claim-routed self-hosted token needs proxy headers even without URL vars.
  */
 function isSelfHosted(): boolean {
-  const configured = getConfiguredSentryUrl();
-  if (!configured) {
+  const target = getConfiguredSentryUrl() ?? getActiveTokenHost();
+  if (!target) {
     return false;
   }
-  return !isSentrySaasUrl(configured);
+  return !isSentrySaasUrl(target);
 }
 
 /**

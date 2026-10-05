@@ -1,6 +1,6 @@
 import { getProject, tryGetPrimaryDsn } from "../api-client.js";
 import { ApiError } from "../errors.js";
-import { buildProjectUrl } from "../sentry-urls.js";
+import { buildProjectUrl } from "../sentry-web-urls.js";
 import type { ExistingProjectData } from "./types.js";
 
 /**

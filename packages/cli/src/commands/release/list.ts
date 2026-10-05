@@ -44,7 +44,7 @@ import {
   resolveAllTargets,
   toNumericId,
 } from "../../lib/resolve-target.js";
-import { buildReleaseUrl } from "../../lib/sentry-urls.js";
+import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
 import type { SentryRelease } from "../../types/index.js";
 import { fmtCrashFree } from "./view.js";
 

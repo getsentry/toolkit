@@ -32,7 +32,7 @@ import {
 } from "./errors.js";
 import { logger } from "./logger.js";
 import { resolveEffectiveOrg } from "./region.js";
-import { getSentryBaseUrl } from "./sentry-urls.js";
+import { getSentryBaseUrl } from "./sentry-web-urls.js";
 
 const log = logger.withTag("resolve-team");
 

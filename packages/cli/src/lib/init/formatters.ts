@@ -21,8 +21,8 @@ import { stripAnsi } from "../formatters/plain-detect.js";
 import {
   buildEventSearchUrl,
   buildProjectIssuesUrl,
-  parseOrgProjectFromSettingsUrl,
-} from "../sentry-urls.js";
+} from "../sentry-web-urls.js";
+import { parseOrgProjectFromSettingsUrl } from "../sentry-urls.js";
 import { featureLabel, sortFeatures } from "./clack-utils.js";
 import {
   EXIT_DEPENDENCY_INSTALL_FAILED,

@@ -45,7 +45,7 @@ import {
   ValidationError,
   WizardError,
 } from "./errors.js";
-import { isSaaS } from "./sentry-urls.js";
+import { isSaaS } from "./sentry-web-urls.js";
 
 // ---------------------------------------------------------------------------
 // Silencing

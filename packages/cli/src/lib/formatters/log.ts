@@ -9,7 +9,7 @@ import type {
   SentryLog,
   TraceItemAttribute,
 } from "../../types/index.js";
-import { buildTraceUrl } from "../sentry-urls.js";
+import { buildTraceUrl } from "../sentry-web-urls.js";
 import {
   colorTag,
   escapeMarkdownCell,
