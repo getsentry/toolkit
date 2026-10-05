@@ -8,11 +8,24 @@ function messageRegexPattern(query: unknown): string | undefined {
   if (typeof query !== "string") {
     return undefined;
   }
-  return query.match(/(?:^|[\s(])!?message:\/\/(.+?)\/\/(?=[\s)]|$)/)?.[1];
+  const pattern = query.match(
+    /(?:^|[\s(])!?(?:message|log\.body):\/\/(.+?)\/\/(?=[\s)]|$)/,
+  )?.[1];
+  return pattern !== undefined && isSentryRegex(pattern) ? pattern : undefined;
 }
 
 function regexPatternLength(pattern: string): number {
   return pattern.replace(/\\./g, "_").length;
+}
+
+function isSentryRegex(pattern: string): boolean {
+  return (
+    regexPatternLength(pattern) <= 64 &&
+    !/\(\?<?[=!]/.test(pattern) &&
+    !/\\[1-9]/.test(pattern) &&
+    // A doubled backslash means the agent over-escaped, e.g. \\d for \d.
+    !pattern.includes("\\\\")
+  );
 }
 
 function hasRegexFilter(query: unknown): boolean {
@@ -62,7 +75,7 @@ describeEval("search-events-agent-regex", {
         query: (value: unknown) => {
           const pattern = messageRegexPattern(value);
           return (
-            /\b(severity|level):error\b/.test(String(value)) &&
+            /\bseverity:error\b/.test(String(value)) &&
             pattern !== undefined &&
             pattern.includes("5") &&
             pattern.endsWith("$")
@@ -78,7 +91,7 @@ describeEval("search-events-agent-regex", {
         dataset: "logs",
         query: (value: unknown) =>
           typeof value === "string" &&
-          value.includes("!message://") &&
+          /!(?:message|log\.body):\/\//.test(value) &&
           messageRegexPattern(value)?.includes("completed") === true,
       },
     },
@@ -92,8 +105,11 @@ describeEval("search-events-agent-regex", {
           const pattern = messageRegexPattern(value);
           return (
             pattern !== undefined &&
-            pattern.startsWith("(?i)") &&
-            pattern.toLowerCase().includes("connection refused") &&
+            /^\(\?i[):]/.test(pattern) &&
+            pattern
+              .toLowerCase()
+              .replace(/\\s[+*]?/g, " ")
+              .includes("connection refused") &&
             pattern.includes("\\d")
           );
         },
@@ -109,8 +125,7 @@ describeEval("search-events-agent-regex", {
           return (
             pattern !== undefined &&
             pattern.includes("-") &&
-            /\{(4|8|12|36)\}/.test(pattern) &&
-            regexPatternLength(pattern) <= 64
+            /\{(4|8|12|36)\}/.test(pattern)
           );
         },
       },
@@ -146,7 +161,9 @@ describeEval("search-events-agent-regex", {
       expected: {
         dataset: "spans",
         query: (value: unknown) =>
-          typeof value === "string" && !hasRegexFilter(value),
+          typeof value === "string" &&
+          value.includes("/api/users/") &&
+          !hasRegexFilter(value),
       },
     },
     {
@@ -155,29 +172,31 @@ describeEval("search-events-agent-regex", {
       expected: {
         dataset: "errors",
         query: (value: unknown) =>
-          typeof value === "string" && !hasRegexFilter(value),
+          typeof value === "string" &&
+          value.includes("timeout after") &&
+          !hasRegexFilter(value),
       },
     },
     {
-      input: "Show me error logs about database",
+      input: "Show me error logs about payments",
       expectedTools: [],
       expected: {
         dataset: "logs",
         query: (value: unknown) =>
           typeof value === "string" &&
-          value.includes("*database*") &&
-          !value.includes("://"),
+          value.includes("*payment") &&
+          !hasRegexFilter(value),
       },
     },
     {
-      input: "Find warning logs that mention memory",
+      input: "Find warning logs that mention disk space",
       expectedTools: [],
       expected: {
         dataset: "logs",
         query: (value: unknown) =>
           typeof value === "string" &&
-          value.includes("*memory*") &&
-          !value.includes("://"),
+          value.includes("*disk") &&
+          !hasRegexFilter(value),
       },
     },
   ],
