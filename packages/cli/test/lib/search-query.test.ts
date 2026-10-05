@@ -407,8 +407,8 @@ describe("sanitizeQuery: regex filters", () => {
   });
 
   test("passes through a malformed-looking list inside a pattern", () => {
-    expect(sanitizeQuery("message://codes [401,403,)//")).toBe(
-      "message://codes [401,403,)//"
+    expect(sanitizeQuery("message://codes [401,403,) seen//")).toBe(
+      "message://codes [401,403,) seen//"
     );
   });
 
@@ -425,23 +425,27 @@ describe("sanitizeQuery: regex filters", () => {
   });
 
   test("preserves repeated whitespace inside a pattern", () => {
-    expect(sanitizeQuery("message://a  b//")).toBe("message://a  b//");
+    expect(sanitizeQuery("message://a  AND  b//")).toBe(
+      "message://a  AND  b//"
+    );
   });
 
   test("passes through a negated regex filter", () => {
-    expect(sanitizeQuery("!message://^GET \\d+ms//")).toBe(
-      "!message://^GET \\d+ms//"
+    expect(sanitizeQuery("!message://^GET OR POST \\d+ms//")).toBe(
+      "!message://^GET OR POST \\d+ms//"
     );
   });
 
   test("passes through parentheses inside a pattern", () => {
-    expect(
-      sanitizeQuery("message://(ConnectionReset|ReadTimeout)Error//")
-    ).toBe("message://(ConnectionReset|ReadTimeout)Error//");
+    expect(sanitizeQuery("message://(reset|timeout) [0-9,]+//")).toBe(
+      "message://(reset|timeout) [0-9,]+//"
+    );
   });
 
   test("passes through a double quote inside a pattern", () => {
-    expect(sanitizeQuery('message://say "hi"//')).toBe('message://say "hi"//');
+    expect(sanitizeQuery('message://say "hi" [a,]//')).toBe(
+      'message://say "hi" [a,]//'
+    );
   });
 
   test("ends the pattern at the first // followed by whitespace", () => {
@@ -467,8 +471,8 @@ describe("sanitizeQuery: regex filters", () => {
   });
 
   test("does not rewrite numeric project: inside a pattern", () => {
-    expect(sanitizeQuery("message://project:123//")).toBe(
-      "message://project:123//"
+    expect(sanitizeQuery("message://in project:123 now//")).toBe(
+      "message://in project:123 now//"
     );
   });
 
