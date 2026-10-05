@@ -570,8 +570,11 @@ const PROJECT_NUMERIC_LIST_RE = /(^|\s)(!?)project:\[(\d+(?:\s*,\s*\d+)*)\]/gi;
  * whitespace, `)`, or end of query. Between matches is unquoted text that
  * can be safely normalized.
  */
-const PRESERVED_SEGMENT_RE =
-  /"(?:[^"\\]|\\.)*"|(?<=(?:^|[\s(])!?[\w.[\]-]+:)\/\/(?:(?!\/\/(?:[\t\n )]|$))[^\n])+\/\/(?=[\t\n )]|$)/g;
+const REGEX_FILTER_KEY_SOURCE = String.raw`(?:(?:tags|flags)\[[\w.:-]+(?: *, *(?:string|number|boolean|array))?\]|"[\w.:-]+"|[\w.[\]-]+)(?:\[\*\])?`;
+const PRESERVED_SEGMENT_RE = new RegExp(
+  String.raw`"(?:[^"\\]|\\.)*"|(?<=(?:^|[\s(])!?${REGEX_FILTER_KEY_SOURCE}:)\/\/(?:(?!\/\/(?:[\t\n )]|$))[^\n])+\/\/(?=[\t\n )]|$)`,
+  "g"
+);
 
 /**
  * Rewrite `project:<digits>` / `project:[digits,…]` to `project_id`.
