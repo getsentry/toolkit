@@ -2117,7 +2117,14 @@ export function formatIssueOutput({
   // Event type union is: ErrorEvent | DefaultEvent | TransactionEvent | GenericEvent | CspEvent
   // But in practice we may have other types returned as UnknownEvent
   const eventType = event.type;
-  if (!isSupportedEventType(event)) {
+  const isUnsupportedType =
+    eventType !== "error" &&
+    eventType !== "default" &&
+    eventType !== "transaction" &&
+    eventType !== "generic" &&
+    eventType !== "csp";
+
+  if (isUnsupportedType) {
     // Log to Sentry for tracking new/unknown event types
     const sentryEventId = logIssue(
       `Unsupported event type encountered: ${String(eventType)}`,
@@ -2148,15 +2155,13 @@ export function formatIssueOutput({
 
     if (aiConversations && aiConversations.length > 0) {
       output += "\n## Response Notes\n\n";
-      for (const note of buildAIConversationResponseNotes({
+      output += formatAIConversationResponseNote({
         aiConversations,
         organizationSlug,
         experimentalMode: experimentalMode ?? false,
         availableToolNames,
         directToolNames,
-      })) {
-        output += `- ${note}\n`;
-      }
+      });
     }
 
     // For unsupported event types, return early without trying to render event details
@@ -2211,67 +2216,27 @@ export function formatIssueOutput({
     output += "\n";
   }
 
-  output += "## Response Notes\n\n";
-  for (const note of buildIssueResponseNotes({
-    organizationSlug,
-    issue,
-    event,
-    apiService,
-    aiConversations,
-    experimentalMode,
-    availableToolNames,
-    directToolNames,
-  })) {
-    output += `- ${note}\n`;
-  }
-  return output;
-}
-
-export function buildIssueResponseNotes({
-  organizationSlug,
-  issue,
-  event,
-  apiService,
-  aiConversations,
-  experimentalMode,
-  availableToolNames,
-  directToolNames,
-}: {
-  organizationSlug: string;
-  issue: Issue;
-  event: Event;
-  apiService: SentryApiService;
-  aiConversations?: AIConversationReference[];
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
-}): string[] {
-  const notes: string[] = [];
   const traceId =
     typeof event.contexts?.trace?.trace_id === "string" &&
     event.contexts.trace.trace_id.length > 0
       ? event.contexts.trace.trace_id
       : undefined;
 
+  output += "## Response Notes\n\n";
   const commitIssueReference = /^\d+$/.test(issue.shortId)
     ? apiService.getIssueUrl(organizationSlug, issue.shortId)
     : issue.shortId;
-  notes.push(
-    `Commit message issue reference: \`Fixes ${commitIssueReference}\` automatically closes the issue when the commit is merged.`,
-  );
-  notes.push(
-    "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
-  );
+  output += `- Commit message issue reference: \`Fixes ${commitIssueReference}\` automatically closes the issue when the commit is merged.\n`;
+  output +=
+    "- The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.\n";
   if (aiConversations && aiConversations.length > 0) {
-    notes.push(
-      ...buildAIConversationResponseNotes({
-        aiConversations,
-        organizationSlug,
-        experimentalMode: experimentalMode ?? false,
-        availableToolNames,
-        directToolNames,
-      }),
-    );
+    output += formatAIConversationResponseNote({
+      aiConversations,
+      organizationSlug,
+      experimentalMode: experimentalMode ?? false,
+      availableToolNames,
+      directToolNames,
+    });
   }
   const issueEventSearchInstruction = formatToolCallInstruction({
     toolName: "search_issue_events",
@@ -2285,7 +2250,7 @@ export function buildIssueResponseNotes({
     directToolNames,
     fallbackInstruction: "Issue event search is not available in this session",
   });
-  notes.push(`Issue event search: ${issueEventSearchInstruction}`);
+  output += `- Issue event search: ${issueEventSearchInstruction}\n`;
   const hasMultipleThreads = event.entries?.some((entry) => {
     if (entry.type !== "threads") {
       return false;
@@ -2310,7 +2275,7 @@ export function buildIssueResponseNotes({
         "to fetch a full thread stacktrace by numeric Thread ID or exact thread Name. Omit `thread` to use Sentry's default selected thread",
     });
     if (stacktraceInstruction) {
-      notes.push(`Thread stacktrace lookup: ${stacktraceInstruction}`);
+      output += `- Thread stacktrace lookup: ${stacktraceInstruction}\n`;
     }
   }
   if (traceId) {
@@ -2351,11 +2316,9 @@ export function buildIssueResponseNotes({
       fallbackInstruction:
         "Related log search is not available in this session",
     });
-    notes.push(
-      `Full distributed trace and span tree: ${traceDetailsInstruction}`,
-    );
-    notes.push(`Related span search: ${spanSearchInstruction}`);
-    notes.push(`Related log search: ${logSearchInstruction}`);
+    output += `- Full distributed trace and span tree: ${traceDetailsInstruction}\n`;
+    output += `- Related span search: ${spanSearchInstruction}\n`;
+    output += `- Related log search: ${logSearchInstruction}\n`;
   }
   if (experimentalMode) {
     const breadcrumbsInstruction = formatToolCallInstruction({
@@ -2369,14 +2332,12 @@ export function buildIssueResponseNotes({
       fallbackInstruction:
         "Issue breadcrumbs are not available in this session",
     });
-    notes.push(
-      `Breadcrumb trail leading up to this error: ${breadcrumbsInstruction}`,
-    );
+    output += `- Breadcrumb trail leading up to this error: ${breadcrumbsInstruction}\n`;
   }
-  return notes;
+  return output;
 }
 
-function buildAIConversationResponseNotes({
+function formatAIConversationResponseNote({
   aiConversations,
   organizationSlug,
   experimentalMode,
@@ -2388,7 +2349,7 @@ function buildAIConversationResponseNotes({
   experimentalMode: boolean;
   availableToolNames?: ReadonlySet<string>;
   directToolNames?: ReadonlySet<string>;
-}): string[] {
+}): string {
   const instructions = formatAIConversationActionInstructions({
     organizationSlug,
     aiConversations,
@@ -2402,19 +2363,13 @@ function buildAIConversationResponseNotes({
     const spanSuffix = conversation.spanId
       ? ` Matching span: \`${conversation.spanId}\`.`
       : "";
-    return [
-      `Agent conversation found in this trace: \`${conversation.conversationId}\`.${spanSuffix}`,
-      ...instructions,
-    ];
+    return `- Agent conversation found in this trace: \`${conversation.conversationId}\`.${spanSuffix}\n${instructions.map((instruction) => `- ${instruction}`).join("\n")}\n`;
   }
 
   const conversationIds = aiConversations
     .map((conversation) => `\`${conversation.conversationId}\``)
     .join(", ");
-  return [
-    `Multiple agent conversations were found in this trace: ${conversationIds}.`,
-    ...instructions,
-  ];
+  return `- Multiple agent conversations were found in this trace: ${conversationIds}.\n${instructions.map((instruction) => `- ${instruction}`).join("\n")}\n`;
 }
 
 const MAX_DISPLAY_REPLAYS = 5;
