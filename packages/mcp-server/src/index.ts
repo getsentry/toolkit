@@ -20,6 +20,8 @@
  * ```
  */
 
+import { pathToFileURL } from "node:url";
+
 import { buildServer } from "@sentry/mcp-core/server";
 import { startStdio } from "./transports/stdio";
 import * as Sentry from "@sentry/node";
@@ -28,6 +30,7 @@ import { buildUsage } from "./cli/usage";
 import { printCliLine } from "./cli/output";
 import { parseArgv, parseEnv, merge } from "./cli/parse";
 import { finalize } from "./cli/resolve";
+import type { PartiallyResolvedConfig } from "./cli/types";
 import { resolveAccessToken } from "./auth/resolve-token";
 import { authCommand } from "./cli/commands/auth";
 import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
@@ -39,23 +42,49 @@ import {
   getResolvedProviderType,
 } from "@sentry/mcp-core/internal/agents/provider-factory";
 
-const packageName = "@sentry/mcp-server";
+const defaultPackageName = "@sentry/mcp-server";
 const allSkills = Object.keys(SKILLS) as ReadonlyArray<
   (typeof SKILLS)[keyof typeof SKILLS]["id"]
 >;
-const usageText = buildUsage(packageName, allSkills);
 
-function die(message: string): never {
-  console.error(message);
-  console.error(usageText);
-  process.exit(1);
-}
+export type McpServerOptions = {
+  /**
+   * Supplies credentials from a host application instead of the standalone
+   * device-code and cache flow.
+   */
+  resolveAccessToken?: (config: PartiallyResolvedConfig) => Promise<string>;
+  /** Command name used in usage output. */
+  packageName?: string;
+  /** Throw setup errors instead of printing usage and exiting the process. */
+  throwOnError?: boolean;
+};
 
-async function main() {
-  const rawArgs = process.argv.slice(2);
+/** Start the stdio MCP server with either standalone or host-provided auth. */
+export async function runMcpServer(
+  rawArgs = process.argv.slice(2),
+  options: McpServerOptions = {},
+) {
+  const packageName = options.packageName ?? defaultPackageName;
+  const usageText = buildUsage(packageName, allSkills, {
+    usesHostAuthentication: options.resolveAccessToken !== undefined,
+  });
+
+  function die(error: unknown): never {
+    if (options.throwOnError) {
+      throw error;
+    }
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error(usageText);
+    process.exit(1);
+  }
 
   // Handle subcommands before normal server parsing
   if (rawArgs[0] === "auth") {
+    if (options.resolveAccessToken) {
+      die(
+        new Error("Use `sentry auth` to manage credentials for `sentry mcp`."),
+      );
+    }
     await authCommand(rawArgs.slice(1));
     return;
   }
@@ -70,9 +99,7 @@ async function main() {
     process.exit(0);
   }
   if (cli.unknownArgs.length > 0) {
-    console.error("Error: Invalid argument(s):", cli.unknownArgs.join(", "));
-    console.error(usageText);
-    process.exit(1);
+    die(new Error(`Error: Invalid argument(s): ${cli.unknownArgs.join(", ")}`));
   }
 
   const env = parseEnv(process.env);
@@ -80,15 +107,21 @@ async function main() {
     try {
       return finalize(merge(cli, env));
     } catch (err) {
-      die(err instanceof Error ? err.message : String(err));
+      die(err);
     }
   })();
 
   // Resolve access token before starting the transport.
   // For sentry.io without a token, this blocks on device code flow —
   // the client won't connect until the user has authenticated.
-  const cfg = await resolveAccessToken(partialCfg).catch((err) => {
-    die(err instanceof Error ? err.message : String(err));
+  const cfg = await (options.resolveAccessToken
+    ? options.resolveAccessToken(partialCfg).then((accessToken) => ({
+        ...partialCfg,
+        accessToken,
+      }))
+    : resolveAccessToken(partialCfg)
+  ).catch((err) => {
+    die(err);
   });
 
   // Configure embedded agent provider
@@ -388,7 +421,12 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  void runMcpServer().catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}

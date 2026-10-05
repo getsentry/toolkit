@@ -236,6 +236,20 @@ type ErrorMiddleware = (
  * `__complete` fast-path can skip them entirely.
  */
 export async function runCli(cliArgs: string[]): Promise<void> {
+  // MCP owns stdin/stdout for JSON-RPC. Hand off before the regular CLI
+  // telemetry, update checks, and human-output middleware can write there.
+  if (cliArgs[0] === "mcp") {
+    try {
+      const { startMcpServer } = await import("./lib/mcp.js");
+      await startMcpServer(cliArgs.slice(1));
+    } catch (error) {
+      const { getExitCode } = await import("./lib/errors.js");
+      process.stderr.write(`${formatError(error)}\n`);
+      process.exitCode = getExitCode(error);
+    }
+    return;
+  }
+
   const { isatty } = await import("node:tty");
   const { ExitCode, run } = await import("@stricli/core");
   const { app } = await import("./app.js");

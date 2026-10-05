@@ -648,6 +648,14 @@ View Sentry logs
 
 → Full flags and examples: `references/log.md`
 
+### Mcp
+
+Start a local Sentry MCP server
+
+- `sentry mcp` — Start a local Sentry MCP server
+
+→ Full flags and examples: `references/mcp.md`
+
 ### Monitor
 
 Work with Sentry cron monitors

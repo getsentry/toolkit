@@ -58,10 +58,10 @@
     "tsx": "tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs",
     "cli": "tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs src/bin.ts",
     "dev": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && tsx --import ./script/require-shim.mjs src/bin.ts",
-    "build": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts --single",
+    "build": "pnpm --filter @sentry/mcp-core run build && pnpm --filter @sentry/mcp-server run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts --single",
     "build:all": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts",
-    "bundle": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/bundle.ts",
-    "typecheck": "pnpm run generate:docs && pnpm run generate:sdk && tsc --noEmit",
+    "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm --filter @sentry/mcp-server run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/bundle.ts",
+    "typecheck": "pnpm --filter @sentry/mcp-core run build && pnpm --filter @sentry/mcp-server run build && pnpm run generate:docs && pnpm run generate:sdk && tsc --noEmit",
     "lint": "biome check --no-errors-on-unmatched --error-on-warnings --max-diagnostics=none ./",
     "lint:fix": "biome check --write --no-errors-on-unmatched --max-diagnostics=none ./",
     "test": "pnpm run test:unit",
@@ -92,6 +92,7 @@
     "ci:policy": "pnpm run check:patches && pnpm run check:deps && pnpm run check:errors && pnpm run check:fragments && pnpm run check:docs-sections && pnpm run check:env-coverage && pnpm run check:stale-refs"
   },
   "devDependencies": {
+    "@sentry/mcp-server": "workspace:*",
     "@anthropic-ai/sdk": "^0.39.0",
     "@biomejs/biome": "2.3.8",
     "@clack/prompts": "0.11.0",
