@@ -11,18 +11,19 @@ function messageRegexPattern(query: unknown): string | undefined {
   const pattern = query.match(
     /(?:^|[\s(])!?(?:message|log\.body):\/\/(.+?)\/\/(?=[\s)]|$)/,
   )?.[1];
-  return pattern !== undefined && isSentryRegex(pattern) ? pattern : undefined;
+  return pattern !== undefined && isLikelySentryRegex(pattern) ? pattern : undefined;
 }
 
 function regexPatternLength(pattern: string): number {
   return pattern.replace(/\\./g, "_").length;
 }
 
-function isSentryRegex(pattern: string): boolean {
+function isLikelySentryRegex(pattern: string): boolean {
   return (
     regexPatternLength(pattern) <= 64 &&
-    !/\(\?<?[=!]/.test(pattern) &&
-    !/\\[1-9]/.test(pattern) &&
+    !/\(\?(?:<?[=!]|>)/.test(pattern) &&
+    !/(?<!\\)[+*?}]\+/.test(pattern) &&
+    !/\\[1-9ZhGK]/.test(pattern) &&
     // A doubled backslash means the agent over-escaped, e.g. \\d for \d.
     !pattern.includes("\\\\")
   );
@@ -110,7 +111,7 @@ describeEval("search-events-agent-regex", {
               .toLowerCase()
               .replace(/\\s[+*]?/g, " ")
               .includes("connection refused") &&
-            pattern.includes("\\d")
+            /\\d|\[0-9\]/.test(pattern)
           );
         },
       },
