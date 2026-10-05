@@ -512,6 +512,12 @@ describe("sanitizeQuery: regex filters", () => {
     ).toBe("arr[*]://a OR [b,]// tags[k,array][*]://a OR b//");
   });
 
+  test("passes through a regex right after a closing paren or quote", () => {
+    expect(
+      sanitizeQuery('(level:x)message://[a,]// "foo"message://[b,]//')
+    ).toBe('(level:x)message://[a,]// "foo"message://[b,]//');
+  });
+
   test("throws for OR between regex filters", () => {
     expect(() => sanitizeQuery("message://a// OR message://b//")).toThrow(
       ValidationError
