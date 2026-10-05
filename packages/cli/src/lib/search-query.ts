@@ -63,6 +63,10 @@ function serializeNode(node: SearchNode): string {
       const prefix = node.negated ? "!" : "";
       return `${prefix}${node.key}:[${node.values.join(",")}]`;
     }
+    case "regex_filter": {
+      const prefix = node.negated ? "!" : "";
+      return `${prefix}${node.key}:${node.value}`;
+    }
     case "comparison_filter": {
       const prefix = node.negated ? "!" : "";
       return `${prefix}${node.key}:${node.op}${node.value}`;
@@ -460,6 +464,7 @@ function handleOr(
       "  - is: or has: qualifiers (not supported with in-list)\n" +
       "  - Negated qualifiers (!key:val1 OR !key:val2)\n" +
       "  - Comparison values (age:>24h OR age:>7d)\n" +
+      "  - Regex filters (use alternation instead: key://(a|b)//)\n" +
       "  - Parenthesized groups\n\n" +
       "Alternatives:\n" +
       '  - Write in-list syntax directly: --query "key:[val1,val2]"\n' +
@@ -497,6 +502,8 @@ export const SEARCH_SYNTAX_REFERENCE = {
     comparison: [">=", "<=", ">", "<", "=", "!="],
     wildcard: "* in values (e.g., message:*timeout*)",
     inList: "key:[val1,val2] — matches any value in the list",
+    regex:
+      "key://pattern// (logs only, string attributes) — RE2, unanchored, case-sensitive ((?i) to ignore case), max 64 chars, never quoted; ends at the first // followed by whitespace, ) or end of query; negate with !key://pattern//",
   },
   filterTypes: [
     "text (key:value)",
@@ -556,12 +563,15 @@ const PROJECT_NUMERIC_RE = /(^|\s)(!?)project:(\d+)(?=\s|$)/gi;
 const PROJECT_NUMERIC_LIST_RE = /(^|\s)(!?)project:\[(\d+(?:\s*,\s*\d+)*)\]/gi;
 
 /**
- * Pattern that splits a query into alternating unquoted / quoted segments.
+ * Pattern that splits a query into alternating unquoted / preserved segments.
  *
- * Matches double-quoted strings (including escaped quotes inside them).
- * Between matches is unquoted text that can be safely normalized.
+ * Matches double-quoted strings (including escaped quotes inside them) and
+ * `key://pattern//` regex values, which end at the first `//` followed by
+ * whitespace, `)`, or end of query. Between matches is unquoted text that
+ * can be safely normalized.
  */
-const QUOTED_SEGMENT_RE = /"(?:[^"\\]|\\.)*"/g;
+const PRESERVED_SEGMENT_RE =
+  /"(?:[^"\\]|\\.)*"|(?<=(?:^|[\s(])!?[\w.[\]-]+:)\/\/(?:(?!\/\/(?:[\t\n )]|$))[^\n])+\/\/(?=[\t\n )]|$)/g;
 
 /**
  * Rewrite `project:<digits>` / `project:[digits,…]` to `project_id`.
@@ -587,8 +597,9 @@ function rewriteNumericProjectFilters(query: string): string {
  * transform that fixes a common agent/user mistake. The pipeline is ordered
  * from most common to least common pattern.
  *
- * Quoted regions (`"..."`) are preserved verbatim — only unquoted text is
- * normalized. This prevents `message:"error [500,] found"` from being
+ * Quoted regions (`"..."`) and regex values (`key://pattern//`) are
+ * preserved verbatim — only the remaining text is normalized. This prevents
+ * `message:"error [500,] found"` and `message://[a-z,]+//` from being
  * corrupted.
  *
  * Returns the original query unchanged if no repairs were applicable.
@@ -613,15 +624,16 @@ function normalizeQuery(query: string): string {
 /**
  * Apply a transform function only to the unquoted segments of a query.
  *
- * Splits the query at double-quoted boundaries, applies `fn` to each
- * unquoted segment, and re-assembles with the quoted segments untouched.
+ * Splits the query at double-quoted and regex-value boundaries, applies `fn`
+ * to each unquoted segment, and re-assembles with the preserved segments
+ * untouched.
  */
 function transformUnquoted(
   query: string,
   fn: (unquoted: string) => string,
 ): string {
-  // Fast path: no quotes → transform the whole string
-  if (!query.includes('"')) {
+  // Fast path: no quotes or regex values → transform the whole string
+  if (!(query.includes('"') || query.includes("//"))) {
     return fn(query);
   }
 
@@ -629,18 +641,18 @@ function transformUnquoted(
   let lastIndex = 0;
 
   // Reset the regex state for each call (global regex)
-  QUOTED_SEGMENT_RE.lastIndex = 0;
-  let match = QUOTED_SEGMENT_RE.exec(query);
+  PRESERVED_SEGMENT_RE.lastIndex = 0;
+  let match = PRESERVED_SEGMENT_RE.exec(query);
 
   while (match !== null) {
     // Unquoted segment before this quoted match
     if (match.index > lastIndex) {
       parts.push(fn(query.slice(lastIndex, match.index)));
     }
-    // Quoted segment — preserved as-is
+    // Quoted or regex segment — preserved as-is
     parts.push(match[0]);
     lastIndex = match.index + match[0].length;
-    match = QUOTED_SEGMENT_RE.exec(query);
+    match = PRESERVED_SEGMENT_RE.exec(query);
   }
 
   // Trailing unquoted segment after last quote

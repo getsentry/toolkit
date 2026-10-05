@@ -401,6 +401,84 @@ describe("sanitizeQuery: edge cases", () => {
   });
 });
 
+describe("sanitizeQuery: regex filters", () => {
+  test("passes through a character class containing a comma", () => {
+    expect(sanitizeQuery("message://[a-z,]+//")).toBe("message://[a-z,]+//");
+  });
+
+  test("passes through a malformed-looking list inside a pattern", () => {
+    expect(sanitizeQuery("message://codes [401,403,)//")).toBe(
+      "message://codes [401,403,)//"
+    );
+  });
+
+  test("does not treat OR inside a pattern as a boolean operator", () => {
+    expect(sanitizeQuery("message://timeout OR refused//")).toBe(
+      "message://timeout OR refused//"
+    );
+  });
+
+  test("does not treat AND inside a pattern as a boolean operator", () => {
+    expect(sanitizeQuery("message://read AND write//")).toBe(
+      "message://read AND write//"
+    );
+  });
+
+  test("preserves repeated whitespace inside a pattern", () => {
+    expect(sanitizeQuery("message://a  b//")).toBe("message://a  b//");
+  });
+
+  test("passes through a negated regex filter", () => {
+    expect(sanitizeQuery("!message://^GET \\d+ms//")).toBe(
+      "!message://^GET \\d+ms//"
+    );
+  });
+
+  test("passes through parentheses inside a pattern", () => {
+    expect(
+      sanitizeQuery("message://(ConnectionReset|ReadTimeout)Error//")
+    ).toBe("message://(ConnectionReset|ReadTimeout)Error//");
+  });
+
+  test("passes through a double quote inside a pattern", () => {
+    expect(sanitizeQuery('message://say "hi"//')).toBe('message://say "hi"//');
+  });
+
+  test("ends the pattern at the first // followed by whitespace", () => {
+    expect(sanitizeQuery("url://https://x// AND message://a OR b//")).toBe(
+      "url://https://x// message://a OR b//"
+    );
+  });
+
+  test("strips AND outside a pattern but keeps the pattern intact", () => {
+    expect(sanitizeQuery("severity:error AND message://a  OR [b,]//")).toBe(
+      "severity:error message://a  OR [b,]//"
+    );
+  });
+
+  test("rewrites OR outside a pattern but keeps the pattern intact", () => {
+    expect(
+      sanitizeQuery(
+        "severity:error OR severity:warning message://(x|y)  z// !user.email://^a,b//"
+      )
+    ).toBe(
+      "severity:[error,warning] message://(x|y)  z// !user.email://^a,b//"
+    );
+  });
+
+  test("does not rewrite numeric project: inside a pattern", () => {
+    expect(sanitizeQuery("message://project:123//")).toBe(
+      "message://project:123//"
+    );
+  });
+
+  test("throws for OR between regex filters", () => {
+    expect(() => sanitizeQuery("message://a// OR message://b//")).toThrow(
+      ValidationError
+    );
+  });
+});
+
 describe("normalizeQuery: pre-parse text normalization", () => {
   describe("mismatched brackets", () => {
     test("fixes wrong closing delimiter ) → ]", () => {
@@ -483,6 +561,12 @@ describe("normalizeQuery: pre-parse text normalization", () => {
     test("handles multiple quoted regions", () => {
       expect(normalizeQuery('a:"[1,]" level:[x,) b:"[2,]"')).toBe(
         'a:"[1,]" level:[x] b:"[2,]"',
+      );
+    });
+
+    test("does not modify bracket content inside a regex value", () => {
+      expect(normalizeQuery("message://[a-z,]+// level:[a,]")).toBe(
+        "message://[a-z,]+// level:[a]"
       );
     });
 
