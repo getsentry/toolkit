@@ -343,23 +343,15 @@ async function findIssuesByShortId(
   const results = await Promise.all(
     orgSlugs.map((org) =>
       limit(() =>
-        withAuthGuard(() =>
-          tryGetIssueByShortId(org, fullShortId, {
+        withAuthGuard(async () => {
+          const issue = await tryGetIssueByShortId(org, fullShortId, {
             collapse: ISSUE_DETAIL_COLLAPSE,
-          })
-        )
+          });
+          return issue ? { org, issue } : null;
+        })
       )
     )
   );
-
-  const successes: StrictResolvedIssue[] = [];
-  for (let i = 0; i < results.length; i++) {
-    const result = results[i];
-    const org = orgSlugs[i];
-    if (result && org && result.ok && result.value) {
-      successes.push({ org, issue: result.value });
-    }
-  }
 
   // If every org failed with a real error (403, 5xx, network timeout),
   // surface it instead of falling through to a misleading "not found".
@@ -376,7 +368,9 @@ async function findIssuesByShortId(
     }
   }
 
-  return successes;
+  return results.flatMap((result) =>
+    result.ok && result.value ? [result.value] : []
+  );
 }
 
 /**
