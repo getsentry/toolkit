@@ -14,7 +14,7 @@
  * @module
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import {
   mkdir,
   readdir,
@@ -125,7 +125,7 @@ export function buildCacheKey(
   identity = getIdentityFingerprint()
 ): string {
   const normalized = normalizeUrl(method, url);
-  return createHash("sha256").update(`${identity}|${normalized}`).digest("hex");
+  return createHmac("sha256", identity).update(normalized).digest("hex");
 }
 
 /**
