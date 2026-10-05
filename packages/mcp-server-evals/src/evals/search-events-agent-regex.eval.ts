@@ -11,7 +11,9 @@ function messageRegexPattern(query: unknown): string | undefined {
   const pattern = query.match(
     /(?:^|[\s(])!?(?:message|log\.body):\/\/(.+?)\/\/(?=[\s)]|$)/,
   )?.[1];
-  return pattern !== undefined && isLikelySentryRegex(pattern) ? pattern : undefined;
+  return pattern !== undefined && isLikelySentryRegex(pattern)
+    ? pattern
+    : undefined;
 }
 
 function regexPatternLength(pattern: string): number {
@@ -22,8 +24,8 @@ function isLikelySentryRegex(pattern: string): boolean {
   return (
     regexPatternLength(pattern) <= 64 &&
     !/\(\?(?:<?[=!]|>)/.test(pattern) &&
-    !/(?<!\\)[+*?}]\+/.test(pattern) &&
-    !/\\[1-9ZhGK]/.test(pattern) &&
+    !/(?<![\\[])[+*?]\+|\{\d+(?:,\d*)?\}\+/.test(pattern) &&
+    !/\\[1-9ZhGKRHVNXeci]/.test(pattern) &&
     // A doubled backslash means the agent over-escaped, e.g. \\d for \d.
     !pattern.includes("\\\\")
   );
