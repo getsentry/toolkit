@@ -3698,6 +3698,7 @@ export class SentryApiService {
       attributeTypes,
       substringMatch,
       query,
+      context,
     }: {
       organizationSlug: string;
       itemType?: TraceItemType;
@@ -3708,6 +3709,7 @@ export class SentryApiService {
       attributeTypes?: TraceItemAttributeType[];
       substringMatch?: string;
       query?: string;
+      context?: boolean;
     },
     opts?: RequestOptions,
   ): Promise<TraceItemAttribute[]> {
@@ -3720,6 +3722,7 @@ export class SentryApiService {
       end,
       substringMatch,
       query,
+      context,
       opts,
     );
 
@@ -3831,6 +3834,7 @@ export class SentryApiService {
     end?: string,
     substringMatch?: string,
     query?: string,
+    context?: boolean,
     opts?: RequestOptions,
   ): Promise<TraceItemAttribute[]> {
     const queryParams = new URLSearchParams();
@@ -3843,6 +3847,9 @@ export class SentryApiService {
     }
     if (query) {
       queryParams.set("query", query);
+    }
+    if (context) {
+      queryParams.set("expand", "context");
     }
     this.applyTimeParams(queryParams, statsPeriod, start, end);
 

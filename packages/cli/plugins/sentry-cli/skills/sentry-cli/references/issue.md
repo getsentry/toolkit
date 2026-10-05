@@ -370,4 +370,26 @@ sentry issue merge cli-k9 cli-15h --into cli-k9    # alias form
 # Non-error issue types (performance, info, etc.) cannot be merged
 ```
 
+### `sentry issue link <issue> <url>`
+
+Link an existing external issue
+
+**Flags:**
+- `--integration <value> - Native integration ID, when multiple installations match`
+- `--app <value> - Sentry App slug (automatically detected for Linear URLs)`
+- `-n, --dry-run - Show what would happen without making changes`
+- `--field <value>... - Additional Sentry App link form field (name=value, repeatable)`
+
+**Examples:**
+
+```bash
+sentry issue link FRONT-123 https://github.com/example/app/issues/42
+sentry issue link FRONT-123 https://github.com/example/app/pull/43
+sentry issue link FRONT-123 https://example.atlassian.net/browse/APP-42
+sentry issue link FRONT-123 https://linear.app/example/issue/APP-42/fix-error
+
+sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --dry-run
+sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --json
+```
+
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

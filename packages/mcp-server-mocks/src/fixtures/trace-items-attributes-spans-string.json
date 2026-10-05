@@ -64,6 +64,10 @@
     "name": "HTTP Method"
   },
   {
+    "key": "http.request.method",
+    "name": "http.request.method"
+  },
+  {
     "key": "http.url",
     "name": "HTTP URL"
   },
@@ -86,6 +90,10 @@
   {
     "key": "geo.region",
     "name": "Geographic Region"
+  },
+  {
+    "key": "user.geo.region",
+    "name": "user.geo.region"
   },
   {
     "key": "geo.city",
