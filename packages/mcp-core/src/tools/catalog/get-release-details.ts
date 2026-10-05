@@ -1,13 +1,12 @@
 import { z } from "zod";
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
-import { apiServiceFromContext } from "../../internal/tool-helpers/api";
-import { UserInputError } from "../../errors";
 import type { Commit, Deploy, ReleaseDetails } from "../../api-client/types";
-import type { ServerContext } from "../../types";
+import { UserInputError } from "../../errors";
+import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
-import { validateSlugOrId, isNumericId } from "../../utils/slug-validation";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
+import type { ServerContext } from "../../types";
+import { validateSlugOrId } from "../../utils/slug-validation";
 import {
   compactLines,
   formatActor,
@@ -141,19 +140,14 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
-    setOrganizationContext(organizationSlug);
-    setTag("release.version", params.releaseVersion);
     const scopedProjectSlug = context.constraints.projectSlug ?? undefined;
     const requestedProjectSlugOrId = params.projectSlugOrId ?? undefined;
     const projectSlugOrId = scopedProjectSlug ?? requestedProjectSlugOrId;
-
-    if (projectSlugOrId) {
-      if (isNumericId(projectSlugOrId)) {
-        setTag("project.id", projectSlugOrId);
-      } else {
-        setTag("project.slug", projectSlugOrId);
-      }
-    }
+    setTargetTagsAndAttributes({
+      organizationSlug,
+      projectSlugOrId,
+      releaseVersion: params.releaseVersion,
+    });
 
     if (
       scopedProjectSlug &&

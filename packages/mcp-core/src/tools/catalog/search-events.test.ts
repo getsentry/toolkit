@@ -3,6 +3,7 @@ import { APICallError, generateText } from "ai";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UserInputError } from "../../errors";
+import { runSearchEvents } from "../support/search-events/search";
 import searchEvents from "./search-events";
 
 // Mock the AI SDK
@@ -3337,6 +3338,51 @@ describe("search_events", () => {
     ).rejects.toThrow(/Search validation failed:/);
 
     expect(mockGenerateText).not.toHaveBeenCalled();
+  });
+
+  it("keeps the caller's dataset when lockDataset is set", async () => {
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse("logs", "level:error"),
+    );
+    const requestedDatasets: Array<string | null> = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          requestedDatasets.push(
+            new URL(request.url).searchParams.get("dataset"),
+          );
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    await runSearchEvents(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "how many errors today",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        constraints: {
+          organizationSlug: null,
+          regionUrl: null,
+          projectSlug: null,
+        },
+        accessToken: "test-token",
+        userId: "1",
+      },
+      { lockDataset: true },
+    );
+
+    expect(requestedDatasets).toEqual(["errors"]);
+    expect(JSON.stringify(mockGenerateText.mock.calls[0])).toContain(
+      "The dataset is fixed to errors",
+    );
   });
 
   describe("with Seer", () => {

@@ -8,6 +8,7 @@ import { listOrganizationRepos } from "@sentry/api";
 
 import type { SentryRepository } from "../../types/index.js";
 import { getCachedRepos, setCachedRepos } from "../db/repo-cache.js";
+import { ApiError } from "../errors.js";
 import { logger } from "../logger.js";
 
 import {
@@ -52,6 +53,7 @@ export async function listRepositories(
  * @param orgSlug - Organization slug
  * @param options - Pagination options
  * @returns Single page of repositories with cursor metadata
+ * @throws {ApiError} When the response is not an array of repositories
  */
 export async function listRepositoriesPaginated(
   orgSlug: string,
@@ -68,10 +70,20 @@ export async function listRepositoriesPaginated(
     } as { cursor?: string; per_page?: number },
   });
 
-  return unwrapPaginatedResult<SentryRepository[]>(
+  const paginated = unwrapPaginatedResult<SentryRepository[]>(
     result,
     "Failed to list repositories"
   );
+
+  if (!Array.isArray(paginated.data)) {
+    throw new ApiError(
+      "Failed to list repositories: unexpected response format",
+      result.response.status,
+      "Expected the repositories endpoint to return an array. Check the configured Sentry URL and the endpoint response.",
+      new URL(result.request.url).pathname
+    );
+  }
+  return paginated;
 }
 
 /**

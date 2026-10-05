@@ -2,7 +2,7 @@
  * Tests for the replay API helpers.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { MAX_PAGINATION_PAGES } from "../../../src/lib/api/infrastructure.js";
 import {
   getReplay,
@@ -453,7 +453,8 @@ describe("getReplayRecordingSegments", () => {
     expect(secondUrl.searchParams.get("per_page")).toBe("100");
   });
 
-  test("stops recording segment pagination at the safety cap", async () => {
+  test("stops recording segment pagination at the safety cap and warns", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const capturedUrls: string[] = [];
     let callIndex = 0;
 
@@ -481,6 +482,10 @@ describe("getReplayRecordingSegments", () => {
     expect(finalUrl.searchParams.get("cursor")).toBe(
       `0:${(MAX_PAGINATION_PAGES - 1) * 100}:0`
     );
+
+    const stderr = stderrSpy.mock.calls.map((call) => String(call[0])).join("");
+    stderrSpy.mockRestore();
+    expect(stderr).toContain("Pagination limit reached");
   });
 });
 

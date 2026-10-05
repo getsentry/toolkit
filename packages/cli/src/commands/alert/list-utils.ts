@@ -2,25 +2,24 @@
 
 import { ApiError, ValidationError } from "../../lib/errors.js";
 import { LIST_MAX_LIMIT } from "../../lib/list-command.js";
-import { distributeFetchBudget, type FetchResult } from "../../lib/org-list.js";
+import {
+  type FetchGroupsOptions,
+  type FetchResult,
+  fetchGroupsWithBudget,
+  type ListFetchPage,
+} from "../../lib/org-list.js";
 
-export type AlertRuleFetchPage<TRule> = {
+/** Alert rules with the cursor metadata used by shared list fetching. */
+export type AlertRuleFetchPage<TRule> = ListFetchPage & {
+  /** Rules returned for this group. */
   rules: TRule[];
-  hasMore?: boolean;
-  nextCursor?: string;
 };
 
-type FetchPageOptions = { limit: number; startCursor?: string };
-type BudgetOptions<TGroup, TRule, TPage extends AlertRuleFetchPage<TRule>> = {
-  limit: number;
-  startCursors?: Map<string, string>;
-  getGroupKey: (group: TGroup) => string;
-  fetchGroup: (
-    group: TGroup,
-    options: FetchPageOptions
-  ) => Promise<FetchResult<TPage>>;
-  onProgress: (fetched: number) => void;
-};
+type BudgetOptions<
+  TGroup,
+  TRule,
+  TPage extends AlertRuleFetchPage<TRule>,
+> = Omit<FetchGroupsOptions<TGroup, TRule, TPage>, "getItems">;
 
 export function assertAlertListLimit(limit: number): void {
   if (limit < 1) {
@@ -70,22 +69,8 @@ export function buildAlertListFailureErrors<TKey extends string, TFailure>(
   });
 }
 
-function countFetched<TRule, TPage extends AlertRuleFetchPage<TRule>>(
-  results: FetchResult<TPage>[]
-): number {
-  return results.reduce(
-    (total, result) => total + (result.success ? result.data.rules.length : 0),
-    0
-  );
-}
-
-function hasMore<TRule, TPage extends AlertRuleFetchPage<TRule>>(
-  results: FetchResult<TPage>[]
-): boolean {
-  return results.some((result) => result.success && result.data.hasMore);
-}
-
-export async function fetchAlertRulesWithBudget<
+/** Preserve the alert page shape while sharing budget and cursor handling. */
+export function fetchAlertRulesWithBudget<
   TGroup,
   TRule,
   TPage extends AlertRuleFetchPage<TRule>,
@@ -93,57 +78,8 @@ export async function fetchAlertRulesWithBudget<
   groups: TGroup[],
   options: BudgetOptions<TGroup, TRule, TPage>
 ): Promise<{ results: FetchResult<TPage>[]; hasMore: boolean }> {
-  const { limit, startCursors, getGroupKey, fetchGroup, onProgress } = options;
-  const quotas = distributeFetchBudget(limit, groups.length, {
-    minimumPerGroup: true,
+  return fetchGroupsWithBudget<TGroup, TRule, TPage>(groups, {
+    ...options,
+    getItems: (page) => page.rules,
   });
-  const phase1 = await Promise.all(
-    groups.map((group, index) =>
-      fetchGroup(group, {
-        limit: quotas[index] ?? 1,
-        startCursor: startCursors?.get(getGroupKey(group)),
-      })
-    )
-  );
-
-  let totalFetched = countFetched(phase1);
-  onProgress(totalFetched);
-
-  const surplus = limit - totalFetched;
-  if (surplus <= 0) {
-    return { results: phase1, hasMore: hasMore(phase1) };
-  }
-
-  const expandable = phase1.flatMap((result, index) => {
-    const group = groups[index];
-    if (!(group && result.success && result.data.nextCursor)) {
-      return [];
-    }
-    return [{ group, index, cursor: result.data.nextCursor }];
-  });
-  const extraQuotas = distributeFetchBudget(surplus, expandable.length);
-  const requests = expandable.flatMap((request, index) => {
-    const extraLimit = extraQuotas[index] ?? 0;
-    return extraLimit > 0 ? [{ ...request, limit: extraLimit }] : [];
-  });
-
-  const phase2 = await Promise.all(
-    requests.map(({ group, limit: requestLimit, cursor }) =>
-      fetchGroup(group, { limit: requestLimit, startCursor: cursor })
-    )
-  );
-  for (let index = 0; index < requests.length; index++) {
-    const request = requests[index];
-    const p1 = request ? phase1[request.index] : undefined;
-    const p2 = phase2[index];
-    if (p1?.success && p2?.success) {
-      p1.data.rules.push(...p2.data.rules);
-      p1.data.hasMore = p2.data.hasMore;
-      p1.data.nextCursor = p2.data.nextCursor;
-    }
-  }
-
-  totalFetched = countFetched(phase1);
-  onProgress(totalFetched);
-  return { results: phase1, hasMore: hasMore(phase1) };
 }

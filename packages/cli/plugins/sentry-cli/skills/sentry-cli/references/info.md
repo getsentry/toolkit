@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-info
-version: 0.46.0-dev.0
+version: 0.47.0-dev.0
 description: Print configuration and verify authentication
 requires:
   bins: ["sentry"]

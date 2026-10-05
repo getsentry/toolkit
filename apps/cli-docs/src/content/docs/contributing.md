@@ -65,8 +65,9 @@ toolkit/
 │       │   │   ├── dashboard/   # add, create, delete, edit, list, restore, revisions, view
 │       │   │   ├── debug-files/ # bundle-jvm, bundle-sources, check, find, print-sources, upload
 │       │   │   ├── docs/        # list, query
+│       │   │   ├── dsn/         # list
 │       │   │   ├── event/       # list, send, view
-│       │   │   ├── feedback/    # list, view
+│       │   │   ├── feedback/    # list, resolve, spam, unresolve, view
 │       │   │   ├── issue/       # archive, events, explain, list, merge, plan, resolve, unresolve, view
 │       │   │   ├── local/       # run, serve
 │       │   │   ├── log/         # list, view
@@ -77,7 +78,7 @@ toolkit/
 │       │   │   ├── project/     # create, delete, list, view
 │       │   │   ├── react-native/# gradle, xcode
 │       │   │   ├── release/     # archive, create, delete, deploy, deploys, finalize, list, propose-version, restore, set-commits, view
-│       │   │   ├── replay/      # list, view
+│       │   │   ├── replay/      # download, list, view
 │       │   │   ├── repo/        # list
 │       │   │   ├── snapshots/   # diff, download, upload
 │       │   │   ├── sourcemap/   # inject, resolve, upload

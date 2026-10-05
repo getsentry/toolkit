@@ -5,7 +5,7 @@ Configuration guide for embedded AI agents used by AI-powered search tools in Se
 ## Overview
 
 Sentry MCP uses embedded AI agents for the following tools:
-- `search_events` - Natural language search across events, metrics, and session replays
+- `search_errors`, `search_logs`, `search_traces`, `search_metrics`, `search_profiles`, `search_replays` - Natural language search over one dataset each (share one handler; `search_events` remains as a deprecated catalog alias)
 - `search_issues` - Natural language search across issues
 - `search_issue_events` - Search events within a specific issue
 

@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  buildMultiTargetContextKey,
   buildOrgContextKey,
   buildPaginationContextKey,
 } from "../../../src/lib/db/pagination.js";
@@ -40,6 +41,29 @@ describe("buildPaginationContextKey", () => {
     });
     expect(key).toContain("|q:a%7Cb");
     expect(key).not.toContain("|q:a|b");
+  });
+});
+
+describe("buildMultiTargetContextKey", () => {
+  test("isolates page sizes without changing existing callers' cursor keys", () => {
+    const targets = [
+      {
+        org: "org",
+        project: "project",
+        orgDisplay: "Org",
+        projectDisplay: "Project",
+      },
+    ];
+    const existing = buildMultiTargetContextKey(targets, {
+      query: "is:unresolved",
+    });
+    expect(existing).not.toContain("|limit:");
+    expect(
+      buildMultiTargetContextKey(targets, { query: "is:unresolved", limit: 10 })
+    ).toBe(`${existing}|limit:10`);
+    expect(buildMultiTargetContextKey(targets, { limit: 10 })).not.toBe(
+      buildMultiTargetContextKey(targets, { limit: 25 })
+    );
   });
 });
 

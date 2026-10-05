@@ -315,13 +315,14 @@ type AttemptResult =
 /**
  * Decide what to do with a successful HTTP response.
  * Returns 'done' for final responses, 'retry' for retryable errors and 401s.
+ * Only refresh credentials when another attempt can use them.
  */
 async function handleResponse(
   response: Response,
   headers: Headers,
   isLastAttempt: boolean
 ): Promise<AttemptResult> {
-  if (response.status === 401) {
+  if (response.status === 401 && !isLastAttempt) {
     const refreshed = await handleUnauthorized(headers);
     return refreshed ? { action: "retry" } : { action: "done", response };
   }

@@ -609,3 +609,32 @@ export function replayHint(data: ReplayViewData): string | undefined {
 
   return;
 }
+
+/** Structured result for `replay download`. */
+export type ReplayDownloadData = {
+  /** Organization slug. */
+  org: string;
+  /** The downloaded replay's ID. */
+  replayId: string;
+  /** Local path the rrweb JSON was written to. */
+  output: string;
+  /** Number of recording segments fetched. */
+  segmentCount: number;
+  /** Number of events written. */
+  eventCount: number;
+  /** Time between the first and last event, in milliseconds. */
+  durationMs: number;
+};
+
+/** Human-readable formatter for the `replay download` result. */
+export function formatReplayDownloadResult(data: ReplayDownloadData): string {
+  return renderMarkdown(
+    mdKvTable([
+      ["Replay ID", data.replayId],
+      ["Segments", String(data.segmentCount)],
+      ["Events", String(data.eventCount)],
+      ["Duration", formatDurationCompactMs(data.durationMs)],
+      ["Saved to", data.output],
+    ])
+  );
+}

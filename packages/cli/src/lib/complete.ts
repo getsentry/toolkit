@@ -91,6 +91,7 @@ export function handleComplete(args: string[]): void {
  * @internal Exported for testing only.
  */
 export const ORG_PROJECT_COMMANDS = new Set([
+  "dsn list",
   "issue list",
   "issue events",
   "issue view",

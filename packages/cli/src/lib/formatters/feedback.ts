@@ -12,6 +12,7 @@ import type {
   FeedbackViewResult,
   SentryEvent,
   SentryFeedback,
+  SentryIssue,
 } from "../../types/index.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails } from "./human.js";
@@ -36,6 +37,27 @@ const C1_CSI_RE = /\u009b[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g;
 const FEEDBACK_UNSAFE_TERMINAL_RE =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: terminal sanitization requires matching control characters
   /[\x00-\x09\x0b\x0c\x0e-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+/** Confirm resolution using the updated Feedback's terminal-safe identifier. */
+export function formatResolvedFeedback(feedback: SentryIssue): string {
+  return renderMarkdown(
+    `Resolved feedback ${feedbackCodeSpan(feedback.shortId)}.`
+  );
+}
+
+/** Confirm reopening using the updated Feedback's terminal-safe identifier. */
+export function formatReopenedFeedback(feedback: SentryIssue): string {
+  return renderMarkdown(
+    `Reopened feedback ${feedbackCodeSpan(feedback.shortId)}.`
+  );
+}
+
+/** Confirm spam using the updated Feedback's terminal-safe identifier. */
+export function formatSpamFeedback(feedback: SentryIssue): string {
+  return renderMarkdown(
+    `Marked feedback ${feedbackCodeSpan(feedback.shortId)} as spam.`
+  );
+}
 
 /** Remove terminal controls while preserving intentional message line breaks. */
 function sanitizeFeedbackText(value: string): string {

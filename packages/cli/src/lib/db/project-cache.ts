@@ -149,6 +149,31 @@ export function getCachedProjectBySlug(
 }
 
 /**
+ * Look up a project ID within an organization slug across all cache key shapes.
+ * Reuses entries populated by project discovery even when the caller only has
+ * the project's numeric ID, as with a DSN and a cached organization slug.
+ */
+export function getCachedProjectById(
+  orgSlug: string,
+  projectId: string
+): CachedProject | undefined {
+  const db = getDatabase();
+  const row = db
+    .query(
+      "SELECT * FROM project_cache WHERE org_slug = ? AND project_id = ? ORDER BY cached_at DESC, cache_key LIMIT 1"
+    )
+    .get(orgSlug, projectId) as ProjectCacheRow | undefined;
+
+  recordCacheHit("project", !!row);
+  if (!row) {
+    return;
+  }
+
+  touchCacheEntry("project_cache", "cache_key", row.cache_key);
+  return rowToCachedProject(row);
+}
+
+/**
  * Get cached project slugs for a specific organization.
  *
  * Used by shell completions to suggest projects within a known org.

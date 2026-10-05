@@ -39,3 +39,21 @@ sentry replay view my-org/346789a703f6454384f1de473b8b9fcc --web
 # View the replay linked to a trace
 sentry replay view my-org/frontend/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ```
+
+### Download a replay
+
+```bash
+# Download a replay as rrweb JSON to ./<replay-id>.rrweb.json
+sentry replay download my-org/346789a703f6454384f1de473b8b9fcc
+
+# Choose where the file goes
+sentry replay download my-org/346789a703f6454384f1de473b8b9fcc --output ./replay.json
+
+# Download from a replay URL
+sentry replay download https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/
+```
+
+The file is a flat, time-ordered array of rrweb events, ready for
+[rrweb-player](https://github.com/rrweb-io/rrweb/tree/master/packages/rrweb-player)
+or [rrvideo](https://github.com/rrweb-io/rrweb/tree/master/packages/rrvideo).
+Sentry's custom events (breadcrumbs, performance spans) are kept.

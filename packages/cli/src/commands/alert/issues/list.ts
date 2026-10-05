@@ -23,7 +23,7 @@ import { openInBrowser } from "../../../lib/browser.js";
 import {
   advancePaginationState,
   buildMultiTargetContextKey,
-  decodeCompoundCursor,
+  decodeTargetCursors,
   encodeCompoundCursor,
   hasPreviousPage,
   resolveCursor,
@@ -267,26 +267,15 @@ async function handleResolvedTargets(
   });
 
   const sortedTargetKeys = targets.map((t) => `${t.org}/${t.project}`).sort();
-  const startCursors = new Map<string, string>();
-  const exhaustedTargets = new Set<string>();
   const { cursor: rawCursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
     contextKey
   );
-  if (rawCursor) {
-    const decoded = decodeCompoundCursor(rawCursor);
-    for (let i = 0; i < decoded.length && i < sortedTargetKeys.length; i++) {
-      const cursor = decoded[i];
-      // biome-ignore lint/style/noNonNullAssertion: i is within bounds
-      const key = sortedTargetKeys[i]!;
-      if (cursor) {
-        startCursors.set(key, cursor);
-      } else {
-        exhaustedTargets.add(key);
-      }
-    }
-  }
+  const { startCursors, exhausted: exhaustedTargets } = decodeTargetCursors(
+    rawCursor,
+    sortedTargetKeys
+  );
 
   const activeTargets =
     exhaustedTargets.size > 0

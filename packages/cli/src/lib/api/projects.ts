@@ -7,8 +7,10 @@
 import {
   createOrganizationProject,
   createTeamProject,
+  listOrganizationProjectKeys,
   listOrganizationProjects,
   listProjectKeys,
+  type ProjectKey as SdkProjectKey,
   deleteProject as sdkDeleteProject,
   getProject as sdkGetProject,
 } from "@sentry/api";
@@ -647,6 +649,109 @@ export function resolveOrgDisplayName(
   }
   const cached = getCachedOrganizations().find((o) => o.slug === orgSlug);
   return cached?.name ?? orgSlug;
+}
+
+/**
+ * User-facing fields from a project's client key.
+ * Internal identifiers and legacy secret DSNs are not exposed.
+ */
+export type ProjectDsn = Pick<
+  SdkProjectKey,
+  "name" | "isActive" | "dateCreated"
+> & { dsn: string };
+
+/** Project a client key to the fields shown in Sentry's Client Keys UI. */
+function toProjectDsn(key: SdkProjectKey): ProjectDsn {
+  return {
+    name: key.name,
+    isActive: key.isActive,
+    dateCreated: key.dateCreated,
+    dsn: key.dsn.public,
+  };
+}
+
+/**
+ * List public DSNs for a project with bounded pagination.
+ * Uses region-aware routing and returns only user-facing key information.
+ *
+ * @param orgSlug - Organization slug
+ * @param projectSlug - Project slug
+ * @param options - Total item limit and optional resume cursor
+ * @returns Public DSNs with optional pagination cursors
+ */
+export async function listProjectDsns(
+  orgSlug: string,
+  projectSlug: string,
+  options: { limit?: number; cursor?: string } = {}
+): Promise<PaginatedResponse<ProjectDsn[]>> {
+  const config = await getOrgSdkConfig(orgSlug);
+
+  return paginate(options, async (perPage, cursor) => {
+    // The SDK omits the shared per_page parameter supported by this endpoint.
+    const query = { cursor, per_page: perPage };
+    const result = await listProjectKeys({
+      ...config,
+      path: {
+        organization_id_or_slug: orgSlug,
+        project_id_or_slug: projectSlug,
+      },
+      query,
+    });
+    const page = unwrapPaginatedResult<SdkProjectKey[]>(
+      result,
+      "Failed to list project DSNs"
+    );
+
+    return {
+      ...page,
+      data: page.data.map(toProjectDsn),
+    };
+  });
+}
+
+/**
+ * List public DSNs across all accessible projects in an organization.
+ * Resolves project slugs only for keys in the requested page and keeps
+ * internal project IDs inside the API layer.
+ */
+export async function listOrganizationDsns(
+  orgSlug: string,
+  options: { limit?: number; cursor?: string } = {}
+): Promise<PaginatedResponse<(ProjectDsn & { project: string })[]>> {
+  const config = await getOrgSdkConfig(orgSlug);
+  const projectLookups = new Map<number, Promise<string>>();
+  const limitProjectLookups = pLimit(ORG_FANOUT_CONCURRENCY);
+
+  return paginate(options, async (perPage, cursor) => {
+    // These shared query parameters are supported by the backend but absent
+    // from the SDK type. -1 includes accessible projects outside the user's teams.
+    const query = { cursor, per_page: perPage, project: -1 };
+    const result = await listOrganizationProjectKeys({
+      ...config,
+      path: { organization_id_or_slug: orgSlug },
+      query,
+    });
+    const page = unwrapPaginatedResult<SdkProjectKey[]>(
+      result,
+      "Failed to list organization DSNs"
+    );
+
+    const data = await Promise.all(
+      page.data.map(async (key) => {
+        let project = projectLookups.get(key.projectId);
+        if (!project) {
+          project = limitProjectLookups(async () => {
+            const info = await getProject(orgSlug, String(key.projectId));
+            return info.slug;
+          });
+          projectLookups.set(key.projectId, project);
+        }
+        return { ...toProjectDsn(key), project: await project };
+      })
+    );
+
+    return { ...page, data };
+  });
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   clearProjectCache,
   getCachedProject,
   getCachedProjectByDsnKey,
+  getCachedProjectById,
   getCachedProjectBySlug,
   getCachedProjectsForOrg,
   setCachedProject,
@@ -575,5 +576,50 @@ describe("getCachedProjectBySlug", () => {
     // SQLite stores missing project IDs as NULL; the row mapper passes
     // the value through unchanged, so callers see `null` (not undefined).
     expect(result?.projectId).toBeFalsy();
+  });
+});
+
+describe("getCachedProjectById", () => {
+  test.each([
+    "ids",
+    "dsn",
+    "list",
+  ])("finds an ID cached through the %s key shape without crossing organizations", (keyShape) => {
+    const project = {
+      orgSlug: "my-org",
+      orgName: "My Org",
+      projectSlug: "frontend",
+      projectName: "Frontend",
+      projectId: "42",
+    };
+    if (keyShape === "ids") {
+      setCachedProject("1", "42", project);
+    } else if (keyShape === "dsn") {
+      setCachedProjectByDsnKey("public-key", project);
+    } else {
+      cacheProjectsForOrg("my-org", "My Org", [
+        { id: "42", slug: "frontend", name: "Frontend" },
+      ]);
+    }
+
+    expect(getCachedProjectById("my-org", "42")).toMatchObject(project);
+    expect(getCachedProjectById("other-org", "42")).toBeUndefined();
+    expect(getCachedProjectById("my-org", "43")).toBeUndefined();
+  });
+
+  test("uses the most recent slug when a project has been renamed", async () => {
+    cacheProjectsForOrg("my-org", "My Org", [
+      { id: "42", slug: "old-name", name: "Old Name" },
+    ]);
+    await sleep(5);
+    setCachedProject("1", "42", {
+      orgSlug: "my-org",
+      orgName: "My Org",
+      projectSlug: "new-name",
+      projectName: "New Name",
+      projectId: "42",
+    });
+
+    expect(getCachedProjectById("my-org", "42")?.projectSlug).toBe("new-name");
   });
 });

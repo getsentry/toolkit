@@ -176,6 +176,131 @@ export function distributeFetchBudget(
   );
 }
 
+/** Cursor metadata required by the shared multi-group fetcher. */
+export type ListFetchPage = {
+  /** Whether the group has additional items. */
+  hasMore?: boolean;
+  /** Server cursor, absent when the group is exhausted. */
+  nextCursor?: string;
+};
+
+/** A group's item budget and optional position within that group's results. */
+export type GroupFetchOptions = {
+  /** Maximum items to fetch for this group. */
+  limit: number;
+  /** Resume cursor; undefined starts at the group's first page. */
+  startCursor?: string;
+};
+
+/** Domain adapters for fetching pages within one global item budget. */
+export type FetchGroupsOptions<TGroup, TItem, TPage extends ListFetchPage> = {
+  /** Total display budget, redistributed across groups. */
+  limit: number;
+  /** Resume positions keyed by getGroupKey; absent entries start fresh. */
+  startCursors?: Map<string, string>;
+  /** Stable identity associating a group with its cursor. */
+  getGroupKey: (group: TGroup) => string;
+  /** Fetch bounded items, capturing non-auth failures in FetchResult. */
+  fetchGroup: (
+    group: TGroup,
+    options: GroupFetchOptions
+  ) => Promise<FetchResult<TPage>>;
+  /** Returns the page's mutable item array; surplus results are appended to it. */
+  getItems: (page: TPage) => TItem[];
+  /** Receives the total fetched count after each budget phase. */
+  onProgress: (fetched: number) => void;
+};
+
+function countFetchedItems<TItem, TPage>(
+  results: FetchResult<TPage>[],
+  getItems: (page: TPage) => TItem[]
+): number {
+  return results.reduce(
+    (total, result) =>
+      total + (result.success ? getItems(result.data).length : 0),
+    0
+  );
+}
+
+function hasMorePages<TPage extends ListFetchPage>(
+  results: FetchResult<TPage>[]
+): boolean {
+  return results.some((result) => result.success && result.data.hasMore);
+}
+
+/**
+ * Fetch groups with a global budget, then redistribute unused slots once.
+ *
+ * Each group initially receives at least one slot. If there are more groups
+ * than display slots, callers must trim the rows and suppress unsafe cursors.
+ * A failed surplus request preserves the group's first-page data and cursor,
+ * so a later request can retry without losing already fetched items.
+ * Fetch callbacks own error capture; this helper preserves their result order.
+ */
+export async function fetchGroupsWithBudget<
+  TGroup,
+  TItem,
+  TPage extends ListFetchPage,
+>(
+  groups: TGroup[],
+  options: FetchGroupsOptions<TGroup, TItem, TPage>
+): Promise<{ results: FetchResult<TPage>[]; hasMore: boolean }> {
+  const { limit, startCursors, getGroupKey, fetchGroup, getItems, onProgress } =
+    options;
+  const quotas = distributeFetchBudget(limit, groups.length, {
+    minimumPerGroup: true,
+  });
+  const phase1 = await Promise.all(
+    groups.map((group, index) =>
+      fetchGroup(group, {
+        limit: quotas[index] ?? 1,
+        startCursor: startCursors?.get(getGroupKey(group)),
+      })
+    )
+  );
+
+  let totalFetched = countFetchedItems(phase1, getItems);
+  onProgress(totalFetched);
+
+  const surplus = limit - totalFetched;
+  if (surplus <= 0) {
+    return { results: phase1, hasMore: hasMorePages(phase1) };
+  }
+
+  const expandable = phase1.flatMap((result, index) => {
+    const group = groups[index];
+    if (group === undefined || !result.success || !result.data.nextCursor) {
+      return [];
+    }
+    return [{ group, index, cursor: result.data.nextCursor }];
+  });
+  const extraQuotas = distributeFetchBudget(surplus, expandable.length);
+  const requests = expandable.flatMap((request, index) => {
+    const extraLimit = extraQuotas[index] ?? 0;
+    return extraLimit > 0 ? [{ ...request, limit: extraLimit }] : [];
+  });
+
+  const phase2 = await Promise.all(
+    requests.map(({ group, limit: requestLimit, cursor }) =>
+      fetchGroup(group, { limit: requestLimit, startCursor: cursor })
+    )
+  );
+  for (let index = 0; index < requests.length; index++) {
+    const request = requests[index];
+    const p1 = request ? phase1[request.index] : undefined;
+    const p2 = phase2[index];
+    if (p1?.success && p2?.success) {
+      getItems(p1.data).push(...getItems(p2.data));
+      p1.data.hasMore = p2.data.hasMore;
+      p1.data.nextCursor = p2.data.nextCursor;
+    }
+  }
+
+  totalFetched = countFetchedItems(phase1, getItems);
+  onProgress(totalFetched);
+  return { results: phase1, hasMore: hasMorePages(phase1) };
+}
+
 /**
  * Trim an array to `limit` entries while guaranteeing at least one entry
  * per group (when possible).

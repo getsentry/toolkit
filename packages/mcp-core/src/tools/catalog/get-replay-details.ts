@@ -1,5 +1,3 @@
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
 import type {
   Issue,
   ReplayDetails,
@@ -8,19 +6,20 @@ import type {
   SentryApiService,
   TraceMeta,
 } from "../../api-client";
-import { defineTool } from "../../internal/tool-helpers/define";
+import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
 import { resolveRegionUrlForOrganization } from "../../internal/tool-helpers/resolve-region-url";
 import { parseSentryUrl } from "../../internal/url-helpers";
 import { resolveScopedOrganizationSlug } from "../../internal/url-scope";
-import { UserInputError } from "../../errors";
-import type { ServerContext } from "../../types";
 import {
   ParamOrganizationSlug,
-  ParamReplayId,
   ParamRegionUrl,
+  ParamReplayId,
   ParamReplayUrl,
 } from "../../schema";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 
 interface ResolvedReplayParams {
   organizationSlug: string;
@@ -98,8 +97,10 @@ export default defineTool({
       regionUrl: regionUrl ?? undefined,
     });
 
-    setOrganizationContext(resolved.organizationSlug);
-    setTag("replay.id", resolved.replayId);
+    setTargetTagsAndAttributes({
+      organizationSlug: resolved.organizationSlug,
+      replayId: resolved.replayId,
+    });
 
     const replay = await apiService.getReplayDetails({
       organizationSlug: resolved.organizationSlug,

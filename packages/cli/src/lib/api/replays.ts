@@ -340,6 +340,10 @@ export async function getReplayRecordingSegments(
     cursor = nextCursor;
   }
 
+  log.warn(
+    `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${segments.length} segments). ` +
+      "The recording may be incomplete."
+  );
   return segments;
 }
 
@@ -358,6 +362,9 @@ async function fetchReplayRecordingSegmentsPage(
       project_id_or_slug: projectSlugOrId,
       replay_id: replayId,
     },
+    // No `download=true`: the endpoint always streams the event payloads
+    // (`on_results=download_segments`) and never reads that parameter. The
+    // web UI sends it, but the backend ignores it.
     query: {
       cursor,
       per_page: API_MAX_PER_PAGE,

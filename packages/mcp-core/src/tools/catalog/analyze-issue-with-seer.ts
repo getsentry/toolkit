@@ -1,34 +1,34 @@
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
+import { ApiError, ApiServerError } from "../../api-client/index";
+import { retryWithBackoff } from "../../internal/fetch-utils";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
 import {
-  parseIssueParams,
   assertIssueWithinProjectConstraint,
+  parseIssueParams,
 } from "../../internal/tool-helpers/issue";
 import {
-  getStatusDisplayName,
-  isTerminalStatus,
+  getActiveAutofixTodo,
   getHumanInterventionGuidance,
   getOutputForAutofixRun,
-  wrapSeerContent,
-  getActiveAutofixTodo,
   getSeerUnsupportedIssueMessage,
+  getStatusDisplayName,
   isSeerSupportedIssue,
+  isTerminalStatus,
+  SEER_INITIAL_RETRY_DELAY,
+  SEER_MAX_RETRIES,
   SEER_POLLING_INTERVAL,
   SEER_TIMEOUT,
-  SEER_MAX_RETRIES,
-  SEER_INITIAL_RETRY_DELAY,
+  wrapSeerContent,
 } from "../../internal/tool-helpers/seer";
-import { retryWithBackoff } from "../../internal/fetch-utils";
-import type { ServerContext } from "../../types";
-import { ApiError, ApiServerError } from "../../api-client/index";
 import {
-  ParamOrganizationSlug,
-  ParamRegionUrl,
   ParamIssueShortId,
   ParamIssueUrl,
+  ParamOrganizationSlug,
+  ParamRegionUrl,
 } from "../../schema";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 
 export default defineTool({
   name: "analyze_issue_with_seer",
@@ -70,7 +70,7 @@ export default defineTool({
     "",
     "<hints>",
     "- Only use when the user explicitly requests analysis or you cannot determine the root cause from issue details alone",
-    "- Seer Autofix does not support metric alert issues (issueCategory: metric); use get_issue_details and search_events instead",
+    "- Seer Autofix does not support metric alert issues (issueCategory: metric); use get_issue_details and search_metrics or search_traces instead",
     "- If the user provides an issueUrl, extract it and use that parameter alone",
     "- The analysis includes actual code snippets and fixes, not just error descriptions",
     "- Results are cached - subsequent calls return instantly",
@@ -102,7 +102,7 @@ export default defineTool({
         issueUrl: params.issueUrl,
       });
 
-    setOrganizationContext(orgSlug);
+    setTargetTagsAndAttributes({ organizationSlug: orgSlug });
 
     const issue = await apiService.getIssue({
       organizationSlug: orgSlug,

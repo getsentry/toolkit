@@ -87,4 +87,23 @@ describe("resolveFeedback", () => {
       suggestions: ["List available Feedback: sentry feedback list"],
     });
   });
+
+  test("keeps mutation recovery hints on the requested command", async () => {
+    const resolveIssueSpy = vi
+      .spyOn(issueUtils, "resolveIssue")
+      .mockRejectedValue(new ApiError("Short ID not found", 404));
+
+    await expect(
+      resolveFeedback("TEST-PROJECT-404", "/tmp", "resolve")
+    ).rejects.toMatchObject<Partial<ResolutionError>>({
+      name: "ResolutionError",
+      hint: "sentry feedback resolve <org>/TEST-PROJECT-404",
+    });
+    expect(resolveIssueSpy).toHaveBeenCalledWith({
+      issueArg: "TEST-PROJECT-404",
+      cwd: "/tmp",
+      command: "resolve",
+      commandBase: "sentry feedback",
+    });
+  });
 });

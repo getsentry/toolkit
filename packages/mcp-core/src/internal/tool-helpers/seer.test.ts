@@ -99,7 +99,7 @@ describe("seer-utils", () => {
 
       expect(message).toContain("Seer Analysis Not Available");
       expect(message).toContain("MCP-SERVER-EQE");
-      expect(message).toContain("search_events");
+      expect(message).toContain("search_metrics");
       expect(message).not.toContain("Starting new analysis");
     });
   });

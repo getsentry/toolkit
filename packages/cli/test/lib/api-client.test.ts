@@ -225,6 +225,21 @@ describe("401 retry behavior", () => {
     expect(oauthRequests).toHaveLength(1);
   });
 
+  test("preserves a final-attempt 401 without refreshing the token", async () => {
+    const requests: RequestLog[] = [];
+    const body = { detail: "Unauthorized" };
+    globalThis.fetch = createMockFetch(requests, (_req, requestCount) =>
+      Response.json(body, { status: requestCount < 3 ? 503 : 401 })
+    );
+
+    const result = await rawApiRequest("/test-endpoint/");
+
+    expect(result.status).toBe(401);
+    expect(result.body).toEqual(body);
+    expect(requests).toHaveLength(3);
+    expect(requests.filter((r) => r.url.includes("/oauth/token/"))).toEqual([]);
+  });
+
   test("does not retry for manual API tokens (no refresh token)", async () => {
     // Manual API tokens have no expiry and no refresh token
     await setAuthToken("manual-api-token"); // No expiry, no refresh token

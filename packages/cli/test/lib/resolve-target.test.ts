@@ -11,13 +11,16 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parseOrgProjectArg } from "../../src/lib/arg-parsing.js";
 import { DEFAULT_SENTRY_URL } from "../../src/lib/constants.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
+import { getDatabase } from "../../src/lib/db/index.js";
 import {
   cacheProjectsForOrg,
   clearProjectCache,
   getCachedProjectBySlug,
+  setCachedProject,
 } from "../../src/lib/db/project-cache.js";
-import { setOrgRegion } from "../../src/lib/db/regions.js";
+import { setOrgRegion, setOrgRegions } from "../../src/lib/db/regions.js";
 import {
+  ApiError,
   AuthError,
   ContextError,
   ResolutionError,
@@ -25,15 +28,22 @@ import {
 import {
   fetchProjectId,
   isValidDirNameForInference,
+  type ResolvedTarget,
   resolveAllTargets,
   resolveLogProjectId,
   resolveOrg,
   resolveOrgAndProject,
   resolveOrgOptionalTarget,
   resolveOrgsForListing,
+  resolveTargetSlugs,
   toNumericId,
   tryFuzzyProjectRecovery,
 } from "../../src/lib/resolve-target.js";
+import {
+  disableResponseCache,
+  resetCacheState,
+} from "../../src/lib/response-cache.js";
+import { resetAuthenticatedFetch } from "../../src/lib/sentry-client.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
 // ============================================================================
@@ -572,9 +582,6 @@ describe("fetchProjectId", () => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     // Seed a cache entry WITHOUT a projectId (mirrors pre-schema-v7 rows).
-    const { setCachedProject } = await import(
-      "../../src/lib/db/project-cache.js"
-    );
     setCachedProject("org-id", "proj-id", {
       orgSlug: "test-org",
       orgName: "Test Org",
@@ -595,6 +602,130 @@ describe("fetchProjectId", () => {
     const result = await fetchProjectId("test-org", "legacy-project");
     expect(result).toBe(777);
     expect(apiCalled).toBe(true);
+  });
+});
+
+describe("resolveTargetSlugs", () => {
+  useTestConfigDir("test-resolveTargetSlugs-");
+
+  const projectData = {
+    id: "42",
+    slug: "frontend",
+    name: "Frontend",
+    organization: { id: "1", slug: "test-org", name: "Test Org" },
+  };
+  const canonical = {
+    org: "test-org",
+    project: "frontend",
+    orgDisplay: "Test Org",
+    projectDisplay: "Frontend",
+  };
+  const requests: string[] = [];
+  let originalFetch: typeof globalThis.fetch;
+
+  function makeTarget(org: string, project: string): ResolvedTarget {
+    return { org, project, orgDisplay: org, projectDisplay: project };
+  }
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    requests.length = 0;
+    resetCacheState();
+    disableResponseCache();
+    resetAuthenticatedFetch();
+    setAuthToken("test-token");
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    setOrgRegion("1", DEFAULT_SENTRY_URL);
+    globalThis.fetch = mockFetch(async (input, init) => {
+      requests.push(new URL(new Request(input, init).url).pathname);
+      return Response.json(projectData);
+    });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    resetCacheState();
+    resetAuthenticatedFetch();
+  });
+
+  test("leaves slugs beginning with numbers unchanged without fetching", async () => {
+    const target = makeTarget("2026-org", "123-api");
+    expect(await resolveTargetSlugs(target)).toBe(target);
+    expect(requests).toEqual([]);
+  });
+
+  test("reuses project metadata and preserves unrelated target context", async () => {
+    const target = {
+      ...makeTarget("1", "42"),
+      projectData,
+      packagePath: "packages/web",
+    };
+    expect(await resolveTargetSlugs(target)).toEqual({
+      ...target,
+      ...canonical,
+    });
+    expect(requests).toEqual([]);
+  });
+
+  test("keeps the same canonical target before and after the cache warms", async () => {
+    for (const org of ["1", "1", "test-org"]) {
+      expect(await resolveTargetSlugs(makeTarget(org, "42"))).toMatchObject(
+        canonical
+      );
+    }
+    expect(requests).toEqual(["/api/0/projects/1/42/"]);
+    expect(getCachedProjectBySlug("test-org", "frontend")?.projectId).toBe(
+      "42"
+    );
+  });
+
+  test("reuses the metadata lookup performed by explicit target resolution", async () => {
+    const projectId = await fetchProjectId("test-org", "42");
+    expect(
+      await resolveTargetSlugs({ ...makeTarget("test-org", "42"), projectId })
+    ).toEqual({ ...canonical, projectId: 42 });
+    expect(requests).toEqual(["/api/0/projects/test-org/42/"]);
+  });
+
+  test("returns canonical identity when the cache cannot be written", async () => {
+    getDatabase().exec(`
+      CREATE TRIGGER reject_project_cache_writes
+      BEFORE INSERT ON project_cache
+      BEGIN
+        SELECT RAISE(FAIL, 'fixture read-only');
+      END;
+    `);
+    expect(await resolveTargetSlugs(makeTarget("1", "42"))).toMatchObject(
+      canonical
+    );
+  });
+
+  test("resolves a numeric organization from its region cache", async () => {
+    setOrgRegions([
+      { slug: "test-org", orgId: "1", regionUrl: DEFAULT_SENTRY_URL },
+    ]);
+    expect(await resolveTargetSlugs(makeTarget("1", "frontend"))).toEqual(
+      makeTarget("test-org", "frontend")
+    );
+    expect(requests).toEqual([]);
+  });
+
+  test("propagates lookup errors instead of returning unresolved IDs", async () => {
+    globalThis.fetch = mockFetch(async () =>
+      Response.json({ detail: "Permission denied" }, { status: 403 })
+    );
+    await expect(
+      resolveTargetSlugs(makeTarget("test-org", "42"))
+    ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  test("does not return a numeric organization when metadata cannot resolve it", async () => {
+    globalThis.fetch = mockFetch(async () =>
+      Response.json({ ...projectData, organization: undefined })
+    );
+    await expect(
+      resolveTargetSlugs(makeTarget("1", "42"))
+    ).rejects.toBeInstanceOf(ResolutionError);
   });
 });
 

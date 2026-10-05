@@ -20,6 +20,8 @@ import { dashboardRoute } from "./commands/dashboard/index.js";
 import { listCommand as dashboardListCommand } from "./commands/dashboard/list.js";
 import { debugFilesRoute } from "./commands/debug-files/index.js";
 import { docsRoute } from "./commands/docs/index.js";
+import { dsnRoute } from "./commands/dsn/index.js";
+import { listCommand as dsnListCommand } from "./commands/dsn/list.js";
 import { eventRoute } from "./commands/event/index.js";
 import { listCommand as eventListCommand } from "./commands/event/list.js";
 import { exploreCommand } from "./commands/explore.js";
@@ -92,6 +94,7 @@ import { buildRouteMap } from "./lib/route-map.js";
 const PLURAL_TO_SINGULAR: Record<string, string> = {
   "agent-conversations": "agent-conversation",
   dashboards: "dashboard",
+  dsns: "dsn",
   events: "event",
   issues: "issue",
   orgs: "org",
@@ -123,6 +126,7 @@ export const routes = buildRouteMap({
     "debug-files": debugFilesRoute,
     dashboard: dashboardRoute,
     docs: docsRoute,
+    dsn: dsnRoute,
     org: orgRoute,
     platform: platformRoute,
     project: projectRoute,
@@ -158,6 +162,7 @@ export const routes = buildRouteMap({
     "bash-hook": bashHookCommand,
     "agent-conversations": conversationListCommand,
     dashboards: dashboardListCommand,
+    dsns: dsnListCommand,
     issues: issueListCommand,
     orgs: orgListCommand,
     platforms: platformListCommand,
@@ -180,6 +185,7 @@ export const routes = buildRouteMap({
       "sentry is a command-line interface for interacting with Sentry. " +
       "It provides commands for authentication, viewing issues, and making API calls.",
     hideRoute: {
+      dsns: true,
       "agent-conversations": true,
       dashboards: true,
       events: true,

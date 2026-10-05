@@ -29,6 +29,7 @@ import {
   buildPaginationContextKey,
   CURSOR_SEP,
   decodeCompoundCursor,
+  decodeTargetCursors,
   encodeCompoundCursor,
   hasPreviousPage,
   resolveCursor,
@@ -1059,29 +1060,16 @@ async function handleResolvedTargets(
   // Resolve per-target start cursors from the stored compound cursor (--cursor resume).
   // Sorted target keys must match the order used in buildMultiTargetContextKey.
   const sortedTargetKeys = targets.map((t) => `${t.org}/${t.project}`).sort();
-  const startCursors = new Map<string, string>();
-  const exhaustedTargets = new Set<string>();
   const { cursor: rawCursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
     contextKey
   );
-  if (rawCursor) {
-    const decoded = decodeCompoundCursor(rawCursor);
-    for (let i = 0; i < decoded.length && i < sortedTargetKeys.length; i++) {
-      const cursor = decoded[i];
-      // biome-ignore lint/style/noNonNullAssertion: i is within bounds
-      const key = sortedTargetKeys[i]!;
-      if (cursor) {
-        startCursors.set(key, cursor);
-      } else {
-        // null = project was exhausted on previous page — skip it entirely
-        exhaustedTargets.add(key);
-      }
-    }
-  }
+  const { startCursors, exhausted: exhaustedTargets } = decodeTargetCursors(
+    rawCursor,
+    sortedTargetKeys
+  );
 
-  // Filter out exhausted targets so they are not re-fetched from scratch (Comment 2 fix).
   const activeTargets =
     exhaustedTargets.size > 0
       ? targets.filter((t) => !exhaustedTargets.has(`${t.org}/${t.project}`))

@@ -344,6 +344,31 @@ export const apiRoutes: MockRoute[] = [
     },
   },
   {
+    method: "PUT",
+    path: "/api/0/organizations/:orgSlug/issues/:issueId/",
+    response: async (req, params) => {
+      if (
+        ![TEST_ORG, TEST_FEEDBACK_LATEST_ORG].includes(params.orgSlug) ||
+        params.issueId !== TEST_FEEDBACK_ID
+      ) {
+        return { status: 404, body: notFoundFixture };
+      }
+      const body = await req.json();
+      if (
+        !["resolved", "unresolved", "ignored"].includes(body.status) ||
+        Object.keys(body).length !== 1
+      ) {
+        return {
+          status: 400,
+          body: {
+            detail: "Expected only a resolved, unresolved, or ignored status",
+          },
+        };
+      }
+      return { body: { ...feedbackFixture, status: body.status } };
+    },
+  },
+  {
     method: "GET",
     path: "/api/0/organizations/:orgSlug/issues/:issueId/events/latest/",
     response: (_req, params) => {

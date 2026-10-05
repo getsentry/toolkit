@@ -1,58 +1,79 @@
-# search_events Tool Specification
+# Dataset Search Tools Specification
 
 ## Overview
 
-A unified search tool that accepts natural language queries and translates them to Sentry's discover endpoint parameters using the configured embedded LLM provider. Replaces `find_errors` and `find_transactions` with a single, more flexible interface.
+Natural-language event search is exposed as one tool per dataset:
+
+| Tool | Dataset | Seer strategy |
+| --- | --- | --- |
+| `search_errors` | `errors` | `Errors` |
+| `search_logs` | `logs` | `Logs` |
+| `search_traces` | `spans` | `Traces` |
+| `search_metrics` | `metrics` | `Metrics` |
+| `search_profiles` | `profiles` | — |
+| `search_replays` | `replays` | — |
+
+All six share one handler (`tools/support/search-events/search.ts`). Each tool
+fixes its dataset, so the caller never chooses a `dataset` parameter and the
+embedded agent is told it cannot switch datasets (`lockDataset`). This removes
+the most common routing mistake from the old multi-dataset `search_events` tool,
+where clients omitted `dataset`, silently got `errors`, and skipped Seer.
+
+`search_events` stays in the catalog as a deprecated alias for backward
+compatibility (reachable via `execute_sentry_tool`). It is no longer on the
+direct MCP surface and is excluded from skill definitions.
 
 ## Motivation
 
-- **Before**: Two separate tools with rigid parameters, users must know Sentry query syntax
-- **After**: Single tool with natural language input, AI handles translation to Sentry syntax
-- **Benefits**: Better UX, reduced tool count (20 → 19), accessible to non-technical users
+- **Before**: One `search_events` tool with an optional `dataset` enum; agents
+  often omitted or mis-picked it.
+- **After**: Tool selection picks the dataset. Each description only documents
+  its own dataset, so descriptions are shorter and more specific.
+- **Cross-event**: same-trace co-occurrence questions ("slow checkout requests
+  that also logged an error") route to `search_traces`, the only Seer strategy
+  that supports cross-event filters.
 
 ## Interface
 
 ```typescript
-interface SearchEventsParams {
-  organizationSlug: string;      // Required
-  query: string;  // Natural language search description
-  dataset?: "spans" | "errors" | "logs" | "metrics"; // Dataset to search (default: "errors")
-  projectSlug?: string;          // Optional - limit to specific project
-  regionUrl?: string;           
+// search_errors / search_logs / search_traces / search_metrics / search_profiles
+interface DatasetSearchParams {
+  organizationSlug: string;
+  query?: string;                // Natural language (preferred) or Sentry search syntax
+  projectSlug?: string;
+  fields?: string[];
+  sort?: string;
+  period?: string;               // e.g. "24h", "7d"
   limit?: number;                // Default: 10, Max: 100
-  includeExplanation?: boolean;  // Include translation explanation
+  includeExplanation?: boolean;
+  regionUrl?: string;
 }
+
+// search_replays drops `fields` and adds a separate `environment` parameter.
 ```
 
 ### Examples
 
 ```typescript
-// Find errors (errors dataset is default)
-search_events({
+search_errors({
   organizationSlug: "my-org",
   query: "database timeouts in checkout flow from last hour"
 })
 
-// Find slow transactions
-search_events({
+search_traces({
   organizationSlug: "my-org",
   query: "API calls taking over 5 seconds",
-  projectSlug: "backend",
-  dataset: "spans"
+  projectSlug: "backend"
 })
 
-// Find logs
-search_events({
+search_logs({
   organizationSlug: "my-org",
-  query: "warning logs about memory usage",
-  dataset: "logs"
+  query: "warning logs about memory usage"
 })
 
-// Find request duration metrics
-search_events({
+search_metrics({
   organizationSlug: "my-org",
-  query: "p95 request duration by transaction this week",
-  dataset: "metrics"
+  query: "p95 request duration by transaction this week"
 })
 ```
 
@@ -150,7 +171,7 @@ find_errors({
 })
 
 // After
-search_events({
+search_errors({
   organizationSlug: "sentry",
   query: "unresolved errors in checkout.js"
 })

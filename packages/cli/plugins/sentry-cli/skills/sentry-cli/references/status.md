@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-status
-version: 0.46.0-dev.0
+version: 0.47.0-dev.0
 description: Check Sentry service status
 requires:
   bins: ["sentry"]

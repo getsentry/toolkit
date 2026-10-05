@@ -17,7 +17,11 @@
 import { basename } from "node:path";
 import { isatty } from "node:tty";
 import pLimit from "p-limit";
-import type { SentryOrganization, SentryProject } from "../types/index.js";
+import type {
+  CachedProject,
+  SentryOrganization,
+  SentryProject,
+} from "../types/index.js";
 import {
   findProjectByDsnKey,
   findProjectsByPattern,
@@ -44,6 +48,7 @@ import { getCachedDsn, setCachedDsn } from "./db/dsn-cache.js";
 import {
   getCachedProject,
   getCachedProjectByDsnKey,
+  getCachedProjectById,
   getCachedProjectBySlug,
   setCachedProject,
   setCachedProjectByDsnKey,
@@ -125,6 +130,88 @@ export type ResolvedTarget = {
   /** Full project data when already fetched (avoids redundant getProject re-fetch) */
   projectData?: SentryProject;
 };
+
+/**
+ * Resolve canonical slugs for consumers that display targets or key cursor
+ * history by them. Target discovery may return numeric API identifiers; this
+ * opt-in step keeps the existing discovery paths free of extra API calls.
+ *
+ * Reuses project metadata and caches before fetching missing identity. Lookup
+ * failures propagate so callers cannot accidentally display an unresolved ID.
+ */
+export async function resolveTargetSlugs(
+  target: ResolvedTarget
+): Promise<ResolvedTarget> {
+  const numericOrg = isAllDigits(target.org);
+  const numericProject = isAllDigits(target.project);
+  if (!(numericOrg || numericProject)) {
+    return target;
+  }
+
+  const cachedOrg = numericOrg ? getOrgByNumericId(target.org) : undefined;
+  const org =
+    target.projectData?.organization?.slug ?? cachedOrg?.slug ?? target.org;
+  const hasOrgSlug =
+    !numericOrg || !!target.projectData?.organization || !!cachedOrg;
+  const project = target.projectData?.slug ?? target.project;
+  if (hasOrgSlug && (!numericProject || target.projectData)) {
+    return {
+      ...target,
+      org,
+      project,
+      orgDisplay: resolveOrgDisplayName(
+        org,
+        target.projectData?.organization?.name
+      ),
+      projectDisplay: target.projectData?.name ?? target.projectDisplay,
+    };
+  }
+
+  const cached = getCachedTargetProject(target, org);
+  if (cached) {
+    return {
+      ...target,
+      org: cached.orgSlug,
+      project: cached.projectSlug,
+      orgDisplay: cached.orgName,
+      projectDisplay: cached.projectName,
+    };
+  }
+
+  const info = await getProject(org, project);
+  const resolvedOrg = info.organization?.slug ?? (hasOrgSlug ? org : undefined);
+  if (!resolvedOrg) {
+    throw new ResolutionError(
+      "Organization",
+      "could not be resolved to a slug",
+      "sentry org list"
+    );
+  }
+  cacheResolvedProject(info, org, project);
+  return {
+    ...target,
+    org: resolvedOrg,
+    project: info.slug,
+    orgDisplay: resolveOrgDisplayName(resolvedOrg, info.organization?.name),
+    projectDisplay: info.name,
+    projectData: info,
+  };
+}
+
+/** Look up project identity across numeric-key and discovery caches. */
+function getCachedTargetProject(
+  target: ResolvedTarget,
+  org: string
+): CachedProject | undefined {
+  const projectId =
+    target.projectData?.id ??
+    target.projectId?.toString() ??
+    (isAllDigits(target.project) ? target.project : undefined);
+  return projectId
+    ? (getCachedProject(target.org, projectId) ??
+        getCachedProjectById(org, projectId))
+    : undefined;
+}
 
 /**
  * Result of resolving all targets (for monorepo-aware commands).
@@ -1009,31 +1096,36 @@ export async function fetchProjectId(
     return;
   }
 
-  // Populate the cache for next time. The `getProject` response carries the
-  // numeric project ID and (usually) the organization payload; use whatever
-  // is available to seed future lookups. Guarded with try/catch so a broken
-  // or read-only DB does NOT crash the primary API-success path.
   const project_ = projectResult.value;
-  if (project_.organization) {
+  cacheResolvedProject(project_, org, project);
+
+  return toNumericId(project_.id);
+}
+
+/** Cache successful project discovery without failing on an unavailable DB. */
+function cacheResolvedProject(
+  project: SentryProject,
+  orgIdentifier: string,
+  projectIdentifier: string
+): void {
+  if (project.organization) {
     try {
-      setCachedProject(project_.organization.id, project_.id, {
-        orgSlug: project_.organization.slug,
+      setCachedProject(project.organization.id, project.id, {
+        orgSlug: project.organization.slug,
         orgName: resolveOrgDisplayName(
-          project_.organization.slug,
-          project_.organization.name
+          project.organization.slug,
+          project.organization.name
         ),
-        projectSlug: project_.slug,
-        projectName: project_.name,
-        projectId: project_.id,
+        projectSlug: project.slug,
+        projectName: project.name,
+        projectId: project.id,
       });
     } catch (cacheErr) {
       log.debug(
-        `Failed to cache project '${org}/${project}': ${String(cacheErr)}`
+        `Failed to cache project '${orgIdentifier}/${projectIdentifier}': ${String(cacheErr)}`
       );
     }
   }
-
-  return toNumericId(project_.id);
 }
 
 /**

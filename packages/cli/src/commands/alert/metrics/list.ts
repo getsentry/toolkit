@@ -22,7 +22,7 @@ import { openInBrowser } from "../../../lib/browser.js";
 import {
   advancePaginationState,
   buildMultiOrgContextKey,
-  decodeCompoundCursor,
+  decodeTargetCursors,
   encodeCompoundCursor,
   hasPreviousPage,
   resolveCursor,
@@ -284,26 +284,15 @@ async function handleResolvedOrgs(
   const contextKey = buildMultiOrgContextKey(uniqueOrgs, flags.query);
   const sortedOrgKeys = [...uniqueOrgs].sort();
 
-  const startCursors = new Map<string, string>();
-  const exhaustedOrgs = new Set<string>();
   const { cursor: rawCursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
     contextKey
   );
-  if (rawCursor) {
-    const decoded = decodeCompoundCursor(rawCursor);
-    for (let i = 0; i < decoded.length && i < sortedOrgKeys.length; i++) {
-      const cursor = decoded[i];
-      // biome-ignore lint/style/noNonNullAssertion: i is within bounds
-      const key = sortedOrgKeys[i]!;
-      if (cursor) {
-        startCursors.set(key, cursor);
-      } else {
-        exhaustedOrgs.add(key);
-      }
-    }
-  }
+  const { startCursors, exhausted: exhaustedOrgs } = decodeTargetCursors(
+    rawCursor,
+    sortedOrgKeys
+  );
 
   const activeOrgs =
     exhaustedOrgs.size > 0

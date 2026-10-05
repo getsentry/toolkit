@@ -1,8 +1,11 @@
-minVersion: '2.29.0'
+minVersion: '2.33.0'
 workspaces:
   packages/cli:
     changelog:
       policy: auto
+      # The CLI release also ships the documentation workspace.
+      includePaths:
+        - apps/cli-docs
     versioning:
       policy: auto
     preReleaseCommand: bash -c 'cd packages/cli && node --experimental-strip-types script/bump-version.ts --pre'

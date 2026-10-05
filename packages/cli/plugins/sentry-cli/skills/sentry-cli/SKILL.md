@@ -1,6 +1,6 @@
 ---
 name: sentry-cli
-version: 0.46.0-dev.0
+version: 0.47.0-dev.0
 description: Guide for using the Sentry CLI to interact with Sentry from the command line. Use when the user asks about viewing issues, events, projects, organizations, making API calls, or authenticating with Sentry via CLI.
 requires:
   bins: ["sentry"]
@@ -541,6 +541,14 @@ Search and query current Sentry documentation
 
 → Full flags and examples: `references/docs.md`
 
+### Dsn
+
+Find Sentry DSNs
+
+- `sentry dsn list <org/project>` — List DSNs
+
+→ Full flags and examples: `references/dsn.md`
+
 ### Platform
 
 List valid Sentry platform identifiers
@@ -573,6 +581,7 @@ Search and inspect Session Replays
 
 - `sentry replay list <org/project>` — List recent Session Replays
 - `sentry replay view <replay-id-or-url...>` — View a Session Replay
+- `sentry replay download <replay-id-or-url...>` — Download a Session Replay as rrweb JSON
 
 → Full flags and examples: `references/replay.md`
 
@@ -620,10 +629,13 @@ Query aggregate event data (Explore)
 
 ### Feedback
 
-Search and inspect User Feedback
+Manage User Feedback
 
 - `sentry feedback list <org/project>` — List and search User Feedback
 - `sentry feedback view <feedback>` — View a User Feedback item
+- `sentry feedback resolve <feedback>` — Mark User Feedback as resolved
+- `sentry feedback unresolve <feedback>` — Return User Feedback to the inbox
+- `sentry feedback spam <feedback>` — Mark User Feedback as spam
 
 → Full flags and examples: `references/feedback.md`
 

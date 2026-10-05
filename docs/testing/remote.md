@@ -104,20 +104,11 @@ Server runs at: `http://localhost:5173`
 - Serves the web UI at root
 - MCP endpoint at `/mcp`
 
-### Option 2: Deploy to Cloudflare
+### Option 2: Test the Cloudflare Worker
 
-**Deploy to your Cloudflare account:**
-```bash
-cd packages/mcp-cloudflare
-pnpm deploy
-```
-
-**Deploy to production (requires permissions):**
-```bash
-# Automated via GitHub Actions on push to main
-# Manual deployment:
-pnpm deploy --env production
-```
+The protected GitHub workflow deploys the canary first and then production
+after successful tests on `main`. Use the canary URL to check hosted behavior
+before production traffic changes.
 
 ## Testing with the CLI Client
 
@@ -662,14 +653,9 @@ pnpm inspector
 
 ### Production Deploy
 
-```bash
-# Via GitHub Actions (automatic)
-git push origin main
-
-# Manual (if needed)
-cd packages/mcp-cloudflare
-pnpm deploy --env production
-```
+Merge a reviewed pull request into `main`. The protected workflow requires
+passing tests for that exact revision and a successful canary smoke test before
+it changes production traffic.
 
 ### After Deploy
 
@@ -773,9 +759,9 @@ pnpm -w run cli --mcp-host=https://staging.mcp.sentry.dev "who am I?"
 ### Testing Self-Hosted
 
 ```bash
-# Deploy to self-hosted Cloudflare account
+# Deploy only to your own Worker using your own Wrangler configuration
 cd packages/mcp-cloudflare
-pnpm deploy
+pnpm exec wrangler deploy --config your-worker.jsonc
 
 # Test with self-hosted URL
 pnpm -w run cli --mcp-host=https://your-worker.workers.dev "who am I?"

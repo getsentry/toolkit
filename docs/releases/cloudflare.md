@@ -136,32 +136,38 @@ pnpm dev
 
 ### Production Deployment
 
-#### Automated via GitHub Actions (Recommended)
+#### Automated via GitHub Actions
 
-Production deployments happen automatically when changes are pushed to the main branch:
+Production deployments run only from the trusted `Deploy to Cloudflare` workflow
+after the `Test` workflow succeeds for the current `main` commit:
 
-1. Push to main or merge a PR
-2. GitHub Actions runs tests
-3. If tests pass, deploys to Cloudflare
+1. Merge a PR into `main`; GitHub Actions tests that exact commit.
+2. The workflow builds once, captures the live production version, and uploads
+   the generated Worker bundle and `dist/client` SPA assets without shifting
+   traffic. The source `public` directory does not contain the built homepage.
+3. It stages that version at 0% while the prior version serves 100%, then tests
+   it with a version override through the production route. The version probe
+   confirms that the candidate handled the overridden request.
+4. It promotes the tested version to 100% and checks both ownership and live
+   smoke tests. If a step fails, it restores the captured prior version only
+   while the latest Cloudflare deployment is still owned by that run. External
+   changes or ambiguous traffic stop recovery.
 
-Required secrets in GitHub repository settings:
-- `CLOUDFLARE_API_TOKEN` - API token with Workers deployment permissions
-- `CLOUDFLARE_ACCOUNT_ID` - Your Cloudflare account ID
+The `production` GitHub environment allows only `main`. Store
+`CLOUDFLARE_API_TOKEN` there with Workers deployment permissions. Configure
+`CLOUDFLARE_ACCOUNT_ID` for the account that owns both Workers. Keep credentials
+out of command arguments and logs. After a verified deployment, remove any
+repository-level copy of `CLOUDFLARE_API_TOKEN`.
 
 See `github-actions.md` for detailed setup instructions.
 
-#### Manual Deployment
-
-```bash
-# Build client assets
-pnpm build
-
-# Deploy to Cloudflare
-pnpm deploy
-
-# Or deploy specific environment
-pnpm deploy --env production
-```
+Manual recovery is available through `Recover Cloudflare Deployment` on
+`main`, with the original deployment run ID and attempt. It checks the source
+run and contiguous live Cloudflare history before restoring the explicit prior
+version. Production traffic changes must use a protected workflow. Do not use bare
+`wrangler rollback`: it selects from mutable deployment history and can undo
+someone else's deployment. If recovery declines because production changed,
+inspect the active version and use a new reviewed workflow run to fix forward.
 
 #### Version Uploads (Gradual Rollouts)
 
