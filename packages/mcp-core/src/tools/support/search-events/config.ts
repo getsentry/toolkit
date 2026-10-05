@@ -122,6 +122,17 @@ REPLAY SEARCH RULES:
 - If the user asks about replays they have viewed, prefer viewed_by_me:true
 - If the user asks about replay users and says "me", use whoami and translate to user.email:<actual email>
 
+LOGS TEXT MATCHING (LOGS DATASET ONLY):
+- Plain word or phrase: use wildcards, e.g. message:"*database*". Do NOT use a regex when a substring match is enough
+- Use a regex filter key://pattern// when wildcards cannot express the request: number shapes (\\d+), alternation (a|b), anchoring (^ starts with, $ ends with), character classes ([0-9a-f]), or structured values like IPs, UUIDs, and status codes
+  - Example: message://timeout after \\d+ms//
+  - Negate with a leading !: !message://job \\d+ completed//
+  - There is no list form; use alternation: message://(ConnectionReset|ReadTimeout)Error//
+- NEVER quote a regex: message:"//...//" is a literal string match, not a regex. Spaces and parentheses inside the pattern are fine unquoted
+- Regex uses RE2 syntax (no lookarounds or backreferences), matches anywhere unless anchored, and is case sensitive; prefix the pattern with (?i) to ignore case
+- Patterns are limited to 64 characters (an escape like \\d counts as one). Write \\/\\/ to match a literal //
+- Regex only works on string attributes, and only in the logs dataset; other datasets treat //...// as a literal value
+
 MATHEMATICAL QUERY PATTERNS:
 When user asks mathematical questions like "how many X", "total Y used", "sum of Z":
 - Identify the appropriate dataset based on context
@@ -716,6 +727,33 @@ export const DATASET_EXAMPLES: Record<
       description: "warning logs about memory",
       output: {
         query: 'severity:warn AND message:"*memory*"',
+        fields: ["timestamp", "message", "severity", "trace"],
+        sort: "-timestamp",
+      },
+    },
+    {
+      description:
+        "logs whose message reports a retry count like 'retry 3 of 5'",
+      output: {
+        query: "message://retry \\d+ of \\d+//",
+        fields: ["timestamp", "message", "severity", "trace"],
+        sort: "-timestamp",
+      },
+    },
+    {
+      description:
+        "error logs whose message starts with ConnectionReset or ReadTimeout",
+      output: {
+        query: "severity:error AND message://^(ConnectionReset|ReadTimeout)//",
+        fields: ["timestamp", "message", "severity", "trace"],
+        sort: "-timestamp",
+      },
+    },
+    {
+      description:
+        "logs excluding cache hit messages like 'cache hit for key user:42'",
+      output: {
+        query: "!message://^cache hit for key \\S+//",
         fields: ["timestamp", "message", "severity", "trace"],
         sort: "-timestamp",
       },
