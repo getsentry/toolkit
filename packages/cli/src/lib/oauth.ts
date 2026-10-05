@@ -215,11 +215,12 @@ async function fetchWithConnectionError(
     if (!(error instanceof Error)) {
       throw error;
     }
+    const targetOrigin = new URL(url).origin;
 
     // TLS certificate errors — give actionable guidance
     if (isTlsCertError(error)) {
       throw new ApiError(
-        `TLS certificate error connecting to ${getSentryUrl()}`,
+        `TLS certificate error connecting to ${targetOrigin}`,
         0,
         buildTlsErrorDetail(error)
       );
@@ -232,7 +233,7 @@ async function fetchWithConnectionError(
 
     if (isConnectionError) {
       throw new ApiError(
-        `Cannot connect to Sentry at ${getSentryUrl()}`,
+        `Cannot connect to Sentry at ${targetOrigin}`,
         0,
         "Check your network connection and SENTRY_URL configuration"
       );
