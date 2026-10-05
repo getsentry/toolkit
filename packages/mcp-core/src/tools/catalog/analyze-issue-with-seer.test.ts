@@ -4,7 +4,7 @@ import {
   createUnsupportedIssue,
   mswServer,
 } from "@sentry/mcp-server-mocks";
-import { HttpResponse, http } from "msw";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import analyzeIssueWithSeer from "./analyze-issue-with-seer.js";
 
