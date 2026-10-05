@@ -312,6 +312,19 @@ describe("search query helpers", () => {
     ).toBe(false);
   });
 
+  it("should detect regex filters inside parentheses and on Sentry's other key shapes", () => {
+    expect(looksLikeSentrySearchSyntax("(message://a b//)", "logs")).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax("tags[sentry:user]://^id \\d+//", "logs"),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax("tags[foo, string]://a b//", "logs"),
+    ).toBe(true);
+    expect(looksLikeSentrySearchSyntax('"mykey"://a b//', "logs")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("arr[*]://a b//", "logs")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("(level:error)", "logs")).toBe(false);
+  });
+
   it("should not treat regex filters as search syntax outside logs", () => {
     expect(looksLikeSentrySearchSyntax("message://^Timeout//")).toBe(false);
     expect(
@@ -366,6 +379,33 @@ describe("search query helpers", () => {
         "logs",
       ),
     ).toBe(false);
+  });
+
+  it("detects regex filter downgrades inside parentheses and on colon keys", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "severity:error (message://^Timeout after \\d+ms//)",
+        'severity:error message:"*Timeout after*"',
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "tags[sentry:user]://^id \\d+//",
+        'message:"*id*"',
+        "logs",
+      ),
+    ).toBe(true);
+  });
+
+  it("detects regex filters whose pattern changed case", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "message://^Timeout//",
+        "message://^timeout//",
+        "logs",
+      ),
+    ).toBe(true);
   });
 
   it("allows rewriting regex filters outside logs", () => {

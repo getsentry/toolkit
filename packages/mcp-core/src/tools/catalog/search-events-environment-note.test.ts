@@ -70,6 +70,9 @@ describe("collectRequestedEnvironments", () => {
     expect(
       collectRequestedEnvironments(null, "message://a environment:foo b//"),
     ).toEqual([]);
+    expect(
+      collectRequestedEnvironments(null, "(message://a environment:foo b//)"),
+    ).toEqual([]);
   });
 });
 
