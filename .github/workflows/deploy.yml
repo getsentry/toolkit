@@ -96,8 +96,11 @@ jobs:
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-upload.jsonl
         run: |
+          test -s dist/client/index.html
+          test -s dist/sentry_mcp/wrangler.json
           pnpm exec wrangler versions upload --experimental-auto-create=false \
-            --config wrangler.jsonc \
+            --config dist/sentry_mcp/wrangler.json \
+            --assets dist/client \
             --message "toolkit-mcp:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT:$TESTED_SHA:upload"
 
       - name: Identify uploaded production version

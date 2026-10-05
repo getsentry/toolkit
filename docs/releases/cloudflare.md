@@ -143,7 +143,8 @@ after the `Test` workflow succeeds for the current `main` commit:
 
 1. Merge a PR into `main`; GitHub Actions tests that exact commit.
 2. The workflow builds once, captures the live production version, and uploads
-   a new version of the production Worker without shifting traffic.
+   the generated Worker bundle and `dist/client` SPA assets without shifting
+   traffic. The source `public` directory does not contain the built homepage.
 3. It stages that version at 0% while the prior version serves 100%, then tests
    it with a version override through the production route. The version probe
    confirms that the candidate handled the overridden request.

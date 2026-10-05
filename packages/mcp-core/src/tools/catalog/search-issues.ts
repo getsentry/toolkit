@@ -1,18 +1,18 @@
-import { getActiveSpan, setTag } from "@sentry/core";
+import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
 import { SEARCH_ISSUES_PERIOD_VALUES } from "../../constants";
 import { hasAgentProvider } from "../../internal/agents/provider-factory";
 import { withProviderFallback } from "../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
 import { searchIssuesAgent } from "../support/search-issues/agent";
 import {
-  formatIssueResults,
   formatExplanation,
+  formatIssueResults,
 } from "../support/search-issues/formatters";
 
 const ProjectSlugOrIdSchema = z.string().trim().superRefine(validateSlugOrId);
@@ -120,14 +120,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    setOrganizationContext(params.organizationSlug);
-    if (params.projectSlugOrId) {
-      if (isNumericId(params.projectSlugOrId)) {
-        setTag("project.id", params.projectSlugOrId);
-      } else {
-        setTag("project.slug", params.projectSlugOrId);
-      }
-    }
+    setTargetTagsAndAttributes(params);
 
     let query: string;
     let sort: "date" | "freq" | "new" | "user" | "recommended";

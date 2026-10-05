@@ -22,25 +22,25 @@
 
 import { pathToFileURL } from "node:url";
 
-import { buildServer } from "@sentry/mcp-core/server";
-import { startStdio } from "./transports/stdio";
-import * as Sentry from "@sentry/node";
-import { LIB_VERSION } from "@sentry/mcp-core/version";
-import { buildUsage } from "./cli/usage";
-import { printCliLine } from "./cli/output";
-import { parseArgv, parseEnv, merge } from "./cli/parse";
-import { finalize } from "./cli/resolve";
-import type { PartiallyResolvedConfig } from "./cli/types";
-import { resolveAccessToken } from "./auth/resolve-token";
-import { authCommand } from "./cli/commands/auth";
-import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
-import { SKILLS } from "@sentry/mcp-core/skills";
 import {
   getAgentProvider,
+  getResolvedProviderType,
   setAgentProvider,
   setProviderBaseUrls,
-  getResolvedProviderType,
 } from "@sentry/mcp-core/internal/agents/provider-factory";
+import { buildServer } from "@sentry/mcp-core/server";
+import { SKILLS } from "@sentry/mcp-core/skills";
+import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
+import { LIB_VERSION } from "@sentry/mcp-core/version";
+import * as Sentry from "@sentry/node";
+import { resolveAccessToken } from "./auth/resolve-token";
+import { authCommand } from "./cli/commands/auth";
+import { printCliLine } from "./cli/output";
+import { merge, parseArgv, parseEnv } from "./cli/parse";
+import { finalize } from "./cli/resolve";
+import type { PartiallyResolvedConfig } from "./cli/types";
+import { buildUsage } from "./cli/usage";
+import { startStdio } from "./transports/stdio";
 
 const defaultPackageName = "@sentry/mcp-server";
 const allSkills = Object.keys(SKILLS) as ReadonlyArray<
@@ -311,17 +311,26 @@ export async function runMcpServer(
     console.warn("");
   }
 
+  const scopeContext = {
+    "app.server.version": LIB_VERSION,
+    "app.transport": "stdio",
+    "app.upstream.host": cfg.sentryHost,
+    "app.url.full": cfg.mcpUrl,
+  };
+
   Sentry.init({
     dsn: cfg.sentryDsn,
     tracesSampleRate: 1,
     beforeSend: sentryBeforeSend,
     initialScope: {
       tags: {
-        "app.server.version": LIB_VERSION,
-        "app.transport": "stdio",
+        ...scopeContext,
         "app.server.mode.experimental": cli.experimental ? "true" : "false",
-        "app.upstream.host": cfg.sentryHost,
-        "app.url.full": cfg.mcpUrl,
+      },
+      // SDK v11 does not copy scope tags onto streamed spans.
+      attributes: {
+        ...scopeContext,
+        "app.server.mode.experimental": cli.experimental === true,
       },
     },
     release: process.env.SENTRY_RELEASE,

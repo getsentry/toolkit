@@ -47,10 +47,10 @@ catalog:
   "@modelcontextprotocol/server": 2.0.0
   "@radix-ui/react-accordion": ^1.2.20
   "@radix-ui/react-slot": ^1.2.3
-  "@sentry/cloudflare": 11.0.0-rc.0
-  "@sentry/core": 11.0.0-rc.0
-  "@sentry/node": 11.0.0-rc.0
-  "@sentry/react": 11.0.0-rc.0
+  "@sentry/cloudflare": 11.1.0
+  "@sentry/core": 11.1.0
+  "@sentry/node": 11.1.0
+  "@sentry/react": 11.1.0
   "@sentry/vite-plugin": ^4.6.1
   "@tailwindcss/typography": ^0.5.16
   "@tailwindcss/vite": ^4.3.3
@@ -99,16 +99,16 @@ minimumReleaseAgeExclude:
   - '@ai-sdk/react@3.0.232'
   - ai@6.0.230
   - agents@0.20.1
-  - '@sentry/browser-utils@11.0.0-rc.0'
-  - '@sentry/browser@11.0.0-rc.0'
-  - '@sentry/bundler-plugins@11.0.0-rc.0'
-  - '@sentry/cloudflare@11.0.0-rc.0'
-  - '@sentry/core@11.0.0-rc.0'
-  - '@sentry/feedback@11.0.0-rc.0'
-  - '@sentry/node@11.0.0-rc.0'
-  - '@sentry/opentelemetry@11.0.0-rc.0'
-  - '@sentry/react@11.0.0-rc.0'
-  - '@sentry/replay-canvas@11.0.0-rc.0'
-  - '@sentry/replay@11.0.0-rc.0'
-  - '@sentry/server-runtime-injection@11.0.0-rc.0'
-  - '@sentry/server-utils@11.0.0-rc.0'
+  - '@sentry/browser-utils@11.1.0'
+  - '@sentry/browser@11.1.0'
+  - '@sentry/bundler-plugins@11.1.0'
+  - '@sentry/cloudflare@11.1.0'
+  - '@sentry/core@11.1.0'
+  - '@sentry/feedback@11.1.0'
+  - '@sentry/node@11.1.0'
+  - '@sentry/opentelemetry@11.1.0'
+  - '@sentry/react@11.1.0'
+  - '@sentry/replay-canvas@11.1.0'
+  - '@sentry/replay@11.1.0'
+  - '@sentry/server-runtime-injection@11.1.0'
+  - '@sentry/server-utils@11.1.0'
