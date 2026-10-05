@@ -20,27 +20,30 @@ const beforeSendSpan = vi.fn((span: StreamedSpanJSON) => span);
 const beforeSend = vi.fn((event: ErrorEvent) => event);
 let sentry: ServerRuntimeClient;
 
+// Tag and attribute keys that the tests in this file set on the isolation scope.
+const SCOPE_CONTEXT_KEYS = new Set([
+  "organization.slug",
+  "project.slug",
+  "project.id",
+  "team.slug",
+  "issue.id",
+  "trace.id",
+  "trace.span_id",
+  "monitor.slug",
+  "uptime.monitor_id",
+  "release.version",
+  "replay.id",
+  "profile.id",
+  "profiler.id",
+  "ai_conversation.id",
+  "client.id",
+]);
+
 // Without an async context strategy, withIsolationScope does not fork the
 // isolation scope, so values set by one test stay there for the next one.
 function resetScopeContext(): void {
   const scope = getIsolationScope();
-  for (const key of [
-    "organization.slug",
-    "project.slug",
-    "project.id",
-    "team.slug",
-    "issue.id",
-    "trace.id",
-    "trace.span_id",
-    "monitor.slug",
-    "uptime.monitor_id",
-    "release.version",
-    "replay.id",
-    "profile.id",
-    "profiler.id",
-    "ai_conversation.id",
-    "client.id",
-  ]) {
+  for (const key of SCOPE_CONTEXT_KEYS) {
     scope.setAttribute(key, undefined);
     scope.setTag(key, undefined);
   }
