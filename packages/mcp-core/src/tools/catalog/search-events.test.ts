@@ -3162,6 +3162,24 @@ describe("search_events", () => {
         "severity:error message://can't connect to \\w+// has:trace",
       ]);
     });
+
+    it("uses the agent's rewrite of regex syntax outside logs", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", 'span.description:"GET /api/*"'),
+      );
+      const queries = captureEventsQueries();
+
+      await searchEvents.handler(
+        {
+          ...regexSearchParams,
+          dataset: "spans",
+          query: "span.description://^GET \\/api\\/\\d+//",
+        },
+        regexSearchContext,
+      );
+
+      expect(queries).toEqual(['span.description:"GET /api/*"']);
+    });
   });
 
   it("keeps caller fields when the agent returns an empty fields array", async () => {

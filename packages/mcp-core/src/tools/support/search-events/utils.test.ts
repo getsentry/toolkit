@@ -297,49 +297,90 @@ describe("search query helpers", () => {
     expect(looksLikeSentrySearchSyntax("ERROR: service is down")).toBe(false);
   });
 
-  it("should detect regex filters", () => {
-    expect(looksLikeSentrySearchSyntax("message://^Timeout//")).toBe(true);
-    expect(
-      looksLikeSentrySearchSyntax("message://^Timeout after \\d+ms//"),
-    ).toBe(true);
-    expect(looksLikeSentrySearchSyntax("!message://(?i)healthcheck//")).toBe(
+  it("should detect regex filters in logs queries", () => {
+    expect(looksLikeSentrySearchSyntax("message://^Timeout//", "logs")).toBe(
       true,
     );
-    expect(looksLikeSentrySearchSyntax("open http://example.com/a//b")).toBe(
+    expect(
+      looksLikeSentrySearchSyntax("message://^Timeout after \\d+ms//", "logs"),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax("!message://(?i)healthcheck//", "logs"),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax("open http://example.com/a//b", "logs"),
+    ).toBe(false);
+  });
+
+  it("should not treat regex filters as search syntax outside logs", () => {
+    expect(looksLikeSentrySearchSyntax("message://^Timeout//")).toBe(false);
+    expect(
+      looksLikeSentrySearchSyntax("span.description://^GET \\/api//", "spans"),
+    ).toBe(false);
+    expect(looksLikeSentrySearchSyntax("message://^Timeout//", "errors")).toBe(
       false,
     );
   });
 
   it("detects regex filters rewritten into plain or wildcard filters", () => {
     expect(
-      isSemanticFilterDowngrade("message://^Timeout//", 'message:"*Timeout*"'),
+      isSemanticFilterDowngrade(
+        "message://^Timeout//",
+        'message:"*Timeout*"',
+        "logs",
+      ),
     ).toBe(true);
     expect(
       isSemanticFilterDowngrade(
         "message://can't connect to \\w+//",
         "message:*connect*",
+        "logs",
       ),
     ).toBe(true);
     expect(
       isSemanticFilterDowngrade(
         "custom://^order-\\d+$// level:error",
         'level:error message:"*order-*"',
+        "logs",
       ),
     ).toBe(true);
     expect(
-      isSemanticFilterDowngrade("custom://^order-\\d+$//", "custom:order-*"),
+      isSemanticFilterDowngrade(
+        "custom://^order-\\d+$//",
+        "custom:order-*",
+        "logs",
+      ),
     ).toBe(true);
 
     expect(
       isSemanticFilterDowngrade(
         "message://^Timeout//",
         "message://^Timeout// severity:error",
+        "logs",
       ),
     ).toBe(false);
     expect(
       isSemanticFilterDowngrade(
         "custom://^order-\\d+$//",
         "tags[custom]://^order-\\d+$//",
+        "logs",
+      ),
+    ).toBe(false);
+  });
+
+  it("allows rewriting regex filters outside logs", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "span.description://^GET \\/api\\/\\d+//",
+        'span.description:"GET /api/*"',
+        "spans",
+      ),
+    ).toBe(false);
+    expect(
+      isSemanticFilterDowngrade(
+        "message://^Timeout//",
+        'message:"*Timeout*"',
+        "errors",
       ),
     ).toBe(false);
   });
