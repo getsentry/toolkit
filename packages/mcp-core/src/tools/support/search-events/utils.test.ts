@@ -315,13 +315,19 @@ describe("search query helpers", () => {
   it("should detect regex filters inside parentheses and on Sentry's other key shapes", () => {
     expect(looksLikeSentrySearchSyntax("(message://a b//)", "logs")).toBe(true);
     expect(
-      looksLikeSentrySearchSyntax("tags[sentry:user]://^id \\d+//", "logs"),
+      looksLikeSentrySearchSyntax("tags[App:Region]://^us-//", "logs"),
     ).toBe(true);
+    expect(looksLikeSentrySearchSyntax("flags[Feature:X]://y//", "logs")).toBe(
+      true,
+    );
     expect(
       looksLikeSentrySearchSyntax("tags[foo, string]://a b//", "logs"),
     ).toBe(true);
     expect(looksLikeSentrySearchSyntax('"mykey"://a b//', "logs")).toBe(true);
     expect(looksLikeSentrySearchSyntax("arr[*]://a b//", "logs")).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax('"Note"message://a b//', "logs"),
+    ).toBe(true);
     expect(looksLikeSentrySearchSyntax("(level:error)", "logs")).toBe(false);
   });
 
@@ -392,7 +398,23 @@ describe("search query helpers", () => {
     expect(
       isSemanticFilterDowngrade(
         "tags[sentry:user]://^id \\d+//",
-        'message:"*id*"',
+        "tags[sentry:user]://^id//",
+        "logs",
+      ),
+    ).toBe(true);
+  });
+
+  it("detects regex filters rewritten into wildcards on array, quoted, and spaced keys", () => {
+    expect(
+      isSemanticFilterDowngrade("arr[*]://^a b//", "arr[*]:*a*", "logs"),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade('"mykey"://^a b//', '"mykey":*a*', "logs"),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "tags[x, string]://^a b//",
+        'tags[x, string]:"*a*"',
         "logs",
       ),
     ).toBe(true);
