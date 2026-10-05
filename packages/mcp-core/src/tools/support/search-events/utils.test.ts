@@ -325,9 +325,9 @@ describe("search query helpers", () => {
     ).toBe(true);
     expect(looksLikeSentrySearchSyntax('"mykey"://a b//', "logs")).toBe(true);
     expect(looksLikeSentrySearchSyntax("arr[*]://a b//", "logs")).toBe(true);
-    expect(
-      looksLikeSentrySearchSyntax('"Note"message://a b//', "logs"),
-    ).toBe(true);
+    expect(looksLikeSentrySearchSyntax('"Note"message://a b//', "logs")).toBe(
+      true,
+    );
     expect(looksLikeSentrySearchSyntax("(level:error)", "logs")).toBe(false);
   });
 
