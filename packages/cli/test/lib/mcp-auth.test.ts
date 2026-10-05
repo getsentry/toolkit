@@ -75,6 +75,16 @@ describe("resolveCliMcpAccessToken", () => {
 });
 
 describe("prepareMcpServerArgs", () => {
+  test("uses SENTRY_HOST before SENTRY_URL for self-hosted instances", () => {
+    process.env.SENTRY_HOST = "http://sentry.internal:9000";
+    process.env.SENTRY_URL = "https://sentry.example.com";
+
+    expect(prepareMcpServerArgs([])).toEqual([
+      "--host=sentry.internal:9000",
+      "--insecure-http",
+    ]);
+  });
+
   test("translates an insecure CLI URL into MCP host flags", () => {
     expect(prepareMcpServerArgs([], "http://sentry.internal:9000")).toEqual([
       "--host=sentry.internal:9000",

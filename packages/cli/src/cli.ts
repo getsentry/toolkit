@@ -282,16 +282,9 @@ async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
     return false;
   }
 
-  const [
-    { startMcpServer },
-    { getExitCode },
-    { scheduleForceExit },
-    { closeGlobalDispatcher },
-  ] = await Promise.all([
+  const [{ startMcpServer }, { getExitCode }] = await Promise.all([
     import("./lib/mcp.js"),
     import("./lib/errors.js"),
-    import("./lib/force-exit.js"),
-    import("./lib/close-dispatcher.js"),
   ]);
 
   try {
@@ -299,7 +292,14 @@ async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
   } catch (mcpError) {
     process.stderr.write(`${formatError(mcpError)}\n`);
     process.exitCode = getExitCode(mcpError);
-  } finally {
+    // MCP setup errors are terminal, unlike a running stdio server. Clean up
+    // network resources only on this error path so successful servers retain
+    // their dispatcher and are not force-exited on macOS.
+    const [{ scheduleForceExit }, { closeGlobalDispatcher }] =
+      await Promise.all([
+        import("./lib/force-exit.js"),
+        import("./lib/close-dispatcher.js"),
+      ]);
     scheduleForceExit();
     await closeGlobalDispatcher();
   }

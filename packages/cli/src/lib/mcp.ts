@@ -1,3 +1,4 @@
+import { getConfiguredSentryUrl } from "./constants.js";
 import { refreshToken } from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { HostScopeError, ValidationError } from "./errors.js";
@@ -27,7 +28,7 @@ function hasSentryTargetArg(args: readonly string[]): boolean {
  */
 export function prepareMcpServerArgs(
   args: readonly string[],
-  sentryUrl = getEnv().SENTRY_URL
+  sentryUrl = getConfiguredSentryUrl()
 ): string[] {
   if (!sentryUrl || hasSentryTargetArg(args)) {
     return [...args];
@@ -80,7 +81,11 @@ export async function startMcpServer(args: string[]): Promise<void> {
   }
 
   const { runMcpServer } = await import("@sentry/mcp-server");
-  const { SENTRY_URL: _sentryUrl, ...mcpEnv } = getEnv();
+  const {
+    SENTRY_HOST: _sentryHost,
+    SENTRY_URL: _sentryUrl,
+    ...mcpEnv
+  } = getEnv();
   await runMcpServer(prepareMcpServerArgs(args), {
     environment: mcpEnv,
     packageName: "sentry mcp",

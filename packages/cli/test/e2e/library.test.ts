@@ -92,7 +92,7 @@ describe("library mode (bundled)", () => {
 
   beforeAll(async () => {
     await ensureBundleBuilt();
-  }, 60_000);
+  }, 120_000); // Cold CI builds include the MCP runtime dependencies
 
   // --- Bundle structure ---
 
