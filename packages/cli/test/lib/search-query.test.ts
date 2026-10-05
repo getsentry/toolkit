@@ -472,6 +472,42 @@ describe("sanitizeQuery: regex filters", () => {
     );
   });
 
+  test("passes through a regex on a typed tag key", () => {
+    expect(sanitizeQuery("tags[foo,string]://[a-z,]+ AND b//")).toBe(
+      "tags[foo,string]://[a-z,]+ AND b//"
+    );
+  });
+
+  test("passes through a regex on a typed tag key with spaces", () => {
+    expect(sanitizeQuery("tags[foo, string]://a OR [b,]//")).toBe(
+      "tags[foo, string]://a OR [b,]//"
+    );
+  });
+
+  test("passes through a regex on a tag key containing a colon", () => {
+    expect(sanitizeQuery("tags[sentry:user]://^id [0-9,]+//")).toBe(
+      "tags[sentry:user]://^id [0-9,]+//"
+    );
+  });
+
+  test("passes through a regex on a typed flag key", () => {
+    expect(sanitizeQuery("flags[beta,string]://^on OR off$//")).toBe(
+      "flags[beta,string]://^on OR off$//"
+    );
+  });
+
+  test("passes through a regex on a quoted key", () => {
+    expect(sanitizeQuery('"my.key"://a OR [b,]//')).toBe(
+      '"my.key"://a OR [b,]//'
+    );
+  });
+
+  test("passes through a regex on array keys", () => {
+    expect(
+      sanitizeQuery("arr[*]://a OR [b,]// tags[k,array][*]://a OR b//")
+    ).toBe("arr[*]://a OR [b,]// tags[k,array][*]://a OR b//");
+  });
+
   test("throws for OR between regex filters", () => {
     expect(() => sanitizeQuery("message://a// OR message://b//")).toThrow(
       ValidationError
