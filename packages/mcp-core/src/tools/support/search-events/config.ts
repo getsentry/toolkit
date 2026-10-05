@@ -130,6 +130,7 @@ LOGS TEXT MATCHING (LOGS DATASET ONLY):
   - Negate with a leading !: !message://worker \\d+ ready//
   - There is no regex list form (key:[//a//,//b//] is a literal list); put alternatives inside one pattern: message://(upload|download) of \\d+ bytes failed//
   - For an exact set of values, keep the list: severity:[error,fatal], not severity://error|fatal//
+- Regex on message is for text inside the message. When the user asks about a value that has its own attribute (e.g. response status), filter that attribute instead
 - NEVER quote a regex: message:"//...//" is a literal string match, not a regex
 - The pattern ends at the first // followed by a space, ) or the end of the query. Spaces, parentheses, and a // followed by anything else (https?://host) are fine unquoted; write \\/\\/ for a literal // followed by a space or )
 - Regex uses RE2 syntax (no lookarounds or backreferences), matches anywhere unless anchored, and is case sensitive; prefix the pattern with (?i) to ignore case
