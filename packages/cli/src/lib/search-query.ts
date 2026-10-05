@@ -635,7 +635,6 @@ function transformUnquoted(
   query: string,
   fn: (unquoted: string) => string,
 ): string {
-  // Fast path: no quotes or regex values → transform the whole string
   if (!(query.includes('"') || query.includes("//"))) {
     return fn(query);
   }
@@ -648,17 +647,14 @@ function transformUnquoted(
   let match = PRESERVED_SEGMENT_RE.exec(query);
 
   while (match !== null) {
-    // Unquoted segment before this quoted match
     if (match.index > lastIndex) {
       parts.push(fn(query.slice(lastIndex, match.index)));
     }
-    // Quoted or regex segment — preserved as-is
     parts.push(match[0]);
     lastIndex = match.index + match[0].length;
     match = PRESERVED_SEGMENT_RE.exec(query);
   }
 
-  // Trailing unquoted segment after last quote
   if (lastIndex < query.length) {
     parts.push(fn(query.slice(lastIndex)));
   }
