@@ -10,6 +10,55 @@ import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
 import { ApiNotFoundError, ApiServerError } from "./errors";
 
+describe("API bearer token validation", () => {
+  it("removes edge padding before sending a request", async () => {
+    let authorization: string | null = null;
+    mswServer.use(
+      http.get(
+        "https://sentry.example.com/api/0/organizations/",
+        ({ request }) => {
+          authorization = request.headers.get("Authorization");
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    const api = new SentryApiService({
+      host: "sentry.example.com",
+      accessToken: " \tvalid-token\x7f ",
+    });
+    await api.listOrganizations();
+    expect(authorization).toBe("Bearer valid-token");
+  });
+
+  it("rejects a malformed credential before sending it or disclosing its value", async () => {
+    let requests = 0;
+    mswServer.use(
+      http.get("https://sentry.example.com/api/0/organizations/", () => {
+        requests += 1;
+        return HttpResponse.json([]);
+      }),
+    );
+    const api = new SentryApiService({
+      host: "sentry.example.com",
+      accessToken: "valid\nsecret",
+    });
+
+    const error = await api.listOrganizations().catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(ConfigurationError);
+    expect(String(error)).toContain("Malformed authentication token");
+    expect(String(error)).not.toContain("valid\nsecret");
+    expect(requests).toBe(0);
+
+    const emptyTokenApi = new SentryApiService({
+      host: "sentry.example.com",
+      accessToken: "",
+    });
+    await expect(emptyTokenApi.listOrganizations()).rejects.toThrow(ConfigurationError);
+    expect(requests).toBe(0);
+  });
+});
+
 describe("single-tenant web URLs", () => {
   const api = new SentryApiService({ host: "tenant.my.sentry.io" });
   const baseUrl = "https://tenant.my.sentry.io/organizations/product-org";

@@ -5,6 +5,10 @@
  * https://datatracker.ietf.org/doc/html/rfc8628
  */
 
+import {
+  deviceCodeRequestBody,
+  deviceTokenRequestBody,
+} from "@sentry/toolkit-core/oauth-device";
 import { safeParse } from "valibot";
 import type { TokenResponse } from "../types/index.js";
 import {
@@ -270,10 +274,7 @@ function requestDeviceCode(scope: string = SCOPES) {
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: clientId,
-          scope,
-        }),
+        body: deviceCodeRequestBody(clientId, scope),
       }
     );
 
@@ -324,11 +325,7 @@ function pollForToken(deviceCode: string): Promise<TokenResponse> {
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: getClientId(),
-          device_code: deviceCode,
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        }),
+        body: deviceTokenRequestBody(getClientId(), deviceCode),
       }
     );
 
