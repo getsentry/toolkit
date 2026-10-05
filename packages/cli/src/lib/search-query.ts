@@ -503,7 +503,7 @@ export const SEARCH_SYNTAX_REFERENCE = {
     wildcard: "* in values (e.g., message:*timeout*)",
     inList: "key:[val1,val2] — matches any value in the list",
     regex:
-      "key://pattern// (logs only, string and array attributes) — RE2, unanchored, case-sensitive ((?i) to ignore case), max 64 chars, never quoted; ends at the first // followed by whitespace, ) or end of query; negate with !key://pattern//",
+      "key://pattern// (logs only, string attributes) — RE2, unanchored, case-sensitive ((?i) to ignore case), max 64 chars, never quoted; ends at the first // followed by whitespace, ) or end of query; negate with !key://pattern//",
   },
   filterTypes: [
     "text (key:value)",
