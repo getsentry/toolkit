@@ -3406,7 +3406,6 @@ describe("search_events", () => {
       },
       accessToken: "test-token",
       userId: "1",
-      experimentalMode: true,
     };
     const seerQuery = {
       query: "span.op:http.client",
@@ -3469,27 +3468,6 @@ describe("search_events", () => {
           mockSeerStart,
         ),
       );
-    });
-
-    it("uses the embedded agent without experimental opt-in", async () => {
-      mockGenerateText.mockResolvedValueOnce(
-        mockAIResponse("spans", "span.op:http.client"),
-      );
-      mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
-        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
-          HttpResponse.json({ data: [] }),
-        ),
-      );
-
-      const result = await searchEvents.handler(seerParams, {
-        ...context,
-        experimentalMode: undefined,
-      });
-
-      expect(mockSeerStart).not.toHaveBeenCalled();
-      expect(mockGenerateText).toHaveBeenCalled();
-      expect(result).not.toContain("Translated by Seer's search agent.");
     });
 
     it("should translate natural language queries with Seer", async () => {
