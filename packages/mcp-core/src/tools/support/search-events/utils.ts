@@ -34,6 +34,10 @@ const SEARCH_FILTER_KEY_BEFORE_PATTERN = new RegExp(
   `${SEARCH_FILTER_KEY_SOURCE}$`,
 );
 const SENTRY_SEARCH_TOKEN_PATTERN = new RegExp(
+  String.raw`${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?!\/\/)`,
+  "g",
+);
+const SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN = new RegExp(
   String.raw`${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?:(?!\/\/)|(?=${REGEX_FILTER_VALUE_SOURCE}))`,
   "g",
 );
@@ -92,13 +96,26 @@ export function isAggregateQuery(fields: string[]): boolean {
   return fields.some((field) => field.includes("(") && field.includes(")"));
 }
 
-export function looksLikeSentrySearchSyntax(query?: string): boolean {
+type SearchSyntaxDataset = EventsDataset | "replays";
+
+// Sentry only honors key://pattern// as a regex on logs; other datasets match
+// the literal text //pattern//.
+function searchTokenPattern(dataset?: SearchSyntaxDataset): RegExp {
+  return dataset === "logs"
+    ? SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN
+    : SENTRY_SEARCH_TOKEN_PATTERN;
+}
+
+export function looksLikeSentrySearchSyntax(
+  query?: string,
+  dataset?: SearchSyntaxDataset,
+): boolean {
   const trimmedQuery = query?.trim();
   if (!trimmedQuery) {
     return false;
   }
 
-  for (const match of trimmedQuery.matchAll(SENTRY_SEARCH_TOKEN_PATTERN)) {
+  for (const match of trimmedQuery.matchAll(searchTokenPattern(dataset))) {
     const key = match[2];
     if (!key) {
       continue;
@@ -245,11 +262,14 @@ function readRawFilterValue(
  * boundaries. Values are normalized for comparison (strip wrapping quotes and
  * leading/trailing wildcards).
  */
-function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
+function searchFilterOccurrences(
+  query: string,
+  dataset?: SearchSyntaxDataset,
+): SearchFilterOccurrence[] {
   const occurrences: SearchFilterOccurrence[] = [];
   const masked = maskQuotedRegions(query);
 
-  for (const match of masked.matchAll(SENTRY_SEARCH_TOKEN_PATTERN)) {
+  for (const match of masked.matchAll(searchTokenPattern(dataset))) {
     const key = match[2]?.toLowerCase();
     if (!key || match.index === undefined) {
       continue;
@@ -284,14 +304,20 @@ function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
   return occurrences;
 }
 
-function structuredFilterOccurrences(query: string): SearchFilterOccurrence[] {
-  return searchFilterOccurrences(query).filter(
+function structuredFilterOccurrences(
+  query: string,
+  dataset?: SearchSyntaxDataset,
+): SearchFilterOccurrence[] {
+  return searchFilterOccurrences(query, dataset).filter(
     (occurrence) => !FULL_TEXT_SEARCH_KEYS.has(occurrence.key),
   );
 }
 
-function fullTextFilterValues(query: string): string[] {
-  return searchFilterOccurrences(query)
+function fullTextFilterValues(
+  query: string,
+  dataset?: SearchSyntaxDataset,
+): string[] {
+  return searchFilterOccurrences(query, dataset)
     .filter((occurrence) => FULL_TEXT_SEARCH_KEYS.has(occurrence.key))
     .map((occurrence) => occurrence.value);
 }
@@ -359,15 +385,17 @@ function unmatchedStructuredFilters(
 function isRegexFilterDowngrade(
   originalQuery: string,
   repairedQuery: string,
+  dataset?: SearchSyntaxDataset,
 ): boolean {
-  const originalRegexFilters = searchFilterOccurrences(originalQuery).filter(
-    (occurrence) => occurrence.regex,
-  );
+  const originalRegexFilters = searchFilterOccurrences(
+    originalQuery,
+    dataset,
+  ).filter((occurrence) => occurrence.regex);
   if (originalRegexFilters.length === 0) {
     return false;
   }
 
-  const repairedFilters = searchFilterOccurrences(repairedQuery);
+  const repairedFilters = searchFilterOccurrences(repairedQuery, dataset);
   const repairedPlainFilters = repairedFilters.filter(
     (occurrence) => !occurrence.regex,
   );
@@ -384,8 +412,8 @@ function isRegexFilterDowngrade(
 
 /**
  * True when a structured field:value filter was replaced with message/log.body
- * full-text matching (false-success path), or a `key://pattern//` regex filter
- * was replaced with a plain or wildcard filter. Allows real attribute renames.
+ * full-text matching (false-success path), or a logs `key://pattern//` regex
+ * filter was replaced with a plain or wildcard filter. Allows real attribute renames.
  *
  * Uses multiset key+value matching so dropping one of several identical keys
  * (e.g. `custom:foo custom:bar` → `custom:bar message:"*foo*"`) is still caught.
@@ -395,21 +423,22 @@ function isRegexFilterDowngrade(
 export function isSemanticFilterDowngrade(
   originalQuery: string,
   repairedQuery: string,
+  dataset?: SearchSyntaxDataset,
 ): boolean {
-  if (!looksLikeSentrySearchSyntax(originalQuery)) {
+  if (!looksLikeSentrySearchSyntax(originalQuery, dataset)) {
     return false;
   }
 
-  if (isRegexFilterDowngrade(originalQuery, repairedQuery)) {
+  if (isRegexFilterDowngrade(originalQuery, repairedQuery, dataset)) {
     return true;
   }
 
-  const originalFilters = structuredFilterOccurrences(originalQuery);
+  const originalFilters = structuredFilterOccurrences(originalQuery, dataset);
   if (originalFilters.length === 0) {
     return false;
   }
 
-  const repairedFilters = structuredFilterOccurrences(repairedQuery);
+  const repairedFilters = structuredFilterOccurrences(repairedQuery, dataset);
   const droppedFilters = unmatchedStructuredFilters(
     originalFilters,
     repairedFilters,
@@ -418,7 +447,7 @@ export function isSemanticFilterDowngrade(
     return false;
   }
 
-  const repairedFullTextValues = fullTextFilterValues(repairedQuery);
+  const repairedFullTextValues = fullTextFilterValues(repairedQuery, dataset);
   if (repairedFullTextValues.length === 0) {
     // Renames keep values on non-full-text attributes and do not need this guard.
     return false;

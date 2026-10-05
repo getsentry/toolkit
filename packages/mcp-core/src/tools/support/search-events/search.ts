@@ -331,6 +331,7 @@ function choosePreservingRepairedQuery(params: {
   originalQuery: string;
   repairedQuery?: string | null;
   filter?: string;
+  dataset: PublicEventsDataset | "replays";
 }): string {
   const originalQuery = params.originalQuery.trim();
   const repairedQuery = params.repairedQuery?.trim();
@@ -338,7 +339,7 @@ function choosePreservingRepairedQuery(params: {
     return appendSearchFilter(originalQuery, params.filter);
   }
 
-  if (isSemanticFilterDowngrade(originalQuery, repairedQuery)) {
+  if (isSemanticFilterDowngrade(originalQuery, repairedQuery, params.dataset)) {
     return appendSearchFilter(originalQuery, params.filter);
   }
 
@@ -620,7 +621,10 @@ export async function runSearchEvents(
   setTargetTagsAndAttributes(params);
 
   const inputDataset = params.dataset ?? "errors";
-  const hasStructuredQuery = looksLikeSentrySearchSyntax(params.query);
+  const hasStructuredQuery = looksLikeSentrySearchSyntax(
+    params.query,
+    inputDataset,
+  );
   const canApplyEnvironmentFilter =
     inputDataset !== "replays" &&
     isTraceItemDataset(inputDataset) &&
@@ -789,9 +793,14 @@ export async function runSearchEvents(
           originalQuery: params.query ?? "",
           repairedQuery: parsed.query,
           filter: environmentFilter,
+          dataset,
         })
-      : looksLikeSentrySearchSyntax(params.query) &&
-          isSemanticFilterDowngrade(params.query ?? "", parsed.query || "")
+      : looksLikeSentrySearchSyntax(params.query, dataset) &&
+          isSemanticFilterDowngrade(
+            params.query ?? "",
+            parsed.query || "",
+            dataset,
+          )
         ? (params.query ?? "")
         : parsed.query || "";
     sortParam =
