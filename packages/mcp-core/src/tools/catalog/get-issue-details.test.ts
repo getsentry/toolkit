@@ -2135,8 +2135,6 @@ describe("get_issue_details", () => {
 });
 
 describe("structuredContent", () => {
-  // structuredResult returns no markdown, so the structured payload is gated on experimental
-  // mode until it is the only thing the tool returns
   const experimentalContext = { ...baseContext, experimentalMode: true };
 
   const params = {
@@ -2192,8 +2190,6 @@ describe("structuredContent", () => {
       await getIssueDetails.handler(params, experimentalContext),
     );
 
-    // the headings are this server's own, so their presence is what shows the body was
-    // rendered here rather than handed over by the api
     expect(typeof payload.event.body).toBe("string");
     expect(payload.event.body).toContain("### Error");
     expect(payload.event.body).toContain("Something went wrong");
@@ -2218,7 +2214,6 @@ describe("structuredContent", () => {
       await getIssueDetails.handler(params, experimentalContext),
     );
 
-    // dropping these would leave the structured path strictly worse than the markdown
     expect(payload.responseNotes.length).toBeGreaterThan(0);
     const notes = payload.responseNotes.join("\n");
     expect(notes).toContain("Fixes CLOUDFLARE-MCP-41");
@@ -2226,8 +2221,6 @@ describe("structuredContent", () => {
   });
 
   it("carries the top level message, which the body does not render", async () => {
-    // the markdown output prints event.message above the body; formatEventOutput only
-    // renders a message entry, so the payload has to carry it separately
     mockLatestEvent({ message: "TOP-LEVEL-MESSAGE", entries: [] });
 
     const payload = payloadOf(
@@ -2238,7 +2231,6 @@ describe("structuredContent", () => {
   });
 
   it("keeps an unsupported event type on the markdown path", async () => {
-    // the markdown path reports the type and warns; a structured body would render nothing
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/*/issues/7777777777/events/latest/",
@@ -2260,7 +2252,6 @@ describe("structuredContent", () => {
   });
 
   it("renders a transaction, whose body carries the performance trace", async () => {
-    // the local renderer covers every event type, so a transaction takes the same path
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
@@ -2284,7 +2275,6 @@ describe("structuredContent", () => {
   });
 
   it("keeps the attached replay, which lives on the event not the related list", async () => {
-    // an issue whose only replay is attached would otherwise report no replays at all
     mockLatestEvent({
       contexts: {
         replay: {
@@ -2303,7 +2293,6 @@ describe("structuredContent", () => {
     expect(payload.replays?.related).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
-    // nor left in the tags and contexts the body renders, which would be a third copy
     expect(payload.event.body).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
@@ -2320,8 +2309,6 @@ describe("structuredContent", () => {
   });
 
   it("maps external issues field by field so upstream extras cannot leak", async () => {
-    // structuredContent is a product contract, not a view of the api response: several
-    // upstream schemas are passthrough, so anything not mapped must not appear
     mockLatestEvent();
     mswServer.use(
       http.get(
@@ -2349,8 +2336,6 @@ describe("structuredContent", () => {
   });
 
   it("carries every field the markdown output surfaces", async () => {
-    // greg's bar for this migration is "roughly the same content": anything the markdown
-    // renders and the payload drops is a regression for every MCP user
     mockLatestEvent({ dateCreated: "2026-09-03T12:00:00.000Z" });
 
     const payload = payloadOf(
@@ -2380,8 +2365,6 @@ describe("structuredContent", () => {
   });
 
   it("does not label an error's exception message as a query pattern", async () => {
-    // metadata.value is a query pattern for a performance issue and the exception message for
-    // an error, so reading it unconditionally puts error text under the wrong name
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
@@ -2450,8 +2433,7 @@ describe("structuredContent", () => {
     );
     mockLatestEvent();
     mswServer.use(
-      // related ids come from replay-count, keyed by numeric issue id. Echo back whichever
-      // id was asked for: a preceding test can leave a different issue fixture registered.
+      // echo back whichever issue id was asked for
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/replay-count/",
         ({ request }) => {
@@ -2482,7 +2464,6 @@ describe("suspect commits", () => {
     issueUrl: undefined,
     regionUrl: null,
   };
-  // the structured payload is gated on experimental mode
   const experimentalContext = { ...baseContext, experimentalMode: true };
   const committersUrl = `https://sentry.io/api/0/projects/sentry-mcp-evals/CLOUDFLARE-MCP/events/${fixtureEventId}/committers/`;
 

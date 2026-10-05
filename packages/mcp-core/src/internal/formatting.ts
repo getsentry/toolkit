@@ -198,10 +198,6 @@ export function isPerformanceIssueType(issue: {
   );
 }
 
-/**
- * Whether this server renders the event type. The Event union is ErrorEvent | DefaultEvent |
- * TransactionEvent | GenericEvent | CspEvent, but in practice other types arrive as UnknownEvent.
- */
 export function isSupportedEventType(event: { type?: unknown }): boolean {
   return (
     event.type === "error" ||
@@ -232,8 +228,6 @@ export function formatEventOutput(
       availableToolNames?: ReadonlySet<string>;
       directToolNames?: ReadonlySet<string>;
     };
-    // strip the replay ids without rendering the note, for callers that report replays
-    // themselves and would otherwise repeat them in tags and contexts
     stripReplayIds?: boolean;
   },
 ) {
@@ -2230,13 +2224,6 @@ export function formatIssueOutput({
   return output;
 }
 
-/**
- * The response notes as individual lines, without bullets.
- *
- * Both the markdown output and the structured payload need these, and they are mostly
- * tool-call instructions whose availability depends on the session, so they are built once
- * here rather than restated per output shape.
- */
 export function buildIssueResponseNotes({
   organizationSlug,
   issue,

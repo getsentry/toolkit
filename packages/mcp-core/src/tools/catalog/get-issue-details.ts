@@ -57,14 +57,8 @@ const AI_CONVERSATION_LOOKUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const TRACE_ID_PATTERN = /^[0-9a-fA-F]{32}$/;
 
 /**
- * The issue payload as `structuredContent`.
- *
- * Every field is mapped explicitly rather than spread from an api response, so a passthrough
- * upstream schema cannot leak backend-only fields into the public interface.
- *
- * `event.body` stays a markdown string. It is this server's own rendering of the event, and a
- * stacktrace, a request body and a span tree are prose that an agent reads rather than fields
- * it indexes -- everything worth addressing by name is already a sibling field here.
+ * The issue payload as `structuredContent`. Fields are mapped explicitly so passthrough api
+ * schemas can't leak backend-only fields.
  */
 export const getIssueDetailsOutputSchema = z.object({
   issue: z.object({
@@ -145,8 +139,6 @@ export const getIssueDetailsOutputSchema = z.object({
       }),
     )
     .nullish(),
-  // the markdown output's Response Notes: mostly which tool to call next, and session
-  // dependent, so they are as much a part of the answer here as they are there
   responseNotes: z.array(z.string()),
 });
 
@@ -154,11 +146,7 @@ export type GetIssueDetailsPayload = z.infer<
   typeof getIssueDetailsOutputSchema
 >;
 
-/**
- * ``dateCreated`` sits on the error, default, generic and csp event types rather than the base
- * union, and the markdown path normalizes it to ISO. Read it the same way and tolerate a bad
- * value.
- */
+// dateCreated isn't on every event type
 function eventOccurredAt(event: Event): string | null {
   const raw = "dateCreated" in event ? event.dateCreated : null;
   if (typeof raw !== "string") {
@@ -168,11 +156,6 @@ function eventOccurredAt(event: Event): string | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
-/**
- * The attached replay plus the related ones, derived the way the markdown output derives them.
- * The attached id lives on the event rather than in the related list, so passing that list
- * through alone loses the replay for an issue whose only one is attached.
- */
 function buildReplays(
   event: Event,
   relatedReplayIds?: string[],
@@ -224,15 +207,12 @@ function buildIssueDetailsPayload({
   directToolNames?: ReadonlySet<string>;
 }): GetIssueDetailsPayload {
   const autofix = autofixState?.autofix;
-  // the run's own artifacts, not the whole state: an AutofixRunState carries every step and
-  // would dwarf the rest of the payload
   const summaries = autofix ? getAutofixArtifactSummaries(autofix) : undefined;
   const isPerf = isPerformanceIssueType(issue) && !!issue.metadata;
 
   return {
     issue: {
       shortId: issue.shortId,
-      // a performance issue's metadata carries the better title, as the markdown path prefers
       title: (isPerf ? issue.metadata?.title : null) || issue.title,
       culprit: issue.culprit,
       firstSeen: issue.firstSeen,
@@ -254,8 +234,6 @@ function buildIssueDetailsPayload({
       platform: issue.platform,
       project: issue.project?.name,
       url: apiService.getIssueUrl(organizationSlug, issue.shortId),
-      // metadata.value is a query pattern only for a performance issue; on an error it is the
-      // exception message, so reading it unconditionally would misname the error text
       location: isPerf ? issue.metadata?.location : null,
       queryPattern: isPerf ? issue.metadata?.value : null,
     },
@@ -263,14 +241,11 @@ function buildIssueDetailsPayload({
       id: event.id,
       type: typeof event.type === "string" ? event.type : null,
       occurredAt: eventOccurredAt(event),
-      // the markdown output prints this above the body; formatEventOutput only renders a
-      // message entry, so an event with a top level message alone would otherwise lose it
       message:
         typeof event.message === "string" && event.message.length > 0
           ? event.message
           : null,
-      // no replaySummary: replays are a field of their own below, and rendering the note
-      // here too would answer the same question twice
+      // replays are their own field below
       body: formatEventOutput(event, {
         performanceTrace,
         stripReplayIds: true,
@@ -293,8 +268,6 @@ function buildIssueDetailsPayload({
       : null,
     replays: buildReplays(event, relatedReplayIds),
     suspectCommit: getSuspectCommit(committers),
-    // mapped field by field, not handed through: several upstream schemas are passthrough, and
-    // structuredContent is a product contract rather than a view of the api response
     externalIssues: externalIssues?.length
       ? externalIssues.map((issue) => ({
           id: String(issue.id),
@@ -375,10 +348,7 @@ export default defineTool({
     eventId: ParamEventId.optional(),
     issueUrl: ParamIssueUrl.optional(),
   },
-  // outputSchema is deliberately not declared yet. tools/list would export it immediately,
-  // while a session outside experimental mode still gets a markdown result with no
-  // structuredContent -- advertising a schema that some success paths cannot satisfy. Wire it
-  // up once the structured payload is the only thing this tool returns.
+  // no outputSchema until every success path returns structuredContent
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -459,8 +429,6 @@ export default defineTool({
         }),
       ]);
 
-      // an unsupported event type stays on the markdown path, which reports it and warns
-      // rather than rendering a body it cannot
       if (context.experimentalMode && isSupportedEventType(event)) {
         return structuredResult(
           buildIssueDetailsPayload({
@@ -482,8 +450,6 @@ export default defineTool({
         );
       }
 
-      // structuredResult returns no markdown at all, so outside experimental mode keep the
-      // handwritten output that clients not reading structuredContent still depend on
       return formatIssueOutput({
         organizationSlug: orgSlug,
         issue,
@@ -571,8 +537,6 @@ export default defineTool({
       }),
     ]);
 
-    // an unsupported event type stays on the markdown path, which reports it and warns
-    // rather than rendering a body it cannot
     if (context.experimentalMode && isSupportedEventType(event)) {
       return structuredResult(
         buildIssueDetailsPayload({
@@ -594,8 +558,6 @@ export default defineTool({
       );
     }
 
-    // structuredResult returns no markdown at all, so outside experimental mode keep the
-    // handwritten output that clients not reading structuredContent still depend on
     return formatIssueOutput({
       organizationSlug: orgSlug,
       issue,
