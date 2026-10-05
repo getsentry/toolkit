@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { clearAuth, setAuthToken } from "../../src/lib/db/auth.js";
 import { AuthError, HostScopeError } from "../../src/lib/errors.js";
+import { resolveCliMcpAccessToken, startMcpServer } from "../../src/lib/mcp.js";
 import {
-  resolveCliMcpAccessToken,
-  startMcpServer,
-} from "../../src/lib/mcp.js";
-import { resetHostScopingState, useEnvSandbox, useTestConfigDir } from "../helpers.js";
+  resetHostScopingState,
+  useEnvSandbox,
+  useTestConfigDir,
+} from "../helpers.js";
 
 useTestConfigDir("mcp-auth-");
 useEnvSandbox([
@@ -34,7 +35,7 @@ describe("resolveCliMcpAccessToken", () => {
       resolveCliMcpAccessToken({
         sentryHost: "sentry.io",
         sentryProtocol: "https",
-      }),
+      })
     ).resolves.toBe("cli-session-token");
   });
 
@@ -47,7 +48,7 @@ describe("resolveCliMcpAccessToken", () => {
       resolveCliMcpAccessToken({
         sentryHost: "sentry.io",
         sentryProtocol: "https",
-      }),
+      })
     ).rejects.toBeInstanceOf(HostScopeError);
   });
 
@@ -58,13 +59,13 @@ describe("resolveCliMcpAccessToken", () => {
       resolveCliMcpAccessToken({
         sentryHost: "sentry.io",
         sentryProtocol: "https",
-      }),
+      })
     ).rejects.toThrow(new AuthError("not_authenticated"));
   });
 
   test("does not expose a second MCP authentication flow", async () => {
     await expect(startMcpServer(["auth", "login"])).rejects.toThrow(
-      "Use `sentry auth` to manage credentials for `sentry mcp`.",
+      "Use `sentry auth` to manage credentials for `sentry mcp`."
     );
   });
 });

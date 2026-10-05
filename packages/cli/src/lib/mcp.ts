@@ -12,17 +12,17 @@ type McpServerConfig = {
  * session, preserving the CLI's host-scoping protections.
  */
 export async function resolveCliMcpAccessToken(
-  config: McpServerConfig,
+  config: McpServerConfig
 ): Promise<string> {
   const targetUrl = `${config.sentryProtocol}://${config.sentryHost}`;
   const { token } = await refreshToken();
   const tokenHost = getActiveTokenHost();
 
-  if (!tokenHost || !isHostTrusted(targetUrl, tokenHost)) {
+  if (!(tokenHost && isHostTrusted(targetUrl, tokenHost))) {
     throw new HostScopeError(
       "Cannot start MCP server with the active CLI credentials",
       targetUrl,
-      tokenHost,
+      tokenHost
     );
   }
 
@@ -33,7 +33,7 @@ export async function resolveCliMcpAccessToken(
 export async function startMcpServer(args: string[]): Promise<void> {
   if (args[0] === "auth") {
     throw new ValidationError(
-      "Use `sentry auth` to manage credentials for `sentry mcp`.",
+      "Use `sentry auth` to manage credentials for `sentry mcp`."
     );
   }
 

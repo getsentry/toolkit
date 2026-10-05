@@ -242,10 +242,10 @@ export async function runCli(cliArgs: string[]): Promise<void> {
     try {
       const { startMcpServer } = await import("./lib/mcp.js");
       await startMcpServer(cliArgs.slice(1));
-    } catch (error) {
-      const { getExitCode } = await import("./lib/errors.js");
-      process.stderr.write(`${formatError(error)}\n`);
-      process.exitCode = getExitCode(error);
+    } catch (mcpError) {
+      const { getExitCode: getMcpExitCode } = await import("./lib/errors.js");
+      process.stderr.write(`${formatError(mcpError)}\n`);
+      process.exitCode = getMcpExitCode(mcpError);
     }
     return;
   }
