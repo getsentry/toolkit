@@ -134,7 +134,7 @@ LOGS TEXT MATCHING (LOGS DATASET ONLY):
 - NEVER quote a regex: message:"//...//" is a literal string match, not a regex
 - The pattern ends at the first // followed by a space, ) or the end of the query. Spaces, parentheses, and a // followed by anything else (https?://host) are fine unquoted; write \\/\\/ for a literal // followed by a space or )
 - Regex uses RE2 syntax (no lookarounds or backreferences), matches anywhere unless anchored, and is case sensitive; prefix the pattern with (?i) to ignore case
-- Patterns are limited to 64 characters (an escape like \\d counts as one), so leave out \\b and (?i) unless the request needs them
+- Patterns are limited to 64 characters (an escape like \\d counts as one), so keep them short: leave out \\b unless the request needs it, and match either case with (?i)[0-9a-f] rather than [0-9a-fA-F]
 - Regex only works on string attributes in the logs dataset. NEVER write key://pattern// for errors, spans, metrics, or any other dataset: they match //...// literally and return nothing. Approximate the shape with wildcards there, e.g. message:"*retry*failed*"
 
 MATHEMATICAL QUERY PATTERNS:
