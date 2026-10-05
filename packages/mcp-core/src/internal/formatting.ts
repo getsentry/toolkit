@@ -2117,14 +2117,7 @@ export function formatIssueOutput({
   // Event type union is: ErrorEvent | DefaultEvent | TransactionEvent | GenericEvent | CspEvent
   // But in practice we may have other types returned as UnknownEvent
   const eventType = event.type;
-  const isUnsupportedType =
-    eventType !== "error" &&
-    eventType !== "default" &&
-    eventType !== "transaction" &&
-    eventType !== "generic" &&
-    eventType !== "csp";
-
-  if (isUnsupportedType) {
+  if (!isSupportedEventType(event)) {
     // Log to Sentry for tracking new/unknown event types
     const sentryEventId = logIssue(
       `Unsupported event type encountered: ${String(eventType)}`,
@@ -2216,27 +2209,67 @@ export function formatIssueOutput({
     output += "\n";
   }
 
+  output += "## Response Notes\n\n";
+  for (const note of buildIssueResponseNotes({
+    organizationSlug,
+    issue,
+    event,
+    apiService,
+    aiConversations,
+    experimentalMode,
+    availableToolNames,
+    directToolNames,
+  })) {
+    output += `- ${note}\n`;
+  }
+  return output;
+}
+
+export function buildIssueResponseNotes({
+  organizationSlug,
+  issue,
+  event,
+  apiService,
+  aiConversations,
+  experimentalMode,
+  availableToolNames,
+  directToolNames,
+}: {
+  organizationSlug: string;
+  issue: Issue;
+  event: Event;
+  apiService: SentryApiService;
+  aiConversations?: AIConversationReference[];
+  experimentalMode?: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+}): string[] {
+  const notes: string[] = [];
   const traceId =
     typeof event.contexts?.trace?.trace_id === "string" &&
     event.contexts.trace.trace_id.length > 0
       ? event.contexts.trace.trace_id
       : undefined;
 
-  output += "## Response Notes\n\n";
   const commitIssueReference = /^\d+$/.test(issue.shortId)
     ? apiService.getIssueUrl(organizationSlug, issue.shortId)
     : issue.shortId;
-  output += `- Commit message issue reference: \`Fixes ${commitIssueReference}\` automatically closes the issue when the commit is merged.\n`;
-  output +=
-    "- The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.\n";
+  notes.push(
+    `Commit message issue reference: \`Fixes ${commitIssueReference}\` automatically closes the issue when the commit is merged.`,
+  );
+  notes.push(
+    "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
+  );
   if (aiConversations && aiConversations.length > 0) {
-    output += formatAIConversationResponseNote({
-      aiConversations,
-      organizationSlug,
-      experimentalMode: experimentalMode ?? false,
-      availableToolNames,
-      directToolNames,
-    });
+    notes.push(
+      ...buildAIConversationResponseNotes({
+        aiConversations,
+        organizationSlug,
+        experimentalMode: experimentalMode ?? false,
+        availableToolNames,
+        directToolNames,
+      }),
+    );
   }
   const issueEventSearchInstruction = formatToolCallInstruction({
     toolName: "search_issue_events",
@@ -2250,7 +2283,7 @@ export function formatIssueOutput({
     directToolNames,
     fallbackInstruction: "Issue event search is not available in this session",
   });
-  output += `- Issue event search: ${issueEventSearchInstruction}\n`;
+  notes.push(`Issue event search: ${issueEventSearchInstruction}`);
   const hasMultipleThreads = event.entries?.some((entry) => {
     if (entry.type !== "threads") {
       return false;
@@ -2275,7 +2308,7 @@ export function formatIssueOutput({
         "to fetch a full thread stacktrace by numeric Thread ID or exact thread Name. Omit `thread` to use Sentry's default selected thread",
     });
     if (stacktraceInstruction) {
-      output += `- Thread stacktrace lookup: ${stacktraceInstruction}\n`;
+      notes.push(`Thread stacktrace lookup: ${stacktraceInstruction}`);
     }
   }
   if (traceId) {
@@ -2316,9 +2349,11 @@ export function formatIssueOutput({
       fallbackInstruction:
         "Related log search is not available in this session",
     });
-    output += `- Full distributed trace and span tree: ${traceDetailsInstruction}\n`;
-    output += `- Related span search: ${spanSearchInstruction}\n`;
-    output += `- Related log search: ${logSearchInstruction}\n`;
+    notes.push(
+      `Full distributed trace and span tree: ${traceDetailsInstruction}`,
+    );
+    notes.push(`Related span search: ${spanSearchInstruction}`);
+    notes.push(`Related log search: ${logSearchInstruction}`);
   }
   if (experimentalMode) {
     const breadcrumbsInstruction = formatToolCallInstruction({
@@ -2332,12 +2367,14 @@ export function formatIssueOutput({
       fallbackInstruction:
         "Issue breadcrumbs are not available in this session",
     });
-    output += `- Breadcrumb trail leading up to this error: ${breadcrumbsInstruction}\n`;
+    notes.push(
+      `Breadcrumb trail leading up to this error: ${breadcrumbsInstruction}`,
+    );
   }
-  return output;
+  return notes;
 }
 
-function formatAIConversationResponseNote({
+function buildAIConversationResponseNotes({
   aiConversations,
   organizationSlug,
   experimentalMode,
@@ -2349,7 +2386,7 @@ function formatAIConversationResponseNote({
   experimentalMode: boolean;
   availableToolNames?: ReadonlySet<string>;
   directToolNames?: ReadonlySet<string>;
-}): string {
+}): string[] {
   const instructions = formatAIConversationActionInstructions({
     organizationSlug,
     aiConversations,
@@ -2363,13 +2400,27 @@ function formatAIConversationResponseNote({
     const spanSuffix = conversation.spanId
       ? ` Matching span: \`${conversation.spanId}\`.`
       : "";
-    return `- Agent conversation found in this trace: \`${conversation.conversationId}\`.${spanSuffix}\n${instructions.map((instruction) => `- ${instruction}`).join("\n")}\n`;
+    return [
+      `Agent conversation found in this trace: \`${conversation.conversationId}\`.${spanSuffix}`,
+      ...instructions,
+    ];
   }
 
   const conversationIds = aiConversations
     .map((conversation) => `\`${conversation.conversationId}\``)
     .join(", ");
-  return `- Multiple agent conversations were found in this trace: ${conversationIds}.\n${instructions.map((instruction) => `- ${instruction}`).join("\n")}\n`;
+  return [
+    `Multiple agent conversations were found in this trace: ${conversationIds}.`,
+    ...instructions,
+  ];
+}
+
+function formatAIConversationResponseNote(
+  args: Parameters<typeof buildAIConversationResponseNotes>[0],
+): string {
+  return `${buildAIConversationResponseNotes(args)
+    .map((note) => `- ${note}`)
+    .join("\n")}\n`;
 }
 
 const MAX_DISPLAY_REPLAYS = 5;

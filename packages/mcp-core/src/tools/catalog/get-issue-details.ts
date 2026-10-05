@@ -15,6 +15,7 @@ import type {
 import { ConfigurationError, UserInputError } from "../../errors";
 import type { CodeLocation } from "../../internal/code-location";
 import {
+  buildIssueResponseNotes,
   dedupeReplayIds,
   formatEventOutput,
   getReplayIdFromEvent,
@@ -143,6 +144,7 @@ export const getIssueDetailsOutputSchema = z.object({
       }),
     )
     .nullish(),
+  responseNotes: z.array(z.string()),
 });
 
 export type GetIssueDetailsPayload = z.infer<
@@ -207,6 +209,9 @@ function buildIssueDetailsPayload({
   aiConversations,
   codeLocation,
   committers,
+  experimentalMode,
+  availableToolNames,
+  directToolNames,
 }: {
   organizationSlug: string;
   issue: Issue;
@@ -219,6 +224,9 @@ function buildIssueDetailsPayload({
   aiConversations?: AIConversationReference[];
   codeLocation?: CodeLocation;
   committers?: CommitterList;
+  experimentalMode?: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
 }): GetIssueDetailsPayload {
   const autofix = autofixState?.autofix;
   // the run's own artifacts, not the whole state: an AutofixRunState carries every step and
@@ -301,6 +309,16 @@ function buildIssueDetailsPayload({
           spanId: conversation.spanId,
         }))
       : null,
+    responseNotes: buildIssueResponseNotes({
+      organizationSlug,
+      issue,
+      event,
+      apiService,
+      aiConversations,
+      experimentalMode,
+      availableToolNames,
+      directToolNames,
+    }),
   };
 }
 

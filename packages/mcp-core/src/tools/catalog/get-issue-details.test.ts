@@ -2203,6 +2203,19 @@ describe("structuredContent", () => {
     expect(payload.event.body).toContain("### Tags");
   });
 
+  it("carries the response notes, which say which tool to call next", async () => {
+    mockLatestEvent();
+
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
+
+    expect(payload.responseNotes.length).toBeGreaterThan(0);
+    const notes = payload.responseNotes.join("\n");
+    expect(notes).toContain("Fixes CLOUDFLARE-MCP-41");
+    expect(notes).toContain("search_issue_events");
+  });
+
   it("carries the top level message, which the body does not render", async () => {
     mockLatestEvent({ message: "TOP-LEVEL-MESSAGE", entries: [] });
 
