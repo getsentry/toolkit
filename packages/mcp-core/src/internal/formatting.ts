@@ -2148,13 +2148,15 @@ export function formatIssueOutput({
 
     if (aiConversations && aiConversations.length > 0) {
       output += "\n## Response Notes\n\n";
-      output += formatAIConversationResponseNote({
+      output += buildAIConversationResponseNotes({
         aiConversations,
         organizationSlug,
         experimentalMode: experimentalMode ?? false,
         availableToolNames,
         directToolNames,
-      });
+      })
+        .map((note) => `- ${note}\n`)
+        .join("");
     }
 
     // For unsupported event types, return early without trying to render event details
@@ -2413,14 +2415,6 @@ function buildAIConversationResponseNotes({
     `Multiple agent conversations were found in this trace: ${conversationIds}.`,
     ...instructions,
   ];
-}
-
-function formatAIConversationResponseNote(
-  args: Parameters<typeof buildAIConversationResponseNotes>[0],
-): string {
-  return `${buildAIConversationResponseNotes(args)
-    .map((note) => `- ${note}`)
-    .join("\n")}\n`;
 }
 
 const MAX_DISPLAY_REPLAYS = 5;
