@@ -2154,18 +2154,14 @@ describe("structuredContent", () => {
     );
   }
 
-  function payloadOf(result: unknown): Record<string, any> {
-    expect(result).toHaveProperty("structuredContent");
-    return (result as { structuredContent: Record<string, any> })
-      .structuredContent;
-  }
-
   it("returns a structured payload in experimental mode", async () => {
     mockLatestEvent();
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+
+    expect(result).toHaveProperty("structuredContent");
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     // the issue level fields the markdown used to assemble
     expect(payload.issue.shortId).toBe("CLOUDFLARE-MCP-41");
@@ -2186,9 +2182,9 @@ describe("structuredContent", () => {
   it("renders the event body itself rather than asking the api for one", async () => {
     mockLatestEvent();
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     expect(typeof payload.event.body).toBe("string");
     expect(payload.event.body).toContain("### Error");
@@ -2199,9 +2195,9 @@ describe("structuredContent", () => {
   it("produces a payload that satisfies the schema", async () => {
     mockLatestEvent();
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     // a tool that advertises a schema has to return something that satisfies it
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
@@ -2210,9 +2206,9 @@ describe("structuredContent", () => {
   it("carries the response notes, which say which tool to call next", async () => {
     mockLatestEvent();
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     expect(payload.responseNotes.length).toBeGreaterThan(0);
     const notes = payload.responseNotes.join("\n");
@@ -2223,9 +2219,9 @@ describe("structuredContent", () => {
   it("carries the top level message, which the body does not render", async () => {
     mockLatestEvent({ message: "TOP-LEVEL-MESSAGE", entries: [] });
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     expect(payload.event.message).toBe("TOP-LEVEL-MESSAGE");
   });
@@ -2263,18 +2259,19 @@ describe("structuredContent", () => {
       ),
     );
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(
-        { ...params, issueId: "PERF-N1-001" },
-        experimentalContext,
-      ),
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "PERF-N1-001" },
+      experimentalContext,
     );
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     expect(payload.event.type).toBe("transaction");
     expect(payload.event.body).toContain("Span");
   });
 
   it("keeps the attached replay, which lives on the event not the related list", async () => {
+    // an issue whose only replay is attached would otherwise report no replays at all
     mockLatestEvent({
       contexts: {
         replay: {
@@ -2284,9 +2281,9 @@ describe("structuredContent", () => {
       },
     });
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     expect(payload.replays?.attached).toBe("1234567890abcdef1234567890abcdef");
     // and the attached id is not repeated in the related list
@@ -2301,14 +2298,16 @@ describe("structuredContent", () => {
   it("reports no replays when there are none", async () => {
     mockLatestEvent();
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     expect(payload.replays).toBeNull();
   });
 
   it("maps external issues field by field so upstream extras cannot leak", async () => {
+    // structuredContent is a product contract, not a view of the api response: several
+    // upstream schemas are passthrough, so anything not mapped must not appear
     mockLatestEvent();
     mswServer.use(
       http.get(
@@ -2327,20 +2326,22 @@ describe("structuredContent", () => {
       ),
     );
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     expect(JSON.stringify(payload)).not.toContain("internalOnlyToken");
     expect(JSON.stringify(payload)).not.toContain("must-not-leak");
   });
 
   it("carries every field the markdown output surfaces", async () => {
+    // greg's bar for this migration is "roughly the same content": anything the markdown
+    // renders and the payload drops is a regression for every MCP user
     mockLatestEvent({ dateCreated: "2026-09-03T12:00:00.000Z" });
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     // the issue header markdown builds before the event body
     for (const field of [
@@ -2365,6 +2366,8 @@ describe("structuredContent", () => {
   });
 
   it("does not label an error's exception message as a query pattern", async () => {
+    // metadata.value is a query pattern for a performance issue and the exception message for
+    // an error, so reading it unconditionally puts error text under the wrong name
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
@@ -2383,12 +2386,15 @@ describe("structuredContent", () => {
             issueCategory: "error",
           }),
       ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
+        () => HttpResponse.json(createDefaultEvent()),
+      ),
     );
-    mockLatestEvent();
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     expect(payload.issue.queryPattern).toBeNull();
     expect(payload.issue.location).toBeNull();
@@ -2401,8 +2407,8 @@ describe("structuredContent", () => {
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
         () =>
-          HttpResponse.json(
-            createPerformanceIssue({
+          HttpResponse.json({
+            ...createPerformanceIssue({
               shortId: "CLOUDFLARE-MCP-41",
               issueType: "performance_n_plus_one_db_queries",
               issueCategory: "performance",
@@ -2412,14 +2418,17 @@ describe("structuredContent", () => {
                 location: "/api/checkout",
               },
             }),
-          ),
+          }),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
+        () => HttpResponse.json(createDefaultEvent()),
       ),
     );
-    mockLatestEvent();
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     expect(payload.issue.title).toBe("N+1 Query");
     expect(payload.issue.queryPattern).toBe("SELECT * FROM users WHERE id = ?");
@@ -2433,7 +2442,8 @@ describe("structuredContent", () => {
     );
     mockLatestEvent();
     mswServer.use(
-      // echo back whichever issue id was asked for
+      // related ids come from replay-count, keyed by numeric issue id. Echo back whichever
+      // id was asked for: a preceding test can leave a different issue fixture registered.
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/replay-count/",
         ({ request }) => {
@@ -2444,9 +2454,9 @@ describe("structuredContent", () => {
       ),
     );
 
-    const payload = payloadOf(
-      await getIssueDetails.handler(params, experimentalContext),
-    );
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
 
     expect(payload.replays).not.toBeNull();
     expect(payload.replays.relatedCount).toBe(51);

@@ -237,9 +237,10 @@ export function formatEventOutput(
       user?: z.infer<typeof EventSchema>["user"];
     }
   ).user;
-  const eventToRender = options?.replaySummary
+  const eventWithReplayMetadataStripped = options?.replaySummary
     ? stripReplayMetadata(event)
     : event;
+  const eventToRender = eventWithReplayMetadataStripped;
 
   if (options?.replaySummary) {
     output += formatIssueReplayOutput({
@@ -1945,7 +1946,8 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
     parts.push("");
   }
 
-  // Summarize the solution if available, otherwise the root cause.
+  // Summarize from the run's artifacts: the solution if available, otherwise
+  // the root cause if it has been identified.
   const { rootCause, solution } = getAutofixArtifactSummaries(autofix);
   if (solution) {
     parts.push("**Summary:**");
@@ -2111,6 +2113,9 @@ export function formatIssueOutput({
 
   output += "## Event Details\n\n";
 
+  // Check if this is an unsupported event type
+  // Event type union is: ErrorEvent | DefaultEvent | TransactionEvent | GenericEvent | CspEvent
+  // But in practice we may have other types returned as UnknownEvent
   const eventType = event.type;
   if (!isSupportedEventType(event)) {
     // Log to Sentry for tracking new/unknown event types
