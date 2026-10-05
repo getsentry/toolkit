@@ -30,15 +30,16 @@ const DEFAULT_MAX_ARRAY_ITEMS = 20;
 const REGEX_FILTER_VALUE_SOURCE = String.raw`\/\/(?!\/\/(?:[\t\n )]|$))[^\n]{1,1024}?\/\/(?=[\t\n )]|$)`;
 const REGEX_FILTER_VALUE_PATTERN = new RegExp(`^${REGEX_FILTER_VALUE_SOURCE}`);
 const SEARCH_FILTER_KEY_SOURCE = String.raw`(^|\s)!?([A-Za-z_][A-Za-z0-9_.[\],-]*):`;
-const SEARCH_FILTER_KEY_BEFORE_PATTERN = new RegExp(
-  `${SEARCH_FILTER_KEY_SOURCE}$`,
+const REGEX_FILTER_KEY_SOURCE = String.raw`(^|[\s(])!?((?:tags|flags)\[[\w.:-]+(?: *, *(?:string|number|boolean|array))?\](?:\[\*\])?|"[\w.:-]+"(?:\[\*\])?|[A-Za-z_][A-Za-z0-9_.[\],-]*(?:\[\*\])?):`;
+const REGEX_FILTER_KEY_BEFORE_PATTERN = new RegExp(
+  `${REGEX_FILTER_KEY_SOURCE}$`,
 );
 const SENTRY_SEARCH_TOKEN_PATTERN = new RegExp(
   String.raw`${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?!\/\/)`,
   "g",
 );
 const SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN = new RegExp(
-  String.raw`${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?:(?!\/\/)|(?=${REGEX_FILTER_VALUE_SOURCE}))`,
+  String.raw`${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?!\/\/)|${REGEX_FILTER_KEY_SOURCE}(?=${REGEX_FILTER_VALUE_SOURCE})`,
   "g",
 );
 const KNOWN_SENTRY_SEARCH_KEYS = new Set([
@@ -116,6 +117,10 @@ export function looksLikeSentrySearchSyntax(
   }
 
   for (const match of trimmedQuery.matchAll(searchTokenPattern(dataset))) {
+    if (match[4]) {
+      return true;
+    }
+
     const key = match[2];
     if (!key) {
       continue;
@@ -147,7 +152,7 @@ export function readRegexFilterValue(
 ): string | undefined {
   if (
     !query.startsWith("//", index) ||
-    !SEARCH_FILTER_KEY_BEFORE_PATTERN.test(query.slice(0, index))
+    !REGEX_FILTER_KEY_BEFORE_PATTERN.test(query.slice(0, index))
   ) {
     return undefined;
   }
@@ -270,19 +275,19 @@ function searchFilterOccurrences(
   const masked = maskQuotedRegions(query);
 
   for (const match of masked.matchAll(searchTokenPattern(dataset))) {
-    const key = match[2]?.toLowerCase();
+    const key = (match[2] ?? match[4])?.toLowerCase();
     if (!key || match.index === undefined) {
       continue;
     }
 
     // Read the real value from the original query at the same offset so quotes
     // and multi-word quoted values are preserved before normalization.
-    const valueStart = match.index + match[0].indexOf(":") + 1;
+    const valueStart = match.index + match[0].length;
     const regexValue = readRegexFilterValue(query, valueStart);
     if (regexValue) {
       occurrences.push({
         key,
-        value: regexValue.slice(2, -2).toLowerCase(),
+        value: regexValue.slice(2, -2),
         regex: true,
       });
       continue;
@@ -396,16 +401,16 @@ function isRegexFilterDowngrade(
   }
 
   const repairedFilters = searchFilterOccurrences(repairedQuery, dataset);
-  const repairedPlainFilters = repairedFilters.filter(
-    (occurrence) => !occurrence.regex,
-  );
   return unmatchedStructuredFilters(originalRegexFilters, repairedFilters).some(
     (filter) =>
-      repairedPlainFilters.some(
+      repairedFilters.some(
         (repaired) =>
           repaired.key === filter.key ||
           (FULL_TEXT_SEARCH_KEYS.has(repaired.key) &&
-            isRelatedFilterValue(filter.value, repaired.value)),
+            isRelatedFilterValue(
+              filter.value.toLowerCase(),
+              repaired.value.toLowerCase(),
+            )),
       ),
   );
 }
