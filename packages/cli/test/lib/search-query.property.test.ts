@@ -7,6 +7,7 @@
  * - Different-key OR always throws
  * - AND stripping preserves all non-AND tokens
  * - Safe queries pass through unchanged
+ * - Regex filter values survive rewriting byte-for-byte
  */
 
 import { constantFrom, assert as fcAssert, property, tuple } from "fast-check";
@@ -66,6 +67,17 @@ const safeTermArb = constantFrom(
   "sandbox",
   "order",
   "android",
+);
+
+const regexFilterArb = constantFrom(
+  "message://[a-z,]+//",
+  "message://timeout OR refused//",
+  "message://read AND write//",
+  "message://a  b//",
+  "!message://^GET \\d+ms//",
+  "message://(ConnectionReset|ReadTimeout)Error//",
+  "message://codes [401,403,)//",
+  "url://https://x//"
 );
 
 describe("property: sanitizeQuery", () => {
@@ -164,6 +176,15 @@ describe("property: sanitizeQuery", () => {
         },
       ),
       { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("regex filters survive AND stripping byte-for-byte", () => {
+    fcAssert(
+      property(safeTermArb, regexFilterArb, (term, regex) => {
+        expect(sanitizeQuery(`${term} AND ${regex}`)).toBe(`${term} ${regex}`);
+      }),
+      { numRuns: DEFAULT_NUM_RUNS }
     );
   });
 

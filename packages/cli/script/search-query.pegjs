@@ -8,7 +8,7 @@
 // - No TokenConverter or predicate-based filter type classification
 // - No aggregate key/function support (not needed for rewriting)
 // - No date/duration/size/percentage format parsing (classified as comparison)
-// - Structural output only: text | text_in | comparison | free_text | boolean_op | paren_group
+// - Structural output only: text | text_in | regex | comparison | free_text | boolean_op | paren_group
 
 search
   = _ head:term tail:(_ term)* _ {
@@ -45,10 +45,13 @@ term_no_paren
 // Filters: key:value patterns
 // ---------------------------------------------------------------------------
 
-// Order matters: try in-list first (starts with [), then comparison
-// (starts with operator), then plain text (catch-all).
+// Order matters: try regex first (starts with //), then in-list (starts
+// with [), then comparison (starts with operator), then plain text (catch-all).
 filter
-  = negation:"!"? key:filter_key ":" value:in_list {
+  = negation:"!"? key:filter_key ":" value:regex_value {
+      return { type: "regex_filter", negated: !!negation, key: key, value: value };
+    }
+  / negation:"!"? key:filter_key ":" value:in_list {
       return { type: "text_in_filter", negated: !!negation, key: key, values: value };
     }
   / negation:"!"? key:filter_key ":" op:comparison_op value:filter_value {
@@ -76,6 +79,9 @@ quoted_value
 
 plain_value
   = chars:[^ \t\n()\[\],]+ { return chars.join(""); }
+
+regex_value
+  = $("//" (!("//" end_of_value) [^\n])+ "//" &end_of_value)
 
 // In-list: [val1,val2,"val 3"]
 in_list
