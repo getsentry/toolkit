@@ -114,7 +114,7 @@ https://us.sentry.io/api/0/organizations/sentry/events/?dataset=spans&field=ai.m
 - Does NOT support timestamp filters in query (use `statsPeriod` instead)
 - Severity levels: fatal, error, warning, info, debug, trace
 - Common aggregate functions: `count()`, `epm()`
-- Regex filters on string attributes: `message://timeout after \d+ms//` (RE2, unquoted, max 64 characters); prefer wildcards for plain substrings
+- Regex filters on string attributes: `message://timeout after \d+ms//` (RE2, unquoted, max 64 characters); prefer wildcards for plain substrings, prefixes, and suffixes
 
 #### Metrics Dataset
 - Represents newer span metrics, including counters, gauges, and distributions

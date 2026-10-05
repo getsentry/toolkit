@@ -123,14 +123,17 @@ REPLAY SEARCH RULES:
 - If the user asks about replay users and says "me", use whoami and translate to user.email:<actual email>
 
 LOGS TEXT MATCHING (LOGS DATASET ONLY):
-- Plain word or phrase: use wildcards, e.g. message:"*database*". Do NOT use a regex when a substring match is enough
-- Use a regex filter key://pattern// when wildcards cannot express the request: number shapes (\\d+), alternation (a|b), anchoring (^ starts with, $ ends with), character classes ([0-9a-f]), or structured values like IPs, UUIDs, and status codes
-  - Example: message://timeout after \\d+ms//
-  - Negate with a leading !: !message://job \\d+ completed//
-  - There is no list form; use alternation: message://(ConnectionReset|ReadTimeout)Error//
-- NEVER quote a regex: message:"//...//" is a literal string match, not a regex. Spaces and parentheses inside the pattern are fine unquoted
+- Plain word, phrase, prefix, or suffix: use wildcards. message:"*database*" contains, message:"database*" starts with, message:"*database" ends with. Do NOT use a regex when a wildcard is enough
+- Any of several plain words or phrases: use a wildcard list, e.g. message:["*ConnectionReset*","*ReadTimeout*"]
+- Use a regex filter key://pattern// when wildcards cannot express the request: number shapes (\\d+), character classes ([0-9a-f]), or structured values like IPs, UUIDs, and status codes. Use alternation (a|b) and anchors (^ or $) only alongside one of these
+  - Example: message://request took \\d+ms//
+  - Negate with a leading !: !message://worker \\d+ ready//
+  - There is no regex list form (key:[//a//,//b//] is a literal list); put alternatives inside one pattern: message://(upload|download) of \\d+ bytes failed//
+  - For an exact set of values, keep the list: severity:[error,fatal], not severity://error|fatal//
+- NEVER quote a regex: message:"//...//" is a literal string match, not a regex
+- The pattern ends at the first // followed by a space, ) or the end of the query. Spaces, parentheses, and a // followed by anything else (https?://host) are fine unquoted; write \\/\\/ for a literal // followed by a space or )
 - Regex uses RE2 syntax (no lookarounds or backreferences), matches anywhere unless anchored, and is case sensitive; prefix the pattern with (?i) to ignore case
-- Patterns are limited to 64 characters (an escape like \\d counts as one). Write \\/\\/ to match a literal //
+- Patterns are limited to 64 characters (an escape like \\d counts as one)
 - Regex only works on string attributes, and only in the logs dataset; other datasets treat //...// as a literal value
 
 MATHEMATICAL QUERY PATTERNS:
@@ -742,18 +745,18 @@ export const DATASET_EXAMPLES: Record<
     },
     {
       description:
-        "error logs whose message starts with ConnectionReset or ReadTimeout",
+        "error logs whose message contains a hex trace id like 'trace=4bf92f3577b34da6a3ce929d0e0e4736'",
       output: {
-        query: "severity:error AND message://^(ConnectionReset|ReadTimeout)//",
+        query: "severity:error AND message://trace=[0-9a-f]{32}//",
         fields: ["timestamp", "message", "severity", "trace"],
         sort: "-timestamp",
       },
     },
     {
       description:
-        "logs excluding cache hit messages like 'cache hit for key user:42'",
+        "logs excluding heartbeat messages like 'heartbeat seq=1042'",
       output: {
-        query: "!message://^cache hit for key \\S+//",
+        query: "!message://^heartbeat seq=\\d+$//",
         fields: ["timestamp", "message", "severity", "trace"],
         sort: "-timestamp",
       },
