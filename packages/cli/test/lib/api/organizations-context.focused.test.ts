@@ -10,6 +10,7 @@ import { clearOrgRegions, getOrgRegion } from "../../../src/lib/db/regions.js";
 import {
   disableResponseCache,
   resetCacheState,
+  storeCachedResponse,
 } from "../../../src/lib/response-cache.js";
 import { resetAuthenticatedFetch } from "../../../src/lib/sentry-client.js";
 import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
@@ -19,6 +20,7 @@ useEnvSandbox([
   "SENTRY_AUTH_TOKEN",
   "SENTRY_TOKEN",
   "SENTRY_FORCE_ENV_TOKEN",
+  "SENTRY_CLIENT_ID",
   "SENTRY_HOST",
   "SENTRY_URL",
 ]);
@@ -38,6 +40,7 @@ describe("organization discovery credential context", () => {
       "SENTRY_AUTH_TOKEN",
       "SENTRY_TOKEN",
       "SENTRY_FORCE_ENV_TOKEN",
+      "SENTRY_CLIENT_ID",
       "SENTRY_HOST",
       "SENTRY_URL",
     ]) {
@@ -118,6 +121,58 @@ describe("organization discovery credential context", () => {
         identity("concurrent-login-token")
       )
     ).toBeUndefined();
+  });
+
+  test("keeps organization pages pinned through rotating OAuth refresh tokens", async () => {
+    process.env.SENTRY_CLIENT_ID = "test-client-id";
+    setAuthToken("initial-access", 3600, "initial-refresh", {
+      host: "https://sentry.io",
+    });
+    const requests = { refreshes: 0, pages: 0 };
+    globalThis.fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        if (request.url.endsWith("/oauth/token/")) {
+          requests.refreshes += 1;
+          return Response.json({
+            access_token: `rotated-access-${requests.refreshes}`,
+            refresh_token: `rotated-refresh-${requests.refreshes}`,
+            expires_in: 3600,
+            token_type: "bearer",
+          });
+        }
+        if (request.headers.get("authorization") === "Bearer initial-access") {
+          return new Response(null, { status: 401 });
+        }
+        requests.pages += 1;
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer rotated-access-${requests.refreshes}`
+        );
+        return Response.json(
+          [
+            {
+              id: String(requests.pages),
+              slug: `rotating-org-${requests.pages}`,
+              name: "Rotating",
+            },
+          ],
+          requests.pages === 1
+            ? {
+                headers: {
+                  Link: '<https://sentry.io/api/0/organizations/?cursor=next>; rel="next"; results="true"; cursor="next"',
+                },
+              }
+            : undefined
+        );
+      }
+    );
+
+    const orgs = await listOrganizationsUncached();
+    expect(orgs.map((org) => org.slug)).toEqual([
+      "rotating-org-1",
+      "rotating-org-2",
+    ]);
+    expect(requests).toEqual({ refreshes: 2, pages: 2 });
   });
 
   test("captures credentials before the initial cache lookup", async () => {
@@ -234,5 +289,71 @@ describe("organization discovery credential context", () => {
         identity("pathless-region-token")
       )
     ).toBe("https://sentry.example.com/sentry");
+  });
+
+  test("a failed later page never makes an incomplete organization cache authoritative", async () => {
+    setAuthToken("partial-page-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+    const requests = { count: 0 };
+    globalThis.fetch = vi.fn(async () => {
+      requests.count += 1;
+      if (requests.count === 1) {
+        return Response.json(
+          [{ id: "7", slug: "partial-org", name: "Partial" }],
+          {
+            headers: {
+              Link: '<https://sentry.io/api/0/organizations/?cursor=next>; rel="next"; results="true"; cursor="next"',
+            },
+          }
+        );
+      }
+      if (requests.count <= 4) {
+        throw new Error("later page failed");
+      }
+      return Response.json([
+        { id: "8", slug: "complete-org", name: "Complete" },
+      ]);
+    });
+
+    await expect(listOrganizationsUncached()).rejects.toThrow(
+      "Failed to list organizations"
+    );
+    expect(
+      getOrgRegion(
+        "partial-org",
+        "https://sentry.io",
+        identity("partial-page-token")
+      )
+    ).toBeUndefined();
+    expect((await listOrganizations()).map((org) => org.slug)).toEqual([
+      "complete-org",
+    ]);
+    expect(requests.count).toBe(5);
+  });
+
+  test("discovery fetches a fresh response instead of trusting an unstamped HTTP cache hit", async () => {
+    const token = "http-cache-discovery-token";
+    setAuthToken(token, undefined, undefined, { host: "https://sentry.io" });
+    resetCacheState();
+    await storeCachedResponse(
+      "GET",
+      "https://sentry.io/api/0/organizations/?per_page=100",
+      { authorization: `Bearer ${token}` },
+      Response.json([{ id: "9", slug: "cached-org", name: "Cached" }], {
+        headers: { "Cache-Control": "public, max-age=300" },
+      }),
+      identity(token)
+    );
+    globalThis.fetch = vi.fn(async () =>
+      Response.json([{ id: "10", slug: "fresh-org", name: "Fresh" }])
+    );
+
+    const organizations = await listOrganizationsUncached();
+    expect(organizations.map((org) => org.slug)).toEqual(["fresh-org"]);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(
+      getOrgRegion("fresh-org", "https://sentry.io", identity(token))
+    ).toBe("https://sentry.io");
   });
 });

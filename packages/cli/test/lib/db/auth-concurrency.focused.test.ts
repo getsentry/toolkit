@@ -51,6 +51,41 @@ function startPausedRefresh(response: ReturnType<typeof deferred<Response>>) {
 }
 
 describe("OAuth refresh compare-and-swap", () => {
+  test("refresh-token rotation keeps a pinned request in its session without accepting a new login", async () => {
+    setAuthToken("first-access", 3600, "first-refresh", {
+      host: "https://control.example.com",
+    });
+    const pinned = getCredentialContext();
+    expect(pinned).toBeDefined();
+    const requests = { count: 0 };
+    globalThis.fetch = async () => {
+      requests.count += 1;
+      return Response.json({
+        access_token: `rotated-access-${requests.count}`,
+        refresh_token: `rotated-refresh-${requests.count}`,
+        expires_in: 3600,
+        token_type: "bearer",
+      });
+    };
+
+    await refreshToken({ force: true, expectedCredential: pinned });
+    await expect(
+      refreshToken({ force: true, expectedCredential: pinned })
+    ).resolves.toMatchObject({
+      token: "rotated-access-2",
+      refreshed: true,
+    });
+    expect(requests.count).toBe(2);
+
+    setAuthToken("other-access", 3600, "other-refresh", {
+      host: "https://control.example.com",
+    });
+    await expect(
+      refreshToken({ force: true, expectedCredential: pinned })
+    ).rejects.toThrow("Active credentials changed");
+    expect(requests.count).toBe(2);
+  });
+
   test("a late successful refresh never overwrites a newer login", async () => {
     const response = deferred<Response>();
     const { pending, started } = startPausedRefresh(response);

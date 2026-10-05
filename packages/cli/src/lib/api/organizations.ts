@@ -16,6 +16,7 @@ import {
   UserRegionsResponseSchema,
 } from "../../types/index.js";
 import { type CredentialContext, getCredentialContext } from "../db/auth.js";
+import type { OrgRegionEntry } from "../db/regions.js";
 import { ApiError, AuthError } from "../errors.js";
 import {
   getControlSiloUrl,
@@ -23,10 +24,7 @@ import {
   getResponseRequestOrigin,
   getSdkConfig,
 } from "../sentry-client.js";
-import {
-  normalizeHttpOrigin,
-  normalizeRegionBaseUrl,
-} from "../sentry-urls.js";
+import { normalizeHttpOrigin, normalizeRegionBaseUrl } from "../sentry-urls.js";
 
 import {
   API_MAX_PER_PAGE,
@@ -153,8 +151,8 @@ export async function listOrganizations(): Promise<SentryOrganization[]> {
 type OrganizationPageContext = {
   baseUrl: string;
   credential: CredentialContext;
-  setOrgRegions: typeof import("../db/regions.js").setOrgRegions;
   organizations?: SentryOrganization[];
+  regions?: OrgRegionEntry[];
   cursor?: string;
   pageIndex?: number;
 };
@@ -162,13 +160,19 @@ type OrganizationPageContext = {
 async function listOrganizationPages({
   baseUrl,
   credential,
-  setOrgRegions,
   organizations = [],
+  regions = [],
   cursor,
   pageIndex = 0,
-}: OrganizationPageContext): Promise<SentryOrganization[]> {
+}: OrganizationPageContext): Promise<{
+  organizations: SentryOrganization[];
+  regions: OrgRegionEntry[];
+}> {
   if (pageIndex >= MAX_PAGINATION_PAGES) {
-    return organizations;
+    throw new ApiError(
+      "Failed to list organizations: pagination limit exceeded",
+      0
+    );
   }
   const page = await listOrganizationsPage(
     baseUrl,
@@ -179,41 +183,42 @@ async function listOrganizationPages({
     page.response && getResponseRequestOrigin(page.response);
   const responseIdentity =
     page.response && getResponseCredentialIdentity(page.response);
-  if (responseOrigin && responseIdentity === credential.identity) {
-    const entries = page.data.flatMap((org) => {
-      const region = normalizeOrganizationRegion(
-        org.links?.regionUrl,
-        responseOrigin,
-        baseUrl
-      );
-      return region
-        ? [
-            {
-              slug: org.slug,
-              regionUrl: region,
-              sourceOrigin: responseOrigin,
-              cacheOrigin: baseUrl,
-              identity: credential.identity,
-              orgId: org.id,
-              orgName: org.name,
-              ...(org.orgRole ? { orgRole: org.orgRole } : {}),
-            },
-          ]
-        : [];
-    });
-    setOrgRegions(entries);
-  }
+  const entries: OrgRegionEntry[] =
+    responseOrigin && responseIdentity === credential.identity
+      ? page.data.flatMap((org) => {
+          const region = normalizeOrganizationRegion(
+            org.links?.regionUrl,
+            responseOrigin,
+            baseUrl
+          );
+          return region
+            ? [
+                {
+                  slug: org.slug,
+                  regionUrl: region,
+                  sourceOrigin: responseOrigin,
+                  cacheOrigin: baseUrl,
+                  identity: credential.identity,
+                  orgId: org.id,
+                  orgName: org.name,
+                  ...(org.orgRole ? { orgRole: org.orgRole } : {}),
+                },
+              ]
+            : [];
+        })
+      : [];
   const accumulated = [...organizations, ...page.data];
+  const accumulatedRegions = [...regions, ...entries];
   return page.nextCursor
     ? await listOrganizationPages({
         baseUrl,
         credential,
-        setOrgRegions,
         organizations: accumulated,
+        regions: accumulatedRegions,
         cursor: page.nextCursor,
         pageIndex: pageIndex + 1,
       })
-    : accumulated;
+    : { organizations: accumulated, regions: accumulatedRegions };
 }
 
 /**
@@ -239,11 +244,12 @@ export async function listOrganizationsUncached(
   if (!credential) {
     throw new AuthError("not_authenticated");
   }
-  return await listOrganizationPages({
+  const result = await listOrganizationPages({
     baseUrl: getControlSiloUrl(credential),
     credential,
-    setOrgRegions,
   });
+  setOrgRegions(result.regions);
+  return result.organizations;
 }
 
 /**

@@ -377,9 +377,6 @@ describe("applyCustomHeaders", () => {
     savedHeaders = process.env.SENTRY_CUSTOM_HEADERS;
     savedHost = process.env.SENTRY_HOST;
     _resetCustomHeadersCache();
-    const { resetEnvTokenHostForTesting } = await import(
-      "../../src/lib/env-token-host.js"
-    );
     resetEnvTokenHostForTesting();
   });
 
@@ -395,9 +392,6 @@ describe("applyCustomHeaders", () => {
       delete process.env.SENTRY_HOST;
     }
     _resetCustomHeadersCache();
-    const { resetEnvTokenHostForTesting } = await import(
-      "../../src/lib/env-token-host.js"
-    );
     resetEnvTokenHostForTesting();
   });
 

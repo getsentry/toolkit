@@ -27,7 +27,9 @@ export function withSentryBaseUrl<T>(baseUrl: string, build: () => T): T {
  * Supports self-hosted instances via SENTRY_URL env var.
  */
 export function getSentryBaseUrl(): string {
-  return scopedBaseUrl.getStore() ?? getConfiguredSentryUrl() ?? DEFAULT_SENTRY_URL;
+  return (
+    scopedBaseUrl.getStore() ?? getConfiguredSentryUrl() ?? DEFAULT_SENTRY_URL
+  );
 }
 
 /**

@@ -18,11 +18,11 @@
 import { basename } from "node:path";
 import { terminalLink } from "../formatters/colors.js";
 import { stripAnsi } from "../formatters/plain-detect.js";
+import { parseOrgProjectFromSettingsUrl } from "../sentry-urls.js";
 import {
   buildEventSearchUrl,
   buildProjectIssuesUrl,
 } from "../sentry-web-urls.js";
-import { parseOrgProjectFromSettingsUrl } from "../sentry-urls.js";
 import { featureLabel, sortFeatures } from "./clack-utils.js";
 import {
   EXIT_DEPENDENCY_INSTALL_FAILED,

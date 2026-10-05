@@ -7,7 +7,11 @@ import {
   getSentryBaseUrl,
   isSaaS,
 } from "../../src/lib/sentry-web-urls.js";
-import { mintSntrysToken, useEnvSandbox, useTestConfigDir } from "../helpers.js";
+import {
+  mintSntrysToken,
+  useEnvSandbox,
+  useTestConfigDir,
+} from "../helpers.js";
 
 describe("web URLs for active credential hosts", () => {
   useTestConfigDir("web-urls-credential-");

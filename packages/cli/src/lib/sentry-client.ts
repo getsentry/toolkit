@@ -727,12 +727,16 @@ function createAuthenticatedFetch(
             "Authentication state was not available after refresh"
           );
         }
-        const cached = await tryCacheHit(
-          method,
-          fullUrl,
-          authHeaders(credential.token),
-          credential.identity
-        );
+        // A synthetic HTTP cache response has no validated final-origin or
+        // credential provenance. Discovery must obtain both from the network.
+        const cached = options.validatedRedirects
+          ? undefined
+          : await tryCacheHit(
+              method,
+              fullUrl,
+              authHeaders(credential.token),
+              credential.identity
+            );
         if (cached) {
           span.setAttribute("http.response.status_code", cached.status);
           log.debug(

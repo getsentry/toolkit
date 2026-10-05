@@ -448,6 +448,7 @@ export function setAuthToken(
   // Auth row changed — drop memoized fingerprint, token, row, and
   // stored-credentials flag so the next read reflects the new row.
   resetIdentityFingerprintCache();
+  refreshIdentityAliases.clear();
   resetAuthTokenCache();
   resetAuthRowCache();
   resetHasStoredCredsCache();
@@ -466,6 +467,7 @@ export async function clearAuth(): Promise<void> {
     clearAllIssueOrgCache();
   });
   resetIdentityFingerprintCache();
+  refreshIdentityAliases.clear();
   resetAuthTokenCache();
   resetAuthRowCache();
   resetHasStoredCredsCache();
@@ -564,7 +566,11 @@ function computeIdentityFingerprint(): string {
  * digest. This fingerprint is never a password verifier or a bearer token.
  */
 function hashIdentity(kind: string, secret: string): string {
-  return createHash("sha256").update(kind).update("\0").update(secret).digest("hex");
+  return createHash("sha256")
+    .update(kind)
+    .update("\0")
+    .update(secret)
+    .digest("hex");
 }
 
 /** Immutable token, host, and namespace captured from one auth state. */
@@ -691,6 +697,48 @@ type StoredCredentialSnapshot = {
 };
 
 const refreshPromises = new Map<string, Promise<RefreshTokenResult>>();
+// Only successful rotations can link a pinned in-flight request to the next
+// refresh-token identity. A new login or logout clears every link.
+const refreshIdentityAliases = new Map<string, string>();
+const MAX_REFRESH_IDENTITY_ALIASES = 128;
+
+function rememberRefreshIdentity(
+  host: string,
+  previous: string,
+  next: string
+): void {
+  if (previous === next) {
+    return;
+  }
+  refreshIdentityAliases.set(`${host}\0${previous}`, next);
+  if (refreshIdentityAliases.size > MAX_REFRESH_IDENTITY_ALIASES) {
+    const oldest = refreshIdentityAliases.keys().next().value;
+    if (oldest !== undefined) {
+      refreshIdentityAliases.delete(oldest);
+    }
+  }
+}
+
+function matchesRefreshIdentity(
+  host: string,
+  previous: string,
+  current: string
+): boolean {
+  const seen = new Set<string>();
+  const start = `${host}\0${previous}`;
+  for (let key = start; !seen.has(key); ) {
+    seen.add(key);
+    const next = refreshIdentityAliases.get(key);
+    if (!next) {
+      return false;
+    }
+    if (next === current) {
+      return true;
+    }
+    key = `${host}\0${next}`;
+  }
+  return false;
+}
 
 function rowMatchesCredential(
   row: AuthRow | undefined,
@@ -712,7 +760,13 @@ function assertExpectedCredential(
 ): void {
   if (
     expected &&
-    (result.host !== expected.host || result.identity !== expected.identity)
+    (result.host !== expected.host ||
+      (result.identity !== expected.identity &&
+        !matchesRefreshIdentity(
+          result.host,
+          expected.identity,
+          result.identity
+        )))
   ) {
     throw new ConfigError(
       "Active credentials changed while the request was in flight. Retry the request."
@@ -780,6 +834,8 @@ async function performTokenRefresh(
   // Validate before SQLite can truncate NUL-containing credentials or replace
   // the stored credentials with a malformed response. Leave those values unchanged.
   const token = normalizeAuthToken(tokenResponse.access_token);
+  const nextRefreshToken =
+    tokenResponse.refresh_token ?? credential.refreshToken;
   const now = Date.now();
   const expiresAt = now + tokenResponse.expires_in * 1000;
 
@@ -787,7 +843,7 @@ async function performTokenRefresh(
     !persistRefreshedCredential(
       credential,
       token,
-      tokenResponse.refresh_token ?? credential.refreshToken,
+      nextRefreshToken,
       tokenResponse.expires_in
     )
   ) {
@@ -796,11 +852,14 @@ async function performTokenRefresh(
     );
   }
 
+  const identity = hashIdentity("oauth", nextRefreshToken);
+  rememberRefreshIdentity(credential.host, credential.identity, identity);
+
   return {
     token,
     refreshed: true,
     host: credential.host,
-    identity: credential.identity,
+    identity,
     source: "oauth",
     refreshable: true,
     expiresAt,
