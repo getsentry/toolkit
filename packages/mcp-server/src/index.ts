@@ -55,6 +55,8 @@ export type McpServerOptions = {
   resolveAccessToken?: (config: PartiallyResolvedConfig) => Promise<string>;
   /** Command name used in usage output. */
   packageName?: string;
+  /** Environment used for server configuration. */
+  environment?: NodeJS.ProcessEnv;
   /** Throw setup errors instead of printing usage and exiting the process. */
   throwOnError?: boolean;
 };
@@ -102,7 +104,7 @@ export async function runMcpServer(
     die(new Error(`Error: Invalid argument(s): ${cli.unknownArgs.join(", ")}`));
   }
 
-  const env = parseEnv(process.env);
+  const env = parseEnv(options.environment ?? process.env);
   const partialCfg = (() => {
     try {
       return finalize(merge(cli, env));

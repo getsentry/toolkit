@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { clearAuth, setAuthToken } from "../../src/lib/db/auth.js";
 import { AuthError, HostScopeError } from "../../src/lib/errors.js";
-import { resolveCliMcpAccessToken, startMcpServer } from "../../src/lib/mcp.js";
+import {
+  prepareMcpServerArgs,
+  resolveCliMcpAccessToken,
+  startMcpServer,
+} from "../../src/lib/mcp.js";
 import {
   resetHostScopingState,
   useEnvSandbox,
@@ -67,5 +71,23 @@ describe("resolveCliMcpAccessToken", () => {
     await expect(startMcpServer(["auth", "login"])).rejects.toThrow(
       "Use `sentry auth` to manage credentials for `sentry mcp`."
     );
+  });
+});
+
+describe("prepareMcpServerArgs", () => {
+  test("translates an insecure CLI URL into MCP host flags", () => {
+    expect(prepareMcpServerArgs([], "http://sentry.internal:9000")).toEqual([
+      "--host=sentry.internal:9000",
+      "--insecure-http",
+    ]);
+  });
+
+  test("preserves an explicit MCP target over the CLI URL", () => {
+    expect(
+      prepareMcpServerArgs(
+        ["--host=sentry.example.com"],
+        "http://localhost:9000"
+      )
+    ).toEqual(["--host=sentry.example.com"]);
   });
 });

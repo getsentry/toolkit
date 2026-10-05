@@ -59,7 +59,7 @@
     "cli": "tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs src/bin.ts",
     "dev": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && tsx --import ./script/require-shim.mjs src/bin.ts",
     "build": "pnpm --filter @sentry/mcp-core run build && pnpm --filter @sentry/mcp-server run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts --single",
-    "build:all": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts",
+    "build:all": "pnpm --filter @sentry/mcp-core run build && pnpm --filter @sentry/mcp-server run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts",
     "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm --filter @sentry/mcp-server run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/bundle.ts",
     "typecheck": "pnpm --filter @sentry/mcp-core run build && pnpm --filter @sentry/mcp-server run build && pnpm run generate:docs && pnpm run generate:sdk && tsc --noEmit",
     "lint": "biome check --no-errors-on-unmatched --error-on-warnings --max-diagnostics=none ./",
