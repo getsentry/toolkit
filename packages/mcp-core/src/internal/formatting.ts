@@ -198,6 +198,7 @@ export function isPerformanceIssueType(issue: {
   );
 }
 
+/** Whether this server can render the event type; anything else arrives as an UnknownEvent. */
 export function isSupportedEventType(event: { type?: unknown }): boolean {
   return (
     event.type === "error" ||
@@ -228,6 +229,7 @@ export function formatEventOutput(
       availableToolNames?: ReadonlySet<string>;
       directToolNames?: ReadonlySet<string>;
     };
+    // strip replay ids without rendering the replay note, for callers that report replays separately
     stripReplayIds?: boolean;
   },
 ) {
@@ -1946,8 +1948,7 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
     parts.push("");
   }
 
-  // Summarize from the run's artifacts: the solution if available, otherwise
-  // the root cause if it has been identified.
+  // Summarize the solution if available, otherwise the root cause.
   const { rootCause, solution } = getAutofixArtifactSummaries(autofix);
   if (solution) {
     parts.push("**Summary:**");
@@ -2160,9 +2161,7 @@ export function formatIssueOutput({
 
   output += `**Event ID**: ${event.id}\n`;
   output += `**Type**: ${event.type}\n`;
-  // "default" type represents error events without exception data
-  // "generic" type represents performance regressions and metric-based issues
-  // "csp" type represents Content Security Policy violations
+  // default: error without exception data, generic: performance/metric issue, csp: CSP violation
   if (
     event.type === "error" ||
     event.type === "default" ||

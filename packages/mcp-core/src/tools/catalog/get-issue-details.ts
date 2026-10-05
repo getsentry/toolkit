@@ -56,10 +56,7 @@ const MAX_AI_CONVERSATION_MATCHES = 3;
 const AI_CONVERSATION_LOOKUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const TRACE_ID_PATTERN = /^[0-9a-fA-F]{32}$/;
 
-/**
- * The issue payload as `structuredContent`. Fields are mapped explicitly so passthrough api
- * schemas can't leak backend-only fields.
- */
+/** The issue payload as `structuredContent`, mapped field by field so api passthrough fields can't leak. */
 export const getIssueDetailsOutputSchema = z.object({
   issue: z.object({
     shortId: z.string(),
