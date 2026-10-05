@@ -29,17 +29,18 @@ const DEFAULT_MAX_VALUE_LENGTH = 200;
 const DEFAULT_MAX_ARRAY_ITEMS = 20;
 const REGEX_FILTER_VALUE_SOURCE = String.raw`\/\/(?!\/\/(?:[\t\n )]|$))[^\n]{1,1024}?\/\/(?=[\t\n )]|$)`;
 const REGEX_FILTER_VALUE_PATTERN = new RegExp(`^${REGEX_FILTER_VALUE_SOURCE}`);
-const SEARCH_FILTER_KEY_SOURCE = String.raw`(^|\s)!?([A-Za-z_][A-Za-z0-9_.[\],-]*):`;
-const REGEX_FILTER_KEY_SOURCE = String.raw`(^|[\s(])!?((?:tags|flags)\[[\w.:-]+(?: *, *(?:string|number|boolean|array))?\](?:\[\*\])?|"[\w.:-]+"(?:\[\*\])?|[A-Za-z_][A-Za-z0-9_.[\],-]*(?:\[\*\])?):`;
+const SEARCH_FILTER_KEY_SOURCE = String.raw`(^|\s)!?(?<key>[A-Za-z_][A-Za-z0-9_.[\],-]*):`;
+const REGEX_FILTER_KEY_SOURCE = String.raw`(^|[\s()"])!?(?<regexKey>(?:tags|flags)\[[\w.:-]+(?: *, *(?:string|number|boolean|array))?\](?:\[\*\])?|"[\w.:-]+"(?:\[\*\])?|[A-Za-z_][A-Za-z0-9_.[\],-]*(?:\[\*\])?):`;
 const REGEX_FILTER_KEY_BEFORE_PATTERN = new RegExp(
   `${REGEX_FILTER_KEY_SOURCE}$`,
 );
+const REGEX_FILTER_KEY_SCAN_LIMIT = 256;
 const SENTRY_SEARCH_TOKEN_PATTERN = new RegExp(
   String.raw`${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?!\/\/)`,
   "g",
 );
 const SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN = new RegExp(
-  String.raw`${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?!\/\/)|${REGEX_FILTER_KEY_SOURCE}(?=${REGEX_FILTER_VALUE_SOURCE})`,
+  String.raw`${REGEX_FILTER_KEY_SOURCE}(?=${REGEX_FILTER_VALUE_SOURCE})|${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?!\/\/)`,
   "g",
 );
 const KNOWN_SENTRY_SEARCH_KEYS = new Set([
@@ -117,11 +118,11 @@ export function looksLikeSentrySearchSyntax(
   }
 
   for (const match of trimmedQuery.matchAll(searchTokenPattern(dataset))) {
-    if (match[4]) {
+    if (match.groups?.regexKey) {
       return true;
     }
 
-    const key = match[2];
+    const key = match.groups?.key;
     if (!key) {
       continue;
     }
@@ -150,10 +151,14 @@ export function readRegexFilterValue(
   query: string,
   index: number,
 ): string | undefined {
-  if (
-    !query.startsWith("//", index) ||
-    !REGEX_FILTER_KEY_BEFORE_PATTERN.test(query.slice(0, index))
-  ) {
+  if (!query.startsWith("//", index) || query[index - 1] !== ":") {
+    return undefined;
+  }
+  // Callers probe every index, so only scan a bounded key-sized prefix; the
+  // NUL stands in for truncated text so `^` can't match mid-query.
+  const start = Math.max(0, index - REGEX_FILTER_KEY_SCAN_LIMIT);
+  const prefix = `${start > 0 ? "\0" : ""}${query.slice(start, index)}`;
+  if (!REGEX_FILTER_KEY_BEFORE_PATTERN.test(prefix)) {
     return undefined;
   }
   return REGEX_FILTER_VALUE_PATTERN.exec(query.slice(index))?.[0];
@@ -275,7 +280,7 @@ function searchFilterOccurrences(
   const masked = maskQuotedRegions(query);
 
   for (const match of masked.matchAll(searchTokenPattern(dataset))) {
-    const key = (match[2] ?? match[4])?.toLowerCase();
+    const key = (match.groups?.regexKey ?? match.groups?.key)?.toLowerCase();
     if (!key || match.index === undefined) {
       continue;
     }
@@ -401,8 +406,13 @@ function isRegexFilterDowngrade(
   }
 
   const repairedFilters = searchFilterOccurrences(repairedQuery, dataset);
+  const maskedRepairedQuery = maskQuotedRegions(repairedQuery);
   return unmatchedStructuredFilters(originalRegexFilters, repairedFilters).some(
     (filter) =>
+      new RegExp(
+        String.raw`(?:^|[\s()"])!?${escapeRegExp(filter.key)}:(?!\/\/)`,
+        "i",
+      ).test(maskedRepairedQuery) ||
       repairedFilters.some(
         (repaired) =>
           repaired.key === filter.key ||
