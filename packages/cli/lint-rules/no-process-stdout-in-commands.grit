@@ -1,0 +1,5 @@
+file($name, $body) where {
+  $name <: r".*src/commands/.*",
+  $body <: contains `process.stdout` as $access,
+  register_diagnostic(span=$access, message="Don't use process.stdout in commands. Yield CommandOutput and let the buildCommand wrapper handle output.")
+}

@@ -1,6 +1,7 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { metricMonitor } from "../../test-utils/metric-monitor";
 import {
   assertStructuredOnlyResult,
   getStructuredContent,
@@ -39,61 +40,13 @@ const issueAlertRule = {
   owner: "team:backend",
   dateCreated: "2026-01-02T03:04:05.000Z",
   dateUpdated: "2026-01-02T04:04:05.000Z",
-  triggers: {
-    id: "trigger-1",
-    logicType: "any",
-    conditions: [
-      {
-        id: "condition-1",
-        type: "event_frequency_count",
-        comparison: 10,
-        conditionResult: true,
-      },
-    ],
-  },
-  actionFilters: [
-    {
-      id: "filter-1",
-      logicType: "all",
-      conditions: [],
-      actions: [
-        {
-          id: "action-1",
-          type: "email",
-          config: {
-            targetType: "Team",
-            targetIdentifier: "1",
-          },
-        },
-      ],
-    },
-  ],
 };
 
 const metricAlertRule = {
-  id: "456",
-  name: "P95 latency",
-  status: 0,
-  dataset: "transactions",
-  aggregate: "p95(transaction.duration)",
-  query: "environment:production",
-  timeWindow: 5,
-  projects: ["cloudflare-mcp"],
-  environment: "production",
-  owner: "team:backend",
-  dateCreated: "2026-01-03T03:04:05.000Z",
-  triggers: [
-    {
-      label: "critical",
-      alertThreshold: 500,
-      actions: [
-        {
-          type: "slack",
-          targetIdentifier: "alerts",
-        },
-      ],
-    },
-  ],
+  ...metricMonitor,
+  id: "789",
+  alertRuleId: 456,
+  projectId: "4509109104082945",
 };
 
 const project = {
@@ -113,17 +66,17 @@ function useAlertRuleHandlers() {
       () => HttpResponse.json([issueAlertRule]),
     ),
     http.get(
-      "https://sentry.io/api/0/organizations/sentry-mcp-evals/alert-rules/",
+      "https://sentry.io/api/0/organizations/sentry-mcp-evals/detectors/",
       () => HttpResponse.json([metricAlertRule]),
     ),
   );
 }
 
 describe("find_alert_rules", () => {
-  it("serializes project-scoped issue and metric alert rules", async () => {
+  it("serializes project-scoped issue and metric searches", async () => {
     useAlertRuleHandlers();
     let issueRequestUrl: string | null = null;
-    let metricRequestUrl: string | null = null;
+    const metricRequestUrls: string[] = [];
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/workflows/",
@@ -133,27 +86,27 @@ describe("find_alert_rules", () => {
         },
       ),
       http.get(
-        "https://sentry.io/api/0/organizations/sentry-mcp-evals/alert-rules/",
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/detectors/",
         ({ request }) => {
-          metricRequestUrl = request.url;
+          metricRequestUrls.push(request.url);
           return HttpResponse.json([metricAlertRule]);
         },
       ),
     );
 
     const result = await findAlertRules.handler(
-      { ...params, projectSlug: "cloudflare-mcp" },
+      { ...params, projectSlug: "cloudflare-mcp", query: "backend" },
       context,
     );
 
-    expect(issueRequestUrl).not.toBeNull();
-    expect(new URL(issueRequestUrl ?? "").searchParams.get("projectSlug")).toBe(
-      "cloudflare-mcp",
-    );
-    expect(metricRequestUrl).not.toBeNull();
-    expect(new URL(metricRequestUrl ?? "").searchParams.get("project")).toBe(
-      project.id,
-    );
+    const issueParams = new URL(issueRequestUrl ?? "").searchParams;
+    expect(issueParams.get("projectSlug")).toBe("cloudflare-mcp");
+    expect(issueParams.get("query")).toBe('name:"*backend*"');
+    expect(metricRequestUrls).toHaveLength(1);
+    const metricParams = new URL(metricRequestUrls[0]).searchParams;
+    expect(metricParams.get("project")).toBe(project.id);
+    expect(metricParams.get("query")).toBe('name:"*backend*"');
+    expect(metricParams.getAll("type")).toEqual(["metric_issue"]);
     assertStructuredOnlyResult(result);
     const structuredContent = getStructuredContent(result);
     expect(findAlertRulesOutputSchema.parse(structuredContent)).toEqual(
@@ -177,22 +130,23 @@ describe("find_alert_rules", () => {
             "webUrl": "https://sentry-mcp-evals.sentry.io/monitors/alerts/123/",
           },
         ],
+        "metricMonitorHint": "Use get_metric_monitor_details with monitorId. Legacy get_alert_rule(kind=metric) accepts each entry's id; never pass monitorId as a bare legacy ID.",
         "metricRules": [
           {
-            "aggregate": "p95(transaction.duration)",
-            "dataset": "transactions",
-            "dateCreated": "2026-01-03T03:04:05.000Z",
+            "aggregate": "count()",
+            "dataset": "events",
+            "dateCreated": "2026-01-01T00:00:00.000Z",
+            "enabled": false,
             "environment": "production",
             "id": "456",
-            "name": "P95 latency",
-            "owner": "team:backend",
-            "projects": [
-              "cloudflare-mcp",
-            ],
-            "query": "environment:production",
-            "status": 0,
+            "monitorId": "789",
+            "name": "High error rate",
+            "owner": "Backend",
+            "projectId": "4509109104082945",
+            "query": "level:error",
+            "status": "disabled",
             "timeWindowMinutes": 5,
-            "webUrl": "https://sentry-mcp-evals.sentry.io/issues/alerts/rules/details/456/",
+            "webUrl": "https://sentry-mcp-evals.sentry.io/monitors/789/",
           },
         ],
         "pagination": {
@@ -207,21 +161,6 @@ describe("find_alert_rules", () => {
     `);
   });
 
-  it("lists Alerts and metric alerts organization-wide without a project", async () => {
-    useAlertRuleHandlers();
-
-    const result = await findAlertRules.handler(params, context);
-
-    expect(getStructuredContent(result)).toMatchObject({
-      issueRules: [{ id: "123", name: "Notify backend team" }],
-      metricRules: [{ id: "456", name: "P95 latency" }],
-      pagination: {
-        issue: { nextCursor: null },
-        metric: { nextCursor: null },
-      },
-    });
-  });
-
   it("resolves project redirects before listing metric alerts", async () => {
     let metricRequestUrl: string | null = null;
     mswServer.use(
@@ -230,7 +169,7 @@ describe("find_alert_rules", () => {
         () => HttpResponse.json(project),
       ),
       http.get(
-        "https://sentry.io/api/0/organizations/sentry-mcp-evals/alert-rules/",
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/detectors/",
         ({ request }) => {
           metricRequestUrl = request.url;
           return HttpResponse.json([metricAlertRule]);
@@ -272,51 +211,6 @@ describe("find_alert_rules", () => {
       issue: { nextCursor: "issue-page-2" },
       metric: null,
     });
-  });
-
-  it("uses workflows for issue query searches and combined-rules for metric query searches", async () => {
-    let issueRequestUrl: string | null = null;
-    const combinedRequestUrls: string[] = [];
-    useAlertRuleHandlers();
-    mswServer.use(
-      http.get(
-        "https://sentry.io/api/0/organizations/sentry-mcp-evals/workflows/",
-        ({ request }) => {
-          issueRequestUrl = request.url;
-          return HttpResponse.json([issueAlertRule]);
-        },
-      ),
-      http.get(
-        "https://sentry.io/api/0/organizations/sentry-mcp-evals/combined-rules/",
-        ({ request }) => {
-          combinedRequestUrls.push(request.url);
-          return HttpResponse.json([metricAlertRule]);
-        },
-      ),
-    );
-
-    const result = await findAlertRules.handler(
-      { ...params, projectSlug: "cloudflare-mcp", query: "backend" },
-      context,
-    );
-
-    const structuredContent = getStructuredContent(result);
-    expect(structuredContent.issueRules).toMatchObject([
-      { id: "123", name: "Notify backend team" },
-    ]);
-    expect(structuredContent.metricRules).toMatchObject([
-      { id: "456", name: "P95 latency" },
-    ]);
-    expect(issueRequestUrl).not.toBeNull();
-    const issueParams = new URL(issueRequestUrl ?? "").searchParams;
-    expect(issueParams.get("query")).toBe('name:"*backend*"');
-    expect(issueParams.get("projectSlug")).toBe("cloudflare-mcp");
-    expect(combinedRequestUrls).toHaveLength(1);
-    const metricParams = new URL(combinedRequestUrls[0]).searchParams;
-    expect(metricParams.get("name")).toBe("backend");
-    expect(metricParams.get("query")).toBeNull();
-    expect(metricParams.get("project")).toBe(project.id);
-    expect(metricParams.get("alertType")).toBe("alert_rule");
   });
 
   it("preserves unattached Alerts and their organization-wide pagination", async () => {
@@ -394,18 +288,18 @@ describe("find_alert_rules", () => {
     expect(getStructuredContent(result).issueRules).toHaveLength(1);
   });
 
-  it("returns next cursors for combined-rules query searches", async () => {
+  it("returns next cursors for detector query searches", async () => {
     useAlertRuleHandlers();
     mswServer.use(
       http.get(
-        "https://sentry.io/api/0/organizations/sentry-mcp-evals/combined-rules/",
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/detectors/",
         ({ request }) => {
           const params = new URL(request.url).searchParams;
           return HttpResponse.json(
-            params.get("alertType") === "alert_rule" ? [metricAlertRule] : [],
+            params.get("type") === "metric_issue" ? [metricAlertRule] : [],
             {
               headers: {
-                Link: '<https://sentry.io/api/0/organizations/sentry-mcp-evals/combined-rules/?cursor=metric-query-page-2>; rel="next"; results="true"; cursor="metric-query-page-2"',
+                Link: '<https://sentry.io/api/0/organizations/sentry-mcp-evals/detectors/?cursor=metric-query-page-2>; rel="next"; results="true"; cursor="metric-query-page-2"',
               },
             },
           );
@@ -418,13 +312,13 @@ describe("find_alert_rules", () => {
         ...params,
         kind: "metric",
         projectSlug: "cloudflare-mcp",
-        query: "latency",
+        query: "error",
       },
       context,
     );
 
     expect(getStructuredContent(result)).toMatchObject({
-      metricRules: [{ id: "456", name: "P95 latency" }],
+      metricRules: [{ id: "456", name: metricMonitor.name }],
       pagination: {
         issue: null,
         metric: { nextCursor: "metric-query-page-2" },
@@ -453,42 +347,46 @@ describe("find_alert_rules", () => {
     expect(requestUrl?.searchParams.get("projectSlug")).toBe("cloudflare-mcp");
   });
 
-  it.each([null, "latency"])(
-    "returns explicit partial results when legacy metrics are retired (query: %s)",
+  it.each([null, "error"])(
+    "lists mapped and new monitors without retired endpoints (query: %s)",
     async (query) => {
       useAlertRuleHandlers();
+      const legacyRequests: string[] = [];
       mswServer.use(
-        http.get(
-          `https://sentry.io/api/0/organizations/sentry-mcp-evals/${query ? "combined-rules" : "alert-rules"}/`,
-          () =>
-            HttpResponse.json(
-              { detail: "This API no longer exists." },
-              { status: 410 },
-            ),
+        http.get("*/alert-rules/", ({ request }) => {
+          legacyRequests.push(request.url);
+          return HttpResponse.json({ detail: "Gone" }, { status: 410 });
+        }),
+        http.get("*/combined-rules/", ({ request }) => {
+          legacyRequests.push(request.url);
+          return HttpResponse.json({ detail: "Gone" }, { status: 410 });
+        }),
+        http.get("*/detectors/", () =>
+          HttpResponse.json([
+            metricAlertRule,
+            { ...metricAlertRule, id: "790", alertRuleId: null },
+          ]),
         ),
       );
-
-      const result = await findAlertRules.handler(
-        { ...params, query },
-        context,
+      const content = getStructuredContent(
+        await findAlertRules.handler({ ...params, query }, context),
       );
-      const content = getStructuredContent(result);
-      expect(findAlertRulesOutputSchema.parse(content)).toEqual(content);
       expect(content).toMatchObject({
         issueRules: [{ id: "123" }],
-        metricRules: [],
-        pagination: { issue: { nextCursor: null }, metric: null },
-        warnings: [
-          expect.stringContaining("Metric alerts could not be listed"),
+        metricRules: [
+          { id: "456", monitorId: "789" },
+          { id: "detector:790", monitorId: "790" },
         ],
+        pagination: { metric: { nextCursor: null } },
       });
+      expect(legacyRequests).toEqual([]);
     },
   );
 
   it.each([
-    { kind: "metric", endpoint: "alert-rules", status: 410 },
-    { kind: "all", endpoint: "alert-rules", status: 403 },
-    { kind: "all", endpoint: "alert-rules", status: 500 },
+    { kind: "metric", endpoint: "detectors", status: 410 },
+    { kind: "all", endpoint: "detectors", status: 403 },
+    { kind: "all", endpoint: "detectors", status: 500 },
     { kind: "all", endpoint: "workflows", status: 410 },
   ] as const)(
     "preserves $status errors from $endpoint for kind=$kind",

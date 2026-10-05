@@ -10,6 +10,7 @@ import { CursorIcon } from "../ui/icons/cursor";
 import { FxIcon } from "../ui/icons/fx";
 import { GeminiIcon } from "../ui/icons/gemini";
 import { OpenCodeIcon } from "../ui/icons/opencode";
+import { PiIcon } from "../ui/icons/pi";
 import { VSCodeIcon } from "../ui/icons/vscode";
 import { WarpIcon } from "../ui/icons/warp";
 import { ZedIcon } from "../ui/icons/zed";
@@ -309,6 +310,7 @@ const iconsByID: Record<string, React.ReactNode> = {
   fx: <FxIcon />,
   gemini: <GeminiIcon />,
   opencode: <OpenCodeIcon />,
+  pi: <PiIcon />,
   vscode: <VSCodeIcon />,
   warp: <WarpIcon />,
   zed: <ZedIcon />,

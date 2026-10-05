@@ -33,7 +33,7 @@ claude plugin install sentry-mcp@sentry-mcp-experimental
 
 While this repository is focused on acting as an MCP service, we also support a `stdio` transport. This is still a work in progress, but is the easiest way to adapt run the MCP against a self-hosted Sentry install.
 
-**Note:** The AI-powered search tools (`search_events`, `search_issues`, etc.) require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter). These tools use natural language processing to translate queries into Sentry's query syntax. Without a configured provider, these specific tools will be unavailable, but all other tools will function normally.
+**Note:** The AI-powered search tools (`search_errors`, `search_traces`, `search_logs`, `search_issues`, etc.) require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter). These tools use natural language processing to translate queries into Sentry's query syntax. Without a configured provider, these specific tools will be unavailable, but all other tools will function normally.
 
 To utilize the `stdio` transport, you'll need to create an User Auth Token in Sentry with the necessary scopes. As of writing this is:
 
@@ -57,11 +57,19 @@ only, e.g. <code>--host=sentry.example.com</code>) when you run the command.
 For isolated internal deployments that only expose plain HTTP, also add
 <code>--insecure-http</code>.
 
-Some features (like Seer) may not be available on self-hosted instances. You can
-disable specific skills to prevent unsupported tools from being exposed:
+Seer is not part of self-hosted Sentry, so the `seer` skill is left out of the
+default skill set whenever `--host` points at a non-`sentry.io` host. If your
+self-hosted deployment does run Seer, opt back in explicitly:
 
 ```shell
-npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com --disable-skills=seer
+npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com --skills=inspect,seer
+```
+
+You can also disable any other skill to prevent unsupported tools from being
+exposed:
+
+```shell
+npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com --disable-skills=project-management
 ```
 
 For self-hosted instances without TLS:
@@ -111,8 +119,9 @@ OPENROUTER_MODEL=            # Optional OpenRouter model, defaults to 'openai/gp
 OPENROUTER_REASONING_EFFORT= # Optional OpenRouter reasoning effort, defaults to 'high'
 
 # Optional overrides
-SENTRY_HOST=                 # For self-hosted deployments
-MCP_DISABLE_SKILLS=          # Disable specific skills (comma-separated, e.g. 'seer')
+SENTRY_HOST=                 # For self-hosted deployments (drops 'seer' from the default skills)
+MCP_SKILLS=                  # Grant specific skills (comma-separated, e.g. 'inspect,seer')
+MCP_DISABLE_SKILLS=          # Disable specific skills (comma-separated, e.g. 'project-management')
 ```
 
 **Important:** Always set `EMBEDDED_AGENT_PROVIDER` to explicitly specify your LLM provider. Auto-detection based on API keys alone is deprecated and will be removed in a future release. See [docs/operations/embedded-agents.md](docs/operations/embedded-agents.md) for detailed configuration options.
@@ -138,7 +147,9 @@ MCP_DISABLE_SKILLS=          # Disable specific skills (comma-separated, e.g. 's
 If you leave the host variable unset, the CLI automatically targets the Sentry
 SaaS service. Only set the override when you operate self-hosted Sentry.
 
-For self-hosted instances that don't support Seer:
+Setting `SENTRY_HOST` to a self-hosted host also drops the `seer` skill from
+the default set, since Seer is not available on self-hosted Sentry. For a
+self-hosted deployment that does run Seer, opt in with `MCP_SKILLS`:
 
 ```json
 {
@@ -149,7 +160,7 @@ For self-hosted instances that don't support Seer:
       "env": {
         "SENTRY_ACCESS_TOKEN": "your-token",
         "SENTRY_HOST": "sentry.example.com",
-        "MCP_DISABLE_SKILLS": "seer"
+        "MCP_SKILLS": "inspect,seer"
       }
     }
   }

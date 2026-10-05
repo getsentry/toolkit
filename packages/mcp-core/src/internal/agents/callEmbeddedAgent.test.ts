@@ -1,14 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  generateText,
   APICallError,
+  generateText,
+  type LanguageModelUsage,
   NoObjectGeneratedError,
   NoOutputGeneratedError,
   RetryError,
-  type LanguageModelUsage,
+  type StepResult,
+  type Tool,
 } from "ai";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { callEmbeddedAgent } from "./callEmbeddedAgent";
 import {
   AgentExecutionError,
   ConfigurationError,
@@ -16,6 +17,7 @@ import {
   UserInputError,
 } from "../../errors";
 import { logIssue, logWarn } from "../../telem/logging";
+import { callEmbeddedAgent } from "./callEmbeddedAgent";
 import { getAgentProvider } from "./provider-factory";
 
 vi.mock("../../telem/logging", () => ({
@@ -64,6 +66,31 @@ describe("callEmbeddedAgent", () => {
     vi.mocked(getAgentProvider).mockImplementation(actual.getAgentProvider);
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENROUTER_API_KEY = "";
+  });
+
+  it("keeps the five-step limit when no finalization condition is supplied", async () => {
+    mockGenerateText.mockResolvedValue({
+      experimental_output: { result: "ok" },
+    } as never);
+
+    await callEmbeddedAgent({
+      system: "You are a test agent",
+      prompt: "Test prompt",
+      tools: {},
+      schema: testSchema,
+    });
+
+    const stopWhen = mockGenerateText.mock.calls[0]?.[0]?.stopWhen;
+    if (typeof stopWhen !== "function") {
+      throw new Error("Expected a stop condition");
+    }
+
+    const step = { toolResults: [{ output: false }] } as StepResult<
+      Record<string, Tool>
+    >;
+    const firstFour = Array.from({ length: 4 }, () => step);
+    expect(stopWhen({ steps: firstFour })).toBe(false);
+    expect(stopWhen({ steps: [...firstFour, step] })).toBe(true);
   });
 
   it("throws LLMProviderError for OpenAI region restriction", async () => {

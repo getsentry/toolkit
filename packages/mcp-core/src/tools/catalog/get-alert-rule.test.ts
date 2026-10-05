@@ -64,32 +64,6 @@ const issueAlertRule = {
   ],
 };
 
-const metricAlertRule = {
-  id: "456",
-  name: "P95 latency",
-  status: 0,
-  dataset: "transactions",
-  aggregate: "p95(transaction.duration)",
-  query: "environment:production",
-  timeWindow: 5,
-  projects: ["cloudflare-mcp"],
-  environment: "production",
-  owner: "team:backend",
-  dateCreated: "2026-01-03T03:04:05.000Z",
-  triggers: [
-    {
-      label: "critical",
-      alertThreshold: 500,
-      actions: [
-        {
-          type: "slack",
-          targetIdentifier: "alerts",
-        },
-      ],
-    },
-  ],
-};
-
 const project = {
   id: "4509109104082945",
   slug: "cloudflare-mcp",
@@ -98,6 +72,7 @@ const project = {
 
 const detector = {
   id: "789",
+  alertRuleId: 456,
   name: "Error count",
   type: "metric_issue",
   workflowIds: ["123"],
@@ -167,8 +142,11 @@ function useAlertRuleHandlers() {
     http.get(`${organizationApi}/detectors/:id/`, () =>
       HttpResponse.json(detector),
     ),
-    http.get(`${organizationApi}/alert-rules/456/`, () =>
-      HttpResponse.json(metricAlertRule),
+    http.get(`${organizationApi}/detectors/`, () =>
+      HttpResponse.json([detector]),
+    ),
+    http.get(`${organizationApi}/alert-rule-detector/`, () =>
+      HttpResponse.json({ detectorId: "789" }),
     ),
   );
 }
@@ -276,98 +254,103 @@ describe("get_alert_rule", () => {
     `);
   });
 
-  it("gets a metric alert by numeric ID when kind is explicit", async () => {
-    const result = await getRule({ kind: "metric", ruleIdOrName: "456" });
-
-    expect(result).toMatchInlineSnapshot(`
-      "# Alert Rule in **sentry-mcp-evals**
-
-      ## P95 latency
-
-      **Kind**: Metric Alert
-      **ID**: 456
-      **Status**: 0
-      **Dataset**: transactions
-      **Aggregate**: p95(transaction.duration)
-      **Query**: environment:production
-      **Time Window**: 5 minutes
-      **Projects**: cloudflare-mcp
-      **Environment**: production
-      **Owner**: team:backend
-      **Created**: 2026-01-03T03:04:05.000Z
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/alerts/rules/details/456/
-
-      ### Triggers
-
-      - Trigger: Critical threshold: 500
-      - Actions: Slack (target: alerts)
-
-      ## Response Notes
-
-      - Use these details to inspect alert conditions, filters, routing, and notification actions before changing the rule in Sentry.
-      "
-    `);
-  });
-
-  it("uses organization metric alert details for a project-scoped ID", async () => {
-    mswServer.use(
-      http.get(`${projectApi}/alert-rules/456/`, () =>
-        HttpResponse.json({}, { status: 500 }),
-      ),
-    );
-
-    const result = await getRule({
-      kind: "metric",
-      projectSlug: "cloudflare-mcp",
-      ruleIdOrName: "456",
-    });
-
-    expect(result).toContain("**Kind**: Metric Alert");
-    expect(result).toContain("**ID**: 456");
-    expect(result).toContain("### Triggers");
-  });
-
-  it("rejects organization metric alert details outside the active project constraint", async () => {
-    mswServer.use(
-      http.get(`${organizationApi}/alert-rules/456/`, () =>
-        HttpResponse.json({
-          ...metricAlertRule,
-          projects: ["frontend"],
+  it.each(["456", "10000000789", "detector:789"])(
+    "resolves compatibility reference %s without confusing detector IDs",
+    async (ruleIdOrName) => {
+      const reads: string[] = [];
+      mswServer.use(
+        http.get(`${organizationApi}/alert-rule-detector/`, ({ request }) => {
+          reads.push(
+            `mapping:${new URL(request.url).searchParams.get("alert_rule_id")}`,
+          );
+          return HttpResponse.json({ detectorId: "789" });
         }),
-      ),
-    );
+        http.get(`${organizationApi}/detectors/:id/`, ({ params }) => {
+          reads.push(`detector:${params.id}`);
+          return HttpResponse.json(detector);
+        }),
+      );
+      const result = await getRule({
+        kind: "metric",
+        ruleIdOrName,
+        projectSlug: project.slug,
+      });
+      expect(getStructuredContent(result)).toMatchObject({
+        metricMonitor: {
+          id: "789",
+          name: detector.name,
+          projectId: project.id,
+          workflowIds: ["123"],
+        },
+        guidance: expect.stringContaining("get_metric_monitor_details"),
+      });
+      expect(reads).toEqual(
+        ruleIdOrName.startsWith("detector:")
+          ? ["detector:789"]
+          : [`mapping:${ruleIdOrName}`, "detector:789"],
+      );
+    },
+  );
 
-    await expect(
-      getRule(
-        { kind: "metric", ruleIdOrName: "456" },
-        projectConstrainedContext,
-      ),
-    ).rejects.toThrow('Metric alert rule is outside project "cloudflare-mcp"');
-  });
+  it.each([
+    { kind: "metric", ruleIdOrName: "456" },
+    { kind: "metric", ruleIdOrName: "detector:789" },
+    { kind: "all", ruleIdOrName: detector.name },
+  ] as const)(
+    "checks the resolved monitor project for $ruleIdOrName (kind=$kind)",
+    async (params) => {
+      mswServer.use(
+        http.get(`${organizationApi}/workflows/`, () => HttpResponse.json([])),
+        http.get("*/detectors/789/", () =>
+          HttpResponse.json({ ...detector, projectId: "other-project" }),
+        ),
+      );
+      await expect(getRule(params, projectConstrainedContext)).rejects.toThrow(
+        /outside the active project constraint/i,
+      );
+    },
+  );
 
-  it("uses organization metric alert details after resolving an exact name", async () => {
+  it.each([404, 410, 403])(
+    "does not reinterpret legacy IDs when mapping returns %s",
+    async (status) => {
+      const detectorReads: string[] = [];
+      mswServer.use(
+        http.get(`${organizationApi}/alert-rule-detector/`, () =>
+          HttpResponse.json({ detail: "Mapping unavailable" }, { status }),
+        ),
+        http.get(`${organizationApi}/detectors/:id/`, ({ request }) => {
+          detectorReads.push(request.url);
+          return HttpResponse.json(detector);
+        }),
+      );
+      await expect(
+        getRule({ kind: "metric", ruleIdOrName: "789" }),
+      ).rejects.toThrow(
+        status === 403 ? "Mapping unavailable" : "find_metric_monitors",
+      );
+      expect(detectorReads).toEqual([]);
+    },
+  );
+
+  it("resolves a metric name through native monitors", async () => {
+    let query: URLSearchParams | undefined;
     mswServer.use(
-      http.get(`${organizationApi}/combined-rules/`, ({ request }) => {
-        const params = new URL(request.url).searchParams;
-        expect(params.get("alertType")).toBe("alert_rule");
-        return HttpResponse.json([
-          { id: metricAlertRule.id, name: metricAlertRule.name },
-        ]);
+      http.get(`${organizationApi}/detectors/`, ({ request }) => {
+        query = new URL(request.url).searchParams;
+        return HttpResponse.json([detector]);
       }),
-      http.get(`${projectApi}/alert-rules/456/`, () =>
-        HttpResponse.json({}, { status: 500 }),
-      ),
     );
-
     const result = await getRule({
       kind: "metric",
-      projectSlug: "cloudflare-mcp",
-      ruleIdOrName: "P95 latency",
+      projectSlug: project.slug,
+      ruleIdOrName: detector.name,
     });
-
-    expect(result).toContain("**Kind**: Metric Alert");
-    expect(result).toContain("**ID**: 456");
-    expect(result).toContain("### Triggers");
+    expect(getStructuredContent(result)).toMatchObject({
+      metricMonitor: { id: detector.id },
+    });
+    expect(query?.getAll("type")).toEqual(["metric_issue"]);
+    expect(query?.get("query")).toContain(detector.name);
   });
 
   it("fetches issue alert details after resolving an exact name", async () => {
@@ -466,71 +449,43 @@ describe("get_alert_rule", () => {
   it("treats digit-only values as exact names with kind all", async () => {
     mswServer.use(
       http.get(`${organizationApi}/workflows/`, () => HttpResponse.json([])),
-      http.get(`${organizationApi}/combined-rules/`, ({ request }) => {
-        const params = new URL(request.url).searchParams;
-        expect(params.get("alertType")).toBe("alert_rule");
-        return HttpResponse.json([
-          { ...metricAlertRule, id: "789", name: "123" },
-        ]);
-      }),
-      http.get(`${projectApi}/alert-rules/789/`, () =>
-        HttpResponse.json({}, { status: 500 }),
+      http.get(`${organizationApi}/detectors/`, () =>
+        HttpResponse.json([{ ...detector, name: "123" }]),
       ),
-      http.get(`${organizationApi}/alert-rules/789/`, () =>
-        HttpResponse.json({ ...metricAlertRule, id: "789", name: "123" }),
+      http.get(`${organizationApi}/detectors/789/`, () =>
+        HttpResponse.json({ ...detector, name: "123" }),
       ),
     );
-
-    const result = await getRule({
-      kind: "all",
-      projectSlug: "cloudflare-mcp",
+    expect(
+      getStructuredContent(
+        await getRule({ kind: "all", projectSlug: project.slug }),
+      ),
+    ).toMatchObject({
+      metricMonitor: { id: "789", name: "123" },
     });
-
-    expect(result).toContain("## 123");
-    expect(result).toContain("**Kind**: Metric Alert");
-    expect(result).toContain("**ID**: 789");
   });
 
-  it("rejects exact-name metric matches outside the active project constraint", async () => {
-    mswServer.use(
-      http.get(`${organizationApi}/workflows/`, () => HttpResponse.json([])),
-      http.get(`${organizationApi}/combined-rules/`, () =>
-        HttpResponse.json([metricAlertRule]),
-      ),
-      http.get(`${organizationApi}/alert-rules/456/`, () =>
-        HttpResponse.json({
-          ...metricAlertRule,
-          projects: ["frontend"],
-        }),
-      ),
-    );
-
-    await expect(
-      getRule(
-        { kind: "all", ruleIdOrName: "P95 latency" },
-        projectConstrainedContext,
-      ),
-    ).rejects.toThrow('Metric alert rule is outside project "cloudflare-mcp"');
-  });
-
-  it("rejects ambiguous exact-name lookups", async () => {
-    mswServer.use(
-      http.get(`${organizationApi}/workflows/`, () =>
-        HttpResponse.json([{ ...issueAlertRule, name: "Same name" }]),
-      ),
-      http.get(`${organizationApi}/combined-rules/`, () =>
-        HttpResponse.json([{ ...metricAlertRule, name: "Same name" }]),
-      ),
-    );
-
-    await expect(
-      getRule({
-        kind: "all",
-        projectSlug: "cloudflare-mcp",
-        ruleIdOrName: "Same name",
-      }),
-    ).rejects.toThrow('Multiple alert rules named "Same name" were found');
-  });
+  it.each(["all", "metric"] as const)(
+    "rejects ambiguous exact names with kind %s",
+    async (kind) => {
+      mswServer.use(
+        http.get(`${organizationApi}/workflows/`, () =>
+          HttpResponse.json([{ ...issueAlertRule, name: "Same name" }]),
+        ),
+        http.get(`${organizationApi}/detectors/`, () =>
+          HttpResponse.json([
+            { ...detector, name: "Same name" },
+            ...(kind === "metric"
+              ? [{ ...detector, id: "790", name: "Same name" }]
+              : []),
+          ]),
+        ),
+      );
+      await expect(
+        getRule({ kind, projectSlug: project.slug, ruleIdOrName: "Same name" }),
+      ).rejects.toThrow(/Multiple .* named "Same name"/);
+    },
+  );
 
   it("preserves complete groups and monitor matching context without backend metadata", async () => {
     const conditions = Array.from({ length: 6 }, (_, i) => ({
@@ -765,14 +720,19 @@ describe("get_alert_rule", () => {
     });
   });
 
-  it.each(["issue", "all"] as const)(
-    "rejects incomplete name searches with kind %s",
-    async (kind) => {
+  it.each([
+    { kind: "issue", endpoint: "workflows" },
+    { kind: "all", endpoint: "workflows" },
+    { kind: "metric", endpoint: "detectors" },
+    { kind: "all", endpoint: "detectors" },
+  ] as const)(
+    "rejects incomplete $endpoint name searches with kind $kind",
+    async ({ kind, endpoint }) => {
       mswServer.use(
-        http.get("*/workflows/", () =>
-          HttpResponse.json([issueAlertRule], {
+        http.get(`${organizationApi}/${endpoint}/`, () =>
+          HttpResponse.json(endpoint === "workflows" ? [issueAlertRule] : [], {
             headers: {
-              Link: '<https://sentry.io/api/0/organizations/sentry-mcp-evals/workflows/?cursor=next>; rel="next"; results="true"; cursor="next"',
+              Link: `<${organizationApi}/${endpoint}/?cursor=next>; rel="next"; results="true"; cursor="next"`,
             },
           }),
         ),
@@ -782,21 +742,6 @@ describe("get_alert_rule", () => {
       ).rejects.toThrow("name search is incomplete");
     },
   );
-
-  it("rejects incomplete metric name searches even when a workflow already matches", async () => {
-    mswServer.use(
-      http.get(`${organizationApi}/combined-rules/`, () =>
-        HttpResponse.json([], {
-          headers: {
-            Link: `<${organizationApi}/combined-rules/?cursor=next>; rel="next"; results="true"; cursor="next"`,
-          },
-        }),
-      ),
-    );
-    await expect(
-      getRule({ kind: "all", ruleIdOrName: issueAlertRule.name }),
-    ).rejects.toThrow("name search is incomplete");
-  });
 
   it.each([401, 500])(
     "propagates source errors (%s) rather than reporting a complete inspection",
@@ -810,11 +755,13 @@ describe("get_alert_rule", () => {
     },
   );
 
-  it("can inspect a workflow by name when the legacy metric API is retired", async () => {
+  it("inspects workflows by name without the retired metric API", async () => {
+    const legacyReads: string[] = [];
     mswServer.use(
-      http.get("*/combined-rules/", () =>
-        HttpResponse.json({ detail: "Gone" }, { status: 410 }),
-      ),
+      http.get("*/combined-rules/", ({ request }) => {
+        legacyReads.push(request.url);
+        return HttpResponse.json({ detail: "Gone" }, { status: 410 });
+      }),
     );
     expect(
       getStructuredContent(
@@ -822,7 +769,7 @@ describe("get_alert_rule", () => {
       ),
     ).toMatchObject({
       alertRule: { id: "123", name: issueAlertRule.name },
-      warnings: [expect.stringContaining("retired")],
     });
+    expect(legacyReads).toEqual([]);
   });
 });

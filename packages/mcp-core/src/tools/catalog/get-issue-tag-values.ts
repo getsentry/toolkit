@@ -1,22 +1,22 @@
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
+import { ApiNotFoundError } from "../../api-client";
+import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
-import { structuredResult } from "../../internal/tool-helpers/results";
+import { defineTool } from "../../internal/tool-helpers/define";
+import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
 import {
   ensureIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
-import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
-import { ApiNotFoundError } from "../../api-client";
-import { UserInputError } from "../../errors";
-import type { ServerContext } from "../../types";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
-  ParamOrganizationSlug,
-  ParamRegionUrl,
   ParamIssueShortId,
   ParamIssueUrl,
+  ParamOrganizationSlug,
+  ParamRegionUrl,
 } from "../../schema";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 
 export const getIssueTagValuesOutputSchema = z.object({
   tag: z.object({
@@ -133,7 +133,7 @@ export default defineTool({
         issueUrl: params.issueUrl,
       });
 
-    setOrganizationContext(orgSlug);
+    setTargetTagsAndAttributes({ organizationSlug: orgSlug });
 
     await ensureIssueWithinProjectConstraint({
       apiService,

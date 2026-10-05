@@ -4,4 +4,5 @@ export const SCOPES = {
   "project:write": "Write project data",
   "team:write": "Write team data",
   "event:write": "Write event data",
+  "alerts:write": "Write alert rules",
 };

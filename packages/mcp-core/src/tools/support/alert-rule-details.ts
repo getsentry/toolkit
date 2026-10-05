@@ -1,22 +1,12 @@
 import { z } from "zod";
-import { ApiNotFoundError, ApiPermissionError } from "../../api-client";
 import type { SentryApiService } from "../../api-client";
+import { ApiNotFoundError, ApiPermissionError } from "../../api-client";
 import type { IssueAlertRule } from "../../api-client/types";
 import { isPlainObject } from "../../internal/type-guards";
 import { formatActor, formatDate } from "../catalog/support/api-formatting";
+import { conditionGroupSchema, getMetricQuery } from "./detector-details";
 
 const componentId = z.union([z.string(), z.number()]);
-const conditionSchema = z.object({
-  id: componentId.optional(),
-  type: z.string(),
-  comparison: z.unknown(),
-  conditionResult: z.unknown(),
-});
-const conditionGroupSchema = z.object({
-  id: componentId.optional(),
-  logicType: z.string(),
-  conditions: z.array(conditionSchema),
-});
 const actionGroupSchema = conditionGroupSchema.extend({
   actions: z.array(
     z.object({
@@ -30,15 +20,6 @@ const actionGroupSchema = conditionGroupSchema.extend({
   ),
 });
 
-const metricQuerySchema = z.object({
-  dataset: z.string(),
-  query: z.string(),
-  aggregate: z.string(),
-  timeWindow: z.number(),
-  environment: z.string().nullable(),
-  eventTypes: z.array(z.string()),
-  extrapolationMode: z.string().nullable().optional(),
-});
 const uptimeQuerySchema = z.object({
   url: z.string(),
   method: z.string(),
@@ -83,12 +64,8 @@ function sourceDetails(source: Record<string, unknown>) {
     return unavailable;
   }
   if (type === "snuba_query_subscription") {
-    const parsed = metricQuerySchema.safeParse(query.snubaQuery);
-    if (!parsed.success) {
-      return unavailable;
-    }
-    const { timeWindow, ...config } = parsed.data;
-    return { type, query: { ...config, timeWindowSeconds: timeWindow } };
+    const metricQuery = getMetricQuery(source);
+    return metricQuery ? { type, query: metricQuery } : unavailable;
   }
   if (type === "uptime_subscription") {
     const parsed = uptimeQuerySchema.safeParse(query);

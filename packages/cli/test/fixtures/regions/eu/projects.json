@@ -1,0 +1,57 @@
+[
+  {
+    "id": "300020",
+    "slug": "euro-portal",
+    "name": "Euro Portal",
+    "platform": "javascript-vue",
+    "dateCreated": "2021-07-01T08:00:00.000000Z",
+    "isBookmarked": false,
+    "isMember": true,
+    "features": ["releases"],
+    "firstEvent": "2021-07-01T09:00:00.000000Z",
+    "firstTransactionEvent": true,
+    "access": ["project:read", "project:releases"],
+    "hasAccess": true,
+    "team": { "id": "200020", "slug": "euro-team", "name": "Euro Team" },
+    "teams": [{ "id": "200020", "slug": "euro-team", "name": "Euro Team" }],
+    "organization": { "id": "100020", "slug": "euro-gmbh", "name": "Euro GmbH" }
+  },
+  {
+    "id": "300021",
+    "slug": "euro-api",
+    "name": "Euro API",
+    "platform": "node",
+    "dateCreated": "2021-07-15T12:00:00.000000Z",
+    "isBookmarked": false,
+    "isMember": true,
+    "features": ["releases"],
+    "firstEvent": "2021-07-15T13:00:00.000000Z",
+    "firstTransactionEvent": false,
+    "access": ["project:read", "project:releases"],
+    "hasAccess": true,
+    "team": { "id": "200020", "slug": "euro-team", "name": "Euro Team" },
+    "teams": [{ "id": "200020", "slug": "euro-team", "name": "Euro Team" }],
+    "organization": { "id": "100020", "slug": "euro-gmbh", "name": "Euro GmbH" }
+  },
+  {
+    "id": "300022",
+    "slug": "berlin-app",
+    "name": "Berlin App",
+    "platform": "python-django",
+    "dateCreated": "2022-02-01T10:00:00.000000Z",
+    "isBookmarked": false,
+    "isMember": true,
+    "features": ["releases"],
+    "firstEvent": "2022-02-01T11:00:00.000000Z",
+    "firstTransactionEvent": true,
+    "access": ["project:read", "project:releases"],
+    "hasAccess": true,
+    "team": { "id": "200021", "slug": "berlin-team", "name": "Berlin Team" },
+    "teams": [{ "id": "200021", "slug": "berlin-team", "name": "Berlin Team" }],
+    "organization": {
+      "id": "100021",
+      "slug": "berlin-startup",
+      "name": "Berlin Startup"
+    }
+  }
+]

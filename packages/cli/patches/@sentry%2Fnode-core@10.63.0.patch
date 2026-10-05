@@ -1,0 +1,77 @@
+diff --git a/build/cjs/light/index.js b/build/cjs/light/index.js
+index 8fb4980846f783f7e352e7abd056bb95b8d86ea6..5514ac17921b832eb31c114e9bdf8999389e7060 100644
+--- a/build/cjs/light/index.js
++++ b/build/cjs/light/index.js
+@@ -75,7 +75,6 @@ exports.addEventProcessor = core.addEventProcessor;
+ exports.addIntegration = core.addIntegration;
+ exports.bindScopeToEmitter = core.bindScopeToEmitter;
+ exports.captureCheckIn = core.captureCheckIn;
+-exports.captureConsoleIntegration = core.captureConsoleIntegration;
+ exports.captureEvent = core.captureEvent;
+ exports.captureException = core.captureException;
+ exports.captureFeedback = core.captureFeedback;
+@@ -86,12 +85,9 @@ exports.consoleLoggingIntegration = core.consoleLoggingIntegration;
+ exports.continueTrace = core.continueTrace;
+ exports.createConsolaReporter = core.createConsolaReporter;
+ exports.createTransport = core.createTransport;
+-exports.dedupeIntegration = core.dedupeIntegration;
+ exports.endSession = core.endSession;
+ exports.envToBool = core.envToBool;
+ exports.eventFiltersIntegration = core.eventFiltersIntegration;
+-exports.extraErrorDataIntegration = core.extraErrorDataIntegration;
+-exports.featureFlagsIntegration = core.featureFlagsIntegration;
+ exports.flush = core.flush;
+ exports.functionToStringIntegration = core.functionToStringIntegration;
+ exports.getActiveSpan = core.getActiveSpan;
+@@ -105,16 +101,13 @@ exports.getSpanDescendants = core.getSpanDescendants;
+ exports.getSpanStatusFromHttpCode = core.getSpanStatusFromHttpCode;
+ exports.getTraceData = core.getTraceData;
+ exports.getTraceMetaTags = core.getTraceMetaTags;
+-exports.instrumentSupabaseClient = core.instrumentSupabaseClient;
+ exports.isEnabled = core.isEnabled;
+ exports.isInitialized = core.isInitialized;
+ exports.lastEventId = core.lastEventId;
+ exports.linkedErrorsIntegration = core.linkedErrorsIntegration;
+ exports.metrics = core.metrics;
+ exports.parameterize = core.parameterize;
+-exports.profiler = core.profiler;
+ exports.requestDataIntegration = core.requestDataIntegration;
+-exports.rewriteFramesIntegration = core.rewriteFramesIntegration;
+ exports.setAttribute = core.setAttribute;
+ exports.setAttributes = core.setAttributes;
+ exports.setContext = core.setContext;
+@@ -126,7 +119,6 @@ exports.setMeasurement = core.setMeasurement;
+ exports.setTag = core.setTag;
+ exports.setTags = core.setTags;
+ exports.setUser = core.setUser;
+-exports.spanStreamingIntegration = core.spanStreamingIntegration;
+ exports.spanToBaggageHeader = core.spanToBaggageHeader;
+ exports.spanToJSON = core.spanToJSON;
+ exports.spanToTraceHeader = core.spanToTraceHeader;
+@@ -135,15 +127,10 @@ exports.startNewTrace = core.startNewTrace;
+ exports.startSession = core.startSession;
+ exports.startSpan = core.startSpan;
+ exports.startSpanManual = core.startSpanManual;
+-exports.supabaseIntegration = core.supabaseIntegration;
+ exports.suppressTracing = core.suppressTracing;
+-exports.trpcMiddleware = core.trpcMiddleware;
+ exports.updateSpanName = core.updateSpanName;
+ exports.withActiveSpan = core.withActiveSpan;
+ exports.withIsolationScope = core.withIsolationScope;
+ exports.withMonitor = core.withMonitor;
+ exports.withScope = core.withScope;
+-exports.withStreamedSpan = core.withStreamedSpan;
+-exports.wrapMcpServerWithSentry = core.wrapMcpServerWithSentry;
+-exports.zodErrorsIntegration = core.zodErrorsIntegration;
+ //# sourceMappingURL=index.js.map
+diff --git a/build/esm/light/index.js b/build/esm/light/index.js
+index f9e2a0818600f096bb980db7330338829256416d..a58d0aba64f228b9ced5291797507e8b1dadc111 100644
+--- a/build/esm/light/index.js
++++ b/build/esm/light/index.js
+@@ -27,5 +27,5 @@ export { createMissingInstrumentationContext } from '../utils/createMissingInstr
+ export { makeNodeTransport } from '../transports/http.js';
+ export { cron } from '../cron/index.js';
+ export { NODE_VERSION } from '../nodeVersion.js';
+-export { SDK_VERSION, SEMANTIC_ATTRIBUTE_SENTRY_OP, SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN, SEMANTIC_ATTRIBUTE_SENTRY_SAMPLE_RATE, SEMANTIC_ATTRIBUTE_SENTRY_SOURCE, Scope, addBreadcrumb, addEventProcessor, addIntegration, bindScopeToEmitter, captureCheckIn, captureConsoleIntegration, captureEvent, captureException, captureFeedback, captureMessage, captureSession, close, consoleLoggingIntegration, continueTrace, createConsolaReporter, createTransport, dedupeIntegration, endSession, envToBool, eventFiltersIntegration, extraErrorDataIntegration, featureFlagsIntegration, flush, functionToStringIntegration, getActiveSpan, getClient, getCurrentScope, getGlobalScope, getIsolationScope, getRequestUrl, getRootSpan, getSpanDescendants, getSpanStatusFromHttpCode, getTraceData, getTraceMetaTags, instrumentSupabaseClient, isEnabled, isInitialized, lastEventId, linkedErrorsIntegration, metrics, parameterize, profiler, requestDataIntegration, rewriteFramesIntegration, setAttribute, setAttributes, setContext, setCurrentClient, setExtra, setExtras, setHttpStatus, setMeasurement, setTag, setTags, setUser, spanStreamingIntegration, spanToBaggageHeader, spanToJSON, spanToTraceHeader, startInactiveSpan, startNewTrace, startSession, startSpan, startSpanManual, supabaseIntegration, suppressTracing, trpcMiddleware, updateSpanName, withActiveSpan, withIsolationScope, withMonitor, withScope, withStreamedSpan, wrapMcpServerWithSentry, zodErrorsIntegration } from '@sentry/core';
++export { SDK_VERSION, SEMANTIC_ATTRIBUTE_SENTRY_OP, SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN, SEMANTIC_ATTRIBUTE_SENTRY_SAMPLE_RATE, SEMANTIC_ATTRIBUTE_SENTRY_SOURCE, Scope, addBreadcrumb, addEventProcessor, addIntegration, bindScopeToEmitter, captureCheckIn, captureEvent, captureException, captureFeedback, captureMessage, captureSession, close, consoleLoggingIntegration, continueTrace, createConsolaReporter, createTransport, endSession, envToBool, eventFiltersIntegration, flush, functionToStringIntegration, getActiveSpan, getClient, getCurrentScope, getGlobalScope, getIsolationScope, getRequestUrl, getRootSpan, getSpanDescendants, getSpanStatusFromHttpCode, getTraceData, getTraceMetaTags, isEnabled, isInitialized, lastEventId, linkedErrorsIntegration, metrics, parameterize, requestDataIntegration, setAttribute, setAttributes, setContext, setCurrentClient, setExtra, setExtras, setHttpStatus, setMeasurement, setTag, setTags, setUser, spanToBaggageHeader, spanToJSON, spanToTraceHeader, startInactiveSpan, startNewTrace, startSession, startSpan, startSpanManual, suppressTracing, updateSpanName, withActiveSpan, withIsolationScope, withMonitor, withScope } from '@sentry/core';
+ //# sourceMappingURL=index.js.map

@@ -1,0 +1,67 @@
+[
+  {
+    "id": "300010",
+    "slug": "acme-frontend",
+    "name": "Acme Frontend",
+    "platform": "javascript-react",
+    "dateCreated": "2020-02-01T08:00:00.000000Z",
+    "isBookmarked": false,
+    "isMember": true,
+    "features": ["releases"],
+    "firstEvent": "2020-02-01T09:00:00.000000Z",
+    "firstTransactionEvent": true,
+    "access": ["project:read", "project:releases"],
+    "hasAccess": true,
+    "team": { "id": "200010", "slug": "acme-team", "name": "Acme Team" },
+    "teams": [{ "id": "200010", "slug": "acme-team", "name": "Acme Team" }],
+    "organization": {
+      "id": "100010",
+      "slug": "acme-corp",
+      "name": "Acme Corporation"
+    }
+  },
+  {
+    "id": "300011",
+    "slug": "acme-backend",
+    "name": "Acme Backend",
+    "platform": "python",
+    "dateCreated": "2020-02-15T12:00:00.000000Z",
+    "isBookmarked": false,
+    "isMember": true,
+    "features": ["releases"],
+    "firstEvent": "2020-02-15T13:00:00.000000Z",
+    "firstTransactionEvent": false,
+    "access": ["project:read", "project:releases"],
+    "hasAccess": true,
+    "team": { "id": "200010", "slug": "acme-team", "name": "Acme Team" },
+    "teams": [{ "id": "200010", "slug": "acme-team", "name": "Acme Team" }],
+    "organization": {
+      "id": "100010",
+      "slug": "acme-corp",
+      "name": "Acme Corporation"
+    }
+  },
+  {
+    "id": "300012",
+    "slug": "widgets-app",
+    "name": "Widgets App",
+    "platform": "javascript",
+    "dateCreated": "2021-04-01T10:00:00.000000Z",
+    "isBookmarked": false,
+    "isMember": true,
+    "features": ["releases"],
+    "firstEvent": "2021-04-01T11:00:00.000000Z",
+    "firstTransactionEvent": true,
+    "access": ["project:read", "project:releases"],
+    "hasAccess": true,
+    "team": { "id": "200011", "slug": "widgets-team", "name": "Widgets Team" },
+    "teams": [
+      { "id": "200011", "slug": "widgets-team", "name": "Widgets Team" }
+    ],
+    "organization": {
+      "id": "100011",
+      "slug": "widgets-inc",
+      "name": "Widgets Inc"
+    }
+  }
+]

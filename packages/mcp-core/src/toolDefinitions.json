@@ -111,7 +111,7 @@
   },
   {
     "name": "analyze_issue_with_seer",
-    "description": "Use Seer to analyze production errors and get detailed root cause analysis with specific code fixes.\n\nUse this tool when:\n- The user explicitly asks for root cause analysis, Seer analysis, or help fixing/debugging an issue\n- You are unable to accurately determine the root cause from the issue details alone\n\nDo NOT call this tool as an automatic follow-up to get_sentry_resource.\n\nWhat this tool provides:\n- Root cause analysis with code-level explanations\n- Specific file locations and line numbers where errors occur\n- Concrete code fixes you can apply\n- Step-by-step implementation guidance\n\nThis tool automatically:\n1. Checks if analysis already exists (instant results)\n2. Starts new AI analysis if needed (~2-5 minutes)\n3. Returns complete fix recommendations\n\n<examples>\n### User: \"Run Seer on this issue\"\n\n```\nanalyze_issue_with_seer(issueUrl='https://my-org.sentry.io/issues/PROJECT-1Z43')\n```\n\n### User: \"Analyze this issue and suggest a fix\"\n\n```\nanalyze_issue_with_seer(organizationSlug='my-organization', issueId='ERROR-456')\n```\n</examples>\n\n<hints>\n- Only use when the user explicitly requests analysis or you cannot determine the root cause from issue details alone\n- Seer Autofix does not support metric alert issues (issueCategory: metric); use get_issue_details and search_events instead\n- If the user provides an issueUrl, extract it and use that parameter alone\n- The analysis includes actual code snippets and fixes, not just error descriptions\n- Results are cached - subsequent calls return instantly\n</hints>",
+    "description": "Use Seer to analyze production errors and get detailed root cause analysis with specific code fixes.\n\nUse this tool when:\n- The user explicitly asks for root cause analysis, Seer analysis, or help fixing/debugging an issue\n- You are unable to accurately determine the root cause from the issue details alone\n\nDo NOT call this tool as an automatic follow-up to get_sentry_resource.\n\nWhat this tool provides:\n- Root cause analysis with code-level explanations\n- Specific file locations and line numbers where errors occur\n- Concrete code fixes you can apply\n- Step-by-step implementation guidance\n\nThis tool automatically:\n1. Checks if analysis already exists (instant results)\n2. Starts new AI analysis if needed (~2-5 minutes)\n3. Returns complete fix recommendations\n\n<examples>\n### User: \"Run Seer on this issue\"\n\n```\nanalyze_issue_with_seer(issueUrl='https://my-org.sentry.io/issues/PROJECT-1Z43')\n```\n\n### User: \"Analyze this issue and suggest a fix\"\n\n```\nanalyze_issue_with_seer(organizationSlug='my-organization', issueId='ERROR-456')\n```\n</examples>\n\n<hints>\n- Only use when the user explicitly requests analysis or you cannot determine the root cause from issue details alone\n- Seer Autofix does not support metric alert issues (issueCategory: metric); use get_issue_details and search_metrics or search_traces instead\n- If the user provides an issueUrl, extract it and use that parameter alone\n- The analysis includes actual code snippets and fixes, not just error descriptions\n- Results are cached - subsequent calls return instantly\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -149,6 +149,432 @@
     "requiredScopes": [],
     "skills": ["seer"],
     "surface": "direct"
+  },
+  {
+    "name": "create_alert_rule",
+    "description": "Create a Sentry Alert (workflow) with notification actions and explicit sources.\nUse get_alert_options for available actions, integrations, conditions, and sources. All notification providers use their native config and data fields.\nTo copy an Alert, read get_alert_rule(kind='issue') and pass its configuration here; component IDs are discarded while integration and destination IDs are retained. New trigger groups require logicType='any-short'.\nTo reuse an existing Alert across projects, use update_alert_rule instead.\nSupply projectSlugs for project issue streams and/or detectorIds for individual monitors. Pass detectorIds=[] explicitly to create an Alert without sources; it will not send notifications until connected.\nNew Alerts default to active with a 30-minute notification interval. Use status='disabled' to configure one before enabling it.\nProject-constrained sessions require sources exclusively within that project. All-project sources require Sentry's feature and org:write in addition to alerts:write.\nAfter a timeout or error, search for the Alert before retrying: creation may already have succeeded.\n<examples>\ncreate_alert_rule(organizationSlug='my-org', name='Backend notifications', status='disabled', detectorIds=[], actionFilters=[])\n</examples>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "status": {
+          "default": "active",
+          "type": "string",
+          "enum": ["active", "disabled"]
+        },
+        "frequencyMinutes": {
+          "default": 30,
+          "description": "Minimum interval between notifications, in minutes.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "owner": {
+          "description": "Owner actor user:ID or team:ID. Pass null to clear.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(user|team):\\d+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "triggers": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "logicType": {
+                  "type": "string",
+                  "enum": ["all", "any", "any-short", "none"]
+                },
+                "conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "comparison": {},
+                      "conditionResult": {}
+                    },
+                    "required": ["type", "comparison", "conditionResult"]
+                  }
+                }
+              },
+              "required": ["logicType", "conditions"],
+              "description": "Trigger conditions. Nonempty groups require logicType='any-short' for new Alerts. Copied component IDs are discarded. Omit, pass null, or use an empty group for no trigger conditions."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actionFilters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "logicType": {
+                "type": "string",
+                "enum": ["all", "any", "any-short", "none"]
+              },
+              "conditions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "comparison": {},
+                    "conditionResult": {}
+                  },
+                  "required": ["type", "comparison", "conditionResult"]
+                }
+              },
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "integrationId": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "config": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["type", "data", "config"]
+                }
+              }
+            },
+            "required": ["logicType", "conditions", "actions"]
+          },
+          "description": "Action groups with conditions and notification actions, from get_alert_options or get_alert_rule. Copied component IDs are discarded; integration and destination IDs are retained. Pass [] explicitly for no notification actions."
+        },
+        "projectSlugs": {
+          "description": "Projects whose issue streams should be connected.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+          }
+        },
+        "detectorIds": {
+          "description": "Existing source IDs from get_alert_options. Pass [] explicitly for an Alert without sources.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          }
+        }
+      },
+      "required": ["organizationSlug", "name", "actionFilters"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "alertRule": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "frequency": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "triggers": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "logicType": {
+                      "type": "string",
+                      "enum": ["all", "any", "any-short", "none"]
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "comparison": {},
+                          "conditionResult": {}
+                        },
+                        "required": ["type", "comparison", "conditionResult"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["logicType", "conditions"],
+                  "additionalProperties": false,
+                  "description": "The complete trigger group. Preserve existing condition IDs when editing; omitted conditions are removed. Use the configuration returned by get_alert_rule."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "actionFilters": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "logicType": {
+                        "type": "string",
+                        "enum": ["all", "any", "any-short", "none"]
+                      },
+                      "conditions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ]
+                            },
+                            "type": {
+                              "type": "string"
+                            },
+                            "comparison": {},
+                            "conditionResult": {}
+                          },
+                          "required": ["type", "comparison", "conditionResult"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "actions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ]
+                            },
+                            "type": {
+                              "type": "string"
+                            },
+                            "integrationId": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "data": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {}
+                            },
+                            "config": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {}
+                            },
+                            "status": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["type", "data", "config"],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": ["logicType", "conditions", "actions"],
+                    "additionalProperties": false
+                  },
+                  "description": "The complete list of action groups, conditions, and notification actions. Preserve their IDs and all unchanged groups and actions; omitted entries are removed. Slack and Microsoft Teams resolve config.targetDisplay as a channel name within integrationId. Other providers use their native config.targetIdentifier and data fields."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "detectorIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "webUrl": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": ["id", "name", "detectorIds", "webUrl"],
+          "additionalProperties": false
+        },
+        "guidance": {
+          "type": "string"
+        }
+      },
+      "required": ["alertRule"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["org:read", "project:read", "alerts:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
   },
   {
     "name": "create_dsn",
@@ -207,6 +633,506 @@
       "additionalProperties": false
     },
     "requiredScopes": ["project:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
+    "name": "create_metric_monitor",
+    "description": "Create a Sentry Metric Monitor with Static, Percent or Dynamic detection in a project.\nProvide the complete query, detection config and conditions. Time windows and comparison deltas use seconds. Percent comparisons are absolute: 110 means 10% higher.\nTo copy a monitor, use the query, config and conditionGroup from get_metric_monitor_details. Component IDs are discarded; new condition groups use logicType='any'.\nNew monitors start ACTIVE and immediately evaluate data. Initially disabled creation is not supported. Use update_metric_monitor to disable an existing monitor.\nworkflowIds optionally connect existing notification Alerts, including shared Alerts, without modifying their configuration. Create an Alert separately with create_alert_rule if needed.\nDataset access, quota, aggregate, window and historical-data requirements are enforced by Sentry. Dynamic detection requires sufficient history and Seer availability.\nCreation can fail after persisting a monitor, especially during Dynamic setup. After an error or timeout, use find_metric_monitors with the name and project before retrying; do not assume rollback or blindly repeat creation.\ncreate_metric_monitor(organizationSlug='my-org', projectSlug='backend', name='High error count', query={dataset:'events', query:'level:error', aggregate:'count()', eventTypes:['error'], timeWindowSeconds:300}, config={detectionType:'static'}, conditionGroup={conditions:[{type:'gt', comparison:100, conditionResult:75}, {type:'lte', comparison:50, conditionResult:0}]})",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "owner": {
+          "description": "Owner actor, e.g. team:123 or user:123. Pass null to clear.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(user|team):\\d+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "string",
+              "enum": [
+                "events",
+                "transactions",
+                "generic_metrics",
+                "metrics",
+                "events_analytics_platform"
+              ]
+            },
+            "query": {
+              "type": "string"
+            },
+            "aggregate": {
+              "type": "string",
+              "minLength": 1
+            },
+            "environment": {
+              "default": null,
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "eventTypes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "extrapolationMode": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "timeWindowSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "dataset",
+            "query",
+            "aggregate",
+            "eventTypes",
+            "timeWindowSeconds"
+          ],
+          "description": "Complete query: dataset, aggregate, filter, eventTypes and timeWindowSeconds. metrics is crash-free Releases; events_analytics_platform supports spans, logs and application metrics via eventTypes. Omitted environment means all environments."
+        },
+        "config": {
+          "type": "object",
+          "properties": {
+            "detectionType": {
+              "type": "string",
+              "enum": ["static", "percent", "dynamic"]
+            },
+            "comparisonDeltaSeconds": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["detectionType"],
+          "description": "Detection mode. Percent requires comparisonDeltaSeconds. Static and Dynamic do not use a comparison delta."
+        },
+        "conditionGroup": {
+          "type": "object",
+          "properties": {
+            "logicType": {
+              "default": "any",
+              "type": "string",
+              "const": "any"
+            },
+            "conditions": {
+              "minItems": 1,
+              "maxItems": 3,
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": ["gt", "lt", "gte", "lte"]
+                      },
+                      "comparison": {
+                        "type": "number"
+                      },
+                      "conditionResult": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "const": 75
+                          },
+                          {
+                            "type": "number",
+                            "const": 50
+                          },
+                          {
+                            "type": "number",
+                            "const": 0
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["type", "comparison", "conditionResult"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "anomaly_detection"
+                      },
+                      "comparison": {
+                        "type": "object",
+                        "properties": {
+                          "sensitivity": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"]
+                          },
+                          "seasonality": {
+                            "type": "string",
+                            "const": "auto"
+                          },
+                          "thresholdType": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "const": 0
+                              },
+                              {
+                                "type": "number",
+                                "const": 1
+                              },
+                              {
+                                "type": "number",
+                                "const": 2
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "sensitivity",
+                          "seasonality",
+                          "thresholdType"
+                        ]
+                      },
+                      "conditionResult": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "const": 75
+                          },
+                          {
+                            "type": "number",
+                            "const": 50
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["type", "comparison", "conditionResult"]
+                  }
+                ]
+              }
+            }
+          },
+          "required": ["conditions"],
+          "description": "Complete conditions, using logicType any. Copied group and condition IDs are discarded. Static/Percent require thresholds and resolution (results 75 critical, 50 warning, 0 resolved). Percent 110 means 10% higher. Dynamic requires one anomaly_detection condition: sensitivity, seasonality:auto, thresholdType 0 above/1 below/2 both."
+        },
+        "workflowIds": {
+          "default": [],
+          "description": "Existing notification Alert IDs to connect. Omit or pass [] to create without connected Alerts. Use find_alert_rules(kind='issue') to find workflow IDs.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          }
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "projectSlug",
+        "name",
+        "query",
+        "config",
+        "conditionGroup"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "monitor": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "projectId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "workflowIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "webUrl": {
+              "type": "string"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "detectionType": {
+                  "type": "string"
+                },
+                "comparisonDeltaSeconds": {
+                  "type": "number"
+                }
+              },
+              "required": ["detectionType"],
+              "additionalProperties": false
+            },
+            "conditionGroup": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "logicType": {
+                      "type": "string"
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "comparison": {},
+                          "conditionResult": {}
+                        },
+                        "required": ["type", "comparison", "conditionResult"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["logicType", "conditions"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Native detection conditions, including resolution. Results: 75 critical, 50 warning, 0 resolved. Percent comparisons are absolute percentages (110 means 10% higher). Dynamic comparisons contain sensitivity, seasonality and thresholdType."
+            },
+            "dataSources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": "object",
+                    "properties": {
+                      "dataset": {
+                        "type": "string"
+                      },
+                      "query": {
+                        "type": "string"
+                      },
+                      "aggregate": {
+                        "type": "string"
+                      },
+                      "environment": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "eventTypes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "extrapolationMode": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "timeWindowSeconds": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "dataset",
+                      "query",
+                      "aggregate",
+                      "environment",
+                      "eventTypes",
+                      "timeWindowSeconds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "unavailableReason": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false
+              }
+            },
+            "dateCreated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "dateUpdated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "projectId",
+            "enabled",
+            "owner",
+            "workflowIds",
+            "webUrl",
+            "description",
+            "config",
+            "conditionGroup",
+            "dataSources",
+            "dateCreated",
+            "dateUpdated"
+          ],
+          "additionalProperties": false
+        },
+        "guidance": {
+          "type": "string"
+        }
+      },
+      "required": ["monitor"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["org:read", "project:read", "alerts:write"],
     "skills": ["project-management"],
     "surface": "catalog"
   },
@@ -538,6 +1464,117 @@
     "surface": "catalog"
   },
   {
+    "name": "delete_alert_rule",
+    "description": "Permanently delete a Sentry Alert (workflow), preserving its connected monitors.\nUse get_alert_rule(kind='issue') to inspect the Alert and obtain its workflow ID before deletion. Metric Monitor IDs and legacy metric alert IDs are not workflow IDs.\nDeleting a shared Alert removes its notifications for every connected project and monitor. Use update_alert_rule to disconnect individual sources or disable it instead.\nA project-constrained session can only delete Alerts affecting that project exclusively.\nSentry removes the Alert from normal reads immediately and completes internal deletion in the background.\n<examples>\ndelete_alert_rule(organizationSlug='my-org', ruleId='12345')\n</examples>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ruleId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "Workflow ID from get_alert_rule(kind='issue')."
+        }
+      },
+      "required": ["organizationSlug", "ruleId"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "ruleId": {
+          "type": "string"
+        }
+      },
+      "required": ["success", "ruleId"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["org:read", "project:read", "alerts:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
+    "name": "delete_metric_monitor",
+    "description": "Permanently delete a Sentry Metric Monitor, preserving its connected Alerts and their other monitors.\nUse get_metric_monitor_details to inspect the monitor and obtain its native monitorId. Legacy metric alert IDs are not monitor IDs.\nUse update_metric_monitor(status='disabled') to pause detection instead. Deletion also removes an associated legacy metric alert and its incident history when present.\nSentry hides the monitor from normal reads immediately and completes deletion in the background.\ndelete_metric_monitor(organizationSlug='my-org', monitorId='12345')",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "monitorId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "Native Metric Monitor ID from find_metric_monitors."
+        }
+      },
+      "required": ["organizationSlug", "monitorId"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "monitorId": {
+          "type": "string"
+        }
+      },
+      "required": ["success", "monitorId"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["org:read", "project:read", "alerts:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
     "name": "delete_uptime_monitor",
     "description": "Delete a Sentry HTTP uptime monitor.\n\nUse this tool when you need to permanently remove an uptime monitor.\n\nBe careful when using this tool! Deletion cannot be undone.\n\n<examples>\ndelete_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\n</examples>",
     "inputSchema": {
@@ -621,7 +1658,7 @@
   },
   {
     "name": "find_alert_rules",
-    "description": "Find Sentry alert rules.\n\nUse this tool when you need to:\n- List Alerts (workflows) for an organization or project, including Alerts without connected sources\n- List metric alert rules for an organization or project\n- Find an alert rule ID by name before inspecting it\n- Check alert conditions, queries, triggers, actions, owner, or environment\n\n<examples>\nfind_alert_rules(organizationSlug='my-org')\nfind_alert_rules(organizationSlug='my-org', projectSlug='backend')\nfind_alert_rules(organizationSlug='my-org', kind='issue', projectSlug='backend', query='critical')\n</examples>\n\n<hints>\n- Omit `projectSlug` to search organization-wide. A project filter finds connected Alerts, which may also cover other projects.\n- With `kind='all'`, an unavailable legacy metric alert API is reported in `warnings`; the returned Alerts are still usable.\n- Issue and metric alert rules have independent pagination state. Reuse a nextCursor only with its matching kind.\n</hints>",
+    "description": "Find Sentry alert rules.\n\nUse this tool when you need to:\n- List Alerts (workflows) for an organization or project, including Alerts without connected sources\n- List Metric Monitors using compatibility references; prefer find_metric_monitors for canonical monitor IDs\n- Find an alert rule ID by name before inspecting it\n- Check alert conditions, queries, triggers, actions, owner, or environment\n\n<examples>\nfind_alert_rules(organizationSlug='my-org')\nfind_alert_rules(organizationSlug='my-org', projectSlug='backend')\nfind_alert_rules(organizationSlug='my-org', kind='issue', projectSlug='backend', query='critical')\n</examples>\n\n<hints>\n- Omit `projectSlug` to search organization-wide. A project filter finds connected Alerts, which may also cover other projects.\n- Metric entries expose monitorId and projectId. id retains a legacy alert-rule ID when available, otherwise detector:<monitorId>. status describes enabled/disabled monitoring, not a legacy alert status.\n- Issue and metric alert rules have independent pagination state. Reuse a nextCursor only with its matching kind.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -645,7 +1682,7 @@
           "default": "all",
           "type": "string",
           "enum": ["all", "issue", "metric"],
-          "description": "Which alert rule family to search. Use `all` to include Alerts (workflows) and legacy metric alerts."
+          "description": "Which alert rule family to search. Use `all` to include Alerts (workflows) and Metric Monitors."
         },
         "projectSlug": {
           "default": null,
@@ -824,27 +1861,31 @@
             "type": "object",
             "properties": {
               "id": {
+                "type": "string",
+                "description": "Legacy alert-rule ID when available, otherwise detector:<monitorId>."
+              },
+              "monitorId": {
                 "type": "string"
               },
-              "name": {
-                "type": "string"
-              },
-              "status": {
+              "projectId": {
                 "anyOf": [
                   {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "number"
-                      }
-                    ]
+                    "type": "string"
                   },
                   {
                     "type": "null"
                   }
                 ]
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["enabled", "disabled"]
               },
               "dataset": {
                 "anyOf": [
@@ -886,12 +1927,6 @@
                   }
                 ]
               },
-              "projects": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
               "environment": {
                 "anyOf": [
                   {
@@ -928,13 +1963,15 @@
             },
             "required": [
               "id",
+              "monitorId",
+              "projectId",
+              "enabled",
               "name",
               "status",
               "dataset",
               "aggregate",
               "query",
               "timeWindowMinutes",
-              "projects",
               "environment",
               "owner",
               "dateCreated",
@@ -998,11 +2035,8 @@
           "required": ["issue", "metric"],
           "additionalProperties": false
         },
-        "warnings": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+        "metricMonitorHint": {
+          "type": "string"
         }
       },
       "required": ["issueRules", "metricRules", "pagination"],
@@ -1244,6 +2278,127 @@
     },
     "requiredScopes": ["project:read"],
     "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
+    "name": "find_metric_monitors",
+    "description": "Find Sentry Metric Monitors that evaluate errors, performance, logs, metrics or crash rates.\nUse this tool to find a monitor ID before inspecting its query and detection conditions with get_metric_monitor_details.\nResults contain native monitor IDs, separate from legacy metric alert IDs. Alerts connected through workflowIds control notifications; inspect them with get_alert_rule(kind='issue').\nOmit projectSlug to search all accessible projects. Pass nextCursor as cursor with the same filters to retrieve more results.\nfind_metric_monitors(organizationSlug='my-org', projectSlug='backend', query='latency')",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug, or exact lowercase `all` when a tool supports all-projects scope. Other casing is treated as a project slug."
+        },
+        "query": {
+          "description": "Optional monitor search, such as a name or name:\"latency\". This searches monitor metadata, not the monitored event query. Results are always restricted to Metric Monitors.",
+          "type": "string",
+          "minLength": 1
+        },
+        "cursor": {
+          "description": "nextCursor from the previous page.",
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": ["organizationSlug"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "monitors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "projectId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "owner": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "workflowIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "webUrl": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "projectId",
+              "enabled",
+              "owner",
+              "workflowIds",
+              "webUrl"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["monitors", "nextCursor"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["org:read", "project:read"],
+    "skills": ["inspect"],
     "surface": "catalog"
   },
   {
@@ -1543,7 +2698,7 @@
   },
   {
     "name": "find_organizations",
-    "description": "Find organizations that the user has access to in Sentry.\n\nUse this tool when you need to:\n- View organizations in Sentry\n- Find an organization's slug to aid other tool requests\n- Search for specific organizations by name or slug\n\nReturns up to 25 results. If you hit this limit, use the query parameter to narrow down results.",
+    "description": "Find organizations that the user has access to in Sentry.\n\nUse this tool when you need to:\n- View organizations in Sentry\n- Find an organization's slug to aid other tool requests\n- Search for specific organizations by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1553,6 +2708,18 @@
             {
               "type": "string",
               "description": "Search query to filter results by name or slug. Use this to narrow down results when there are many items."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cursor": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Pagination cursor from a previous call's nextCursor. Reuse it with the same filters and scope to fetch the next page."
             },
             {
               "type": "null"
@@ -1601,9 +2768,19 @@
         },
         "hasMore": {
           "type": "boolean"
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
-      "required": ["organizations", "hasMore"],
+      "required": ["organizations", "hasMore", "nextCursor"],
       "additionalProperties": false
     },
     "requiredScopes": ["org:read"],
@@ -1612,7 +2789,7 @@
   },
   {
     "name": "find_projects",
-    "description": "Find projects in Sentry.\n\nUse this tool when you need to:\n- View projects in a Sentry organization\n- Find a project's slug to aid other tool requests\n- Search for specific projects by name or slug\n\nReturns up to 25 results. When hasMore is true, use the query parameter to narrow down results.",
+    "description": "Find projects in Sentry.\n\nUse this tool when you need to:\n- View projects in a Sentry organization\n- Find a project's slug to aid other tool requests\n- Search for specific projects by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1643,6 +2820,18 @@
               "type": "null"
             }
           ]
+        },
+        "cursor": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Pagination cursor from a previous call's nextCursor. Reuse it with the same filters and scope to fetch the next page."
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": ["organizationSlug"]
@@ -1665,9 +2854,19 @@
         },
         "hasMore": {
           "type": "boolean"
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
-      "required": ["projects", "hasMore"],
+      "required": ["projects", "hasMore", "nextCursor"],
       "additionalProperties": false
     },
     "requiredScopes": ["project:read"],
@@ -1910,7 +3109,7 @@
   },
   {
     "name": "find_teams",
-    "description": "Find teams in an organization in Sentry.\n\nUse this tool when you need to:\n- View teams in a Sentry organization\n- Find a team's slug and numeric ID to aid other tool requests\n- Search for specific teams by name or slug\n\nReturns up to 25 results. When hasMore is true, use the query parameter to narrow down results.",
+    "description": "Find teams in an organization in Sentry.\n\nUse this tool when you need to:\n- View teams in a Sentry organization\n- Find a team's slug and numeric ID to aid other tool requests\n- Search for specific teams by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1941,6 +3140,18 @@
               "type": "null"
             }
           ]
+        },
+        "cursor": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Pagination cursor from a previous call's nextCursor. Reuse it with the same filters and scope to fetch the next page."
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": ["organizationSlug"]
@@ -1966,9 +3177,19 @@
         },
         "hasMore": {
           "type": "boolean"
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
-      "required": ["teams", "hasMore"],
+      "required": ["teams", "hasMore", "nextCursor"],
       "additionalProperties": false
     },
     "requiredScopes": ["team:read"],
@@ -3283,7 +4504,7 @@
                     "type": "string"
                   },
                   "status": {
-                    "type": "number"
+                    "type": "string"
                   },
                   "settings": {
                     "type": "object",
@@ -3439,7 +4660,7 @@
   },
   {
     "name": "get_alert_rule",
-    "description": "Get details for a Sentry alert rule.\n\nUse this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.\n\n<examples>\nget_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')\nget_alert_rule(organizationSlug='my-org', kind='issue', projectSlug='backend', ruleIdOrName='Notify backend team')\nget_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='P95 latency')\n</examples>\n\n<hints>\n- Use `kind='issue'` or `kind='metric'` for numeric IDs because issue and metric alerts use separate endpoints.\n- With `kind='all'`, a digit-only `ruleIdOrName` is treated as an exact alert rule name.\n- Issue Alerts are notification workflows and may cover multiple projects or have no connected sources. Omit projectSlug to inspect organization-wide.\n- Issue details include complete conditions, notification actions, connected monitors and project scope. Inaccessible or session-restricted sources are marked explicitly.\n</hints>",
+    "description": "Get details for a Sentry alert rule.\n\nUse this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.\n\n<examples>\nget_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')\nget_alert_rule(organizationSlug='my-org', kind='issue', projectSlug='backend', ruleIdOrName='Notify backend team')\nget_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='P95 latency')\n</examples>\n\n<hints>\n- Prefer get_metric_monitor_details for Metric Monitors. With kind=metric, numeric IDs retain their legacy alert-rule meaning; detector:123 explicitly identifies monitor 123.\n- With `kind='all'`, a digit-only `ruleIdOrName` is treated as an exact alert rule name.\n- Issue Alerts are notification workflows and may cover multiple projects or have no connected sources. Omit projectSlug to inspect organization-wide.\n- Issue details include complete conditions, notification actions, connected monitors and project scope. Inaccessible or session-restricted sources are marked explicitly.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -3463,7 +4684,7 @@
           "default": "all",
           "type": "string",
           "enum": ["all", "issue", "metric"],
-          "description": "Which alert rule family to inspect. Use `issue` or `metric` for numeric IDs; `all` treats the value as an exact-name lookup."
+          "description": "Which alert family to inspect. Numeric metric IDs are legacy alert-rule IDs, not monitor IDs. `all` performs an exact-name lookup."
         },
         "projectSlug": {
           "default": null,
@@ -3480,7 +4701,7 @@
         "ruleIdOrName": {
           "type": "string",
           "minLength": 1,
-          "description": "The alert rule's numeric ID, or an exact alert rule name."
+          "description": "An Alert ID or exact name. Metric references accept legacy numeric alert-rule IDs or detector:123 for canonical monitor IDs."
         }
       },
       "required": ["organizationSlug", "ruleIdOrName"]
@@ -3753,7 +4974,7 @@
   },
   {
     "name": "get_issue_details",
-    "description": "Get detailed information about a specific Sentry issue by ID.\n\nUSE THIS TOOL WHEN USERS:\n- Provide a specific issue ID (e.g., 'CLOUDFLARE-MCP-41', 'PROJECT-123')\n- Ask to 'explain [ISSUE-ID]', 'tell me about [ISSUE-ID]'\n- Want details/stacktrace/analysis for a known issue\n- Provide a Sentry issue URL\n\nDO NOT USE for:\n- General searching or listing issues (use search_issues)\n\nTRIGGER PATTERNS:\n- 'Explain ISSUE-123' → use get_issue_details\n- 'Tell me about PROJECT-456' → use get_issue_details\n- 'What happened in [issue URL]' → use get_issue_details\n\n<examples>\n### With Sentry URL (recommended - simplest approach)\n```\nget_issue_details(issueUrl='https://sentry.sentry.io/issues/6916805731/?project=4509062593708032&query=is%3Aunresolved')\n```\n\n### With issue ID and organization\n```\nget_issue_details(organizationSlug='my-organization', issueId='CLOUDFLARE-MCP-41')\n```\n\n### With event ID and organization\n```\nget_issue_details(organizationSlug='my-organization', eventId='c49541c747cb4d8aa3efb70ca5aba243')\n```\n</examples>\n\n<hints>\n- **IMPORTANT**: If user provides a Sentry URL, pass the ENTIRE URL to issueUrl parameter unchanged\n- When using issueUrl, all other parameters are automatically extracted - don't provide them separately\n- If using issueId (not URL), then organizationSlug is required\n</hints>",
+    "description": "Get detailed information about a specific Sentry issue by ID.\n\nUSE THIS TOOL WHEN USERS:\n- Provide a specific issue ID (e.g., 'CLOUDFLARE-MCP-41', 'PROJECT-123')\n- Ask to 'explain [ISSUE-ID]', 'tell me about [ISSUE-ID]'\n- Want details/stacktrace/analysis for a known issue\n- Want the suspect commit's SHA, message, author, and source when available\n- Provide a Sentry issue URL\n\nDO NOT USE for:\n- General searching or listing issues (use search_issues)\n\nTRIGGER PATTERNS:\n- 'Explain ISSUE-123' → use get_issue_details\n- 'Tell me about PROJECT-456' → use get_issue_details\n- 'What happened in [issue URL]' → use get_issue_details\n\n<examples>\n### With Sentry URL (recommended - simplest approach)\n```\nget_issue_details(issueUrl='https://sentry.sentry.io/issues/6916805731/?project=4509062593708032&query=is%3Aunresolved')\n```\n\n### With issue ID and organization\n```\nget_issue_details(organizationSlug='my-organization', issueId='CLOUDFLARE-MCP-41')\n```\n\n### With event ID and organization\n```\nget_issue_details(organizationSlug='my-organization', eventId='c49541c747cb4d8aa3efb70ca5aba243')\n```\n</examples>\n\n<hints>\n- **IMPORTANT**: If user provides a Sentry URL, pass the ENTIRE URL to issueUrl parameter unchanged\n- When using issueUrl, all other parameters are automatically extracted - don't provide them separately\n- If using issueId (not URL), then organizationSlug is required\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -3960,7 +5181,7 @@
   },
   {
     "name": "get_latest_base_snapshot",
-    "description": "Get the latest UI screenshots/images for an app from the preprod snapshot system.\n\nThis is the primary tool for retrieving app screenshots — not search_events or search_issues.\n\nUse this tool when you need to:\n- Get screenshots, screens, golden images, or reference images for an app\n- Find what the current UI looks like (latest screenshots from the main/default branch)\n- List available snapshots or browse images before requesting specific ones\n- Look up dark mode, light mode, or other variant screenshots\n- Understand what baseline images exist when investigating snapshot test or visual regression CI failures\n\nThe appId parameter is the app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews').\nReturns compact image metadata (display_name, image_file_name, group, description) for every image.\n\n<examples>\n### Get the latest screenshots for an app\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\")\n```\n\n### Get the latest screenshots for a specific branch\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\", branch=\"main\")\n```\n</examples>\n\n<hints>\n- The response includes compact metadata per image. Scan the list to find images matching what you need (e.g. filter by group or name containing 'button').\n- To view a specific image, use get_sentry_resource(url='<snapshot_url>?selectedSnapshot=<image_file_name>').\n- If you need to investigate a specific snapshot comparison, use get_sentry_resource with the snapshot URL.\n</hints>",
+    "description": "Get the latest UI screenshots/images for an app from the preprod snapshot system.\n\nThis is the primary tool for retrieving app screenshots.\n\nUse this tool when you need to:\n- Get screenshots, screens, golden images, or reference images for an app\n- Find what the current UI looks like (latest screenshots from the main/default branch)\n- List available snapshots or browse images before requesting specific ones\n- Look up dark mode, light mode, or other variant screenshots\n- Understand what baseline images exist when investigating snapshot test or visual regression CI failures\n\nThe appId parameter is the app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews').\nReturns compact image metadata (display_name, image_file_name, group, description) for every image.\n\n<examples>\n### Get the latest screenshots for an app\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\")\n```\n\n### Get the latest screenshots for a specific branch\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\", branch=\"main\")\n```\n</examples>\n\n<hints>\n- The response includes compact metadata per image. Scan the list to find images matching what you need (e.g. filter by group or name containing 'button').\n- To view a specific image, use get_sentry_resource(url='<snapshot_url>?selectedSnapshot=<image_file_name>').\n- If you need to investigate a specific snapshot comparison, use get_sentry_resource with the snapshot URL.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -4012,6 +5233,274 @@
       "required": ["organizationSlug", "appId"]
     },
     "requiredScopes": ["project:read"],
+    "skills": ["inspect"],
+    "surface": "catalog"
+  },
+  {
+    "name": "get_metric_monitor_details",
+    "description": "Inspect a Sentry Metric Monitor's query, dataset, detection mode, thresholds, resolution conditions and connected Alerts.\nUse monitorId from find_metric_monitors, not a legacy metric alert ID. Time windows and comparison deltas are in seconds.\nCondition results use 75 for critical, 50 for warning and 0 for resolved. Percent comparisons are absolute percentages (110 means 10% higher); dynamic conditions include sensitivity and direction.\nworkflowIds identify notification Alerts; inspect their actions with get_alert_rule(kind='issue').\nget_metric_monitor_details(organizationSlug='my-org', monitorId='12345')",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "monitorId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "Native Metric Monitor ID from find_metric_monitors."
+        }
+      },
+      "required": ["organizationSlug", "monitorId"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "monitor": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "projectId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "workflowIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "webUrl": {
+              "type": "string"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "detectionType": {
+                  "type": "string"
+                },
+                "comparisonDeltaSeconds": {
+                  "type": "number"
+                }
+              },
+              "required": ["detectionType"],
+              "additionalProperties": false
+            },
+            "conditionGroup": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "logicType": {
+                      "type": "string"
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "comparison": {},
+                          "conditionResult": {}
+                        },
+                        "required": ["type", "comparison", "conditionResult"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["logicType", "conditions"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Native detection conditions, including resolution. Results: 75 critical, 50 warning, 0 resolved. Percent comparisons are absolute percentages (110 means 10% higher). Dynamic comparisons contain sensitivity, seasonality and thresholdType."
+            },
+            "dataSources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": "object",
+                    "properties": {
+                      "dataset": {
+                        "type": "string"
+                      },
+                      "query": {
+                        "type": "string"
+                      },
+                      "aggregate": {
+                        "type": "string"
+                      },
+                      "environment": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "eventTypes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "extrapolationMode": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "timeWindowSeconds": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "dataset",
+                      "query",
+                      "aggregate",
+                      "environment",
+                      "eventTypes",
+                      "timeWindowSeconds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "unavailableReason": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false
+              }
+            },
+            "dateCreated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "dateUpdated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "projectId",
+            "enabled",
+            "owner",
+            "workflowIds",
+            "webUrl",
+            "description",
+            "config",
+            "conditionGroup",
+            "dataSources",
+            "dateCreated",
+            "dateUpdated"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": ["monitor"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect"],
     "surface": "catalog"
   },
@@ -4562,7 +6051,7 @@
   },
   {
     "name": "get_trace_details",
-    "description": "Get detailed information about a specific Sentry trace by ID.\n\nUSE THIS TOOL WHEN USERS:\n- Provide a specific trace ID (e.g., 'a4d1aae7216b47ff8117cf4e09ce9d0a')\n- Ask to 'show me trace [TRACE-ID]', 'explain trace [TRACE-ID]'\n- Want high-level overview and link to view trace details in Sentry\n- Need trace statistics and span breakdown\n- Want an overview first, then a guided pivot into additional spans or events\n\nDO NOT USE for:\n- General searching for traces (use search_events with trace queries)\n- Complete span enumeration or branch-by-branch reconstruction (use search_events scoped to the trace)\n\nTRIGGER PATTERNS:\n- 'Show me trace abc123' → use get_trace_details\n- 'Explain trace a4d1aae7216b47ff8117cf4e09ce9d0a' → use get_trace_details\n- 'What is trace [trace-id]' → use get_trace_details\n\n<examples>\n### Get trace overview\n```\nget_trace_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a')\n```\n\n### Focus a single span\n```\nget_trace_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a', spanId='aa8e7f3384ef4ff5')\n```\n</examples>\n\n<hints>\n- Trace IDs are 32-character hexadecimal strings\n- This returns a condensed trace overview, not a full span dump\n- Provide `spanId` to focus on a single span within the trace\n- If the response says it shows a subset of spans, use search_events to inspect the rest of the trace\n</hints>",
+    "description": "Get detailed information about a specific Sentry trace by ID.\n\nUSE THIS TOOL WHEN USERS:\n- Provide a specific trace ID (e.g., 'a4d1aae7216b47ff8117cf4e09ce9d0a')\n- Ask to 'show me trace [TRACE-ID]', 'explain trace [TRACE-ID]'\n- Want high-level overview and link to view trace details in Sentry\n- Need trace statistics and span breakdown\n- Want an overview first, then a guided pivot into additional spans or events\n\nDO NOT USE for:\n- General searching for traces (use search_traces)\n- Complete span enumeration or branch-by-branch reconstruction (use search_traces scoped to the trace)\n\nTRIGGER PATTERNS:\n- 'Show me trace abc123' → use get_trace_details\n- 'Explain trace a4d1aae7216b47ff8117cf4e09ce9d0a' → use get_trace_details\n- 'What is trace [trace-id]' → use get_trace_details\n\n<examples>\n### Get trace overview\n```\nget_trace_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a')\n```\n\n### Focus a single span\n```\nget_trace_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a', spanId='aa8e7f3384ef4ff5')\n```\n</examples>\n\n<hints>\n- Trace IDs are 32-character hexadecimal strings\n- This returns a condensed trace overview, not a full span dump\n- Provide `spanId` to focus on a single span within the trace\n- If the response says it shows a subset of spans, use search_traces to inspect the rest of the trace\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -4659,6 +6148,118 @@
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
+    "surface": "catalog"
+  },
+  {
+    "name": "link_issue",
+    "description": "Link an existing external ticket or GitHub pull request to a Sentry issue by URL.\nSupports native Jira, GitHub/GitHub Enterprise, GitLab, Bitbucket, and Azure DevOps integrations, and installed Sentry Apps whose issue-link forms use single-value select or text fields.\nCreates a reference: it does not create a ticket, resolve the Sentry issue, or associate a commit. Use update_issue separately to change status or assignment.\nA repeated link returns already_linked. A different App association must be unlinked first.\nFor Apps, copy the canonical issue URL from the provider. Supply fields only when the installed App requires additional form values.\n<examples>\nlink_issue(organizationSlug='my-org', issueId='PROJECT-123', externalIssueUrl='https://github.com/example/repo/pull/42')\nlink_issue(issueUrl='https://my-org.sentry.io/issues/123/', externalIssueUrl='https://linear.app/example/issue/ENG-42/fix-crash')\n</examples>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issueId": {
+          "type": "string",
+          "description": "The Issue ID. e.g. `PROJECT-1Z43`"
+        },
+        "issueUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "The URL of the issue. e.g. https://my-organization.sentry.io/issues/PROJECT-1Z43"
+        },
+        "externalIssueUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the existing external ticket or GitHub pull request. For Sentry Apps, use the canonical issue URL shown by the provider."
+        },
+        "integrationId": {
+          "description": "Native integration ID, only needed when multiple installations match the URL.",
+          "type": "string",
+          "pattern": "^\\d+$"
+        },
+        "appSlug": {
+          "description": "Installed Sentry App slug. Inferred for Linear and Shortcut URLs; specify it for other Apps.",
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "description": "Additional App form values by field name; required fields are reported when missing.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        }
+      },
+      "required": ["externalIssueUrl"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "externalIssue": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": ["url"],
+          "additionalProperties": false
+        },
+        "status": {
+          "type": "string",
+          "enum": ["linked", "already_linked", "not_linked"]
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "issueId",
+        "issueUrl",
+        "externalIssue",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["event:write", "org:read"],
+    "skills": ["triage"],
     "surface": "catalog"
   },
   {
@@ -5601,8 +7202,95 @@
     "surface": "catalog"
   },
   {
+    "name": "search_errors",
+    "description": "Search Sentry error events: exceptions and crashes with stack traces. Use for error counts, statistics, trends, and individual error events.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('how many errors today', 'top error types'), individual events ('latest TypeErrors in checkout'), and time series ('errors per hour last 24h').\n\nNOT for log messages, including error/warning logs (use search_logs), requests or latency (use search_traces), or grouped issue lists (use search_issues).\n\n<examples>\nsearch_errors(organizationSlug='my-org', query='how many errors today')\nsearch_errors(organizationSlug='my-org', query='most common error types in production this week')\nsearch_errors(organizationSlug='my-org', query='errors per hour last 24h')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "query": {
+          "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+          "type": "string"
+        },
+        "fields": {
+          "description": "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sort": {
+          "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "period": {
+          "type": "string",
+          "pattern": "^\\d+[hdw]$",
+          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum number of results to return (1-100)",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "includeExplanation": {
+          "default": false,
+          "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug"]
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect", "triage", "seer"],
+    "surface": "direct"
+  },
+  {
     "name": "search_events",
-    "description": "Search Sentry events and replays. Use for event counts/statistics.\n\n`query` is natural language or Sentry search syntax; a configured agent fixes dataset, query, fields, and sort.\n\nSupports THREE query types:\n1. AGGREGATIONS (counts, sums, averages): 'how many errors', 'total tokens'\n2. Individual events with timestamps: 'error logs from last hour'\n3. TIME SERIES (metric over time): 'errors per hour', 'error trend over time'\n\nDatasets:\n- errors: Exception/crash events with stack traces, usually grouped into issues\n- logs: Application log entries, including error-severity log messages\n- spans: Raw trace/span events for performance, AI/LLM calls, requests, and operations\n- metrics: Metric rows and aggregates: counters, gauges, distributions, values\n- profiles: Transaction/continuous profile results, profile IDs, profiled transactions\n- replays: Session replay results: rage clicks, dead clicks, visited pages, replay users\nIf the user says logs, log messages, error logs, or warning logs, choose logs instead of errors.\n\nReplay searches return replay lists only; replay count()/avg()/sum() are not supported.\n\nNOT for grouped issue lists (use search_issues) or app screenshots/images (use get_latest_base_snapshot).\n\n<examples>\nsearch_events(organizationSlug='my-org', query='how many errors today')\nsearch_events(organizationSlug='my-org', dataset='errors', fields=['issue', 'count()'], sort='-count()')\nsearch_events(organizationSlug='my-org', query='errors per hour last 24h')\nsearch_events(organizationSlug='my-org', dataset='spans', query='span.op:db', sort='-span.duration')\nsearch_events(organizationSlug='my-org', dataset='replays', query='count_errors:>0', sort='-count_errors')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Use fields with aggregate functions like count(), avg(), sum() for statistics\n- Sort by -count() for most common, -timestamp for newest\n</hints>",
+    "description": "Deprecated multi-dataset event search, kept for backward compatibility.\n\nUse search_errors, search_logs, search_traces, search_metrics, search_profiles, or search_replays for new integrations.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5611,7 +7299,7 @@
           "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
         },
         "dataset": {
-          "description": "Initial dataset hint: errors, logs, spans, metrics, profiles, or replays. The agent may correct this when configured.",
+          "description": "Initial dataset hint: errors, logs, spans, metrics, profiles, or replays. Always pass it, including for natural language queries. The agent may correct it when configured.",
           "type": "string",
           "enum": ["spans", "errors", "logs", "metrics", "profiles", "replays"]
         },
@@ -5707,7 +7395,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "direct"
+    "surface": "catalog"
   },
   {
     "name": "search_issue_events",
@@ -5796,7 +7484,7 @@
   },
   {
     "name": "search_issues",
-    "description": "Search for grouped issues/problems in Sentry - returns a LIST of issues, NOT counts or aggregations.\n\nProvide `query` as natural language or Sentry issue search syntax. When an embedded agent is configured, it fixes query and sort before running while preserving explicit Sentry search syntax.\n\nReturns grouped issues with metadata like title, status, and user count.\n\nCommon Query Syntax:\n- is:unresolved / is:resolved / is:ignored / is:for_review / is:new / is:regressed / is:escalating\n- level:error / level:warning\n- firstSeen:-24h / lastSeen:-7d\n- assigned:me / assigned_or_suggested:me\n- release:latest\n- issue.category:feedback\n- issue.priority:high\n- environment:production\n- userCount:>100\n\nDO NOT USE FOR COUNTS/AGGREGATIONS → use search_events\nDO NOT USE FOR individual events with timestamps → use search_events\nDO NOT USE FOR details about a specific issue → use get_sentry_resource\n\n<examples>\nsearch_issues(organizationSlug='my-org', query='critical bugs from last week')\nsearch_issues(organizationSlug='my-org', query='is:unresolved is:unassigned', sort='freq')\nsearch_issues(organizationSlug='my-org', query='level:error firstSeen:-24h', projectSlugOrId='my-project')\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, it's likely in the format of <organizationSlug>/<projectSlugOrId>.\n- Parse org/project notation directly without calling find_organizations or find_projects.\n- The projectSlugOrId parameter accepts both project slugs (e.g., 'my-project') and numeric IDs (e.g., '123456').\n</hints>",
+    "description": "Search for grouped issues/problems in Sentry - returns a LIST of issues, NOT counts or aggregations.\n\nProvide `query` as natural language or Sentry issue search syntax. When an embedded agent is configured, it fixes query and sort before running while preserving explicit Sentry search syntax.\n\nReturns grouped issues with metadata like title, status, and user count.\n\nCommon Query Syntax:\n- is:unresolved / is:resolved / is:ignored / is:for_review / is:new / is:regressed / is:escalating\n- level:error / level:warning\n- firstSeen:-24h / lastSeen:-7d\n- assigned:me / assigned_or_suggested:me\n- release:latest\n- issue.category:feedback\n- issue.priority:high\n- environment:production\n- userCount:>100\n\nDO NOT USE FOR COUNTS/AGGREGATIONS → use search_errors\nDO NOT USE FOR individual events with timestamps → use search_errors, search_logs, or search_traces\nDO NOT USE FOR details about a specific issue → use get_sentry_resource\n\n<examples>\nsearch_issues(organizationSlug='my-org', query='critical bugs from last week')\nsearch_issues(organizationSlug='my-org', query='is:unresolved is:unassigned', sort='freq')\nsearch_issues(organizationSlug='my-org', query='level:error firstSeen:-24h', projectSlugOrId='my-project')\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, it's likely in the format of <organizationSlug>/<projectSlugOrId>.\n- Parse org/project notation directly without calling find_organizations or find_projects.\n- The projectSlugOrId parameter accepts both project slugs (e.g., 'my-project') and numeric IDs (e.g., '123456').\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5851,6 +7539,357 @@
           "description": "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 24h for very recent issues or 90d for broader historical searches.",
           "type": "string",
           "enum": ["24h", "7d", "14d", "30d", "90d"]
+        },
+        "includeExplanation": {
+          "default": false,
+          "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug"]
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect", "triage", "seer"],
+    "surface": "direct"
+  },
+  {
+    "name": "search_logs",
+    "description": "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('warning logs by service'), individual entries ('error logs from the last hour'), and time series ('error logs per hour').\n\nNOT for exceptions/crashes (use search_errors). For requests or spans whose trace also has a matching log, use search_traces.\n\n<examples>\nsearch_logs(organizationSlug='my-org', query='error logs from the last hour')\nsearch_logs(organizationSlug='my-org', query='logs mentioning payment timeout in production')\nsearch_logs(organizationSlug='my-org', query='count warning logs by service over 7 days')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "query": {
+          "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+          "type": "string"
+        },
+        "fields": {
+          "description": "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sort": {
+          "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "period": {
+          "type": "string",
+          "pattern": "^\\d+[hdw]$",
+          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum number of results to return (1-100)",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "includeExplanation": {
+          "default": false,
+          "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug"]
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect", "triage", "seer"],
+    "surface": "direct"
+  },
+  {
+    "name": "search_metrics",
+    "description": "Search Sentry metrics: counters, gauges, and distributions, as rows or aggregates. Use for metric values, percentiles, totals, and trends.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('p95 http.request.duration by environment'), individual metric rows, and time series ('total tokens per day this week').\n\nNOT for span or request latency recorded on traces (use search_traces).\n\n<examples>\nsearch_metrics(organizationSlug='my-org', query='p95 http.request.duration grouped by environment over the last 24 hours')\nsearch_metrics(organizationSlug='my-org', query='total tokens used per day this week')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "query": {
+          "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+          "type": "string"
+        },
+        "fields": {
+          "description": "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sort": {
+          "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "period": {
+          "type": "string",
+          "pattern": "^\\d+[hdw]$",
+          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum number of results to return (1-100)",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "includeExplanation": {
+          "default": false,
+          "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug"]
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect", "triage", "seer"],
+    "surface": "direct"
+  },
+  {
+    "name": "search_profiles",
+    "description": "Search Sentry profiles: transaction and continuous profile results, profile IDs, and profiled transactions. Use to find profiles to inspect.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nUse get_profile or get_profile_details on a result for flamegraph and hotspot analysis.\n\n<examples>\nsearch_profiles(organizationSlug='my-org', query='recent profiles for the /checkout transaction')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "query": {
+          "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+          "type": "string"
+        },
+        "fields": {
+          "description": "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sort": {
+          "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "period": {
+          "type": "string",
+          "pattern": "^\\d+[hdw]$",
+          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum number of results to return (1-100)",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "includeExplanation": {
+          "default": false,
+          "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug"]
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect", "triage", "seer"],
+    "surface": "direct"
+  },
+  {
+    "name": "search_replays",
+    "description": "Search Sentry session replays: rage clicks, dead clicks, visited pages, errors seen, and replay users.\n\n`query` is natural language (preferred) or replay search syntax; a configured agent translates it into a replay search.\n\nReturns replay lists only; count()/avg()/sum() are not supported. Use get_replay_details on a result for one replay.\n\n<examples>\nsearch_replays(organizationSlug='my-org', query='replays with rage clicks on checkout in the last day')\nsearch_replays(organizationSlug='my-org', query='count_errors:>0', sort='-count_errors')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "query": {
+          "description": "What to find, in natural language (preferred) or replay search syntax.",
+          "type": "string"
+        },
+        "sort": {
+          "description": "Replay sort (prefix with - for descending): -started_at (default), -count_errors, -count_rage_clicks, or -duration.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "environment": {
+          "description": "Optional environment filter. Use a string for one environment or an array for multiple. Omit when unused.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          ]
+        },
+        "period": {
+          "type": "string",
+          "pattern": "^\\d+[hdw]$",
+          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum number of results to return (1-100)",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
         },
         "includeExplanation": {
           "default": false,
@@ -5947,6 +7986,688 @@
     "requiredScopes": [],
     "skills": ["inspect", "seer", "docs", "triage", "project-management"],
     "surface": "direct"
+  },
+  {
+    "name": "search_traces",
+    "description": "Search Sentry spans and traces: requests, API/HTTP calls, endpoints, DB queries, AI/LLM calls, and other operations. Use for latency, throughput, slowness, and performance questions.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nAlso use for spans whose trace contains a matching log, metric, or other span, e.g. 'slow checkout requests that also logged an error'.\n\nSupports aggregations ('p95 duration by span.op'), individual spans ('slowest API calls today'), and time series ('requests per minute last hour').\n\nNOT for exceptions/crashes (use search_errors), standalone log lines (use search_logs), or a single trace's span tree (use get_sentry_resource with the trace).\n\n<examples>\nsearch_traces(organizationSlug='my-org', query='slowest API calls in the last 24 hours')\nsearch_traces(organizationSlug='my-org', query='p95 duration of db spans grouped by span.op over 7 days')\nsearch_traces(organizationSlug='my-org', query='checkout requests that also have an error log')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "query": {
+          "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+          "type": "string"
+        },
+        "fields": {
+          "description": "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sort": {
+          "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "period": {
+          "type": "string",
+          "pattern": "^\\d+[hdw]$",
+          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum number of results to return (1-100)",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "includeExplanation": {
+          "default": false,
+          "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug"]
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect", "triage", "seer"],
+    "surface": "direct"
+  },
+  {
+    "name": "unlink_issue",
+    "description": "Remove an external ticket or GitHub pull request reference from a Sentry issue by URL.\nRemoves only the Sentry association. It does not delete the external ticket or the Sentry issue, or change resolution status.\nSupports native integrations and installed Sentry Apps. Repeating the request is safe: not_linked means the association is absent, whether removed by this call or already absent.\n<examples>\nunlink_issue(organizationSlug='my-org', issueId='PROJECT-123', externalIssueUrl='https://github.com/example/repo/issues/42')\n</examples>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issueId": {
+          "type": "string",
+          "description": "The Issue ID. e.g. `PROJECT-1Z43`"
+        },
+        "issueUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "The URL of the issue. e.g. https://my-organization.sentry.io/issues/PROJECT-1Z43"
+        },
+        "externalIssueUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the existing external ticket or GitHub pull request. For Sentry Apps, use the canonical issue URL shown by the provider."
+        },
+        "integrationId": {
+          "description": "Native integration ID, only needed when multiple installations match the URL.",
+          "type": "string",
+          "pattern": "^\\d+$"
+        },
+        "appSlug": {
+          "description": "Installed Sentry App slug. Inferred for Linear and Shortcut URLs; specify it for other Apps.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["externalIssueUrl"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "externalIssue": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": ["url"],
+          "additionalProperties": false
+        },
+        "status": {
+          "type": "string",
+          "enum": ["linked", "already_linked", "not_linked"]
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "issueId",
+        "issueUrl",
+        "externalIssue",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["event:write", "org:read"],
+    "skills": ["triage"],
+    "surface": "catalog"
+  },
+  {
+    "name": "update_alert_rule",
+    "description": "Update a Sentry Alert (workflow), including notification actions and connections.\nUse get_alert_rule with kind='issue' first to inspect the complete triggers and actionFilters configuration.\nUse get_alert_options to discover notification actions, integrations, conditions, and available sources.\nOmit fields to leave them unchanged. Pass null to clear owner or environment.\ntriggers replaces the trigger conditions. actionFilters replaces ALL action groups: copy the complete configuration, retain existing IDs, and change only the intended values. Omitted groups, conditions, and actions are removed.\nFor Slack or Microsoft Teams, change config.targetDisplay to the channel name and use integrationId for the workspace or team. Sentry resolves the channel ID. Slack also accepts an explicit new targetIdentifier; a copied old ID is cleared when the name or workspace changes.\nOther actions use their provider's config and data. For Discord, PagerDuty, Opsgenie, and email, update targetIdentifier to the channel, service, team, or recipient ID; changing only its display name does not change the destination.\nUse addProjectSlugs/removeProjectSlugs to connect/disconnect a project's issue stream. Other monitors in that project remain connected. Use addDetectorIds/removeDetectorIds for individual monitors. Unmentioned connections are preserved.\nMetric Monitor detection queries and thresholds are separate operations.\nAll-project connections require Sentry's all-project feature and an API token with org:write in addition to alerts:write.\nA project-constrained session can only edit alerts affecting that project exclusively.\nRequires alerts:write; reconnect OAuth if the existing token lacks it.\n<examples>\nupdate_alert_rule(organizationSlug='my-org', ruleIdOrName='12345', status='disabled')\nupdate_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='Notify backend team', frequencyMinutes=30)\n</examples>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ruleIdOrName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Workflow ID or exact alert name. Digit-only values are treated as IDs. Use IDs from get_alert_rule(kind='issue')."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "disabled"]
+        },
+        "frequencyMinutes": {
+          "description": "Minimum interval between notifications, in minutes.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "owner": {
+          "description": "Owner actor user:ID or team:ID. Pass null to clear.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(user|team):\\d+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "triggers": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "logicType": {
+              "type": "string",
+              "enum": ["all", "any", "any-short", "none"]
+            },
+            "conditions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "comparison": {},
+                  "conditionResult": {}
+                },
+                "required": ["type", "comparison", "conditionResult"]
+              }
+            }
+          },
+          "required": ["logicType", "conditions"],
+          "description": "The complete trigger group. Preserve existing condition IDs when editing; omitted conditions are removed. Use the configuration returned by get_alert_rule."
+        },
+        "actionFilters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "logicType": {
+                "type": "string",
+                "enum": ["all", "any", "any-short", "none"]
+              },
+              "conditions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "comparison": {},
+                    "conditionResult": {}
+                  },
+                  "required": ["type", "comparison", "conditionResult"]
+                }
+              },
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "integrationId": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "config": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["type", "data", "config"]
+                }
+              }
+            },
+            "required": ["logicType", "conditions", "actions"]
+          },
+          "description": "The complete list of action groups, conditions, and notification actions. Preserve their IDs and all unchanged groups and actions; omitted entries are removed. Slack and Microsoft Teams resolve config.targetDisplay as a channel name within integrationId. Other providers use their native config.targetIdentifier and data fields."
+        },
+        "addProjectSlugs": {
+          "description": "Projects whose existing issue streams should be connected.",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+          }
+        },
+        "removeProjectSlugs": {
+          "description": "Projects whose issue streams should be disconnected; other monitor connections are retained.",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+          }
+        },
+        "addDetectorIds": {
+          "description": "Existing detector IDs to connect, from get_alert_options(section='sources').",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          }
+        },
+        "removeDetectorIds": {
+          "description": "Detector IDs to disconnect. Other connections are retained.",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          }
+        }
+      },
+      "required": ["organizationSlug", "ruleIdOrName"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "alertRule": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "frequency": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "triggers": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "logicType": {
+                      "type": "string",
+                      "enum": ["all", "any", "any-short", "none"]
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "comparison": {},
+                          "conditionResult": {}
+                        },
+                        "required": ["type", "comparison", "conditionResult"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["logicType", "conditions"],
+                  "additionalProperties": false,
+                  "description": "The complete trigger group. Preserve existing condition IDs when editing; omitted conditions are removed. Use the configuration returned by get_alert_rule."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "actionFilters": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "logicType": {
+                        "type": "string",
+                        "enum": ["all", "any", "any-short", "none"]
+                      },
+                      "conditions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ]
+                            },
+                            "type": {
+                              "type": "string"
+                            },
+                            "comparison": {},
+                            "conditionResult": {}
+                          },
+                          "required": ["type", "comparison", "conditionResult"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "actions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ]
+                            },
+                            "type": {
+                              "type": "string"
+                            },
+                            "integrationId": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "data": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {}
+                            },
+                            "config": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {}
+                            },
+                            "status": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["type", "data", "config"],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": ["logicType", "conditions", "actions"],
+                    "additionalProperties": false
+                  },
+                  "description": "The complete list of action groups, conditions, and notification actions. Preserve their IDs and all unchanged groups and actions; omitted entries are removed. Slack and Microsoft Teams resolve config.targetDisplay as a channel name within integrationId. Other providers use their native config.targetIdentifier and data fields."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "detectorIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "webUrl": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": ["id", "name", "detectorIds", "webUrl"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["alertRule"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["org:read", "project:read", "alerts:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
   },
   {
     "name": "update_dsn",
@@ -6138,6 +8859,523 @@
     "requiredScopes": ["event:write"],
     "skills": ["triage"],
     "surface": "direct"
+  },
+  {
+    "name": "update_metric_monitor",
+    "description": "Update a Sentry Metric Monitor's query, detection conditions, metadata, status or connected Alerts.\nUse get_metric_monitor_details first and its native monitorId, not a legacy metric alert ID. projectSlug identifies scope; it does not move the monitor.\nOmit fields to preserve them. query and config accept partial changes. conditionGroup and workflowIds replace their complete configuration; preserve IDs and entries you want to retain.\nStatic, Percent and Dynamic detection are supported. Windows and comparison deltas are in seconds. Percent thresholds are absolute (110 means 10% higher), not percentage changes.\nDynamic changes may require sufficient historical data. Dataset access, query and window constraints are enforced by Sentry.\nworkflowIds connect existing Alerts, including shared Alerts, without editing their actions or other monitors. Use update_alert_rule for notification configuration.\nRequires alerts:write; reconnect OAuth if the existing token lacks it.\nupdate_metric_monitor(organizationSlug='my-org', monitorId='12345', status='disabled')\nupdate_metric_monitor(organizationSlug='my-org', monitorId='12345', query={query:'level:error', timeWindowSeconds:300})",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "monitorId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "Native Metric Monitor ID from find_metric_monitors."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "disabled"]
+        },
+        "owner": {
+          "description": "Owner actor, e.g. team:123 or user:123. Pass null to clear.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(user|team):\\d+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query": {
+          "description": "Partial query changes. Omitted fields are preserved; environment:null clears its filter. metrics is crash-free Releases; events_analytics_platform supports spans, logs and application metrics via eventTypes. Dataset changes must include compatible aggregate and eventTypes.",
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "string",
+              "enum": [
+                "events",
+                "transactions",
+                "generic_metrics",
+                "metrics",
+                "events_analytics_platform"
+              ]
+            },
+            "query": {
+              "type": "string"
+            },
+            "aggregate": {
+              "type": "string",
+              "minLength": 1
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "eventTypes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "extrapolationMode": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "timeWindowSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "config": {
+          "description": "Partial detection config. Percent mode requires comparisonDeltaSeconds. Selecting Static or Dynamic clears the comparison delta. Changing detectionType also requires compatible conditionGroup.",
+          "type": "object",
+          "properties": {
+            "detectionType": {
+              "type": "string",
+              "enum": ["static", "percent", "dynamic"]
+            },
+            "comparisonDeltaSeconds": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "conditionGroup": {
+          "description": "Replaces ALL detection conditions; preserve existing IDs. Static/Percent use numeric comparisons, results 75 critical, 50 warning, 0 resolved, including a resolution condition. Percent 110 means 10% higher. Dynamic uses anomaly_detection with sensitivity, seasonality:auto and thresholdType 0 above, 1 below, 2 both.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "logicType": {
+              "type": "string"
+            },
+            "conditions": {
+              "minItems": 1,
+              "maxItems": 3,
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": ["gt", "lt", "gte", "lte"]
+                      },
+                      "comparison": {
+                        "type": "number"
+                      },
+                      "conditionResult": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "const": 75
+                          },
+                          {
+                            "type": "number",
+                            "const": 50
+                          },
+                          {
+                            "type": "number",
+                            "const": 0
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["type", "comparison", "conditionResult"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "anomaly_detection"
+                      },
+                      "comparison": {
+                        "type": "object",
+                        "properties": {
+                          "sensitivity": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"]
+                          },
+                          "seasonality": {
+                            "type": "string",
+                            "const": "auto"
+                          },
+                          "thresholdType": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "const": 0
+                              },
+                              {
+                                "type": "number",
+                                "const": 1
+                              },
+                              {
+                                "type": "number",
+                                "const": 2
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "sensitivity",
+                          "seasonality",
+                          "thresholdType"
+                        ]
+                      },
+                      "conditionResult": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "const": 75
+                          },
+                          {
+                            "type": "number",
+                            "const": 50
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["type", "comparison", "conditionResult"]
+                  }
+                ]
+              }
+            }
+          },
+          "required": ["logicType", "conditions"]
+        },
+        "workflowIds": {
+          "description": "Replaces this monitor's Alert connections. Copy all IDs to retain from get_metric_monitor_details; [] disconnects all. Does not edit the Alerts themselves.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          }
+        }
+      },
+      "required": ["organizationSlug", "monitorId"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "monitor": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "projectId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "workflowIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "webUrl": {
+              "type": "string"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "detectionType": {
+                  "type": "string"
+                },
+                "comparisonDeltaSeconds": {
+                  "type": "number"
+                }
+              },
+              "required": ["detectionType"],
+              "additionalProperties": false
+            },
+            "conditionGroup": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "logicType": {
+                      "type": "string"
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "comparison": {},
+                          "conditionResult": {}
+                        },
+                        "required": ["type", "comparison", "conditionResult"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["logicType", "conditions"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Native detection conditions, including resolution. Results: 75 critical, 50 warning, 0 resolved. Percent comparisons are absolute percentages (110 means 10% higher). Dynamic comparisons contain sensitivity, seasonality and thresholdType."
+            },
+            "dataSources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": "object",
+                    "properties": {
+                      "dataset": {
+                        "type": "string"
+                      },
+                      "query": {
+                        "type": "string"
+                      },
+                      "aggregate": {
+                        "type": "string"
+                      },
+                      "environment": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "eventTypes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "extrapolationMode": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "timeWindowSeconds": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "dataset",
+                      "query",
+                      "aggregate",
+                      "environment",
+                      "eventTypes",
+                      "timeWindowSeconds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "unavailableReason": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false
+              }
+            },
+            "dateCreated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "dateUpdated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "projectId",
+            "enabled",
+            "owner",
+            "workflowIds",
+            "webUrl",
+            "description",
+            "config",
+            "conditionGroup",
+            "dataSources",
+            "dateCreated",
+            "dateUpdated"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": ["monitor"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["org:read", "project:read", "alerts:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
   },
   {
     "name": "update_project",

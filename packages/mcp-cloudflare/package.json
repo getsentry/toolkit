@@ -1,6 +1,11 @@
 {
   "name": "@sentry/mcp-cloudflare",
-  "version": "0.40.0",
+  "sentryCi": {
+    "roles": [
+      "cloudflare"
+    ]
+  },
+  "version": "0.42.0",
   "private": true,
   "type": "module",
   "license": "FSL-1.1-ALv2",
@@ -16,7 +21,6 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "dev": "vite",
-    "deploy": "pnpm exec wrangler deploy",
     "cf:versions:upload": "npx wrangler versions upload",
     "preview": "vite preview",
     "cf-typegen": "wrangler types",

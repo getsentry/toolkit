@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { http, HttpResponse } from "msw";
 import { issueFixture, mswServer } from "@sentry/mcp-server-mocks";
+import { HttpResponse, http } from "msw";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { logIssue } from "../../telem/logging";
 import { prepareToolParams } from "../catalog-runtime/availability.js";
 import updateIssue from "./update-issue.js";
-import { logIssue } from "../../telem/logging";
 
 vi.mock("../../telem/logging", () => ({
   logIssue: vi.fn(),

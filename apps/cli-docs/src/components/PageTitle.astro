@@ -1,0 +1,60 @@
+---
+import type { StarlightRouteData } from '@astrojs/starlight/route-data';
+
+const PAGE_TITLE_ID = '_top';
+const { entry, sidebar } = Astro.locals.starlightRoute;
+
+// Find the parent group for the current page
+function findParentGroup(sidebar: StarlightRouteData['sidebar']): string | null {
+  for (const item of sidebar) {
+    if (item.type === 'group' && item.entries) {
+      for (const child of item.entries) {
+        if (child.type === 'link' && child.isCurrent) {
+          return item.label;
+        }
+        // Check nested groups
+        if (child.type === 'group' && child.entries) {
+          for (const nested of child.entries) {
+            if (nested.type === 'link' && nested.isCurrent) {
+              return item.label;
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+const parentGroup = findParentGroup(sidebar);
+const title = entry.data.title;
+---
+
+<div class="page-title-wrapper">
+  {parentGroup && <span class="section-label">{parentGroup}</span>}
+  <h1 id={PAGE_TITLE_ID}>{title}</h1>
+</div>
+
+<style>
+  .page-title-wrapper {
+    margin-top: 1rem;
+  }
+
+  .section-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ve-text-tertiary, rgba(255, 255, 255, 0.5));
+    margin-bottom: 0.5rem;
+  }
+
+  h1 {
+    font-size: var(--sl-text-h1);
+    line-height: var(--sl-line-height-headings);
+    font-weight: 600;
+    color: var(--ve-text, var(--sl-color-white));
+    margin: 0;
+  }
+</style>

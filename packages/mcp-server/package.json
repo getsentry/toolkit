@@ -1,7 +1,7 @@
 {
   "name": "@sentry/mcp-server",
   "mcpName": "io.github.getsentry/sentry-mcp",
-  "version": "0.40.0",
+  "version": "0.42.0",
   "type": "module",
   "packageManager": "pnpm@11.8.0",
   "engines": {
@@ -46,6 +46,7 @@
     "dev": "tsdown --watch",
     "start": "tsx src/index.ts",
     "test": "vitest run",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "test:watch": "vitest",
     "tsc": "tsc --noEmit"
   },

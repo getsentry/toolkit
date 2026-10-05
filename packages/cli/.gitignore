@@ -1,0 +1,41 @@
+# Package-level ignores for git. The workspace-root .gitignore mirrors these
+# with `packages/cli/`-prefixed patterns (that root file is what Biome reads,
+# since biome.jsonc sets `vcs.root: "../.."`). This file exists so plain `git`
+# ignores build artifacts within the package regardless of the root file.
+
+# dependencies
+node_modules
+
+# build output
+out
+dist
+dist-bin
+dist-build
+*.tgz
+
+# e2e bundle build lock (see test/e2e/bundle-setup.ts)
+.bundle-build.lock
+
+# fossilize build cache
+.node-cache
+
+# code coverage
+coverage
+coverage-isolated
+*.lcov
+
+# test artifacts
+*.junit.xml
+test/skill-eval/results.json
+
+# local bench baselines
+.bench/
+
+# caches
+*.tsbuildinfo
+
+# generated files (rebuilt at build time)
+src/generated/
+src/sdk.generated.ts
+src/sdk.generated.d.cts
+!src/generated/banner-sixel.ts

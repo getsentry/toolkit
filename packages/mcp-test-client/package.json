@@ -1,6 +1,6 @@
 {
   "name": "@sentry/mcp-test-client",
-  "version": "0.40.0",
+  "version": "0.42.0",
   "private": true,
   "type": "module",
   "description": "CLI tool to test the Sentry MCP server",

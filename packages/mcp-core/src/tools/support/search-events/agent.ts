@@ -15,6 +15,20 @@ import {
 } from "./utils";
 
 const SEARCH_EVENTS_DATASETS = [...PUBLIC_EVENTS_DATASETS, "replays"] as const;
+const successfulValidateSearchOutputSchema = z.object({
+  result: z.object({ valid: z.literal(true) }),
+});
+
+export function hasSuccessfulSearchValidation(
+  toolResults: readonly { toolName: string; output: unknown }[],
+): boolean {
+  // A step may validate several candidates; any successful one qualifies.
+  return toolResults.some(
+    ({ toolName, output }) =>
+      toolName === "validateSearch" &&
+      successfulValidateSearchOutputSchema.safeParse(output).success,
+  );
+}
 
 // .default("") on explanation is safe because structuredOutputs: false is set via providerOptions.
 // If structuredOutputs is re-enabled, remove .default() calls (OpenAI requires all fields in 'required').
@@ -34,7 +48,7 @@ export const searchEventsAgentOutputSchema = z
       .nullable()
       .default(null)
       .describe(
-        "Separate environment filter for datasets like replays that do not support environment in the query string. Set only to a real environment the user named (see the 'Available environments' list); omit otherwise. Never use wildcards, placeholders, or example values.",
+        "Environment filter for replays only, when requested. Otherwise null; non-replay filters belong in query.",
       ),
     timeSeries: z
       .object({
@@ -120,9 +134,8 @@ export interface SearchEventsAgentOptions {
   environmentNames?: string[];
 }
 
-// Above this many environments we stop inlining the full list into the prompt
-// (token cost) and rely on the guidance text alone; validation still checks the
-// value against the real list.
+// Above this many environments we omit the names to bound prompt size. The
+// environment filtering instructions still apply without the list.
 const MAX_INLINE_ENVIRONMENTS = 100;
 
 /**
@@ -137,16 +150,18 @@ export function buildSystemPromptWithEnvironments(
   base: string,
   environmentNames: string[],
 ): string {
-  if (environmentNames.length === 0) {
-    return base;
-  }
   const rule =
-    'When the user names an environment, set the `environment` field to a matching value from this list EXACTLY; otherwise OMIT the field. Never use wildcards, placeholders, "null", "*", empty strings, or example values.';
-  if (environmentNames.length <= MAX_INLINE_ENVIRONMENTS) {
-    const list = environmentNames.map((name) => `"${name}"`).join(", ");
-    return `${base}\n\n## Available environments\nThe only valid \`environment\` values for this organization are: ${list}.\n${rule}`;
+    "Filter by environment only when requested. Use query filters for non-replays; reserve `environment` for replays and set it to null otherwise. Never invent values; grouping or availability alone does not request a filter.";
+  if (environmentNames.length === 0) {
+    return `${base}\n\n## Environment filters\n${rule}`;
   }
-  return `${base}\n\n## Environments\nThis organization has ${environmentNames.length} environments. ${rule}`;
+  if (environmentNames.length <= MAX_INLINE_ENVIRONMENTS) {
+    const list = environmentNames
+      .map((name) => JSON.stringify(name))
+      .join(", ");
+    return `${base}\n\n## Available environments\nVisible environments: ${list}. Hidden environments may be absent.\n${rule}`;
+  }
+  return `${base}\n\n## Environments\n${environmentNames.length} visible environments (list omitted). ${rule}`;
 }
 
 /**
@@ -227,5 +242,7 @@ export async function searchEventsAgent(
       whoami: whoamiTool,
     },
     schema: searchEventsAgentOutputSchema,
+    isReadyToFinalize: ({ toolResults }) =>
+      hasSuccessfulSearchValidation(toolResults),
   });
 }

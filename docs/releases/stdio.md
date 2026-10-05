@@ -82,6 +82,25 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
+## MCP Registry
+
+The **Publish MCP Registry** workflow publishes `server.json` on stable GitHub
+releases using GitHub Actions OIDC; no registry secret is needed. It reads the
+manifest from `main` and sets both versions from the release, so there is no
+extra version bump to maintain. The listing includes npm and the hosted endpoint.
+
+Craft publishes GitHub before npm. The workflow waits for the npm package before
+publishing the listing. Check this Actions run separately from the Craft release.
+To retry or publish an existing release after merging the workflow:
+
+```bash
+gh workflow run mcp-registry.yml --repo getsentry/sentry-mcp --ref main -f version=0.40.0
+```
+
+An identical active listing is safe to rerun. Different metadata for an existing
+version fails verification because registry versions are immutable; publish those
+changes with the next release. Registry failures do not undo the npm release.
+
 ## User Installation
 
 Users install via npx in their MCP client configuration:

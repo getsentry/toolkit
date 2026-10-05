@@ -6,12 +6,15 @@ import {
 } from "./events-datasets";
 
 /**
- * Determines if a Sentry instance is SaaS or self-hosted based on the host.
- * @param host The Sentry host (e.g., "sentry.io" or "sentry.company.com")
- * @returns true if SaaS instance, false if self-hosted
+ * Recognizes Sentry-owned hosts, including single-tenant deployments.
  */
 export function isSentryHost(host: string): boolean {
   return host === "sentry.io" || host.endsWith(".sentry.io");
+}
+
+/** Hosts that use the public SaaS control host and organization web subdomains. */
+export function isPublicSentryHost(host: string): boolean {
+  return isSentryHost(host) && !host.endsWith(".my.sentry.io");
 }
 
 export interface TraceMetricIdentifier {
@@ -69,7 +72,7 @@ function getSentryWebBaseUrl(
   path: string,
   protocol: SentryProtocol = "https",
 ): string {
-  const isSaas = isSentryHost(host);
+  const isSaas = isPublicSentryHost(host);
   const webHost = isSaas ? "sentry.io" : host;
   return isSaas
     ? `${protocol}://${organizationSlug}.${webHost}${path}`

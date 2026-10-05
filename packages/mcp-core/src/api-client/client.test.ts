@@ -6,8 +6,55 @@ import {
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigurationError } from "../errors";
+import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
 import { ApiNotFoundError, ApiServerError } from "./errors";
+
+describe("single-tenant web URLs", () => {
+  const api = new SentryApiService({ host: "tenant.my.sentry.io" });
+  const baseUrl = "https://tenant.my.sentry.io/organizations/product-org";
+
+  it("keeps the tenant host and the organization from the path", () => {
+    const issueUrl = api.getIssueUrl("product-org", "WEB-123");
+    expect(issueUrl).toBe(`${baseUrl}/issues/WEB-123`);
+    expect(parseSentryUrl(issueUrl)).toEqual({
+      type: "issue",
+      organizationSlug: "product-org",
+      issueId: "WEB-123",
+    });
+    expect(api.getDashboardUrl("product-org", "42")).toBe(
+      `${baseUrl}/dashboard/42/`,
+    );
+  });
+
+  it("keeps alert links on the tenant", () => {
+    expect(api.getIssueAlertRuleUrl("product-org", "42")).toBe(
+      `${baseUrl}/monitors/alerts/42/`,
+    );
+    expect(api.getMetricAlertRuleUrl("product-org", "42")).toBe(
+      `${baseUrl}/issues/alerts/rules/details/42/`,
+    );
+  });
+
+  it.each([
+    ["errors", "discover/homepage", "query"],
+    ["spans", "traces", "query"],
+    ["logs", "logs", "logsQuery"],
+  ] as const)(
+    "keeps %s explorer links and filters on the tenant",
+    (dataset, page, queryParam) => {
+      const url = new URL(
+        api.getEventsExplorerUrl("product-org", "level:error", "123", dataset),
+      );
+      expect(`${url.origin}${url.pathname}`).toBe(
+        `${baseUrl}/explore/${page}/`,
+      );
+      expect(url.searchParams.get(queryParam)).toBe("level:error");
+      expect(url.searchParams.get("project")).toBe("123");
+      expect(url.searchParams.get("statsPeriod")).toBe("24h");
+    },
+  );
+});
 
 describe("getIssueUrl", () => {
   it("should work with sentry.io", () => {
@@ -65,6 +112,12 @@ describe("getIssueUrl", () => {
     const result = apiService.getIssueUrl("myorg", "PROJECT-456");
     // Should use sentry.io, not eu.sentry.io for web UI
     expect(result).toEqual("https://myorg.sentry.io/issues/PROJECT-456");
+  });
+  it("keeps public organization hosts with multiple labels on public web URLs", () => {
+    const apiService = new SentryApiService({ host: "example.us.sentry.io" });
+    expect(apiService.getIssueUrl("product-org", "WEB-123")).toBe(
+      "https://product-org.sentry.io/issues/WEB-123",
+    );
   });
 });
 
@@ -141,6 +194,178 @@ describe("getTraceUrl", () => {
     expect(result).toEqual(
       "https://sentry.sentry.io/explore/traces/trace/6a477f5b0f31ef7b6b9b5e1dea66c91d",
     );
+  });
+});
+
+describe("external issue linking API methods", () => {
+  const organizationSlug = "test-org";
+  const issueId = "123";
+  const integrationId = "456";
+  const externalIssueUrl = "https://github.com/example/project/issues/42";
+  const nativeIssue = {
+    id: 789,
+    key: "example/project#42",
+    url: externalIssueUrl,
+  };
+  const appIssue = {
+    id: "789",
+    issueId,
+    serviceType: "linear",
+    displayName: "ENG-42",
+    webUrl: "https://linear.app/example/issue/ENG-42/title",
+  };
+  const api = new SentryApiService({
+    host: "us.sentry.io",
+    accessToken: "test-token",
+  });
+
+  it("reads every integration page and preserves internal link IDs and provider metadata", async () => {
+    const integration = {
+      id: integrationId,
+      name: "example",
+      domainName: "github.com/example",
+      status: "active",
+      provider: { key: "github" },
+      externalIssues: [nativeIssue],
+    };
+    const pages: (string | null)[] = [];
+    mswServer.use(
+      http.get(
+        "https://us.sentry.io/api/0/organizations/test-org/issues/123/integrations/",
+        ({ request }) => {
+          const cursor = new URL(request.url).searchParams.get("cursor");
+          pages.push(cursor);
+          return HttpResponse.json(
+            [{ ...integration, id: cursor ? 457 : integrationId }],
+            {
+              headers: cursor
+                ? {}
+                : {
+                    Link: '<https://us.sentry.io/>; rel="next"; results="true"; cursor="next-page"',
+                  },
+            },
+          );
+        },
+      ),
+    );
+    expect(
+      await api.listIssueIntegrations({ organizationSlug, issueId }),
+    ).toEqual([integration, { ...integration, id: 457 }]);
+    expect(pages).toEqual([null, "next-page"]);
+  });
+
+  it("finds App associations beyond the first page", async () => {
+    mswServer.use(
+      http.get(
+        "https://us.sentry.io/api/0/organizations/test-org/issues/123/external-issues/",
+        ({ request }) => {
+          const cursor = new URL(request.url).searchParams.get("cursor");
+          return HttpResponse.json(cursor ? [appIssue] : [], {
+            headers: cursor
+              ? {}
+              : {
+                  Link: '<https://us.sentry.io/>; rel="next"; results="true"; cursor="next-page"',
+                },
+          });
+        },
+      ),
+    );
+    expect(
+      await api.getIssueExternalLinks({ organizationSlug, issueId }),
+    ).toEqual([appIssue]);
+  });
+
+  it("loads App installations and paginated issue-link forms on the control host", async () => {
+    const installation = {
+      uuid: "install-uuid",
+      status: "installed",
+      app: { slug: "linear", uuid: "app-uuid" },
+    };
+    const component = {
+      type: "issue-link",
+      sentryApp: { slug: "linear", uuid: "app-uuid" },
+      schema: { link: { uri: "/link" } },
+    };
+    const pages: (string | null)[] = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/sentry-app-installations/",
+        () => HttpResponse.json([installation]),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/sentry-app-components/",
+        ({ request }) => {
+          const query = new URL(request.url).searchParams;
+          expect(query.get("filter")).toBe("issue-link");
+          pages.push(query.get("cursor"));
+          return HttpResponse.json(query.has("cursor") ? [component] : [], {
+            headers: query.has("cursor")
+              ? {}
+              : {
+                  Link: '<https://sentry.io/>; rel="next"; results="true"; cursor="next-page"',
+                },
+          });
+        },
+      ),
+    );
+    expect(await api.listSentryAppInstallations({ organizationSlug })).toEqual([
+      installation,
+    ]);
+    expect(await api.listSentryAppComponents({ organizationSlug })).toEqual([
+      component,
+    ]);
+    expect(pages).toEqual([null, "next-page"]);
+  });
+
+  it.each(["tenant.my.sentry.io", "sentry.example.com"])(
+    "keeps App choices on %s and encodes search dependencies",
+    async (host) => {
+      const tenantApi = new SentryApiService({ host });
+      mswServer.use(
+        http.get(
+          `https://${host}/api/0/sentry-app-installations/install-uuid/external-requests/`,
+          ({ request }) => {
+            expect(
+              Object.fromEntries(new URL(request.url).searchParams),
+            ).toEqual({
+              uri: "/search",
+              projectId: "42",
+              query: "ENG-42",
+              dependentData: JSON.stringify({ team: "ENG" }),
+            });
+            return HttpResponse.json({ choices: [["ticket-uuid", "ENG-42"]] });
+          },
+        ),
+      );
+      expect(
+        await tenantApi.getSentryAppExternalRequestOptions({
+          installationUuid: "install-uuid",
+          uri: "/search",
+          query: "ENG-42",
+          projectId: "42",
+          dependentData: { team: "ENG" },
+        }),
+      ).toEqual({ choices: [["ticket-uuid", "ENG-42"]] });
+    },
+  );
+
+  it("unlinks an App by internal association ID using the regional endpoint", async () => {
+    const requests: string[] = [];
+    mswServer.use(
+      http.delete(
+        "https://us.sentry.io/api/0/organizations/test-org/issues/123/external-issues/789/",
+        () => {
+          requests.push("app");
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+    await api.unlinkSentryAppExternalIssue({
+      organizationSlug,
+      issueId,
+      externalIssueId: "789",
+    });
+    expect(requests).toEqual(["app"]);
   });
 });
 
@@ -411,6 +636,28 @@ describe("getEventsExplorerUrl", () => {
       expect(url.searchParams.has("logsFields")).toBe(false);
       expect(url.searchParams.has("logsSortBys")).toBe(false);
     });
+  });
+});
+
+describe("alert rule workflow endpoints", () => {
+  it("rejects a project scope response missing its all-projects flag", async () => {
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/my-org/workflows/123/project-scope/",
+        () => HttpResponse.json({ projectIds: [] }),
+      ),
+    );
+
+    await expect(
+      apiService.getAlertRuleProjectScope({
+        organizationSlug: "my-org",
+        ruleId: "123",
+      }),
+    ).rejects.toThrow("includesAllProjects");
   });
 });
 
@@ -1062,6 +1309,7 @@ describe("listOrganizations", () => {
       if (url.includes("/organizations/")) {
         return Promise.resolve({
           ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
           json: () => Promise.resolve(mockOrgs),
         });
       }
@@ -1073,12 +1321,17 @@ describe("listOrganizations", () => {
       accessToken: "test-token",
     });
 
-    const result = await apiService.listOrganizations();
+    const { organizations, nextCursor } = await apiService.listOrganizations();
 
     expect(callCount).toBe(1); // Single call, no region fanout
-    expect(result).toHaveLength(2);
-    expect(result).toContainEqual(expect.objectContaining({ slug: "org-us" }));
-    expect(result).toContainEqual(expect.objectContaining({ slug: "org-eu" }));
+    expect(organizations).toHaveLength(2);
+    expect(organizations).toContainEqual(
+      expect.objectContaining({ slug: "org-us" }),
+    );
+    expect(organizations).toContainEqual(
+      expect.objectContaining({ slug: "org-eu" }),
+    );
+    expect(nextCursor).toBeNull();
     // Region fanout is no longer used
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/users/me/regions/"),
@@ -1098,6 +1351,7 @@ describe("listOrganizations", () => {
       if (url.includes("/organizations/")) {
         return Promise.resolve({
           ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
           json: () => Promise.resolve(mockOrgs),
         });
       }
@@ -1109,11 +1363,12 @@ describe("listOrganizations", () => {
       accessToken: "test-token",
     });
 
-    const result = await apiService.listOrganizations();
+    const { organizations, nextCursor } = await apiService.listOrganizations();
 
     expect(callCount).toBe(1); // Only 1 org call, no regions call
-    expect(result).toHaveLength(2);
-    expect(result).toEqual(mockOrgs);
+    expect(organizations).toHaveLength(2);
+    expect(organizations).toEqual(mockOrgs);
+    expect(nextCursor).toBeNull();
     // Verify that regions endpoint was not called
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/users/me/regions/"),

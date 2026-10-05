@@ -135,7 +135,7 @@ describe("get_alert_options", () => {
           name: "Ticket app",
           installationId: "44",
           installationUuid: "installation-uuid",
-          status: 0,
+          status: "published",
           settings: {
             required_fields: [
               {
@@ -173,6 +173,7 @@ describe("get_alert_options", () => {
         limit: 5,
       }),
     );
+    expect(getAlertOptionsOutputSchema.parse(result)).toEqual(result);
     expect(result).toMatchObject({
       section: "actions",
       actions,

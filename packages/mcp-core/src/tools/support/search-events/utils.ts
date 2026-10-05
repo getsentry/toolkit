@@ -177,7 +177,10 @@ function normalizeFilterValue(rawValue: string): string {
  * Read one filter value starting at `valueStart` in the original query.
  * Quoted values keep interior whitespace; unquoted values stop at whitespace.
  */
-function readRawFilterValue(query: string, valueStart: number): string | undefined {
+function readRawFilterValue(
+  query: string,
+  valueStart: number,
+): string | undefined {
   if (valueStart >= query.length) {
     return undefined;
   }
@@ -241,9 +244,7 @@ function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
   return occurrences;
 }
 
-function structuredFilterOccurrences(
-  query: string,
-): SearchFilterOccurrence[] {
+function structuredFilterOccurrences(query: string): SearchFilterOccurrence[] {
   return searchFilterOccurrences(query).filter(
     (occurrence) => !FULL_TEXT_SEARCH_KEYS.has(occurrence.key),
   );
@@ -284,9 +285,7 @@ function containsAsWholeToken(haystack: string, needle: string): boolean {
 }
 
 function isRelatedFilterValue(left: string, right: string): boolean {
-  return (
-    containsAsWholeToken(left, right) || containsAsWholeToken(right, left)
-  );
+  return containsAsWholeToken(left, right) || containsAsWholeToken(right, left);
 }
 
 /**
@@ -1097,12 +1096,6 @@ export function createValidateEventsSearchTool(options: {
         .describe("Optional relative time period like 1h, 24h, 7d"),
       start: z.string().optional().describe("Optional ISO 8601 start time"),
       end: z.string().optional().describe("Optional ISO 8601 end time"),
-      environment: z
-        .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
-        .optional()
-        .describe(
-          "Optional environment filter. Prefer query filters for non-replay datasets.",
-        ),
     }),
     execute: async ({
       dataset,
@@ -1112,7 +1105,6 @@ export function createValidateEventsSearchTool(options: {
       statsPeriod,
       start,
       end,
-      environment,
     }) => {
       const validation = await validateEventsSearch(apiService, {
         organizationSlug,
@@ -1121,7 +1113,6 @@ export function createValidateEventsSearchTool(options: {
         query,
         sort,
         projectId,
-        environment,
         statsPeriod,
         start,
         end,

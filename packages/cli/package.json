@@ -1,0 +1,153 @@
+{
+  "name": "sentry",
+  "version": "0.48.0-dev.0",
+  "description": "Sentry CLI - A command-line interface for using Sentry built by robots and humans for robots and humans",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/toolkit.git"
+  },
+  "main": "./dist/index.cjs",
+  "type": "module",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "bin": {
+    "sentry": "./dist/bin.cjs"
+  },
+  "files": [
+    "dist/bin.cjs",
+    "dist/index.cjs",
+    "dist/index.mjs",
+    "dist/index.d.cts",
+    "dist/index.d.mts",
+    "dist/ink-app.js",
+    "dist/node-sqlite3-wasm.wasm",
+    "dist/assets/spleen-8x16.bin",
+    "dist/vendor/symbolic_bg.wasm",
+    "LICENSE.md",
+    "THIRD_PARTY_LICENSES.md",
+    "README.md"
+  ],
+  "license": "FSL-1.1-Apache-2.0",
+  "engines": {
+    "node": ">=20.0"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=22.15"
+    }
+  },
+  "packageManager": "pnpm@10.11.0",
+  "sentryCi": {
+    "coverage": "coverage/lcov.info",
+    "npmRuntime": "bundle",
+    "policy": "ci:policy"
+  },
+  "scripts": {
+    "tsx": "tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs",
+    "cli": "tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs src/bin.ts",
+    "dev": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && tsx --import ./script/require-shim.mjs src/bin.ts",
+    "build": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts --single",
+    "build:all": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts",
+    "bundle": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/bundle.ts",
+    "typecheck": "pnpm run generate:docs && pnpm run generate:sdk && tsc --noEmit",
+    "lint": "biome check --no-errors-on-unmatched --error-on-warnings --max-diagnostics=none ./",
+    "lint:fix": "biome check --write --no-errors-on-unmatched --max-diagnostics=none ./",
+    "test": "pnpm run test:unit",
+    "test:unit": "pnpm run generate:docs && pnpm run generate:sdk && vitest run test/lib test/commands test/types test/script --coverage",
+    "test:changed": "pnpm run generate:docs && pnpm run generate:sdk && vitest run --changed",
+    "test:e2e": "pnpm run generate:docs && pnpm run generate:sdk && vitest run test/e2e",
+    "test:init-eval": "vitest run test/init-eval --testTimeout 600000",
+    "generate:parser": "pnpm tsx script/generate-parser.ts",
+    "generate:sdk": "pnpm tsx script/generate-sdk.ts",
+    "generate:skill": "pnpm tsx script/generate-skill.ts",
+    "generate:banner": "pnpm tsx script/generate-banner-sixel.ts",
+    "generate:docs": "pnpm run generate:banner && pnpm run generate:parser && pnpm run generate:command-docs && pnpm run generate:skill && pnpm run generate:docs-sections",
+    "generate:docs-sections": "pnpm tsx script/generate-docs-sections.ts",
+    "generate:schema": "pnpm tsx script/generate-api-schema.ts",
+    "generate:command-docs": "pnpm tsx script/generate-command-docs.ts",
+    "eval:skill": "pnpm tsx script/eval-skill.ts",
+    "bench": "pnpm tsx script/bench.ts",
+    "bench:save": "pnpm tsx script/bench.ts --save-baseline",
+    "bench:compare": "pnpm tsx script/bench.ts --compare",
+    "bench:sweep": "pnpm tsx script/bench-sweep.ts",
+    "check:fragments": "pnpm tsx script/check-fragments.ts",
+    "check:deps": "pnpm tsx script/check-no-deps.ts",
+    "check:errors": "pnpm tsx script/check-error-patterns.ts",
+    "check:patches": "pnpm tsx script/check-patches.ts",
+    "check:docs-sections": "pnpm tsx script/generate-docs-sections.ts --check",
+    "check:env-coverage": "pnpm tsx script/check-env-coverage.ts",
+    "check:stale-refs": "pnpm tsx script/check-stale-references.ts",
+    "ci:policy": "pnpm run check:patches && pnpm run check:deps && pnpm run check:errors && pnpm run check:fragments && pnpm run check:docs-sections && pnpm run check:env-coverage && pnpm run check:stale-refs"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@biomejs/biome": "2.3.8",
+    "@clack/prompts": "0.11.0",
+    "@hono/node-server": "^2.0.10",
+    "@mastra/client-js": "^1.38.0",
+    "@sentry/api": "^0.337.0",
+    "@sentry/core": "10.63.0",
+    "@sentry/node": "10.65.0",
+    "@sentry/node-core": "10.63.0",
+    "@sentry/sqlish": "^1.0.1",
+    "@sentry/symbolic": "13.7.0",
+    "@spotlightjs/spotlight": "^4.11.7",
+    "@stricli/auto-complete": "^1.2.8",
+    "@stricli/core": "1.2.8",
+    "@types/http-cache-semantics": "^4.2.0",
+    "@types/node": "^22.20.0",
+    "@types/picomatch": "^4.0.3",
+    "@types/pngjs": "^6.0.5",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@types/react": "^19.2.17",
+    "@types/semver": "^7.7.1",
+    "@vitest/coverage-v8": "^4.1.11",
+    "binpatch": "^0.4.2",
+    "chalk": "^5.6.2",
+    "cli-highlight": "^2.1.11",
+    "consola": "^3.4.2",
+    "esbuild": "^0.28.1",
+    "fast-check": "^4.8.0",
+    "fflate": "^0.8.3",
+    "fossilize": "^0.10.1",
+    "hono": "catalog:",
+    "http-cache-semantics": "^4.2.0",
+    "ignore": "^7.0.5",
+    "ink": "^7.1.0",
+    "ink-spinner": "^5.0.0",
+    "jpeg-js": "^0.4.4",
+    "marked": "^15.0.12",
+    "node-sqlite3-wasm": "0.8.59",
+    "p-limit": "^7.3.0",
+    "peggy": "^5.1.0",
+    "picomatch": "^4.0.4",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
+    "pretty-ms": "^9.3.0",
+    "qrcode-terminal": "^0.12.0",
+    "react": "^19.2.7",
+    "react-devtools-core": "^7.0.1",
+    "semver": "^7.8.5",
+    "string-width": "^8.2.1",
+    "tinyglobby": "^0.2.17",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3",
+    "ultracite": "6.3.10",
+    "uuidv7": "^1.2.1",
+    "valibot": "^1.4.2",
+    "vitest": "^4.1.11",
+    "wrap-ansi": "^10.0.0"
+  }
+}

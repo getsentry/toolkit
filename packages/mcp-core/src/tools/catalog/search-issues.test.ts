@@ -1,4 +1,4 @@
-import { mswServer } from "@sentry/mcp-server-mocks";
+import { issueFixture, mswServer } from "@sentry/mcp-server-mocks";
 import { APICallError, generateText, RetryError } from "ai";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -71,6 +71,47 @@ describe("search_issues", () => {
     process.env.OPENROUTER_API_KEY = "";
     mockGenerateText.mockResolvedValue(mockAIResponse());
   });
+
+  it.each([null, "https://tenant.my.sentry.io"])(
+    "returns tenant issue and search links with regionUrl %s",
+    async (regionUrl) => {
+      mockGenerateText.mockResolvedValue(
+        mockAIResponse("is:unresolved", "date"),
+      );
+      const requests: string[] = [];
+      mswServer.use(
+        http.get("*/api/0/organizations/product-org/issues/", ({ request }) => {
+          requests.push(request.url);
+          return HttpResponse.json([{ ...issueFixture, shortId: "WEB-123" }]);
+        }),
+      );
+
+      const result = await searchIssues.handler(
+        {
+          organizationSlug: "product-org",
+          query: "is:unresolved",
+          sort: "date",
+          projectSlugOrId: "123",
+          regionUrl,
+          limit: 1,
+          period: "24h",
+          includeExplanation: false,
+        },
+        { ...mockContext, sentryHost: "tenant.my.sentry.io" },
+      );
+
+      expect(requests).toEqual([
+        "https://tenant.my.sentry.io/api/0/organizations/product-org/issues/?limit=1&sort=date&statsPeriod=24h&query=is%3Aunresolved&project=123&collapse=unhandled",
+      ]);
+      expect(result).toContain(
+        "https://tenant.my.sentry.io/organizations/product-org/issues/?project=123&query=is%3Aunresolved",
+      );
+      expect(result).toContain(
+        "[WEB-123](https://tenant.my.sentry.io/organizations/product-org/issues/WEB-123)",
+      );
+      expect(result).not.toContain("https://product-org.sentry.io");
+    },
+  );
 
   it("should search issues with natural language query", async () => {
     mockGenerateText.mockResolvedValue(mockAIResponse("is:unresolved", "date"));
@@ -145,7 +186,7 @@ describe("search_issues", () => {
 
       - Get more details about a specific issue: Use get_sentry_resource with the issue ID or issue URL
       - Update issue status: Use the Sentry tool \`update_issue\` to resolve or assign issues
-      - View event counts: Use search_events for aggregated statistics
+      - View event counts: Use search_errors for aggregated statistics
       "
     `);
   });
@@ -674,9 +715,8 @@ describe("search_issues", () => {
   });
 
   it("should handle all sort options", async () => {
-    const sortOptions: Array<
-      "date" | "freq" | "new" | "user" | "recommended"
-    > = ["date", "freq", "new", "user", "recommended"];
+    const sortOptions: Array<"date" | "freq" | "new" | "user" | "recommended"> =
+      ["date", "freq", "new", "user", "recommended"];
 
     for (const sortOption of sortOptions) {
       mockGenerateText.mockResolvedValue(mockAIResponse("", sortOption));

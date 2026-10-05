@@ -25,6 +25,8 @@ export type Scope =
   | "event:read" // Read events and issues
   | "event:write" // Update issues (includes read)
   | "event:admin" // Delete issues (includes write and read)
+  | "alerts:read" // Read alert rules
+  | "alerts:write" // Create/update/delete alert rules (includes read)
   | "project:releases"; // Access release endpoints
 
 /**
@@ -55,6 +57,10 @@ const SCOPE_HIERARCHY: Record<Scope, Set<Scope>> = {
   "event:read": new Set(["event:read"]),
   "event:write": new Set(["event:read", "event:write"]),
   "event:admin": new Set(["event:read", "event:write", "event:admin"]),
+
+  // Alert scopes
+  "alerts:read": new Set(["alerts:read"]),
+  "alerts:write": new Set(["alerts:read", "alerts:write"]),
 
   // Special scopes
   "project:releases": new Set(["project:releases"]),
@@ -112,6 +118,8 @@ export const SCOPE_DESCRIPTIONS: Record<Scope, string> = {
   "event:read": "View events and issues",
   "event:write": "Update and manage issues",
   "event:admin": "Delete issues",
+  "alerts:read": "View alert rules",
+  "alerts:write": "Create, modify, and delete alert rules",
   "project:releases": "Access release information",
 };
 

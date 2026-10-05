@@ -1,0 +1,369 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+      - release/cli/**
+  workflow_dispatch:
+
+concurrency:
+  group: cli-build-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
+  NODE_VERSION_20: "20.20.2"
+  NODE_VERSION_22: "22.23.1"
+  NODE_VERSION_24: "24.18.0"
+
+jobs:
+  nightly-version:
+    name: Compute nightly version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Compute version from the commit timestamp
+        id: version
+        run: node scripts/cli-nightly-version.mjs
+
+  build-binary:
+    name: Build Binary (${{ matrix.target }})
+    needs: nightly-version
+    runs-on: ${{ matrix.os }}
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || startsWith(github.ref, 'refs/heads/release/cli/') && 'cli-release' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            os: macos-latest
+          - target: darwin-x64
+            os: ubuntu-latest
+          - target: linux-x64
+            os: ubuntu-latest
+          - target: linux-arm64
+            os: ubuntu-latest
+          - target: windows-x64
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_22 }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Stamp the nightly binary version
+        if: github.ref == 'refs/heads/main'
+        env:
+          NIGHTLY_VERSION: ${{ needs.nightly-version.outputs.version }}
+        shell: bash
+        run: |
+          jq --arg version "$NIGHTLY_VERSION" '.version = $version' packages/cli/package.json > "$RUNNER_TEMP/cli-package.json"
+          mv "$RUNNER_TEMP/cli-package.json" packages/cli/package.json
+      - name: Setup codesign dependencies
+        env:
+          APPLE_CERT_DATA: ${{ secrets.APPLE_CERT_DATA }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" && "$RUNNER_ARCH" == "ARM64" ]]; then
+            RCODESIGN_ARCHIVE="apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz"
+            RCODESIGN_SHA256="d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            RCODESIGN_ARCHIVE="apple-codesign-0.29.0-x86_64-apple-darwin.tar.gz"
+            RCODESIGN_SHA256="14ef11bedd51a8d95eafd767939ae96d5900e5a61511bef75bb21db6e7c74140"
+          else
+            RCODESIGN_ARCHIVE="apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz"
+            RCODESIGN_SHA256="dbe85cedd8ee4217b64e9a0e4c2aef92ab8bcaaa41f20bde99781ff02e600002"
+          fi
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            BASE64_DECODE="-D"
+          else
+            BASE64_DECODE="--decode"
+          fi
+          curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/${RCODESIGN_ARCHIVE}" -o rcodesign.tar.gz
+          echo "${RCODESIGN_SHA256}  rcodesign.tar.gz" | shasum -a 256 -c
+          tar -xzf rcodesign.tar.gz --strip-components=1
+          sudo mv rcodesign /usr/local/bin/rcodesign
+          rm rcodesign.tar.gz
+          if [[ -n "$APPLE_CERT_DATA" ]]; then
+            echo "$APPLE_CERT_DATA" | base64 "$BASE64_DECODE" > /tmp/certs.p12
+            {
+              echo 'APPLE_CERT_PATH=/tmp/certs.p12'
+            } >> "$GITHUB_ENV"
+          fi
+          if [[ -n "$APPLE_API_KEY" ]]; then
+            echo "$APPLE_API_KEY" | base64 "$BASE64_DECODE" > /tmp/apple_key.json
+            jq -r .private_key /tmp/apple_key.json > /tmp/apple_key.pem
+            {
+              echo "APPLE_API_KEY_ISSUER_ID=$(jq -r .issuer_id /tmp/apple_key.json | tr -d '\n\r')"
+              echo "APPLE_API_KEY_ID=$(jq -r .key_id /tmp/apple_key.json | tr -d '\n\r')"
+              echo 'APPLE_API_KEY_P8_PATH=/tmp/apple_key.pem'
+              echo 'APPLE_API_KEY_PATH=/tmp/apple_key.json'
+            } >> "$GITHUB_ENV"
+          fi
+      - name: Build
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          RELEASE_BUILD: "1"
+          FOSSILIZE_SIGN: ${{ (github.ref_name == 'main' || startsWith(github.ref_name, 'release/cli/')) && 'y' || 'n' }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm --filter sentry run build -- --target ${{ matrix.target }}
+      - name: Smoke test
+        if: matrix.target == 'linux-x64'
+        env:
+          SENTRY_AUTH_TOKEN: ""
+          SENTRY_TOKEN: ""
+          SENTRY_CONFIG_DIR: ${{ runner.temp }}/.sentry-smoke
+          NIGHTLY_VERSION: ${{ needs.nightly-version.outputs.version }}
+        run: |
+          packages/cli/dist-bin/sentry-linux-x64 --help
+          if [[ "$GITHUB_REF" == 'refs/heads/main' ]]; then
+            test "$(packages/cli/dist-bin/sentry-linux-x64 --version)" = "$NIGHTLY_VERSION"
+          fi
+          output=$(packages/cli/dist-bin/sentry-linux-x64 auth status 2>&1) && status=$? || status=$?
+          test "$status" -eq 10
+          printf '%s\n' "$output" | grep -qi 'not authenticated'
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sentry-${{ matrix.target }}
+          path: |
+            packages/cli/dist-bin/sentry-*
+            !packages/cli/dist-bin/*.gz
+      - name: Upload compressed artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sentry-${{ matrix.target }}-gz
+          path: packages/cli/dist-bin/*.gz
+
+  generate-patches:
+    name: Generate nightly delta patches
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [nightly-version, build-binary]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      from-version: ${{ steps.generate.outputs.from-version }}
+    steps:
+      - name: Download binaries and compressed artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: sentry-*-*
+          path: new-binaries
+          merge-multiple: true
+      - name: Generate patches against the preceding Toolkit nightly
+        id: generate
+        uses: BYK/binpatch/action@9ba6bbb8227fcbd2521852d2311c82afac5e9573 # 0.4.2
+        with:
+          mode: generate-ghcr
+          version: ${{ needs.nightly-version.outputs.version }}
+          registry: ghcr.io
+          repo: getsentry/toolkit
+          binary-glob: 'sentry-*'
+          new-binaries-dir: new-binaries
+          new-gz-dir: new-binaries
+          patches-dir: patches
+      - name: Upload patches
+        if: steps.generate.outputs.has-patches == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sentry-patches
+          path: patches/*.patch
+
+  publish-nightly:
+    name: Publish Toolkit nightly to GHCR
+    if: >-
+      always() && github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.nightly-version.result == 'success' && needs.build-binary.result == 'success' &&
+      (needs.generate-patches.result == 'success' || needs.generate-patches.result == 'failure')
+    needs: [nightly-version, build-binary, generate-patches]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download compressed binaries
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: sentry-*-gz
+          path: artifacts
+          merge-multiple: true
+      - name: Download binaries for patch integrity annotations
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: sentry-*-*
+          path: binaries
+          merge-multiple: true
+      - name: Download optional delta patches
+        id: patches
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sentry-patches
+          path: patches
+      - name: Publish rolling and versioned manifests
+        uses: BYK/binpatch/action@9ba6bbb8227fcbd2521852d2311c82afac5e9573 # 0.4.2
+        with:
+          mode: publish-ghcr
+          version: ${{ needs.nightly-version.outputs.version }}
+          registry: ghcr.io
+          repo: getsentry/toolkit
+          binary-glob: 'sentry-*'
+          artifacts-dir: artifacts
+          binaries-dir: binaries
+          patches-dir: patches
+          from-version: ${{ needs.generate-patches.outputs.from-version }}
+      - name: Verify public nightly and immutable version tag
+        env:
+          NIGHTLY_VERSION: ${{ needs.nightly-version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(curl -fsS 'https://ghcr.io/token?scope=repository:getsentry/toolkit:pull' | jq -er '.token')
+          for tag in nightly "nightly-${NIGHTLY_VERSION}"; do
+            manifest=$(curl -fsS \
+              -H "Authorization: Bearer ${token}" \
+              -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
+              "https://ghcr.io/v2/getsentry/toolkit/manifests/${tag}")
+            jq -e --arg version "$NIGHTLY_VERSION" '
+              .annotations.version == $version and
+              .annotations["org.opencontainers.image.source"] == "https://github.com/getsentry/toolkit" and
+              ([.layers[].annotations["org.opencontainers.image.title"]] | sort) ==
+                (["sentry-darwin-arm64.gz", "sentry-darwin-x64.gz", "sentry-linux-arm64.gz", "sentry-linux-x64.gz", "sentry-windows-x64.exe.gz"] | sort)
+            ' <<< "$manifest" > /dev/null
+          done
+
+  build-npm:
+    name: Build npm Package
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || startsWith(github.ref, 'refs/heads/release/cli/') && 'cli-release' || '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_22 }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Bundle
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: pnpm --filter sentry run bundle
+      - name: Smoke test
+        env:
+          SENTRY_AUTH_TOKEN: ""
+          SENTRY_TOKEN: ""
+          SENTRY_CONFIG_DIR: ${{ runner.temp }}/.sentry-smoke
+        run: node packages/cli/dist/bin.cjs --help
+      - name: Pack
+        working-directory: packages/cli
+        run: npm pack
+      - name: Upload npm artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-package
+          path: packages/cli/*.tgz
+
+  test-npm:
+    name: Test npm Package (Node ${{ matrix.node }})
+    needs: build-npm
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node == 24 && env.NODE_VERSION_24 || matrix.node == 20 && env.NODE_VERSION_20 || env.NODE_VERSION_22 }}
+      - name: Download npm artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: npm-package
+          path: packages/cli
+      - name: Test packaged CLI
+        env:
+          SENTRY_AUTH_TOKEN: ""
+          SENTRY_TOKEN: ""
+          SENTRY_CONFIG_DIR: ${{ runner.temp }}/.sentry-smoke
+        run: |
+          package_file=$(find packages/cli -maxdepth 1 -name 'sentry-*.tgz' -print -quit)
+          test -n "$package_file"
+          npm install --ignore-scripts --prefix "$RUNNER_TEMP/npm-smoke" "$GITHUB_WORKSPACE/$package_file"
+          node "$RUNNER_TEMP/npm-smoke/node_modules/sentry/dist/bin.cjs" --help
+
+  build-docs:
+    name: Build Docs
+    needs: build-binary
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || startsWith(github.ref, 'refs/heads/release/cli/') && 'cli-release' || '' }}
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      PUBLIC_SENTRY_ENVIRONMENT: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/cli/')) && 'production' || 'development' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_24 }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Generate CLI docs
+        run: pnpm --filter sentry run generate:schema && pnpm --filter sentry run generate:docs
+      - name: Set docs release
+        run: |
+          release=$(node -p 'require("./packages/cli/package.json").version')
+          {
+            echo "PUBLIC_SENTRY_RELEASE=$release"
+            echo "SENTRY_RELEASE=$release"
+          } >> "$GITHUB_ENV"
+      - name: Build docs
+        run: pnpm --filter sentry-cli-docs run build
+      - name: Download Linux binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sentry-linux-x64
+          path: dist-bin
+      - name: Inject debug IDs and upload sourcemaps
+        if: github.event_name == 'push' && env.SENTRY_AUTH_TOKEN != ''
+        env:
+          SENTRY_ORG: sentry
+          SENTRY_PROJECT: cli-website
+        run: |
+          chmod +x dist-bin/sentry-linux-x64
+          ./dist-bin/sentry-linux-x64 sourcemap inject apps/cli-docs/dist/
+          # shellcheck disable=SC2088
+          ./dist-bin/sentry-linux-x64 sourcemap upload apps/cli-docs/dist/ \
+            --release "$PUBLIC_SENTRY_RELEASE" \
+            --url-prefix "~/"
+      - name: Remove sourcemaps
+        run: find apps/cli-docs/dist -name '*.map' -delete
+      - name: Package docs
+        run: |
+          output_dir="$RUNNER_TEMP/vercel-output"
+          rm -rf "$output_dir"
+          mkdir -p "$output_dir/.vercel/output/static"
+          cp -R apps/cli-docs/dist/. "$output_dir/.vercel/output/static/"
+          printf '%s\n' '{"version":3}' > "$output_dir/.vercel/output/config.json"
+          (cd "$output_dir" && zip -qr "$GITHUB_WORKSPACE/vercel.zip" .vercel)
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: vercel
+          path: vercel.zip

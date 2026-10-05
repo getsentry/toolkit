@@ -1428,6 +1428,13 @@ export const restHandlers = buildHandlers([
         },
       }),
   },
+  // The backend returns 404 when no suspect committers are found.
+  {
+    method: "get",
+    path: "/api/0/projects/:org/:project/events/:eventId/committers/",
+    fetch: () =>
+      HttpResponse.json({ detail: "No committers found" }, { status: 404 }),
+  },
   // External issue links endpoints (default: empty for most issues)
   {
     method: "get",

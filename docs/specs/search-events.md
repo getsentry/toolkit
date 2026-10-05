@@ -1,58 +1,79 @@
-# search_events Tool Specification
+# Dataset Search Tools Specification
 
 ## Overview
 
-A unified search tool that accepts natural language queries and translates them to Sentry's discover endpoint parameters using the configured embedded LLM provider. Replaces `find_errors` and `find_transactions` with a single, more flexible interface.
+Natural-language event search is exposed as one tool per dataset:
+
+| Tool | Dataset | Seer strategy |
+| --- | --- | --- |
+| `search_errors` | `errors` | `Errors` |
+| `search_logs` | `logs` | `Logs` |
+| `search_traces` | `spans` | `Traces` |
+| `search_metrics` | `metrics` | `Metrics` |
+| `search_profiles` | `profiles` | — |
+| `search_replays` | `replays` | — |
+
+All six share one handler (`tools/support/search-events/search.ts`). Each tool
+fixes its dataset, so the caller never chooses a `dataset` parameter and the
+embedded agent is told it cannot switch datasets (`lockDataset`). This removes
+the most common routing mistake from the old multi-dataset `search_events` tool,
+where clients omitted `dataset`, silently got `errors`, and skipped Seer.
+
+`search_events` stays in the catalog as a deprecated alias for backward
+compatibility (reachable via `execute_sentry_tool`). It is no longer on the
+direct MCP surface and is excluded from skill definitions.
 
 ## Motivation
 
-- **Before**: Two separate tools with rigid parameters, users must know Sentry query syntax
-- **After**: Single tool with natural language input, AI handles translation to Sentry syntax
-- **Benefits**: Better UX, reduced tool count (20 → 19), accessible to non-technical users
+- **Before**: One `search_events` tool with an optional `dataset` enum; agents
+  often omitted or mis-picked it.
+- **After**: Tool selection picks the dataset. Each description only documents
+  its own dataset, so descriptions are shorter and more specific.
+- **Cross-event**: same-trace co-occurrence questions ("slow checkout requests
+  that also logged an error") route to `search_traces`, the only Seer strategy
+  that supports cross-event filters.
 
 ## Interface
 
 ```typescript
-interface SearchEventsParams {
-  organizationSlug: string;      // Required
-  query: string;  // Natural language search description
-  dataset?: "spans" | "errors" | "logs" | "metrics"; // Dataset to search (default: "errors")
-  projectSlug?: string;          // Optional - limit to specific project
-  regionUrl?: string;           
+// search_errors / search_logs / search_traces / search_metrics / search_profiles
+interface DatasetSearchParams {
+  organizationSlug: string;
+  query?: string;                // Natural language (preferred) or Sentry search syntax
+  projectSlug?: string;
+  fields?: string[];
+  sort?: string;
+  period?: string;               // e.g. "24h", "7d"
   limit?: number;                // Default: 10, Max: 100
-  includeExplanation?: boolean;  // Include translation explanation
+  includeExplanation?: boolean;
+  regionUrl?: string;
 }
+
+// search_replays drops `fields` and adds a separate `environment` parameter.
 ```
 
 ### Examples
 
 ```typescript
-// Find errors (errors dataset is default)
-search_events({
+search_errors({
   organizationSlug: "my-org",
   query: "database timeouts in checkout flow from last hour"
 })
 
-// Find slow transactions
-search_events({
+search_traces({
   organizationSlug: "my-org",
   query: "API calls taking over 5 seconds",
-  projectSlug: "backend",
-  dataset: "spans"
+  projectSlug: "backend"
 })
 
-// Find logs
-search_events({
+search_logs({
   organizationSlug: "my-org",
-  query: "warning logs about memory usage",
-  dataset: "logs"
+  query: "warning logs about memory usage"
 })
 
-// Find request duration metrics
-search_events({
+search_metrics({
   organizationSlug: "my-org",
-  query: "p95 request duration by transaction this week",
-  dataset: "metrics"
+  query: "p95 request duration by transaction this week"
 })
 ```
 
@@ -95,6 +116,21 @@ The AI produces different query patterns based on the selected dataset:
 - **Logs dataset**: Focus on `message`, `severity`, `severity_number`, **NO timestamp filters** (uses statsPeriod instead)
 - **Tracemetrics dataset**: Focus on `metric.name`, `metric.type`, `metric.unit`, `value`, and metric-aware aggregates like `p95(value,http.request.duration,distribution,millisecond)`
 
+### Environment Filters
+
+The embedded agent receives known visible environment names as context. It must
+only add an environment filter when requested; a single available environment or
+grouping by environment does not imply a filter. These instructions also apply
+when discovery fails or the list is too large to include in the prompt.
+
+For non-replay datasets, environment filters belong in `query`; the agent leaves
+its separate `environment` output null. The internal `validateSearch` tool accepts
+the candidate query without a separate environment argument. Replays retain the
+separate environment parameter and do not use this validation tool.
+
+The discovered list is not an exhaustive allowlist: hidden environments can be
+absent. Existing final validation and unknown-environment notices remain in place.
+
 ### Time Series
 
 Requests for a metric over time ("per hour", "per day", "trend", "over time") return a bucketed series via the `events-stats` endpoint instead of failing.
@@ -107,6 +143,9 @@ Requests for a metric over time ("per hour", "per day", "trend", "over time") re
 
 - **Logs timestamp handling**: Logs don't support query-based timestamp filters like `timestamp:-1h`. Instead, use `statsPeriod=24h` parameter
 - **Project ID mapping**: API requires numeric project IDs, not slugs. Tool automatically converts project slugs to IDs
+- **Seer opt-in**: Seer translation runs only in experimental sessions (`--experimental` for stdio or `/mcp?experimental=1` for HTTP), when the organization has the required Seer features. Default sessions use the configured embedded agent for natural-language translation; if Seer is unavailable in an experimental session, the tool falls back to that agent.
+- **Seer cross-event filters**: Time series results do not apply cross-event filters. When Seer returns those filters for a time series, the response always begins with a warning identifying the omitted filters and the broader results, even when `includeExplanation` is false.
+- **Seer project scope**: For a successful Seer translation without `projectSlug`, search and Explorer links use `project=-1` to match the all-accessible-project scope sent to Seer. Other unscoped searches retain their existing default scope.
 - **Parallel attribute fetching**: For spans/logs/metrics, fetches both string and number attribute types in parallel for better performance
 - **itemType specification**: Must use `logs` and `tracemetrics` exactly for the trace-items attributes API
 - **Tracemetrics sort handling**: Aggregate sort expressions like `-p95(value,...)` must be sent to the API unchanged
@@ -132,7 +171,7 @@ find_errors({
 })
 
 // After
-search_events({
+search_errors({
   organizationSlug: "sentry",
   query: "unresolved errors in checkout.js"
 })

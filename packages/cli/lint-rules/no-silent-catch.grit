@@ -1,0 +1,65 @@
+language js
+
+// Flags "silent" catch blocks: a `catch` clause (or a `.catch()` handler) whose
+// body is empty, a bare `return;`, or `return <value>;` that does not reference
+// the caught error. Errors must be surfaced via log.debug()/log.warn() or
+// re-thrown (see AGENTS.md). Biome's built-in noEmptyBlockStatements only
+// covers syntactically empty `catch {}`; this also covers comment-only and
+// return-only bodies.
+//
+// This replaces the hand-rolled silent-catch detector and the
+// script/silent-catch-baseline.json ratchet (see #1531). The pre-existing
+// backlog is grandfathered with inline `// biome-ignore lint/plugin: <reason>`
+// comments. Removing a grandfathered catch orphans its suppression, which Biome
+// reports as `suppressions/unused`; `pnpm run lint` runs with
+// `--error-on-warnings`, so the backlog can only shrink (the same ratchet the
+// old baseline JSON provided).
+//
+// Registered via an override scoped to `src/**/*.ts` in biome.jsonc (matching
+// the old script's scan scope).
+or {
+  `try { $t } catch { }`,
+  `try { $t } catch { return; }`,
+  `try { $t } catch { return $r; }`,
+  `try { $t } catch ($e) { }`,
+  `try { $t } catch ($e) { return; }`,
+  `try { $t } catch ($e) { return $r; }` where { $r <: not contains $e },
+  // Typed catch bindings. GritQL type-annotation metavariables don't bind, so
+  // the untyped `catch ($e)` patterns above miss `catch (e: unknown)` /
+  // `catch (e: any)`. TypeScript only permits `unknown` or `any` as a catch
+  // binding type, so those two literals cover every typed form.
+  `try { $t } catch ($e: unknown) { }`,
+  `try { $t } catch ($e: unknown) { return; }`,
+  `try { $t } catch ($e: unknown) { return $r; }` where {
+    $r <: not contains $e
+  },
+  `try { $t } catch ($e: any) { }`,
+  `try { $t } catch ($e: any) { return; }`,
+  `try { $t } catch ($e: any) { return $r; }` where { $r <: not contains $e },
+  `try { $t } catch { } finally { $f }`,
+  `try { $t } catch { return; } finally { $f }`,
+  `try { $t } catch { return $r; } finally { $f }`,
+  `try { $t } catch ($e) { } finally { $f }`,
+  `try { $t } catch ($e) { return; } finally { $f }`,
+  `try { $t } catch ($e) { return $r; } finally { $f }` where {
+    $r <: not contains $e
+  },
+  `try { $t } catch ($e: unknown) { } finally { $f }`,
+  `try { $t } catch ($e: unknown) { return; } finally { $f }`,
+  `try { $t } catch ($e: unknown) { return $r; } finally { $f }` where {
+    $r <: not contains $e
+  },
+  `try { $t } catch ($e: any) { } finally { $f }`,
+  `try { $t } catch ($e: any) { return; } finally { $f }`,
+  `try { $t } catch ($e: any) { return $r; } finally { $f }` where {
+    $r <: not contains $e
+  },
+  `$p.catch(() => { })`,
+  `$p.catch(() => { return; })`,
+  `$p.catch(() => { return $r; })`,
+  `$p.catch(($e) => { })`,
+  `$p.catch(($e) => { return; })`,
+  `$p.catch(($e) => { return $r; })` where { $r <: not contains $e }
+} as $m where {
+  register_diagnostic(span=$m, message="Silent catch block. Add log.debug()/log.warn() or re-throw — errors must not vanish (AGENTS.md). If the suppression is intentional, grandfather it with `// biome-ignore lint/plugin: <reason>`.")
+}

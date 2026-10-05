@@ -2,6 +2,7 @@ import { mswServer } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, it, expect } from "vitest";
 import { UserInputError } from "../../errors.js";
+import { ApiClientError } from "../../api-client";
 import updateProject from "./update-project.js";
 import { prepareToolParams } from "../catalog-runtime/availability";
 import {
@@ -22,6 +23,38 @@ describe("update_project", () => {
   afterEach(() => {
     mswServer.resetHandlers();
   });
+
+  it.each([400, 403, 404])(
+    "preserves API client errors for HTTP %i",
+    async (status) => {
+      mswServer.use(
+        http.put(
+          "https://sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/",
+          () =>
+            HttpResponse.json(
+              { detail: "Project update rejected" },
+              { status },
+            ),
+        ),
+      );
+      const result = updateProject.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          projectSlug: "cloudflare-mcp",
+          name: "New name",
+          slug: null,
+          platform: null,
+          regionUrl: null,
+        },
+        context,
+      );
+      await expect(result).rejects.toBeInstanceOf(ApiClientError);
+      await expect(result).rejects.toMatchObject({
+        status,
+        message: "Project update rejected",
+      });
+    },
+  );
 
   it("updates name and platform", async () => {
     mswServer.use(

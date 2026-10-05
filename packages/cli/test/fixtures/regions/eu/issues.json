@@ -1,0 +1,82 @@
+[
+  {
+    "id": "400020",
+    "shareId": null,
+    "shortId": "EURO-PORTAL-1A",
+    "title": "Vue warn: Invalid prop type",
+    "culprit": "validateProps(src/components/DataTable.vue)",
+    "permalink": "https://euro-gmbh.sentry.io/issues/400020/",
+    "level": "warning",
+    "status": "unresolved",
+    "statusDetails": {},
+    "substatus": "ongoing",
+    "isPublic": false,
+    "platform": "javascript",
+    "project": {
+      "id": "300020",
+      "name": "Euro Portal",
+      "slug": "euro-portal",
+      "platform": "javascript-vue"
+    },
+    "type": "error",
+    "metadata": {
+      "type": "Vue warn",
+      "value": "Invalid prop type",
+      "filename": "src/components/DataTable.vue"
+    },
+    "numComments": 2,
+    "assignedTo": null,
+    "isBookmarked": false,
+    "isSubscribed": true,
+    "hasSeen": true,
+    "annotations": [],
+    "issueType": "error",
+    "issueCategory": "error",
+    "priority": "medium",
+    "isUnhandled": false,
+    "count": "89",
+    "userCount": 15,
+    "firstSeen": "2024-01-08T10:30:00.000000Z",
+    "lastSeen": "2024-01-15T14:45:00.000000Z"
+  },
+  {
+    "id": "400021",
+    "shareId": null,
+    "shortId": "BERLIN-APP-1A",
+    "title": "django.db.utils.IntegrityError: duplicate key value",
+    "culprit": "create_user(apps/users/views.py)",
+    "permalink": "https://berlin-startup.sentry.io/issues/400021/",
+    "level": "error",
+    "status": "unresolved",
+    "statusDetails": {},
+    "substatus": "new",
+    "isPublic": false,
+    "platform": "python",
+    "project": {
+      "id": "300022",
+      "name": "Berlin App",
+      "slug": "berlin-app",
+      "platform": "python-django"
+    },
+    "type": "error",
+    "metadata": {
+      "type": "IntegrityError",
+      "value": "duplicate key value violates unique constraint",
+      "filename": "apps/users/views.py"
+    },
+    "numComments": 0,
+    "assignedTo": null,
+    "isBookmarked": false,
+    "isSubscribed": false,
+    "hasSeen": false,
+    "annotations": [],
+    "issueType": "error",
+    "issueCategory": "error",
+    "priority": "high",
+    "isUnhandled": true,
+    "count": "12",
+    "userCount": 3,
+    "firstSeen": "2024-01-14T16:00:00.000000Z",
+    "lastSeen": "2024-01-15T11:30:00.000000Z"
+  }
+]

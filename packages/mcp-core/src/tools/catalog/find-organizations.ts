@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { defineTool } from "../../internal/tool-helpers/define";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
-import type { ServerContext } from "../../types";
-import { ParamSearchQuery } from "../../schema";
+import { ParamCursor, ParamSearchQuery } from "../../schema";
 import { ALL_SKILLS } from "../../skills";
+import type { ServerContext } from "../../types";
 
 const RESULT_LIMIT = 25;
 
@@ -17,6 +17,7 @@ export const findOrganizationsOutputSchema = z.object({
     }),
   ),
   hasMore: z.boolean(),
+  nextCursor: z.string().nullable(),
 });
 
 function normalizeUrl(url: string | undefined): string | null {
@@ -35,10 +36,11 @@ export default defineTool({
     "- Find an organization's slug to aid other tool requests",
     "- Search for specific organizations by name or slug",
     "",
-    `Returns up to ${RESULT_LIMIT} results. If you hit this limit, use the query parameter to narrow down results.`,
+    `Returns up to ${RESULT_LIMIT} results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.`,
   ].join("\n"),
   inputSchema: {
     query: ParamSearchQuery.nullable().default(null),
+    cursor: ParamCursor.nullable().default(null),
   },
   annotations: {
     readOnlyHint: true,
@@ -50,20 +52,20 @@ export default defineTool({
     // Organizations are listed from the root host, which returns orgs across
     // all regions, so no regionUrl is passed here.
     const apiService = apiServiceFromContext(context);
-    const organizations = await apiService.listOrganizations({
+    const { organizations, nextCursor } = await apiService.listOrganizations({
       query: params.query ?? undefined,
-      limit: RESULT_LIMIT + 1,
+      limit: RESULT_LIMIT,
+      cursor: params.cursor ?? undefined,
     });
 
     return structuredResult({
-      organizations: organizations
-        .slice(0, RESULT_LIMIT)
-        .map((organization) => ({
-          slug: organization.slug,
-          webUrl: normalizeUrl(organization.links?.organizationUrl),
-          regionUrl: normalizeUrl(organization.links?.regionUrl),
-        })),
-      hasMore: organizations.length > RESULT_LIMIT,
+      organizations: organizations.map((organization) => ({
+        slug: organization.slug,
+        webUrl: normalizeUrl(organization.links?.organizationUrl),
+        regionUrl: normalizeUrl(organization.links?.regionUrl),
+      })),
+      hasMore: nextCursor !== null,
+      nextCursor,
     });
   },
 });

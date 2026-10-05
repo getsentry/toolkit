@@ -91,6 +91,16 @@ export function finalize(input: MergedArgs): PartiallyResolvedConfig {
   } else {
     // Default: grant all active skills when no flag is provided (see comment block above for rationale)
     finalSkills = new Set<Skill>(ACTIVE_SKILLS);
+
+    // Seer is a sentry.io service. Self-hosted Sentry ships without it, and its
+    // autofix endpoints answer 500 when the Seer backend is not configured, so
+    // every `get_issue_details` call (which fetches autofix state) and every
+    // `analyze_issue_with_seer` poll loop would just generate server errors.
+    // Leave Seer out of the implicit default on self-hosted hosts; users who
+    // do run Seer can still opt in with --skills=seer or --all-skills.
+    if (!isSentryHost(sentryHost)) {
+      finalSkills.delete("seer");
+    }
   }
 
   // Disable-skills: remove specific skills from the active set

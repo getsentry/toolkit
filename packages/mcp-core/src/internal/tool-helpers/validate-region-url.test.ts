@@ -9,13 +9,12 @@ describe("validateRegionUrl", () => {
       expect(result).toBe("sentry.io");
     });
 
-    it("allows exact match for self-hosted", () => {
-      const result = validateRegionUrl(
-        "https://sentry.company.com",
-        "sentry.company.com",
-      );
-      expect(result).toBe("sentry.company.com");
-    });
+    it.each(["sentry.company.com", "example.my.sentry.io"])(
+      "allows exact match for configured host %s",
+      (host) => {
+        expect(validateRegionUrl(`https://${host}`, host)).toBe(host);
+      },
+    );
 
     it("allows exact match for any base host", () => {
       const result = validateRegionUrl("https://example.com", "example.com");
@@ -60,6 +59,12 @@ describe("validateRegionUrl", () => {
       expect(() => validateRegionUrl("https://evil.com", "sentry.io")).toThrow(
         "The domain 'evil.com' is not allowed",
       );
+    });
+
+    it("rejects a different single-tenant host", () => {
+      expect(() =>
+        validateRegionUrl("https://other.my.sentry.io", "example.my.sentry.io"),
+      ).toThrow("The domain 'other.my.sentry.io' is not allowed");
     });
 
     it("rejects subdomains of self-hosted that aren't base host", () => {

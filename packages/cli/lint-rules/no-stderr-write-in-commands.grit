@@ -1,0 +1,5 @@
+file($name, $body) where {
+  $name <: r".*src/commands/.*",
+  $body <: contains `stderr.write($args)` as $call,
+  register_diagnostic(span=$call, message="Don't call stderr.write() in commands. Use logger.withTag('command-name').warn() for warnings or log.debug() for diagnostics.")
+}

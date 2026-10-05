@@ -446,6 +446,9 @@ describe("oauth authorize routes", () => {
       const redirectUrl = new URL(location!);
       expect(redirectUrl.hostname).toBe("sentry.io");
       expect(redirectUrl.pathname).toBe("/oauth/authorize/");
+      expect(redirectUrl.searchParams.get("scope")?.split(" ")).toContain(
+        "alerts:write",
+      );
       const stateParam = redirectUrl.searchParams.get("state");
       expect(stateParam).toBeTruthy();
       const decodedState = await verifyAndParseState(

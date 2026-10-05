@@ -1,0 +1,7 @@
+file($name, $body) where {
+  $name <: not r".*utils\.ts$",
+  $body <: contains `$db.query($sql).run($args)` as $match where {
+    $sql <: r".*UPDATE .* SET last_accessed.*"
+  },
+  register_diagnostic(span=$match, message="Use touchCacheEntry() from db/utils.js instead of inline last_accessed UPDATE.")
+}

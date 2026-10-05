@@ -84,6 +84,9 @@ export const OrganizationSchema = z
         organizationUrl: z.string().url(),
       })
       .optional(),
+    // Only returned by the organization details endpoint, not the list endpoint.
+    features: z.array(z.string()).optional(),
+    hideAiFeatures: z.boolean().optional(),
   })
   .passthrough();
 
@@ -323,7 +326,7 @@ export const AlertActionOptionSchema = z.object({
       name: z.string(),
       installationId: z.string(),
       installationUuid: z.string(),
-      status: z.number(),
+      status: z.string(),
       settings: z.record(z.string(), z.unknown()).optional(),
       title: z.string().optional(),
     })
@@ -794,6 +797,7 @@ export const CommitSchema = z
     message: z.string().nullable().optional(),
     dateCreated: z.string().datetime().nullable().optional(),
     pullRequest: z.record(z.string(), z.unknown()).nullable().optional(),
+    // The event committers endpoint populates this; release commits usually return an empty string.
     suspectCommitType: z.string().optional(),
     author: ApiActorSchema.nullable().optional(),
     repository: z
@@ -807,6 +811,17 @@ export const CommitSchema = z
   .passthrough();
 
 export const CommitListSchema = z.array(CommitSchema);
+
+export const CommitterSchema = z
+  .object({
+    author: ApiActorSchema.nullable().optional(),
+    commits: CommitListSchema,
+  })
+  .passthrough();
+
+export const CommittersResponseSchema = z.object({
+  committers: z.array(CommitterSchema),
+});
 
 export const IssueActivitySchema = z
   .object({
@@ -1118,7 +1133,8 @@ const BaseEventSchema = z.object({
     .optional(),
   // "context" (singular) is the legacy "extra" field for arbitrary user-defined data
   // This is different from "contexts" (plural) which are structured contexts
-  context: z.record(z.string(), z.unknown()).optional(),
+  // Sentry preserves null when the event's extra data is explicitly null.
+  context: z.record(z.string(), z.unknown()).nullable().optional(),
   sdk: z
     .object({
       name: z.string().nullable().optional(),
@@ -1402,6 +1418,75 @@ export const AutofixRunStateSchema = z.object({
   formatted: z.object({ format: z.string(), content: z.string() }).optional(),
 });
 
+/**
+ * Schemas for Seer's search agent, which translates natural language into
+ * Sentry search queries.
+ *
+ * Upstream source of truth in getsentry/sentry:
+ * - `src/sentry/seer/endpoints/search_agent_start.py`
+ * - `src/sentry/seer/endpoints/search_agent_state.py`
+ * - `src/sentry/seer/endpoints/search_agent_types.py`
+ */
+export const SearchAgentStartSchema = z
+  .object({
+    // Null until Seer has picked up the run; poll with sentry_run_id instead.
+    run_id: z.number().nullable(),
+    sentry_run_id: z.string(),
+  })
+  .passthrough();
+
+export const SearchAgentQuerySchema = z
+  .object({
+    query: z.string(),
+    group_by: z.array(z.string()).default([]),
+    visualization: z
+      .array(
+        z
+          .object({
+            y_axes: z.array(z.string()).default([]),
+            // Only set when the user asks for a time bucket, e.g. "per hour".
+            interval: z.string().nullable().optional(),
+          })
+          .passthrough(),
+      )
+      .default([]),
+    sort: z.string().default(""),
+    // Empty when an absolute start/end range is used instead.
+    stats_period: z.string().default(""),
+    start: z.string().nullable().optional(),
+    end: z.string().nullable().optional(),
+    mode: z.string(),
+    // Cross-event filters, only set for the Traces strategy.
+    span_query: z.string().nullable().optional(),
+    log_query: z.string().nullable().optional(),
+    metric_query: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export const SearchAgentTranslateSchema = z
+  .object({
+    responses: z.array(SearchAgentQuerySchema),
+    unsupported_reason: z.string().nullable().optional(),
+    // Projects Seer scoped the query to, a superset of the requested projects
+    // when it broadens scope. Absent when there's no expansion.
+    project_ids: z.array(z.number()).nullable().optional(),
+  })
+  .passthrough();
+
+export const SearchAgentStateSchema = z
+  .object({
+    session: z
+      .object({
+        // Only `status` is set while the run is still being created in Seer.
+        status: z.string(),
+        final_response: SearchAgentTranslateSchema.nullable().optional(),
+        unsupported_reason: z.string().nullable().optional(),
+      })
+      .passthrough()
+      .nullable(),
+  })
+  .passthrough();
+
 export const EventAttachmentSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -1510,6 +1595,84 @@ export const UserReportSchema = z.object({
 export const UserReportListSchema = z.array(UserReportSchema);
 
 export const ExternalIssueListSchema = z.array(ExternalIssueSchema);
+
+export const IntegrationProviderSchema = z
+  .object({
+    key: z.string(),
+    slug: z.string().optional(),
+    name: z.string().optional(),
+  })
+  .passthrough();
+
+export const IssueIntegrationExternalIssueSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]),
+    key: z.string(),
+    url: z.string().optional(),
+    title: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+    displayName: z.string().optional(),
+  })
+  .passthrough();
+
+export const IssueIntegrationSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]),
+    name: z.string(),
+    domainName: z.string().nullable().optional(),
+    status: z.string().optional(),
+    provider: IntegrationProviderSchema,
+    externalIssues: z.array(IssueIntegrationExternalIssueSchema).default([]),
+  })
+  .passthrough();
+
+export const IssueIntegrationListSchema = z.array(IssueIntegrationSchema);
+
+export const NativeExternalIssueSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]),
+    key: z.string(),
+    url: z.string().optional(),
+    integrationId: z.union([z.string(), z.number()]).optional(),
+    displayName: z.string().optional(),
+  })
+  .passthrough();
+
+export const SentryAppInstallationSchema = z
+  .object({
+    uuid: z.string(),
+    status: z.string().optional(),
+    app: z
+      .object({
+        uuid: z.string().optional(),
+        slug: z.string(),
+        sentryAppId: z.number().optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+export const SentryAppInstallationListSchema = z.array(
+  SentryAppInstallationSchema,
+);
+
+export const SentryAppComponentSchema = z.object({
+  type: z.string(),
+  sentryApp: z.object({ uuid: z.string(), slug: z.string() }),
+  schema: z.record(z.string(), z.unknown()),
+  error: z.unknown().optional(),
+});
+export const SentryAppComponentListSchema = z.array(SentryAppComponentSchema);
+
+export const SentryAppExternalRequestOptionsSchema = z.object({
+  choices: z.array(
+    z.tuple([
+      z.union([z.string(), z.number()]),
+      z.union([z.string(), z.number()]),
+    ]),
+  ),
+  defaultValue: z.union([z.string(), z.number()]).optional(),
+});
 
 /**
  * Schema for Sentry trace metadata response.

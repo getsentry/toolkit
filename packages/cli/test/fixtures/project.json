@@ -1,0 +1,30 @@
+{
+  "id": "300001",
+  "slug": "test-project",
+  "name": "Test Project",
+  "platform": "javascript",
+  "dateCreated": "2020-02-01T08:00:00.000000Z",
+  "isBookmarked": false,
+  "isMember": true,
+  "features": ["releases", "custom-inbound-filters", "rate-limits"],
+  "firstEvent": "2020-02-01T09:00:00.000000Z",
+  "firstTransactionEvent": true,
+  "access": ["project:read", "project:releases"],
+  "hasAccess": true,
+  "hasMinifiedStackTrace": true,
+  "hasMonitors": false,
+  "hasProfiles": false,
+  "hasReplays": true,
+  "hasSessions": true,
+  "team": { "id": "200001", "slug": "test-team", "name": "Test Team" },
+  "teams": [{ "id": "200001", "slug": "test-team", "name": "Test Team" }],
+  "organization": {
+    "id": "100001",
+    "slug": "test-org",
+    "status": { "id": "active", "name": "active" },
+    "name": "Test Organization"
+  },
+  "plugins": [],
+  "platforms": ["javascript"],
+  "processingIssues": 0
+}

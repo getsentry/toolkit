@@ -54,10 +54,13 @@ import type {
   AssignedToSchema,
   AutofixRunSchema,
   AutofixRunStateSchema,
+  SearchAgentStartSchema,
+  SearchAgentStateSchema,
   ClientKeyListSchema,
   ClientKeySchema,
   CommitListSchema,
   CommitSchema,
+  CommittersResponseSchema,
   DashboardListItemSchema,
   DashboardSchema,
   DashboardWidgetSchema,
@@ -83,6 +86,8 @@ import type {
   IssueAlertRuleSchema,
   IssueCommentListSchema,
   IssueCommentSchema,
+  IssueIntegrationListSchema,
+  IssueIntegrationSchema,
   IssueListSchema,
   IssueSchema,
   IssueTagValuesSchema,
@@ -94,6 +99,7 @@ import type {
   MonitorSchema,
   MonitorStatSchema,
   MonitorStatsSchema,
+  NativeExternalIssueSchema,
   OrganizationEnvironmentListSchema,
   OrganizationListSchema,
   OrganizationSchema,
@@ -111,6 +117,9 @@ import type {
   ReplayListResponseSchema,
   ReplayRecordingEventSchema,
   ReplayRecordingSegmentsSchema,
+  SentryAppComponentListSchema,
+  SentryAppExternalRequestOptionsSchema,
+  SentryAppInstallationListSchema,
   StacktraceLinkSchema,
   TagListSchema,
   TagSchema,
@@ -148,6 +157,54 @@ export type AlertActionOption = z.infer<typeof AlertActionOptionSchema>;
 export type AlertConditionOption = z.infer<typeof AlertConditionOptionSchema>;
 export type AlertRuleProjectScope = z.infer<typeof AlertRuleProjectScopeSchema>;
 export type Detector = z.infer<typeof DetectorSchema>;
+export type MetricMonitorUpdate = {
+  name?: string;
+  description?: string | null;
+  enabled?: boolean;
+  owner?: string | null;
+  workflowIds?: string[];
+  config?: Record<string, unknown>;
+  conditionGroup?: {
+    id?: string | number;
+    logicType: string;
+    conditions: Array<{
+      id?: string | number;
+      type: string;
+      comparison: unknown;
+      conditionResult: unknown;
+    }>;
+  };
+  dataSources?: Array<{
+    dataset: string;
+    query: string;
+    aggregate: string;
+    timeWindow: number;
+    environment: string | null;
+    eventTypes: string[];
+    extrapolationMode?: string | null;
+  }>;
+};
+export type MetricMonitorCreate = Pick<
+  MetricMonitorUpdate,
+  "description" | "owner"
+> &
+  Required<
+    Pick<
+      MetricMonitorUpdate,
+      "name" | "config" | "conditionGroup" | "dataSources" | "workflowIds"
+    >
+  > & { type: "metric_issue" };
+export type AlertRuleUpdate = {
+  name: string;
+  enabled: boolean;
+  config?: Record<string, unknown>;
+  environment?: string | null;
+  owner?: string | null;
+  triggers?: NonNullable<IssueAlertRule["triggers"]>;
+  actionFilters?: NonNullable<IssueAlertRule["actionFilters"]>;
+  detectorIds?: string[];
+};
+export type AlertRuleCreate = AlertRuleUpdate & { detectorIds: string[] };
 export type MetricAlertRule = z.infer<typeof MetricAlertRuleSchema>;
 export type ClientKey = z.infer<typeof ClientKeySchema>;
 export type Release = z.infer<typeof ReleaseSchema>;
@@ -184,6 +241,8 @@ export type EventAttachment = z.infer<typeof EventAttachmentSchema>;
 export type Tag = z.infer<typeof TagSchema>;
 export type AutofixRun = z.infer<typeof AutofixRunSchema>;
 export type AutofixRunState = z.infer<typeof AutofixRunStateSchema>;
+export type SearchAgentStart = z.infer<typeof SearchAgentStartSchema>;
+export type SearchAgentState = z.infer<typeof SearchAgentStateSchema>;
 export type AssignedTo = z.infer<typeof AssignedToSchema>;
 export type ReplayDetails = z.infer<typeof ReplayDetailsSchema>;
 export type ReplayList = z.infer<typeof ReplayListResponseSchema>["data"];
@@ -200,6 +259,9 @@ export type MetricAlertRuleList = z.infer<typeof MetricAlertRuleListSchema>;
 export type ReleaseList = z.infer<typeof ReleaseListSchema>;
 export type DeployList = z.infer<typeof DeployListSchema>;
 export type CommitList = z.infer<typeof CommitListSchema>;
+export type CommitterList = z.infer<
+  typeof CommittersResponseSchema
+>["committers"];
 export type IssueList = z.infer<typeof IssueListSchema>;
 export type IssueActivityList = z.infer<
   typeof IssueActivityListResponseSchema
@@ -263,6 +325,18 @@ export type IssueTagValues = z.infer<typeof IssueTagValuesSchema>;
 // External issue links (Jira, GitHub, etc.)
 export type ExternalIssue = z.infer<typeof ExternalIssueSchema>;
 export type ExternalIssueList = z.infer<typeof ExternalIssueListSchema>;
+export type IssueIntegration = z.infer<typeof IssueIntegrationSchema>;
+export type IssueIntegrationList = z.infer<typeof IssueIntegrationListSchema>;
+export type NativeExternalIssue = z.infer<typeof NativeExternalIssueSchema>;
+export type SentryAppInstallationList = z.infer<
+  typeof SentryAppInstallationListSchema
+>;
+export type SentryAppComponentList = z.infer<
+  typeof SentryAppComponentListSchema
+>;
+export type SentryAppExternalRequestOptions = z.infer<
+  typeof SentryAppExternalRequestOptionsSchema
+>;
 
 // User Report
 export type UserReportList = z.infer<typeof UserReportListSchema>;

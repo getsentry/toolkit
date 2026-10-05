@@ -3,7 +3,35 @@ name: Token Cost
 on:
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/token-cost.yml"
+      - "packages/mcp-core/src/tools/**"
+      - "packages/mcp-core/src/schema.ts"
+      - "packages/mcp-core/src/constants.ts"
+      - "packages/mcp-core/src/skills.ts"
+      - "packages/mcp-core/src/toolDefinitions.json"
+      - "packages/mcp-core/src/skillDefinitions.json"
+      - "packages/mcp-core/src/internal/tool-helpers/tool-call-formatting.ts"
+      - "packages/mcp-core/scripts/measure-token-cost.ts"
+      - "packages/mcp-core/scripts/generate-definitions.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
   pull_request:
+    paths:
+      - ".github/workflows/token-cost.yml"
+      - "packages/mcp-core/src/tools/**"
+      - "packages/mcp-core/src/schema.ts"
+      - "packages/mcp-core/src/constants.ts"
+      - "packages/mcp-core/src/skills.ts"
+      - "packages/mcp-core/src/toolDefinitions.json"
+      - "packages/mcp-core/src/skillDefinitions.json"
+      - "packages/mcp-core/src/internal/tool-helpers/tool-call-formatting.ts"
+      - "packages/mcp-core/scripts/measure-token-cost.ts"
+      - "packages/mcp-core/scripts/generate-definitions.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
 
 permissions:
   contents: read
@@ -44,7 +72,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build tool definitions
-        run: pnpm -w run build
+        run: pnpm --filter '@sentry/mcp-core...' --if-present run build
 
       - name: Measure token cost
         id: measure

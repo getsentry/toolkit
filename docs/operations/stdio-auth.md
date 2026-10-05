@@ -54,7 +54,7 @@ All OAuth requests target `sentry.io` directly (via `OAUTH_HOST` constant), rega
 The device code flow requests the same scopes as the Cloudflare OAuth app:
 
 ```
-org:read project:write team:write event:write
+org:read project:write team:write event:write alerts:write
 ```
 
 These are defined once in `packages/mcp-core/src/scopes.ts` and shared by both transports.
@@ -87,7 +87,7 @@ Tokens are cached at `~/.sentry/mcp.json` to avoid re-authentication on every se
     "sentry_host": "sentry.io",
     "client_id": "...",
     "user_email": "user@example.com",
-    "scope": "org:read project:write team:write event:write"
+    "scope": "org:read project:write team:write event:write alerts:write"
   }
 }
 ```

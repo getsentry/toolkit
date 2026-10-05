@@ -1,0 +1,29 @@
+{
+  "name": "sentry-cli-docs",
+  "version": "1.0.0",
+  "private": true,
+  "sentryCi": {
+    "dependencies": ["sentry"]
+  },
+  "scripts": {
+    "ci:prepare": "pnpm --filter sentry run generate:schema && pnpm --filter sentry run generate:docs",
+    "dev": "astro dev",
+    "build": "astro build",
+    "test": "node --test test/*.test.mjs",
+    "preview": "astro preview",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.41.5",
+    "@sentry/astro": "^10.38.0",
+    "@sentry/starlight-theme": "^0.8.0",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
+    "astro": "^7.1.1",
+    "sharp": "^0.35.0",
+    "shiki": "^3.21.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.118.0"
+  }
+}

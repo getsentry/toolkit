@@ -35,8 +35,9 @@ Session constraints:
   --project-slug <slug>       Optional project constraint
 
 Skill controls:
-  --skills <list>           Specify which skills to grant (default: active, non-deprecated skills)
-  --all-skills              Grant all active, non-deprecated skills
+  --skills <list>           Specify which skills to grant (default: active, non-deprecated skills;
+                            seer is excluded by default on self-hosted hosts)
+  --all-skills              Grant all active, non-deprecated skills (including seer on self-hosted)
   --disable-skills <list>   Remove specific skills (e.g. --disable-skills=seer)
 
 Available skills: ${allSkills.join(", ")}
@@ -50,6 +51,7 @@ Environment variables:
   OPENROUTER_MODEL        OpenRouter model (default: openai/gpt-5.6-luna)
   OPENROUTER_REASONING_EFFORT  OpenRouter reasoning effort: none|minimal|low|medium|high|xhigh (max→xhigh), or "" to omit (default: high)
   EMBEDDED_AGENT_PROVIDER Provider override: openai, azure-openai, anthropic, or openrouter
+  MCP_SKILLS              Specify which skills to grant (comma-separated)
   MCP_DISABLE_SKILLS      Disable specific skills (comma-separated)
 
 Examples:
@@ -59,7 +61,7 @@ Examples:
   ${packageName} --access-token=TOKEN --skills=inspect,triage
   ${packageName} --access-token=TOKEN --host=sentry.example.com
   ${packageName} --access-token=TOKEN --host=sentry.internal:9000 --insecure-http
-  ${packageName} --access-token=TOKEN --host=sentry.example.com --disable-skills=seer
+  ${packageName} --access-token=TOKEN --host=sentry.example.com --skills=inspect,seer   # self-hosted with Seer
   ${packageName} --access-token=TOKEN --agent-provider=azure-openai --openai-base-url=https://example.openai.azure.com/openai/v1/
   ${packageName} --access-token=TOKEN --agent-provider=anthropic
   ${packageName} --access-token=TOKEN --agent-provider=openrouter`;

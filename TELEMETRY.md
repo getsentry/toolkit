@@ -23,6 +23,13 @@ the pivots and recipes below.
 | Agent/model/token symptom | Sentry Spans | `gen_ai.*` | provider, model, token, and agent behavior | inspect agent and tool spans |
 | Client or transport symptom | Sentry Logs, Spans, Metrics | `app.transport`, `app.client.family`, `user_agent.original` | stdio vs HTTP, client bucket, and request family | compare route or OAuth metrics |
 
+## Event Validation Diagnostics
+
+For `Event failed schema validation`, check `contexts.log.contextType` on the
+issue event or `contextType` in log properties. It records the legacy `context`
+container type (`null`, `array`, or JavaScript `typeof`), never its keys or values.
+Read it alongside `validationIssues`; another field may have failed.
+
 ## Investigation Pivots
 
 | Pivot | Meaning | Found In | First Query |

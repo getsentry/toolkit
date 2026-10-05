@@ -58,7 +58,7 @@ canonical workflow and required docs live in [../AGENTS.md](../AGENTS.md)
 ### Specs
 
 - [specs/README.md](specs/README.md) - Specs index
-- [specs/alert-rules.md](specs/alert-rules.md) - Alert inspection, configuration options, and connected sources
+- [specs/alert-rules.md](specs/alert-rules.md) - Alert inspection, editing, options, and connected sources
 - [specs/embedded-agent-openai-routing.md](specs/embedded-agent-openai-routing.md) - Embedded agent OpenAI routing spec
 - [specs/project-management.md](specs/project-management.md) - Project management tools spec
 - [specs/remembered-oauth-skills.md](specs/remembered-oauth-skills.md) - Remembered OAuth skill defaults spec

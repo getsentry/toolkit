@@ -11,12 +11,20 @@ import findMonitors from "./find-monitors";
 import getMonitorDetails from "./get-monitor-details";
 import findUptimeMonitors from "./find-uptime-monitors";
 import getUptimeMonitorDetails from "./get-uptime-monitor-details";
+import findMetricMonitors from "./find-metric-monitors";
+import getMetricMonitorDetails from "./get-metric-monitor-details";
+import createMetricMonitor from "./create-metric-monitor";
+import updateMetricMonitor from "./update-metric-monitor";
+import deleteMetricMonitor from "./delete-metric-monitor";
 import createUptimeMonitor from "./create-uptime-monitor";
 import updateUptimeMonitor from "./update-uptime-monitor";
 import deleteUptimeMonitor from "./delete-uptime-monitor";
 import findAlertRules from "./find-alert-rules";
 import getAlertRule from "./get-alert-rule";
 import getAlertOptions from "./get-alert-options";
+import updateAlertRule from "./update-alert-rule";
+import createAlertRule from "./create-alert-rule";
+import deleteAlertRule from "./delete-alert-rule";
 import getIssueDetails from "./get-issue-details";
 import getEventStacktrace from "./get-event-stacktrace";
 import getIssueActivity from "./get-issue-activity";
@@ -28,7 +36,15 @@ import getSpanDetails from "./get-span-details";
 import getReplayDetails from "./get-replay-details";
 import getEventAttachment from "./get-event-attachment";
 import updateIssue from "./update-issue";
+import linkIssue from "./link-issue";
+import unlinkIssue from "./unlink-issue";
 import searchEvents from "./search-events";
+import searchErrors from "./search-errors";
+import searchLogs from "./search-logs";
+import searchTraces from "./search-traces";
+import searchMetrics from "./search-metrics";
+import searchProfiles from "./search-profiles";
+import searchReplays from "./search-replays";
 import createTeam from "./create-team";
 import createProject from "./create-project";
 import updateProject from "./update-project";
@@ -98,12 +114,20 @@ const catalogTools = {
   get_monitor_details: getMonitorDetails,
   find_uptime_monitors: findUptimeMonitors,
   get_uptime_monitor_details: getUptimeMonitorDetails,
+  find_metric_monitors: findMetricMonitors,
+  get_metric_monitor_details: getMetricMonitorDetails,
+  create_metric_monitor: createMetricMonitor,
+  update_metric_monitor: updateMetricMonitor,
+  delete_metric_monitor: deleteMetricMonitor,
   create_uptime_monitor: createUptimeMonitor,
   update_uptime_monitor: updateUptimeMonitor,
   delete_uptime_monitor: deleteUptimeMonitor,
   find_alert_rules: findAlertRules,
   get_alert_rule: getAlertRule,
   get_alert_options: getAlertOptions,
+  update_alert_rule: updateAlertRule,
+  create_alert_rule: createAlertRule,
+  delete_alert_rule: deleteAlertRule,
   get_issue_details: getIssueDetails,
   get_event_stacktrace: getEventStacktrace,
   get_issue_activity: getIssueActivity,
@@ -115,6 +139,14 @@ const catalogTools = {
   get_replay_details: getReplayDetails,
   get_event_attachment: getEventAttachment,
   update_issue: updateIssue,
+  link_issue: linkIssue,
+  unlink_issue: unlinkIssue,
+  search_errors: searchErrors,
+  search_logs: searchLogs,
+  search_traces: searchTraces,
+  search_metrics: searchMetrics,
+  search_profiles: searchProfiles,
+  search_replays: searchReplays,
   search_events: searchEvents,
   create_team: createTeam,
   create_project: createProject,

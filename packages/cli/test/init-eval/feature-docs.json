@@ -1,0 +1,145 @@
+{
+  "$comment": [
+    "Maps each platform to doc URLs used as ground truth by the LLM judge.",
+    "",
+    "Structure: { platformId: { featureName: [url, ...] } }",
+    "  - Platform keys must match the `id` from helpers/platforms.ts",
+    "  - Feature names are free-form strings (e.g. 'getting-started', 'errors')",
+    "  - Each feature maps to an array of doc URLs (multiple pages allowed)",
+    "  - Empty arrays mean 'no docs yet'; the judge skips the follows-docs criterion",
+    "",
+    "To add a new platform: add a key with its feature objects.",
+    "To add a new feature: add a new key under the platform with a URL array."
+  ],
+
+  "nextjs": {
+    "getting-started": [
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/",
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/",
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/pages-router/"
+    ],
+    "errors": [
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/",
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/",
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/pages-router/",
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/capturing-errors/"
+    ],
+    "logs": ["https://docs.sentry.io/platforms/javascript/guides/nextjs/logs/"],
+    "tracing": [
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/tracing/"
+    ],
+    "replay": [
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/session-replay/"
+    ],
+    "metrics": [
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/metrics/"
+    ],
+    "sourcemaps": [],
+    "profiling": [
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/profiling/browser/",
+      "https://docs.sentry.io/platforms/javascript/guides/nextjs/profiling/node/"
+    ]
+  },
+
+  "express": {
+    "getting-started": [
+      "https://docs.sentry.io/platforms/javascript/guides/express/"
+    ],
+    "errors": [
+      "https://docs.sentry.io/platforms/javascript/guides/express/usage/"
+    ],
+    "tracing": [
+      "https://docs.sentry.io/platforms/javascript/guides/express/tracing/"
+    ],
+    "logs": [
+      "https://docs.sentry.io/platforms/javascript/guides/express/logs/"
+    ],
+    "metrics": [
+      "https://docs.sentry.io/platforms/javascript/guides/express/metrics/"
+    ],
+    "profiling": [
+      "https://docs.sentry.io/platforms/javascript/guides/express/profiling/"
+    ]
+  },
+
+  "python-flask": {
+    "getting-started": [
+      "https://docs.sentry.io/platforms/python/integrations/flask/"
+    ],
+    "errors": ["https://docs.sentry.io/platforms/python/integrations/flask/"],
+    "tracing": ["https://docs.sentry.io/platforms/python/integrations/flask/"],
+    "logs": ["https://docs.sentry.io/platforms/python/integrations/flask/"],
+    "metrics": [],
+    "profiling": [
+      "https://docs.sentry.io/platforms/python/integrations/flask/",
+      "https://docs.sentry.io/platforms/python/profiling/"
+    ]
+  },
+
+  "python-fastapi": {
+    "getting-started": [
+      "https://docs.sentry.io/platforms/python/integrations/fastapi/"
+    ],
+    "errors": ["https://docs.sentry.io/platforms/python/integrations/fastapi/"],
+    "tracing": [
+      "https://docs.sentry.io/platforms/python/integrations/fastapi/"
+    ],
+    "logs": ["https://docs.sentry.io/platforms/python/integrations/fastapi/"],
+    "profiling": [
+      "https://docs.sentry.io/platforms/python/integrations/fastapi/",
+      "https://docs.sentry.io/platforms/python/profiling/"
+    ]
+  },
+
+  "sveltekit": {
+    "getting-started": [
+      "https://docs.sentry.io/platforms/javascript/guides/sveltekit/",
+      "https://docs.sentry.io/platforms/javascript/guides/sveltekit/manual-setup/"
+    ],
+    "errors": [
+      "https://docs.sentry.io/platforms/javascript/guides/sveltekit/",
+      "https://docs.sentry.io/platforms/javascript/guides/sveltekit/manual-setup/",
+      "https://docs.sentry.io/platforms/javascript/guides/sveltekit/usage/"
+    ],
+    "sourcemaps": [],
+    "replay": [
+      "https://docs.sentry.io/platforms/javascript/guides/sveltekit/session-replay/"
+    ],
+    "tracing": [
+      "https://docs.sentry.io/platforms/javascript/guides/sveltekit/tracing/"
+    ],
+    "logs": [
+      "https://docs.sentry.io/platforms/javascript/guides/sveltekit/logs/"
+    ],
+    "metrics": [
+      "https://docs.sentry.io/platforms/javascript/guides/sveltekit/metrics/"
+    ],
+    "profiling": [
+      "https://docs.sentry.io/platforms/javascript/guides/sveltekit/profiling/"
+    ]
+  },
+
+  "react-vite": {
+    "getting-started": [
+      "https://docs.sentry.io/platforms/javascript/guides/react/"
+    ],
+    "errors": [
+      "https://docs.sentry.io/platforms/javascript/guides/react/",
+      "https://docs.sentry.io/platforms/javascript/guides/react/usage/"
+    ],
+    "sourcemaps": [],
+    "replay": [
+      "https://docs.sentry.io/platforms/javascript/guides/react/session-replay/"
+    ],
+    "tracing": [
+      "https://docs.sentry.io/platforms/javascript/guides/react/tracing/"
+    ],
+    "logs": ["https://docs.sentry.io/platforms/javascript/guides/react/logs/"],
+    "metrics": [
+      "https://docs.sentry.io/platforms/javascript/guides/react/metrics/"
+    ],
+    "profiling": [
+      "https://docs.sentry.io/platforms/javascript/guides/react/profiling/"
+    ]
+  }
+}

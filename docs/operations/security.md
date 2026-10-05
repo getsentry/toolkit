@@ -62,7 +62,7 @@ When we redirect to Sentry OAuth, we always request the shared Sentry scope set
 defined in `packages/mcp-core/src/scopes.ts`:
 
 ```text
-org:read project:write team:write event:write
+org:read project:write team:write event:write alerts:write
 ```
 
 We ask Sentry for this broader shared token because:
@@ -323,8 +323,8 @@ catch (error) {
 
 ```typescript
 // Verify organization access
-const orgs = await apiService.listOrganizations();
-if (!orgs.find(org => org.slug === requestedOrg)) {
+const { organizations } = await apiService.listOrganizations();
+if (!organizations.find(org => org.slug === requestedOrg)) {
   throw new UserInputError("No access to organization");
 }
 ```

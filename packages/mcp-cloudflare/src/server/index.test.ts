@@ -148,6 +148,7 @@ describe("worker entrypoint", () => {
         "project:write",
         "team:write",
         "event:write",
+        "alerts:write",
       ],
       bearer_methods_supported: ["header"],
     });

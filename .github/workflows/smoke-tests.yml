@@ -8,6 +8,16 @@ on:
   push:
     branches: [main]
   pull_request:
+    paths:
+      - ".github/workflows/smoke-tests.yml"
+      - "packages/mcp-cloudflare/**"
+      - "packages/mcp-core/**"
+      - "packages/mcp-server-mocks/**"
+      - "packages/mcp-server-tsconfig/**"
+      - "packages/smoke-tests/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
 
 jobs:
   smoke-tests:
@@ -45,7 +55,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm build
+        run: pnpm --filter '@sentry/mcp-cloudflare...' --if-present run build
 
       - name: Start local dev server
         working-directory: packages/mcp-cloudflare

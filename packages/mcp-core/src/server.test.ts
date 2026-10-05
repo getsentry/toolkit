@@ -2,7 +2,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
 import { type Span, setUser, startSpan } from "@sentry/core";
-import { mswServer } from "@sentry/mcp-server-mocks";
+import {
+  issueFixture,
+  mswServer,
+  projectFixture,
+} from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -10,6 +14,7 @@ import { UserInputError } from "./errors";
 import { structuredResult } from "./internal/tool-helpers/results";
 import { buildServer } from "./server";
 import type { Skill } from "./skills";
+import { metricMonitor } from "./test-utils/metric-monitor";
 import {
   getGeneratedTextFromStructuredContent,
   getStructuredContent,
@@ -23,7 +28,9 @@ import { LIB_VERSION } from "./version";
 // Mock the Sentry core module
 vi.mock("@sentry/core", () => ({
   setTag: vi.fn(),
+  setTags: vi.fn(),
   setAttribute: vi.fn(),
+  setAttributes: vi.fn(),
   setUser: vi.fn(),
   getActiveSpan: vi.fn(),
   startSpan: vi.fn(),
@@ -115,9 +122,14 @@ const DEFAULT_DIRECT_TOOL_NAMES = [
   "find_organizations",
   "find_projects",
   "get_sentry_resource",
-  "search_events",
+  "search_errors",
   "search_issues",
+  "search_logs",
+  "search_metrics",
+  "search_profiles",
+  "search_replays",
   "search_sentry_tools",
+  "search_traces",
   "update_issue",
 ].sort();
 
@@ -1238,9 +1250,17 @@ describe("buildServer", () => {
       for (const [toolName, grantedSkills] of [
         ["add_issue_note", ["triage"]],
         ["update_issue", ["triage"]],
+        ["link_issue", ["triage"]],
+        ["unlink_issue", ["triage"]],
         ["create_project", ["project-management"]],
         ["create_team", ["project-management"]],
         ["update_project", ["project-management"]],
+        ["update_alert_rule", ["project-management"]],
+        ["create_alert_rule", ["project-management"]],
+        ["delete_alert_rule", ["project-management"]],
+        ["create_metric_monitor", ["project-management"]],
+        ["update_metric_monitor", ["project-management"]],
+        ["delete_metric_monitor", ["project-management"]],
         ["add_team_to_project", ["project-management"]],
         ["remove_team_from_project", ["project-management"]],
         ["create_dsn", ["project-management"]],
@@ -1284,7 +1304,38 @@ describe("buildServer", () => {
       }
     });
 
-    it("execute_sentry_tool rejects unavailable non-inspect tools", async () => {
+    it.each([
+      {
+        name: "link_issue",
+        arguments: {
+          issueId: "CLOUDFLARE-MCP-41",
+          externalIssueUrl: "https://github.com/example/repo/issues/42",
+        },
+      },
+      {
+        name: "unlink_issue",
+        arguments: {
+          issueId: "CLOUDFLARE-MCP-41",
+          externalIssueUrl: "https://github.com/example/repo/issues/42",
+        },
+      },
+      {
+        name: "update_issue",
+        arguments: { issueId: "CLOUDFLARE-MCP-41", status: "resolved" },
+      },
+      {
+        name: "update_alert_rule",
+        arguments: { ruleIdOrName: "123", status: "disabled" },
+      },
+      {
+        name: "update_metric_monitor",
+        arguments: { monitorId: "123", status: "disabled" },
+      },
+      {
+        name: "delete_metric_monitor",
+        arguments: { monitorId: "123" },
+      },
+    ])("execute_sentry_tool rejects unavailable $name", async (call) => {
       const server = buildServer({
         context: {
           ...baseContext,
@@ -1293,17 +1344,16 @@ describe("buildServer", () => {
       });
 
       const result = await callRegisteredTool(server, "execute_sentry_tool", {
-        name: "update_issue",
+        name: call.name,
         arguments: {
           organizationSlug: "sentry-mcp-evals",
-          issueId: "CLOUDFLARE-MCP-41",
-          status: "resolved",
+          ...call.arguments,
         },
       });
 
       expect(result).toMatchObject({ isError: true });
       expect(getTextContent(result)).toContain(
-        'Tool "update_issue" is not available in this session',
+        `Tool "${call.name}" is not available in this session`,
       );
     });
 
@@ -1371,6 +1421,7 @@ describe("buildServer", () => {
           },
         ],
         hasMore: false,
+        nextCursor: null,
       });
       expect(getTextContent(result)).toBe(
         getGeneratedTextFromStructuredContent(result),
@@ -1440,6 +1491,205 @@ describe("buildServer", () => {
       );
     });
 
+    it("discovers and dispatches issue linking with injected constraints", async () => {
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          grantedSkills: new Set(["triage"]),
+          constraints: {
+            organizationSlug: "sentry-mcp-evals",
+            projectSlug: "CLOUDFLARE-MCP",
+            regionUrl: "https://us.sentry.io",
+          },
+        },
+      });
+      const externalIssueUrl = "https://github.com/example/repo/issues/42";
+      const issueEndpoint =
+        "https://us.sentry.io/api/0/organizations/sentry-mcp-evals/issues/";
+      const endpoint = `${issueEndpoint}${issueFixture.id}/integrations/`;
+      const link = {
+        id: "72",
+        key: "example/repo#42",
+        displayName: "example/repo#42",
+        url: externalIssueUrl,
+      };
+      let linked = false;
+      const requests = { resolve: 0, list: 0, link: 0, unlink: 0 };
+      mswServer.use(
+        http.get(`${issueEndpoint}${issueFixture.shortId}/`, () => {
+          requests.resolve++;
+          return HttpResponse.json(issueFixture);
+        }),
+        http.get(endpoint, () => {
+          requests.list++;
+          return HttpResponse.json([
+            {
+              id: "11",
+              name: "example",
+              domainName: "github.com/example",
+              status: "active",
+              provider: { key: "github", name: "GitHub" },
+              externalIssues: linked ? [link] : [],
+            },
+          ]);
+        }),
+        http.put(`${endpoint}11/`, async ({ request }) => {
+          requests.link++;
+          expect(await request.json()).toEqual({
+            externalIssue: externalIssueUrl,
+          });
+          const status = linked ? 200 : 201;
+          linked = true;
+          return HttpResponse.json({ ...link, integrationId: 11 }, { status });
+        }),
+        http.delete(`${endpoint}11/`, ({ request }) => {
+          expect(new URL(request.url).searchParams.get("externalIssue")).toBe(
+            "72",
+          );
+          requests.unlink++;
+          linked = false;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      for (const name of ["link_issue", "unlink_issue"]) {
+        expect(getRegisteredToolNames(server)).not.toContain(name);
+        const found = await callRegisteredTool(server, "search_sentry_tools", {
+          query: name,
+          limit: 1,
+        });
+        expect(getStructuredContent(found)).toMatchObject({
+          results: [{ name }],
+        });
+      }
+      for (const [name, status] of [
+        ["link_issue", "linked"],
+        ["link_issue", "already_linked"],
+        ["unlink_issue", "not_linked"],
+        ["unlink_issue", "not_linked"],
+      ]) {
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name,
+          arguments: {
+            organizationSlug: "other-org",
+            issueId: "CLOUDFLARE-MCP-41",
+            externalIssueUrl,
+          },
+        });
+        expect(result.isError).not.toBe(true);
+        const payload = getStructuredContent(result);
+        expect(payload).toMatchObject({
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+          status,
+        });
+        expect(JSON.parse(getTextContent(result))).toEqual(payload);
+      }
+      expect(requests).toEqual({ resolve: 4, list: 4, link: 2, unlink: 1 });
+    });
+
+    it("dispatches App linking with form fields and resolved project context", async () => {
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          grantedSkills: new Set(["triage"]),
+          constraints: {
+            organizationSlug: "sentry-mcp-evals",
+            regionUrl: "https://us.sentry.io",
+          },
+        },
+      });
+      const control = "https://sentry.io/api/0";
+      const regional = "https://us.sentry.io/api/0";
+      const orgPath = "/organizations/sentry-mcp-evals";
+      const externalIssueUrl = "https://tracker.example/tickets/abc";
+      mswServer.use(
+        http.get(
+          `${regional}${orgPath}/issues/${issueFixture.id}/external-issues/`,
+          () => HttpResponse.json([]),
+        ),
+        http.get(`${control}${orgPath}/sentry-app-installations/`, () =>
+          HttpResponse.json([
+            {
+              uuid: "installation",
+              status: "installed",
+              app: { uuid: "app", slug: "custom-tracker" },
+            },
+          ]),
+        ),
+        http.get(`${control}${orgPath}/sentry-app-components/`, () =>
+          HttpResponse.json([
+            {
+              type: "issue-link",
+              sentryApp: { uuid: "app", slug: "custom-tracker" },
+              schema: {
+                link: {
+                  uri: "/link",
+                  required_fields: [
+                    { name: "issueId", type: "select", uri: "/search" },
+                  ],
+                },
+              },
+            },
+          ]),
+        ),
+        http.get(
+          `${control}/sentry-app-installations/installation/external-requests/`,
+          ({ request }) => {
+            const query = new URL(request.url).searchParams;
+            expect(query.get("query")).toBe("opaque-id");
+            expect(query.get("projectId")).toBe(
+              String(issueFixture.project.id),
+            );
+            return HttpResponse.json({
+              choices: [["opaque-id", "TICKET-42 Fix the error"]],
+            });
+          },
+        ),
+        http.post(
+          `${control}/sentry-app-installations/installation/external-issue-actions/`,
+          async ({ request }) => {
+            expect(
+              new URL(request.url).searchParams.get("expectedExternalIssueUrl"),
+            ).toBe(externalIssueUrl);
+            expect(await request.json()).toEqual({
+              groupId: issueFixture.id,
+              action: "link",
+              uri: "/link",
+              issueId: "opaque-id",
+            });
+            return HttpResponse.json(
+              {
+                id: "42",
+                issueId: issueFixture.id,
+                serviceType: "custom-tracker",
+                displayName: "TICKET-42",
+                webUrl: externalIssueUrl,
+              },
+              { status: 201 },
+            );
+          },
+        ),
+      );
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "link_issue",
+        arguments: {
+          issueId: issueFixture.shortId,
+          externalIssueUrl,
+          appSlug: "custom-tracker",
+          fields: { issueId: "opaque-id" },
+        },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(getStructuredContent(result)).toMatchObject({
+        status: "linked",
+        externalIssue: {
+          displayName: "TICKET-42",
+          provider: "custom-tracker",
+          url: externalIssueUrl,
+        },
+      });
+    });
+
     it("execute_sentry_tool dispatches to catalog-only update_dsn", async () => {
       const server = buildServer({
         context: baseContext,
@@ -1463,6 +1713,276 @@ describe("buildServer", () => {
         "# Updated DSN in **sentry-mcp-evals/cloudflare-mcp**",
       );
       expect(getTextContent(result)).toContain("**Rate Limit**: Disabled");
+    });
+
+    it.each([
+      ["find_metric_monitors", {}],
+      ["get_metric_monitor_details", { monitorId: "123" }],
+    ])(
+      "discovers and dispatches %s with injected constraints",
+      async (name, args) => {
+        const server = buildServer({
+          context: {
+            ...baseContext,
+            grantedSkills: new Set(["inspect"]),
+            constraints: {
+              organizationSlug: "sentry-mcp-evals",
+              projectSlug: "cloudflare-mcp",
+            },
+          },
+        });
+        const endpoint =
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/detectors/";
+        const monitor = {
+          ...metricMonitor,
+          projectId: String(projectFixture.id),
+        };
+        mswServer.use(
+          http.get(endpoint, ({ request }) => {
+            const query = new URL(request.url).searchParams;
+            expect(query.get("project")).toBe(monitor.projectId);
+            expect(query.getAll("type")).toEqual(["metric_issue"]);
+            return HttpResponse.json([monitor]);
+          }),
+          http.get(`${endpoint}123/`, () => HttpResponse.json(monitor)),
+        );
+        expect(getRegisteredToolNames(server)).not.toContain(name);
+        const discovered = await callRegisteredTool(
+          server,
+          "search_sentry_tools",
+          {
+            query: name,
+            limit: 1,
+          },
+        );
+        expect(getStructuredContent(discovered)).toMatchObject({
+          results: [{ name }],
+        });
+
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name,
+          arguments: {
+            organizationSlug: "other-org",
+            projectSlug: "other-project",
+            ...args,
+          },
+        });
+        expect(result.isError).not.toBe(true);
+        const expected = {
+          id: "123",
+          projectId: monitor.projectId,
+          enabled: metricMonitor.enabled,
+        };
+        expect(getStructuredContent(result)).toMatchObject(
+          name === "find_metric_monitors"
+            ? { monitors: [expected] }
+            : { monitor: expected },
+        );
+      },
+    );
+
+    it("discovers and dispatches Metric Monitor writes with injected constraints", async () => {
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          grantedSkills: new Set(["project-management"]),
+          constraints: {
+            organizationSlug: "sentry-mcp-evals",
+            projectSlug: "cloudflare-mcp",
+          },
+        },
+      });
+      const monitor = {
+        ...metricMonitor,
+        projectId: String(projectFixture.id),
+      };
+      const endpoint =
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/detectors/123/";
+      const writes: string[] = [];
+      mswServer.use(
+        http.post(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/projects/cloudflare-mcp/detectors/",
+          async ({ request }) => {
+            writes.push("POST");
+            expect(await request.json()).toMatchObject({
+              type: "metric_issue",
+              dataSources: [{ dataset: "events", timeWindow: 300 }],
+            });
+            return HttpResponse.json(
+              { ...monitor, id: "124", enabled: true, workflowIds: [] },
+              { status: 201 },
+            );
+          },
+        ),
+        http.get(endpoint, () => HttpResponse.json(monitor)),
+        http.put(endpoint, async ({ request }) => {
+          writes.push("PUT");
+          expect(await request.json()).toMatchObject({ enabled: true });
+          return HttpResponse.json({ ...monitor, enabled: true });
+        }),
+        http.delete(endpoint, () => {
+          writes.push("DELETE");
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      for (const [name, args, expected] of [
+        [
+          "create_metric_monitor",
+          {
+            name: monitor.name,
+            query: {
+              dataset: "events",
+              query: "level:error",
+              aggregate: "count()",
+              timeWindowSeconds: 300,
+              eventTypes: ["error"],
+            },
+            config: { detectionType: "static" },
+            conditionGroup: metricMonitor.conditionGroup,
+          },
+          {
+            monitor: { id: "124", enabled: true, projectId: monitor.projectId },
+          },
+        ],
+        [
+          "update_metric_monitor",
+          { monitorId: "123", status: "active" },
+          {
+            monitor: { id: "123", enabled: true, projectId: monitor.projectId },
+          },
+        ],
+        [
+          "delete_metric_monitor",
+          { monitorId: "123" },
+          { success: true, monitorId: "123" },
+        ],
+      ] as const) {
+        expect(getRegisteredToolNames(server)).not.toContain(name);
+        const search = await callRegisteredTool(server, "search_sentry_tools", {
+          query: name,
+          limit: 1,
+        });
+        expect(getStructuredContent(search)).toMatchObject({
+          results: [{ name }],
+        });
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name,
+          arguments: {
+            organizationSlug: "other-org",
+            projectSlug: "other-project",
+            ...args,
+          },
+        });
+        expect(result.isError).not.toBe(true);
+        expect(getStructuredContent(result)).toMatchObject(expected);
+      }
+      expect(writes).toEqual(["POST", "PUT", "DELETE"]);
+    });
+
+    it("execute_sentry_tool dispatches a catalog-only alert update with constrained organization", async () => {
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          grantedSkills: new Set(["project-management"]),
+          constraints: { organizationSlug: "sentry-mcp-evals" },
+        },
+      });
+      const rule = {
+        id: "123",
+        name: "Notify backend team",
+        enabled: true,
+        config: { frequency: 30 },
+      };
+      let requestBody: unknown;
+      const endpoint =
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/workflows/123/";
+      mswServer.use(
+        http.get(endpoint, () => HttpResponse.json(rule)),
+        http.put(endpoint, async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json({ ...rule, enabled: false });
+        }),
+      );
+
+      expect(getRegisteredToolNames(server)).not.toContain("update_alert_rule");
+
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "update_alert_rule",
+        arguments: {
+          organizationSlug: "other-org",
+          ruleIdOrName: "123",
+          status: "disabled",
+        },
+      });
+
+      expect(requestBody).toEqual({ name: rule.name, enabled: false });
+      expect(getStructuredContent(result)).toMatchObject({
+        alertRule: { id: "123", name: rule.name, enabled: false },
+      });
+    });
+
+    it("discovers and dispatches the Alert lifecycle with constrained organization", async () => {
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          grantedSkills: new Set(["project-management"]),
+          constraints: { organizationSlug: "sentry-mcp-evals" },
+        },
+      });
+      const endpoint =
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/workflows/";
+      const writes: string[] = [];
+      mswServer.use(
+        http.post(endpoint, () => {
+          writes.push("POST");
+          return HttpResponse.json(
+            {
+              id: "123",
+              name: "Prepared Alert",
+              enabled: false,
+              detectorIds: [],
+            },
+            { status: 201 },
+          );
+        }),
+        http.delete(`${endpoint}123/`, () => {
+          writes.push("DELETE");
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      for (const [name, args, expected] of [
+        [
+          "create_alert_rule",
+          {
+            name: "Prepared Alert",
+            status: "disabled",
+            detectorIds: [],
+            actionFilters: [],
+          },
+          { alertRule: { id: "123", enabled: false, detectorIds: [] } },
+        ],
+        [
+          "delete_alert_rule",
+          { ruleId: "123" },
+          { success: true, ruleId: "123" },
+        ],
+      ] as const) {
+        expect(getRegisteredToolNames(server)).not.toContain(name);
+        const search = await callRegisteredTool(server, "search_sentry_tools", {
+          query: name,
+          limit: 1,
+        });
+        expect(getStructuredContent(search)).toMatchObject({
+          results: [{ name, inputSchema: { properties: expect.any(Object) } }],
+        });
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name,
+          arguments: { organizationSlug: "other-org", ...args },
+        });
+        expect(result.isError).not.toBe(true);
+        expect(getStructuredContent(result)).toMatchObject(expected);
+      }
+      expect(writes).toEqual(["POST", "DELETE"]);
     });
 
     it("discovers and dispatches alert options with injected project constraints", async () => {

@@ -5,13 +5,13 @@ on:
   push:
     branches: [main]
     paths:
-      - "packages/mcp-core/src/tools*"
+      - "packages/mcp-core/src/tools/**"
       - "packages/mcp-server-evals/**"
       - "packages/mcp-server-mocks/**"
       - ".github/workflows/eval.yml"
   pull_request:
     paths:
-      - "packages/mcp-core/src/tools*"
+      - "packages/mcp-core/src/tools/**"
       - "packages/mcp-server-evals/**"
       - "packages/mcp-server-mocks/**"
       - ".github/workflows/eval.yml"
@@ -54,7 +54,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run build
-        run: pnpm build
+        run: pnpm --filter '@sentry/mcp-server-evals...' --if-present run build
 
       - name: Run evals
         run: pnpm eval:ci evals

@@ -1,0 +1,155 @@
+---
+interface Props {
+  title?: string;
+}
+
+const { title = "Terminal" } = Astro.props;
+---
+
+<div class="feature-terminal">
+  <div class="feature-terminal-header">
+    <div class="feature-terminal-dots">
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+    </div>
+    <span class="feature-terminal-title">{title}</span>
+    <div class="feature-terminal-spacer"></div>
+  </div>
+  <div class="feature-terminal-body">
+    <slot />
+  </div>
+</div>
+
+<style>
+  .feature-terminal {
+    background: rgba(10, 10, 15, 0.99);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow:
+      0 25px 50px -12px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    width: 100%;
+    font-size: 0.75rem;
+  }
+
+  .feature-terminal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+  }
+
+  .feature-terminal-dots {
+    display: flex;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .feature-terminal-title {
+    color: rgba(255, 255, 255, 0.25);
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+
+  .feature-terminal-spacer {
+    width: 52px;
+  }
+
+  .feature-terminal-body {
+    padding: 0 1.5rem 1.25rem;
+    font-family: var(--sl-font-mono);
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .feature-terminal-body :global(.prompt) {
+    color: rgba(255, 255, 255, 0.4);
+    user-select: none;
+  }
+
+  .feature-terminal-body :global(.command) {
+    color: #fff;
+  }
+
+  .feature-terminal-body :global(.dimmed) {
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .feature-terminal-body :global(.success) {
+    color: #22c55e;
+  }
+
+  .feature-terminal-body :global(.highlight) {
+    color: #22d3ee;
+  }
+
+  .feature-terminal-body :global(.line) {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    margin-bottom: 0.25rem;
+  }
+
+  .feature-terminal-body :global(.line:last-child) {
+    margin-bottom: 0;
+  }
+
+  .feature-terminal-body :global(.spacer) {
+    height: 0.75rem;
+  }
+
+  /* Table box styles */
+  .feature-terminal-body :global(.table-box) {
+    font-family: var(--sl-font-mono);
+    font-size: 0.7rem;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    overflow-x: auto;
+  }
+
+  .feature-terminal-body :global(.table-box .border) {
+    color: rgba(255, 255, 255, 0.15);
+  }
+
+  .feature-terminal-body :global(.table-box .header-text) {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.7rem;
+  }
+
+  .feature-terminal-body :global(.red-text) {
+    color: #ef4444;
+  }
+
+  .feature-terminal-body :global(.yellow-text) {
+    color: #eab308;
+  }
+
+  .feature-terminal-body :global(.alias-hl) {
+    font-weight: 700;
+    text-decoration: underline;
+  }
+
+  @media (max-width: 640px) {
+    .feature-terminal {
+      max-width: 100%;
+      width: 100%;
+      font-size: 0.7rem;
+    }
+
+    .feature-terminal-body {
+      padding: 0 1rem 1rem;
+    }
+  }
+</style>
