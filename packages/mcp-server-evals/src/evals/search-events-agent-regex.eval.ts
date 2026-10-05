@@ -11,6 +11,14 @@ function messageRegexPattern(query: unknown): string | undefined {
   return query.match(/(?:^|[\s(])!?message:\/\/(.+?)\/\/(?=[\s)]|$)/)?.[1];
 }
 
+function regexPatternLength(pattern: string): number {
+  return pattern.replace(/\\./g, "_").length;
+}
+
+function hasRegexFilter(query: unknown): boolean {
+  return typeof query === "string" && /:\/\/.+\/\/(?=[\s)]|$)/.test(query);
+}
+
 describeEval("search-events-agent-regex", {
   data: async () => [
     {
@@ -72,6 +80,82 @@ describeEval("search-events-agent-regex", {
           typeof value === "string" &&
           value.includes("!message://") &&
           messageRegexPattern(value)?.includes("completed") === true,
+      },
+    },
+    {
+      input:
+        "Find logs whose message looks like 'connection refused on port <number>', ignoring case",
+      expectedTools: [],
+      expected: {
+        dataset: "logs",
+        query: (value: unknown) => {
+          const pattern = messageRegexPattern(value);
+          return (
+            pattern !== undefined &&
+            pattern.startsWith("(?i)") &&
+            pattern.toLowerCase().includes("connection refused") &&
+            pattern.includes("\\d")
+          );
+        },
+      },
+    },
+    {
+      input: "Find logs whose message contains a UUID",
+      expectedTools: [],
+      expected: {
+        dataset: "logs",
+        query: (value: unknown) => {
+          const pattern = messageRegexPattern(value);
+          return (
+            pattern !== undefined &&
+            pattern.includes("-") &&
+            /\{(4|8|12|36)\}/.test(pattern) &&
+            regexPatternLength(pattern) <= 64
+          );
+        },
+      },
+    },
+    {
+      input: "Find logs whose message starts with 'Worker shutting down'",
+      expectedTools: [],
+      expected: {
+        dataset: "logs",
+        query: (value: unknown) =>
+          typeof value === "string" &&
+          value.includes("Worker shutting down*") &&
+          !value.includes("*Worker shutting down") &&
+          !hasRegexFilter(value),
+      },
+    },
+    {
+      input: "Find logs that mention either 'cache miss' or 'cache evicted'",
+      expectedTools: [],
+      expected: {
+        dataset: "logs",
+        query: (value: unknown) =>
+          typeof value === "string" &&
+          value.includes("*cache miss*") &&
+          value.includes("*cache evicted*") &&
+          !hasRegexFilter(value),
+      },
+    },
+    {
+      input:
+        "Find spans whose description looks like 'GET /api/users/<number>'",
+      expectedTools: [],
+      expected: {
+        dataset: "spans",
+        query: (value: unknown) =>
+          typeof value === "string" && !hasRegexFilter(value),
+      },
+    },
+    {
+      input: "Find errors whose message looks like 'timeout after <number>ms'",
+      expectedTools: [],
+      expected: {
+        dataset: "errors",
+        query: (value: unknown) =>
+          typeof value === "string" && !hasRegexFilter(value),
       },
     },
     {
