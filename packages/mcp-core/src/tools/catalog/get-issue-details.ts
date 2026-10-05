@@ -23,6 +23,7 @@ import {
   getSuspectCommit,
   isPerformanceIssueType,
   isSupportedEventType,
+  stripReplayMetadata,
 } from "../../internal/formatting";
 import type { AIConversationReference } from "../../internal/tool-helpers/ai-conversation-actions";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -172,6 +173,15 @@ function buildReplays(
   };
 }
 
+type IssueDetailsArgs = Parameters<typeof formatIssueOutput>[0];
+
+function issueDetailsResult(args: IssueDetailsArgs) {
+  if (args.experimentalMode && isSupportedEventType(args.event)) {
+    return structuredResult(buildIssueDetailsPayload(args));
+  }
+  return formatIssueOutput(args);
+}
+
 function buildIssueDetailsPayload({
   organizationSlug,
   issue,
@@ -187,22 +197,7 @@ function buildIssueDetailsPayload({
   experimentalMode,
   availableToolNames,
   directToolNames,
-}: {
-  organizationSlug: string;
-  issue: Issue;
-  event: Event;
-  apiService: SentryApiService;
-  autofixState?: AutofixRunState;
-  performanceTrace?: Trace;
-  externalIssues?: ExternalIssueList;
-  relatedReplayIds?: string[];
-  aiConversations?: AIConversationReference[];
-  codeLocation?: CodeLocation;
-  committers?: CommitterList;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
-}): GetIssueDetailsPayload {
+}: IssueDetailsArgs): GetIssueDetailsPayload {
   const autofix = autofixState?.autofix;
   const summaries = autofix ? getAutofixArtifactSummaries(autofix) : undefined;
   const isPerf = isPerformanceIssueType(issue) && !!issue.metadata;
@@ -243,10 +238,7 @@ function buildIssueDetailsPayload({
           ? event.message
           : null,
       // replays are their own field below
-      body: formatEventOutput(event, {
-        performanceTrace,
-        stripReplayIds: true,
-      }),
+      body: formatEventOutput(stripReplayMetadata(event), { performanceTrace }),
     },
     seer: autofix
       ? {
@@ -426,28 +418,7 @@ export default defineTool({
         }),
       ]);
 
-      if (context.experimentalMode && isSupportedEventType(event)) {
-        return structuredResult(
-          buildIssueDetailsPayload({
-            organizationSlug: orgSlug,
-            issue,
-            event,
-            apiService,
-            autofixState,
-            performanceTrace,
-            externalIssues,
-            relatedReplayIds,
-            aiConversations,
-            codeLocation,
-            committers,
-            experimentalMode: context.experimentalMode,
-            availableToolNames: context.availableToolNames,
-            directToolNames: context.directToolNames,
-          }),
-        );
-      }
-
-      return formatIssueOutput({
+      return issueDetailsResult({
         organizationSlug: orgSlug,
         issue,
         event,
@@ -534,28 +505,7 @@ export default defineTool({
       }),
     ]);
 
-    if (context.experimentalMode && isSupportedEventType(event)) {
-      return structuredResult(
-        buildIssueDetailsPayload({
-          organizationSlug: orgSlug,
-          issue,
-          event,
-          apiService,
-          autofixState,
-          performanceTrace,
-          externalIssues,
-          relatedReplayIds,
-          aiConversations,
-          codeLocation,
-          committers,
-          experimentalMode: context.experimentalMode,
-          availableToolNames: context.availableToolNames,
-          directToolNames: context.directToolNames,
-        }),
-      );
-    }
-
-    return formatIssueOutput({
+    return issueDetailsResult({
       organizationSlug: orgSlug,
       issue,
       event,

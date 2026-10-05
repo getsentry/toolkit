@@ -229,8 +229,6 @@ export function formatEventOutput(
       availableToolNames?: ReadonlySet<string>;
       directToolNames?: ReadonlySet<string>;
     };
-    // strip replay ids without rendering the replay note, for callers that report replays separately
-    stripReplayIds?: boolean;
   },
 ) {
   let output = "";
@@ -239,10 +237,9 @@ export function formatEventOutput(
       user?: z.infer<typeof EventSchema>["user"];
     }
   ).user;
-  const eventToRender =
-    options?.replaySummary || options?.stripReplayIds
-      ? stripReplayMetadata(event)
-      : event;
+  const eventToRender = options?.replaySummary
+    ? stripReplayMetadata(event)
+    : event;
 
   if (options?.replaySummary) {
     output += formatIssueReplayOutput({
@@ -2146,13 +2143,15 @@ export function formatIssueOutput({
 
     if (aiConversations && aiConversations.length > 0) {
       output += "\n## Response Notes\n\n";
-      output += formatAIConversationResponseNote({
+      for (const note of buildAIConversationResponseNotes({
         aiConversations,
         organizationSlug,
         experimentalMode: experimentalMode ?? false,
         availableToolNames,
         directToolNames,
-      });
+      })) {
+        output += `- ${note}\n`;
+      }
     }
 
     // For unsupported event types, return early without trying to render event details
@@ -2413,18 +2412,6 @@ function buildAIConversationResponseNotes({
   ];
 }
 
-function formatAIConversationResponseNote(args: {
-  aiConversations: AIConversationReference[];
-  organizationSlug: string;
-  experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
-}): string {
-  return `${buildAIConversationResponseNotes(args)
-    .map((note) => `- ${note}`)
-    .join("\n")}\n`;
-}
-
 const MAX_DISPLAY_REPLAYS = 5;
 
 function formatIssueReplayOutput({
@@ -2560,7 +2547,7 @@ function normalizeReplayId(replayId: string | null | undefined): string | null {
   return trimmedReplayId.replace(/-/g, "");
 }
 
-function stripReplayMetadata(event: Event): Event {
+export function stripReplayMetadata(event: Event): Event {
   const tags = event.tags?.filter(
     (tag) => tag.key !== "replay.id" && tag.key !== "replayId",
   );
