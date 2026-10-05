@@ -1265,6 +1265,9 @@ describe("buildServer", () => {
         ["remove_team_from_project", ["project-management"]],
         ["create_dsn", ["project-management"]],
         ["find_dsns", ["project-management"]],
+        ["create_custom_inbound_filter", ["project-management"]],
+        ["update_custom_inbound_filter", ["project-management"]],
+        ["delete_custom_inbound_filter", ["project-management"]],
       ] as const) {
         const grantedServer = buildServer({
           context: {

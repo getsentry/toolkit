@@ -58,6 +58,8 @@ import type {
   SearchAgentStateSchema,
   ClientKeyListSchema,
   ClientKeySchema,
+  CustomInboundFilterListSchema,
+  CustomInboundFilterSchema,
   CommitListSchema,
   CommitSchema,
   CommittersResponseSchema,
@@ -278,6 +280,10 @@ export type OrganizationEnvironmentList = z.infer<
 >;
 export type TagList = z.infer<typeof TagListSchema>;
 export type ClientKeyList = z.infer<typeof ClientKeyListSchema>;
+export type CustomInboundFilter = z.infer<typeof CustomInboundFilterSchema>;
+export type CustomInboundFilterList = z.infer<
+  typeof CustomInboundFilterListSchema
+>;
 
 // Dashboard types
 export type Dashboard = z.infer<typeof DashboardSchema>;

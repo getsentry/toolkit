@@ -1,0 +1,18 @@
+{
+  "id": "4509100000002001",
+  "name": "Ignore flaky connection errors",
+  "active": true,
+  "dataType": "error",
+  "conditions": [
+    {
+      "type": "error_type",
+      "value": ["ConnectionError", "TimeoutError"]
+    },
+    {
+      "type": "release",
+      "value": ["my-app@2.1.*"]
+    }
+  ],
+  "dateCreated": "2026-09-25T10:00:00.000000Z",
+  "dateUpdated": "2026-09-26T08:30:00.000000Z"
+}

@@ -557,6 +557,25 @@ export const ClientKeySchema = z
 
 export const ClientKeyListSchema = z.array(ClientKeySchema);
 
+export const CustomInboundFilterConditionSchema = z.object({
+  type: z.string(),
+  value: z.array(z.string()),
+});
+
+export const CustomInboundFilterSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]),
+    name: z.string().nullable(),
+    active: z.boolean(),
+    dataType: z.string(),
+    conditions: z.array(CustomInboundFilterConditionSchema),
+    dateCreated: z.string().datetime().nullable(),
+    dateUpdated: z.string().datetime().nullable(),
+  })
+  .passthrough();
+
+export const CustomInboundFilterListSchema = z.array(CustomInboundFilterSchema);
+
 const ReleaseProjectSchema = z
   .object({
     id: z.union([z.string(), z.number()]),

@@ -577,6 +577,174 @@
     "surface": "catalog"
   },
   {
+    "name": "create_custom_inbound_filter",
+    "description": "Create a custom inbound filter that drops matching errors, logs, metrics or spans at ingest, before they are stored or count against quota.\n\nUse this tool when the user wants to:\n- Ignore or filter out errors by message or exception type ('stop ingesting *ConnectionError*')\n- Drop events from an IP address or CIDR range, or from a release ('block 10.0.0.0/8', 'ignore release 1.4.*')\n- Drop noisy logs by message, or metrics by name\n- Filter every data type at once with dataType='all' on release or IP address\n\nConditions are ANDed; the values inside a condition are ORed. To express 'A or B' put both patterns into one condition's value list. To express 'A and B' use two conditions.\n\nBe careful when using this tool! An active filter drops data irreversibly. Create it with active=false to review it first.\n\n<examples>\n### Ignore one exception type on errors\ncreate_custom_inbound_filter(organizationSlug='my-org', projectSlug='my-project', name='Ignore flaky connection errors', dataType='error', conditions=[{type: 'error_type', value: ['ConnectionError', 'TimeoutError']}])\n\n### Drop everything from an IP range for one release\ncreate_custom_inbound_filter(organizationSlug='my-org', projectSlug='my-project', name='Load test traffic', dataType='all', conditions=[{type: 'ip_address', value: ['10.0.0.0/8']}, {type: 'release', value: ['my-app@2.1.*']}])\n\n### Drop debug logs\ncreate_custom_inbound_filter(organizationSlug='my-org', projectSlug='my-project', name='Drop debug logs', dataType='log', conditions=[{type: 'log_message', value: ['*DEBUG*']}])\n</examples>\n\n<hints>\n- Error message conditions match `{exception.type}: {exception.value}` on error events and the formatted message on message events. Prefer wildcards such as `*ConnectionError*` over a full message.\n- Release conditions match the full release name, e.g. `my-app@1.4.0`; use globs such as `my-app@1.*` for a range.\n- Use find_custom_inbound_filters() first to avoid creating a duplicate.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "A short label that says what the filter drops and why, e.g. 'Ignore flaky connection errors'."
+        },
+        "dataType": {
+          "type": "string",
+          "enum": ["all", "error", "log", "metric", "span"],
+          "description": "The data the filter drops: `error` (errors and messages), `log`, `metric`, `span`, or `all`. `all` matches every data type Sentry ingests, including ones added later, and accepts only `release` and `ip_address` conditions."
+        },
+        "conditions": {
+          "minItems": 1,
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "error_type",
+                  "error_message",
+                  "log_message",
+                  "metric_name",
+                  "release",
+                  "ip_address"
+                ],
+                "description": "The field to match. Every data type accepts `release` and `ip_address`. `error` also accepts `error_type` and `error_message`, `log` accepts `log_message`, `metric` accepts `metric_name`."
+              },
+              "value": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Patterns for the field. The condition matches when ANY pattern matches (OR). Patterns are case-insensitive globs where `*` matches any characters and `?` one character, e.g. `*ConnectionError*`, `my-app@2.1.*`, `checkout.*`. For `ip_address`, each value must be an IP address or CIDR range such as `203.0.113.7` or `10.0.0.0/8`."
+              }
+            },
+            "required": ["type", "value"]
+          },
+          "description": "Conditions are combined with AND: data is dropped only when every condition matches. Use several values inside one condition for OR, or create separate filters. At most 10 conditions per filter."
+        },
+        "active": {
+          "default": true,
+          "type": "boolean",
+          "description": "Whether the filter drops data right away. An inactive filter is stored but ignored."
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "projectSlug",
+        "name",
+        "dataType",
+        "conditions"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "dataType": {
+              "type": "string"
+            },
+            "conditions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["type", "value"],
+                "additionalProperties": false
+              }
+            },
+            "dateCreated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "dateUpdated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "active",
+            "dataType",
+            "conditions",
+            "dateCreated",
+            "dateUpdated"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": ["filter"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["project:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
     "name": "create_dsn",
     "description": "Create an additional DSN for an EXISTING project.\n\nUSE THIS TOOL WHEN:\n- Project already exists and needs additional DSN\n- 'Create another DSN for project X'\n- 'I need a production DSN for existing project'\n\nDO NOT USE for new projects (use create_project instead)\n\nBe careful when using this tool!\n\n<examples>\n### Create additional DSN for existing project\n```\ncreate_dsn(organizationSlug='my-organization', projectSlug='my-project', name='Production')\n```\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.\n- If any parameter is ambiguous, you should clarify with the user what they meant.\n</hints>",
     "inputSchema": {
@@ -1523,6 +1691,61 @@
     "surface": "catalog"
   },
   {
+    "name": "delete_custom_inbound_filter",
+    "description": "Delete a custom inbound filter so the project ingests the matching errors, logs, metrics or spans again.\n\nUse this tool when the user wants to permanently remove an inbound filter. To stop a filter temporarily, use update_custom_inbound_filter with active=false instead.\n\nBe careful when using this tool! Deletion cannot be undone.\n\n<examples>\ndelete_custom_inbound_filter(organizationSlug='my-org', projectSlug='my-project', filterId='12345')\n</examples>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "filterId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The custom inbound filter ID. Use find_custom_inbound_filters() to look it up."
+        }
+      },
+      "required": ["organizationSlug", "projectSlug", "filterId"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "filterId": {
+          "type": "string"
+        },
+        "projectSlug": {
+          "type": "string"
+        }
+      },
+      "required": ["success", "filterId", "projectSlug"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["project:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
     "name": "delete_metric_monitor",
     "description": "Permanently delete a Sentry Metric Monitor, preserving its connected Alerts and their other monitors.\nUse get_metric_monitor_details to inspect the monitor and obtain its native monitorId. Legacy metric alert IDs are not monitor IDs.\nUse update_metric_monitor(status='disabled') to pause detection instead. Deletion also removes an associated legacy metric alert and its incident history when present.\nSentry hides the monitor from normal reads immediately and completes deletion in the background.\ndelete_metric_monitor(organizationSlug='my-org', monitorId='12345')",
     "inputSchema": {
@@ -2044,6 +2267,147 @@
     },
     "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect"],
+    "surface": "catalog"
+  },
+  {
+    "name": "find_custom_inbound_filters",
+    "description": "List the custom inbound filters of a Sentry project: rules that drop errors, logs, metrics or spans at ingest before they count against quota.\n\nUse this tool when you need to:\n- See which events a project ignores or filters out at ingest, and why\n- Check whether an error message, release, IP address, log message or metric name is already filtered\n- Find a filter ID before update_custom_inbound_filter or delete_custom_inbound_filter\n\nEach filter has a data type (`error`, `log`, `metric`, `span` or `all`) and conditions on `error_type`, `error_message`, `log_message`, `metric_name`, `release` or `ip_address`. Conditions are ANDed; the values inside one condition are ORed.\n\nThis covers the custom filters only. Built-in inbound filters such as legacy browsers, web crawlers, browser extensions, health checks and localhost are project settings and are not listed here.\n\nReturns up to 25 filters per page (a project holds at most 50). When hasMore is true, pass nextCursor as cursor with the same project.\n\n<examples>\nfind_custom_inbound_filters(organizationSlug='my-org', projectSlug='my-project')\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, it is likely in the format of <organizationSlug>/<projectSlug>.\n- An inactive filter is kept but drops nothing.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "cursor": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Pagination cursor from a previous call's nextCursor. Reuse it with the same filters and scope to fetch the next page."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["organizationSlug", "projectSlug"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "dataType": {
+                "type": "string"
+              },
+              "conditions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["type", "value"],
+                  "additionalProperties": false
+                }
+              },
+              "dateCreated": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "dateUpdated": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "active",
+              "dataType",
+              "conditions",
+              "dateCreated",
+              "dateUpdated"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["filters", "hasMore", "nextCursor"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["project:read"],
+    "skills": ["inspect", "project-management"],
     "surface": "catalog"
   },
   {
@@ -8666,6 +9030,172 @@
       "additionalProperties": false
     },
     "requiredScopes": ["org:read", "project:read", "alerts:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
+    "name": "update_custom_inbound_filter",
+    "description": "Update a custom inbound filter: rename it, pause or resume it, or change what it drops at ingest.\n\nUse this tool when the user wants to:\n- Pause a filter without deleting it (active=false) or turn it back on\n- Add or remove a pattern, e.g. another error message, release or IP range\n- Rename a filter or move it to another data type\n\nOnly the fields you pass change. `conditions` replaces the whole condition list, so send the complete list you want to keep.\n\nBe careful when using this tool! Widening an active filter drops more data irreversibly.\n\n<examples>\n### Pause a filter\nupdate_custom_inbound_filter(organizationSlug='my-org', projectSlug='my-project', filterId='12345', active=false)\n\n### Replace the patterns of a filter\nupdate_custom_inbound_filter(organizationSlug='my-org', projectSlug='my-project', filterId='12345', conditions=[{type: 'error_message', value: ['*ConnectionError*', '*TimeoutError*']}])\n</examples>\n\n<hints>\n- Use find_custom_inbound_filters() to get the filterId and the current conditions before you change them.\n- When you change dataType, make sure every condition type is one that data type accepts.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "filterId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The custom inbound filter ID. Use find_custom_inbound_filters() to look it up."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "The new label of the filter."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Set false to pause the filter, true to resume it."
+        },
+        "dataType": {
+          "type": "string",
+          "enum": ["all", "error", "log", "metric", "span"],
+          "description": "The data the filter drops: `error` (errors and messages), `log`, `metric`, `span`, or `all`. `all` matches every data type Sentry ingests, including ones added later, and accepts only `release` and `ip_address` conditions."
+        },
+        "conditions": {
+          "minItems": 1,
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "error_type",
+                  "error_message",
+                  "log_message",
+                  "metric_name",
+                  "release",
+                  "ip_address"
+                ],
+                "description": "The field to match. Every data type accepts `release` and `ip_address`. `error` also accepts `error_type` and `error_message`, `log` accepts `log_message`, `metric` accepts `metric_name`."
+              },
+              "value": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Patterns for the field. The condition matches when ANY pattern matches (OR). Patterns are case-insensitive globs where `*` matches any characters and `?` one character, e.g. `*ConnectionError*`, `my-app@2.1.*`, `checkout.*`. For `ip_address`, each value must be an IP address or CIDR range such as `203.0.113.7` or `10.0.0.0/8`."
+              }
+            },
+            "required": ["type", "value"]
+          },
+          "description": "Conditions are combined with AND: data is dropped only when every condition matches. Use several values inside one condition for OR, or create separate filters. At most 10 conditions per filter."
+        }
+      },
+      "required": ["organizationSlug", "projectSlug", "filterId"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "dataType": {
+              "type": "string"
+            },
+            "conditions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["type", "value"],
+                "additionalProperties": false
+              }
+            },
+            "dateCreated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "dateUpdated": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "active",
+            "dataType",
+            "conditions",
+            "dateCreated",
+            "dateUpdated"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": ["filter"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["project:write"],
     "skills": ["project-management"],
     "surface": "catalog"
   },

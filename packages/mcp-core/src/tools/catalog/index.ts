@@ -53,6 +53,10 @@ import removeTeamFromProject from "./remove-team-from-project";
 import createDsn from "./create-dsn";
 import findDsns from "./find-dsns";
 import updateDsn from "./update-dsn";
+import findCustomInboundFilters from "./find-custom-inbound-filters";
+import createCustomInboundFilter from "./create-custom-inbound-filter";
+import updateCustomInboundFilter from "./update-custom-inbound-filter";
+import deleteCustomInboundFilter from "./delete-custom-inbound-filter";
 import analyzeIssueWithSeer from "./analyze-issue-with-seer";
 import searchDocs from "./search-docs";
 import getDoc from "./get-doc";
@@ -156,6 +160,10 @@ const catalogTools = {
   create_dsn: createDsn,
   find_dsns: findDsns,
   update_dsn: updateDsn,
+  find_custom_inbound_filters: findCustomInboundFilters,
+  create_custom_inbound_filter: createCustomInboundFilter,
+  update_custom_inbound_filter: updateCustomInboundFilter,
+  delete_custom_inbound_filter: deleteCustomInboundFilter,
   analyze_issue_with_seer: analyzeIssueWithSeer,
   search_docs: searchDocs,
   get_doc: getDoc,

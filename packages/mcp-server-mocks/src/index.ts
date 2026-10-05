@@ -31,6 +31,9 @@ import autofixStateExplorerFixture from "./fixtures/autofix-state-explorer.json"
   type: "json",
 };
 import clientKeyFixture from "./fixtures/client-key.json" with { type: "json" };
+import customInboundFilterFixture from "./fixtures/custom-inbound-filter.json" with {
+  type: "json",
+};
 import dashboardDetailsFixture from "./fixtures/dashboard-details.json" with {
   type: "json",
 };
@@ -235,6 +238,13 @@ type IssueUpdateBody = {
   ignoreWindow?: number;
   status?: string;
   substatus?: string;
+};
+
+type CustomInboundFilterWriteBody = {
+  name?: string | null;
+  active?: boolean;
+  dataType: string;
+  conditions: Array<{ type: string; value: string[] }>;
 };
 
 type ClientKeyUpdateBody = {
@@ -571,6 +581,51 @@ export const restHandlers = buildHandlers([
     fetch: () => {
       return HttpResponse.json([clientKeyFixture]);
     },
+  },
+  {
+    method: "get",
+    path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/custom-inbound-filters/",
+    fetch: () => HttpResponse.json([customInboundFilterFixture]),
+  },
+  {
+    method: "post",
+    path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/custom-inbound-filters/",
+    fetch: async ({ request }) => {
+      const body = (await request.json()) as CustomInboundFilterWriteBody;
+      return HttpResponse.json(
+        {
+          ...customInboundFilterFixture,
+          id: "4509100000002002",
+          name: body.name ?? null,
+          active: body.active ?? true,
+          dataType: body.dataType,
+          conditions: body.conditions,
+        },
+        { status: 201 },
+      );
+    },
+  },
+  {
+    method: "put",
+    path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/custom-inbound-filters/:filterId/",
+    fetch: async ({ request, params }) => {
+      const body =
+        (await request.json()) as Partial<CustomInboundFilterWriteBody>;
+      return HttpResponse.json({
+        ...customInboundFilterFixture,
+        id: String(params.filterId),
+        name:
+          body.name !== undefined ? body.name : customInboundFilterFixture.name,
+        active: body.active ?? customInboundFilterFixture.active,
+        dataType: body.dataType ?? customInboundFilterFixture.dataType,
+        conditions: body.conditions ?? customInboundFilterFixture.conditions,
+      });
+    },
+  },
+  {
+    method: "delete",
+    path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/custom-inbound-filters/:filterId/",
+    fetch: () => new HttpResponse(null, { status: 204 }),
   },
   {
     method: "get",
@@ -2101,6 +2156,7 @@ export {
   autofixStateExplorerFixture,
   autofixStateFixture,
   clientKeyFixture,
+  customInboundFilterFixture,
   dashboardDetailsFixture,
   dashboardListFixture,
   eventAttachmentsFixture,

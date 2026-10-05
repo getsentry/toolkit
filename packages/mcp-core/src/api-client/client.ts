@@ -51,6 +51,8 @@ import {
   AutofixRunStateSchema,
   ClientKeyListSchema,
   ClientKeySchema,
+  CustomInboundFilterListSchema,
+  CustomInboundFilterSchema,
   CommitListSchema,
   CommittersResponseSchema,
   DashboardListSchema,
@@ -130,6 +132,8 @@ import type {
   SearchAgentState,
   ClientKey,
   ClientKeyList,
+  CustomInboundFilter,
+  CustomInboundFilterList,
   CommitList,
   CommitterList,
   Dashboard,
@@ -344,6 +348,13 @@ type UpdateProjectRequest = {
   name?: string;
   slug?: string;
   platform?: string;
+};
+
+type CustomInboundFilterWriteRequest = {
+  name?: string | null;
+  active?: boolean;
+  dataType: string;
+  conditions: Array<{ type: string; value: string[] }>;
 };
 
 type UpdateClientKeyRequest = {
@@ -2854,6 +2865,147 @@ export class SentryApiService {
       opts,
     );
     return ClientKeyListSchema.parse(body);
+  }
+
+  /**
+   * Lists the custom inbound filters of a project.
+   *
+   * Source: src/sentry/api/endpoints/project_custom_inbound_filters.py
+   *
+   * @param params Query parameters
+   * @param params.organizationSlug Organization identifier
+   * @param params.projectSlug Project identifier
+   * @param params.limit Maximum number of filters per page
+   * @param params.cursor Pagination cursor from a previous call's nextCursor
+   * @param opts Request options
+   * @returns A page of custom inbound filters, plus a cursor for the next page (null once exhausted)
+   */
+  async listCustomInboundFilters(
+    {
+      organizationSlug,
+      projectSlug,
+      limit,
+      cursor,
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+      limit?: number;
+      cursor?: string | null;
+    },
+    opts?: RequestOptions,
+  ): Promise<{ filters: CustomInboundFilterList; nextCursor: string | null }> {
+    const queryParams = new URLSearchParams();
+    queryParams.set("per_page", String(limit ?? 25));
+    if (cursor) {
+      queryParams.set("cursor", cursor);
+    }
+    const basePath = apiPath`/projects/${organizationSlug}/${projectSlug}/custom-inbound-filters/`;
+    const response = await this.request(
+      `${basePath}?${queryParams.toString()}`,
+      undefined,
+      opts,
+    );
+    const body = await this.parseJsonResponse(response);
+    return {
+      filters: CustomInboundFilterListSchema.parse(body),
+      nextCursor: getNextCursor(response.headers.get("link")),
+    };
+  }
+
+  /**
+   * Creates a custom inbound filter in a project.
+   *
+   * Source: src/sentry/api/endpoints/project_custom_inbound_filters.py
+   */
+  async createCustomInboundFilter(
+    {
+      organizationSlug,
+      projectSlug,
+      ...filter
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+    } & CustomInboundFilterWriteRequest,
+    opts?: RequestOptions,
+  ): Promise<CustomInboundFilter> {
+    const body = await this.requestJSON(
+      apiPath`/projects/${organizationSlug}/${projectSlug}/custom-inbound-filters/`,
+      {
+        method: "POST",
+        body: JSON.stringify(filter),
+      },
+      opts,
+    );
+    return CustomInboundFilterSchema.parse(body);
+  }
+
+  /**
+   * Updates a custom inbound filter. Only the provided fields change.
+   *
+   * Source: src/sentry/api/endpoints/project_custom_inbound_filters.py
+   */
+  async updateCustomInboundFilter(
+    {
+      organizationSlug,
+      projectSlug,
+      filterId,
+      ...filter
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+      filterId: string;
+    } & Partial<CustomInboundFilterWriteRequest>,
+    opts?: RequestOptions,
+  ): Promise<CustomInboundFilter> {
+    const updateData: Partial<CustomInboundFilterWriteRequest> = {};
+    if (filter.name !== undefined) {
+      updateData.name = filter.name;
+    }
+    if (filter.active !== undefined) {
+      updateData.active = filter.active;
+    }
+    if (filter.dataType !== undefined) {
+      updateData.dataType = filter.dataType;
+    }
+    if (filter.conditions !== undefined) {
+      updateData.conditions = filter.conditions;
+    }
+    const body = await this.requestJSON(
+      apiPath`/projects/${organizationSlug}/${projectSlug}/custom-inbound-filters/${filterId}/`,
+      {
+        method: "PUT",
+        body: JSON.stringify(updateData),
+      },
+      opts,
+    );
+    return CustomInboundFilterSchema.parse(body);
+  }
+
+  /**
+   * Deletes a custom inbound filter.
+   *
+   * Source: src/sentry/api/endpoints/project_custom_inbound_filters.py
+   */
+  async deleteCustomInboundFilter(
+    {
+      organizationSlug,
+      projectSlug,
+      filterId,
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+      filterId: string;
+    },
+    opts?: RequestOptions,
+  ): Promise<void> {
+    // Treat 404 as success so repeated deletes are idempotent.
+    await this.request(
+      apiPath`/projects/${organizationSlug}/${projectSlug}/custom-inbound-filters/${filterId}/`,
+      {
+        method: "DELETE",
+      },
+      { ...opts, allowStatuses: [404] },
+    );
   }
 
   /**
