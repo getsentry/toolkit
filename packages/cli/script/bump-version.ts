@@ -20,9 +20,12 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const PLUGIN_PATH = "plugins/sentry-cli/.claude-plugin/plugin.json";
+const SKILL_PATH = "plugins/sentry-cli/skills/sentry-cli";
+const SKILL_VERSION_LINE = /^version: [^\r\n]+$/gm;
 
 /** Regex to match prerelease suffix (e.g., -dev.0, -alpha.1) */
 const PRERELEASE_SUFFIX_REGEX = /-.*$/;
@@ -53,6 +56,39 @@ function writePluginJson(plugin: PluginJson): void {
  */
 function stripPrerelease(version: string): string {
   return version.replace(PRERELEASE_SUFFIX_REGEX, "");
+}
+
+/** Update the tracked skill frontmatter without requiring a network-backed schema build. */
+function syncSkillVersions(version: string): void {
+  const references = readdirSync(join(SKILL_PATH, "references"))
+    .filter((name) => name.endsWith(".md"))
+    .map((name) => join(SKILL_PATH, "references", name));
+  if (references.length === 0) {
+    throw new Error("Generated CLI skill references are missing");
+  }
+
+  const files = [join(SKILL_PATH, "SKILL.md"), ...references].map((path) => {
+    const content = readFileSync(path, "utf-8");
+    const end = content.indexOf("\n---\n", 4);
+    if (!content.startsWith("---\n") || end === -1) {
+      throw new Error(`Invalid CLI skill frontmatter: ${path}`);
+    }
+    const frontmatter = content.slice(0, end);
+    const versions = frontmatter.match(SKILL_VERSION_LINE);
+    if (versions?.length !== 1) {
+      throw new Error(`Expected one CLI skill version: ${path}`);
+    }
+    return {
+      path,
+      content:
+        frontmatter.replace(SKILL_VERSION_LINE, `version: ${version}`) +
+        content.slice(end),
+    };
+  });
+
+  for (const { path, content } of files) {
+    writeFileSync(path, content);
+  }
 }
 
 /**
@@ -105,6 +141,11 @@ function postRelease(): void {
   plugin.version = stripPrerelease(pkg.version);
   writePluginJson(plugin);
   console.log(`Updated plugin.json to ${plugin.version}`);
+
+  // The generator embeds package.json's version in every tracked skill file.
+  // Sync only its frontmatter here: the full generator needs an API schema that
+  // is gitignored and may not exist in Craft's post-release checkout.
+  syncSkillVersions(pkg.version);
 
   // Commit and push if there are changes
   // Use spawnSync to check exit code without throwing
