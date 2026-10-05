@@ -52,7 +52,7 @@ export default defineTool({
     "</examples>",
     "",
     "<hints>",
-    "- Error message conditions match `{exception.type}: {exception.value}` on error events and the formatted message on message events. Prefer wildcards such as `*ConnectionError*` over a full message.",
+    "- Error message conditions match the exception type, the exception value and the formatted message of an event, each on its own. Prefer wildcards such as `*ConnectionError*` over a full message.",
     "- Release conditions match the full release name, e.g. `my-app@1.4.0`; use globs such as `my-app@1.*` for a range.",
     "- Use find_custom_inbound_filters() first to avoid creating a duplicate.",
     "</hints>",
