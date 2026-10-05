@@ -214,9 +214,11 @@ describe("app issue-link action", () => {
   });
 
   test.each([
-    "static",
-    "search",
-  ])("links an explicit generic issue ID from %s choices", async (source) => {
+    { type: "select", options: [["123", "An Issue"]] },
+    { type: "select", uri: "/sentry/tasks" },
+    { type: "text" },
+    { type: "textarea" },
+  ])("links an explicit generic issue ID using %j", async (field) => {
     const url = "https://tracker.example/tasks/123";
     installation = {
       ...INSTALLATION,
@@ -228,10 +230,7 @@ describe("app issue-link action", () => {
       required_fields: [
         {
           name: "task_id",
-          type: "select",
-          ...(source === "static"
-            ? { options: choices }
-            : { uri: "/sentry/tasks" }),
+          ...field,
         },
       ],
     };
@@ -248,7 +247,50 @@ describe("app issue-link action", () => {
       link: actionLink,
     });
     expect(await writes()[0]?.json()).toMatchObject({ task_id: "123" });
+    expect(
+      new globalThis.URL(writes()[0]!.url).searchParams.get(
+        "expectedExternalIssueUrl"
+      )
+    ).toBe(url);
     expect(writes()).toHaveLength(1);
+  });
+
+  test.each([
+    {
+      type: "text",
+      name: "issueId",
+      url: URL,
+      value: "ENG-99",
+      appSlug: "linear",
+    },
+    {
+      type: "textarea",
+      name: "url",
+      url: "https://tracker.example/tasks/123",
+      value: "https://tracker.example/tasks/456",
+      appSlug: "custom",
+    },
+  ])("rejects a conflicting $type target", async ({
+    type,
+    name,
+    url,
+    value,
+    appSlug,
+  }) => {
+    installation = {
+      ...INSTALLATION,
+      app: { ...INSTALLATION.app, slug: appSlug },
+    };
+    form = { uri: "/link", required_fields: [{ name, type }] };
+    await expect(
+      resolveAppIssueLink({
+        ...OPTIONS,
+        url,
+        appSlug,
+        fields: { [name]: value },
+      })
+    ).rejects.toThrow("conflicts");
+    expect(writes()).toHaveLength(0);
   });
 
   test.each([

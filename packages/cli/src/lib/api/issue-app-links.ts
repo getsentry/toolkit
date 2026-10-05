@@ -606,13 +606,14 @@ async function resolveFieldValue({
   const isTarget = field === targetField;
   const targetKey = isTarget ? parseTarget(options.url).key : undefined;
   const supplied = isTarget ? options.fields?.[field.name] : undefined;
-  // Generic selects can use provider IDs that cannot be inferred from the URL.
+  // Generic targets can use provider IDs that cannot be inferred from the URL.
+  const suppliedTarget =
+    field.type === "select" || !URL_FIELD.test(field.name)
+      ? supplied
+      : undefined;
   let query = (options.fields?.[field.name] ?? values[field.name])?.toString();
   if (isTarget) {
-    query =
-      targetKey ??
-      (field.type === "select" ? supplied : undefined) ??
-      options.url;
+    query = targetKey ?? suppliedTarget ?? options.url;
   }
   let value: string | number | undefined = query;
   if (field.type === "select") {
