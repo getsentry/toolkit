@@ -79,8 +79,8 @@ export type ResolveAppIssueLinkOptions = {
   issueId: string;
   /** Existing external resource URL. */
   url: string;
-  /** Installed app slug; defaults to linear for a linear.app issue URL. */
-  appSlug?: string;
+  /** Installed app slug selected by the caller. */
+  appSlug: string;
   /** Sentry project ID, forwarded to app searches that need project context. */
   projectId?: string;
   /** Additional form values keyed by names from the installed link schema. */
@@ -455,7 +455,8 @@ function addDependencies(pending: Field[], fields: Field[]): void {
 async function resolveFields(
   options: ResolveAppIssueLinkOptions,
   form: LinkForm,
-  installationUuid: string
+  installationUuid: string,
+  targetKey: string | undefined
 ): Promise<Record<string, string | number>> {
   const required = form.required_fields ?? [];
   const fields = [...required, ...(form.optional_fields ?? [])];
@@ -491,6 +492,7 @@ async function resolveFields(
     values[field.name] = await resolveFieldValue({
       field,
       targetField,
+      targetKey: field === targetField ? targetKey : undefined,
       values,
       options,
       installationUuid,
@@ -593,18 +595,19 @@ function validateFieldValue(
 async function resolveFieldValue({
   field,
   targetField,
+  targetKey,
   values,
   options,
   installationUuid,
 }: {
   field: Field;
   targetField: Field;
+  targetKey: string | undefined;
   values: Record<string, string | number>;
   options: ResolveAppIssueLinkOptions;
   installationUuid: string;
 }): Promise<string | number> {
   const isTarget = field === targetField;
-  const targetKey = isTarget ? parseTarget(options.url).key : undefined;
   const supplied = isTarget ? options.fields?.[field.name] : undefined;
   // Generic targets can use provider IDs that cannot be inferred from the URL.
   const suppliedTarget =
@@ -646,14 +649,8 @@ async function resolveFieldValue({
 export async function resolveAppIssueLink(
   options: ResolveAppIssueLinkOptions
 ): Promise<PreparedAppIssueLink> {
-  const target = parseTarget(options.url);
-  const appSlug = options.appSlug ?? (target.key ? "linear" : undefined);
-  if (!appSlug) {
-    throw new ValidationError(
-      "Specify --app for this external issue URL",
-      "app"
-    );
-  }
+  const { key } = parseTarget(options.url);
+  const { appSlug } = options;
   const existing = checkExisting(
     await listAppIssueLinks(options.orgSlug, options.issueId),
     options.url,
@@ -668,7 +665,7 @@ export async function resolveAppIssueLink(
     url: options.url,
     installationUuid: installation.uuid,
     uri: form.uri,
-    fields: await resolveFields(options, form, installation.uuid),
+    fields: await resolveFields(options, form, installation.uuid, key),
     existing,
   };
 }
@@ -677,7 +674,6 @@ export async function resolveAppIssueLink(
 export async function linkAppIssue(
   prepared: PreparedAppIssueLink
 ): Promise<{ link: AppIssueLink; changed: boolean }> {
-  validateUri(prepared.uri);
   const result = await executeSentryAppInstallationExternalIssueAction({
     ...getSdkConfig(getControlSiloUrl()),
     path: { uuid: prepared.installationUuid },

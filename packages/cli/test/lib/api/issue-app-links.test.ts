@@ -18,7 +18,13 @@ useTestConfigDir("issue-app-links-");
 const ORG = "example-org";
 const ISSUE = "123";
 const URL = "https://linear.app/example/issue/ENG-42/fix-crash";
-const OPTIONS = { orgSlug: ORG, issueId: ISSUE, url: URL, projectId: "77" };
+const OPTIONS = {
+  orgSlug: ORG,
+  issueId: ISSUE,
+  url: URL,
+  projectId: "77",
+  appSlug: "linear",
+};
 const LINK: AppIssueLink = {
   id: "99",
   issueId: ISSUE,

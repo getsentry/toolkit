@@ -88,7 +88,10 @@ describe("external issue associations", () => {
   test("Linear routes through the app workflow with project context", async () => {
     const appOptions = { ...options, url: appLink.webUrl, projectId: "456" };
     const result = await linkExternalIssue(appOptions);
-    expect(resolveAppIssueLink).toHaveBeenCalledWith(appOptions);
+    expect(resolveAppIssueLink).toHaveBeenCalledWith({
+      ...appOptions,
+      appSlug: "linear",
+    });
     expect(linkNativeIssue).not.toHaveBeenCalled();
     expect(result.externalIssue).toEqual({
       id: appLink.id,

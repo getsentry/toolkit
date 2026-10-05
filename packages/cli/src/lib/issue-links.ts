@@ -96,6 +96,12 @@ function selectSentryApp(
       "--integration selects a native integration. Use --app for a Sentry App."
     );
   }
+  if (appSlug && options.appSlug === "") {
+    throw new ValidationError(
+      "Specify --app for this external issue URL",
+      "app"
+    );
+  }
   if (!appSlug && options.fields && Object.keys(options.fields).length > 0) {
     throw new ValidationError(
       "--field requires a Sentry App selected with --app."
@@ -127,7 +133,7 @@ async function planLink(
   appSlug: string | undefined
 ): Promise<LinkPlan> {
   if (appSlug) {
-    const prepared = await resolveAppIssueLink(options);
+    const prepared = await resolveAppIssueLink({ ...options, appSlug });
     return {
       linked: Boolean(prepared.existing),
       preview: {
