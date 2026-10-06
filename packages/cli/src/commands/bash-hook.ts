@@ -142,7 +142,7 @@ async function handleSendEvent(flags: BashHookFlags): Promise<SendEventResult> {
   if (!flags.traceback) {
     throw new ValidationError(
       "--send-event requires --traceback <path>",
-      "traceback"
+      "traceback",
     );
   }
   if (!flags.log) {

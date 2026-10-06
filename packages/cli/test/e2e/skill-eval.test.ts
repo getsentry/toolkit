@@ -71,7 +71,7 @@ describe.skipIf(!provider)("skill eval", () => {
         client,
         model,
         skillContent,
-        testCase.prompt
+        testCase.prompt,
       );
       const result = await judgePlan(client, testCase, plan);
       results.push(result);
@@ -79,13 +79,13 @@ describe.skipIf(!provider)("skill eval", () => {
 
     const passed = results.filter((r) => r.passed).length;
     const score = passed / testCases.length;
-    // biome-ignore lint/suspicious/noMisplacedAssertion: called from test() via helper
+    // called from test() via helper
     expect(score).toBeGreaterThanOrEqual(threshold);
   }
 
   for (const model of AGENT_MODELS) {
     test(`${model} meets threshold`, { timeout: 120_000 }, () =>
-      runEvalForModel(model)
+      runEvalForModel(model),
     );
   }
 });

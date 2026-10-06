@@ -37,7 +37,7 @@ export type EvalProvider = {
   chat: (
     model: string,
     messages: ChatMessage[],
-    maxTokens: number
+    maxTokens: number,
   ) => Promise<string>;
 };
 
@@ -48,7 +48,7 @@ export type EvalProvider = {
  *   skip (matching the historical `!apiKey` skip behavior).
  */
 export function resolveEvalProvider(
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
 ): EvalProvider | null {
   const openRouterKey = env.OPENROUTER_API_KEY?.trim();
   const anthropicKey = env.ANTHROPIC_API_KEY?.trim();
@@ -144,7 +144,7 @@ async function anthropicChat({
     anthropicModel = model.slice("anthropic/".length);
   } else if (model.startsWith("openai/")) {
     throw new Error(
-      `Anthropic direct provider cannot serve OpenAI model "${model}"`
+      `Anthropic direct provider cannot serve OpenAI model "${model}"`,
     );
   }
 

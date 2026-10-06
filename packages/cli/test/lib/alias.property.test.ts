@@ -49,7 +49,7 @@ const projectSlugArb = slugWithHyphensArb;
 
 /** Generate org/project pairs */
 const orgProjectPairArb = tuple(orgSlugArb, projectSlugArb).map(
-  ([org, project]): OrgProjectPair => ({ org, project })
+  ([org, project]): OrgProjectPair => ({ org, project }),
 );
 
 /** Generate arrays of unique strings */
@@ -62,7 +62,7 @@ const uniqueStringsArb = uniqueArray(simpleSlugArb, {
 /** Generate strings with common word prefix (like spotlight-*) */
 const commonPrefixStringsArb = tuple(
   simpleSlugArb,
-  uniqueArray(simpleSlugArb, { minLength: 2, maxLength: 5 })
+  uniqueArray(simpleSlugArb, { minLength: 2, maxLength: 5 }),
 ).map(([prefix, suffixes]) => suffixes.map((s) => `${prefix}-${s}`));
 
 // Properties for findShortestUniquePrefixes
@@ -78,7 +78,7 @@ describe("property: findShortestUniquePrefixes", () => {
           expect(prefixes.has(str)).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -92,7 +92,7 @@ describe("property: findShortestUniquePrefixes", () => {
         // All prefixes should be unique
         expect(uniquePrefixValues.size).toBe(prefixValues.length);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -105,7 +105,7 @@ describe("property: findShortestUniquePrefixes", () => {
           expect(str.toLowerCase().startsWith(prefix)).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -118,7 +118,7 @@ describe("property: findShortestUniquePrefixes", () => {
           expect(prefix).toBe(prefix.toLowerCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -136,13 +136,13 @@ describe("property: findShortestUniquePrefixes", () => {
           const shorterPrefix = prefix.slice(0, -1);
           const wouldCollide = strings.some(
             (other) =>
-              other !== str && other.toLowerCase().startsWith(shorterPrefix)
+              other !== str && other.toLowerCase().startsWith(shorterPrefix),
           );
 
           expect(wouldCollide).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -152,7 +152,7 @@ describe("property: findShortestUniquePrefixes", () => {
         const prefixes = findShortestUniquePrefixes([str]);
         expect(prefixes.get(str)).toBe(str.charAt(0).toLowerCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -172,9 +172,9 @@ describe("property: findShortestUniquePrefixes", () => {
             expect(prefix.endsWith("-")).toBe(false);
             expect(prefix.endsWith("_")).toBe(false);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -200,7 +200,7 @@ describe("property: findCommonWordPrefix", () => {
           expect(str.toLowerCase().startsWith(prefix)).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -212,9 +212,9 @@ describe("property: findCommonWordPrefix", () => {
           // Simple slugs have no hyphens, so no common word prefix
           const prefix = findCommonWordPrefix(strings);
           expect(prefix).toBe("");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -224,7 +224,7 @@ describe("property: findCommonWordPrefix", () => {
         const prefix = findCommonWordPrefix([str]);
         expect(prefix).toBe("");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -244,7 +244,7 @@ describe("property: findCommonWordPrefix", () => {
           expect(lastChar === "-" || lastChar === "_").toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -254,7 +254,7 @@ describe("property: findCommonWordPrefix", () => {
         const prefix = findCommonWordPrefix(strings);
         expect(prefix).toBe(prefix.toLowerCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -272,9 +272,9 @@ describe("property: buildOrgAwareAliases", () => {
           // Each unique org/project pair should have an alias
           const uniqueKeys = new Set(pairs.map((p) => `${p.org}/${p.project}`));
           expect(aliasMap.size).toBe(uniqueKeys.size);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -288,9 +288,9 @@ describe("property: buildOrgAwareAliases", () => {
           const uniqueAliases = new Set(aliases);
 
           expect(uniqueAliases.size).toBe(aliases.length);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -304,9 +304,9 @@ describe("property: buildOrgAwareAliases", () => {
           for (const alias of aliasMap.values()) {
             expect(alias).toBe(alias.toLowerCase());
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -320,9 +320,9 @@ describe("property: buildOrgAwareAliases", () => {
           for (const alias of aliasMap.values()) {
             expect(alias.length).toBeGreaterThan(0);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -337,9 +337,9 @@ describe("property: buildOrgAwareAliases", () => {
             expect(alias.endsWith("-")).toBe(false);
             expect(alias.endsWith("_")).toBe(false);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -375,9 +375,9 @@ describe("property: buildOrgAwareAliases", () => {
           // Colliding aliases should contain "/" (org prefix)
           expect(alias1?.includes("/")).toBe(true);
           expect(alias2?.includes("/")).toBe(true);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -386,7 +386,7 @@ describe("property: buildOrgAwareAliases", () => {
       property(
         tuple(
           simpleSlugArb,
-          uniqueArray(simpleSlugArb, { minLength: 2, maxLength: 5 })
+          uniqueArray(simpleSlugArb, { minLength: 2, maxLength: 5 }),
         ),
         ([org, projects]) => {
           const pairs: OrgProjectPair[] = projects.map((p) => ({
@@ -399,9 +399,9 @@ describe("property: buildOrgAwareAliases", () => {
           for (const alias of aliasMap.values()) {
             expect(alias.includes("/")).toBe(false);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -418,9 +418,9 @@ describe("property: buildOrgAwareAliases", () => {
           for (const [key, alias1] of result1.aliasMap) {
             expect(result2.aliasMap.get(key)).toBe(alias1);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -445,7 +445,7 @@ describe("property: cross-function invariants", () => {
           expect(alias.length).toBeLessThanOrEqual(project.length);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -454,7 +454,7 @@ describe("property: cross-function invariants", () => {
       property(
         tuple(
           simpleSlugArb,
-          uniqueArray(simpleSlugArb, { minLength: 2, maxLength: 5 })
+          uniqueArray(simpleSlugArb, { minLength: 2, maxLength: 5 }),
         ),
         ([org, projects]) => {
           // Build aliases through the full function
@@ -472,9 +472,9 @@ describe("property: cross-function invariants", () => {
             const project = key.split("/")[1]!;
             expect(directPrefixes.get(project)).toBe(alias);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

@@ -7,7 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { listCommand } from "../../../src/commands/issue/list.js";
-// biome-ignore lint/performance/noNamespaceImport: namespace needed for vi.spyOn on mocked module
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- namespace needed for vi.spyOn on mocked module
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 
 vi.mock("../../../src/lib/api/issues.js", async (importOriginal) => {
@@ -39,9 +39,9 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
   };
 });
 
-// biome-ignore lint/performance/noNamespaceImport: namespace needed for vi.spyOn on mocked module
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- namespace needed for vi.spyOn on mocked module
 import * as issuesApi from "../../../src/lib/api/issues.js";
-// biome-ignore lint/performance/noNamespaceImport: namespace needed for vi.spyOn on mocked module
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- namespace needed for vi.spyOn on mocked module
 import * as projectsApi from "../../../src/lib/api/projects.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
@@ -49,7 +49,7 @@ import {
   setDefaultOrganization,
   setDefaultProject,
 } from "../../../src/lib/db/defaults.js";
-// biome-ignore lint/performance/noNamespaceImport: namespace needed for vi.spyOn on mocked module
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- namespace needed for vi.spyOn on mocked module
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
@@ -73,7 +73,7 @@ type ListFlags = {
 type ListFunc = (
   this: unknown,
   flags: ListFlags,
-  target?: string
+  target?: string,
 ) => Promise<void>;
 
 const getConfigDir = useTestConfigDir("test-issue-list-", {
@@ -177,11 +177,11 @@ describe("issue list: short ID auto-recovery", () => {
         period: parsePeriod("90d"),
         json: true,
       },
-      "javascript-react-mr-1b"
+      "javascript-react-mr-1b",
     );
 
     expect(resolveIssueSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ issueArg: "javascript-react-mr-1b" })
+      expect.objectContaining({ issueArg: "javascript-react-mr-1b" }),
     );
   });
 
@@ -200,11 +200,11 @@ describe("issue list: short ID auto-recovery", () => {
         period: parsePeriod("90d"),
         json: true,
       },
-      "/CLI-G"
+      "/CLI-G",
     );
 
     expect(resolveIssueSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ issueArg: "CLI-G" })
+      expect.objectContaining({ issueArg: "CLI-G" }),
     );
   });
 });
@@ -220,7 +220,7 @@ describe("issue list: error propagation", () => {
       if (req.url.includes("/issues/")) {
         return new Response(
           JSON.stringify({ detail: "Invalid query: unknown field" }),
-          { status: 400 }
+          { status: 400 },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -317,7 +317,7 @@ describe("issue list: error propagation", () => {
       if (req.url.includes("/issues/")) {
         return new Response(
           JSON.stringify({ detail: "Invalid search query: bad syntax" }),
-          { status: 400 }
+          { status: 400 },
         );
       }
       return new Response(JSON.stringify([]), {
@@ -353,7 +353,7 @@ describe("issue list: error propagation", () => {
           JSON.stringify({
             detail: "Error parsing search query: invalid status value of '403'",
           }),
-          { status: 400 }
+          { status: 400 },
         );
       }
       return new Response(JSON.stringify([]), {
@@ -392,7 +392,7 @@ describe("issue list: error propagation", () => {
           JSON.stringify({
             detail: "Error parsing search query: invalid status value of '403'",
           }),
-          { status: 400 }
+          { status: 400 },
         );
       }
       return new Response(JSON.stringify([]), {
@@ -461,12 +461,12 @@ describe("issue list: org-as-project detection", () => {
       await func.call(
         context,
         { limit: 10, sort: "date", period: parsePeriod("90d"), json: false },
-        "acme-corp"
+        "acme-corp",
       );
       expect(listIssuesAllPagesMock).toHaveBeenCalledWith(
         "acme-corp",
         "",
-        expect.any(Object)
+        expect.any(Object),
       );
     } finally {
       listIssuesAllPagesMock.mockReset();
@@ -505,12 +505,12 @@ describe("issue list: org-as-project detection", () => {
       await func.call(
         context,
         { limit: 10, sort: "date", period: parsePeriod("90d"), json: true },
-        "acme-corp"
+        "acme-corp",
       );
       expect(listIssuesAllPagesMock).toHaveBeenCalledWith(
         "other-org",
         "acme-corp",
-        expect.any(Object)
+        expect.any(Object),
       );
       expect(findProjectsBySlugMock).toHaveBeenCalledTimes(1);
     } finally {
@@ -553,7 +553,7 @@ describe("issue list: partial failure handling", () => {
             { slug: "org-one", name: "Org One" },
             { slug: "org-two", name: "Org Two" },
           ]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -561,13 +561,13 @@ describe("issue list: partial failure handling", () => {
       if (url.includes("/projects/org-one/myproj/")) {
         return new Response(
           JSON.stringify({ id: "1", slug: "myproj", name: "My Project" }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       if (url.includes("/projects/org-two/myproj/")) {
         return new Response(
           JSON.stringify({ id: "2", slug: "myproj", name: "My Project" }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -581,7 +581,7 @@ describe("issue list: partial failure handling", () => {
       if (url.includes("/organizations/org-two/issues/")) {
         return new Response(
           JSON.stringify({ detail: "Invalid query syntax" }),
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -598,7 +598,7 @@ describe("issue list: partial failure handling", () => {
     await func.call(
       context,
       { limit: 10, sort: "date", period: parsePeriod("90d"), json: true },
-      "myproj"
+      "myproj",
     );
 
     const output = JSON.parse(stdout.output);
@@ -628,7 +628,7 @@ describe("issue list: partial failure handling", () => {
             { slug: "org-one", name: "Org One" },
             { slug: "org-two", name: "Org Two" },
           ]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -636,13 +636,13 @@ describe("issue list: partial failure handling", () => {
       if (url.includes("/projects/org-one/myproj/")) {
         return new Response(
           JSON.stringify({ id: "1", slug: "myproj", name: "My Project" }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       if (url.includes("/projects/org-two/myproj/")) {
         return new Response(
           JSON.stringify({ id: "2", slug: "myproj", name: "My Project" }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -673,7 +673,7 @@ describe("issue list: partial failure handling", () => {
       await func.call(
         context,
         { limit: 10, sort: "date", period: parsePeriod("90d"), json: false },
-        "myproj"
+        "myproj",
       );
 
       // Partial failures are logged as warnings via logger (→ process.stderr)
@@ -748,7 +748,7 @@ describe("issue list: server sort order preservation", () => {
               lastSeen: "2025-01-01T00:00:00Z",
             }),
           ]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       return new Response(JSON.stringify([]), {
@@ -779,7 +779,7 @@ const listIssuesPaginatedMock = vi.mocked(issuesApi.listIssuesPaginated);
 const listIssuesAllPagesMock = vi.mocked(issuesApi.listIssuesAllPages);
 const resolveCursorMock = vi.mocked(paginationDb.resolveCursor);
 const advancePaginationStateMock = vi.mocked(
-  paginationDb.advancePaginationState
+  paginationDb.advancePaginationState,
 );
 
 describe("issue list: org-all mode (cursor pagination)", () => {
@@ -832,7 +832,7 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     const orgAllFunc = (await listCommand.loader()) as unknown as (
       this: unknown,
       flags: Record<string, unknown>,
-      target?: string
+      target?: string,
     ) => Promise<void>;
 
     listIssuesAllPagesMock.mockResolvedValue({
@@ -868,8 +868,8 @@ describe("issue list: org-all mode (cursor pagination)", () => {
           json: false,
           cursor: "1735689600:0:0",
         },
-        "test-org/test-project"
-      )
+        "test-org/test-project",
+      ),
     ).resolves.toBeUndefined();
   });
 
@@ -882,14 +882,14 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     const orgAllFunc = (await listCommand.loader()) as unknown as (
       this: unknown,
       flags: Record<string, unknown>,
-      target?: string
+      target?: string,
     ) => Promise<void>;
 
     const { context, stdoutWrite } = createOrgAllContext();
     await orgAllFunc.call(
       context,
       { limit: 10, sort: "date", period: parsePeriod("90d"), json: true },
-      "my-org/"
+      "my-org/",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -908,14 +908,14 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     const orgAllFunc = (await listCommand.loader()) as unknown as (
       this: unknown,
       flags: Record<string, unknown>,
-      target?: string
+      target?: string,
     ) => Promise<void>;
 
     const { context, stdoutWrite } = createOrgAllContext();
     await orgAllFunc.call(
       context,
       { limit: 10, sort: "date", period: parsePeriod("90d"), json: true },
-      "my-org/"
+      "my-org/",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -934,14 +934,14 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     const orgAllFunc = (await listCommand.loader()) as unknown as (
       this: unknown,
       flags: Record<string, unknown>,
-      target?: string
+      target?: string,
     ) => Promise<void>;
 
     const { context, stdoutWrite } = createOrgAllContext();
     await orgAllFunc.call(
       context,
       { limit: 10, sort: "date", period: parsePeriod("90d"), json: false },
-      "my-org/"
+      "my-org/",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -959,14 +959,14 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     const orgAllFunc = (await listCommand.loader()) as unknown as (
       this: unknown,
       flags: Record<string, unknown>,
-      target?: string
+      target?: string,
     ) => Promise<void>;
 
     const { context, stdoutWrite } = createOrgAllContext();
     await orgAllFunc.call(
       context,
       { limit: 10, sort: "date", period: parsePeriod("90d"), json: false },
-      "my-org/"
+      "my-org/",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -987,7 +987,7 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     const orgAllFunc = (await listCommand.loader()) as unknown as (
       this: unknown,
       flags: Record<string, unknown>,
-      target?: string
+      target?: string,
     ) => Promise<void>;
 
     const { context } = createOrgAllContext();
@@ -1000,13 +1000,13 @@ describe("issue list: org-all mode (cursor pagination)", () => {
         json: false,
         cursor: "last",
       },
-      "my-org/"
+      "my-org/",
     );
 
     expect(listIssuesPaginatedMock).toHaveBeenCalledWith(
       "my-org",
       "",
-      expect.objectContaining({ cursor: "cached:cursor:789" })
+      expect.objectContaining({ cursor: "cached:cursor:789" }),
     );
   });
 
@@ -1014,14 +1014,14 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     resolveCursorMock.mockImplementation(() => {
       throw new ValidationError(
         "No next page saved for this query. Run without --cursor first.",
-        "cursor"
+        "cursor",
       );
     });
 
     const orgAllFunc = (await listCommand.loader()) as unknown as (
       this: unknown,
       flags: Record<string, unknown>,
-      target?: string
+      target?: string,
     ) => Promise<void>;
 
     const { context } = createOrgAllContext();
@@ -1036,8 +1036,8 @@ describe("issue list: org-all mode (cursor pagination)", () => {
           json: false,
           cursor: "last",
         },
-        "my-org/"
-      )
+        "my-org/",
+      ),
     ).rejects.toThrow("No next page saved");
   });
 
@@ -1055,7 +1055,7 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     const orgAllFunc = (await listCommand.loader()) as unknown as (
       this: unknown,
       flags: Record<string, unknown>,
-      target?: string
+      target?: string,
     ) => Promise<void>;
 
     const { context } = createOrgAllContext();
@@ -1068,13 +1068,13 @@ describe("issue list: org-all mode (cursor pagination)", () => {
         json: false,
         cursor: "explicit:cursor:val",
       },
-      "my-org/"
+      "my-org/",
     );
 
     expect(listIssuesPaginatedMock).toHaveBeenCalledWith(
       "my-org",
       "",
-      expect.objectContaining({ cursor: "explicit:cursor:val" })
+      expect.objectContaining({ cursor: "explicit:cursor:val" }),
     );
   });
 });
@@ -1150,7 +1150,7 @@ describe("issue list: Phase 2 budget redistribution", () => {
             { slug: "org-one", name: "Org One" },
             { slug: "org-two", name: "Org Two" },
           ]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -1158,13 +1158,13 @@ describe("issue list: Phase 2 budget redistribution", () => {
       if (url.includes("/projects/org-one/myproj/")) {
         return new Response(
           JSON.stringify({ id: "1", slug: "myproj", name: "My Project" }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       if (url.includes("/projects/org-two/myproj/")) {
         return new Response(
           JSON.stringify({ id: "2", slug: "myproj", name: "My Project" }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -1190,7 +1190,7 @@ describe("issue list: Phase 2 budget redistribution", () => {
               "Content-Type": "application/json",
               Link: '<https://sentry.io/api/0/>; rel="next"; results="true"; cursor="phase2-cursor:0:0"',
             },
-          }
+          },
         );
       }
 
@@ -1217,7 +1217,7 @@ describe("issue list: Phase 2 budget redistribution", () => {
     await func.call(
       context,
       { limit: 6, sort: "date", period: parsePeriod("90d"), json: true },
-      "myproj"
+      "myproj",
     );
 
     const output = JSON.parse(stdout.output);
@@ -1307,7 +1307,7 @@ describe("issue list: compound cursor resume", () => {
         json: true,
         cursor: "last",
       },
-      "test-org/proj-a"
+      "test-org/proj-a",
     );
 
     const output = JSON.parse(stdout.output);
@@ -1352,7 +1352,7 @@ describe("issue list: collapse parameter optimization", () => {
 
   /** Run org-all issue list and return the API options passed to listIssuesAllPages. */
   async function runOrgAll(
-    callFlags: Record<string, unknown>
+    callFlags: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [sampleIssue],
@@ -1362,7 +1362,7 @@ describe("issue list: collapse parameter optimization", () => {
     const orgAllFunc = (await listCommand.loader()) as unknown as (
       this: unknown,
       flags: Record<string, unknown>,
-      target?: string
+      target?: string,
     ) => Promise<void>;
 
     const { context } = createOrgAllContext();
@@ -1416,14 +1416,14 @@ describe("issue list: collapse parameter optimization", () => {
       const orgAllFunc = (await listCommand.loader()) as unknown as (
         this: unknown,
         flags: Record<string, unknown>,
-        target?: string
+        target?: string,
       ) => Promise<void>;
       const { context } = createOrgAllContext();
       // Note: no `sort` key — the command must fill in the default.
       await orgAllFunc.call(
         context,
         { limit: 10, period: parsePeriod("90d"), json: true },
-        "my-org/"
+        "my-org/",
       );
       return (listIssuesAllPagesMock.mock.calls[0]?.[2] ?? {}) as Record<
         string,
@@ -1617,14 +1617,14 @@ describe("issue list: multi-target cursor-safe budget", () => {
           issues: Array.from({ length: limit }, (_, i) => issue(org, i + 1)),
           nextCursor: `${org}-next:0:0`,
         };
-      }
+      },
     );
 
     const { context, stdout } = createContext();
     await func.call(
       context,
       { limit: 10, sort: "date", period: parsePeriod("90d"), json: true },
-      "myproj"
+      "myproj",
     );
 
     const output = JSON.parse(stdout.output);
@@ -1645,14 +1645,14 @@ describe("issue list: multi-target cursor-safe budget", () => {
           issues: Array.from({ length: limit }, (_, i) => issue(org, i + 1)),
           nextCursor: `${org}-next:0:0`,
         };
-      }
+      },
     );
 
     const { context, stdout } = createContext();
     await func.call(
       context,
       { limit: 2, sort: "date", period: parsePeriod("90d"), json: true },
-      "myproj"
+      "myproj",
     );
 
     const output = JSON.parse(stdout.output);
@@ -1662,7 +1662,7 @@ describe("issue list: multi-target cursor-safe budget", () => {
       "issue-list",
       expect.any(String),
       "first",
-      undefined
+      undefined,
     );
   });
 });
@@ -1824,7 +1824,7 @@ describe("build400Detail", () => {
   test("gives a sort-specific hint (not the generic trio) for an unsupported sort", () => {
     const detail = build400Detail(
       "Sort key 'recommended' not supported.",
-      flags
+      flags,
     );
     expect(detail).toContain("does not support the 'recommended' sort");
     expect(detail).toContain("--sort date");
@@ -1875,13 +1875,13 @@ describe("appendIssueFlags", () => {
       appendIssueFlags("sentry issue list org/", {
         ...baseFlags,
         sort: "recommended",
-      })
+      }),
     ).toBe("sentry issue list org/");
     expect(
       appendIssueFlags("sentry issue list org/", {
         ...baseFlags,
         sort: "date",
-      })
+      }),
     ).toContain("--sort date");
   });
 
@@ -1891,13 +1891,13 @@ describe("appendIssueFlags", () => {
       appendIssueFlags("sentry issue list org/", {
         ...baseFlags,
         sort: "date",
-      })
+      }),
     ).toBe("sentry issue list org/");
     expect(
       appendIssueFlags("sentry issue list org/", {
         ...baseFlags,
         sort: "recommended",
-      })
+      }),
     ).toContain("--sort recommended");
   });
 });

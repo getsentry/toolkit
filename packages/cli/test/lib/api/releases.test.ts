@@ -302,7 +302,7 @@ describe("setCommitsAuto", () => {
           JSON.stringify({
             lastCommit: { id: "prev000000000000000000000000000000000000" },
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -340,11 +340,11 @@ describe("setCommitsAuto", () => {
         new Response(JSON.stringify([]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /No repository integrations/
+      /No repository integrations/,
     );
   });
 
@@ -352,39 +352,39 @@ describe("setCommitsAuto", () => {
     { body: { ok: true }, status: 200 },
     { body: "unexpected response", status: 202 },
     { body: null, status: 200 },
-  ])("rejects a non-array repository response (%j) before updating the release", async ({
-    body,
-    status,
-  }) => {
-    const requests: { method: string; pathname: string }[] = [];
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const request = new Request(input!, init);
-      requests.push({
-        method: request.method,
-        pathname: new URL(request.url).pathname,
+  ])(
+    "rejects a non-array repository response (%j) before updating the release",
+    async ({ body, status }) => {
+      const requests: { method: string; pathname: string }[] = [];
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const request = new Request(input!, init);
+        requests.push({
+          method: request.method,
+          pathname: new URL(request.url).pathname,
+        });
+        return new Response(JSON.stringify(body), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
       });
-      return new Response(JSON.stringify(body), {
-        status,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
 
-    const error = await setCommitsAuto("test-org", "1.0.0", "/tmp").catch(
-      (caught: unknown) => caught
-    );
-    expect(error).toMatchObject({
-      name: "ApiError",
-      exitCode: EXIT.API,
-      message: "Failed to list repositories: unexpected response format",
-      status,
-      endpoint: "/api/0/organizations/test-org/repos/",
-    });
-    expect(isUserError(error)).toBe(false);
-    expect(classifySilenced(error)).toBeNull();
-    expect(requests).toEqual([
-      { method: "GET", pathname: "/api/0/organizations/test-org/repos/" },
-    ]);
-  });
+      const error = await setCommitsAuto("test-org", "1.0.0", "/tmp").catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toMatchObject({
+        name: "ApiError",
+        exitCode: EXIT.API,
+        message: "Failed to list repositories: unexpected response format",
+        status,
+        endpoint: "/api/0/organizations/test-org/repos/",
+      });
+      expect(isUserError(error)).toBe(false);
+      expect(classifySilenced(error)).toBeNull();
+      expect(requests).toEqual([
+        { method: "GET", pathname: "/api/0/organizations/test-org/repos/" },
+      ]);
+    },
+  );
 
   test("throws ValidationError when no repo matches local remote", async () => {
     const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
@@ -393,11 +393,11 @@ describe("setCommitsAuto", () => {
         new Response(JSON.stringify([otherRepo]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /No Sentry repository matching/
+      /No Sentry repository matching/,
     );
   });
 
@@ -457,7 +457,7 @@ describe("setCommitsAuto", () => {
     // rendered via format() — no stack trace) with actionable guidance, and
     // keep field "repository" so default mode can fall back to local git.
     await expect(
-      setCommitsAuto("test-org", "1.0.0", "/tmp")
+      setCommitsAuto("test-org", "1.0.0", "/tmp"),
     ).rejects.toMatchObject({
       name: "ValidationError",
       field: "repository",
@@ -465,10 +465,10 @@ describe("setCommitsAuto", () => {
     });
 
     await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /Could not determine the repository from the local git remote/
+      /Could not determine the repository from the local git remote/,
     );
     await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /--local/
+      /--local/,
     );
   });
 });
@@ -542,7 +542,7 @@ describe("listReleasesPaginated", () => {
             "Content-Type": "application/json",
             link: linkHeader("abc:0:0", false),
           },
-        })
+        }),
     );
 
     const result = await listReleasesPaginated("test-org");

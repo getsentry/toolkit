@@ -56,7 +56,7 @@ export const linkCommand = buildCommand({
     this: SentryContext,
     flags: LinkFlags,
     issueArg: string,
-    url: string
+    url: string,
   ) {
     const fields = parseIssueLinkFields(flags.field);
     const { org, issueId, projectId } = await resolveOrgAndIssueId({

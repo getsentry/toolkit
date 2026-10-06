@@ -41,7 +41,7 @@ function makeCommand(overrides: Partial<Command> = {}): Command {
 
 function makeRouteMap(
   entries: RouteMapEntry[],
-  overrides: Partial<RouteMap> = {}
+  overrides: Partial<RouteMap> = {},
 ): RouteMap {
   return {
     brief: "Test route",
@@ -53,7 +53,7 @@ function makeRouteMap(
 function makeEntry(
   name: string,
   target: RouteMap | Command,
-  hidden = false
+  hidden = false,
 ): RouteMapEntry {
   return {
     name: { original: name },
@@ -123,7 +123,7 @@ describe("getPositionalString", () => {
           { placeholder: "target" },
           { placeholder: "org", optional: true },
         ],
-      })
+      }),
     ).toBe("<target> [<org>]");
   });
 
@@ -147,7 +147,10 @@ describe("getPositionalString", () => {
 describe("extractPositionals", () => {
   test("keeps arrays required and variadic even when the parser accepts zero", () => {
     expect(
-      extractPositionals({ kind: "array", parameter: { placeholder: "issue" } })
+      extractPositionals({
+        kind: "array",
+        parameter: { placeholder: "issue" },
+      }),
     ).toEqual([
       { placeholder: "issue", brief: "", optional: false, variadic: true },
     ]);
@@ -157,7 +160,7 @@ describe("extractPositionals", () => {
       extractPositionals({
         kind: "tuple",
         parameters: [{ placeholder: "org", optional: true }],
-      })
+      }),
     ).toEqual([
       { placeholder: "org", brief: "", optional: true, variadic: false },
     ]);
@@ -338,7 +341,7 @@ describe("extractAllRoutes", () => {
 
     const issueRoute = makeRouteMap(
       [makeEntry("list", listCmd), makeEntry("view", viewCmd)],
-      { brief: "Manage issues" }
+      { brief: "Manage issues" },
     );
 
     const topLevel = makeRouteMap([
@@ -386,7 +389,7 @@ describe("resolveCommandPath", () => {
 
   const issueRoute = makeRouteMap(
     [makeEntry("list", listCmd), makeEntry("view", viewCmd)],
-    { brief: "Manage issues" }
+    { brief: "Manage issues" },
   );
 
   const topLevel = makeRouteMap([
@@ -452,7 +455,7 @@ describe("resolveCommandPath", () => {
   test("returns null for extra path segments beyond 2 levels", () => {
     expect(resolveCommandPath(topLevel, ["issue", "list", "extra"])).toBeNull();
     expect(
-      resolveCommandPath(topLevel, ["issue", "list", "extra", "more"])
+      resolveCommandPath(topLevel, ["issue", "list", "extra", "more"]),
     ).toBeNull();
   });
 

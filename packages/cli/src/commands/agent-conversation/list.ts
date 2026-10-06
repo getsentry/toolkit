@@ -91,7 +91,7 @@ function formatListHuman(result: ConversationListResult): string {
 
 function jsonTransform(
   result: ConversationListResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const items =
     fields && fields.length > 0
@@ -185,7 +185,7 @@ export const listCommand = buildListCommand("agent-conversation", {
     const { cursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const timeParams = timeRangeToApiParams(flags.period);
@@ -201,7 +201,7 @@ export const listCommand = buildListCommand("agent-conversation", {
           limit: flags.limit,
           cursor,
           ...timeParams,
-        })
+        }),
     );
 
     advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);

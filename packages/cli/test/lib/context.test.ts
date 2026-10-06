@@ -5,9 +5,9 @@ import { buildContext } from "../../src/context.js";
 function deletedCwdError(): NodeJS.ErrnoException {
   return Object.assign(
     new Error(
-      "ENOENT: process.cwd failed with error no such file or directory, the current working directory was likely removed without changing the working directory, uv_cwd"
+      "ENOENT: process.cwd failed with error no such file or directory, the current working directory was likely removed without changing the working directory, uv_cwd",
     ),
-    { code: "ENOENT", errno: -2, syscall: "uv_cwd" }
+    { code: "ENOENT", errno: -2, syscall: "uv_cwd" },
   );
 }
 
@@ -27,7 +27,7 @@ describe("buildContext cwd", () => {
 
     expect(context.cwd).toBe("/tmp/removed-worktree");
     expect(context.forCommand({ prefix: ["sentry"] }).cwd).toBe(
-      "/tmp/removed-worktree"
+      "/tmp/removed-worktree",
     );
   });
 

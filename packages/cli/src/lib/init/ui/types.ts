@@ -32,7 +32,7 @@ import type { InitFeedbackOutcome } from "../feedback.js";
 
 /** Sentinel symbol returned by prompt methods when the user cancels. */
 export const CANCELLED: unique symbol = Symbol.for(
-  "sentry-cli:wizard-ui:cancelled"
+  "sentry-cli:wizard-ui:cancelled",
 );
 export type Cancelled = typeof CANCELLED;
 
@@ -323,7 +323,7 @@ export type WizardUI = AsyncDisposable & {
    */
   setStep?(
     stepId: string,
-    status: "in_progress" | "completed" | "failed" | "skipped"
+    status: "in_progress" | "completed" | "failed" | "skipped",
   ): void;
 
   /**
@@ -372,7 +372,7 @@ export type WizardUI = AsyncDisposable & {
    * if the user aborted.
    */
   multiselect<T extends string>(
-    opts: MultiSelectOptions<T>
+    opts: MultiSelectOptions<T>,
   ): Promise<T[] | Cancelled>;
 
   /**

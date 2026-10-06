@@ -211,7 +211,7 @@ export const logsCommand = buildCommand({
         }).catch((error: unknown): never => {
           // An unparseable user --query is a user input mistake, not a CLI bug.
           throw toSearchQueryError(error, flags.query);
-        })
+        }),
     );
 
     const hasMore = logs.length >= flags.limit;

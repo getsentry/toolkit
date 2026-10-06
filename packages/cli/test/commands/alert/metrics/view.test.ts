@@ -5,12 +5,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { viewCommand } from "../../../../src/commands/alert/metrics/view.js";
 import type { MetricAlertRule } from "../../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../../src/lib/browser.js";
 import { ApiError, ValidationError } from "../../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../../helpers.js";
 
@@ -74,11 +74,11 @@ describe("alert metrics view", () => {
     const func = (await viewCommand.loader()) as unknown as (
       this: unknown,
       flags: ViewFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
-      func.call(context, { web: false, json: true }, "acme/")
+      func.call(context, { web: false, json: true }, "acme/"),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -89,11 +89,11 @@ describe("alert metrics view", () => {
     const func = (await viewCommand.loader()) as unknown as (
       this: unknown,
       flags: ViewFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
-      func.call(context, { web: false, json: true }, "test-org/42")
+      func.call(context, { web: false, json: true }, "test-org/42"),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -113,7 +113,7 @@ describe("alert metrics view", () => {
     const func = (await viewCommand.loader()) as unknown as (
       this: unknown,
       flags: ViewFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(context, { web: false, json: false }, "test-org/9");
@@ -134,14 +134,14 @@ describe("alert metrics view", () => {
     const func = (await viewCommand.loader()) as unknown as (
       this: unknown,
       flags: ViewFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(context, { web: true, json: false }, "test-org/9");
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-org"),
-      "metric alert rules"
+      "metric alert rules",
     );
     expect(resolveSpy).not.toHaveBeenCalled();
     expect(getRuleSpy).not.toHaveBeenCalled();
@@ -158,7 +158,7 @@ describe("alert metrics view", () => {
     const func = (await viewCommand.loader()) as unknown as (
       this: unknown,
       flags: ViewFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     const err = await func

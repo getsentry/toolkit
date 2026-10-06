@@ -16,7 +16,7 @@ export type AssertionFailure = {
 export function runAssertions(
   projectDir: string,
   platform: Platform,
-  result: WizardResult
+  result: WizardResult,
 ): AssertionFailure[] {
   const failures: AssertionFailure[] = [];
 
@@ -32,7 +32,7 @@ export function runAssertions(
   try {
     const depContent = readFileSync(
       join(projectDir, platform.depFile),
-      "utf-8"
+      "utf-8",
     );
     if (!depContent.includes(platform.sdkPackage)) {
       failures.push({

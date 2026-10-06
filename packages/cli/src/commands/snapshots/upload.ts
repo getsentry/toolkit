@@ -95,16 +95,16 @@ function parsePrNumber(value: string): number {
  * normalized list, or `undefined` when neither is set.
  */
 async function resolveAllImageNames(
-  flags: UploadFlags
+  flags: UploadFlags,
 ): Promise<string[] | undefined> {
   if (flags["all-image-file-names"] !== undefined) {
     const names = normalizeImageNames(
-      splitAndTrim(flags["all-image-file-names"], ",")
+      splitAndTrim(flags["all-image-file-names"], ","),
     );
     if (names.length === 0) {
       throw new ValidationError(
         "--all-image-file-names must not be empty",
-        "all-image-file-names"
+        "all-image-file-names",
       );
     }
     return names;
@@ -118,14 +118,14 @@ async function resolveAllImageNames(
       log.debug(`Failed to read --all-image-file-names-file ${path}`, err);
       throw new ValidationError(
         `Failed to read --all-image-file-names-file: ${path}`,
-        "all-image-file-names-file"
+        "all-image-file-names-file",
       );
     }
     const names = normalizeImageNames(splitAndTrim(content, "\n"));
     if (names.length === 0) {
       throw new ValidationError(
         `--all-image-file-names-file is empty or contains only blank lines: ${path}`,
-        "all-image-file-names-file"
+        "all-image-file-names-file",
       );
     }
     return names;
@@ -141,12 +141,12 @@ async function resolveAllImageNames(
 function collectVcs(
   flags: UploadFlags,
   cwd: string,
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
 ): VcsInfo {
   if (flags["force-git-metadata"] && flags["no-git-metadata"]) {
     throw new ValidationError(
       "--force-git-metadata and --no-git-metadata cannot be used together",
-      "force-git-metadata"
+      "force-git-metadata",
     );
   }
   const shouldCollect =
@@ -157,7 +157,7 @@ function collectVcs(
     throw new ValidationError(
       "A PR number was provided but no base SHA could be determined. " +
         "Pass --base-sha explicitly or ensure your CI exposes the merge base.",
-      "pr-number"
+      "pr-number",
     );
   }
   return vcs;
@@ -171,7 +171,7 @@ function collectVcs(
  */
 async function resolveSelective(
   flags: UploadFlags,
-  images: CollectedImage[]
+  images: CollectedImage[],
 ): Promise<{ selective: boolean; allImageNames?: string[] }> {
   const allImageNames = await resolveAllImageNames(flags);
   const selective = Boolean(flags.selective) || allImageNames !== undefined;
@@ -184,9 +184,9 @@ async function resolveSelective(
     if (unknown.length > 0) {
       throw new ValidationError(
         `The following uploaded images are not in --all-image-file-names: ${unknown.join(
-          ", "
+          ", ",
         )}`,
-        "all-image-file-names"
+        "all-image-file-names",
       );
     }
   }
@@ -197,7 +197,7 @@ async function resolveSelective(
 async function runPooled<T>(
   items: T[],
   limit: number,
-  fn: (item: T) => Promise<void>
+  fn: (item: T) => Promise<void>,
 ): Promise<void> {
   for (let i = 0; i < items.length; i += limit) {
     await Promise.all(items.slice(i, i + limit).map(fn));
@@ -231,7 +231,7 @@ type UploadImagesResult = {
 async function uploadImages(
   org: string,
   project: string,
-  images: CollectedImage[]
+  images: CollectedImage[],
 ): Promise<UploadImagesResult> {
   const { objectstore } = await fetchSnapshotsUploadOptions(org, project);
   const config: ObjectstoreConfig = objectstore;
@@ -243,7 +243,7 @@ async function uploadImages(
   if (!(orgId && projectId)) {
     throw new ValidationError(
       "Snapshot upload options are missing org/project scope",
-      "app-id"
+      "app-id",
     );
   }
 
@@ -328,7 +328,7 @@ function formatUploadResult(data: SnapshotUploadResult): string {
     rows.push(["URL", data.snapshot.snapshotUrl]);
   }
   return renderMarkdown(
-    `${colorTag("green", "Created snapshot")}\n\n${mdKvTable(rows)}`
+    `${colorTag("green", "Created snapshot")}\n\n${mdKvTable(rows)}`,
   );
 }
 
@@ -481,7 +481,7 @@ export const uploadCommand = buildCommand({
     ) {
       throw new ValidationError(
         "--all-image-file-names and --all-image-file-names-file cannot be used together",
-        "all-image-file-names"
+        "all-image-file-names",
       );
     }
     const vcs = collectVcs(flags, this.cwd, this.env);

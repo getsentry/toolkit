@@ -174,7 +174,7 @@ function runInheritedCommand(command: string): Promise<void> {
 function seedWelcomePrompt(
   store: WizardStore,
   opts: WelcomeOptions,
-  pending: PendingWelcome
+  pending: PendingWelcome,
 ): void {
   store.setLayout("intro");
   store.setPrompt({
@@ -240,7 +240,7 @@ import inkAppPath from "./ink-app.tsx" with { type: "file" };
  * broken in Bun-compiled binaries (see module docstring).
  */
 function openFreshTtyForInk(): ReadStream | null {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const fd = openSync("/dev/tty", "r");
     return new ReadStream(fd);
@@ -256,7 +256,7 @@ function openFreshTtyForInk(): ReadStream | null {
  * deps).
  */
 export async function createInkUI(
-  opts: CreateInkUIOptions = {}
+  opts: CreateInkUIOptions = {},
 ): Promise<InkUI> {
   // Import the Ink App sidecar. Three runtime contexts:
   //
@@ -277,9 +277,9 @@ export async function createInkUI(
 
   // Check if running inside a Node SEA binary
   let isSea = false;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: node:sea types not yet in @types/node
+    // oxlint-disable-next-line typescript/no-explicit-any -- node:sea types not yet in @types/node
     const sea = _require("node:sea") as any;
     isSea = sea.isSea?.() === true;
   } catch {
@@ -289,7 +289,7 @@ export async function createInkUI(
   if (isSea) {
     // Extract the embedded sidecar to a temp file and import it.
     // The asset key matches what fossilize registered via --assets.
-    // biome-ignore lint/suspicious/noExplicitAny: node:sea types not yet in @types/node
+    // oxlint-disable-next-line typescript/no-explicit-any -- node:sea types not yet in @types/node
     const sea = _require("node:sea") as any;
     const { writeFileSync, mkdtempSync } = await import("node:fs");
     const { join } = await import("node:path");
@@ -312,7 +312,7 @@ export async function createInkUI(
 
   // Clean up SEA temp file — module is cached in memory after import()
   if (seaTmpDir) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       const { rmSync } = await import("node:fs");
       rmSync(seaTmpDir, { recursive: true, force: true });
@@ -391,7 +391,7 @@ export async function createInkUI(
 type InkInstance = {
   unmount: () => void;
   waitUntilExit: () => Promise<unknown>;
-  // biome-ignore lint/suspicious/noExplicitAny: dynamic-import boundary
+  // oxlint-disable-next-line typescript/no-explicit-any -- dynamic-import boundary
   rerender: (node: any) => void;
   /**
    * Clears Ink's last rendered output from the terminal. We call
@@ -471,7 +471,7 @@ export class InkUI implements WizardUI {
     instance: InkInstance,
     store: WizardStore,
     freshStdin: ReadStream | null,
-    promptOptions: InkPromptOptions = {}
+    promptOptions: InkPromptOptions = {},
   ) {
     this.instance = instance;
     this.store = store;
@@ -483,7 +483,7 @@ export class InkUI implements WizardUI {
       const initialWelcome = this.initialWelcome;
       initialWelcome.tracedPromise = this.promptTelemetry.tracePrompt(
         "welcome",
-        () => initialWelcome.promise
+        () => initialWelcome.promise,
       );
     }
     if (this.initialWelcome && !this.initialWelcome.settled) {
@@ -533,7 +533,7 @@ export class InkUI implements WizardUI {
       actions: {
         openUrl: (url) => {
           // Best-effort; openBrowser never throws, catch keeps it non-blocking.
-          // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+          // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
           openBrowser(url).catch(() => {
             // ignore
           });
@@ -589,7 +589,7 @@ export class InkUI implements WizardUI {
 
   setStep(
     stepId: string,
-    status: "in_progress" | "completed" | "failed" | "skipped"
+    status: "in_progress" | "completed" | "failed" | "skipped",
   ): void {
     this.promptTelemetry.setActiveStep(stepId, status === "in_progress");
     this.store.setStepStatus(stepId, status);
@@ -677,7 +677,7 @@ export class InkUI implements WizardUI {
   /** Measures only the interval in which the prompt can accept user input. */
   private waitForPrompt<T>(
     kind: WizardPromptKind,
-    mount: (resolve: (value: T) => void) => void
+    mount: (resolve: (value: T) => void) => void,
   ): Promise<T> {
     return this.promptTelemetry.tracePrompt(kind, () => new Promise<T>(mount));
   }
@@ -689,7 +689,7 @@ export class InkUI implements WizardUI {
   private completePrompt<T>(
     prompt: ActivePrompt,
     value: T,
-    resolve: (resolvedValue: T) => void
+    resolve: (resolvedValue: T) => void,
   ): void {
     this.activePromptCancel = undefined;
     this.completedPrompt = prompt;
@@ -711,8 +711,8 @@ export class InkUI implements WizardUI {
           ? Math.max(
               0,
               opts.options.findIndex(
-                (option) => option.value === opts.initialValue
-              )
+                (option) => option.value === opts.initialValue,
+              ),
             )
           : 0;
       let settled = false;
@@ -758,7 +758,7 @@ export class InkUI implements WizardUI {
           this.completePrompt(
             prompt,
             value === null ? CANCELLED : (value as T),
-            resolve
+            resolve,
           );
         },
       };
@@ -767,7 +767,7 @@ export class InkUI implements WizardUI {
   }
 
   multiselect<T extends string>(
-    opts: MultiSelectOptions<T>
+    opts: MultiSelectOptions<T>,
   ): Promise<T[] | Cancelled> {
     return this.waitForPrompt<T[] | Cancelled>("multiselect", (resolve) => {
       let settled = false;
@@ -808,7 +808,7 @@ export class InkUI implements WizardUI {
           this.completePrompt(
             prompt,
             values === null ? CANCELLED : (values as T[]),
-            resolve
+            resolve,
           );
         },
       };
@@ -852,7 +852,7 @@ export class InkUI implements WizardUI {
         initialWelcome.tracedPromise ??
         this.promptTelemetry.tracePrompt(
           "welcome",
-          () => initialWelcome.promise
+          () => initialWelcome.promise,
         );
       return promptPromise.finally(() => {
         this.activePromptCancel = undefined;
@@ -960,13 +960,13 @@ export class InkUI implements WizardUI {
     // Detach the cancel callback from the store so a stale Ctrl+C
     // routed through the App after teardown can't re-enter.
     this.store.setRequestCancel(undefined);
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       this.instance.clear();
     } catch {
       // best-effort
     }
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       this.instance.unmount();
     } catch {
@@ -985,22 +985,22 @@ export class InkUI implements WizardUI {
     // left untouched so its compact summary flows into scrollback as before.
     const hasPostExitActions =
       this.store.getSnapshot().postExitActions.length > 0;
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       process.stdout.write(
-        hasPostExitActions ? "\x1b[?1049l\x1b[2J\x1b[H" : "\x1b[?1049l"
+        hasPostExitActions ? "\x1b[?1049l\x1b[2J\x1b[H" : "\x1b[?1049l",
       );
     } catch {
       // best-effort — stdout may already be destroyed
     }
     if (this.freshStdin) {
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         this.freshStdin.setRawMode(false);
       } catch {
         // stream already torn down
       }
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         this.freshStdin.pause();
         this.freshStdin.destroy();
@@ -1108,7 +1108,7 @@ export class InkUI implements WizardUI {
       return formatFailureReport(
         this.failureMessage,
         this.store.getSnapshot().logs,
-        this.feedbackHint
+        this.feedbackHint,
       );
     }
     if (!this.outroMessage) {

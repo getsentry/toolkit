@@ -23,7 +23,7 @@ const RETRYABLE_AUTH_FAILURE_CODES = new Set([
 
 function classifyInitServiceAuthFailure(
   err: unknown,
-  endpoint: string
+  endpoint: string,
 ): ApiError | null {
   if (!(err instanceof Error && MASTRA_HTTP_401_RE.test(err.message))) {
     return null;
@@ -33,7 +33,7 @@ function classifyInitServiceAuthFailure(
     INIT_SERVICE_REJECTED_TOKEN_MESSAGE,
     401,
     enrich401Detail("Unauthorized: invalid token"),
-    endpoint
+    endpoint,
   );
 }
 
@@ -57,7 +57,7 @@ function isRetryableInitServiceAuthFailure(err: unknown): boolean {
 
 export async function withInitServiceAuthClassification<T>(
   operation: () => Promise<T>,
-  endpoint: string
+  endpoint: string,
 ): Promise<T> {
   let retried = false;
 
@@ -87,7 +87,7 @@ export function assertHostedInitServiceAcceptsTokenHost(): void {
     throw new HostScopeError(
       "Hosted Sentry Init setup service",
       "https://sentry.io",
-      tokenHost
+      tokenHost,
     );
   }
 }

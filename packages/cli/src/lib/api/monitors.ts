@@ -43,7 +43,7 @@ export async function listMonitors(orgSlug: string): Promise<SentryMonitor[]> {
     });
     return unwrapPaginatedResult<SentryMonitor[]>(
       result,
-      "Failed to list monitors"
+      "Failed to list monitors",
     );
   }, MAX_PAGINATION_PAGES * API_MAX_PER_PAGE);
 
@@ -60,7 +60,7 @@ export async function listMonitors(orgSlug: string): Promise<SentryMonitor[]> {
  */
 export async function listMonitorsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {}
+  options: { cursor?: string; perPage?: number } = {},
 ): Promise<PaginatedResponse<SentryMonitor[]>> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -75,6 +75,6 @@ export async function listMonitorsPaginated(
 
   return unwrapPaginatedResult<SentryMonitor[]>(
     result,
-    "Failed to list monitors"
+    "Failed to list monitors",
   );
 }

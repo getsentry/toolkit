@@ -132,7 +132,7 @@ export const DashboardListItemSchema = looseObject({
     object({
       name: optional(string()),
       email: optional(string()),
-    })
+    }),
   ),
   widgetDisplay: optional(array(string())),
 });
@@ -147,7 +147,7 @@ export const DashboardDetailSchema = looseObject({
     object({
       name: optional(string()),
       email: optional(string()),
-    })
+    }),
   ),
   projects: optional(array(number())),
   environment: optional(array(string())),
@@ -215,7 +215,7 @@ export function parseWidgetInput(raw: unknown): DashboardWidget {
   });
   throw new ValidationError(
     `Invalid widget definition:\n${issues.join("\n")}`,
-    "widget-json"
+    "widget-json",
   );
 }
 
@@ -411,7 +411,7 @@ function isTracemetricsAggregate(aggregate: string): boolean {
  */
 export function validateAggregateNames(
   aggregates: string[],
-  dataset?: string
+  dataset?: string,
 ): void {
   // tracemetrics uses a different aggregate format — validate structure, not function names
   if (dataset === "tracemetrics") {
@@ -427,7 +427,7 @@ export function validateAggregateNames(
             "  - metric_name: the name passed to Sentry.metrics.distribution/gauge/count\n" +
             "  - metric_type: distribution, gauge, counter, set\n" +
             "  - unit: none, byte, second, millisecond, etc. (must match SDK emission)",
-          "query"
+          "query",
         );
       }
     }
@@ -449,7 +449,7 @@ export function validateAggregateNames(
         `Unknown aggregate function "${fn}".\n\n` +
           `Valid functions: ${validFunctions.join(", ")}\n` +
           `Aliases (auto-resolved): ${aliasList}`,
-        "query"
+        "query",
       );
     }
   }
@@ -486,7 +486,7 @@ const MAX_LIMITS: Partial<Record<string, number>> = {
  * Clamps per-display-type limits to their maximums with a warning.
  */
 export function prepareWidgetQueries(
-  inputWidget: DashboardWidget
+  inputWidget: DashboardWidget,
 ): DashboardWidget {
   let widget = inputWidget;
   // Clamp to per-display-type limit maximums
@@ -498,7 +498,7 @@ export function prepareWidgetQueries(
     widget.limit > maxLimit
   ) {
     logger.warn(
-      `${widget.displayType} widgets support a maximum of ${maxLimit} rows. Clamping --limit from ${widget.limit} to ${maxLimit}.`
+      `${widget.displayType} widgets support a maximum of ${maxLimit} rows. Clamping --limit from ${widget.limit} to ${maxLimit}.`,
     );
     widget = { ...widget, limit: maxLimit };
   }
@@ -585,7 +585,7 @@ function buildOccupiedGrid(widgets: DashboardWidget[]): {
 /** Check whether a rectangle fits at a position without overlapping occupied cells. */
 function regionFits(
   occupied: Set<string>,
-  rect: { px: number; py: number; w: number; h: number }
+  rect: { px: number; py: number; w: number; h: number },
 ): boolean {
   for (let dy = 0; dy < rect.h; dy++) {
     for (let dx = 0; dx < rect.w; dx++) {
@@ -610,7 +610,7 @@ type WidgetSize = { w: number; h: number; minH: number };
 function assignLayoutDense(
   widget: DashboardWidget,
   size: WidgetSize,
-  grid: OccupiedGrid
+  grid: OccupiedGrid,
 ): DashboardWidget {
   const { w, h, minH } = size;
   for (let y = 0; y <= grid.maxY; y++) {
@@ -628,7 +628,7 @@ function assignLayoutDense(
  * Reverse-scans because the API preserves insertion order.
  */
 function findLastLayout(
-  widgets: DashboardWidget[]
+  widgets: DashboardWidget[],
 ): DashboardWidgetLayout | undefined {
   for (let i = widgets.length - 1; i >= 0; i--) {
     const layout = widgets[i]?.layout;
@@ -648,7 +648,7 @@ function assignLayoutSequential(
   widget: DashboardWidget,
   existingWidgets: DashboardWidget[],
   size: WidgetSize,
-  grid: OccupiedGrid
+  grid: OccupiedGrid,
 ): DashboardWidget {
   const { w, h, minH } = size;
   const lastLayout = findLastLayout(existingWidgets);
@@ -688,7 +688,7 @@ function assignLayoutSequential(
 export function assignDefaultLayout(
   widget: DashboardWidget,
   existingWidgets: DashboardWidget[],
-  mode: WidgetLayoutMode = "sequential"
+  mode: WidgetLayoutMode = "sequential",
 ): DashboardWidget {
   if (widget.layout) {
     return widget;
@@ -722,18 +722,18 @@ function assertLayoutInt(
   value: number,
   flag: string,
   min: number,
-  max?: number
+  max?: number,
 ): void {
   if (!Number.isInteger(value) || value < min) {
     throw new ValidationError(
       `--${flag} must be ${min === 0 ? "a non-negative" : "a positive"} integer (got ${value}).`,
-      flag
+      flag,
     );
   }
   if (max !== undefined && value > max) {
     throw new ValidationError(
       `--${flag} must be ${min}–${max} (dashboard grid is ${GRID_COLUMNS} columns wide).`,
-      flag
+      flag,
     );
   }
 }
@@ -750,7 +750,7 @@ function assertLayoutInt(
  */
 export function validateWidgetLayout(
   flags: WidgetLayoutFlags,
-  existing?: DashboardWidgetLayout
+  existing?: DashboardWidgetLayout,
 ): void {
   if (flags.col !== undefined) {
     assertLayoutInt(flags.col, "col", 0, GRID_COLUMNS - 1);
@@ -775,7 +775,7 @@ export function validateWidgetLayout(
   ) {
     throw new ValidationError(
       `Widget overflows the grid: col(${effectiveX}) + width(${effectiveW}) = ${effectiveX + effectiveW}, but the grid is ${GRID_COLUMNS} columns wide.`,
-      "col"
+      "col",
     );
   }
 }
@@ -813,7 +813,7 @@ function cleanQuery(q: DashboardWidgetQuery): DashboardWidgetQuery {
  * @returns Widget safe for PUT (only API-accepted fields)
  */
 export function stripWidgetServerFields(
-  widget: DashboardWidget
+  widget: DashboardWidget,
 ): DashboardWidget {
   const cleaned: DashboardWidget = {
     title: widget.title,
@@ -897,7 +897,7 @@ export const EventsStatsSeriesSchema = looseObject({
     looseObject({
       fields: optional(record(string(), string())),
       units: optional(record(string(), nullable(string()))),
-    })
+    }),
   ),
 });
 
@@ -914,7 +914,7 @@ export const EventsTableResponseSchema = object({
     object({
       fields: optional(record(string(), string())),
       units: optional(record(string(), nullable(string()))),
-    })
+    }),
   ),
 });
 
@@ -1010,7 +1010,7 @@ const WIDGET_TYPE_TO_DATASET: Record<string, string> = {
  * @returns The API dataset string, or null if the type isn't queryable
  */
 export function mapWidgetTypeToDataset(
-  widgetType: string | undefined
+  widgetType: string | undefined,
 ): string | null {
   if (!widgetType) {
     return null;

@@ -15,12 +15,12 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
 import { NO_REPO_INTEGRATIONS_MESSAGE } from "../../../src/lib/api/releases.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 
@@ -31,13 +31,13 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as gitLib from "../../../src/lib/git.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRelease } from "../../../src/types/index.js";
 import { useTestConfigDir } from "../../helpers.js";
@@ -104,7 +104,7 @@ describe("release set-commits --commit", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsWithRefsSpy).toHaveBeenCalledWith("my-org", "1.0.0", [
@@ -128,7 +128,7 @@ describe("release set-commits --commit", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsWithRefsSpy).toHaveBeenCalledWith("my-org", "1.0.0", [
@@ -156,7 +156,7 @@ describe("release set-commits --commit", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsWithRefsSpy).toHaveBeenCalledWith("my-org", "1.0.0", [
@@ -182,8 +182,8 @@ describe("release set-commits --commit", () => {
           "initial-depth": 20,
           json: false,
         },
-        "1.0.0"
-      )
+        "1.0.0",
+      ),
     ).rejects.toThrow("Invalid commit format");
   });
 
@@ -204,8 +204,8 @@ describe("release set-commits --commit", () => {
           "initial-depth": 20,
           json: false,
         },
-        "1.0.0"
-      )
+        "1.0.0",
+      ),
     ).rejects.toThrow("Only one of --auto, --local, or --commit");
   });
 });
@@ -243,7 +243,7 @@ describe("release set-commits --clear", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsWithRefsSpy).toHaveBeenCalledWith("my-org", "1.0.0", []);
@@ -280,13 +280,13 @@ describe("release set-commits --auto", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsAutoSpy).toHaveBeenCalledWith(
       "my-org",
       "1.0.0",
-      "/my/project"
+      "/my/project",
     );
   });
 });
@@ -311,12 +311,12 @@ describe("release set-commits (default mode)", () => {
   test("propagates unrelated 400 errors from setCommitsAuto", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
     setCommitsAutoSpy.mockRejectedValue(
-      new ApiError("Invalid commit SHA.", 400, undefined, "releases/1.0.0/")
+      new ApiError("Invalid commit SHA.", 400, undefined, "releases/1.0.0/"),
     );
 
     const repoRoot = new URL("../../..", import.meta.url).pathname.replace(
       /\/$/,
-      ""
+      "",
     );
     const { context } = createMockContext(repoRoot);
     const func = await setCommitsCommand.loader();
@@ -331,8 +331,8 @@ describe("release set-commits (default mode)", () => {
           "initial-depth": 20,
           json: true,
         },
-        "1.0.0"
-      )
+        "1.0.0",
+      ),
     ).rejects.toThrow("Invalid commit SHA.");
 
     expect(setCommitsAutoSpy).toHaveBeenCalled();
@@ -346,14 +346,14 @@ describe("release set-commits (default mode)", () => {
         NO_REPO_INTEGRATIONS_MESSAGE,
         400,
         undefined,
-        "releases/1.0.0/"
-      )
+        "releases/1.0.0/",
+      ),
     );
     setCommitsLocalSpy.mockResolvedValue(sampleRelease);
 
     const repoRoot = new URL("../../..", import.meta.url).pathname.replace(
       /\/$/,
-      ""
+      "",
     );
     const { context } = createMockContext(repoRoot);
     const func = await setCommitsCommand.loader();
@@ -367,7 +367,7 @@ describe("release set-commits (default mode)", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsAutoSpy).toHaveBeenCalled();
@@ -379,15 +379,15 @@ describe("release set-commits (default mode)", () => {
     setCommitsAutoSpy.mockRejectedValue(
       new ValidationError(
         "No Sentry repository matching 'foo/bar'.",
-        "repository"
-      )
+        "repository",
+      ),
     );
     setCommitsLocalSpy.mockResolvedValue(sampleRelease);
 
     // Use the actual repo root as cwd so getCommitLog can read git history
     const repoRoot = new URL("../../..", import.meta.url).pathname.replace(
       /\/$/,
-      ""
+      "",
     );
     const { context } = createMockContext(repoRoot);
     const func = await setCommitsCommand.loader();
@@ -401,7 +401,7 @@ describe("release set-commits (default mode)", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsAutoSpy).toHaveBeenCalled();
@@ -417,7 +417,7 @@ describe("release set-commits --path", () => {
   // Use the actual repo root as cwd so getCommitLog can read git history
   const repoRoot = new URL("../../..", import.meta.url).pathname.replace(
     /\/$/,
-    ""
+    "",
   );
 
   beforeEach(() => {
@@ -449,7 +449,7 @@ describe("release set-commits --path", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsLocalSpy).toHaveBeenCalled();
@@ -473,7 +473,7 @@ describe("release set-commits --path", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsLocalSpy).toHaveBeenCalled();
@@ -498,8 +498,8 @@ describe("release set-commits --path", () => {
           "initial-depth": 20,
           json: false,
         },
-        "1.0.0"
-      )
+        "1.0.0",
+      ),
     ).rejects.toThrow("--path requires at least one non-empty path");
   });
 
@@ -521,8 +521,8 @@ describe("release set-commits --path", () => {
           "initial-depth": 20,
           json: false,
         },
-        "1.0.0"
-      )
+        "1.0.0",
+      ),
     ).rejects.toThrow("--path cannot be combined with --auto or --commit");
   });
 
@@ -544,8 +544,8 @@ describe("release set-commits --path", () => {
           "initial-depth": 20,
           json: false,
         },
-        "1.0.0"
-      )
+        "1.0.0",
+      ),
     ).rejects.toThrow("--path cannot be combined with --auto or --commit");
   });
 });
@@ -559,7 +559,7 @@ describe("release set-commits --from", () => {
   // Use the actual repo root as cwd so the git remote/shallow helpers resolve.
   const repoRoot = new URL("../../..", import.meta.url).pathname.replace(
     /\/$/,
-    ""
+    "",
   );
 
   beforeEach(() => {
@@ -603,7 +603,7 @@ describe("release set-commits --from", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsLocalSpy).toHaveBeenCalled();
@@ -611,7 +611,7 @@ describe("release set-commits --from", () => {
     // A range is self-bounding, so depth 0 (no cap) is passed.
     expect(getCommitLogSpy).toHaveBeenCalledWith(
       repoRoot,
-      expect.objectContaining({ from: "HEAD~1", depth: 0, paths: [] })
+      expect.objectContaining({ from: "HEAD~1", depth: 0, paths: [] }),
     );
   });
 
@@ -633,14 +633,14 @@ describe("release set-commits --from", () => {
         "initial-depth": 20,
         json: true,
       },
-      "1.0.0"
+      "1.0.0",
     );
 
     expect(setCommitsLocalSpy).toHaveBeenCalled();
     expect(setCommitsAutoSpy).not.toHaveBeenCalled();
     expect(getCommitLogSpy).toHaveBeenCalledWith(
       repoRoot,
-      expect.objectContaining({ from: "HEAD~3", paths: ["src", "test"] })
+      expect.objectContaining({ from: "HEAD~3", paths: ["src", "test"] }),
     );
   });
 
@@ -662,8 +662,8 @@ describe("release set-commits --from", () => {
           "initial-depth": 20,
           json: false,
         },
-        "1.0.0"
-      )
+        "1.0.0",
+      ),
     ).rejects.toThrow("--from must be a git ref, not a CLI flag");
   });
 
@@ -685,8 +685,8 @@ describe("release set-commits --from", () => {
           "initial-depth": 20,
           json: false,
         },
-        "1.0.0"
-      )
+        "1.0.0",
+      ),
     ).rejects.toThrow("--from requires a non-empty git ref");
   });
 
@@ -708,8 +708,8 @@ describe("release set-commits --from", () => {
           "initial-depth": 20,
           json: false,
         },
-        "1.0.0"
-      )
+        "1.0.0",
+      ),
     ).rejects.toThrow("--from cannot be combined with --auto or --commit");
   });
 
@@ -731,8 +731,8 @@ describe("release set-commits --from", () => {
           "initial-depth": 20,
           json: false,
         },
-        "1.0.0"
-      )
+        "1.0.0",
+      ),
     ).rejects.toThrow("--from cannot be combined with --auto or --commit");
   });
 });

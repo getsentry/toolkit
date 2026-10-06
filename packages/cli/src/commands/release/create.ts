@@ -68,7 +68,7 @@ export const createCommand = buildCommand({
               ? ` in projects: ${projects.join(", ")}`
               : "") +
             (data.finalize ? " (finalized)" : "") +
-            " (dry run)"
+            " (dry run)",
         );
       }
       return formatReleaseCreated(data as SentryRelease);
@@ -124,14 +124,14 @@ export const createCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string
+    target: string,
   ) {
     const { cwd } = this;
 
     const { version, org } = await resolveReleaseTarget(
       target,
       USAGE_HINT,
-      cwd
+      cwd,
     );
 
     const body: Parameters<typeof createRelease>[1] = { version };

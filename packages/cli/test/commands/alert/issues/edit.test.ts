@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { editCommand } from "../../../../src/commands/alert/issues/edit.js";
 import type { IssueAlertRule } from "../../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
 import { ValidationError } from "../../../../src/lib/errors.js";
 import type { ResolvedTarget } from "../../../../src/lib/resolve-target.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../../helpers.js";
 
@@ -75,11 +75,11 @@ describe("alert issues edit", () => {
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
       flags: EditFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
-      func.call(context, { json: true }, "test-org/test-project/42")
+      func.call(context, { json: true }, "test-org/test-project/42"),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -108,7 +108,7 @@ describe("alert issues edit", () => {
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
       flags: EditFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -120,7 +120,7 @@ describe("alert issues edit", () => {
         action: ['{"id":"new-action"}'],
         json: true,
       },
-      "test-org/test-project/42"
+      "test-org/test-project/42",
     );
 
     expect(putSpy).toHaveBeenCalledWith("test-org", "42", {
@@ -156,13 +156,13 @@ describe("alert issues edit", () => {
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
       flags: EditFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
       context,
       { action: ['{"id":"new-action"}'], json: true },
-      "test-org/test-project/42"
+      "test-org/test-project/42",
     );
 
     expect(putSpy).toHaveBeenCalledWith("test-org", "42", {
@@ -193,13 +193,13 @@ describe("alert issues edit", () => {
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
       flags: EditFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
       context,
       { status: "disabled", json: true },
-      "test-org/test-project/42"
+      "test-org/test-project/42",
     );
 
     const output = context.stdout.write.mock.calls.map((c) => c[0]).join("");

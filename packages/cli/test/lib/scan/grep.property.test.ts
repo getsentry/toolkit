@@ -44,19 +44,19 @@ const filenameArb = array(constantFrom(...SAFE_CHARS), {
  */
 const fileContentArb = array(
   array(constantFrom(...SAFE_CHARS), { minLength: 0, maxLength: 20 }).map(
-    (chars) => chars.join("")
+    (chars) => chars.join(""),
   ),
-  { minLength: 1, maxLength: 8 }
+  { minLength: 1, maxLength: 8 },
 ).map((lines) => lines.join("\n"));
 
 /** Small tree: 1-5 filename/content pairs. */
 const treeArb = array(
   constantFrom(null).chain(() =>
     filenameArb.chain((name) =>
-      fileContentArb.map((content) => [name, content] as [string, string])
-    )
+      fileContentArb.map((content) => [name, content] as [string, string]),
+    ),
   ),
-  { minLength: 1, maxLength: 5 }
+  { minLength: 1, maxLength: 5 },
 );
 
 /** Pattern: 1-3 chars from the same alphabet — likely to match. */
@@ -74,7 +74,7 @@ const patternArb = array(constantFrom(...SAFE_CHARS), {
 type NaiveMatch = { path: string; lineNum: number; line: string };
 function naiveGrep(
   layout: readonly [string, string][],
-  pattern: string
+  pattern: string,
 ): NaiveMatch[] {
   const out: NaiveMatch[] = [];
   const regex = new RegExp(pattern);
@@ -128,7 +128,7 @@ describe("property: collectGrep matches naive reference", () => {
       }),
       // Filesystem-heavy property; keep run count modest so CI stays
       // fast. 20 runs still explores plenty of pattern/corpus shapes.
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) },
     );
   });
 });
@@ -157,7 +157,7 @@ describe("property: idempotence", () => {
           rmSync(cwd, { recursive: true, force: true });
         }
       }),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 15) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 15) },
     );
   });
 });

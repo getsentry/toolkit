@@ -19,14 +19,14 @@ function createTestWriter() {
     get output() {
       return chunks
         .map((c) =>
-          typeof c === "string" ? c : Buffer.from(c).toString("latin1")
+          typeof c === "string" ? c : Buffer.from(c).toString("latin1"),
         )
         .join("");
     },
     /** Concatenated raw bytes from all writes. */
     get bytes() {
       const parts = chunks.map((c) =>
-        typeof c === "string" ? Buffer.from(c, "utf8") : Buffer.from(c)
+        typeof c === "string" ? Buffer.from(c, "utf8") : Buffer.from(c),
       );
       return Buffer.concat(parts);
     },
@@ -41,7 +41,7 @@ function render(
   w: ReturnType<typeof createTestWriter>,
   data: unknown,
   config: OutputConfig<any>,
-  ctx: { json: boolean; fields?: string[] }
+  ctx: { json: boolean; fields?: string[] },
 ) {
   const renderer = resolveRenderer(config.human);
   renderCommandOutput(w, data, config, renderer, ctx);
@@ -156,7 +156,7 @@ describe("renderCommandOutput", () => {
       w,
       { id: 1, name: "Alice", spanTreeLines: ["line1", "line2"] },
       config,
-      { json: true }
+      { json: true },
     );
     const parsed = JSON.parse(w.output);
     expect(parsed).toEqual({ id: 1, name: "Alice" });
@@ -205,7 +205,7 @@ describe("renderCommandOutput", () => {
         { id: 2, name: "b" },
       ],
       config,
-      { json: true }
+      { json: true },
     );
     const parsed = JSON.parse(w.output);
     expect(Array.isArray(parsed)).toBe(true);
@@ -233,7 +233,7 @@ describe("renderCommandOutput", () => {
       w,
       { items: [{ id: 1, name: "Alice" }], hasMore: true, org: "test-org" },
       config,
-      { json: true }
+      { json: true },
     );
     const parsed = JSON.parse(w.output);
     expect(parsed).toEqual({
@@ -275,7 +275,7 @@ describe("renderCommandOutput", () => {
         hasMore: false,
       },
       config,
-      { json: true, fields: ["id", "name"] }
+      { json: true, fields: ["id", "name"] },
     );
     const parsed = JSON.parse(w.output);
     expect(parsed.data[0]).toEqual({ id: 1, name: "Alice" });

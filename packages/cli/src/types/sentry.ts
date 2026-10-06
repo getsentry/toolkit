@@ -233,93 +233,93 @@ export const SentryIssueSchema = pipe(
         "project",
         "metadata",
         "assignedTo",
-      ])
+      ]),
     ).entries,
     id: pipe(string(), description("Numeric issue ID")),
     shortId: pipe(
       string(),
-      description("Human-readable short ID (e.g. PROJ-ABC)")
+      description("Human-readable short ID (e.g. PROJ-ABC)"),
     ),
     title: pipe(string(), description("Issue title")),
     culprit: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.culprit,
-        description("Culprit string")
-      )
+        description("Culprit string"),
+      ),
     ),
     count: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.count,
-        description("Total event count")
-      )
+        description("Total event count"),
+      ),
     ),
     userCount: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.userCount,
-        description("Number of affected users")
-      )
+        description("Number of affected users"),
+      ),
     ),
     firstSeen: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.firstSeen,
-        description("First occurrence (ISO 8601)")
-      )
+        description("First occurrence (ISO 8601)"),
+      ),
     ),
     lastSeen: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.lastSeen,
-        description("Most recent occurrence (ISO 8601)")
-      )
+        description("Most recent occurrence (ISO 8601)"),
+      ),
     ),
     level: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.level,
-        description("Severity level")
-      )
+        description("Severity level"),
+      ),
     ),
     status: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.status,
-        description("Issue status")
-      )
+        description("Issue status"),
+      ),
     ),
     permalink: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.permalink,
-        description("URL to the issue in Sentry")
-      )
+        description("URL to the issue in Sentry"),
+      ),
     ),
     project: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.project,
-        description("Project info")
-      )
+        description("Project info"),
+      ),
     ),
     metadata: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.metadata,
-        description("Issue metadata")
-      )
+        description("Issue metadata"),
+      ),
     ),
     assignedTo: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.assignedTo,
-        description("Assigned user or team")
-      )
+        description("Assigned user or team"),
+      ),
     ),
     priority: optional(pipe(string(), description("Triage priority"))),
     platform: optional(pipe(string(), description("Platform"))),
     substatus: optional(
-      pipe(nullable(string()), description("Issue substatus"))
+      pipe(nullable(string()), description("Issue substatus")),
     ),
     isUnhandled: optional(
-      pipe(boolean(), description("Whether the issue is unhandled"))
+      pipe(boolean(), description("Whether the issue is unhandled")),
     ),
     seerFixabilityScore: optional(
-      pipe(nullable(number()), description("Seer AI fixability score (0-1)"))
+      pipe(nullable(number()), description("Seer AI fixability score (0-1)")),
     ),
   }),
-  description("Sentry issue")
+  description("Sentry issue"),
 );
 
 /**
@@ -339,13 +339,13 @@ export const IssueViewOutputSchema = pipe(
         description(
           "Latest event for the issue (full detail). Select named fields with " +
             "`--fields event.id,event.title` to avoid pulling the whole payload; " +
-            "the `request` entry may include live session data."
-        )
-      )
+            "the `request` entry may include live session data.",
+        ),
+      ),
     ),
     org: optional(pipe(nullable(string()), description("Organization slug"))),
     replayIds: optional(
-      pipe(array(string()), description("Related Session Replay IDs"))
+      pipe(array(string()), description("Related Session Replay IDs")),
     ),
     trace: optional(
       pipe(
@@ -353,16 +353,16 @@ export const IssueViewOutputSchema = pipe(
           object({
             traceId: pipe(
               string(),
-              description("Trace ID from the latest event")
+              description("Trace ID from the latest event"),
             ),
             spans: pipe(array(unknown()), description("Span tree data")),
-          })
+          }),
         ),
-        description("Trace context from the latest event's span tree")
-      )
+        description("Trace context from the latest event's span tree"),
+      ),
     ),
   }),
-  description("Issue view output")
+  description("Issue view output"),
 );
 
 // Event
@@ -420,7 +420,7 @@ const EventViewAttachmentSchema = looseObject({
   download: pipe(
     string(),
     url(),
-    description("Absolute authenticated API URL for the attachment bytes")
+    description("Absolute authenticated API URL for the attachment bytes"),
   ),
 });
 
@@ -440,18 +440,18 @@ export const EventViewOutputSchema = pipe(
         object({
           traceId: pipe(string(), description("Trace ID")),
           spans: pipe(array(unknown()), description("Span tree data")),
-        })
+        }),
       ),
-      description("Trace context, or null when unavailable")
+      description("Trace context, or null when unavailable"),
     ),
     attachments: pipe(
       array(EventViewAttachmentSchema),
       description(
-        "Event attachments; each includes metadata and an absolute authenticated download URL"
-      )
+        "Event attachments; each includes metadata and an absolute authenticated download URL",
+      ),
     ),
   }),
-  description("Event view output")
+  description("Event view output"),
 );
 
 // Issue Event (list endpoint)
@@ -516,59 +516,59 @@ export const IssueEventSchema = pipe(
     id: pipe(string(), description("Internal event ID")),
     "event.type": pipe(
       string(),
-      description("Event type (error, default, transaction)")
+      description("Event type (error, default, transaction)"),
     ),
     groupID: optional(
-      pipe(_IssueEventElement.entries.groupID, description("Group (issue) ID"))
+      pipe(_IssueEventElement.entries.groupID, description("Group (issue) ID")),
     ),
     eventID: pipe(string(), description("UUID-format event ID")),
     projectID: optional(
-      pipe(_IssueEventElement.entries.projectID, description("Project ID"))
+      pipe(_IssueEventElement.entries.projectID, description("Project ID")),
     ),
     message: optional(
-      pipe(_IssueEventElement.entries.message, description("Event message"))
+      pipe(_IssueEventElement.entries.message, description("Event message")),
     ),
     title: optional(
-      pipe(_IssueEventElement.entries.title, description("Event title"))
+      pipe(_IssueEventElement.entries.title, description("Event title")),
     ),
     location: optional(
       pipe(
         _IssueEventElement.entries.location,
-        description("Source location (file:line)")
-      )
+        description("Source location (file:line)"),
+      ),
     ),
     culprit: optional(
       pipe(
         _IssueEventElement.entries.culprit,
-        description("Culprit function/module")
-      )
+        description("Culprit function/module"),
+      ),
     ),
     user: optional(
-      pipe(_IssueEventElement.entries.user, description("User context"))
+      pipe(_IssueEventElement.entries.user, description("User context")),
     ),
     tags: optional(
-      pipe(_IssueEventElement.entries.tags, description("Event tags"))
+      pipe(_IssueEventElement.entries.tags, description("Event tags")),
     ),
     platform: optional(
       pipe(
         _IssueEventElement.entries.platform,
-        description("Platform (python, javascript, etc.)")
-      )
+        description("Platform (python, javascript, etc.)"),
+      ),
     ),
     dateCreated: optional(
       pipe(
         _IssueEventElement.entries.dateCreated,
-        description("ISO 8601 creation timestamp")
-      )
+        description("ISO 8601 creation timestamp"),
+      ),
     ),
     crashFile: optional(
-      pipe(_IssueEventElement.entries.crashFile, description("Crash file URL"))
+      pipe(_IssueEventElement.entries.crashFile, description("Crash file URL")),
     ),
     metadata: optional(
-      pipe(_IssueEventElement.entries.metadata, description("Event metadata"))
+      pipe(_IssueEventElement.entries.metadata, description("Event metadata")),
     ),
   }),
-  description("Issue event (list endpoint)")
+  description("Issue event (list endpoint)"),
 );
 
 // Project Keys (DSN)
@@ -686,19 +686,19 @@ export const TraceMetaSchema = pipe(
         object({
           "transaction.event_id": pipe(
             nullable(string()),
-            description("Transaction event ID")
+            description("Transaction event ID"),
           ),
           "count()": pipe(number(), description("Transaction child count")),
-        })
+        }),
       ),
-      description("Per-transaction child counts")
+      description("Per-transaction child counts"),
     ),
     span_count_map: pipe(
       record(string(), number()),
-      description("Span counts grouped by operation")
+      description("Span counts grouped by operation"),
     ),
   }),
-  description("Trace metadata")
+  description("Trace metadata"),
 );
 
 export type TraceMeta = InferOutput<typeof TraceMetaSchema>;
@@ -947,7 +947,7 @@ export const SentryLogSchema = pipe(
       unknown(),
       transform(Number),
       number(),
-      description("Nanosecond-precision timestamp")
+      description("Nanosecond-precision timestamp"),
     ),
     /** Log message content */
     message: optional(nullable(pipe(string(), description("Log message")))),
@@ -956,16 +956,16 @@ export const SentryLogSchema = pipe(
       nullable(
         pipe(
           string(),
-          description("Severity level (error, warning, info, debug)")
-        )
-      )
+          description("Severity level (error, warning, info, debug)"),
+        ),
+      ),
     ),
     /** Trace ID for correlation with traces */
     trace: optional(
-      nullable(pipe(string(), description("Trace ID for correlation")))
+      nullable(pipe(string(), description("Trace ID for correlation"))),
     ),
   }),
-  description("Sentry log")
+  description("Sentry log"),
 );
 
 export type SentryLog = InferOutput<typeof SentryLogSchema>;
@@ -976,7 +976,7 @@ export const LogsResponseSchema = object({
   meta: optional(
     looseObject({
       fields: optional(record(string(), string())),
-    })
+    }),
   ),
 });
 
@@ -1027,7 +1027,7 @@ export const DetailedSentryLogSchema = pipe(
     /** OpenTelemetry instrumentation scope name */
     "sentry.otel.instrumentation_scope.name": optional(nullable(string())),
   }),
-  description("Detailed Sentry log")
+  description("Detailed Sentry log"),
 );
 
 export type DetailedSentryLog = InferOutput<typeof DetailedSentryLogSchema>;
@@ -1038,7 +1038,7 @@ export const DetailedLogsResponseSchema = object({
   meta: optional(
     looseObject({
       fields: optional(record(string(), string())),
-    })
+    }),
   ),
 });
 
@@ -1117,7 +1117,7 @@ export const TraceLogSchema = pipe(
     /** Log message content */
     message: optional(nullable(string())),
   }),
-  description("Trace log")
+  description("Trace log"),
 );
 
 export type TraceLog = InferOutput<typeof TraceLogSchema>;
@@ -1129,7 +1129,7 @@ export const TraceLogsResponseSchema = looseObject({
     looseObject({
       fields: optional(record(string(), string())),
       units: optional(record(string(), string())),
-    })
+    }),
   ),
 });
 
@@ -1157,7 +1157,7 @@ export const TransactionListItemSchema = pipe(
     /** Project slug */
     project: pipe(string(), description("Project slug")),
   }),
-  description("Transaction list item")
+  description("Transaction list item"),
 );
 
 export type TransactionListItem = InferOutput<typeof TransactionListItemSchema>;
@@ -1168,7 +1168,7 @@ export const TransactionsResponseSchema = object({
   meta: optional(
     looseObject({
       fields: optional(record(string(), string())),
-    })
+    }),
   ),
 });
 
@@ -1181,27 +1181,27 @@ export const SpanListItemSchema = pipe(
   looseObject({
     id: pipe(string(), description("Span ID")),
     parent_span: optional(
-      nullable(pipe(string(), description("Parent span ID")))
+      nullable(pipe(string(), description("Parent span ID"))),
     ),
     "span.op": optional(
       nullable(
-        pipe(string(), description("Span operation (e.g. http.client, db)"))
-      )
+        pipe(string(), description("Span operation (e.g. http.client, db)")),
+      ),
     ),
     description: optional(
-      nullable(pipe(string(), description("Span description")))
+      nullable(pipe(string(), description("Span description"))),
     ),
     "span.duration": optional(
-      nullable(pipe(number(), description("Duration (ms)")))
+      nullable(pipe(number(), description("Duration (ms)"))),
     ),
     timestamp: pipe(string(), description("Timestamp (ISO 8601)")),
     project: pipe(string(), description("Project slug")),
     transaction: optional(
-      nullable(pipe(string(), description("Transaction name")))
+      nullable(pipe(string(), description("Transaction name"))),
     ),
     trace: pipe(string(), description("Trace ID")),
   }),
-  description("Span list item")
+  description("Span list item"),
 );
 
 export type SpanListItem = InferOutput<typeof SpanListItemSchema>;
@@ -1212,7 +1212,7 @@ export const SpansResponseSchema = object({
   meta: optional(
     looseObject({
       fields: optional(record(string(), string())),
-    })
+    }),
   ),
 });
 
@@ -1237,20 +1237,20 @@ export const SentryRepositorySchema = pipe(
     url: pipe(nullable(string()), description("Repository URL")),
     provider: pipe(
       RepositoryProviderSchema,
-      description("Version control provider")
+      description("Version control provider"),
     ),
     status: pipe(string(), description("Integration status")),
     // Optional metadata
     dateCreated: optional(
-      pipe(string(), description("Creation date (ISO 8601)"))
+      pipe(string(), description("Creation date (ISO 8601)")),
     ),
     integrationId: optional(pipe(string(), description("Integration ID"))),
     externalSlug: optional(
-      nullable(pipe(string(), description("External slug (e.g. org/repo)")))
+      nullable(pipe(string(), description("External slug (e.g. org/repo)"))),
     ),
     externalId: optional(nullable(pipe(string(), description("External ID")))),
   }),
-  description("Sentry repository")
+  description("Sentry repository"),
 );
 
 export type SentryRepository = InferOutput<typeof SentryRepositorySchema>;
@@ -1268,53 +1268,53 @@ export type SentryRepository = InferOutput<typeof SentryRepositorySchema>;
 export const MonitorConfigSchema = pipe(
   looseObject({
     schedule_type: optional(
-      pipe(string(), description("Schedule type: 'crontab' or 'interval'"))
+      pipe(string(), description("Schedule type: 'crontab' or 'interval'")),
     ),
     schedule: optional(
       pipe(
         union([string(), array(union([string(), number()]))]),
-        description("Crontab string or [value, unit] interval tuple")
-      )
+        description("Crontab string or [value, unit] interval tuple"),
+      ),
     ),
     timezone: optional(
       nullable(
-        pipe(string(), description("Schedule timezone (tz database string)"))
-      )
+        pipe(string(), description("Schedule timezone (tz database string)")),
+      ),
     ),
     checkin_margin: optional(
       nullable(
         pipe(
           number(),
-          description("Allowed minutes after the expected check-in time")
-        )
-      )
+          description("Allowed minutes after the expected check-in time"),
+        ),
+      ),
     ),
     max_runtime: optional(
       nullable(
         pipe(
           number(),
-          description("Allowed minutes a check-in may run before timing out")
-        )
-      )
+          description("Allowed minutes a check-in may run before timing out"),
+        ),
+      ),
     ),
     failure_issue_threshold: optional(
       nullable(
         pipe(
           number(),
-          description("Consecutive failures before an issue is created")
-        )
-      )
+          description("Consecutive failures before an issue is created"),
+        ),
+      ),
     ),
     recovery_threshold: optional(
       nullable(
         pipe(
           number(),
-          description("Consecutive successes before an issue is resolved")
-        )
-      )
+          description("Consecutive successes before an issue is resolved"),
+        ),
+      ),
     ),
   }),
-  description("Monitor configuration")
+  description("Monitor configuration"),
 );
 
 export type MonitorConfig = InferOutput<typeof MonitorConfigSchema>;
@@ -1334,16 +1334,16 @@ export const SentryMonitorSchema = pipe(
     name: pipe(string(), description("Monitor name")),
     status: pipe(
       string(),
-      description("Monitor status (e.g. active, disabled)")
+      description("Monitor status (e.g. active, disabled)"),
     ),
     isMuted: optional(
-      pipe(boolean(), description("Whether the monitor is muted"))
+      pipe(boolean(), description("Whether the monitor is muted")),
     ),
     config: optional(
-      pipe(MonitorConfigSchema, description("Schedule configuration"))
+      pipe(MonitorConfigSchema, description("Schedule configuration")),
     ),
     dateCreated: optional(
-      pipe(string(), description("Creation date (ISO 8601)"))
+      pipe(string(), description("Creation date (ISO 8601)")),
     ),
     project: optional(
       pipe(
@@ -1352,11 +1352,11 @@ export const SentryMonitorSchema = pipe(
           slug: optional(pipe(string(), description("Project slug"))),
           name: optional(pipe(string(), description("Project name"))),
         }),
-        description("Owning project")
-      )
+        description("Owning project"),
+      ),
     ),
   }),
-  description("Sentry monitor")
+  description("Sentry monitor"),
 );
 
 export type SentryMonitor = InferOutput<typeof SentryMonitorSchema>;
@@ -1380,22 +1380,25 @@ export const SentryTeamSchema = looseObject({
       "isMember",
       "teamRole",
       "memberCount",
-    ])
+    ]),
   ).entries,
   id: pipe(string(), description("Team ID")),
   slug: pipe(string(), description("Team slug")),
   name: pipe(string(), description("Team name")),
   dateCreated: optional(
-    pipe(vBaseTeam.entries.dateCreated, description("Creation date (ISO 8601)"))
+    pipe(
+      vBaseTeam.entries.dateCreated,
+      description("Creation date (ISO 8601)"),
+    ),
   ),
   isMember: optional(
-    pipe(vBaseTeam.entries.isMember, description("Whether you are a member"))
+    pipe(vBaseTeam.entries.isMember, description("Whether you are a member")),
   ),
   teamRole: optional(
-    pipe(vBaseTeam.entries.teamRole, description("Your role in the team"))
+    pipe(vBaseTeam.entries.teamRole, description("Your role in the team")),
   ),
   memberCount: optional(
-    pipe(vBaseTeam.entries.memberCount, description("Number of members"))
+    pipe(vBaseTeam.entries.memberCount, description("Number of members")),
   ),
 });
 
@@ -1427,7 +1430,7 @@ export const ProductTrialSchema = pipe(
     /** Trial category (e.g., "seerUsers", "seerAutofix") */
     category: pipe(
       string(),
-      description("Trial category (e.g. seerUsers, seerAutofix)")
+      description("Trial category (e.g. seerUsers, seerAutofix)"),
     ),
     /** ISO date when the trial started, null if not started */
     startDate: pipe(nullable(string()), description("Start date (ISO 8601)")),
@@ -1440,7 +1443,7 @@ export const ProductTrialSchema = pipe(
     /** Duration of the trial in days, null if unknown */
     lengthDays: pipe(nullable(number()), description("Trial duration in days")),
   }),
-  description("Product trial")
+  description("Product trial"),
 );
 
 export type ProductTrial = InferOutput<typeof ProductTrialSchema>;

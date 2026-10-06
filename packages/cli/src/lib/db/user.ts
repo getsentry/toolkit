@@ -63,6 +63,6 @@ export function setUserInfo(info: UserInfo): void {
       name: info.name ?? null,
       updated_at: now,
     },
-    ["id"]
+    ["id"],
   );
 }

@@ -42,7 +42,7 @@ describe("property: detectDevCommand", () => {
           try {
             await writeFile(
               join(dir, "package.json"),
-              JSON.stringify({ scripts: { [name]: value } })
+              JSON.stringify({ scripts: { [name]: value } }),
             );
             const result = await detectDevCommand(dir);
             expect(result).not.toBeNull();
@@ -53,9 +53,9 @@ describe("property: detectDevCommand", () => {
               /* intentionally empty */
             });
           }
-        }
+        },
       ),
-      { numRuns: 20 }
+      { numRuns: 20 },
     );
   });
 });

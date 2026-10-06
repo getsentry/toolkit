@@ -9,7 +9,7 @@ const COMMAND_HEADING_RE =
 
 /** Extract the literal command path from a generated command heading. */
 export function extractCommandPathFromHeading(
-  heading: string
+  heading: string,
 ): string | undefined {
   const match = COMMAND_HEADING_RE.exec(heading);
   return match?.[1] ? `sentry ${match[1]}` : undefined;
@@ -20,7 +20,7 @@ export function matchExampleToCommand(
   code: string,
   commandPaths: readonly string[],
   groupFallback: string,
-  defaultCommandPath?: string
+  defaultCommandPath?: string,
 ): string | undefined {
   // Prefer the longest path so `sentry auth login` wins over bare `sentry auth`
   // when both would otherwise match via includes().
@@ -43,13 +43,13 @@ export function formatCommandExamples(examples: readonly string[]): string {
     return "";
   }
   return ["**Examples:**", "", "```bash", examples.join("\n\n"), "```"].join(
-    "\n"
+    "\n",
   );
 }
 
 /** Format canonical positional syntax as a Markdown argument table. */
 export function formatCommandArguments(
-  positionals: readonly PositionalInfo[]
+  positionals: readonly PositionalInfo[],
 ): string {
   if (positionals.length === 0) {
     return "";

@@ -95,7 +95,7 @@ export type AuthStatusData = {
  */
 function collectTokenInfo(
   auth: AuthConfig | undefined,
-  showToken: boolean
+  showToken: boolean,
 ): AuthStatusData["token"] | undefined {
   if (!auth?.token) {
     return;

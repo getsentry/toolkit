@@ -70,7 +70,7 @@ describe("OAuth refresh compare-and-swap", () => {
 
     await refreshToken({ force: true, expectedCredential: pinned });
     await expect(
-      refreshToken({ force: true, expectedCredential: pinned })
+      refreshToken({ force: true, expectedCredential: pinned }),
     ).resolves.toMatchObject({
       token: "rotated-access-2",
       refreshed: true,
@@ -81,7 +81,7 @@ describe("OAuth refresh compare-and-swap", () => {
       host: "https://control.example.com",
     });
     await expect(
-      refreshToken({ force: true, expectedCredential: pinned })
+      refreshToken({ force: true, expectedCredential: pinned }),
     ).rejects.toThrow("Active credentials changed");
     expect(requests.count).toBe(2);
   });
@@ -99,7 +99,7 @@ describe("OAuth refresh compare-and-swap", () => {
         refresh_token: "late-refresh",
         expires_in: 3600,
         token_type: "bearer",
-      })
+      }),
     );
     await expect(pending).rejects.toThrow("Active credentials changed");
     expect(getAuthConfig()).toMatchObject({
@@ -119,8 +119,8 @@ describe("OAuth refresh compare-and-swap", () => {
     response.resolve(
       Response.json(
         { error: "invalid_grant", error_description: "Refresh rejected" },
-        { status: 400 }
-      )
+        { status: 400 },
+      ),
     );
     await expect(pending).rejects.toThrow("refresh credential was rejected");
     expect(getAuthConfig()).toMatchObject({
@@ -136,14 +136,14 @@ describe("OAuth refresh compare-and-swap", () => {
     });
     globalThis.fetch = async (input, init) => {
       expect(new Request(input).url).toBe(
-        "https://control.example.com/oauth/token/"
+        "https://control.example.com/oauth/token/",
       );
       expect(init?.redirect).toBe("error");
       return new Response("temporary server failure", { status: 503 });
     };
 
     await expect(refreshToken({ force: true })).rejects.toThrow(
-      "Token refresh failed"
+      "Token refresh failed",
     );
     expect(getAuthConfig()).toMatchObject({
       token: "current-access",
@@ -158,7 +158,7 @@ describe("OAuth refresh compare-and-swap", () => {
     expect(() =>
       setAuthToken("replacement-access", undefined, undefined, {
         host: "https://user:password@evil.example.net",
-      })
+      }),
     ).toThrow(ConfigError);
     expect(getAuthConfig()?.token).toBe("current-access");
     expect(getCredentialContext()?.host).toBe("https://control.example.com");

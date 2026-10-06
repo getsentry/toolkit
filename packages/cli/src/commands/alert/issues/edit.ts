@@ -66,7 +66,7 @@ function validateIssueEditFlags(flags: EditFlags): void {
   if (!hasIssueMutations(flags)) {
     throw new ValidationError(
       "Pass at least one editable field (for example --name or --status).",
-      "name"
+      "name",
     );
   }
   if (flags.frequency !== undefined && flags.frequency <= 0) {
@@ -74,10 +74,10 @@ function validateIssueEditFlags(flags: EditFlags): void {
   }
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: per-flag merge with user-only validation
+// per-flag merge with user-only validation
 function applyIssueEdits(
   body: Record<string, unknown>,
-  flags: EditFlags
+  flags: EditFlags,
 ): Record<string, unknown> {
   const conditions = parseJsonObjectList(flags.condition, "condition");
   const actions = parseJsonObjectList(flags.action, "action");
@@ -271,7 +271,7 @@ export const editCommand = buildCommand({
     const { target, rule } = await resolveIssueAlertRule(
       targets,
       ref,
-      USAGE_HINT
+      USAGE_HINT,
     );
 
     const body = {
@@ -288,7 +288,7 @@ export const editCommand = buildCommand({
       // The workflows endpoint returns `enabled` rather than `status`; map it
       // back to a status label so human/JSON output matches the create path.
       status: String(
-        updated.status ?? (updated.enabled === false ? "disabled" : "active")
+        updated.status ?? (updated.enabled === false ? "disabled" : "active"),
       ),
     } satisfies EditResult);
   },

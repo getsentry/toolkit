@@ -55,7 +55,7 @@ function parseConversationTarget(target: string): {
     throw validationError(
       "Conversation target must contain at most one '/'.",
       [USAGE_HINT],
-      "conversation-id"
+      "conversation-id",
     );
   }
   const org = trimmed.slice(0, slashIdx);
@@ -64,7 +64,7 @@ function parseConversationTarget(target: string): {
     throw validationError(
       "Conversation target must include both an organization and conversation ID when using '/'.",
       [USAGE_HINT],
-      "conversation-id"
+      "conversation-id",
     );
   }
   validateResourceId(org, "organization slug");
@@ -125,7 +125,7 @@ export const viewCommand = buildCommand({
       throw validationError(
         "Conversation ID cannot be empty.",
         [USAGE_HINT],
-        "conversation-id"
+        "conversation-id",
       );
     }
     const { org: orgArg, conversationId } = parseConversationTarget(target);
@@ -141,7 +141,7 @@ export const viewCommand = buildCommand({
         message: "Fetching conversation spans...",
         json: flags.json,
       },
-      () => getConversationSpans(org, conversationId)
+      () => getConversationSpans(org, conversationId),
     );
 
     const result = buildTranscriptResult(conversationId, org, spans, title);

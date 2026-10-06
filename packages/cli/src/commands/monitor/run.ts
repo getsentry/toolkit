@@ -53,7 +53,7 @@ function parsePositiveInt(value: string): number {
   if (!Number.isInteger(num) || num < 1) {
     throw new ValidationError(
       `Invalid value: ${value}. Must be a positive integer.`,
-      "monitor-config"
+      "monitor-config",
     );
   }
   return num;
@@ -67,7 +67,7 @@ function parsePositiveInt(value: string): number {
  */
 async function resolveCheckInDsn(
   flags: RunFlags,
-  cwd: string
+  cwd: string,
 ): Promise<string> {
   const dsn = await resolveIngestDsn(flags, cwd);
   if (dsn) {
@@ -76,7 +76,7 @@ async function resolveCheckInDsn(
 
   throw new ConfigError(
     "No DSN found. Provide one via --dsn <dsn>, set the SENTRY_DSN environment variable, or run from a project where a DSN can be detected.",
-    USAGE_HINT
+    USAGE_HINT,
   );
 }
 
@@ -95,7 +95,7 @@ async function sendCheckInSafely(
   dsn: string,
   dsnComponents: ReturnType<typeof makeDsn>,
   checkIn: ReturnType<typeof buildCheckIn>,
-  phase: "in-progress" | "final"
+  phase: "in-progress" | "final",
 ): Promise<void> {
   try {
     const envelope = createCheckInEnvelope(
@@ -103,13 +103,13 @@ async function sendCheckInSafely(
       undefined,
       undefined,
       undefined,
-      dsnComponents
+      dsnComponents,
     );
     const body = serializeEnvelope(envelope);
     const send = sendEnvelopeRequest(dsn, body);
     // Prevent unhandled rejection if the timeout wins the race but the
     // fetch later rejects (Node 15+ terminates on unhandled rejections).
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     send.catch(() => {
       // Intentionally empty — prevents unhandled rejection if timeout wins.
     });
@@ -118,7 +118,7 @@ async function sendCheckInSafely(
       timer = setTimeout(
         reject,
         CHECKIN_SEND_TIMEOUT_MS,
-        new Error("Check-in send timed out")
+        new Error("Check-in send timed out"),
       );
     });
     try {
@@ -128,7 +128,7 @@ async function sendCheckInSafely(
     }
   } catch (err) {
     log.warn(
-      `Failed to send ${phase} check-in: ${err instanceof Error ? err.message : String(err)}`
+      `Failed to send ${phase} check-in: ${err instanceof Error ? err.message : String(err)}`,
     );
     log.debug("Continuing despite check-in failure...");
   }
@@ -245,6 +245,7 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
       s: "schedule",
     },
   },
+  // oxlint-disable-next-line require-yield -- The command contract requires an async generator even when it yields no output.
   async *func(this: SentryContext, flags: RunFlags, ...rawArgs: string[]) {
     const { cwd } = this;
 
@@ -258,13 +259,13 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
     if (!monitorSlug) {
       throw new ValidationError(
         `No monitor slug provided. Usage: ${USAGE_HINT}`,
-        "monitor-slug"
+        "monitor-slug",
       );
     }
     if (command.length === 0) {
       throw new ValidationError(
         `No command provided. Usage: ${USAGE_HINT}`,
-        "command"
+        "command",
       );
     }
 
@@ -297,7 +298,7 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
         environment,
         monitorConfig,
       }),
-      "in-progress"
+      "in-progress",
     );
 
     const startedAt = Date.now();
@@ -372,7 +373,7 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
         environment,
         duration: durationSeconds,
       }),
-      "final"
+      "final",
     );
 
     if (spawnError) {

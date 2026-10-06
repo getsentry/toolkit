@@ -57,7 +57,7 @@ export function buildEventSearchUrl(orgSlug: string, eventId: string): string {
 
 export function buildProjectIssuesUrl(
   orgSlug: string,
-  projectId?: string
+  projectId?: string,
 ): string {
   return render(() => buildProjectIssuesUrlPure(orgSlug, projectId));
 }
@@ -88,7 +88,7 @@ export function buildDashboardsListUrl(orgSlug: string): string {
 
 export function buildDashboardUrl(
   orgSlug: string,
-  dashboardId: string
+  dashboardId: string,
 ): string {
   return render(() => buildDashboardUrlPure(orgSlug, dashboardId));
 }
@@ -99,7 +99,7 @@ export function buildTraceUrl(orgSlug: string, traceId: string): string {
 
 export function buildIssueAlertsUrl(
   orgSlug: string,
-  projectSlug?: string
+  projectSlug?: string,
 ): string {
   return render(() => buildIssueAlertsUrlPure(orgSlug, projectSlug));
 }

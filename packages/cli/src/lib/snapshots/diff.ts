@@ -19,7 +19,7 @@ export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg"] as const;
 
 /** Extension allowlist for {@link walkFiles} (extname form, with the dot). */
 const IMAGE_EXT_SET: ReadonlySet<string> = new Set(
-  IMAGE_EXTENSIONS.map((ext) => `.${ext}`)
+  IMAGE_EXTENSIONS.map((ext) => `.${ext}`),
 );
 
 /**
@@ -65,7 +65,7 @@ export type CategorizedImages = {
 export function categorizeImages(
   base: string[],
   head: string[],
-  selective: boolean
+  selective: boolean,
 ): CategorizedImages {
   const baseSet = new Set(base);
   const headSet = new Set(head);
@@ -134,7 +134,7 @@ export function compareImages(
   baseBuf: Buffer,
   headBuf: Buffer,
   path: string,
-  opts: DiffOptions
+  opts: DiffOptions,
 ): ImageDiff {
   const base = decodeImage(baseBuf, path);
   const head = decodeImage(headBuf, path);

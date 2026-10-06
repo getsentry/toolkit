@@ -10,12 +10,7 @@
  * multi-byte names, and Unix symlink/permission attributes.
  */
 
-import {
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { strToU8, unzipSync, zipSync } from "fflate";
@@ -135,13 +130,13 @@ describe("DeterministicZipWriter byte-parity with zipSync", () => {
   for (const [label, entries] of cases) {
     test(`addData matches zipSync for ${label}`, async () => {
       expect((await writeWithData(entries)).equals(referenceZip(entries))).toBe(
-        true
+        true,
       );
     });
 
     test(`addFile matches zipSync for ${label}`, async () => {
       expect(
-        (await writeWithFiles(entries)).equals(referenceZip(entries))
+        (await writeWithFiles(entries)).equals(referenceZip(entries)),
       ).toBe(true);
     });
   }
@@ -156,7 +151,7 @@ describe("DeterministicZipWriter round-trips", () => {
     const entries = unzipSync(zip);
     expect(new TextDecoder().decode(entries["one.txt"])).toBe("first");
     expect(new TextDecoder().decode(entries["dir/two.bin"])).toBe(
-      "second value"
+      "second value",
     );
   });
 
@@ -170,8 +165,8 @@ describe("DeterministicZipWriter round-trips", () => {
     const fileZip = await writeWithFiles([{ name: "big.bin", data: big }]);
     // Both entry paths must agree and extract to the original bytes.
     expect(fileZip.equals(dataZip)).toBe(true);
-    expect(Buffer.from(unzipSync(fileZip)["big.bin"]).equals(Buffer.from(big))).toBe(
-      true
-    );
+    expect(
+      Buffer.from(unzipSync(fileZip)["big.bin"]).equals(Buffer.from(big)),
+    ).toBe(true);
   });
 });

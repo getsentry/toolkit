@@ -94,5 +94,5 @@ const docs: OrgListCommandDocs = {
 export const listCommand = buildOrgListCommand(
   monitorListConfig,
   docs,
-  "monitor"
+  "monitor",
 );

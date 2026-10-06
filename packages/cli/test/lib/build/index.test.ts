@@ -61,7 +61,7 @@ function writeTmpFile(name: string, data: Uint8Array): string {
  * The output path lives in a tracked temp dir.
  */
 async function normalizeToBuffer(
-  run: (outPath: string) => Promise<void>
+  run: (outPath: string) => Promise<void>,
 ): Promise<Buffer> {
   const dir = makeTmpDir("build-out-");
   const outPath = join(dir, "normalized.zip");
@@ -99,7 +99,7 @@ describe("detectBuildFormat", () => {
 
   test("returns null for a ZIP without build markers", () => {
     expect(detectBuildFormat(zipSync({ "readme.txt": strToU8("hi") }))).toBe(
-      null
+      null,
     );
   });
 
@@ -142,7 +142,7 @@ describe("normalizeBuildFile", () => {
     const apk = fakeApk();
     const src = writeTmpFile("app-release.apk", apk);
     const zip = await normalizeToBuffer((out) =>
-      normalizeBuildFile(src, out, null)
+      normalizeBuildFile(src, out, null),
     );
 
     const entries = unzipSync(zip);
@@ -152,7 +152,9 @@ describe("normalizeBuildFile", () => {
     ]);
     // The build bytes are stored verbatim.
     expect(entries["app-release.apk"]).toEqual(apk);
-    const metadata = new TextDecoder().decode(entries[".sentry-cli-metadata.txt"]);
+    const metadata = new TextDecoder().decode(
+      entries[".sentry-cli-metadata.txt"],
+    );
     expect(metadata).toContain("sentry-cli-version:");
   });
 
@@ -162,10 +164,10 @@ describe("normalizeBuildFile", () => {
       normalizeBuildFile(src, out, {
         name: "sentry-gradle-plugin",
         version: "4.12.0",
-      })
+      }),
     );
     const metadata = new TextDecoder().decode(
-      unzipSync(zip)[".sentry-cli-metadata.txt"]
+      unzipSync(zip)[".sentry-cli-metadata.txt"],
     );
     expect(metadata).toContain("sentry-gradle-plugin: 4.12.0");
   });
@@ -173,10 +175,10 @@ describe("normalizeBuildFile", () => {
   test("is deterministic (identical input → identical bytes)", async () => {
     const src = writeTmpFile("app.apk", fakeApk());
     const a = await normalizeToBuffer((out) =>
-      normalizeBuildFile(src, out, null)
+      normalizeBuildFile(src, out, null),
     );
     const b = await normalizeToBuffer((out) =>
-      normalizeBuildFile(src, out, null)
+      normalizeBuildFile(src, out, null),
     );
     expect(a.equals(b)).toBe(true);
   });
@@ -204,14 +206,14 @@ describe("normalizeBuildDirectory", () => {
     writeFileSync(join(xc, "Info.plist"), "<plist/>");
     writeFileSync(
       join(xc, "Products", "Applications", "MyApp.app", "MyApp"),
-      "binary"
+      "binary",
     );
     return xc;
   }
 
   test("zips files under the directory basename plus a root metadata file", async () => {
     const zip = await normalizeToBuffer((out) =>
-      normalizeBuildDirectory(fakeXcarchive(), out, null)
+      normalizeBuildDirectory(fakeXcarchive(), out, null),
     );
     const entries = unzipSync(zip);
     expect(Object.keys(entries).sort()).toEqual([
@@ -225,10 +227,10 @@ describe("normalizeBuildDirectory", () => {
   test("is deterministic (identical tree → identical bytes)", async () => {
     const xc = fakeXcarchive();
     const a = await normalizeToBuffer((out) =>
-      normalizeBuildDirectory(xc, out, null)
+      normalizeBuildDirectory(xc, out, null),
     );
     const b = await normalizeToBuffer((out) =>
-      normalizeBuildDirectory(xc, out, null)
+      normalizeBuildDirectory(xc, out, null),
     );
     expect(a.equals(b)).toBe(true);
   });
@@ -245,17 +247,19 @@ describe("normalizeBuildDirectory", () => {
       symlinkSync("real.txt", join(xc, "link.txt"));
 
       const entries = unzipSync(
-        await normalizeToBuffer((out) => normalizeBuildDirectory(xc, out, null))
+        await normalizeToBuffer((out) =>
+          normalizeBuildDirectory(xc, out, null),
+        ),
       );
       // The symlink entry stores its target path — proof it was NOT followed
       // (following would store "REAL", the target's file content).
       expect(new TextDecoder().decode(entries["App.xcarchive/link.txt"])).toBe(
-        "real.txt"
+        "real.txt",
       );
       expect(new TextDecoder().decode(entries["App.xcarchive/real.txt"])).toBe(
-        "REAL"
+        "REAL",
       );
-    }
+    },
   );
 });
 
@@ -320,7 +324,7 @@ describe("extractIpaAppName", () => {
       extractIpaAppName([
         "Payload/MyApp.app/Info.plist",
         "Payload/MyApp.app/MyApp",
-      ])
+      ]),
     ).toBe("MyApp");
   });
 
@@ -333,7 +337,7 @@ describe("extractIpaAppName", () => {
       extractIpaAppName([
         "Payload/A.app/Info.plist",
         "Payload/B.app/Info.plist",
-      ])
+      ]),
     ).toThrow("exactly one");
   });
 });
@@ -366,12 +370,12 @@ describe("normalizeIpa", () => {
       "archive.xcarchive/Products/Applications/MyApp.app/MyApp",
     ]);
     const plist = new TextDecoder().decode(
-      entries["archive.xcarchive/Info.plist"]
+      entries["archive.xcarchive/Info.plist"],
     );
     expect(plist).toContain("<string>Applications/MyApp.app</string>");
     // Assets.car is carried through verbatim (not parsed).
     expect(
-      entries["archive.xcarchive/Products/Applications/MyApp.app/Assets.car"]
+      entries["archive.xcarchive/Products/Applications/MyApp.app/Assets.car"],
     ).toEqual(strToU8("carbytes"));
   });
 
@@ -381,13 +385,13 @@ describe("normalizeIpa", () => {
         zipSync({
           "Payload/MyApp.app/Info.plist": strToU8("<app/>"),
           "Payload/MyApp.app/Frameworks/X.framework/X": strToU8("fw"),
-        })
-      )
+        }),
+      ),
     );
     expect(
       entries[
         "archive.xcarchive/Products/Applications/MyApp.app/Frameworks/X.framework/X"
-      ]
+      ],
     ).toEqual(strToU8("fw"));
   });
 
@@ -401,15 +405,13 @@ describe("normalizeIpa", () => {
             // A stray second .app (no Info.plist so extractIpaAppName still
             // sees one) must not be bundled.
             "Payload/Stray.app/junk": strToU8("junk"),
-          })
-        )
-      )
+          }),
+        ),
+      ),
     );
     expect(names.some((n) => n.includes("Stray"))).toBe(false);
     expect(
-      names.includes(
-        "archive.xcarchive/Products/Applications/MyApp.app/MyApp"
-      )
+      names.includes("archive.xcarchive/Products/Applications/MyApp.app/MyApp"),
     ).toBe(true);
   });
 
@@ -420,9 +422,9 @@ describe("normalizeIpa", () => {
           zipSync({
             "Payload/MyApp.app/Info.plist": strToU8("<app/>"),
             "Payload/MyApp.app/../../evil": strToU8("x"),
-          })
-        )
-      )
+          }),
+        ),
+      ),
     );
     expect(names.some((n) => n.includes("evil"))).toBe(false);
   });
@@ -435,9 +437,12 @@ describe("normalizeIpa", () => {
   });
 
   test("throws when the IPA has no single .app", async () => {
-    const src = writeTmpFile("bad.ipa", zipSync({ "readme.txt": strToU8("x") }));
+    const src = writeTmpFile(
+      "bad.ipa",
+      zipSync({ "readme.txt": strToU8("x") }),
+    );
     await expect(
-      normalizeToBuffer((out) => normalizeIpa(src, out, null))
+      normalizeToBuffer((out) => normalizeIpa(src, out, null)),
     ).rejects.toThrow("exactly one");
   });
 });

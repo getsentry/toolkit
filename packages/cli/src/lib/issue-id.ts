@@ -53,7 +53,7 @@ export function isShortSuffix(input: string): boolean {
  * @returns Parsed alias (lowercase) and suffix (uppercase), or null
  */
 export function parseAliasSuffix(
-  input: string
+  input: string,
 ): { alias: string; suffix: string } | null {
   const match = ALIAS_SUFFIX_PATTERN.exec(input);
   if (!(match?.[1] && match[2])) {
@@ -72,7 +72,7 @@ export function parseAliasSuffix(
  */
 export function expandToFullShortId(
   suffix: string,
-  projectSlug: string
+  projectSlug: string,
 ): string {
   return `${projectSlug.toUpperCase()}-${suffix.toUpperCase()}`;
 }

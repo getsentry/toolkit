@@ -84,7 +84,7 @@ export const restoreCommand = buildCommand({
           if (!revision) {
             throw new ValidationError(
               "--revision must be a non-empty revision ID.",
-              "revision"
+              "revision",
             );
           }
           return revision;
@@ -102,19 +102,19 @@ export const restoreCommand = buildCommand({
     const orgSlug = await resolveOrgFromTarget(
       parsed,
       cwd,
-      "sentry dashboard restore <org>/ <id> --revision <rev>"
+      "sentry dashboard restore <org>/ <id> --revision <rev>",
     );
     const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
 
     const dashboard = await withProgress(
       { message: `Restoring revision ${flags.revision}...`, json: flags.json },
-      () => restoreDashboardRevision(orgSlug, dashboardId, flags.revision)
+      () => restoreDashboardRevision(orgSlug, dashboardId, flags.revision),
     ).catch(async (error: unknown) =>
       enrichDashboardError(error, {
         orgSlug,
         dashboardId,
         operation: "update",
-      })
+      }),
     );
 
     const outputData: RestoreResult = {

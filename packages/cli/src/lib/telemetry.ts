@@ -11,7 +11,7 @@
 
 import { chmodSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 
 const _require = createRequire(import.meta.url);
@@ -137,7 +137,7 @@ export function computeTelemetryEffective(): TelemetryEffective {
     return { enabled: false, source: `env:${DO_NOT_TRACK_ENV_VAR}` };
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const pref = getTelemetryPreference();
     if (pref !== undefined) {
@@ -178,7 +178,7 @@ export function isTelemetryEnabled(): boolean {
  */
 export async function withTelemetry<T>(
   callback: (span: Span | undefined) => T | Promise<T>,
-  options?: { libraryMode?: boolean }
+  options?: { libraryMode?: boolean },
 ): Promise<T> {
   const enabled = isTelemetryEnabled();
   const client = initSentry(enabled, options);
@@ -191,11 +191,10 @@ export async function withTelemetry<T>(
 
   // Flush deferred completion telemetry (queued during __complete fast-path).
   // Best-effort: never block CLI execution for telemetry emission.
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const { drainCompletionTelemetry } = await import(
-      "./db/completion-telemetry.js"
-    );
+    const { drainCompletionTelemetry } =
+      await import("./db/completion-telemetry.js");
     for (const entry of drainCompletionTelemetry()) {
       Sentry.metrics.distribution("completion.duration_ms", entry.durationMs, {
         attributes: { command_path: entry.commandPath },
@@ -203,7 +202,7 @@ export async function withTelemetry<T>(
       Sentry.metrics.distribution(
         "completion.result_count",
         entry.resultCount,
-        { attributes: { command_path: entry.commandPath } }
+        { attributes: { command_path: entry.commandPath } },
       );
     }
   } catch {
@@ -226,7 +225,7 @@ export async function withTelemetry<T>(
           }
           throw e;
         }
-      }
+      },
     );
   } catch (e) {
     // Route through reportCliError so silencing (OutputError, expected-auth
@@ -273,7 +272,7 @@ export async function withTelemetry<T>(
  * @internal Exported for testing
  */
 export function createBeforeExitHandler(
-  client: Sentry.LightNodeClient
+  client: Sentry.LightNodeClient,
 ): () => void {
   let isFlushing = false;
   return () => {
@@ -290,7 +289,7 @@ export function createBeforeExitHandler(
     // Flush pending events before exit. Convert PromiseLike to Promise
     // for proper error handling. The async work causes beforeExit to
     // re-fire when complete, which the isFlushing guard handles.
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     Promise.resolve(client.flush(3000)).catch(() => {
       // Ignore flush errors — telemetry should never block CLI exit
     });
@@ -438,7 +437,7 @@ const LIBRARY_EXCLUDED_INTEGRATIONS = new Set([
  * Checked once at module load so the integration filter is a simple boolean.
  */
 const hasGetSystemErrorMap = (() => {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     // Dynamic require to avoid bundler issues — the check only matters at runtime
     const util = _require("node:util") as Record<string, unknown>;
@@ -524,7 +523,7 @@ function setAgentTags(info: AgentInfo): void {
 
 export function initSentry(
   enabled: boolean,
-  options?: { libraryMode?: boolean }
+  options?: { libraryMode?: boolean },
 ): Sentry.LightNodeClient | undefined {
   const libraryMode = options?.libraryMode ?? false;
   const environment = getCliEnvironment();
@@ -620,14 +619,14 @@ export function initSentry(
       const filtered = defaults.filter(
         (integration) =>
           !excluded.has(integration.name) &&
-          (integration.name !== "NodeSystemError" || hasGetSystemErrorMap)
+          (integration.name !== "NodeSystemError" || hasGetSystemErrorMap),
       );
 
       // Re-add Context integration with cpu: false to avoid os.cpus() crash
       // on systems where /proc/cpuinfo is not accessible (CLI-1ED).
       if (!libraryMode) {
         filtered.push(
-          Sentry.nodeContextIntegration({ device: { cpu: false } })
+          Sentry.nodeContextIntegration({ device: { cpu: false } }),
         );
       }
 
@@ -637,7 +636,7 @@ export function initSentry(
       // 5s interval for CLI — most commands complete in <10s.
       if (!libraryMode) {
         filtered.push(
-          Sentry.nodeRuntimeMetricsIntegration({ collectionIntervalMs: 5000 })
+          Sentry.nodeRuntimeMetricsIntegration({ collectionIntervalMs: 5000 }),
         );
       }
 
@@ -779,7 +778,7 @@ export function initSentry(
  */
 export function setCommandSpanName(
   span: Span | undefined,
-  command: string
+  command: string,
 ): void {
   if (span) {
     Sentry.updateSpanName(span, command);
@@ -912,7 +911,7 @@ export function setArgsContext(args: readonly unknown[]): void {
 
   Sentry.setContext("args", {
     values: args.map((arg) =>
-      typeof arg === "string" ? arg : JSON.stringify(arg)
+      typeof arg === "string" ? arg : JSON.stringify(arg),
     ),
     count: args.length,
   });
@@ -982,7 +981,7 @@ export function createWizardPromptTelemetry(): WizardPromptTelemetry {
               "wizard.user_wait_ms",
               totalWaitMs,
               "millisecond",
-              Sentry.getRootSpan(span)
+              Sentry.getRootSpan(span),
             );
             Sentry.metrics.distribution("wizard.user_wait_ms", waitMs, {
               attributes: {
@@ -996,7 +995,7 @@ export function createWizardPromptTelemetry(): WizardPromptTelemetry {
           "wizard.prompt.kind": kind,
           "wizard.prompt.phase": stepId ? "workflow" : "preflight",
           ...(stepId ? { "wizard.step.id": stepId } : {}),
-        }
+        },
       );
     },
   };
@@ -1023,7 +1022,7 @@ export function withTracing<T>(
   name: string,
   op: string,
   fn: () => T | Promise<T>,
-  attributes?: Record<string, string | number | boolean>
+  attributes?: Record<string, string | number | boolean>,
 ): Promise<T> {
   return Sentry.startSpan(
     { name, op, attributes, onlyIfParent: true },
@@ -1036,7 +1035,7 @@ export function withTracing<T>(
         span.setStatus({ code: 2 }); // Error
         throw error;
       }
-    }
+    },
   );
 }
 
@@ -1072,7 +1071,7 @@ export function withTracingSpan<T>(
   name: string,
   op: string,
   fn: (span: Span) => T | Promise<T>,
-  attributes?: Record<string, string | number | boolean>
+  attributes?: Record<string, string | number | boolean>,
 ): Promise<T> {
   return Sentry.startSpan(
     { name, op, attributes, onlyIfParent: true },
@@ -1097,7 +1096,7 @@ export function withTracingSpan<T>(
         }
         throw error;
       }
-    }
+    },
   );
 }
 
@@ -1115,7 +1114,7 @@ export function withTracingSpan<T>(
 export function withHttpSpan<T>(
   method: string,
   url: string,
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
 ): Promise<T> {
   return withTracing(`${method} ${url}`, "http.client", fn, {
     "http.request.method": method,
@@ -1146,17 +1145,17 @@ export function withDbSpan<T>(operation: string, fn: () => T): T {
       attributes: { "db.system": "sqlite" },
       onlyIfParent: true,
     },
-    fn
+    fn,
   );
 }
 
 /** Intentional no-op used as a self-replacement target for one-shot functions. */
-// biome-ignore lint/suspicious/noEmptyBlockStatements: intentional noop
+// intentional noop
 const noop = (): void => {};
 
 /** Resolves the database path, falling back to a default if the import fails. */
 function resolveDbPath(): string {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const { getDbPath } = _require("./db/index.js") as {
       getDbPath: () => string;
@@ -1182,7 +1181,7 @@ let warnReadonlyDatabaseOnce = (): void => {
   process.stderr.write(
     `\nWarning: Sentry CLI local database is read-only. Caching and preferences won't persist.\n` +
       `  Path: ${dbPath}\n` +
-      "  Fix:  sentry cli fix\n\n"
+      "  Fix:  sentry cli fix\n\n",
   );
 };
 
@@ -1229,7 +1228,7 @@ function isOwnedByRoot(filePath: string): boolean {
   if (process.platform === "win32") {
     return false;
   }
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return statSync(filePath).uid === 0;
   } catch {
@@ -1259,12 +1258,12 @@ function tryRepairReadonly(): boolean {
       "\nWarning: Sentry CLI config directory is owned by root.\n" +
         `  Path:  ${configDir}\n` +
         `  Fix:   sudo chown -R ${username} "${configDir}"\n` +
-        "  Or:    sudo sentry cli fix\n\n"
+        "  Or:    sudo sentry cli fix\n\n",
     );
     return false;
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     // Repair config directory (needs rwx for WAL/SHM creation)
     chmodSync(configDir, 0o700);
@@ -1278,7 +1277,7 @@ function tryRepairReadonly(): boolean {
     warnReadonlyDatabaseOnce = noop;
 
     process.stderr.write(
-      "\nNote: Database permissions were auto-repaired. Caching will resume on next command.\n\n"
+      "\nNote: Database permissions were auto-repaired. Caching will resume on next command.\n\n",
     );
     return true;
   } catch {
@@ -1300,7 +1299,7 @@ export function resetReadonlyWarning(): void {
     process.stderr.write(
       `\nWarning: Sentry CLI local database is read-only. Caching and preferences won't persist.\n` +
         `  Path: ${dbPath}\n` +
-        "  Fix:  sentry cli fix\n\n"
+        "  Fix:  sentry cli fix\n\n",
     );
   };
 }
@@ -1352,7 +1351,7 @@ function createTracedStatement<T>(stmt: T, sql: string): T {
       // Non-traced methods get bound to preserve 'this' context for native methods
       if (
         !TRACED_STATEMENT_METHODS.includes(
-          prop as (typeof TRACED_STATEMENT_METHODS)[number]
+          prop as (typeof TRACED_STATEMENT_METHODS)[number],
         )
       ) {
         return value.bind(target);
@@ -1392,7 +1391,7 @@ function createTracedStatement<T>(stmt: T, sql: string): T {
               // Re-throw if repair didn't help or wasn't applicable
               throw error;
             }
-          }
+          },
         );
     },
   }) as T;
@@ -1473,7 +1472,7 @@ export function withSerializeSpan<T>(operation: string, fn: () => T): T {
       op: "serialize",
       onlyIfParent: true,
     },
-    fn
+    fn,
   );
 }
 
@@ -1489,7 +1488,7 @@ export function withSerializeSpan<T>(operation: string, fn: () => T): T {
  */
 export function withFsSpan<T>(
   operation: string,
-  fn: () => T | Promise<T>
+  fn: () => T | Promise<T>,
 ): Promise<T> {
   return withTracing(operation, "file", fn);
 }
@@ -1511,7 +1510,7 @@ export function withCacheSpan<T>(
   name: string,
   op: "cache.get" | "cache.put",
   fn: (span: Span) => T | Promise<T>,
-  attributes?: Record<string, string | number | boolean | string[]>
+  attributes?: Record<string, string | number | boolean | string[]>,
 ): Promise<T> {
   return Sentry.startSpan(
     { name, op, attributes, onlyIfParent: true },
@@ -1524,6 +1523,6 @@ export function withCacheSpan<T>(
         span.setStatus({ code: 2 }); // Error
         throw error;
       }
-    }
+    },
   );
 }

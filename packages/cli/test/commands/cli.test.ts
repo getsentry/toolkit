@@ -72,7 +72,7 @@ describe("feedbackCommand.func", () => {
     };
 
     await expect(func.call(mockContext, {}, "")).rejects.toThrow(
-      "Please provide a feedback message."
+      "Please provide a feedback message.",
     );
   });
 
@@ -84,7 +84,7 @@ describe("feedbackCommand.func", () => {
     };
 
     await expect(func.call(mockContext, {}, "   ")).rejects.toThrow(
-      "Please provide a feedback message."
+      "Please provide a feedback message.",
     );
   });
 
@@ -97,7 +97,7 @@ describe("feedbackCommand.func", () => {
 
     // Sentry is disabled in test environment (no DSN)
     await expect(
-      func.call(mockContext, {}, "test", "feedback")
+      func.call(mockContext, {}, "test", "feedback"),
     ).rejects.toThrow("Feedback not sent: telemetry is disabled.");
   });
 });
@@ -181,13 +181,13 @@ describe("upgradeCommand.func", () => {
     await func.call(
       context,
       { check: true, method: "curl", json: true },
-      "2.0.0"
+      "2.0.0",
     );
 
     const data = JSON.parse(getStdout()) as UpgradeResult;
     expect(data.action).toBe("checked");
     expect(data.warnings).toContain(
-      "Run 'sentry cli upgrade 2.0.0' to update."
+      "Run 'sentry cli upgrade 2.0.0' to update.",
     );
   });
 
@@ -223,7 +223,7 @@ describe("upgradeCommand.func", () => {
 
     // Specify a version that doesn't exist
     await expect(
-      func.call(context, { check: false, method: "curl" }, "999.0.0")
+      func.call(context, { check: false, method: "curl" }, "999.0.0"),
     ).rejects.toThrow("Version 999.0.0 not found");
     expect(callCount).toBe(2);
   });

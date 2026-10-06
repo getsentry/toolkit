@@ -93,42 +93,42 @@ describe("issue unlink", () => {
       selector: { app: "custom-tracker" },
       expected: { integrationId: undefined, appSlug: "custom-tracker" },
     },
-  ])("forwards resolved issue context and selector $selector", async ({
-    selector,
-    expected,
-  }) => {
-    const { context, output } = createMockContext();
-    const func = await unlinkCommand.loader();
-    await func.call(
-      context,
-      { ...defaultFlags, ...selector, yes: true },
-      "test-org/APP-42",
-      externalUrl
-    );
+  ])(
+    "forwards resolved issue context and selector $selector",
+    async ({ selector, expected }) => {
+      const { context, output } = createMockContext();
+      const func = await unlinkCommand.loader();
+      await func.call(
+        context,
+        { ...defaultFlags, ...selector, yes: true },
+        "test-org/APP-42",
+        externalUrl,
+      );
 
-    expect(resolveOrgAndIssueId).toHaveBeenCalledExactlyOnceWith({
-      issueArg: "test-org/APP-42",
-      cwd: "/tmp/example-project",
-      command: "unlink",
-    });
-    expect(unlinkExternalIssue).toHaveBeenCalledExactlyOnceWith({
-      orgSlug: "test-org",
-      issueId: "123456789",
-      url: externalUrl,
-      ...expected,
-      dryRun: false,
-    });
-    expect(confirmByTyping).not.toHaveBeenCalled();
-    expect(output()).toContain("Unlinked");
-    expect(output()).toContain("external issue was not deleted");
-  });
+      expect(resolveOrgAndIssueId).toHaveBeenCalledExactlyOnceWith({
+        issueArg: "test-org/APP-42",
+        cwd: "/tmp/example-project",
+        command: "unlink",
+      });
+      expect(unlinkExternalIssue).toHaveBeenCalledExactlyOnceWith({
+        orgSlug: "test-org",
+        issueId: "123456789",
+        url: externalUrl,
+        ...expected,
+        dryRun: false,
+      });
+      expect(confirmByTyping).not.toHaveBeenCalled();
+      expect(output()).toContain("Unlinked");
+      expect(output()).toContain("external issue was not deleted");
+    },
+  );
 
   test("refuses non-interactive mutation without explicit confirmation before resolving", async () => {
     const { context, output } = createMockContext();
     const func = await unlinkCommand.loader();
 
     await expect(
-      func.call(context, defaultFlags, "APP-42", externalUrl)
+      func.call(context, defaultFlags, "APP-42", externalUrl),
     ).rejects.toThrow("Use --yes or --force to confirm.");
 
     expect(resolveOrgAndIssueId).not.toHaveBeenCalled();
@@ -137,29 +137,29 @@ describe("issue unlink", () => {
     expect(output()).toBe("");
   });
 
-  test.each([
-    "yes",
-    "force",
-  ] as const)("allows non-interactive --%s without prompting", async (flag) => {
-    const { context } = createMockContext();
-    const func = await unlinkCommand.loader();
-    await func.call(
-      context,
-      { ...defaultFlags, [flag]: true },
-      "APP-42",
-      externalUrl
-    );
+  test.each(["yes", "force"] as const)(
+    "allows non-interactive --%s without prompting",
+    async (flag) => {
+      const { context } = createMockContext();
+      const func = await unlinkCommand.loader();
+      await func.call(
+        context,
+        { ...defaultFlags, [flag]: true },
+        "APP-42",
+        externalUrl,
+      );
 
-    expect(confirmByTyping).not.toHaveBeenCalled();
-    expect(unlinkExternalIssue).toHaveBeenCalledExactlyOnceWith({
-      orgSlug: "test-org",
-      issueId: "123456789",
-      url: externalUrl,
-      integrationId: undefined,
-      appSlug: undefined,
-      dryRun: false,
-    });
-  });
+      expect(confirmByTyping).not.toHaveBeenCalled();
+      expect(unlinkExternalIssue).toHaveBeenCalledExactlyOnceWith({
+        orgSlug: "test-org",
+        issueId: "123456789",
+        url: externalUrl,
+        integrationId: undefined,
+        appSlug: undefined,
+        dryRun: false,
+      });
+    },
+  );
 
   test("confirms the selected issue and external URL before unlinking interactively", async () => {
     mockIsatty.mockReturnValue(true);
@@ -169,11 +169,11 @@ describe("issue unlink", () => {
 
     expect(confirmByTyping).toHaveBeenCalledExactlyOnceWith(
       "test-org/APP-42",
-      `Type 'test-org/APP-42' to unlink ${externalUrl}:`
+      `Type 'test-org/APP-42' to unlink ${externalUrl}:`,
     );
     expect(unlinkExternalIssue).toHaveBeenCalledOnce();
     expect(vi.mocked(confirmByTyping).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(unlinkExternalIssue).mock.invocationCallOrder[0]
+      vi.mocked(unlinkExternalIssue).mock.invocationCallOrder[0],
     );
   });
 
@@ -203,12 +203,12 @@ describe("issue unlink", () => {
       context,
       { ...defaultFlags, "dry-run": true, json: true },
       "APP-42",
-      externalUrl
+      externalUrl,
     );
 
     expect(confirmByTyping).not.toHaveBeenCalled();
     expect(unlinkExternalIssue).toHaveBeenCalledWith(
-      expect.objectContaining({ dryRun: true })
+      expect.objectContaining({ dryRun: true }),
     );
     expect(JSON.parse(output())).toEqual(result);
   });

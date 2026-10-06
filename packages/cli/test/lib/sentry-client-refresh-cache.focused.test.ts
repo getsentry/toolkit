@@ -65,9 +65,9 @@ test("401 refresh caches GET under the bearer actually sent on retry", async () 
             "cache-control": "private, max-age=60",
             vary: "authorization",
           },
-        }
+        },
       );
-    }
+    },
   );
   const response = await getSdkConfig("https://sentry.io").fetch(url);
   expect(await response.json()).toEqual({ id: "refresh-cache-focused" });
@@ -77,7 +77,7 @@ test("401 refresh caches GET under the bearer actually sent on retry", async () 
       "GET",
       url,
       { authorization: "Bearer new-access" },
-      getIdentityFingerprint()
+      getIdentityFingerprint(),
     );
     expect(cached).toBeDefined();
   });

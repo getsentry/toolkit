@@ -6,7 +6,7 @@ const invocationState = vi.hoisted(() => ({
   handler: undefined as
     | ((
         context: HandlerContext,
-        flags: Record<string, unknown>
+        flags: Record<string, unknown>,
       ) => Promise<void>)
     | undefined,
 }));
@@ -17,7 +17,7 @@ vi.mock("../../src/app.js", () => {
     loader: async () =>
       async function focusedCommand(
         this: HandlerContext,
-        flags: Record<string, unknown>
+        flags: Record<string, unknown>,
       ): Promise<void> {
         if (!invocationState.handler) {
           throw new Error("Missing invocation handler");
@@ -39,7 +39,7 @@ vi.mock("../../src/app.js", () => {
 vi.mock("../../src/lib/telemetry.js", () => ({
   setCommandSpanName: vi.fn(),
   withTelemetry: async <T>(
-    callback: (span: undefined) => Promise<T>
+    callback: (span: undefined) => Promise<T>,
   ): Promise<T> => await callback(undefined),
 }));
 vi.mock("@sentry/node-core/light", () => ({ getClient: () => null }));
@@ -74,7 +74,7 @@ describe("overlapping SDK invocation isolation", () => {
       await release.get(id)?.promise;
       context.stdout.captureObject?.({
         header: getCustomHeaders().find(
-          ([name]) => name === "X-Invocation"
+          ([name]) => name === "X-Invocation",
         )?.[1],
         host: getEnv().SENTRY_HOST,
         token: getEnv().SENTRY_AUTH_TOKEN,

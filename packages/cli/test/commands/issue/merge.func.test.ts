@@ -17,11 +17,11 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -31,11 +31,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import {
   ApiError,
@@ -133,7 +133,7 @@ describe("mergeCommand.func()", () => {
           shortId: issueArg,
           id: issueArg.replace("CLI-", "10"),
         }),
-      })
+      }),
     );
     // Sentry honors the --into preference in this case
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A"] });
@@ -158,7 +158,7 @@ describe("mergeCommand.func()", () => {
       Promise.resolve({
         org: "test-org",
         issue: makeMockIssue({ shortId: "CLI-A", id: "100" }),
-      })
+      }),
     );
 
     const { context } = createMockContext();
@@ -204,7 +204,7 @@ describe("mergeCommand.func()", () => {
       Promise.resolve({
         org: issueArg === "CLI-A" ? "org-one" : "org-two",
         issue: makeMockIssue({ shortId: issueArg, id: issueArg }),
-      })
+      }),
     );
 
     const { context } = createMockContext();
@@ -225,7 +225,7 @@ describe("mergeCommand.func()", () => {
           shortId: issueArg,
           id: issueArg.replace("CLI-", "10"),
         }),
-      })
+      }),
     );
     mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B", "10C"] });
 
@@ -244,7 +244,7 @@ describe("mergeCommand.func()", () => {
           shortId: issueArg,
           id: issueArg.replace("CLI-", "10"),
         }),
-      })
+      }),
     );
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A", "10C"] });
 
@@ -256,7 +256,7 @@ describe("mergeCommand.func()", () => {
       { json: false, into: "CLI-B" },
       "CLI-A",
       "CLI-B",
-      "CLI-C"
+      "CLI-C",
     );
 
     const callArgs = mergeSpy.mock.calls[0] as [string, string[]];
@@ -313,7 +313,7 @@ describe("mergeCommand.func()", () => {
           shortId: issueArg.split("/").pop() as string,
           id: (issueArg.split("/").pop() as string).replace("CLI-", "10"),
         }),
-      })
+      }),
     );
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A", "10C"] });
 
@@ -325,7 +325,7 @@ describe("mergeCommand.func()", () => {
       { json: false, into: "my-org/CLI-B" },
       "CLI-A",
       "CLI-B",
-      "CLI-C"
+      "CLI-C",
     );
 
     const callArgs = mergeSpy.mock.calls[0] as [string, string[]];
@@ -343,7 +343,7 @@ describe("mergeCommand.func()", () => {
           shortId: issueArg,
           id: issueArg.replace("CLI-", "10"),
         }),
-      })
+      }),
     );
     mergeSpy.mockResolvedValue({ parent: "10C", children: ["10A", "10B"] });
 
@@ -367,7 +367,7 @@ describe("mergeCommand.func()", () => {
           shortId: issueArg,
           id: issueArg.replace("CLI-", "10"),
         }),
-      })
+      }),
     );
     mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B"] });
 
@@ -398,7 +398,7 @@ describe("mergeCommand.func()", () => {
           shortId: issueArg,
           id: issueArg.replace("CLI-", "10"),
         }),
-      })
+      }),
     );
     // User asked for CLI-B, but Sentry picked CLI-A (e.g. larger by count)
     mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B"] });
@@ -413,7 +413,7 @@ describe("mergeCommand.func()", () => {
         context,
         { json: false, into: "CLI-B" },
         "CLI-A",
-        "CLI-B"
+        "CLI-B",
       );
 
       const stderr = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
@@ -432,7 +432,7 @@ describe("mergeCommand.func()", () => {
           shortId: issueArg,
           id: issueArg.replace("CLI-", "10"),
         }),
-      })
+      }),
     );
     // User asked for CLI-B, Sentry agreed.
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A"] });
@@ -445,7 +445,7 @@ describe("mergeCommand.func()", () => {
         context,
         { json: false, into: "CLI-B" },
         "CLI-A",
-        "CLI-B"
+        "CLI-B",
       );
 
       const stderr = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
@@ -463,7 +463,7 @@ describe("mergeCommand.func()", () => {
       Promise.resolve({
         org: "test-org",
         issue: makeMockIssue({ shortId: "CLI-A", id: "100" }),
-      })
+      }),
     );
 
     const { context } = createMockContext();
@@ -546,8 +546,8 @@ describe("mergeCommand.func()", () => {
           new ResolutionError(
             "Issue 'XYZ'",
             "not found",
-            "sentry issue view XYZ"
-          )
+            "sentry issue view XYZ",
+          ),
         );
       }
       return Promise.resolve({
@@ -582,7 +582,7 @@ describe("mergeCommand.func()", () => {
           shortId: issueArg.toUpperCase(),
           id: issueArg.toUpperCase().replace("CLI-", "10"),
         }),
-      })
+      }),
     );
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A"] });
 

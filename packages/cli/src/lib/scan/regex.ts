@@ -93,7 +93,7 @@ export function extractInlineFlags(source: string): {
  * tokenizer — we track three states (char class, paren depth, escape)
  * and each needs its own branch.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: regex tokenizer is inherently branchy
+// regex tokenizer is inherently branchy
 function unwrapScopedGroup(source: string, openIndex: number): string | null {
   let depth = 1;
   let i = openIndex;
@@ -192,7 +192,7 @@ export type CompilePatternOptions = {
  */
 export function compilePattern(
   pattern: string | RegExp,
-  opts: CompilePatternOptions = {}
+  opts: CompilePatternOptions = {},
 ): RegExp {
   if (pattern instanceof RegExp) {
     return pattern;
@@ -214,7 +214,7 @@ export function compilePattern(
   } catch (error) {
     throw new ValidationError(
       `Invalid grep pattern: ${(error as Error).message}`,
-      "pattern"
+      "pattern",
     );
   }
 }

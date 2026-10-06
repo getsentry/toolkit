@@ -58,7 +58,7 @@ function resolveRefreshScope(flags: RefreshFlags): string {
   if (flags["read-only"] && flags.scope?.length) {
     throw new ValidationError(
       "--read-only and --scope cannot be used together. Use --read-only for the read-only subset, or --scope to list exact scopes.",
-      "scope"
+      "scope",
     );
   }
   if (flags.scope?.length) {
@@ -152,7 +152,7 @@ Examples:
         "invalid",
         "Cannot refresh an environment variable token.\n" +
           "Token refresh is only available for OAuth sessions.\n" +
-          `Update ${envVar} to change your token.`
+          `Update ${envVar} to change your token.`,
       );
     }
 
@@ -184,7 +184,7 @@ Examples:
       throw new AuthError(
         "invalid",
         "No refresh token available. You may be using a manual API token.\n" +
-          "Run 'sentry auth login' to authenticate with OAuth and enable auto-refresh."
+          "Run 'sentry auth login' to authenticate with OAuth and enable auto-refresh.",
       );
     }
 

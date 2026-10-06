@@ -42,7 +42,7 @@ const SKILL_CONTENT_STUB =
   "export const SKILL_FILES: [string, string][] = [];\n";
 const skillContentExists = await access(SKILL_CONTENT_PATH).then(
   () => true,
-  () => false
+  () => false,
 );
 if (!skillContentExists) {
   mkdirSync("src/generated", { recursive: true });
@@ -110,7 +110,7 @@ function getVisibleFlags(cmd: CommandInfo): FlagInfo[] {
  */
 function formatFlagRow(
   flag: FlagInfo,
-  aliases: Record<string, string>
+  aliases: Record<string, string>,
 ): string {
   const alias = Object.entries(aliases).find(([, v]) => v === flag.name)?.[0];
 
@@ -140,7 +140,7 @@ function formatFlagRow(
 /** Format flags as a markdown options table */
 function formatFlagsTable(
   flags: FlagInfo[],
-  aliases: Record<string, string>
+  aliases: Record<string, string>,
 ): string {
   if (flags.length === 0) {
     return "";
@@ -237,7 +237,7 @@ function generatePage(route: RouteInfo): string {
 
   // Global flags footer
   lines.push(
-    "All commands support `--json` for machine-readable output and `--fields` to select specific JSON fields."
+    "All commands support `--json` for machine-readable output and `--fields` to select specific JSON fields.",
   );
   lines.push("");
 
@@ -314,14 +314,14 @@ function generateConfigurationPage(registry: readonly EnvVarEntry[]): string {
   lines.push("---");
   lines.push("title: Configuration");
   lines.push(
-    "description: Environment variables, config files, and configuration options for the Sentry CLI"
+    "description: Environment variables, config files, and configuration options for the Sentry CLI",
   );
   lines.push("---");
   lines.push("");
 
   // Intro
   lines.push(
-    "The Sentry CLI can be configured through config files, environment variables, and a local database. Most users don't need to set any of these — the CLI auto-detects your project from your codebase and stores credentials locally after `sentry auth login`."
+    "The Sentry CLI can be configured through config files, environment variables, and a local database. Most users don't need to set any of these — the CLI auto-detects your project from your codebase and stores credentials locally after `sentry auth login`.",
   );
   lines.push("");
 
@@ -377,7 +377,7 @@ async function readTopLevelFragment(fragmentName: string): Promise<string> {
 
 const routeMap = routes as unknown as RouteMap;
 const routeInfos = extractAllRoutes(routeMap).filter(
-  (r) => !SKIP_ROUTES.has(r.name)
+  (r) => !SKIP_ROUTES.has(r.name),
 );
 
 const generatedFiles: string[] = [];
@@ -414,7 +414,7 @@ indexLines.push("description: Available commands in the Sentry CLI");
 indexLines.push("---");
 indexLines.push("");
 indexLines.push(
-  "The Sentry CLI provides commands for interacting with various Sentry resources."
+  "The Sentry CLI provides commands for interacting with various Sentry resources.",
 );
 indexLines.push("");
 indexLines.push("## Available Commands");
@@ -442,5 +442,5 @@ const configContent = configFragment
 await writeFile(CONFIG_PATH, configContent);
 
 console.log(
-  `Generated ${generatedFiles.length} command doc pages + ${INDEX_PATH} + ${CONFIG_PATH}`
+  `Generated ${generatedFiles.length} command doc pages + ${INDEX_PATH} + ${CONFIG_PATH}`,
 );

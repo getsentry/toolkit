@@ -26,12 +26,12 @@ export type WizardResult = {
 export async function runWizard(
   projectDir: string,
   platform: Platform,
-  features?: string[]
+  features?: string[],
 ): Promise<WizardResult> {
   // Resolve relative paths (e.g. "src/bin.ts") against the CLI repo root,
   // since the wizard spawns with cwd set to the temp project directory.
   const cmd = getCliCommand().map((part) =>
-    part.includes("/") ? resolvePath(CLI_ROOT, part) : part
+    part.includes("/") ? resolvePath(CLI_ROOT, part) : part,
   );
   const mastraUrl = process.env.MASTRA_API_URL;
   if (!mastraUrl) {
@@ -90,7 +90,7 @@ export async function runWizard(
   });
 
   const exitCode = await new Promise<number>((resolve) =>
-    proc.on("close", (code) => resolve(code ?? 1))
+    proc.on("close", (code) => resolve(code ?? 1)),
   );
 
   // Capture git diff (staged + unstaged changes since last commit)

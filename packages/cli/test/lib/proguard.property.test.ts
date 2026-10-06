@@ -51,7 +51,7 @@ describe("proguard: computeProguardUuid", () => {
         // Variant nibble (first char of 4th group) is RFC 4122 (8/9/a/b).
         expect(["8", "9", "a", "b"]).toContain(uuid[19]);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -62,7 +62,7 @@ describe("proguard: computeProguardUuid", () => {
         const b = computeProguardUuid(Buffer.from(bytes));
         expect(a).toBe(b);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -74,10 +74,10 @@ describe("proguard: computeProguardUuid", () => {
         // Flip the first byte to guarantee different content.
         mutated[0] = (mutated[0]! + 1) % 256;
         expect(computeProguardUuid(original)).not.toBe(
-          computeProguardUuid(mutated)
+          computeProguardUuid(mutated),
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

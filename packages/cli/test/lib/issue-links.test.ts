@@ -91,10 +91,10 @@ describe("external issue associations", () => {
     });
     expect(resolveAppIssueLink).not.toHaveBeenCalled();
     expect(invalidateCachedResponsesMatching).toHaveBeenCalledWith(
-      "https://de.sentry.io/api/0/organizations/example/issues/123/"
+      "https://de.sentry.io/api/0/organizations/example/issues/123/",
     );
     expect(invalidateCachedResponsesMatching).toHaveBeenCalledWith(
-      "https://sentry.io/api/0/issues/123/"
+      "https://sentry.io/api/0/issues/123/",
     );
   });
 
@@ -120,25 +120,25 @@ describe("external issue associations", () => {
       expect.objectContaining({
         appSlug: "custom-tracker",
         url: nativeLink.url,
-      })
+      }),
     );
     expect(resolveNativeIssueLink).not.toHaveBeenCalled();
   });
 
-  test.each([
-    nativeLink.url,
-    appLink.webUrl,
-  ])("dry-run link submits no mutation: %s", async (url) => {
-    const result = await linkExternalIssue({ ...options, url, dryRun: true });
-    expect(result).toMatchObject({
-      linked: false,
-      changed: false,
-      dryRun: true,
-    });
-    expect(linkNativeIssue).not.toHaveBeenCalled();
-    expect(linkAppIssue).not.toHaveBeenCalled();
-    expect(invalidateCachedResponsesMatching).not.toHaveBeenCalled();
-  });
+  test.each([nativeLink.url, appLink.webUrl])(
+    "dry-run link submits no mutation: %s",
+    async (url) => {
+      const result = await linkExternalIssue({ ...options, url, dryRun: true });
+      expect(result).toMatchObject({
+        linked: false,
+        changed: false,
+        dryRun: true,
+      });
+      expect(linkNativeIssue).not.toHaveBeenCalled();
+      expect(linkAppIssue).not.toHaveBeenCalled();
+      expect(invalidateCachedResponsesMatching).not.toHaveBeenCalled();
+    },
+  );
 
   test("dry-run link describes an existing app association", async () => {
     vi.mocked(resolveAppIssueLink).mockResolvedValue({
@@ -179,7 +179,7 @@ describe("external issue associations", () => {
     expect(unlinkNativeIssueLink).toHaveBeenCalledWith(
       "example",
       "123",
-      nativeLink
+      nativeLink,
     );
     expect(resolveNativeIssueLink).not.toHaveBeenCalled();
     expect(resolveAppIssueLink).not.toHaveBeenCalled();
@@ -197,31 +197,35 @@ describe("external issue associations", () => {
     expect(result).toMatchObject({ linked: false, changed: true });
   });
 
-  test.each([
-    nativeLink.url,
-    appLink.webUrl,
-  ])("dry-run unlink preserves the link: %s", async (url) => {
-    const result = await unlinkExternalIssue({ ...options, url, dryRun: true });
-    expect(result).toMatchObject({
-      linked: true,
-      changed: false,
-      dryRun: true,
-    });
-    expect(unlinkNativeIssueLink).not.toHaveBeenCalled();
-    expect(unlinkAppIssueLink).not.toHaveBeenCalled();
-  });
+  test.each([nativeLink.url, appLink.webUrl])(
+    "dry-run unlink preserves the link: %s",
+    async (url) => {
+      const result = await unlinkExternalIssue({
+        ...options,
+        url,
+        dryRun: true,
+      });
+      expect(result).toMatchObject({
+        linked: true,
+        changed: false,
+        dryRun: true,
+      });
+      expect(unlinkNativeIssueLink).not.toHaveBeenCalled();
+      expect(unlinkAppIssueLink).not.toHaveBeenCalled();
+    },
+  );
 
-  test.each([
-    nativeLink.url,
-    appLink.webUrl,
-  ])("missing association is already unlinked: %s", async (url) => {
-    vi.mocked(findNativeIssueLink).mockReturnValue(undefined);
-    vi.mocked(findAppIssueLink).mockReturnValue(undefined);
-    const result = await unlinkExternalIssue({ ...options, url });
-    expect(result).toMatchObject({ linked: false, changed: false });
-    expect(unlinkNativeIssueLink).not.toHaveBeenCalled();
-    expect(unlinkAppIssueLink).not.toHaveBeenCalled();
-  });
+  test.each([nativeLink.url, appLink.webUrl])(
+    "missing association is already unlinked: %s",
+    async (url) => {
+      vi.mocked(findNativeIssueLink).mockReturnValue(undefined);
+      vi.mocked(findAppIssueLink).mockReturnValue(undefined);
+      const result = await unlinkExternalIssue({ ...options, url });
+      expect(result).toMatchObject({ linked: false, changed: false });
+      expect(unlinkNativeIssueLink).not.toHaveBeenCalled();
+      expect(unlinkAppIssueLink).not.toHaveBeenCalled();
+    },
+  );
 
   test("a failed link read is not treated as an empty list", async () => {
     const error = new ApiError("Forbidden", 403);
@@ -255,7 +259,7 @@ describe("external issue associations", () => {
         ...options,
         appSlug: "linear",
         integrationId: "20",
-      })
+      }),
     ).rejects.toThrow("--integration");
     expect(resolveAppIssueLink).not.toHaveBeenCalled();
   });

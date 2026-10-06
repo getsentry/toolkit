@@ -70,7 +70,7 @@ describe("parseSntrysClaim", () => {
     // `not_valid_base64` contains underscore which would actually break
     // the underscore count, so this is the format the test preload uses:
     expect(
-      parseSntrysClaim("sntrys_test-token-for-unit-tests_000000")
+      parseSntrysClaim("sntrys_test-token-for-unit-tests_000000"),
     ).toBeUndefined();
     // Pure invalid base64 character set in middle (with right underscore count)
     expect(parseSntrysClaim("sntrys_!!!notbase64!!!_secret")).toBeUndefined();

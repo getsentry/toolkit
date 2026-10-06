@@ -21,7 +21,7 @@ describe("getReplayRequestFields", () => {
         "release",
         "screen",
         "warning_id",
-      ])
+      ]),
     ).toEqual([
       "id",
       "error_ids",

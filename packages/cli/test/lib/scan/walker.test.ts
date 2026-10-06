@@ -45,7 +45,7 @@ function makeSandbox(layout: Record<string, string>): {
 
 /** Collect every relativePath a walk yields into a sorted array. */
 async function collect(
-  opts: Parameters<typeof walkFiles>[0]
+  opts: Parameters<typeof walkFiles>[0],
 ): Promise<string[]> {
   const out: WalkEntry[] = [];
   for await (const entry of walkFiles(opts)) {
@@ -90,7 +90,7 @@ describe("walkFiles — basic traversal", () => {
         for await (const _ of walkFiles({ cwd: "./relative" })) {
           break;
         }
-      })()
+      })(),
     ).rejects.toThrow(/absolute/);
   });
 });
@@ -289,7 +289,7 @@ describe("walkFiles — binary detection", () => {
       writeFileSync(join(cwd, "blob.bin"), bin);
 
       const findBlob = async (
-        opts: Parameters<typeof walkFiles>[0]
+        opts: Parameters<typeof walkFiles>[0],
       ): Promise<WalkEntry | undefined> => {
         for await (const e of walkFiles(opts)) {
           if (e.relativePath === "blob.bin") {
@@ -304,7 +304,7 @@ describe("walkFiles — binary detection", () => {
       // is skipped entirely).
       expect((await findBlob({ cwd }))?.isBinary).toBe(true);
       expect((await findBlob({ cwd, classifyBinary: false }))?.isBinary).toBe(
-        false
+        false,
       );
     } finally {
       cleanup();
@@ -446,7 +446,7 @@ describe("walkFiles — descentHook", () => {
         entries.push(e);
       }
       const deep = entries.find(
-        (e) => e.relativePath === "packages/foo/src/deep/a.ts"
+        (e) => e.relativePath === "packages/foo/src/deep/a.ts",
       );
       // 5 path segments → file depth 5.
       expect(deep?.depth).toBe(5);
@@ -478,7 +478,7 @@ describe("walkFiles — descentHook", () => {
       // deep/ → depth 2, a.ts (file) → depth 3. Without the reset
       // a.ts would be depth 5 from the repo root.
       const deep = entries.find(
-        (e) => e.relativePath === "packages/foo/src/deep/a.ts"
+        (e) => e.relativePath === "packages/foo/src/deep/a.ts",
       );
       expect(deep?.depth).toBe(3);
       const root = entries.find((e) => e.relativePath === "root.ts");
@@ -845,7 +845,7 @@ describe("walkFiles — parallel walker (concurrency > 1)", () => {
       // 2s ceiling — the bug manifested as an indefinite hang. With
       // the fix, the throw propagates in ~10ms.
       const watchdog = new Promise<never>((_, rej) =>
-        setTimeout(() => rej(new Error("timed out")), 2000)
+        setTimeout(() => rej(new Error("timed out")), 2000),
       );
       await expect(Promise.race([drain(), watchdog])).rejects.toThrow(/abort/i);
     } finally {

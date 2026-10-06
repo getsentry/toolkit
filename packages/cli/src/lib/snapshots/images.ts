@@ -27,7 +27,7 @@ export const IMAGE_EXTENSIONS: ReadonlySet<string> = new Set([
 
 /** Same extensions in the walker's `.ext` (lowercased, dotted) form. */
 const WALK_EXTENSIONS: ReadonlySet<string> = new Set(
-  [...IMAGE_EXTENSIONS].map((ext) => `.${ext}`)
+  [...IMAGE_EXTENSIONS].map((ext) => `.${ext}`),
 );
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -35,7 +35,7 @@ const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8]);
 
 /** Read dimensions from a PNG header, or return undefined for another format. */
 function readPngDimensions(
-  content: Buffer
+  content: Buffer,
 ): { width: number; height: number } | undefined {
   if (
     content.length >= 24 &&
@@ -64,7 +64,7 @@ function isJpegFrameMarker(marker: number): boolean {
 function readJpegSegment(
   content: Buffer,
   offset: number,
-  marker: number
+  marker: number,
 ): { width: number; height: number } | undefined {
   const segmentLength = content.readUInt16BE(offset);
   if (segmentLength < 2 || offset + segmentLength > content.length) {
@@ -82,7 +82,7 @@ function readJpegSegment(
 
 /** Read dimensions from a JPEG header, or return undefined for another format. */
 function readJpegDimensions(
-  content: Buffer
+  content: Buffer,
 ): { width: number; height: number } | undefined {
   if (content.length < 4 || !content.subarray(0, 2).equals(JPEG_SIGNATURE)) {
     return;
@@ -151,7 +151,7 @@ export function pathAsUrl(relativePath: string): string {
 
 /** Read and parse an image's `<image>.json` sidecar metadata, if present. */
 async function readSidecarMetadata(
-  imagePath: string
+  imagePath: string,
 ): Promise<Record<string, unknown>> {
   const sidecarPath = imagePath.replace(FILE_EXTENSION, ".json");
   if (sidecarPath === imagePath) {
@@ -236,14 +236,14 @@ export function validateImageSizes(images: CollectedImage[]): void {
       (img) =>
         `  ${img.relativePath} (${img.width}x${img.height} = ${
           img.width * img.height
-        } pixels)`
+        } pixels)`,
     );
   if (violations.length > 0) {
     throw new ValidationError(
       `The following images exceed the maximum pixel limit of ${MAX_PIXELS_PER_IMAGE}:\n${violations.join(
-        "\n"
+        "\n",
       )}`,
-      "path"
+      "path",
     );
   }
 }
@@ -259,6 +259,6 @@ export function splitAndTrim(input: string, separator: string): string[] {
 /** Normalize image name entries: strip a leading `./` and `\`→`/`. */
 export function normalizeImageNames(names: string[]): string[] {
   return names.map((s) =>
-    (s.startsWith("./") ? s.slice(2) : s).replaceAll("\\", "/")
+    (s.startsWith("./") ? s.slice(2) : s).replaceAll("\\", "/"),
   );
 }

@@ -80,7 +80,7 @@ type AssembleCheckResult = {
 function checkAssembleResponse(
   response: DifAssembleResponse,
   checksum: string,
-  endpoint: string
+  endpoint: string,
 ): AssembleCheckResult {
   const missingChecksums = new Set<string>();
   const entry: AssembleResponse | undefined = response[checksum];
@@ -95,7 +95,7 @@ function checkAssembleResponse(
       "Dart symbol map assembly failed",
       500,
       entry.detail ?? "Unknown error",
-      endpoint
+      endpoint,
     );
   }
 
@@ -122,7 +122,7 @@ function checkAssembleResponse(
  * @throws {ApiError} If the upload or assembly fails
  */
 export async function uploadDartSymbolMap(
-  options: DartSymbolMapUploadOptions
+  options: DartSymbolMapUploadOptions,
 ): Promise<void> {
   const { org, project, mapping } = options;
 
@@ -133,7 +133,7 @@ export async function uploadDartSymbolMap(
   // Step 2: Hash the mapping file into chunks
   const { chunks, overallChecksum } = hashBuffer(
     mapping.content,
-    serverOptions.chunkSize
+    serverOptions.chunkSize,
   );
 
   const regionUrl = await resolveOrgRegion(org);
@@ -159,13 +159,13 @@ export async function uploadDartSymbolMap(
       method: "POST",
       body: assembleBody,
       schema: DifAssembleResponseSchema,
-    }
+    },
   );
 
   const { allDone, missingChecksums } = checkAssembleResponse(
     firstAssemble,
     overallChecksum,
-    assembleEndpoint
+    assembleEndpoint,
   );
 
   if (allDone) {
@@ -194,13 +194,13 @@ export async function uploadDartSymbolMap(
         method: "POST",
         body: assembleBody,
         schema: DifAssembleResponseSchema,
-      }
+      },
     );
 
     const { allDone: done } = checkAssembleResponse(
       pollResult,
       overallChecksum,
-      assembleEndpoint
+      assembleEndpoint,
     );
 
     if (done) {
@@ -212,6 +212,6 @@ export async function uploadDartSymbolMap(
     "Dart symbol map assembly timed out",
     408,
     `Assembly did not complete within ${ASSEMBLE_MAX_WAIT_MS / 1000}s`,
-    assembleEndpoint
+    assembleEndpoint,
   );
 }

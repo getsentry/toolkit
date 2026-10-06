@@ -55,7 +55,7 @@ type CrossEndpointRule = {
   extra?: (matchGroups: RegExpMatchArray) => string[];
   extraAbsolute?: (
     matchGroups: RegExpMatchArray,
-    ctx: { apiBaseUrl: string }
+    ctx: { apiBaseUrl: string },
   ) => string[];
 };
 
@@ -101,10 +101,10 @@ const CROSS_ENDPOINT_RULES: CrossEndpointRule[] = [
  */
 export function computeInvalidationPrefixes(
   fullUrl: string,
-  apiBaseUrl: string
+  apiBaseUrl: string,
 ): string[] {
   let parsed: URL;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     parsed = new URL(fullUrl);
   } catch {
@@ -140,7 +140,7 @@ export function computeInvalidationPrefixes(
 function* applyCrossEndpointRules(
   relPath: string,
   base: string,
-  apiBaseUrl: string
+  apiBaseUrl: string,
 ): Generator<string> {
   for (const rule of CROSS_ENDPOINT_RULES) {
     const match = relPath.match(rule.match);

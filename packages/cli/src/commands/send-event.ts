@@ -5,5 +5,5 @@
  * in `event/send.ts`.
  */
 
-// biome-ignore lint/performance/noBarrelFile: backward-compat alias, not a barrel
+// backward-compat alias, not a barrel
 export { sendCommand as sendEventCommand } from "./event/send.js";

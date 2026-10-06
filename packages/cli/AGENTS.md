@@ -28,7 +28,7 @@ Guidelines for AI agents working in this codebase.
 
 Before working on this codebase, read the Cursor rules:
 
-- **`.cursor/rules/ultracite.mdc`** - Code style, formatting, linting rules
+- **`.cursor/rules/oxc.mdc`** - Code style, formatting, linting rules
 
 ## Quick Reference: Commands
 
@@ -49,7 +49,7 @@ pnpm run build:all                       # Build for all platforms
 pnpm run typecheck                       # Check types (tsc)
 
 # Linting & Formatting
-pnpm run lint                            # Check for issues (Biome)
+pnpm run lint                            # Check Oxlint and Oxfmt
 pnpm run lint:fix                        # Auto-fix issues (run before committing)
 
 # Testing (Vitest)
@@ -130,7 +130,7 @@ Top-level layout:
   `*.model-based.test.ts`, `e2e/`, `fixtures/`, `mocks/`).
 - **`../../apps/cli-docs/`** — documentation site (Astro + Starlight);
   **`script/`** — build/utility scripts; **`.cursor/rules/`** — Cursor AI rules;
-  **`biome.jsonc`** — lint config.
+  **`lint-rules/cli-oxlint-plugin.js`** — CLI-specific lint rules.
 
 ## Key Patterns
 
@@ -530,7 +530,7 @@ CliError (base, exitCode=1)
 - Pass `alternatives: []` when defaults are irrelevant (e.g., for missing Trace ID, Event ID)
 - Use `" and "` in `resource` for plural grammar: `"Trace ID and span ID"` → "are required"
 
-**CI enforcement:** `pnpm run check:errors` scans for `ContextError` with multiline commands and `CliError` with ad-hoc "Try:" strings. Silent `catch` blocks are enforced separately by the `no-silent-catch` Biome plugin (see below).
+**CI enforcement:** `pnpm run check:errors` scans for `ContextError` with multiline commands and `CliError` with ad-hoc "Try:" strings. Silent `catch` blocks are enforced separately by the `no-silent-catch` CLI Oxlint rule (see below).
 
 ```typescript
 // Usage examples
@@ -552,7 +552,7 @@ Reference: `resolveDashboardId()` in `src/commands/dashboard/resolve.ts`.
 
 ### Catch Block Logging
 
-Silent `catch` blocks are prohibited in `src/` production code. Biome's `noEmptyBlockStatements` catches syntactically empty `catch {}` blocks, but blocks with only a `return` statement and no logging are equally problematic — errors vanish silently, making debugging impossible.
+Silent `catch` blocks are prohibited in `src/` production code. Both empty `catch {}` blocks and blocks that only return without logging discard errors and make debugging impossible.
 
 Every `catch` block must either:
 1. Re-throw the error
@@ -574,17 +574,17 @@ catch (error) {
 
 Use `logger.withTag("command-name")` for tagged logging in command files.
 
-**CI enforcement:** the `no-silent-catch` Biome plugin
-(`lint-rules/no-silent-catch.grit`, registered in `biome.jsonc`) flags `catch`
+**CI enforcement:** the `no-silent-catch` CLI Oxlint rule
+(`lint-rules/cli-oxlint-plugin.js`, registered in the root `.oxlintrc.json`) flags `catch`
 blocks — statement and `.catch()` form — that are empty, comment-only, or
 return-only without surfacing the error. The pre-existing backlog is
 grandfathered in place with inline
-`// biome-ignore lint/plugin: <reason>` comments. Because `pnpm run lint` runs
-with `--error-on-warnings`, an *orphaned* suppression (left behind when a
-grandfathered catch is fixed) fails as `suppressions/unused` — so the backlog
+`// oxlint-disable-next-line sentry-cli/no-silent-catch -- <reason>` comments.
+Because `pnpm run lint` reports unused suppressions as errors, an *orphaned*
+suppression (left behind when a grandfathered catch is fixed) fails — so the backlog
 can only shrink, the same ratchet the old JSON baseline provided, with no
 separate script or baseline file to maintain. Fix a grandfathered catch by
-adding logging/re-throwing and deleting its `biome-ignore` line; only add a new
+adding logging/re-throwing and deleting its suppression line; only add a new
 suppression for a genuinely intentional silent catch, with a real reason.
 
 ### Auto-Recovery for Wrong Entity Types
@@ -678,7 +678,7 @@ command. `sentry init` is the intentional not-found exception: it calls the
 classifier with fuzzy recovery disabled, then treats `not-found` as a new
 project name. Issue-short-ID recovery in `commands/issue/utils.ts` is not CLI
 target resolution and may perform its own project lookup. The
-`no-direct-target-resolution` Biome plugin enforces this command-layer
+`no-direct-target-resolution` CLI Oxlint rule enforces this command-layer
 boundary.
 
 ### List Command Infrastructure

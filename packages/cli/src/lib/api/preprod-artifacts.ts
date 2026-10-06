@@ -76,11 +76,11 @@ export type BuildInstallDetails = InferOutput<typeof BuildInstallDetailsSchema>;
  */
 export async function getBuildInstallDetails(
   org: string,
-  buildId: string
+  buildId: string,
 ): Promise<BuildInstallDetails> {
   const regionUrl = await resolveOrgRegion(org);
   const endpoint = `organizations/${org}/preprodartifacts/${encodeURIComponent(
-    buildId
+    buildId,
   )}/install-details/`;
   const { data } = await apiRequestToRegion(regionUrl, endpoint, {
     schema: BuildInstallDetailsSchema,
@@ -113,7 +113,7 @@ export function buildFormatFromUrl(url: string): BuildFormat {
   }
   throw new ValidationError(
     "Unsupported build format in download URL",
-    "installUrl"
+    "installUrl",
   );
 }
 
@@ -129,7 +129,7 @@ function isRegionOrigin(url: string, regionUrl: string): boolean {
   } catch (err) {
     log.debug(
       "Could not compare download URL origin; withholding auth token",
-      err
+      err,
     );
     return false;
   }
@@ -149,7 +149,7 @@ function isRegionOrigin(url: string, regionUrl: string): boolean {
 export async function downloadBuildArtifact(
   regionUrl: string,
   url: string,
-  destPath: string
+  destPath: string,
 ): Promise<void> {
   const headers: Record<string, string> = {};
   if (isRegionOrigin(url, regionUrl)) {
@@ -165,14 +165,14 @@ export async function downloadBuildArtifact(
       "Failed to download build artifact",
       response.status,
       response.statusText || "Download failed",
-      url
+      url,
     );
   }
 
   // Stream to disk so large (hundreds-of-MB) artifacts never buffer in memory.
   await pipeline(
     Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
-    createWriteStream(destPath)
+    createWriteStream(destPath),
   );
 }
 
@@ -218,7 +218,7 @@ const BuildAssembleResponseSchema = object({
 function buildAssembleBody(
   checksum: string,
   chunkShas: string[],
-  metadata: BuildUploadMetadata
+  metadata: BuildUploadMetadata,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = { checksum, chunks: chunkShas };
   if (metadata.buildConfiguration) {
@@ -248,7 +248,7 @@ function buildAssembleBody(
  * @throws {ApiError} On an assembly error or timeout.
  */
 export async function uploadBuild(
-  options: BuildUploadOptions
+  options: BuildUploadOptions,
 ): Promise<string> {
   const { org, project, contentPath, metadata } = options;
   const serverOptions =
@@ -256,7 +256,7 @@ export async function uploadBuild(
   const encoding = pickUploadEncoding(serverOptions.compression);
   const { chunks, overallChecksum } = await hashChunks(
     contentPath,
-    serverOptions.chunkSize
+    serverOptions.chunkSize,
   );
   const regionUrl = await resolveOrgRegion(org);
   const endpoint = `projects/${org}/${project}/files/preprodartifacts/assemble/`;
@@ -264,7 +264,7 @@ export async function uploadBuild(
   const body = buildAssembleBody(
     overallChecksum,
     chunks.map((chunk) => chunk.sha1),
-    metadata
+    metadata,
   );
 
   const deadline = Date.now() + ASSEMBLE_MAX_WAIT_MS;
@@ -280,7 +280,7 @@ export async function uploadBuild(
         "Build assembly failed",
         500,
         data.detail ?? "Unknown error",
-        endpoint
+        endpoint,
       );
     }
     if (data.artifactUrl) {
@@ -293,7 +293,7 @@ export async function uploadBuild(
         "Build assembled but no artifact URL was returned",
         500,
         data.detail ?? "",
-        endpoint
+        endpoint,
       );
     }
 
@@ -318,7 +318,7 @@ export async function uploadBuild(
     "Build assembly timed out",
     408,
     `Assembly did not complete within ${ASSEMBLE_MAX_WAIT_MS / 1000}s`,
-    endpoint
+    endpoint,
   );
 }
 
@@ -357,7 +357,7 @@ export type LatestBaseSnapshot = {
 /** Build the `.../snapshots/{id}/archive/` endpoint path. */
 function snapshotArchiveEndpoint(org: string, snapshotId: string): string {
   return `organizations/${org}/preprodartifacts/snapshots/${encodeURIComponent(
-    snapshotId
+    snapshotId,
   )}/archive/`;
 }
 
@@ -374,7 +374,7 @@ function snapshotArchiveEndpoint(org: string, snapshotId: string): string {
 export async function getLatestBaseSnapshot(
   org: string,
   appId: string,
-  opts: { branch?: string; project?: string } = {}
+  opts: { branch?: string; project?: string } = {},
 ): Promise<LatestBaseSnapshot | null> {
   const regionUrl = await resolveOrgRegion(org);
   try {
@@ -384,7 +384,7 @@ export async function getLatestBaseSnapshot(
       {
         params: { app_id: appId, branch: opts.branch, project: opts.project },
         schema: nullable(LatestBaseSnapshotSchema),
-      }
+      },
     );
     return data
       ? { headArtifactId: data.head_artifact_id, imageCount: data.image_count }
@@ -424,13 +424,13 @@ export type SnapshotsUploadOptions = InferOutput<
  */
 export async function fetchSnapshotsUploadOptions(
   org: string,
-  project: string
+  project: string,
 ): Promise<SnapshotsUploadOptions> {
   const regionUrl = await resolveOrgRegion(org);
   const { data } = await apiRequestToRegion(
     regionUrl,
     `projects/${org}/${project}/preprodartifacts/snapshots/upload-options/`,
-    { params: { usecase: "auto" }, schema: SnapshotsUploadOptionsSchema }
+    { params: { usecase: "auto" }, schema: SnapshotsUploadOptionsSchema },
   );
   return data;
 }
@@ -457,7 +457,7 @@ export type CreateSnapshotResponse = InferOutput<
 export async function createPreprodSnapshot(
   org: string,
   project: string,
-  manifest: Record<string, unknown>
+  manifest: Record<string, unknown>,
 ): Promise<CreateSnapshotResponse> {
   const regionUrl = await resolveOrgRegion(org);
   const { data } = await apiRequestToRegion(
@@ -469,7 +469,7 @@ export async function createPreprodSnapshot(
       // A large image suite makes a large manifest; compress like the legacy CLI.
       bodyEncoding: "zstd",
       schema: CreateSnapshotResponseSchema,
-    }
+    },
   );
   return data;
 }
@@ -483,13 +483,13 @@ const SnapshotArchiveStatusSchema = object({ ready: boolean() });
  */
 export async function getSnapshotArchiveReady(
   org: string,
-  snapshotId: string
+  snapshotId: string,
 ): Promise<boolean> {
   const regionUrl = await resolveOrgRegion(org);
   const { data } = await apiRequestToRegion(
     regionUrl,
     snapshotArchiveEndpoint(org, snapshotId),
-    { schema: SnapshotArchiveStatusSchema }
+    { schema: SnapshotArchiveStatusSchema },
   );
   return data.ready;
 }
@@ -501,13 +501,13 @@ export async function getSnapshotArchiveReady(
  */
 export async function triggerSnapshotArchiveBuild(
   org: string,
-  snapshotId: string
+  snapshotId: string,
 ): Promise<void> {
   const regionUrl = await resolveOrgRegion(org);
   await apiRequestToRegionNoContent(
     regionUrl,
     snapshotArchiveEndpoint(org, snapshotId),
-    { method: "POST" }
+    { method: "POST" },
   );
 }
 
@@ -522,7 +522,7 @@ export async function triggerSnapshotArchiveBuild(
 export async function waitForSnapshotArchive(
   org: string,
   snapshotId: string,
-  onBuildStarted?: () => void
+  onBuildStarted?: () => void,
 ): Promise<void> {
   if (await getSnapshotArchiveReady(org, snapshotId)) {
     return;
@@ -536,7 +536,7 @@ export async function waitForSnapshotArchive(
       throw new TimeoutError(
         `Snapshot archive was not ready after ${
           SNAPSHOT_ARCHIVE_TIMEOUT_MS / 1000
-        }s. The build may still be running; try again shortly.`
+        }s. The build may still be running; try again shortly.`,
       );
     }
     await new Promise((r) => setTimeout(r, SNAPSHOT_ARCHIVE_POLL_MS));
@@ -556,12 +556,12 @@ export async function waitForSnapshotArchive(
  */
 export async function openSnapshotArchive(
   org: string,
-  snapshotId: string
+  snapshotId: string,
 ): Promise<Response> {
   const regionUrl = stripTrailingSlashes(await resolveOrgRegion(org));
   const url = `${regionUrl}/api/0/${snapshotArchiveEndpoint(
     org,
-    snapshotId
+    snapshotId,
   )}?download`;
   const headers: Record<string, string> = {};
   const token = getAuthToken();
@@ -574,7 +574,7 @@ export async function openSnapshotArchive(
       "Failed to download snapshot archive",
       response.status,
       response.statusText || "Download failed",
-      url
+      url,
     );
   }
   return response;

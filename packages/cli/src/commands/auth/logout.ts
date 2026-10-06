@@ -54,7 +54,7 @@ export const logoutCommand = buildCommand({
       throw new AuthError(
         "invalid",
         `Authentication is provided via ${envVar} environment variable. ` +
-          `Unset ${envVar} to log out.`
+          `Unset ${envVar} to log out.`,
       );
     }
 

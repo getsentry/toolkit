@@ -78,7 +78,7 @@ export async function runCli(
   options?: {
     cwd?: string;
     env?: Record<string, string>;
-  }
+  },
 ): Promise<CliResult> {
   const cliDir = join(import.meta.dirname, "..");
   const [cmdBin, ...cmdArgs] = getCliCommand();
@@ -100,7 +100,7 @@ export async function runCli(
   });
 
   const exitCode = await new Promise<number>((resolve) =>
-    proc.on("close", (code) => resolve(code ?? 1))
+    proc.on("close", (code) => resolve(code ?? 1)),
   );
 
   return {
@@ -128,7 +128,7 @@ export type E2EContext = {
  */
 export function createE2EContext(
   configDir: string,
-  serverUrl: string
+  serverUrl: string,
 ): E2EContext {
   // Use the constant directly instead of require() to avoid .js→.ts
   // resolution issues in vitest Node workers.

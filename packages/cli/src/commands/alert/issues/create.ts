@@ -165,7 +165,7 @@ export const createCommand = buildCommand({
   async *func(
     this: SentryContext,
     flags: CreateFlags,
-    arg: string | undefined
+    arg: string | undefined,
   ) {
     const { cwd } = this;
     if (!flags.name.trim()) {
@@ -174,7 +174,7 @@ export const createCommand = buildCommand({
     if (flags.frequency <= 0) {
       throw new ValidationError(
         "frequency must be greater than 0.",
-        "frequency"
+        "frequency",
       );
     }
 
@@ -195,7 +195,7 @@ export const createCommand = buildCommand({
     if (targets.length !== 1) {
       throw new ValidationError(
         "Provide a target that resolves to exactly one project for create.",
-        "target"
+        "target",
       );
     }
     const target = targets[0] as (typeof targets)[number];
@@ -247,7 +247,7 @@ export const createCommand = buildCommand({
       id: String(created.id ?? ""),
       name: String(created.name ?? flags.name),
       status: String(
-        created.status ?? (created.enabled === false ? "disabled" : "active")
+        created.status ?? (created.enabled === false ? "disabled" : "active"),
       ),
     } satisfies CreateResult);
   },

@@ -111,7 +111,7 @@ export const deleteCommand = buildDeleteCommand(
       if (flags.index === undefined && !flags.title) {
         throw new ValidationError(
           "Specify --index or --title to identify the widget to delete.",
-          "index"
+          "index",
         );
       }
 
@@ -120,7 +120,7 @@ export const deleteCommand = buildDeleteCommand(
       const orgSlug = await resolveOrgFromTarget(
         parsed,
         cwd,
-        "sentry dashboard widget delete <org>/ <id> (--index <n> | --title <name>)"
+        "sentry dashboard widget delete <org>/ <id> (--index <n> | --title <name>)",
       );
       const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
 
@@ -131,7 +131,7 @@ export const deleteCommand = buildDeleteCommand(
             orgSlug,
             dashboardId,
             operation: "view",
-          })
+          }),
       );
       const widgets = current.widgets ?? [];
 
@@ -157,13 +157,13 @@ export const deleteCommand = buildDeleteCommand(
       const updated = await updateDashboard(
         orgSlug,
         dashboardId,
-        updateBody
+        updateBody,
       ).catch(async (error: unknown) =>
         enrichDashboardError(error, {
           orgSlug,
           dashboardId,
           operation: "update",
-        })
+        }),
       );
 
       yield new CommandOutput({
@@ -174,5 +174,5 @@ export const deleteCommand = buildDeleteCommand(
       return { hint: `Dashboard: ${url}` };
     },
   },
-  { noNonInteractiveGuard: true }
+  { noNonInteractiveGuard: true },
 );

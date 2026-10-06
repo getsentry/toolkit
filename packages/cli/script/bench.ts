@@ -69,8 +69,8 @@ import {
 } from "../test/fixtures/bench/presets.js";
 
 /**
- * The DSN scanner's hot regex. Pinned at module scope per Biome's
- * `useTopLevelRegex` rule; reused by the `scan.grepFiles` op.
+ * The DSN scanner's hot regex. Pinned at module scope and reused
+ * by the `scan.grepFiles` op.
  */
 const DSN_PATTERN =
   /https?:\/\/[a-z0-9]+(?::[a-z0-9]+)?@[a-z0-9.-]+(?:\.[a-z]+|:[0-9]+)\/\d+/i;
@@ -106,7 +106,7 @@ type ParseState = {
 function applyFlag(
   state: ParseState,
   arg: string,
-  next: string | undefined
+  next: string | undefined,
 ): boolean {
   switch (arg) {
     case "--size": {
@@ -119,7 +119,7 @@ function applyFlag(
         state.sizes = [next as PresetName];
       } else {
         throw new Error(
-          `Unknown size '${next}'. Valid: ${PRESET_NAMES.join(", ")}, all`
+          `Unknown size '${next}'. Valid: ${PRESET_NAMES.join(", ")}, all`,
         );
       }
       return true;
@@ -209,7 +209,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
   }
   if (state.saveBaseline && state.repo) {
     throw new Error(
-      "--save-baseline is only valid with synthetic fixtures; remove --repo/BENCH_REPO"
+      "--save-baseline is only valid with synthetic fixtures; remove --repo/BENCH_REPO",
     );
   }
 
@@ -218,11 +218,11 @@ function parseArgs(argv: readonly string[]): CliArgs {
 
 function printHelp(): void {
   console.log(
-    "Usage: pnpm run bench [-- --size small|medium|large|all] [--op NAME] [--repo PATH]"
+    "Usage: pnpm run bench [-- --size small|medium|large|all] [--op NAME] [--repo PATH]",
   );
   console.log("                      [--runs N] [--warmup N]");
   console.log(
-    "                      [--json] [--save-baseline] [--compare] [--regen-fixtures]"
+    "                      [--json] [--save-baseline] [--compare] [--regen-fixtures]",
   );
 }
 
@@ -237,7 +237,6 @@ type FixtureHandle = {
   fileCount: number;
 };
 
-// biome-ignore-start lint/suspicious/noBitwiseOperators: FNV-1a is a bitwise hash
 /** 32-bit FNV-1a hash of a string — supplies a stable per-preset seed. */
 function hashToSeed(s: string): number {
   let h = 0x81_1c_9d_c5;
@@ -247,18 +246,16 @@ function hashToSeed(s: string): number {
   // Keep the result in the 32-bit signed range for determinism across engines.
   return h >>> 0;
 }
-// biome-ignore-end lint/suspicious/noBitwiseOperators: FNV-1a is a bitwise hash
 
 /** Build (or reuse) a synthetic fixture for the given preset. */
 function resolveSyntheticFixture(
   name: PresetName,
-  forceRegen: boolean
+  forceRegen: boolean,
 ): FixtureHandle {
   const preset = PRESETS[name];
   // Deterministic seed per preset so every contributor lands on the same tree.
   // We XOR an anchor constant with the per-preset name hash so seeds are
   // spread across the 32-bit space even when preset names are similar.
-  // biome-ignore lint/suspicious/noBitwiseOperators: deterministic 32-bit seed mix
   const seed = (0xde_ad_be_ef ^ hashToSeed(name)) >>> 0;
   const specNoRoot = { ...preset, seed };
   const hash = hashSpec(specNoRoot);
@@ -324,18 +321,15 @@ type OpEntry = {
 async function buildOps(): Promise<OpEntry[]> {
   // Lazy-import production code so unit tests can import the helpers/fixtures
   // without loading all of @sentry/node-core.
-  const { detectDsn, detectAllDsns } = await import(
-    "../src/lib/dsn/detector.js"
-  );
+  const { detectDsn, detectAllDsns } =
+    await import("../src/lib/dsn/detector.js");
   const { findProjectRoot } = await import("../src/lib/dsn/project-root.js");
-  const { scanCodeForDsns, scanCodeForFirstDsn } = await import(
-    "../src/lib/dsn/code-scanner.js"
-  );
+  const { scanCodeForDsns, scanCodeForFirstDsn } =
+    await import("../src/lib/dsn/code-scanner.js");
   // Scan module — not yet wired into DSN detection (PR 3 will do that).
   // These ops give us standalone baselines so PR 2/PR 3 can compare.
-  const { walkFiles, IgnoreStack, TEXT_EXTENSIONS, collectGrep } = await import(
-    "../src/lib/scan/index.js"
-  );
+  const { walkFiles, IgnoreStack, TEXT_EXTENSIONS, collectGrep } =
+    await import("../src/lib/scan/index.js");
   // DSN-parity preset — used by the `scan.walk.dsnParity` op below.
   const { dsnScanOptions } = await import("../src/lib/dsn/scan-options.js");
 
@@ -509,7 +503,7 @@ async function resolveFixtures(args: CliArgs): Promise<FixtureHandle[]> {
     ];
   }
   return args.sizes.map((size) =>
-    resolveSyntheticFixture(size, args.regenFixtures)
+    resolveSyntheticFixture(size, args.regenFixtures),
   );
 }
 
@@ -521,7 +515,7 @@ function filterOps(ops: OpEntry[], opFilter: string | undefined): OpEntry[] {
   const filtered = ops.filter((op) => op.label.includes(opFilter));
   if (filtered.length === 0) {
     throw new Error(
-      `--op ${opFilter} matched no operations.\n  Available: ${ops.map((o) => o.label).join(", ")}`
+      `--op ${opFilter} matched no operations.\n  Available: ${ops.map((o) => o.label).join(", ")}`,
     );
   }
   return filtered;
@@ -531,7 +525,7 @@ function filterOps(ops: OpEntry[], opFilter: string | undefined): OpEntry[] {
 async function runAll(
   fixtures: readonly FixtureHandle[],
   ops: readonly OpEntry[],
-  args: CliArgs
+  args: CliArgs,
 ): Promise<BenchEntry[]> {
   const entries: BenchEntry[] = [];
   for (const fx of fixtures) {
@@ -554,7 +548,7 @@ async function runAll(
         });
         if (!args.json) {
           console.log(
-            `  ${op.label.padEnd(24)}  p50 ${stats.p50.toFixed(2)}ms  p95 ${stats.p95.toFixed(2)}ms  (${stats.runs} runs)`
+            `  ${op.label.padEnd(24)}  p50 ${stats.p50.toFixed(2)}ms  p95 ${stats.p95.toFixed(2)}ms  (${stats.runs} runs)`,
           );
         }
       }
@@ -566,17 +560,17 @@ async function runAll(
 /** Perform the --compare step. Returns false on regression. */
 function compareAgainstBaseline(
   report: BenchReport,
-  thresholdPct: number
+  thresholdPct: number,
 ): boolean {
   const baselinePath = ".bench/baseline.json";
   if (!existsSync(baselinePath)) {
     console.error(
-      `✗ No baseline found at ${baselinePath}. Run with --save-baseline first.`
+      `✗ No baseline found at ${baselinePath}. Run with --save-baseline first.`,
     );
     return false;
   }
   const baseline = JSON.parse(
-    readFileSync(baselinePath, "utf8")
+    readFileSync(baselinePath, "utf8"),
   ) as BenchReport;
   const rows = compareReports(baseline, report, thresholdPct);
   const ok = printComparison(rows, thresholdPct);

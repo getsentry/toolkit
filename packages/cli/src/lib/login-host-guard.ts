@@ -84,7 +84,7 @@ export function isAutoLoginHostTrusted(host: string): boolean {
  */
 export function buildHostRefusalMessage(
   host: string,
-  opts?: { tokenFlag?: boolean; rcSource?: string }
+  opts?: { tokenFlag?: boolean; rcSource?: string },
 ): string {
   const tokenFlag = opts?.tokenFlag ? " --token <your-token>" : "";
   const sourceClause = opts?.rcSource

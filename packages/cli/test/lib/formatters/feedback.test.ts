@@ -50,7 +50,7 @@ describe.each([
 ])("$action feedback", ({ format, action }) => {
   test("renders a terminal-safe confirmation", () => {
     const output = format(
-      feedback({ shortId: "\x1b[31mWEB-1\x1b[0m\n\u202e" })
+      feedback({ shortId: "\x1b[31mWEB-1\x1b[0m\n\u202e" }),
     );
 
     expect(output).toContain(`${action} feedback`);
@@ -182,7 +182,7 @@ describe("formatFeedbackView", () => {
 
       expect(listOutput).toContain("…");
       expect(
-        Math.max(...listOutput.split("\n").map((line) => stringWidth(line)))
+        Math.max(...listOutput.split("\n").map((line) => stringWidth(line))),
       ).toBeLessThanOrEqual(60);
       expect(viewOutput).toContain("TAIL **marker**");
     } finally {

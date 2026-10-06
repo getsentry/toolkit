@@ -30,7 +30,7 @@ afterEach(async () => {
  * Run the dart-symbol-map upload command and capture stdout/stderr.
  */
 async function runUpload(
-  args: string[]
+  args: string[],
 ): Promise<{ output: string; exitCode: number | undefined; error?: string }> {
   let output = "";
   let error = "";
@@ -71,7 +71,7 @@ describe("sentry dart-symbol-map upload", () => {
     const mapPath = join(tempDir, "map.json");
     await writeFile(
       mapPath,
-      JSON.stringify(["obfuscated1", "original1", "obfuscated2", "original2"])
+      JSON.stringify(["obfuscated1", "original1", "obfuscated2", "original2"]),
     );
 
     const { output } = await runUpload([
@@ -157,7 +157,7 @@ describe("sentry dart-symbol-map upload", () => {
     const mapPath = join(tempDir, "map.json");
     await writeFile(
       mapPath,
-      JSON.stringify(["obfuscated1", "original1", "orphan"])
+      JSON.stringify(["obfuscated1", "original1", "orphan"]),
     );
 
     const { exitCode } = await runUpload([

@@ -5,7 +5,7 @@
  */
 
 import { stat } from "node:fs/promises";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 
 /**
@@ -62,7 +62,7 @@ function isIgnorableFileError(error: unknown): boolean {
  */
 export function handleFileError(
   error: unknown,
-  context: { operation: string; path?: string }
+  context: { operation: string; path?: string },
 ): void {
   if (!isIgnorableFileError(error)) {
     Sentry.captureException(error, {
@@ -91,7 +91,7 @@ export function handleFileError(
  */
 export async function isRegularFile(
   filePath: string,
-  operation = "isRegularFile"
+  operation = "isRegularFile",
 ): Promise<boolean> {
   try {
     const stats = await stat(filePath);

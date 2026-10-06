@@ -66,7 +66,7 @@ function migrateNullHost(row: AuthRow): string {
   const host = bootHost
     ? normalizeCredentialHost(bootHost)
     : DEFAULT_SENTRY_URL;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     withDbSpan("migrateAuthHost", () => {
       const db = getDatabase();
@@ -86,7 +86,7 @@ function normalizeCredentialHost(host: string): string {
   const origin = normalizeHttpOrigin(host);
   if (!origin) {
     throw new ConfigError(
-      "Stored credential host must be a credential-free HTTP(S) URL."
+      "Stored credential host must be a credential-free HTTP(S) URL.",
     );
   }
   return origin;
@@ -222,7 +222,7 @@ export function getAuthConfig(): AuthConfig | undefined {
  * falls back to the caller's default behavior.
  */
 export function getStoredAuthHost(): string | undefined {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return withDbSpan("getStoredAuthHost", () => {
       const row = getAuthRow();
@@ -250,7 +250,7 @@ export function getStoredAuthHost(): string | undefined {
  * OAuth's host over the env-token snapshot.
  */
 export function hasUsableStoredToken(): boolean {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return withDbSpan("hasUsableStoredToken", () => {
       const row = getAuthRow();
@@ -280,7 +280,7 @@ export function hasUsableStoredToken(): boolean {
  * first access, same as {@link getStoredAuthHost}).
  */
 export function getUsableStoredTokenHost(): string | undefined {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return withDbSpan("getUsableStoredTokenHost", () => {
       const row = getAuthRow();
@@ -403,7 +403,7 @@ export function setAuthToken(
   token: string,
   expiresIn?: number,
   newRefreshToken?: string,
-  options?: SetAuthTokenOptions
+  options?: SetAuthTokenOptions,
 ): void {
   const normalizedToken = normalizeAuthToken(token);
   withDbSpan("setAuthToken", () => {
@@ -442,7 +442,7 @@ export function setAuthToken(
         updated_at: now,
         host,
       },
-      ["id"]
+      ["id"],
     );
   });
   // Auth row changed — drop memoized fingerprint, token, row, and
@@ -475,7 +475,7 @@ export async function clearAuth(): Promise<void> {
   clearTrustedHostState();
 
   // Dynamic import avoids the auth→response-cache→auth cycle.
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const { clearResponseCache } = await import("../response-cache.js");
     await clearResponseCache();
@@ -614,7 +614,7 @@ export function getCredentialContext(): CredentialContext | undefined {
     const origin = normalizeHttpOrigin(host);
     if (!origin) {
       throw new ConfigError(
-        "Stored credential host must be a credential-free HTTP(S) URL."
+        "Stored credential host must be a credential-free HTTP(S) URL.",
       );
     }
     return Object.freeze({
@@ -705,7 +705,7 @@ const MAX_REFRESH_IDENTITY_ALIASES = 128;
 function rememberRefreshIdentity(
   host: string,
   previous: string,
-  next: string
+  next: string,
 ): void {
   if (previous === next) {
     return;
@@ -722,11 +722,11 @@ function rememberRefreshIdentity(
 function matchesRefreshIdentity(
   host: string,
   previous: string,
-  current: string
+  current: string,
 ): boolean {
   const seen = new Set<string>();
   const start = `${host}\0${previous}`;
-  for (let key = start; !seen.has(key); ) {
+  for (let key = start; !seen.has(key);) {
     seen.add(key);
     const next = refreshIdentityAliases.get(key);
     if (!next) {
@@ -742,7 +742,7 @@ function matchesRefreshIdentity(
 
 function rowMatchesCredential(
   row: AuthRow | undefined,
-  credential: StoredCredentialSnapshot
+  credential: StoredCredentialSnapshot,
 ): boolean {
   return (
     row?.token === credential.token &&
@@ -756,7 +756,7 @@ function rowMatchesCredential(
 
 function assertExpectedCredential(
   result: Pick<RefreshTokenResult, "host" | "identity">,
-  expected: RefreshTokenOptions["expectedCredential"]
+  expected: RefreshTokenOptions["expectedCredential"],
 ): void {
   if (
     expected &&
@@ -765,11 +765,11 @@ function assertExpectedCredential(
         !matchesRefreshIdentity(
           result.host,
           expected.identity,
-          result.identity
+          result.identity,
         )))
   ) {
     throw new ConfigError(
-      "Active credentials changed while the request was in flight. Retry the request."
+      "Active credentials changed while the request was in flight. Retry the request.",
     );
   }
 }
@@ -778,7 +778,7 @@ function persistRefreshedCredential(
   credential: StoredCredentialSnapshot,
   token: string,
   nextRefreshToken: string,
-  expiresIn: number
+  expiresIn: number,
 ): boolean {
   const saved = withDbSpan("persistRefreshedCredential", () => {
     const db = getDatabase();
@@ -788,14 +788,14 @@ function persistRefreshedCredential(
       }
       const now = Date.now();
       db.query(
-        "UPDATE auth SET token = ?, refresh_token = ?, expires_at = ?, issued_at = ?, updated_at = ?, host = ? WHERE id = 1"
+        "UPDATE auth SET token = ?, refresh_token = ?, expires_at = ?, issued_at = ?, updated_at = ?, host = ? WHERE id = 1",
       ).run(
         token,
         nextRefreshToken,
         now + expiresIn * 1000,
         now,
         now,
-        credential.host
+        credential.host,
       );
       return true;
     })();
@@ -810,7 +810,7 @@ function persistRefreshedCredential(
 }
 
 async function performTokenRefresh(
-  credential: StoredCredentialSnapshot
+  credential: StoredCredentialSnapshot,
 ): Promise<RefreshTokenResult> {
   const { refreshAccessToken } = await import("../oauth.js");
   const { AuthError } = await import("../errors.js");
@@ -844,11 +844,11 @@ async function performTokenRefresh(
       credential,
       token,
       nextRefreshToken,
-      tokenResponse.expires_in
+      tokenResponse.expires_in,
     )
   ) {
     throw new ConfigError(
-      "Active credentials changed while the request was in flight. Retry the request."
+      "Active credentials changed while the request was in flight. Retry the request.",
     );
   }
 
@@ -868,7 +868,7 @@ async function performTokenRefresh(
 }
 
 function getEnvRefreshResult(
-  expected: RefreshTokenOptions["expectedCredential"]
+  expected: RefreshTokenOptions["expectedCredential"],
 ): RefreshTokenResult | undefined {
   const credential = envCredentialContext();
   if (!credential) {
@@ -879,7 +879,7 @@ function getEnvRefreshResult(
 }
 
 async function refreshStoredCredential(
-  credential: StoredCredentialSnapshot
+  credential: StoredCredentialSnapshot,
 ): Promise<RefreshTokenResult> {
   const key = `${credential.identity}\0${credential.host}\0${hashIdentity("oauth-access", credential.token)}\0${credential.updatedAt}`;
   const existing = refreshPromises.get(key);
@@ -899,7 +899,7 @@ async function refreshStoredCredential(
 
 /** Get a valid token, refreshing if needed. Use force=true after 401 responses. */
 export async function refreshToken(
-  options: RefreshTokenOptions = {}
+  options: RefreshTokenOptions = {},
 ): Promise<RefreshTokenResult> {
   // With SENTRY_FORCE_ENV_TOKEN, env token takes priority (no refresh needed).
   const forced = getEnv().SENTRY_FORCE_ENV_TOKEN?.trim()
@@ -929,7 +929,7 @@ export async function refreshToken(
   const origin = normalizeHttpOrigin(host);
   if (!origin) {
     throw new ConfigError(
-      "Stored credential host must be a credential-free HTTP(S) URL."
+      "Stored credential host must be a credential-free HTTP(S) URL.",
     );
   }
   const identity = row.refresh_token
@@ -972,7 +972,7 @@ export async function refreshToken(
     }
     throw new AuthError(
       "expired",
-      "Session expired and no refresh token available. Run 'sentry auth login'."
+      "Session expired and no refresh token available. Run 'sentry auth login'.",
     );
   }
 

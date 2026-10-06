@@ -86,7 +86,7 @@ async function writeProcessTreeFixture(ignoreSigterm = false): Promise<void> {
         // matching scripts that use concurrently or chained commands.
         dev: 'node verify-parent.mjs && node -e "process.exit(0)"',
       },
-    })
+    }),
   );
   const sigtermHandler = ignoreSigterm
     ? 'process.on("SIGTERM", () => {});'
@@ -116,7 +116,7 @@ async function writeProcessTreeFixture(ignoreSigterm = false): Promise<void> {
       );
       process.stderr.write("SyntaxError: verification fixture\\n");
       setInterval(() => {}, 1000);
-    `
+    `,
   );
 }
 
@@ -146,7 +146,7 @@ describe("verifySetup", () => {
     const result = await verifySetup(
       { status: "success", result: { platform: "cocoa" } },
       ui,
-      tmpDir
+      tmpDir,
     );
 
     expect(result).toEqual({ verified: false, kind: "skipped" });
@@ -166,14 +166,14 @@ describe("verifySetup", () => {
   test("does not fail init when the detected command cannot be spawned", async () => {
     await writeFile(
       join(tmpDir, "package.json"),
-      JSON.stringify({ scripts: { dev: "missing-sentry-test-command" } })
+      JSON.stringify({ scripts: { dev: "missing-sentry-test-command" } }),
     );
     const { ui, calls } = createMockUI();
 
     const result = await verifySetup(
       { status: "success", result: { platform: "javascript-nextjs" } },
       ui,
-      tmpDir
+      tmpDir,
     );
     // The SDK never phoned home, so nothing to verify or deep-link.
     expect(result.verified).toBe(false);
@@ -201,7 +201,7 @@ describe("verifySetup", () => {
       const verification = verifySetup(
         { status: "success", result: { platform: "javascript-nextjs" } },
         ui,
-        tmpDir
+        tmpDir,
       );
       fixtureProcesses = await readFixtureProcesses();
       await verification;
@@ -215,7 +215,7 @@ describe("verifySetup", () => {
         message:
           "Could not verify — startup error: SyntaxError: verification fixture",
       });
-    }
+    },
   );
 
   test.skipIf(process.platform === "win32")(
@@ -227,7 +227,7 @@ describe("verifySetup", () => {
       const verification = verifySetup(
         { status: "success", result: { platform: "javascript-nextjs" } },
         ui,
-        tmpDir
+        tmpDir,
       );
       fixtureProcesses = await readFixtureProcesses();
       await verification;
@@ -237,6 +237,6 @@ describe("verifySetup", () => {
       expect(await waitForProcessExit(fixtureProcesses.childPid)).toBe(true);
       fixtureProcesses = undefined;
     },
-    10_000
+    10_000,
   );
 });

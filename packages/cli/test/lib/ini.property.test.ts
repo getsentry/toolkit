@@ -93,7 +93,7 @@ const commentArb = constantFrom(
   "# this is a comment",
   "; another comment",
   "# key = value",
-  "; [section]"
+  "; [section]",
 );
 
 describe("property: parseIni", () => {
@@ -113,7 +113,7 @@ describe("property: parseIni", () => {
           }
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -137,7 +137,7 @@ describe("property: parseIni", () => {
 
         expect(clean2).toEqual(clean1);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -164,7 +164,7 @@ describe("property: parseIni", () => {
           }
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -181,10 +181,10 @@ describe("property: parseIni", () => {
         const normalizedKey = key.toLowerCase();
 
         expect(parsedUpper[normalizedSection]?.[normalizedKey]).toBe(
-          parsedLower[normalizedSection]?.[normalizedKey]
+          parsedLower[normalizedSection]?.[normalizedKey],
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -201,10 +201,10 @@ describe("property: parseIni", () => {
         const normalizedKey = key.toLowerCase();
 
         expect(parsedUpper[normalizedSection]?.[normalizedKey]).toBe(
-          parsedLower[normalizedSection]?.[normalizedKey]
+          parsedLower[normalizedSection]?.[normalizedKey],
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -221,9 +221,9 @@ describe("property: parseIni", () => {
           const normalizedSection = section.toLowerCase();
           const normalizedKey = key.toLowerCase();
           expect(parsed[normalizedSection]?.[normalizedKey]).toBe(value2);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

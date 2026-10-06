@@ -89,7 +89,7 @@ describe("DSN Detector (New Module)", () => {
       mkdirSync(join(testDir, "src"), { recursive: true });
       writeFileSync(
         join(testDir, "src/config.ts"),
-        `Sentry.init({ dsn: "${codeDsn}" })`
+        `Sentry.init({ dsn: "${codeDsn}" })`,
       );
 
       // Code DSN takes priority over .env file DSN
@@ -110,7 +110,7 @@ describe("DSN Detector (New Module)", () => {
       mkdirSync(join(testDir, "src"), { recursive: true });
       writeFileSync(
         join(testDir, "src/config.ts"),
-        `Sentry.init({ dsn: "${codeDsn}" })`
+        `Sentry.init({ dsn: "${codeDsn}" })`,
       );
 
       // Should return code DSN (highest priority)
@@ -198,7 +198,7 @@ describe("DSN Detector (New Module)", () => {
       mkdirSync(join(testDir, "src"), { recursive: true });
       writeFileSync(
         join(testDir, "src/config.ts"),
-        `Sentry.init({ dsn: "${codeDsn}" })`
+        `Sentry.init({ dsn: "${codeDsn}" })`,
       );
 
       // Next detection should find the code DSN (higher priority)
@@ -223,13 +223,13 @@ describe("DSN Detector (New Module)", () => {
       });
       writeFileSync(
         join(testDir, "node_modules/some-package/index.js"),
-        `Sentry.init({ dsn: "${nodeModulesDsn}" })`
+        `Sentry.init({ dsn: "${nodeModulesDsn}" })`,
       );
 
       mkdirSync(join(testDir, "dist"), { recursive: true });
       writeFileSync(
         join(testDir, "dist/bundle.js"),
-        `Sentry.init({ dsn: "${distDsn}" })`
+        `Sentry.init({ dsn: "${distDsn}" })`,
       );
 
       // Should not find any DSN (skipped directories)
@@ -287,7 +287,7 @@ describe("DSN Detector (New Module)", () => {
       mkdirSync(join(testDir, "src"), { recursive: true });
       writeFileSync(
         join(testDir, "src/config.ts"),
-        `Sentry.init({ dsn: "${codeDsn}" })`
+        `Sentry.init({ dsn: "${codeDsn}" })`,
       );
 
       const result = await detectAllDsns(testDir);
@@ -323,11 +323,11 @@ describe("DSN Detector (New Module)", () => {
 
       writeFileSync(
         join(testDir, "packages/frontend/.env"),
-        `SENTRY_DSN=${frontendDsn}`
+        `SENTRY_DSN=${frontendDsn}`,
       );
       writeFileSync(
         join(testDir, "packages/backend/.env"),
-        `SENTRY_DSN=${backendDsn}`
+        `SENTRY_DSN=${backendDsn}`,
       );
 
       const result = await detectAllDsns(testDir);
@@ -355,7 +355,7 @@ describe("DSN Detector (New Module)", () => {
       writeFileSync(join(testDir, "apps/web/.env"), `SENTRY_DSN=${webDsn}`);
       writeFileSync(
         join(testDir, "apps/mobile/.env"),
-        `SENTRY_DSN=${mobileDsn}`
+        `SENTRY_DSN=${mobileDsn}`,
       );
 
       const result = await detectAllDsns(testDir);
@@ -383,7 +383,7 @@ describe("DSN Detector (New Module)", () => {
       };
 
       expect(getDsnSourceDescription(dsn)).toBe(
-        "SENTRY_DSN environment variable"
+        "SENTRY_DSN environment variable",
       );
     });
 
@@ -400,7 +400,7 @@ describe("DSN Detector (New Module)", () => {
       };
 
       expect(getDsnSourceDescription(dsn)).toBe(
-        "NEXT_PUBLIC_SENTRY_DSN environment variable"
+        "NEXT_PUBLIC_SENTRY_DSN environment variable",
       );
     });
 
