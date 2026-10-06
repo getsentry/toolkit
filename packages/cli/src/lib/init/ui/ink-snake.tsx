@@ -187,7 +187,11 @@ function SnakeBoard({
         action: "back to setup",
         priority: 40,
         match: (input, key) => key.escape || input === "q",
-        run: onExit,
+        run: () => {
+          // Pause before the board unmounts so the invite renders the resume copy.
+          apply(pauseSnake);
+          onExit();
+        },
       },
     ],
     [apply, height, onCancel, onExit, width],
