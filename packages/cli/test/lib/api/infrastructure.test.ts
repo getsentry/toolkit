@@ -1,7 +1,10 @@
+import { array, number } from "valibot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   API_MAX_PER_PAGE,
+  fetchAllPages,
   isTextualContentType,
+  MAX_PAGINATION_PAGES,
   paginate,
   rawApiRequest,
   throwApiError,
@@ -774,5 +777,59 @@ describe("paginate", () => {
       API_MAX_PER_PAGE,
       50,
     ]);
+  });
+});
+
+describe("fetchAllPages", () => {
+  const numbers = array(number());
+
+  test("follows cursors and returns every validated item", async () => {
+    const fetchPage = vi.fn((cursor: string | undefined) =>
+      Promise.resolve(
+        cursor ? { data: [3] } : { data: [1, 2], nextCursor: "page-2" }
+      )
+    );
+    expect(await fetchAllPages(fetchPage, numbers, "listing numbers")).toEqual([
+      1, 2, 3,
+    ]);
+    expect(fetchPage.mock.calls.map(([cursor]) => cursor)).toEqual([
+      undefined,
+      "page-2",
+    ]);
+  });
+
+  test.each([
+    {
+      name: "an invalid page",
+      page: () => ({ data: ["one"] }),
+      message: "Unexpected response format when listing numbers",
+    },
+    {
+      name: "a repeated cursor",
+      page: () => ({ data: [1], nextCursor: "same" }),
+      message: "Pagination repeated a cursor when listing numbers",
+    },
+    {
+      name: "the page limit",
+      page: (() => {
+        let page = 0;
+        return () => {
+          page += 1;
+          return { data: [1], nextCursor: String(page) };
+        };
+      })(),
+      message: `Pagination exceeded ${MAX_PAGINATION_PAGES} pages when listing numbers`,
+    },
+  ])("fails instead of returning a partial list on $name", async ({
+    page,
+    message,
+  }) => {
+    const result = fetchAllPages(
+      () => Promise.resolve(page()),
+      numbers,
+      "listing numbers"
+    );
+    await expect(result).rejects.toBeInstanceOf(ApiError);
+    await expect(result).rejects.toThrow(message);
   });
 });

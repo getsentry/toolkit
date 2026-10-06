@@ -251,11 +251,11 @@ describe("getIdentityFingerprint", () => {
     expect(getIdentityFingerprint()).toBe(ANON_IDENTITY);
   });
 
-  test("returns a stable 16-char hex fingerprint for a given env token", () => {
+  test("returns a stable full SHA-256 fingerprint for a given env token", () => {
     process.env.SENTRY_AUTH_TOKEN = "sntrys_alice";
     const fp1 = getIdentityFingerprint();
     const fp2 = getIdentityFingerprint();
-    expect(fp1).toMatch(/^[0-9a-f]{16}$/);
+    expect(fp1).toMatch(/^[0-9a-f]{64}$/);
     expect(fp1).toBe(fp2);
   });
 

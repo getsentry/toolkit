@@ -6,9 +6,13 @@ import { createHash } from "node:crypto";
 import { normalizeAuthToken, trimAuthToken } from "../auth-header.js";
 import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
 import { getEnv } from "../env.js";
-import { getEnvTokenHost } from "../env-token-host.js";
+import {
+  getBootConfiguredSentryUrl,
+  getEnvTokenHost,
+} from "../env-token-host.js";
+import { ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
-import { normalizeOrigin } from "../sentry-urls.js";
+import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { withDbSpan } from "../telemetry.js";
 import { getDatabase } from "./index.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
@@ -48,7 +52,7 @@ function getAuthRow(): AuthRow | undefined {
 /**
  * Lazy migration for rows created before schema v16 (NULL `host`).
  *
- * Uses the BOOT-TIME env snapshot (`getEnvTokenHost`), captured before the
+ * Uses only the BOOT-TIME explicit URL snapshot, captured before the
  * `.sentryclirc` shim could mutate env. Reading the current env directly
  * would either default self-hosted users to SaaS (when the shim hasn't run
  * yet) or migrate to a poisoned rc URL (when it has).
@@ -58,9 +62,10 @@ function getAuthRow(): AuthRow | undefined {
  * (never NULL on return).
  */
 function migrateNullHost(row: AuthRow): string {
-  const bootHost = getEnvTokenHost();
-  const migratedHost = normalizeOrigin(bootHost);
-  const host = migratedHost ?? DEFAULT_SENTRY_URL;
+  const bootHost = getBootConfiguredSentryUrl();
+  const host = bootHost
+    ? normalizeCredentialHost(bootHost)
+    : DEFAULT_SENTRY_URL;
   // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     withDbSpan("migrateAuthHost", () => {
@@ -75,6 +80,16 @@ function migrateNullHost(row: AuthRow): string {
   }
   row.host = host;
   return host;
+}
+
+function normalizeCredentialHost(host: string): string {
+  const origin = normalizeHttpOrigin(host);
+  if (!origin) {
+    throw new ConfigError(
+      "Stored credential host must be a credential-free HTTP(S) URL."
+    );
+  }
+  return origin;
 }
 
 /** Prefix for environment variable auth sources in {@link AuthSource} */
@@ -285,8 +300,10 @@ export function getUsableStoredTokenHost(): string | undefined {
   }
 }
 
-/** Memoized token. Wrapper distinguishes "not cached" from "cached as undefined". */
-let cachedAuthToken: { value: string | undefined } | undefined;
+const authCacheState = {
+  tokens: new WeakMap<NodeJS.ProcessEnv, { value: string | undefined }>(),
+  fingerprints: new WeakMap<NodeJS.ProcessEnv, string>(),
+};
 
 /**
  * Get the active auth token.
@@ -295,11 +312,13 @@ let cachedAuthToken: { value: string | undefined } | undefined;
  * With `SENTRY_FORCE_ENV_TOKEN=1`: checks env vars first (old behavior).
  */
 export function getAuthToken(): string | undefined {
-  if (cachedAuthToken !== undefined) {
-    return cachedAuthToken.value;
+  const env = getEnv();
+  const cached = authCacheState.tokens.get(env);
+  if (cached !== undefined) {
+    return cached.value;
   }
   const value = computeAuthToken();
-  cachedAuthToken = { value };
+  authCacheState.tokens.set(env, { value });
   return value;
 }
 
@@ -339,13 +358,13 @@ function computeAuthToken(): string | undefined {
 
 /** Reset the memoized auth token. Tests only — call between auth-state mutations. */
 export function resetAuthTokenCache(): void {
-  cachedAuthToken = undefined;
+  authCacheState.tokens = new WeakMap();
 }
 
-/** Memoized result for {@link hasStoredAuthCredentials}. Same wrapper contract as {@link cachedAuthToken}. */
+/** Memoized result for {@link hasStoredAuthCredentials}. */
 let cachedHasStoredCreds: { value: boolean } | undefined;
 
-/** Memoized full auth row for {@link refreshToken}. Same wrapper contract as {@link cachedAuthToken}. */
+/** Memoized full auth row for {@link refreshToken}. */
 let cachedAuthRow: { value: AuthRow | undefined } | undefined;
 
 function getCachedAuthRow(): AuthRow | undefined {
@@ -398,7 +417,7 @@ export function setAuthToken(
     //   2. Existing row's `host` (refresh flow preserves the original scope)
     //   3. Currently-configured host (getConfiguredSentryUrl)
     //   4. SaaS default
-    // Always normalized to scheme+host[+port] via normalizeOrigin.
+    // Always normalized to scheme+host[+port].
     const existingHost = (
       db.query("SELECT host FROM auth WHERE id = 1").get() as
         | { host: string | null }
@@ -409,7 +428,7 @@ export function setAuthToken(
       existingHost ??
       getConfiguredSentryUrl() ??
       DEFAULT_SENTRY_URL;
-    const host = normalizeOrigin(rawHost) ?? DEFAULT_SENTRY_URL;
+    const host = normalizeCredentialHost(rawHost);
 
     runUpsert(
       db,
@@ -429,6 +448,7 @@ export function setAuthToken(
   // Auth row changed — drop memoized fingerprint, token, row, and
   // stored-credentials flag so the next read reflects the new row.
   resetIdentityFingerprintCache();
+  refreshIdentityAliases.clear();
   resetAuthTokenCache();
   resetAuthRowCache();
   resetHasStoredCredsCache();
@@ -447,6 +467,7 @@ export async function clearAuth(): Promise<void> {
     clearAllIssueOrgCache();
   });
   resetIdentityFingerprintCache();
+  refreshIdentityAliases.clear();
   resetAuthTokenCache();
   resetAuthRowCache();
   resetHasStoredCredsCache();
@@ -471,9 +492,6 @@ export function isAuthenticated(): boolean {
 /** Fingerprint returned when no token is present (logged out, no env var). */
 export const ANON_IDENTITY = "<anon>";
 
-/** Memoized fingerprint. Identity doesn't change within a single CLI run. */
-let cachedFingerprint: string | undefined;
-
 /**
  * Opaque fingerprint of the active bearer identity, used to namespace
  * response-cache keys so entries never leak across accounts. Mirrors
@@ -490,15 +508,19 @@ let cachedFingerprint: string | undefined;
  * {@link resetIdentityFingerprintCache}.
  */
 export function getIdentityFingerprint(): string {
-  if (cachedFingerprint === undefined) {
-    cachedFingerprint = computeIdentityFingerprint();
+  const env = getEnv();
+  const cached = authCacheState.fingerprints.get(env);
+  if (cached !== undefined) {
+    return cached;
   }
-  return cachedFingerprint;
+  const fingerprint = computeIdentityFingerprint();
+  authCacheState.fingerprints.set(env, fingerprint);
+  return fingerprint;
 }
 
 /** Reset the memoized fingerprint. Tests only — call between auth-state mutations. */
 export function resetIdentityFingerprintCache(): void {
-  cachedFingerprint = undefined;
+  authCacheState.fingerprints = new WeakMap();
 }
 
 function computeIdentityFingerprint(): string {
@@ -539,15 +561,79 @@ function computeIdentityFingerprint(): string {
 }
 
 /**
- * 16-char MD5 hex of `kind|secret`. Not used for auth — just a cheap
- * cache namespace. Collisions are benign (identities would share a
- * cache slot, same as the anonymous case).
+ * Stable SHA-256 namespace for high-entropy OAuth and organization tokens.
+ * A collision would mix credentials' cached responses, so retain the full
+ * digest. This fingerprint is never a password verifier or a bearer token.
  */
 function hashIdentity(kind: string, secret: string): string {
-  return createHash("md5")
-    .update(`${kind}|${secret}`)
-    .digest("hex")
-    .slice(0, 16);
+  return createHash("sha256")
+    .update(kind)
+    .update("\0")
+    .update(secret)
+    .digest("hex");
+}
+
+/** Immutable token, host, and namespace captured from one auth state. */
+export type CredentialContext = Readonly<{
+  token: string;
+  host: string;
+  identity: string;
+  source: AuthSource;
+  refreshable: boolean;
+  expiresAt?: number;
+  issuedAt?: number;
+}>;
+
+function envCredentialContext(): CredentialContext | undefined {
+  const token = getEnvToken();
+  if (!token) {
+    return;
+  }
+  return Object.freeze({
+    token: token.token,
+    host: getEnvTokenHost(),
+    identity: hashIdentity("env", token.token),
+    source: token.source,
+    refreshable: false,
+  });
+}
+
+export function getCredentialContext(): CredentialContext | undefined {
+  if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim()) {
+    const forced = envCredentialContext();
+    if (forced) {
+      return forced;
+    }
+  }
+  const row = withDbSpan("getCredentialContext", getAuthRow);
+  if (
+    row?.token &&
+    (!row.expires_at || Date.now() <= row.expires_at || row.refresh_token)
+  ) {
+    const host = row.host ?? migrateNullHost(row);
+    const origin = normalizeHttpOrigin(host);
+    if (!origin) {
+      throw new ConfigError(
+        "Stored credential host must be a credential-free HTTP(S) URL."
+      );
+    }
+    return Object.freeze({
+      token: row.token,
+      host: origin,
+      identity: row.refresh_token
+        ? hashIdentity("oauth", row.refresh_token)
+        : hashIdentity("oauth-access", row.token),
+      source: "oauth",
+      refreshable: Boolean(row.refresh_token),
+      ...(row.expires_at ? { expiresAt: row.expires_at } : {}),
+      ...(row.issued_at ? { issuedAt: row.issued_at } : {}),
+    });
+  }
+  return envCredentialContext();
+}
+
+export function getActiveAuthHost(): string | undefined {
+  return getCredentialContext()?.host;
 }
 
 /**
@@ -586,29 +672,160 @@ export function hasStoredAuthCredentials(): boolean {
 export type RefreshTokenOptions = {
   /** Bypass threshold check and always refresh */
   force?: boolean;
+  expectedCredential?: Pick<CredentialContext, "host" | "identity">;
 };
 
 export type RefreshTokenResult = {
   token: string;
   refreshed: boolean;
+  host: string;
+  identity: string;
+  source: AuthSource;
+  refreshable: boolean;
   expiresAt?: number;
   expiresIn?: number;
 };
 
-let refreshPromise: Promise<RefreshTokenResult> | null = null;
+type StoredCredentialSnapshot = {
+  token: string;
+  refreshToken: string;
+  expiresAt: number | null;
+  issuedAt: number | null;
+  updatedAt: number;
+  host: string;
+  identity: string;
+};
+
+const refreshPromises = new Map<string, Promise<RefreshTokenResult>>();
+// Only successful rotations can link a pinned in-flight request to the next
+// refresh-token identity. A new login or logout clears every link.
+const refreshIdentityAliases = new Map<string, string>();
+const MAX_REFRESH_IDENTITY_ALIASES = 128;
+
+function rememberRefreshIdentity(
+  host: string,
+  previous: string,
+  next: string
+): void {
+  if (previous === next) {
+    return;
+  }
+  refreshIdentityAliases.set(`${host}\0${previous}`, next);
+  if (refreshIdentityAliases.size > MAX_REFRESH_IDENTITY_ALIASES) {
+    const oldest = refreshIdentityAliases.keys().next().value;
+    if (oldest !== undefined) {
+      refreshIdentityAliases.delete(oldest);
+    }
+  }
+}
+
+function matchesRefreshIdentity(
+  host: string,
+  previous: string,
+  current: string
+): boolean {
+  const seen = new Set<string>();
+  const start = `${host}\0${previous}`;
+  for (let key = start; !seen.has(key); ) {
+    seen.add(key);
+    const next = refreshIdentityAliases.get(key);
+    if (!next) {
+      return false;
+    }
+    if (next === current) {
+      return true;
+    }
+    key = `${host}\0${next}`;
+  }
+  return false;
+}
+
+function rowMatchesCredential(
+  row: AuthRow | undefined,
+  credential: StoredCredentialSnapshot
+): boolean {
+  return (
+    row?.token === credential.token &&
+    row.refresh_token === credential.refreshToken &&
+    row.expires_at === credential.expiresAt &&
+    row.issued_at === credential.issuedAt &&
+    row.updated_at === credential.updatedAt &&
+    row.host === credential.host
+  );
+}
+
+function assertExpectedCredential(
+  result: Pick<RefreshTokenResult, "host" | "identity">,
+  expected: RefreshTokenOptions["expectedCredential"]
+): void {
+  if (
+    expected &&
+    (result.host !== expected.host ||
+      (result.identity !== expected.identity &&
+        !matchesRefreshIdentity(
+          result.host,
+          expected.identity,
+          result.identity
+        )))
+  ) {
+    throw new ConfigError(
+      "Active credentials changed while the request was in flight. Retry the request."
+    );
+  }
+}
+
+function persistRefreshedCredential(
+  credential: StoredCredentialSnapshot,
+  token: string,
+  nextRefreshToken: string,
+  expiresIn: number
+): boolean {
+  const saved = withDbSpan("persistRefreshedCredential", () => {
+    const db = getDatabase();
+    return db.transaction(() => {
+      if (!rowMatchesCredential(getAuthRow(), credential)) {
+        return false;
+      }
+      const now = Date.now();
+      db.query(
+        "UPDATE auth SET token = ?, refresh_token = ?, expires_at = ?, issued_at = ?, updated_at = ?, host = ? WHERE id = 1"
+      ).run(
+        token,
+        nextRefreshToken,
+        now + expiresIn * 1000,
+        now,
+        now,
+        credential.host
+      );
+      return true;
+    })();
+  });
+  if (saved) {
+    resetIdentityFingerprintCache();
+    resetAuthTokenCache();
+    resetAuthRowCache();
+    resetHasStoredCredsCache();
+  }
+  return saved;
+}
 
 async function performTokenRefresh(
-  storedRefreshToken: string
+  credential: StoredCredentialSnapshot
 ): Promise<RefreshTokenResult> {
   const { refreshAccessToken } = await import("../oauth.js");
   const { AuthError } = await import("../errors.js");
 
   let tokenResponse: Awaited<ReturnType<typeof refreshAccessToken>>;
   try {
-    tokenResponse = await refreshAccessToken(storedRefreshToken);
+    tokenResponse = await refreshAccessToken(credential.refreshToken, {
+      credentialHost: credential.host,
+    });
   } catch (error) {
     // Only clear auth on explicit rejection, not network errors
-    if (error instanceof AuthError) {
+    if (
+      error instanceof AuthError &&
+      rowMatchesCredential(getAuthRow(), credential)
+    ) {
       await clearAuth();
     }
     throw error;
@@ -617,21 +834,67 @@ async function performTokenRefresh(
   // Validate before SQLite can truncate NUL-containing credentials or replace
   // the stored credentials with a malformed response. Leave those values unchanged.
   const token = normalizeAuthToken(tokenResponse.access_token);
+  const nextRefreshToken =
+    tokenResponse.refresh_token ?? credential.refreshToken;
   const now = Date.now();
   const expiresAt = now + tokenResponse.expires_in * 1000;
 
-  await setAuthToken(
-    token,
-    tokenResponse.expires_in,
-    tokenResponse.refresh_token ?? storedRefreshToken
-  );
+  if (
+    !persistRefreshedCredential(
+      credential,
+      token,
+      nextRefreshToken,
+      tokenResponse.expires_in
+    )
+  ) {
+    throw new ConfigError(
+      "Active credentials changed while the request was in flight. Retry the request."
+    );
+  }
+
+  const identity = hashIdentity("oauth", nextRefreshToken);
+  rememberRefreshIdentity(credential.host, credential.identity, identity);
 
   return {
     token,
     refreshed: true,
+    host: credential.host,
+    identity,
+    source: "oauth",
+    refreshable: true,
     expiresAt,
     expiresIn: tokenResponse.expires_in,
   };
+}
+
+function getEnvRefreshResult(
+  expected: RefreshTokenOptions["expectedCredential"]
+): RefreshTokenResult | undefined {
+  const credential = envCredentialContext();
+  if (!credential) {
+    return;
+  }
+  assertExpectedCredential(credential, expected);
+  return { ...credential, refreshed: false };
+}
+
+async function refreshStoredCredential(
+  credential: StoredCredentialSnapshot
+): Promise<RefreshTokenResult> {
+  const key = `${credential.identity}\0${credential.host}\0${hashIdentity("oauth-access", credential.token)}\0${credential.updatedAt}`;
+  const existing = refreshPromises.get(key);
+  if (existing) {
+    return await existing;
+  }
+  const pending = performTokenRefresh(credential);
+  refreshPromises.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    if (refreshPromises.get(key) === pending) {
+      refreshPromises.delete(key);
+    }
+  }
 }
 
 /** Get a valid token, refreshing if needed. Use force=true after 401 responses. */
@@ -639,12 +902,11 @@ export async function refreshToken(
   options: RefreshTokenOptions = {}
 ): Promise<RefreshTokenResult> {
   // With SENTRY_FORCE_ENV_TOKEN, env token takes priority (no refresh needed).
-  const forceEnv = getEnv().SENTRY_FORCE_ENV_TOKEN?.trim();
-  if (forceEnv) {
-    const envToken = getEnvToken();
-    if (envToken) {
-      return { token: envToken.token, refreshed: false };
-    }
+  const forced = getEnv().SENTRY_FORCE_ENV_TOKEN?.trim()
+    ? getEnvRefreshResult(options.expectedCredential)
+    : undefined;
+  if (forced) {
+    return forced;
   }
 
   const { force = false } = options;
@@ -654,18 +916,35 @@ export async function refreshToken(
 
   if (!row?.token) {
     // No stored token — try env token as fallback
-    const envToken = getEnvToken();
-    if (envToken) {
-      return { token: envToken.token, refreshed: false };
+    const fallback = getEnvRefreshResult(options.expectedCredential);
+    if (fallback) {
+      return fallback;
     }
     throw new AuthError("not_authenticated");
   }
 
   const now = Date.now();
   const expiresAt = row.expires_at;
+  const host = row.host ?? migrateNullHost(row);
+  const origin = normalizeHttpOrigin(host);
+  if (!origin) {
+    throw new ConfigError(
+      "Stored credential host must be a credential-free HTTP(S) URL."
+    );
+  }
+  const identity = row.refresh_token
+    ? hashIdentity("oauth", row.refresh_token)
+    : hashIdentity("oauth-access", row.token);
+  const baseResult = {
+    host: origin,
+    identity,
+    source: "oauth" as const,
+    refreshable: Boolean(row.refresh_token),
+  };
+  assertExpectedCredential(baseResult, options.expectedCredential);
 
   if (!expiresAt) {
-    return { token: row.token, refreshed: false };
+    return { ...baseResult, token: row.token, refreshed: false };
   }
 
   const issuedAt = row.issued_at ?? expiresAt - DEFAULT_TOKEN_LIFETIME_MS;
@@ -676,6 +955,7 @@ export async function refreshToken(
 
   if (!force && remainingRatio > REFRESH_THRESHOLD && now < expiresAt) {
     return {
+      ...baseResult,
       token: row.token,
       refreshed: false,
       expiresAt,
@@ -686,9 +966,9 @@ export async function refreshToken(
   if (!row.refresh_token) {
     await clearAuth();
     // Fall back to env token if available (consistent with getAuthToken/getAuthConfig)
-    const envToken = getEnvToken();
-    if (envToken) {
-      return { token: envToken.token, refreshed: false };
+    const fallback = getEnvRefreshResult(options.expectedCredential);
+    if (fallback) {
+      return fallback;
     }
     throw new AuthError(
       "expired",
@@ -696,14 +976,14 @@ export async function refreshToken(
     );
   }
 
-  if (refreshPromise) {
-    return refreshPromise;
-  }
-
-  refreshPromise = performTokenRefresh(row.refresh_token);
-  try {
-    return await refreshPromise;
-  } finally {
-    refreshPromise = null;
-  }
+  const credential: StoredCredentialSnapshot = {
+    token: row.token,
+    refreshToken: row.refresh_token,
+    expiresAt: row.expires_at,
+    issuedAt: row.issued_at,
+    updatedAt: row.updated_at,
+    host: origin,
+    identity,
+  };
+  return await refreshStoredCredential(credential);
 }

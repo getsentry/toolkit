@@ -13,7 +13,7 @@ import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { withProgress } from "../../lib/polling.js";
-import { buildDashboardUrl } from "../../lib/sentry-urls.js";
+import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { DashboardDetail } from "../../types/dashboard.js";
 import {
   enrichDashboardError,

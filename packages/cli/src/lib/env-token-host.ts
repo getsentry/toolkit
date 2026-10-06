@@ -34,14 +34,72 @@
  *   4. getDefaultUrl() fallback   ← may write env.SENTRY_URL
  */
 
-import { DEFAULT_SENTRY_URL } from "./constants.js";
+import { DEFAULT_SENTRY_URL, normalizeUrl } from "./constants.js";
 import { getRawEnvToken } from "./db/auth.js";
 import { getEnv } from "./env.js";
-import { normalizeUserInputToOrigin } from "./sentry-urls.js";
+import { ConfigError } from "./errors.js";
 import { parseSntrysClaim } from "./token-claims.js";
 
-/** Pinned host. `undefined` means not yet captured. */
-let pinnedHost: string | undefined;
+type HostSnapshot = {
+  host: string;
+  configuredHost: string | null;
+  claimError?: ConfigError;
+};
+const EXPLICIT_SCHEME_RE = /^([a-z][a-z\d+.-]*):\/\//i;
+
+function normalizeHost(
+  input: string | undefined,
+  source: string
+): string | undefined {
+  if (!input) {
+    return;
+  }
+  const scheme = input.trim().match(EXPLICIT_SCHEME_RE)?.[1]?.toLowerCase();
+  try {
+    if (scheme && scheme !== "http" && scheme !== "https") {
+      throw new TypeError("Unsupported URL scheme");
+    }
+    const parsed = new URL(normalizeUrl(input) as string);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      !parsed.hostname ||
+      parsed.username ||
+      parsed.password
+    ) {
+      throw new TypeError("Invalid URL");
+    }
+    return parsed.origin;
+  } catch {
+    throw new ConfigError(`${source} must be a credential-free HTTP(S) URL.`);
+  }
+}
+
+function captureClaimHost(token: string | undefined): {
+  host?: string;
+  error?: ConfigError;
+} {
+  if (!token?.startsWith("sntrys_")) {
+    return {};
+  }
+  const claim = parseSntrysClaim(token);
+  if (!claim) {
+    // Opaque tokens, including legacy sntrys_ strings without a usable claim,
+    // still use the configured URL or SaaS. No claimed host was trusted.
+    return {};
+  }
+  try {
+    return { host: normalizeHost(claim.url, "The active token URL claim") };
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      return { error };
+    }
+    throw error;
+  }
+}
+
+const snapshotState = {
+  byEnv: new WeakMap<NodeJS.ProcessEnv, HostSnapshot>(),
+};
 
 /**
  * Snapshot the env-token's scoping host. Idempotent — second and subsequent
@@ -56,23 +114,22 @@ let pinnedHost: string | undefined;
  * 3. `DEFAULT_SENTRY_URL` (SaaS).
  */
 export function captureEnvTokenHost(): void {
-  if (pinnedHost !== undefined) {
-    return;
-  }
-  // Claim first: for sntrys_ tokens, the embedded url is authoritative.
-  const claimHost = normalizeUserInputToOrigin(
-    parseSntrysClaim(getRawEnvToken())?.url
-  );
-  if (claimHost) {
-    pinnedHost = claimHost;
-    return;
-  }
-  // Env fallback: for non-sntrys_ tokens (no claim available).
   const env = getEnv();
-  const envHost = normalizeUserInputToOrigin(
-    env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim()
-  );
-  pinnedHost = envHost ?? DEFAULT_SENTRY_URL;
+  if (snapshotState.byEnv.has(env)) {
+    return;
+  }
+  const configuredHost =
+    normalizeHost(
+      env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim(),
+      env.SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL"
+    ) ?? null;
+  // Claim first: for sntrys_ tokens, the embedded url is authoritative.
+  const claim = captureClaimHost(getRawEnvToken());
+  snapshotState.byEnv.set(env, {
+    configuredHost,
+    host: claim.host ?? configuredHost ?? DEFAULT_SENTRY_URL,
+    ...(claim.error ? { claimError: claim.error } : {}),
+  });
 }
 
 /**
@@ -81,13 +138,27 @@ export function captureEnvTokenHost(): void {
  * auto-capture covers library-mode callers that bypass the boot.
  */
 export function getEnvTokenHost(): string {
-  if (pinnedHost === undefined) {
+  const env = getEnv();
+  if (!snapshotState.byEnv.has(env)) {
     captureEnvTokenHost();
   }
-  return pinnedHost ?? DEFAULT_SENTRY_URL;
+  const snapshot = snapshotState.byEnv.get(env);
+  if (snapshot?.claimError) {
+    throw snapshot.claimError;
+  }
+  return snapshot?.host ?? DEFAULT_SENTRY_URL;
+}
+
+/** Only the explicit URL captured at boot may migrate a legacy stored login. */
+export function getBootConfiguredSentryUrl(): string | undefined {
+  const env = getEnv();
+  if (!snapshotState.byEnv.has(env)) {
+    captureEnvTokenHost();
+  }
+  return snapshotState.byEnv.get(env)?.configuredHost ?? undefined;
 }
 
 /** @internal */
 export function resetEnvTokenHostForTesting(): void {
-  pinnedHost = undefined;
+  snapshotState.byEnv = new WeakMap<NodeJS.ProcessEnv, HostSnapshot>();
 }

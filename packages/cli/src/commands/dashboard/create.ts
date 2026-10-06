@@ -21,7 +21,7 @@ import {
   resolveProjectBoundSlug,
   toNumericId,
 } from "../../lib/resolve-target.js";
-import { buildDashboardUrl } from "../../lib/sentry-urls.js";
+import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import type { DashboardDetail } from "../../types/dashboard.js";
 import { enrichDashboardError } from "./resolve.js";

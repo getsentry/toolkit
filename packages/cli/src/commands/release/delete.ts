@@ -17,7 +17,7 @@ import {
   confirmByTyping,
   isConfirmationBypassed,
 } from "../../lib/mutate-command.js";
-import { buildReleaseUrl } from "../../lib/sentry-urls.js";
+import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
 import { resolveReleaseTarget } from "./parse.js";
 
 const USAGE_HINT = "sentry release delete [<org>/]<version>";

@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  getIdentityFingerprint,
   getStoredAuthHost,
   hasUsableStoredToken,
   setAuthToken,
@@ -20,6 +21,13 @@ describe("db/auth host scoping", () => {
       host: "https://sentry.acme.com",
     });
     expect(getStoredAuthHost()).toBe("https://sentry.acme.com");
+  });
+
+  test("uses a full collision-resistant credential namespace fingerprint", () => {
+    setAuthToken("opaque-access", undefined, undefined, {
+      host: "https://sentry.example.com",
+    });
+    expect(getIdentityFingerprint()).toMatch(/^[0-9a-f]{64}$/);
   });
 
   test("setAuthToken normalizes host (lowercases + strips trailing slash)", () => {

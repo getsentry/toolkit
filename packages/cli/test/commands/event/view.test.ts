@@ -1348,7 +1348,9 @@ describe("viewCommand.func", () => {
       traceId: null,
       success: false,
     });
-    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    // Resolution looks up the raw slug before the command reports its normalized form.
+    // Seed it so the warning test never attempts an unrelated network lookup.
+    setOrgRegion("test_org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
     const func = await viewCommand.loader();

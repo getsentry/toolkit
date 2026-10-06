@@ -11,7 +11,7 @@ import { buildCommand, numberParser } from "../../../lib/command.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetEdited } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
-import { buildDashboardUrl } from "../../../lib/sentry-urls.js";
+import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
   type DashboardDetail,
   type DashboardWidget,

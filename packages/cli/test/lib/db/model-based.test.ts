@@ -35,10 +35,12 @@ import {
   clearAuth,
   getAuthConfig,
   getAuthToken,
+  getIdentityFingerprint,
   isAuthenticated,
   isEnvTokenActive,
   resetAuthRowCache,
   resetAuthTokenCache,
+  resetIdentityFingerprintCache,
   setAuthToken,
 } from "../../../src/lib/db/auth.js";
 import {
@@ -82,7 +84,7 @@ type DbModel = {
   envAuthToken: string | null;
   /** Simulated SENTRY_TOKEN env var (null = unset) */
   envSentryToken: string | null;
-  regions: Map<string, string>;
+  regions: Map<string, Map<string, string>>;
   aliases: {
     entries: Map<string, { orgSlug: string; projectSlug: string }>;
     fingerprint: string | null;
@@ -305,6 +307,7 @@ class SetEnvAuthTokenCommand implements AsyncCommand<DbModel, RealDb> {
     // Env mutation bypasses setAuthToken's invalidation.
     resetAuthTokenCache();
     resetAuthRowCache();
+    resetIdentityFingerprintCache();
     // Model stores trimmed value — matches real getEnvToken() which trims
     const trimmed = this.token.trim();
     model.envAuthToken = trimmed || null;
@@ -320,6 +323,7 @@ class ClearEnvAuthTokenCommand implements AsyncCommand<DbModel, RealDb> {
     delete process.env.SENTRY_AUTH_TOKEN;
     resetAuthTokenCache();
     resetAuthRowCache();
+    resetIdentityFingerprintCache();
     model.envAuthToken = null;
   }
 
@@ -339,6 +343,7 @@ class SetEnvSentryTokenCommand implements AsyncCommand<DbModel, RealDb> {
     process.env.SENTRY_TOKEN = this.token;
     resetAuthTokenCache();
     resetAuthRowCache();
+    resetIdentityFingerprintCache();
     // Model stores trimmed value — matches real getEnvToken() which trims
     const trimmed = this.token.trim();
     model.envSentryToken = trimmed || null;
@@ -354,6 +359,7 @@ class ClearEnvSentryTokenCommand implements AsyncCommand<DbModel, RealDb> {
     delete process.env.SENTRY_TOKEN;
     resetAuthTokenCache();
     resetAuthRowCache();
+    resetIdentityFingerprintCache();
     model.envSentryToken = null;
   }
 
@@ -375,6 +381,13 @@ class IsEnvTokenActiveCommand implements AsyncCommand<DbModel, RealDb> {
 
 // Region Commands
 
+function activeModelRegions(model: DbModel): Map<string, string> {
+  const identity = getIdentityFingerprint();
+  const regions = model.regions.get(identity) ?? new Map<string, string>();
+  model.regions.set(identity, regions);
+  return regions;
+}
+
 class SetOrgRegionCommand implements AsyncCommand<DbModel, RealDb> {
   readonly orgSlug: string;
   readonly regionUrl: string;
@@ -388,7 +401,7 @@ class SetOrgRegionCommand implements AsyncCommand<DbModel, RealDb> {
 
   async run(model: DbModel, _real: RealDb): Promise<void> {
     setOrgRegion(this.orgSlug, this.regionUrl);
-    model.regions.set(this.orgSlug, this.regionUrl);
+    activeModelRegions(model).set(this.orgSlug, this.regionUrl);
   }
 
   toString(): string {
@@ -407,7 +420,7 @@ class GetOrgRegionCommand implements AsyncCommand<DbModel, RealDb> {
 
   async run(model: DbModel, _real: RealDb): Promise<void> {
     const realRegion = getOrgRegion(this.orgSlug);
-    const expectedRegion = model.regions.get(this.orgSlug);
+    const expectedRegion = activeModelRegions(model).get(this.orgSlug);
 
     expect(realRegion).toBe(expectedRegion);
   }
@@ -432,7 +445,7 @@ class SetOrgRegionsCommand implements AsyncCommand<DbModel, RealDb> {
     );
 
     for (const [orgSlug, regionUrl] of this.entries) {
-      model.regions.set(orgSlug, regionUrl);
+      activeModelRegions(model).set(orgSlug, regionUrl);
     }
   }
 
@@ -446,10 +459,11 @@ class GetAllOrgRegionsCommand implements AsyncCommand<DbModel, RealDb> {
 
   async run(model: DbModel, _real: RealDb): Promise<void> {
     const realRegions = getAllOrgRegions();
+    const expectedRegions = activeModelRegions(model);
 
-    expect(realRegions.size).toBe(model.regions.size);
+    expect(realRegions.size).toBe(expectedRegions.size);
 
-    for (const [orgSlug, regionUrl] of model.regions) {
+    for (const [orgSlug, regionUrl] of expectedRegions) {
       expect(realRegions.get(orgSlug)).toBe(regionUrl);
     }
   }
@@ -790,6 +804,7 @@ describe("model-based: database layer", () => {
         delete process.env.SENTRY_TOKEN;
         resetAuthTokenCache();
         resetAuthRowCache();
+        resetIdentityFingerprintCache();
         try {
           const setup = () => ({
             model: createEmptyModel(),

@@ -51,7 +51,7 @@ import {
   resolveOrgAndProject,
 } from "../../lib/resolve-target.js";
 import { parseSentryUrl } from "../../lib/sentry-url-parser.js";
-import { buildIssueUrl } from "../../lib/sentry-urls.js";
+import { buildIssueUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits } from "../../lib/utils.js";
 import type { SentryIssue } from "../../types/index.js";
@@ -919,18 +919,22 @@ export async function resolveIssue(
  * This is a stricter wrapper around resolveIssue that throws if org is undefined.
  *
  * @param options - Resolution options
- * @returns Object with org slug and numeric issue ID
+ * @returns Object with org slug, numeric issue ID, and the issue's project ID when known
  * @throws {ContextError} When organization cannot be resolved
  */
 export async function resolveOrgAndIssueId(
   options: ResolveIssueOptions
-): Promise<{ org: string; issueId: string }> {
+): Promise<{ org: string; issueId: string; projectId?: string }> {
   const result = await resolveIssue(options);
   if (!result.org) {
     const commandHint = buildCommandHint(options.command, options.issueArg);
     throw new ContextError("Organization", commandHint);
   }
-  return { org: result.org, issueId: result.issue.id };
+  return {
+    org: result.org,
+    issueId: result.issue.id,
+    projectId: result.issue.project?.id,
+  };
 }
 
 type PollAutofixOptions = {

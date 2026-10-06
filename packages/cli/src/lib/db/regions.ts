@@ -10,15 +10,27 @@
  * look up by `org_id = '1081365'` → get the slug).
  */
 
+import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
 import { logger } from "../logger.js";
-import { normalizeOrigin } from "../sentry-urls.js";
+import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { recordCacheHit } from "../telemetry.js";
+import { getCredentialContext, getIdentityFingerprint } from "./auth.js";
 import { getDatabase } from "./index.js";
 import { runUpsert } from "./utils.js";
 
 const log = logger.withTag("db.regions");
 
 const TABLE = "org_regions";
+const MAX_TRUST_GRAPH_ORIGINS = 1024;
+const TRAILING_SLASHES_RE = /\/+$/;
+
+function getActiveSourceOrigin(): string {
+  return (
+    getConfiguredSentryUrl() ??
+    getCredentialContext()?.host ??
+    DEFAULT_SENTRY_URL
+  );
+}
 
 /**
  * Process-local trust extension: origins that were vouched for by the
@@ -31,26 +43,85 @@ const TABLE = "org_regions";
  * start (with cached orgs from a previous CLI invocation) we don't
  * re-fetch regions just to extend trust.
  */
-const trustedRegionOrigins = new Set<string>();
-let trustedRegionOriginsSeeded = false;
+const trustedRegionOrigins = new Map<string, Set<string>>();
+const seededTrustScopes = new Set<string>();
 
-function seedTrustedRegionOriginsIfNeeded(): void {
-  if (trustedRegionOriginsSeeded) {
+function trustScopeKey(identity: string, sourceOrigin: string): string {
+  return `${identity}\0${sourceOrigin}`;
+}
+
+function requireOrigin(url: string, name: string): string {
+  const origin = normalizeHttpOrigin(url);
+  if (!origin) {
+    throw new Error(`${name} must be a credential-free HTTP(S) URL`);
+  }
+  return origin;
+}
+
+/** Keep a self-hosted installation path while storing only validated URLs. */
+function requireRegionBaseUrl(url: string): string {
+  const origin = requireOrigin(url, "Organization region URL");
+  const parsed = new URL(url);
+  if (parsed.search || parsed.hash) {
+    throw new Error(
+      "Organization region URL must not contain a query or fragment"
+    );
+  }
+  const path = parsed.pathname.replace(TRAILING_SLASHES_RE, "");
+  return `${origin}${path}`;
+}
+
+function registerTrustedOrigins(
+  identity: string,
+  sourceOrigin: string,
+  urls: readonly string[]
+): void {
+  const key = trustScopeKey(identity, sourceOrigin);
+  if (
+    !trustedRegionOrigins.has(key) &&
+    trustedRegionOrigins.size >= MAX_TRUST_GRAPH_ORIGINS
+  ) {
+    const oldest = trustedRegionOrigins.keys().next().value;
+    if (oldest) {
+      trustedRegionOrigins.delete(oldest);
+      seededTrustScopes.delete(oldest);
+    }
+  }
+  const origins = trustedRegionOrigins.get(key) ?? new Set<string>();
+  for (const url of urls) {
+    const origin = requireOrigin(url, "Organization region URL");
+    if (origins.size < MAX_TRUST_GRAPH_ORIGINS) {
+      origins.add(origin);
+    }
+  }
+  trustedRegionOrigins.set(key, origins);
+}
+
+function seedTrustedOrigins(identity: string, sourceOrigin: string): void {
+  const key = trustScopeKey(identity, sourceOrigin);
+  if (seededTrustScopes.has(key)) {
     return;
   }
-  trustedRegionOriginsSeeded = true;
+  seededTrustScopes.add(key);
   try {
-    const db = getDatabase();
-    const rows = db
-      .query(`SELECT DISTINCT region_url FROM ${TABLE}`)
-      .all() as Pick<OrgRegionRow, "region_url">[];
+    const rows = getDatabase()
+      .query(
+        `SELECT DISTINCT source_origin, response_origin, region_url FROM ${TABLE} WHERE credential_identity = ? AND (source_origin = ? OR response_origin = ?)`
+      )
+      .all(identity, sourceOrigin, sourceOrigin) as Pick<
+      OrgRegionRow,
+      "source_origin" | "response_origin" | "region_url"
+    >[];
     for (const row of rows) {
-      const origin = normalizeOrigin(row.region_url);
-      if (origin) {
-        trustedRegionOrigins.add(origin);
+      if (row.source_origin === sourceOrigin) {
+        registerTrustedOrigins(identity, sourceOrigin, [row.response_origin]);
+      }
+      if (row.response_origin === sourceOrigin) {
+        registerTrustedOrigins(identity, sourceOrigin, [row.region_url]);
       }
     }
   } catch (error) {
+    seededTrustScopes.delete(key);
     log.debug("Failed to seed trusted region origins from DB", error);
   }
 }
@@ -63,22 +134,52 @@ function seedTrustedRegionOriginsIfNeeded(): void {
  * Also called automatically by {@link setOrgRegion} and
  * {@link setOrgRegions} so persistent and in-process state stay in sync.
  */
-export function registerTrustedRegionUrls(urls: readonly string[]): void {
-  for (const url of urls) {
-    const origin = normalizeOrigin(url);
-    if (origin) {
-      trustedRegionOrigins.add(origin);
-    }
-  }
+export function registerTrustedRegionUrls(
+  urls: readonly string[],
+  sourceOrigin = getActiveSourceOrigin(),
+  identity = getIdentityFingerprint()
+): void {
+  registerTrustedOrigins(
+    identity,
+    requireOrigin(sourceOrigin, "Region source origin"),
+    urls
+  );
 }
 
 /**
  * Whether `origin` was vouched for by the active token's issuing host.
  * Lazy-seeds from `org_regions` on first call.
  */
-export function isTrustedRegionOrigin(origin: string): boolean {
-  seedTrustedRegionOriginsIfNeeded();
-  return trustedRegionOrigins.has(origin);
+export function isTrustedRegionOrigin(
+  origin: string,
+  sourceOrigin = getActiveSourceOrigin(),
+  identity = getIdentityFingerprint()
+): boolean {
+  const candidate = normalizeHttpOrigin(origin);
+  const source = normalizeHttpOrigin(sourceOrigin);
+  if (!(candidate && source)) {
+    return false;
+  }
+  const pending = [source];
+  const visited = new Set<string>();
+  while (pending.length > 0 && visited.size < MAX_TRUST_GRAPH_ORIGINS) {
+    const current = pending.shift();
+    if (!current || visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+    seedTrustedOrigins(identity, current);
+    const trusted = trustedRegionOrigins.get(trustScopeKey(identity, current));
+    if (trusted?.has(candidate)) {
+      return true;
+    }
+    for (const next of trusted ?? []) {
+      if (!visited.has(next)) {
+        pending.push(next);
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -91,15 +192,12 @@ export function isTrustedRegionOrigin(origin: string): boolean {
  */
 export function clearTrustedHostState(): void {
   trustedRegionOrigins.clear();
-  // Force re-seed on next read in case the caller deletes table rows
-  // (clearOrgRegions) between this clear and the next access.
-  trustedRegionOriginsSeeded = false;
+  seededTrustScopes.clear();
 }
 
 /** @internal exported for testing */
 export function resetTrustedRegionUrlsForTesting(): void {
-  trustedRegionOrigins.clear();
-  trustedRegionOriginsSeeded = false;
+  clearTrustedHostState();
 }
 
 /** When true, getCachedOrganizations() returns empty (forces API fetch). */
@@ -121,6 +219,9 @@ type OrgRegionRow = {
   org_name: string | null;
   org_role: string | null;
   region_url: string;
+  credential_identity: string;
+  source_origin: string;
+  response_origin: string;
   updated_at: number;
 };
 
@@ -128,6 +229,9 @@ type OrgRegionRow = {
 export type OrgRegionEntry = {
   slug: string;
   regionUrl: string;
+  sourceOrigin?: string;
+  cacheOrigin?: string;
+  identity?: string;
   orgId?: string;
   orgName?: string;
   /** The authenticated user's role in this organization (e.g., "member", "admin", "owner"). */
@@ -140,11 +244,24 @@ export type OrgRegionEntry = {
  * @param orgSlug - The organization slug
  * @returns The region URL if cached, undefined otherwise
  */
-export function getOrgRegion(orgSlug: string): string | undefined {
+export function getOrgRegion(
+  orgSlug: string,
+  sourceOrigin = getActiveSourceOrigin(),
+  identity = getIdentityFingerprint()
+): string | undefined {
+  const source = normalizeHttpOrigin(sourceOrigin);
+  if (!source) {
+    recordCacheHit("region", false);
+    return;
+  }
   const db = getDatabase();
   const row = db
-    .query(`SELECT region_url FROM ${TABLE} WHERE org_slug = ?`)
-    .get(orgSlug) as Pick<OrgRegionRow, "region_url"> | undefined;
+    .query(
+      `SELECT region_url FROM ${TABLE} WHERE org_slug = ? AND source_origin = ? AND credential_identity = ?`
+    )
+    .get(orgSlug, source, identity) as
+    | Pick<OrgRegionRow, "region_url">
+    | undefined;
 
   recordCacheHit("region", !!row);
   return row?.region_url;
@@ -160,12 +277,20 @@ export function getOrgRegion(orgSlug: string): string | undefined {
  * @returns The org slug and region URL if found, undefined otherwise
  */
 export function getOrgByNumericId(
-  numericId: string
+  numericId: string,
+  sourceOrigin = getActiveSourceOrigin(),
+  identity = getIdentityFingerprint()
 ): { slug: string; regionUrl: string } | undefined {
+  const source = normalizeHttpOrigin(sourceOrigin);
+  if (!source) {
+    return;
+  }
   const db = getDatabase();
   const row = db
-    .query(`SELECT org_slug, region_url FROM ${TABLE} WHERE org_id = ?`)
-    .get(numericId) as
+    .query(
+      `SELECT org_slug, region_url FROM ${TABLE} WHERE org_id = ? AND source_origin = ? AND credential_identity = ?`
+    )
+    .get(numericId, source, identity) as
     | Pick<OrgRegionRow, "org_slug" | "region_url">
     | undefined;
 
@@ -181,17 +306,35 @@ export function getOrgByNumericId(
  * @param orgSlug - The organization slug
  * @param regionUrl - The region URL (e.g., https://us.sentry.io)
  */
-export function setOrgRegion(orgSlug: string, regionUrl: string): void {
+// biome-ignore lint/nursery/useMaxParams: provenance fields are explicit at the persistence boundary.
+export function setOrgRegion(
+  orgSlug: string,
+  regionUrl: string,
+  responseOrigin = getActiveSourceOrigin(),
+  cacheOrigin = responseOrigin,
+  identity = getIdentityFingerprint()
+): void {
   const db = getDatabase();
   const now = Date.now();
+  const region = requireRegionBaseUrl(regionUrl);
+  const response = requireOrigin(responseOrigin, "Region response origin");
+  const source = requireOrigin(cacheOrigin, "Region lookup origin");
 
   runUpsert(
     db,
     TABLE,
-    { org_slug: orgSlug, region_url: regionUrl, updated_at: now },
-    ["org_slug"]
+    {
+      org_slug: orgSlug,
+      region_url: region,
+      credential_identity: identity,
+      source_origin: source,
+      response_origin: response,
+      updated_at: now,
+    },
+    ["credential_identity", "source_origin", "org_slug"]
   );
-  registerTrustedRegionUrls([regionUrl]);
+  registerTrustedOrigins(identity, source, [response]);
+  registerTrustedOrigins(identity, response, [region]);
 }
 
 /**
@@ -208,14 +351,35 @@ export function setOrgRegions(entries: OrgRegionEntry[]): void {
     return;
   }
 
+  const normalized = entries.map((entry) => {
+    const response = requireOrigin(
+      entry.sourceOrigin ?? getActiveSourceOrigin(),
+      "Region response origin"
+    );
+    const source = requireOrigin(
+      entry.cacheOrigin ?? response,
+      "Region lookup origin"
+    );
+    return {
+      entry,
+      identity: entry.identity ?? getIdentityFingerprint(),
+      region: requireRegionBaseUrl(entry.regionUrl),
+      response,
+      source,
+    };
+  });
   const db = getDatabase();
   const now = Date.now();
 
   db.transaction(() => {
-    for (const entry of entries) {
+    for (const item of normalized) {
+      const { entry } = item;
       const row: Record<string, string | number | null> = {
         org_slug: entry.slug,
-        region_url: entry.regionUrl,
+        region_url: item.region,
+        credential_identity: item.identity,
+        source_origin: item.source,
+        response_origin: item.response,
         updated_at: now,
       };
       if (entry.orgId) {
@@ -227,10 +391,30 @@ export function setOrgRegions(entries: OrgRegionEntry[]): void {
       if (entry.orgRole) {
         row.org_role = entry.orgRole;
       }
-      runUpsert(db, TABLE, row, ["org_slug"]);
+      runUpsert(db, TABLE, row, [
+        "credential_identity",
+        "source_origin",
+        "org_slug",
+      ]);
     }
   })();
-  registerTrustedRegionUrls(entries.map((e) => e.regionUrl));
+  for (const item of normalized) {
+    registerTrustedOrigins(item.identity, item.source, [item.response]);
+    registerTrustedOrigins(item.identity, item.response, [item.region]);
+  }
+}
+
+/** Keep trusted region routes but make an incomplete org list a cache miss. */
+export function invalidateCachedOrganizations(
+  sourceOrigin: string,
+  identity: string
+): void {
+  const source = requireOrigin(sourceOrigin, "Region lookup origin");
+  getDatabase()
+    .query(
+      `UPDATE ${TABLE} SET org_id = NULL, org_name = NULL, org_role = NULL WHERE source_origin = ? AND credential_identity = ?`
+    )
+    .run(source, identity);
 }
 
 /**
@@ -249,11 +433,20 @@ export function clearOrgRegions(): void {
  *
  * @returns Map of org slug to region URL
  */
-export function getAllOrgRegions(): Map<string, string> {
+export function getAllOrgRegions(
+  sourceOrigin = getActiveSourceOrigin(),
+  identity = getIdentityFingerprint()
+): Map<string, string> {
+  const source = normalizeHttpOrigin(sourceOrigin);
+  if (!source) {
+    return new Map();
+  }
   const db = getDatabase();
   const rows = db
-    .query(`SELECT org_slug, region_url FROM ${TABLE}`)
-    .all() as Pick<OrgRegionRow, "org_slug" | "region_url">[];
+    .query(
+      `SELECT org_slug, region_url FROM ${TABLE} WHERE source_origin = ? AND credential_identity = ?`
+    )
+    .all(source, identity) as Pick<OrgRegionRow, "org_slug" | "region_url">[];
 
   return new Map(rows.map((row) => [row.org_slug, row.region_url]));
 }
@@ -288,8 +481,16 @@ const ORG_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  *
  * @returns Array of cached org entries, or empty if cache is cold/stale/disabled/incomplete
  */
-export function getCachedOrganizations(): CachedOrg[] {
+export function getCachedOrganizations(
+  sourceOrigin = getActiveSourceOrigin(),
+  identity = getIdentityFingerprint()
+): CachedOrg[] {
   if (orgCacheDisabled) {
+    return [];
+  }
+
+  const source = normalizeHttpOrigin(sourceOrigin);
+  if (!source) {
     return [];
   }
 
@@ -297,9 +498,9 @@ export function getCachedOrganizations(): CachedOrg[] {
   const cutoff = Date.now() - ORG_CACHE_TTL_MS;
   const rows = db
     .query(
-      `SELECT org_slug, org_id, org_name, org_role FROM ${TABLE} WHERE org_id IS NOT NULL AND org_name IS NOT NULL AND updated_at > ?`
+      `SELECT org_slug, org_id, org_name, org_role FROM ${TABLE} WHERE source_origin = ? AND credential_identity = ? AND org_id IS NOT NULL AND org_name IS NOT NULL AND updated_at > ?`
     )
-    .all(cutoff) as Pick<
+    .all(source, identity, cutoff) as Pick<
     OrgRegionRow,
     "org_slug" | "org_id" | "org_name" | "org_role"
   >[];
@@ -322,14 +523,24 @@ export function getCachedOrganizations(): CachedOrg[] {
  * @param orgSlug - The organization slug
  * @returns The user's role (e.g., "member", "admin", "owner"), or undefined if not cached
  */
-export function getCachedOrgRole(orgSlug: string): string | undefined {
+export function getCachedOrgRole(
+  orgSlug: string,
+  sourceOrigin = getActiveSourceOrigin(),
+  identity = getIdentityFingerprint()
+): string | undefined {
+  const source = normalizeHttpOrigin(sourceOrigin);
+  if (!source) {
+    return;
+  }
   const db = getDatabase();
   const cutoff = Date.now() - ORG_CACHE_TTL_MS;
   const row = db
     .query(
-      `SELECT org_role FROM ${TABLE} WHERE org_slug = ? AND org_role IS NOT NULL AND updated_at > ?`
+      `SELECT org_role FROM ${TABLE} WHERE org_slug = ? AND source_origin = ? AND credential_identity = ? AND org_role IS NOT NULL AND updated_at > ?`
     )
-    .get(orgSlug, cutoff) as Pick<OrgRegionRow, "org_role"> | undefined;
+    .get(orgSlug, source, identity, cutoff) as
+    | Pick<OrgRegionRow, "org_role">
+    | undefined;
 
   return row?.org_role ?? undefined;
 }

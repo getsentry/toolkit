@@ -1,0 +1,271 @@
+[
+  {
+    "key": "span.op",
+    "name": "span.op",
+    "context": {
+      "isConvention": true,
+      "brief": "The operation of a span.",
+      "isDeprecated": false,
+      "examples": [
+        "http.client"
+      ]
+    }
+  },
+  {
+    "key": "span.description",
+    "name": "span.description",
+    "secondaryAliases": [
+      "description",
+      "message"
+    ],
+    "context": {
+      "isConvention": false,
+      "brief": "Description of the span's operation.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "span.status",
+    "name": "span.status",
+    "context": {
+      "isConvention": true,
+      "brief": "The span's status (either \"ok\" or \"error\"). Older SDKs may set this to a more specific error, but this behaviour is deprecated.",
+      "isDeprecated": false,
+      "examples": [
+        "ok"
+      ]
+    }
+  },
+  {
+    "key": "transaction",
+    "name": "transaction",
+    "context": {
+      "isConvention": true,
+      "brief": "The sentry transaction (segment name).",
+      "isDeprecated": true,
+      "examples": [
+        "GET /"
+      ],
+      "replacementAttribute": "sentry.segment.name"
+    }
+  },
+  {
+    "key": "transaction.op",
+    "name": "transaction.op",
+    "context": {
+      "isConvention": false,
+      "brief": "Operation of the containing transaction.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "transaction.status",
+    "name": "transaction.status",
+    "context": {}
+  },
+  {
+    "key": "project",
+    "name": "project",
+    "context": {
+      "isConvention": false,
+      "brief": "The name of the project. In some pages of sentry.io, you can also filter on project using a dropdown.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "environment",
+    "name": "environment",
+    "context": {
+      "isConvention": true,
+      "brief": "The sentry environment.",
+      "isDeprecated": true,
+      "examples": [
+        "production"
+      ],
+      "replacementAttribute": "sentry.environment"
+    }
+  },
+  {
+    "key": "release",
+    "name": "release",
+    "context": {
+      "isConvention": true,
+      "brief": "The sentry release.",
+      "isDeprecated": true,
+      "examples": [
+        "production"
+      ],
+      "replacementAttribute": "sentry.release"
+    }
+  },
+  {
+    "key": "user.id",
+    "name": "user.id",
+    "context": {}
+  },
+  {
+    "key": "user.email",
+    "name": "user.email",
+    "context": {}
+  },
+  {
+    "key": "user.username",
+    "name": "user.username",
+    "context": {}
+  },
+  {
+    "key": "platform",
+    "name": "platform",
+    "context": {
+      "isConvention": true,
+      "brief": "The sdk platform that generated the event.",
+      "isDeprecated": false,
+      "examples": [
+        "php"
+      ]
+    }
+  },
+  {
+    "key": "sdk.name",
+    "name": "sdk.name",
+    "context": {
+      "isConvention": true,
+      "brief": "The sentry sdk name.",
+      "isDeprecated": false,
+      "examples": [
+        "@sentry/react"
+      ]
+    }
+  },
+  {
+    "key": "sdk.version",
+    "name": "sdk.version",
+    "context": {
+      "isConvention": true,
+      "brief": "The sentry sdk version.",
+      "isDeprecated": false,
+      "examples": [
+        "7.0.0"
+      ]
+    }
+  },
+  {
+    "key": "http.method",
+    "name": "http.method",
+    "context": {
+      "isConvention": true,
+      "brief": "The HTTP method used.",
+      "isDeprecated": true,
+      "examples": [
+        "GET"
+      ],
+      "replacementAttribute": "http.request.method"
+    }
+  },
+  {
+    "key": "http.request.method",
+    "name": "http.request.method",
+    "context": {
+      "isConvention": true,
+      "brief": "The HTTP method used.",
+      "isDeprecated": false,
+      "examples": [
+        "GET"
+      ]
+    }
+  },
+  {
+    "key": "http.url",
+    "name": "http.url",
+    "context": {
+      "isConvention": true,
+      "brief": "The URL of the resource that was fetched.",
+      "isDeprecated": true,
+      "examples": [
+        "https://example.com/test?foo=bar#buzz"
+      ],
+      "replacementAttribute": "url.full"
+    }
+  },
+  {
+    "key": "browser.name",
+    "name": "browser.name",
+    "context": {}
+  },
+  {
+    "key": "os.name",
+    "name": "os.name",
+    "context": {
+      "isConvention": true,
+      "brief": "Human readable operating system name.",
+      "isDeprecated": false,
+      "examples": [
+        "Ubuntu"
+      ]
+    }
+  },
+  {
+    "key": "device",
+    "name": "device",
+    "context": {}
+  },
+  {
+    "key": "geo.country_code",
+    "name": "geo.country_code",
+    "context": {
+      "isConvention": true,
+      "brief": "The country code of the user's location.",
+      "isDeprecated": false,
+      "examples": [
+        "US"
+      ]
+    }
+  },
+  {
+    "key": "geo.region",
+    "name": "geo.region",
+    "context": {
+      "isConvention": true,
+      "brief": "The region of the user's location.",
+      "isDeprecated": true,
+      "examples": [
+        "Canada"
+      ],
+      "replacementAttribute": "user.geo.region"
+    }
+  },
+  {
+    "key": "user.geo.region",
+    "name": "user.geo.region",
+    "context": {
+      "isConvention": true,
+      "brief": "The region of the user's location.",
+      "isDeprecated": false,
+      "examples": [
+        "Canada"
+      ]
+    }
+  },
+  {
+    "key": "geo.city",
+    "name": "geo.city",
+    "context": {
+      "isConvention": true,
+      "brief": "The city of the user's location.",
+      "isDeprecated": false,
+      "examples": [
+        "Toronto"
+      ]
+    }
+  },
+  {
+    "key": "custom.tier",
+    "name": "custom.tier",
+    "context": {}
+  },
+  {
+    "key": "custom.feature_flag",
+    "name": "custom.feature_flag",
+    "context": {}
+  }
+]

@@ -40,7 +40,7 @@ import {
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrg, toNumericId } from "../../lib/resolve-target.js";
-import { buildTraceUrl } from "../../lib/sentry-urls.js";
+import { buildTraceUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import {
   parseTraceTargetWithRecovery,

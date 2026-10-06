@@ -4,7 +4,7 @@ import { openInBrowser } from "../../../lib/browser.js";
 import { buildCommand } from "../../../lib/command.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
-import { buildMetricAlertsUrl } from "../../../lib/sentry-urls.js";
+import { buildMetricAlertsUrl } from "../../../lib/sentry-web-urls.js";
 import {
   type MetricRuleResolution,
   parseMetricRuleArg,

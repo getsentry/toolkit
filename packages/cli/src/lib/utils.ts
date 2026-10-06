@@ -22,6 +22,28 @@ export function isAllDigits(str: string): boolean {
 }
 
 /**
+ * Parse an absolute HTTP(S) URL without embedded credentials.
+ *
+ * @param value - Untrusted URL string
+ * @returns The parsed URL, or undefined for malformed or relative input,
+ *   other schemes, and URLs with a username or password
+ */
+export function parseHttpUrl(value: string): URL | undefined {
+  if (!URL.canParse(value)) {
+    return;
+  }
+  const url = new URL(value);
+  if (
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password
+  ) {
+    return;
+  }
+  return url;
+}
+
+/**
  * Quote a value for safe use as one POSIX shell argument.
  *
  * @param value - Untrusted value to quote

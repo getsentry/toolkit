@@ -318,3 +318,57 @@ sentry issue ignore CLI-G5 --until auto
 | `10users/2hours` | 10 users within 2 hours |
 | *(omitted)* | Archive forever |
 :::
+
+### Link an external issue
+
+Link an existing tracker issue or GitHub pull request to a Sentry issue:
+
+```bash
+sentry issue link FRONT-123 https://github.com/example/app/issues/42
+sentry issue link FRONT-123 https://github.com/example/app/pull/43
+sentry issue link FRONT-123 https://example.atlassian.net/browse/APP-42
+sentry issue link FRONT-123 https://linear.app/example/issue/APP-42/fix-error
+```
+
+The matching integration must already be installed in the Sentry organization.
+Linking requires a Sentry version with native issue URL resolution and guarded
+Sentry App callbacks; older self-hosted versions may require an upgrade.
+Native integrations include GitHub, GitHub Enterprise, Jira, Jira Server,
+GitLab, Bitbucket, and Azure DevOps. Linear uses its installed Sentry App.
+Sentry resolves native issue URLs through the selected integration; the remote
+issue must be visible to that installation.
+Use `--integration <id>` if more than one native integration matches the URL.
+Other Sentry Apps require `--app <slug>` and must expose an issue-link form;
+additional required form values can be supplied with `--field name=value`.
+For other Apps, an issue select can be supplied by exact ID or label with
+`--field`, for example `--app custom --field task_id=123`. Sentry checks
+that the app's callback identifies the requested URL before saving the association.
+
+```bash
+sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --dry-run
+sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --json
+```
+
+`--dry-run` discovers the integration and prepares the link without submitting a
+write. The provider validates the remote issue when the link is submitted.
+An existing matching link succeeds with `changed: false`. A Sentry App that
+already links this issue to a different resource must be unlinked in Sentry first.
+App callbacks must return the exact supplied URL; use the issue URL copied from
+the tracker, including its title suffix. A mismatch fails without saving the link.
+
+GitHub and GitHub Enterprise pull requests are stored as external references.
+Their `/pull/NUMBER` and `/issues/NUMBER` URLs identify the same resource for
+duplicate detection. Linking a PR does not mark it as a fix or
+resolve the Sentry issue.
+
+This command does not create a tracker issue or link a commit. Existing
+integration status-sync settings continue to apply after linking.
+
+#### Link permissions
+
+Linking requires `event:write` and access to the Sentry project. Discovering
+Sentry Apps also requires `org:read`. Both scopes are included in the default
+OAuth login. If an older OAuth session lacks the
+requested scopes, the CLI offers reauthorization after a permission error.
+Use `sentry auth login` to request the current default scopes. Environment tokens must
+be updated separately.

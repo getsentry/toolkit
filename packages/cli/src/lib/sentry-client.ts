@@ -29,7 +29,13 @@ import {
   warnIfSaasWithEnvCa,
 } from "./custom-ca.js";
 import { applyCustomHeaders } from "./custom-headers.js";
-import { getAuthToken, refreshToken } from "./db/auth.js";
+import {
+  type CredentialContext,
+  DEFAULT_TOKEN_LIFETIME_MS,
+  getCredentialContext,
+  REFRESH_THRESHOLD,
+  refreshToken,
+} from "./db/auth.js";
 import {
   ApiError,
   HostScopeError,
@@ -43,13 +49,12 @@ import {
   invalidateCachedResponsesMatching,
   storeCachedResponse,
 } from "./response-cache.js";
-import { normalizeOrigin } from "./sentry-urls.js";
+import { normalizeHttpOrigin, normalizeOrigin } from "./sentry-urls.js";
 import { withTracingSpan } from "./telemetry.js";
 import { parseSntrysClaim } from "./token-claims.js";
 import {
-  getActiveTokenHost,
   isHostTrustedForClaim,
-  isRequestOriginTrusted,
+  isRequestOriginTrustedForContext,
 } from "./token-host.js";
 
 const log = logger.withTag("http");
@@ -86,6 +91,22 @@ const RETRY_MARKER_HEADER = "x-sentry-cli-retry";
 
 /** Stamped on thrown errors caused by our own per-request timeout. */
 const INTERNAL_TIMEOUT_MARKER = Symbol("sentry-cli:internal-timeout");
+const MAX_REDIRECTS = 20;
+const responseRequestOrigins = new WeakMap<Response, string>();
+const responseCredentialIdentities = new WeakMap<Response, string>();
+
+/** Provenance attached only after manually validated discovery requests. */
+export function getResponseRequestOrigin(
+  response: Response
+): string | undefined {
+  return responseRequestOrigins.get(response);
+}
+
+export function getResponseCredentialIdentity(
+  response: Response
+): string | undefined {
+  return responseCredentialIdentities.get(response);
+}
 
 /** Calculate exponential backoff delay, capped at MAX_BACKOFF_MS */
 function backoffDelay(attempt: number): number {
@@ -123,16 +144,16 @@ function isUserAbort(error: unknown, signal?: AbortSignal | null): boolean {
 function prepareHeaders(
   input: Request | string | URL,
   init: RequestInit | undefined,
-  token: string
+  credential: CredentialContext
 ): Headers {
   // Host-scoping guard (defense in depth). Primary rejection happens at the
   // URL-arg / rc-shim entry points; this catches any code path that mutated
   // SENTRY_HOST/SENTRY_URL without going through those guards.
-  if (!isRequestOriginTrusted(input)) {
+  if (!isRequestOriginTrustedForContext(input, credential)) {
     throw new HostScopeError(
       "Credentials",
       normalizeOrigin(input) ?? "<unknown host>",
-      getActiveTokenHost()
+      credential.host
     );
   }
 
@@ -140,9 +161,12 @@ function prepareHeaders(
   // multiple Sentry instances. The claim is unsigned (see token-claims.ts);
   // fail-open on parse errors. Uses isHostTrustedForClaim so multi-region
   // fan-out via the control silo's region URLs still works.
-  const normalizedToken = normalizeAuthToken(token);
+  const normalizedToken = normalizeAuthToken(credential.token);
   const claimUrl = parseSntrysClaim(normalizedToken)?.url;
-  if (claimUrl && !isHostTrustedForClaim(input, claimUrl)) {
+  if (
+    claimUrl &&
+    !isHostTrustedForClaim(input, claimUrl, credential.identity)
+  ) {
     throw new HostScopeError(
       "Credentials",
       normalizeOrigin(input) ?? "<unknown host>",
@@ -175,7 +199,11 @@ function prepareHeaders(
 
   // Inject user-configured custom headers for self-hosted proxies (IAP,
   // mTLS, etc.) — scoped to the request URL.
-  applyCustomHeaders(headers, input);
+  applyCustomHeaders(
+    headers,
+    input,
+    isRequestOriginTrustedForContext(input, credential)
+  );
 
   return headers;
 }
@@ -184,7 +212,10 @@ function prepareHeaders(
  * Handle 401 response by refreshing the token.
  * @returns true if the token was refreshed and request should be retried
  */
-async function handleUnauthorized(headers: Headers): Promise<boolean> {
+async function handleUnauthorized(
+  headers: Headers,
+  credential: CredentialContext
+): Promise<boolean> {
   if (headers.get(RETRY_MARKER_HEADER)) {
     return false;
   }
@@ -194,7 +225,10 @@ async function handleUnauthorized(headers: Headers): Promise<boolean> {
   // no refresh token), `refreshed` is false and the 401 propagates.
   let newToken: string;
   try {
-    const result = await refreshToken({ force: true });
+    const result = await refreshToken({
+      force: true,
+      expectedCredential: credential,
+    });
     if (!result.refreshed) {
       return false;
     }
@@ -320,14 +354,20 @@ type AttemptResult =
 async function handleResponse(
   response: Response,
   headers: Headers,
+  credential: CredentialContext,
   isLastAttempt: boolean
 ): Promise<AttemptResult> {
   if (response.status === 401 && !isLastAttempt) {
-    const refreshed = await handleUnauthorized(headers);
-    return refreshed ? { action: "retry" } : { action: "done", response };
+    const refreshed = await handleUnauthorized(headers, credential);
+    if (refreshed) {
+      await cancelResponseBody(response);
+      return { action: "retry" };
+    }
+    return { action: "done", response };
   }
 
   if (RETRYABLE_STATUS_CODES.includes(response.status) && !isLastAttempt) {
+    await cancelResponseBody(response);
     return { action: "retry" };
   }
 
@@ -345,6 +385,9 @@ function handleFetchError(
   signal: AbortSignal | undefined | null,
   isLastAttempt: boolean
 ): AttemptResult {
+  if (error instanceof HostScopeError) {
+    return { action: "throw", error };
+  }
   if (isUserAbort(error, signal)) {
     return { action: "throw", error };
   }
@@ -411,12 +454,13 @@ function extractUrlPath(input: Request | string | URL): string {
 async function tryCacheHit(
   method: string,
   fullUrl: string,
-  requestHeaders: Record<string, string>
+  requestHeaders: Record<string, string>,
+  identity: string
 ): Promise<Response | undefined> {
   if (method !== "GET") {
     return;
   }
-  return await getCachedResponse(method, fullUrl, requestHeaders);
+  return await getCachedResponse(method, fullUrl, requestHeaders, identity);
 }
 
 /**
@@ -427,11 +471,15 @@ async function tryCacheHit(
  *   for future `Vary`-aware freshness checks.
  */
 function cacheResponse(
-  method: string,
-  fullUrl: string,
-  requestHeaders: Record<string, string>,
+  request: {
+    method: string;
+    fullUrl: string;
+    requestHeaders: Record<string, string>;
+    identity: string;
+  },
   response: Response
 ): void {
+  const { method, fullUrl, requestHeaders, identity } = request;
   if (method !== "GET" || !response.ok) {
     return;
   }
@@ -441,7 +489,8 @@ function cacheResponse(
     method,
     fullUrl,
     requestHeaders,
-    response.clone() as Response
+    response.clone() as Response,
+    identity
   ).catch((error) => {
     log.debug("Response cache write failed", error);
   });
@@ -460,7 +509,8 @@ function cacheResponse(
 async function invalidateAfterMutation(
   method: string,
   fullUrl: string,
-  response: Response
+  response: Response,
+  identity: string
 ): Promise<void> {
   if (method === "GET" || !response.ok) {
     return;
@@ -468,7 +518,9 @@ async function invalidateAfterMutation(
   try {
     const prefixes = computeInvalidationPrefixes(fullUrl, getApiBaseUrl());
     await Promise.all(
-      prefixes.map((prefix) => invalidateCachedResponsesMatching(prefix))
+      prefixes.map((prefix) =>
+        invalidateCachedResponsesMatching(prefix, identity)
+      )
     );
   } catch (error) {
     log.debug("Post-mutation cache invalidation failed", error);
@@ -525,14 +577,45 @@ async function buildAttemptFactory(
  * Refreshes the auth token, then retries the request up to `MAX_RETRIES` times
  * with exponential backoff on transient errors.
  */
-async function fetchWithRetry(
-  input: Request | string | URL,
-  init: RequestInit | undefined,
-  method: string,
-  fullUrl: string
-): Promise<Response> {
-  const { token } = await refreshToken();
-  const headers = prepareHeaders(input, init, token);
+type RetryContext = {
+  input: Request | string | URL;
+  init: RequestInit | undefined;
+  method: string;
+  fullUrl: string;
+  credential: CredentialContext;
+  validatedRedirects: boolean;
+};
+
+async function fetchWithRetry({
+  input,
+  init,
+  method,
+  fullUrl,
+  credential,
+  validatedRedirects,
+}: RetryContext): Promise<Response> {
+  const issuedAt =
+    credential.issuedAt ??
+    (credential.expiresAt
+      ? credential.expiresAt - DEFAULT_TOKEN_LIFETIME_MS
+      : undefined);
+  const shouldRefresh = Boolean(
+    credential.refreshable &&
+      credential.expiresAt &&
+      (Date.now() >= credential.expiresAt ||
+        (issuedAt &&
+          (credential.expiresAt - Date.now()) /
+            (credential.expiresAt - issuedAt) <=
+            REFRESH_THRESHOLD))
+  );
+  const refreshed = shouldRefresh
+    ? await refreshToken({ expectedCredential: credential })
+    : { token: credential.token };
+  const effectiveCredential: CredentialContext = Object.freeze({
+    ...credential,
+    token: refreshed.token,
+  });
+  const headers = prepareHeaders(input, init, effectiveCredential);
   const attemptFactory = await buildAttemptFactory(input, init);
   const timeoutMs = resolveTimeoutMs(fullUrl);
 
@@ -543,20 +626,28 @@ async function fetchWithRetry(
       input: attemptInput,
       init: attemptInit,
       headers,
+      credential: effectiveCredential,
       isLastAttempt,
       timeoutMs,
+      validatedRedirects,
     });
 
     if (result.action === "done") {
-      // Use getAuthToken() instead of captured `token` — after a 401 refresh,
-      // handleUnauthorized stores a new token in the DB
       cacheResponse(
-        method,
-        fullUrl,
-        authHeaders(getAuthToken()),
+        {
+          method,
+          fullUrl,
+          requestHeaders: { authorization: headers.get("Authorization") ?? "" },
+          identity: credential.identity,
+        },
         result.response
       );
-      await invalidateAfterMutation(method, fullUrl, result.response);
+      await invalidateAfterMutation(
+        method,
+        fullUrl,
+        result.response,
+        credential.identity
+      );
       return result.response;
     }
     if (result.action === "throw") {
@@ -593,10 +684,14 @@ async function fetchWithRetry(
  *
  * @returns A fetch-compatible function for use with @sentry/api SDK functions
  */
-function createAuthenticatedFetch(): (
-  input: Request | string | URL,
-  init?: RequestInit
-) => Promise<Response> {
+type AuthenticatedFetchOptions = {
+  credential?: CredentialContext;
+  validatedRedirects?: boolean;
+};
+
+function createAuthenticatedFetch(
+  options: AuthenticatedFetchOptions = {}
+): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
   return function authenticatedFetch(
     input: Request | string | URL,
     init?: RequestInit
@@ -625,11 +720,23 @@ function createAuthenticatedFetch(): (
 
         // Check cache before auth/retry for GET requests.
         // Uses current token (no refresh) so lookups are fast but Vary-correct.
-        const cached = await tryCacheHit(
-          method,
-          fullUrl,
-          authHeaders(getAuthToken())
-        );
+        const credential = options.credential ?? getCredentialContext();
+        if (!credential) {
+          await refreshToken();
+          throw new Error(
+            "Authentication state was not available after refresh"
+          );
+        }
+        // A synthetic HTTP cache response has no validated final-origin or
+        // credential provenance. Discovery must obtain both from the network.
+        const cached = options.validatedRedirects
+          ? undefined
+          : await tryCacheHit(
+              method,
+              fullUrl,
+              authHeaders(credential.token),
+              credential.identity
+            );
         if (cached) {
           span.setAttribute("http.response.status_code", cached.status);
           log.debug(
@@ -638,7 +745,14 @@ function createAuthenticatedFetch(): (
           return cached;
         }
 
-        const response = await fetchWithRetry(input, init, method, fullUrl);
+        const response = await fetchWithRetry({
+          input,
+          init,
+          method,
+          fullUrl,
+          credential,
+          validatedRedirects: options.validatedRedirects === true,
+        });
         span.setAttribute("http.response.status_code", response.status);
         if (!response.ok) {
           span.setStatus({ code: 2, message: `${response.status}` });
@@ -660,26 +774,218 @@ type ExecuteAttemptArgs = {
   input: Request | string | URL;
   init: RequestInit | undefined;
   headers: Headers;
+  credential: CredentialContext;
   isLastAttempt: boolean;
   timeoutMs: number;
+  validatedRedirects: boolean;
 };
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  if (response.body && !response.bodyUsed) {
+    try {
+      await response.body.cancel();
+    } catch (error) {
+      log.debug("Failed to cancel unused response body", error);
+    }
+  }
+}
+
+function isRedirectStatus(status: number): boolean {
+  return (
+    status === 301 ||
+    status === 302 ||
+    status === 303 ||
+    status === 307 ||
+    status === 308
+  );
+}
+
+function redirectedMethod(method: string, status: number): string {
+  if (status === 303 && method !== "HEAD") {
+    return "GET";
+  }
+  if ((status === 301 || status === 302) && method === "POST") {
+    return "GET";
+  }
+  return method;
+}
+
+function redirectLoopKey(url: URL): string {
+  const key = new URL(url);
+  key.hash = "";
+  return key.href;
+}
+
+async function rejectRedirect(
+  response: Response,
+  destination: string,
+  credential: CredentialContext
+): Promise<never> {
+  await cancelResponseBody(response);
+  throw new HostScopeError(
+    "Redirect destination",
+    destination,
+    credential.host
+  );
+}
+
+async function validatedRedirectTarget({
+  response,
+  request,
+  credential,
+  visited,
+  hops,
+}: {
+  response: Response;
+  request: Request;
+  credential: CredentialContext;
+  visited: Set<string>;
+  hops: number;
+}): Promise<URL> {
+  const location = response.headers.get("location");
+  if (!location) {
+    return await rejectRedirect(response, "<unknown host>", credential);
+  }
+  if (hops >= MAX_REDIRECTS) {
+    return await rejectRedirect(response, "<too many redirects>", credential);
+  }
+  let next: URL;
+  try {
+    next = new URL(location, request.url);
+  } catch (error) {
+    log.debug(
+      "Rejected malformed redirect location",
+      error instanceof Error ? error.name : "unknown error"
+    );
+    return await rejectRedirect(response, "<invalid host>", credential);
+  }
+  if (!isRequestOriginTrustedForContext(next, credential)) {
+    return await rejectRedirect(
+      response,
+      normalizeOrigin(next) ?? "<unknown host>",
+      credential
+    );
+  }
+  const key = redirectLoopKey(next);
+  if (visited.has(key)) {
+    return await rejectRedirect(response, "<redirect loop>", credential);
+  }
+  visited.add(key);
+  return next;
+}
+
+async function buildRedirectRequest(
+  request: Request,
+  requestHeaders: Headers,
+  next: URL,
+  status: number
+): Promise<{ request: Request; headers: Headers }> {
+  const method = redirectedMethod(request.method.toUpperCase(), status);
+  const headers = new Headers(requestHeaders);
+  if (method !== request.method.toUpperCase()) {
+    headers.delete("content-length");
+    headers.delete("content-type");
+    headers.delete("transfer-encoding");
+  }
+  const body =
+    method === request.method.toUpperCase() && request.body
+      ? await request.clone().arrayBuffer()
+      : undefined;
+  return { request: new Request(next, { method, headers, body }), headers };
+}
+
+/** Manually validate every hop before forwarding the pinned bearer and headers. */
+async function fetchFollowingValidatedRedirects({
+  input,
+  init,
+  headers,
+  credential,
+  timeoutMs,
+}: Omit<
+  ExecuteAttemptArgs,
+  "isLastAttempt" | "validatedRedirects"
+>): Promise<Response> {
+  const original = new Request(input, init);
+  const visited = new Set([redirectLoopKey(new URL(original.url))]);
+
+  async function follow(
+    request: Request,
+    requestHeaders: Headers,
+    hops: number
+  ): Promise<Response> {
+    if (!isRequestOriginTrustedForContext(request, credential)) {
+      throw new HostScopeError(
+        "Credentials",
+        normalizeOrigin(request) ?? "<unknown host>",
+        credential.host
+      );
+    }
+    const response = await fetchWithTimeout({
+      input: request.clone() as unknown as Request,
+      init: { headers: requestHeaders, redirect: "manual" },
+      headers: requestHeaders,
+      externalSignal: init?.signal ?? original.signal,
+      timeoutMs,
+    });
+    if (!isRedirectStatus(response.status)) {
+      const origin = normalizeHttpOrigin(request.url);
+      if (origin) {
+        responseRequestOrigins.set(response, origin);
+        responseCredentialIdentities.set(response, credential.identity);
+      }
+      return response;
+    }
+    const next = await validatedRedirectTarget({
+      response,
+      request,
+      credential,
+      visited,
+      hops,
+    });
+
+    try {
+      const redirected = await buildRedirectRequest(
+        request,
+        requestHeaders,
+        next,
+        response.status
+      );
+      await cancelResponseBody(response);
+      return await follow(redirected.request, redirected.headers, hops + 1);
+    } finally {
+      await cancelResponseBody(response);
+    }
+  }
+
+  return await follow(original, new Headers(headers), 0);
+}
 
 async function executeAttempt({
   input,
   init,
   headers,
+  credential,
   isLastAttempt,
   timeoutMs,
+  validatedRedirects,
 }: ExecuteAttemptArgs): Promise<AttemptResult> {
   try {
-    const response = await fetchWithTimeout({
-      input,
-      init,
-      headers,
-      externalSignal: init?.signal,
-      timeoutMs,
-    });
-    return handleResponse(response, headers, isLastAttempt);
+    const response = validatedRedirects
+      ? await fetchFollowingValidatedRedirects({
+          input,
+          init,
+          headers,
+          credential,
+          timeoutMs,
+        })
+      : await fetchWithTimeout({
+          input,
+          init,
+          headers,
+          externalSignal: init?.signal,
+          timeoutMs,
+        });
+    return handleResponse(response, headers, credential, isLastAttempt);
   } catch (error) {
     return handleFetchError(error, init?.signal, isLastAttempt);
   }
@@ -692,9 +998,14 @@ let cachedFetch: typeof fetch | null = null;
  * Get the shared authenticated fetch instance.
  * Cast to `typeof fetch` for compatibility with @sentry/api SDK options.
  */
-function getAuthenticatedFetch(): typeof fetch {
+function getAuthenticatedFetch(
+  options: AuthenticatedFetchOptions = {}
+): typeof fetch {
+  if (options.credential || options.validatedRedirects) {
+    return createAuthenticatedFetch(options) as unknown as typeof fetch;
+  }
   if (!cachedFetch) {
-    cachedFetch = createAuthenticatedFetch() as unknown as typeof fetch;
+    cachedFetch = createAuthenticatedFetch(options) as unknown as typeof fetch;
   }
   return cachedFetch;
 }
@@ -703,8 +1014,8 @@ function getAuthenticatedFetch(): typeof fetch {
  * Get the Sentry API base URL.
  * Supports self-hosted instances via SENTRY_URL env var.
  */
-export function getApiBaseUrl(): string {
-  return getConfiguredSentryUrl() ?? DEFAULT_SENTRY_URL;
+export function getApiBaseUrl(credential = getCredentialContext()): string {
+  return getConfiguredSentryUrl() ?? credential?.host ?? DEFAULT_SENTRY_URL;
 }
 
 /**
@@ -714,8 +1025,8 @@ export function getApiBaseUrl(): string {
  * Read lazily (not at module load) so that SENTRY_URL set after import
  * (e.g., from URL argument parsing for self-hosted instances) is respected.
  */
-export function getControlSiloUrl(): string {
-  return getConfiguredSentryUrl() ?? DEFAULT_SENTRY_URL;
+export function getControlSiloUrl(credential = getCredentialContext()): string {
+  return getApiBaseUrl(credential);
 }
 
 /**
@@ -735,7 +1046,10 @@ export function getControlSiloUrl(): string {
  * const result = await listOrganizations({ ...config });
  * ```
  */
-export function getSdkConfig(regionUrl: string) {
+export function getSdkConfig(
+  regionUrl: string,
+  options: AuthenticatedFetchOptions = {}
+) {
   const normalizedBase = regionUrl.endsWith("/")
     ? regionUrl.slice(0, -1)
     : regionUrl;
@@ -744,7 +1058,7 @@ export function getSdkConfig(regionUrl: string) {
     // SDK functions already include /api/0/ in their URL paths,
     // so baseUrl should be the plain region URL without /api/0.
     baseUrl: normalizedBase,
-    fetch: getAuthenticatedFetch(),
+    fetch: getAuthenticatedFetch(options),
     throwOnError: false as const,
   };
 }
@@ -753,7 +1067,8 @@ export function getSdkConfig(regionUrl: string) {
  * Get SDK config for the default API (control silo or self-hosted).
  */
 export function getDefaultSdkConfig() {
-  return getSdkConfig(getApiBaseUrl());
+  const credential = getCredentialContext();
+  return getSdkConfig(getApiBaseUrl(credential), { credential });
 }
 
 /**
@@ -761,7 +1076,8 @@ export function getDefaultSdkConfig() {
  * Used for endpoints that are always on the control silo (OAuth, user accounts, regions).
  */
 export function getControlSdkConfig() {
-  return getSdkConfig(getControlSiloUrl());
+  const credential = getCredentialContext();
+  return getSdkConfig(getControlSiloUrl(credential), { credential });
 }
 
 /**

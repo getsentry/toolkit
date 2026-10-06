@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
-import { setEnv } from "./env.js";
+import { withEnv } from "./env.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 
 /** CLI flag names/aliases that trigger infinite streaming output. */
@@ -192,19 +192,6 @@ export function applyFlagDefaults(
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape sequences use ESC (0x1b)
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
-
-/**
- * Install the structured `headers` option for this invocation.
- *
- * Lazy import: `custom-headers.ts` pulls in the SQLite defaults module, which
- * must not load when the SDK is merely imported.
- */
-async function applyHeadersOption(
-  headers: Record<string, string> | undefined
-): Promise<void> {
-  const { setCustomHeadersOverride } = await import("./custom-headers.js");
-  setCustomHeadersOverride(headers);
-}
 
 /** Flush Sentry telemetry (no beforeExit handler in library mode). */
 async function flushTelemetry(): Promise<void> {
@@ -415,51 +402,48 @@ async function executeWithCapture<T>(
 ): Promise<T> {
   const env = buildIsolatedEnv(options);
   const cwd = options?.cwd ?? process.cwd();
-  setEnv(env);
+  return await withEnv(env, async () => {
+    const { withCustomHeadersOverride } = await import("./custom-headers.js");
+    return await withCustomHeadersOverride(options?.headers, async () => {
+      const captureCtx = await buildCaptureContext(env, cwd);
+      const { withTelemetry } = await import("./telemetry.js");
 
-  try {
-    await applyHeadersOption(options?.headers);
-    const captureCtx = await buildCaptureContext(env, cwd);
-    const { withTelemetry } = await import("./telemetry.js");
+      try {
+        await withTelemetry(async (span) => executor(captureCtx, span), {
+          libraryMode: true,
+        });
+      } catch (thrown) {
+        await flushTelemetry();
 
-    try {
-      await withTelemetry(async (span) => executor(captureCtx, span), {
-        libraryMode: true,
-      });
-    } catch (thrown) {
-      await flushTelemetry();
+        // OutputError: data was already rendered (captured) before the throw.
+        // Return it despite the non-zero exit code — this is the "HTTP 404 body"
+        // pattern where the data is useful even though the operation "failed".
+        const captured = captureCtx.getCapturedResult();
+        if (captured !== undefined) {
+          return captured as T;
+        }
 
-      // OutputError: data was already rendered (captured) before the throw.
-      // Return it despite the non-zero exit code — this is the "HTTP 404 body"
-      // pattern where the data is useful even though the operation "failed".
-      const captured = captureCtx.getCapturedResult();
-      if (captured !== undefined) {
-        return captured as T;
+        const exitCode =
+          extractExitCode(thrown) || captureCtx.context.process.exitCode || 1;
+        throw buildSdkError(captureCtx.stderrChunks, exitCode, thrown);
       }
 
-      const exitCode =
-        extractExitCode(thrown) || captureCtx.context.process.exitCode || 1;
-      throw buildSdkError(captureCtx.stderrChunks, exitCode, thrown);
-    }
+      await flushTelemetry();
 
-    await flushTelemetry();
+      // Check exit code (Stricli sets it without throwing for some errors)
+      if (captureCtx.context.process.exitCode !== 0) {
+        throw buildSdkError(
+          captureCtx.stderrChunks,
+          captureCtx.context.process.exitCode
+        );
+      }
 
-    // Check exit code (Stricli sets it without throwing for some errors)
-    if (captureCtx.context.process.exitCode !== 0) {
-      throw buildSdkError(
-        captureCtx.stderrChunks,
-        captureCtx.context.process.exitCode
+      return parseOutput<T>(
+        captureCtx.getCapturedResult(),
+        captureCtx.stdoutChunks
       );
-    }
-
-    return parseOutput<T>(
-      captureCtx.getCapturedResult(),
-      captureCtx.stdoutChunks
-    );
-  } finally {
-    await applyHeadersOption(undefined);
-    setEnv(process.env);
-  }
+    });
+  });
 }
 
 /**
@@ -495,47 +479,48 @@ function executeWithStream<T>(
   });
 
   // Fire-and-forget — command runs in background
-  (async () => {
-    const env = buildIsolatedEnv(options);
+  const env = buildIsolatedEnv(options);
+  const invocation = withEnv(env, async () => {
     const cwd = options?.cwd ?? process.cwd();
-    setEnv(env);
 
     let captureCtx: CaptureContext | undefined;
     try {
-      await applyHeadersOption(options?.headers);
-      captureCtx = await buildCaptureContext(env, cwd, {
-        channel: channel as AsyncChannel<unknown>,
-        abortSignal: controller.signal,
-      });
+      const { withCustomHeadersOverride } = await import("./custom-headers.js");
+      await withCustomHeadersOverride(options?.headers, async () => {
+        captureCtx = await buildCaptureContext(env, cwd, {
+          channel: channel as AsyncChannel<unknown>,
+          abortSignal: controller.signal,
+        });
 
-      const { withTelemetry } = await import("./telemetry.js");
+        const { withTelemetry } = await import("./telemetry.js");
 
-      // biome-ignore lint/style/noNonNullAssertion: captureCtx is assigned on the line above
-      await withTelemetry(async (span) => executor(captureCtx!, span), {
-        libraryMode: true,
-      });
+        // biome-ignore lint/style/noNonNullAssertion: captureCtx is assigned on the line above
+        await withTelemetry(async (span) => executor(captureCtx!, span), {
+          libraryMode: true,
+        });
 
-      // Check exit code — Stricli sets it without throwing for some errors
-      if (captureCtx.context.process.exitCode !== 0) {
-        channel.error(
-          buildSdkError(
-            captureCtx.stderrChunks,
-            captureCtx.context.process.exitCode
-          )
-        );
-      } else {
-        // Drain any raw stdout the command wrote directly (via stdout.write)
-        // instead of yielding via captureObject — e.g. a binary Uint8Array
-        // body. Without this, those bytes accumulate in stdoutChunks and are
-        // dropped when the channel closes. No streaming-capable command emits
-        // binary today, but this keeps the streaming path faithful to the
-        // capture path (see parseOutput) if one ever does.
-        const trailing = parseOutput<T>(undefined, captureCtx.stdoutChunks);
-        if (trailing !== undefined) {
-          channel.push(trailing);
+        // Check exit code — Stricli sets it without throwing for some errors
+        if (captureCtx.context.process.exitCode !== 0) {
+          channel.error(
+            buildSdkError(
+              captureCtx.stderrChunks,
+              captureCtx.context.process.exitCode
+            )
+          );
+        } else {
+          // Drain any raw stdout the command wrote directly (via stdout.write)
+          // instead of yielding via captureObject — e.g. a binary Uint8Array
+          // body. Without this, those bytes accumulate in stdoutChunks and are
+          // dropped when the channel closes. No streaming-capable command emits
+          // binary today, but this keeps the streaming path faithful to the
+          // capture path (see parseOutput) if one ever does.
+          const trailing = parseOutput<T>(undefined, captureCtx.stdoutChunks);
+          if (trailing !== undefined) {
+            channel.push(trailing);
+          }
+          channel.close();
         }
-        channel.close();
-      }
+      });
     } catch (thrown) {
       const stderrChunks = captureCtx?.stderrChunks ?? [];
       const exitCode =
@@ -547,10 +532,11 @@ function executeWithStream<T>(
       channel.error(err);
     } finally {
       await flushTelemetry();
-      await applyHeadersOption(undefined);
-      setEnv(process.env);
     }
-  })();
+  });
+  invocation.catch((error: unknown) => {
+    channel.error(error instanceof Error ? error : buildSdkError([], 1, error));
+  });
 
   return channel;
 }

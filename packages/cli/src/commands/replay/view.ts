@@ -44,7 +44,7 @@ import {
   applySentryUrlContext,
   parseSentryUrl,
 } from "../../lib/sentry-url-parser.js";
-import { buildReplayUrl } from "../../lib/sentry-urls.js";
+import { buildReplayUrl } from "../../lib/sentry-web-urls.js";
 import type {
   ReplayActivityEvent,
   ReplayDetails,

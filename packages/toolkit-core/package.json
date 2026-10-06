@@ -1,0 +1,28 @@
+{
+  "name": "@sentry/toolkit-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "exports": {
+    "./auth-token": {
+      "types": "./src/auth-token.ts",
+      "default": "./src/auth-token.ts"
+    },
+    "./oauth-device": {
+      "types": "./src/oauth-device.ts",
+      "default": "./src/oauth-device.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
+    "tsc": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -13,15 +13,15 @@
 import { describe, expect, test } from "vitest";
 import { createSDKMethods } from "../../src/sdk.generated.js";
 
-type RecordedCall = { path: string[]; positional: string[] };
+type RecordedCall = { path: string[]; flags: unknown; positional: string[] };
 
 function createRecordingSDK(): {
   calls: RecordedCall[];
   sdk: ReturnType<typeof createSDKMethods>;
 } {
   const calls: RecordedCall[] = [];
-  const invoke = ((path: string[], _flags: unknown, positional: string[]) => {
-    calls.push({ path, positional });
+  const invoke = ((path: string[], flags: unknown, positional: string[]) => {
+    calls.push({ path, flags, positional });
     return Promise.resolve(undefined);
   }) as Parameters<typeof createSDKMethods>[0];
 
@@ -29,6 +29,23 @@ function createRecordingSDK(): {
 }
 
 describe("generated SDK positional arguments", () => {
+  test("issue link forwards repeated form fields as an array", async () => {
+    const { calls, sdk } = createRecordingSDK();
+    await sdk.issue.link({
+      issue: "example/APP-42",
+      url: "https://linear.app/example/issue/APP-42/title",
+      field: ["team=engineering", "label=bug"],
+    });
+    expect(calls[0]).toMatchObject({
+      path: ["issue", "link"],
+      positional: [
+        "example/APP-42",
+        "https://linear.app/example/issue/APP-42/title",
+      ],
+      flags: { field: ["team=engineering", "label=bug"] },
+    });
+  });
+
   test("release deploy passes version, environment and name as separate tokens", async () => {
     const { calls, sdk } = createRecordingSDK();
 
