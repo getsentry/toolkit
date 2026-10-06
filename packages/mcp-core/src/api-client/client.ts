@@ -5222,6 +5222,8 @@ export class SentryApiService {
       statsPeriod,
       start,
       end,
+      outcome,
+      reason,
     }: {
       organizationSlug: string;
       interval?: string;
@@ -5230,6 +5232,8 @@ export class SentryApiService {
       statsPeriod?: string;
       start?: string;
       end?: string;
+      outcome?: string;
+      reason?: string;
     },
     opts?: RequestOptions,
   ) {
@@ -5241,6 +5245,12 @@ export class SentryApiService {
     this.applyTimeParams(queryParams, statsPeriod, start, end);
     if (projectId) {
       queryParams.set("project", projectId);
+    }
+    if (outcome) {
+      queryParams.set("outcome", outcome);
+    }
+    if (reason) {
+      queryParams.set("reason", reason);
     }
     queryParams.set("referrer", SENTRY_MCP_SEARCH_EVENTS_REFERRER);
 

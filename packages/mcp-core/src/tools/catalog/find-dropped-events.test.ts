@@ -67,6 +67,8 @@ describe("find_dropped_events", () => {
         start: null,
         end: null,
         interval: null,
+        outcome: null,
+        reason: null,
       },
       context,
     );
@@ -103,5 +105,38 @@ describe("find_dropped_events", () => {
         "interval": 3600000,
       }
     `);
+  });
+
+  it("forwards the errors dataset and outcome/reason filters to the API", async () => {
+    let captured: URLSearchParams | undefined;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/events-dropped/",
+        ({ request }) => {
+          captured = new URL(request.url).searchParams;
+          return HttpResponse.json(DROPPED_EVENTS_RESPONSE);
+        },
+      ),
+    );
+
+    await findDroppedEvents.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        dataset: "errors",
+        projectSlug: null,
+        statsPeriod: "24h",
+        start: null,
+        end: null,
+        interval: null,
+        outcome: "rate_limited",
+        reason: "spike_protection",
+      },
+      context,
+    );
+
+    expect(captured?.get("dataset")).toBe("errors");
+    expect(captured?.get("outcome")).toBe("rate_limited");
+    expect(captured?.get("reason")).toBe("spike_protection");
   });
 });

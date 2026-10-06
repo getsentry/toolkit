@@ -10,7 +10,16 @@ import {
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
-const DROPPED_EVENTS_DATASETS = ["spans", "logs", "metrics"] as const;
+const DROPPED_EVENTS_DATASETS = ["spans", "logs", "metrics", "errors"] as const;
+
+const DROP_OUTCOMES = [
+  "rate_limited",
+  "filtered",
+  "invalid",
+  "abuse",
+  "client_discard",
+  "cardinality_limited",
+] as const;
 
 const droppedBucketSchema = z.object({
   outcome: z.string(),
@@ -53,11 +62,13 @@ export default defineTool({
     "<examples>",
     "find_dropped_events(organizationSlug='my-org', dataset='spans', projectSlug='my-project')",
     "find_dropped_events(organizationSlug='my-org', dataset='logs', statsPeriod='30d')",
+    "find_dropped_events(organizationSlug='my-org', dataset='errors', outcome='rate_limited')",
     "</examples>",
     "",
     "<hints>",
     "- This is independent of any search query — it reports drops for the whole project/time range.",
     "- `outcome` is the drop kind (e.g. rate_limited, filtered); `reason` is the sub-cause (e.g. key_quota, sample_rate).",
+    "- Pass `outcome` and/or `reason` to scope the dropped side to one classification; the accepted volume is always returned in full.",
     "- An empty `droppedEvents` list means no drops in the window — the data can be trusted.",
     "</hints>",
   ].join("\n"),
@@ -97,6 +108,21 @@ export default defineTool({
       )
       .nullable()
       .default(null),
+    outcome: z
+      .enum(DROP_OUTCOMES)
+      .describe(
+        "Scope the dropped side to one top-level drop classification. Accepted volume is still returned in full.",
+      )
+      .nullable()
+      .default(null),
+    reason: z
+      .string()
+      .trim()
+      .describe(
+        "Scope the dropped side to one reason (sub-classification within an outcome, e.g. 'spike_protection'). Combine with `outcome`.",
+      )
+      .nullable()
+      .default(null),
   },
   annotations: {
     readOnlyHint: true,
@@ -132,6 +158,8 @@ export default defineTool({
       statsPeriod: params.statsPeriod ?? undefined,
       start: params.start ?? undefined,
       end: params.end ?? undefined,
+      outcome: params.outcome ?? undefined,
+      reason: params.reason ?? undefined,
     });
 
     const toBucket = (bucket: {
