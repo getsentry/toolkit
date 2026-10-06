@@ -76,7 +76,6 @@ type SnakeGameProps = {
   session: SnakeSession;
 };
 
-/** Fills the space it is given and sizes the board from the measured box. */
 export function SnakeGame(props: SnakeGameProps): React.ReactNode {
   const ref = useRef<DOMElement>(null);
   const pane = useBoxMetrics(ref);
