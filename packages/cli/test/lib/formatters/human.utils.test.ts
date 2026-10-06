@@ -21,17 +21,14 @@ import {
   formatStatusLabel,
   maskToken,
 } from "../../../src/lib/formatters/human.js";
+import { stripColorTags } from "../../../src/lib/formatters/markdown.js";
+import { stripAnsi as stripTerminalCodes } from "../../../src/lib/formatters/plain-detect.js";
 import { formatRelativeTime } from "../../../src/lib/formatters/time-utils.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
-// Helper to strip ANSI codes and markdown color tags for content testing.
-// Strips color tags first to avoid incomplete multi-character sanitization
-// (ANSI removal could otherwise join fragments into tag-like sequences).
+// Normalize styling for text assertions; this is not HTML sanitization.
 function stripAnsi(str: string): string {
-  let result = str.replace(/<\/?[a-z]+>/g, "");
-  // oxlint-disable-next-line no-control-regex -- ANSI codes use control chars
-  result = result.replace(/\x1b\[[0-9;]*m/g, "");
-  return result;
+  return stripTerminalCodes(stripColorTags(str));
 }
 
 // Status Formatting

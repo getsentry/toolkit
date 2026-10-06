@@ -22,22 +22,13 @@ import {
   substatusLabel,
   writeIssueTable,
 } from "../../../src/lib/formatters/human.js";
+import { stripColorTags } from "../../../src/lib/formatters/markdown.js";
+import { stripAnsi } from "../../../src/lib/formatters/plain-detect.js";
 import type { SentryIssue } from "../../../src/types/index.js";
 
-// Helper to strip ANSI codes for content testing
-function stripAnsi(str: string): string {
-  // oxlint-disable-next-line no-control-regex -- ANSI codes use control chars
-  return str.replace(/\x1b\[[0-9;]*m/g, "");
-}
-
-/** Strip ANSI escape codes and color tags for content testing. */
+/** Normalize styling for text assertions; this is not HTML sanitization. */
 function stripFormatting(s: string): string {
-  return (
-    s
-      .replace(/<\/?[a-z]+>/g, "")
-      // oxlint-disable-next-line no-control-regex -- ANSI codes use control chars
-      .replace(/\x1b\[[0-9;]*m/g, "")
-  );
+  return stripAnsi(stripColorTags(s));
 }
 
 describe("formatShortId edge cases", () => {

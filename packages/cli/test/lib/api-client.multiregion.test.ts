@@ -521,17 +521,17 @@ describe("findProjectByDsnKey (multi-region)", () => {
 
     const project = await findProjectByDsnKey("abc123");
 
-    // Should have searched both regions
-    expect(
-      requestedUrls.some(
-        (u) => u.includes("us.sentry.io") && u.includes("/projects/"),
-      ),
-    ).toBe(true);
-    expect(
-      requestedUrls.some(
-        (u) => u.includes("de.sentry.io") && u.includes("/projects/"),
-      ),
-    ).toBe(true);
+    // Match the origin, not a hostname substring that could occur in another URL.
+    const searchedRegion = (region: string): boolean =>
+      requestedUrls.some((requestedUrl) => {
+        const url = new URL(requestedUrl);
+        return (
+          url.origin === `https://${region}.sentry.io` &&
+          url.pathname.includes("/projects/")
+        );
+      });
+    expect(searchedRegion("us")).toBe(true);
+    expect(searchedRegion("de")).toBe(true);
 
     // Should find the project from EU region
     expect(project).not.toBeNull();
