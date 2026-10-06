@@ -94,7 +94,7 @@ export function formatIssueResults(params: FormatIssueResultsParams): string {
     resolvedProtocol,
   );
 
-  // Add view link with lightweight guidance text (like search_events)
+  // Add view link with lightweight guidance text (like the search_* event tools)
   output += `**View these results in Sentry**:\n${searchUrl}\n`;
   output += `Please tell the user this dashboard link is available if they want to open the results in Sentry.\n\n`;
 
@@ -150,7 +150,7 @@ export function formatIssueResults(params: FormatIssueResultsParams): string {
     output += "\n";
   });
 
-  // Add next steps section (like search_events)
+  // Add next steps section (like the search_* event tools)
   output += "## Next Steps\n\n";
   output +=
     "- Get more details about a specific issue: Use get_sentry_resource with the issue ID or issue URL\n";
@@ -165,7 +165,7 @@ export function formatIssueResults(params: FormatIssueResultsParams): string {
     output += `- Update issue status: ${updateIssueInstruction}\n`;
   }
   output +=
-    "- View event counts: Use search_events for aggregated statistics\n";
+    "- View event counts: Use search_errors for aggregated statistics\n";
 
   // Add feedback-specific guidance if results contain feedback
   const hasFeedback = issues.some((i) => i.issueCategory === "feedback");

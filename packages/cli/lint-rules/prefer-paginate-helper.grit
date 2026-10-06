@@ -1,0 +1,11 @@
+file($name, $body) where {
+  $name <: r".*src/lib/api/.*",
+  $name <: not r".*infrastructure\.ts$",
+  $body <: contains or {
+    `autoPaginate($fetch, $bound)` as $match where { $bound <: `limit` },
+    `autoPaginate($fetch, $bound, $cursor)` as $match where {
+      $bound <: `limit`
+    }
+  },
+  register_diagnostic(span=$match, message="Use paginate() from infrastructure.js instead of wiring autoPaginate() with a raw limit. It centralizes the per_page cap and limit+cursor threading (see #1473).")
+}

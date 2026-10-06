@@ -3,6 +3,14 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      product:
+        description: Product to release
+        required: true
+        type: choice
+        default: mcp
+        options:
+          - cli
+          - mcp
       bump:
         description: Version bump type
         required: true
@@ -31,13 +39,13 @@ jobs:
           private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           token: ${{ steps.token.outputs.token }}
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 
@@ -46,19 +54,46 @@ jobs:
         with:
           run_install: false
 
+      - name: Resolve release workspace
+        id: release
+        env:
+          PRODUCT: ${{ inputs.product }}
+        run: |
+          case "$PRODUCT" in
+            cli)
+              workspace=packages/cli
+              package_path=packages/cli
+              ;;
+            mcp)
+              workspace=packages/mcp-server
+              package_path=packages/mcp-server
+              ;;
+            *)
+              echo "::error::Unsupported product: $PRODUCT"
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "workspace=$workspace"
+            echo "package_path=$package_path"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Calculate version
         id: version
         env:
           BUMP: ${{ inputs.bump }}
+          PACKAGE_PATH: ${{ steps.release.outputs.package_path }}
         run: |
-          CURRENT=$(node -p "require('./packages/mcp-server/package.json').version")
-          NEW=$(npx semver -i "$BUMP" "$CURRENT")
+          CURRENT=$(node -p "require('./$PACKAGE_PATH/package.json').version")
+          NEW=$(npm exec --yes --package=semver@7.7.2 -- semver -i "$BUMP" "$CURRENT")
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
 
       - name: Prepare release
-        uses: getsentry/action-prepare-release@v1
+        uses: getsentry/craft@v2
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
+          workspace: ${{ steps.release.outputs.workspace }}
           version: ${{ steps.version.outputs.version }}
           force: ${{ inputs.force && 'true' || '' }}

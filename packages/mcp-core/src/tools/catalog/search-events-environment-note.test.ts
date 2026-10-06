@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   collectRequestedEnvironments,
   formatUnknownEnvironmentNote,
-} from "./search-events";
+} from "../support/search-events/search";
 
 describe("collectRequestedEnvironments", () => {
   it("collects from the separate environment field (string and array)", () => {

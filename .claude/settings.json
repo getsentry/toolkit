@@ -74,7 +74,6 @@
       "Bash(pnpm -w run:*)",
       "Bash(pnpm -r list:*)",
       "Bash(pnpm --filter:*)",
-      "Bash(pnpm turbo:*)",
       "Bash(pnpm vitest:*)",
       "Bash(pnpx vitest:*)",
       "Bash(pnpx tsx:*)",

@@ -1,0 +1,82 @@
+[
+  {
+    "id": "400010",
+    "shareId": null,
+    "shortId": "ACME-FRONTEND-1A",
+    "title": "TypeError: Cannot read property 'map' of undefined",
+    "culprit": "fetchData(app/utils/api.js)",
+    "permalink": "https://acme-corp.sentry.io/issues/400010/",
+    "level": "error",
+    "status": "unresolved",
+    "statusDetails": {},
+    "substatus": "ongoing",
+    "isPublic": false,
+    "platform": "javascript",
+    "project": {
+      "id": "300010",
+      "name": "Acme Frontend",
+      "slug": "acme-frontend",
+      "platform": "javascript-react"
+    },
+    "type": "error",
+    "metadata": {
+      "type": "TypeError",
+      "value": "Cannot read property 'map' of undefined",
+      "filename": "app/utils/api.js"
+    },
+    "numComments": 0,
+    "assignedTo": null,
+    "isBookmarked": false,
+    "isSubscribed": true,
+    "hasSeen": false,
+    "annotations": [],
+    "issueType": "error",
+    "issueCategory": "error",
+    "priority": "high",
+    "isUnhandled": true,
+    "count": "142",
+    "userCount": 28,
+    "firstSeen": "2024-01-10T14:30:00.000000Z",
+    "lastSeen": "2024-01-15T09:45:00.000000Z"
+  },
+  {
+    "id": "400011",
+    "shareId": null,
+    "shortId": "WIDGETS-APP-1A",
+    "title": "ReferenceError: widget is not defined",
+    "culprit": "renderWidget(src/components/Widget.js)",
+    "permalink": "https://widgets-inc.sentry.io/issues/400011/",
+    "level": "error",
+    "status": "unresolved",
+    "statusDetails": {},
+    "substatus": "new",
+    "isPublic": false,
+    "platform": "javascript",
+    "project": {
+      "id": "300012",
+      "name": "Widgets App",
+      "slug": "widgets-app",
+      "platform": "javascript"
+    },
+    "type": "error",
+    "metadata": {
+      "type": "ReferenceError",
+      "value": "widget is not defined",
+      "filename": "src/components/Widget.js"
+    },
+    "numComments": 0,
+    "assignedTo": null,
+    "isBookmarked": false,
+    "isSubscribed": false,
+    "hasSeen": true,
+    "annotations": [],
+    "issueType": "error",
+    "issueCategory": "error",
+    "priority": "medium",
+    "isUnhandled": false,
+    "count": "23",
+    "userCount": 5,
+    "firstSeen": "2024-01-12T08:15:00.000000Z",
+    "lastSeen": "2024-01-14T16:20:00.000000Z"
+  }
+]

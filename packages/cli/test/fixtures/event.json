@@ -1,0 +1,66 @@
+{
+  "id": "abc123def456abc123def456abc12345",
+  "eventID": "abc123def456abc123def456abc12345",
+  "groupID": "400001",
+  "projectID": "300001",
+  "context": {},
+  "contexts": {
+    "browser": { "name": "Chrome", "version": "120.0.0" },
+    "os": { "name": "Mac OS X", "version": "14.0" },
+    "device": { "family": "Mac" }
+  },
+  "culprit": "fetchData(app/utils/api.js)",
+  "dateCreated": "2024-01-15T09:45:00.000000Z",
+  "dateReceived": "2024-01-15T09:45:01.000000Z",
+  "entries": [
+    {
+      "type": "exception",
+      "data": {
+        "values": [
+          {
+            "type": "TypeError",
+            "value": "Cannot read property 'map' of undefined",
+            "stacktrace": {
+              "frames": [
+                {
+                  "filename": "app/utils/api.js",
+                  "function": "fetchData",
+                  "lineno": 42,
+                  "colno": 15,
+                  "inApp": true
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "fingerprints": ["{{ default }}"],
+  "location": "app/utils/api.js",
+  "message": "TypeError: Cannot read property 'map' of undefined",
+  "metadata": {
+    "type": "TypeError",
+    "value": "Cannot read property 'map' of undefined"
+  },
+  "platform": "javascript",
+  "tags": [
+    { "key": "browser", "value": "Chrome 120.0.0" },
+    { "key": "browser.name", "value": "Chrome" },
+    { "key": "environment", "value": "production" },
+    { "key": "level", "value": "error" },
+    { "key": "os", "value": "Mac OS X 14.0" },
+    { "key": "os.name", "value": "Mac OS X" },
+    { "key": "release", "value": "test-project@1.0.0" },
+    { "key": "url", "value": "https://example.com/dashboard" }
+  ],
+  "title": "TypeError: Cannot read property 'map' of undefined",
+  "type": "error",
+  "user": {
+    "id": "user-12345",
+    "email": "user@example.com",
+    "username": "testuser",
+    "ip_address": "192.0.2.1"
+  }
+}

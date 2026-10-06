@@ -1,0 +1,13 @@
+{
+  "name": "sentry-cli",
+  "owner": {
+    "name": "Sentry"
+  },
+  "plugins": [
+    {
+      "name": "sentry-cli",
+      "source": "./plugins/sentry-cli",
+      "description": "Skills for using the Sentry CLI to interact with Sentry from the command line"
+    }
+  ]
+}

@@ -50,6 +50,12 @@ export const ParamSearchQuery = z
     "Search query to filter results by name or slug. Use this to narrow down results when there are many items.",
   );
 
+export const ParamCursor = z
+  .string()
+  .describe(
+    "Pagination cursor from a previous call's nextCursor. Reuse it with the same filters and scope to fetch the next page.",
+  );
+
 export const ParamIssueShortId = z
   .string()
   .toUpperCase()

@@ -94,6 +94,8 @@ import {
   ReplayListResponseSchema,
   ReplayRecordingSegmentsSchema,
   RepositoryListSchema,
+  SearchAgentStartSchema,
+  SearchAgentStateSchema,
   SentryAppComponentListSchema,
   SentryAppExternalRequestOptionsSchema,
   SentryAppInstallationListSchema,
@@ -124,6 +126,8 @@ import type {
   AlertRuleUpdate,
   AutofixRun,
   AutofixRunState,
+  SearchAgentStart,
+  SearchAgentState,
   ClientKey,
   ClientKeyList,
   CommitList,
@@ -188,6 +192,16 @@ import type {
 // import { logger } from "@sentry/node";
 
 const SENTRY_MCP_SEARCH_EVENTS_REFERRER = "api.mcp.search-events";
+
+/**
+ * Filters on other events in the same trace, e.g. spans whose trace also has a
+ * matching log. Only the spans and logs datasets support them.
+ */
+export type CrossEventQueries = {
+  spanQuery?: string;
+  logQuery?: string;
+  metricQuery?: string;
+};
 
 type ExplorerAggregateParams = {
   fields?: string[];
@@ -1614,19 +1628,20 @@ export class SentryApiService {
   }
 
   /**
-   * Lists all organizations accessible to the authenticated user.
+   * Lists a page of organizations accessible to the authenticated user.
    *
    * Queries the `/organizations/` endpoint on the root host.
    *
    * @param params Query parameters
    * @param params.query Search query to filter organizations by name/slug
    * @param params.limit Maximum number of organizations to return (defaults to 25)
-   * @returns Array of organizations across all accessible regions
+   * @param params.cursor Pagination cursor from a previous call's nextCursor
+   * @returns A page of organizations across all accessible regions, plus a cursor for the next page (null once exhausted)
    *
    * @example
    * ```typescript
-   * const orgs = await apiService.listOrganizations();
-   * orgs.forEach(org => {
+   * const { organizations } = await apiService.listOrganizations();
+   * organizations.forEach(org => {
    *   // regionUrl present for Cloud Service, empty for self-hosted
    *   console.log(`${org.name} (${org.slug}) - ${org.links?.regionUrl || 'No region URL'}`);
    * });
@@ -1635,7 +1650,8 @@ export class SentryApiService {
   async listOrganizations(params?: {
     query?: string;
     limit?: number;
-  }): Promise<OrganizationList> {
+    cursor?: string | null;
+  }): Promise<{ organizations: OrganizationList; nextCursor: string | null }> {
     const limit = params?.limit ?? 25;
 
     // Build query parameters
@@ -1643,6 +1659,9 @@ export class SentryApiService {
     queryParams.set("per_page", String(limit));
     if (params?.query) {
       queryParams.set("query", params.query);
+    }
+    if (params?.cursor) {
+      queryParams.set("cursor", params.cursor);
     }
     const queryString = queryParams.toString();
     const path = `/organizations/?${queryString}`;
@@ -1654,20 +1673,41 @@ export class SentryApiService {
       host = "sentry.io";
     }
 
-    const body = await this.requestJSON(path, undefined, { host });
-    return OrganizationListSchema.parse(body);
+    const response = await this.request(path, undefined, { host });
+    const body = await this.parseJsonResponse(response);
+
+    return {
+      organizations: OrganizationListSchema.parse(body),
+      nextCursor: getNextCursor(response.headers.get("link")),
+    };
   }
 
   /**
    * Gets a single organization by slug.
    *
    * @param organizationSlug Organization identifier
+   * @param params Query parameters
+   * @param params.includeFeatureFlags Include `features` in the response (omitted by Sentry otherwise)
+   * @param params.detailed Include projects and teams (Sentry defaults to true)
    * @param opts Request options including host override
    * @returns Organization data
    */
-  async getOrganization(organizationSlug: string, opts?: RequestOptions) {
+  async getOrganization(
+    organizationSlug: string,
+    params?: { includeFeatureFlags?: boolean; detailed?: boolean },
+    opts?: RequestOptions,
+  ) {
+    const queryParams = new URLSearchParams();
+    if (params?.includeFeatureFlags) {
+      queryParams.set("include_feature_flags", "1");
+    }
+    if (params?.detailed === false) {
+      queryParams.set("detailed", "0");
+    }
+    const queryString = queryParams.toString();
+    const organizationPath = apiPath`/organizations/${organizationSlug}/`;
     const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/`,
+      `${organizationPath}${queryString ? `?${queryString}` : ""}`,
       undefined,
       opts,
     );
@@ -1675,31 +1715,40 @@ export class SentryApiService {
   }
 
   /**
-   * Lists teams within an organization.
+   * Lists a page of teams within an organization.
    *
    * @param organizationSlug Organization identifier
    * @param params Query parameters
    * @param params.query Search query to filter teams by name/slug
    * @param params.limit Maximum number of teams to return
+   * @param params.cursor Pagination cursor from a previous call's nextCursor
    * @param opts Request options including host override
-   * @returns Array of teams in the organization
+   * @returns A page of teams in the organization, plus a cursor for the next page (null once exhausted)
    */
   async listTeams(
     organizationSlug: string,
-    params?: { query?: string; limit?: number },
+    params?: { query?: string; limit?: number; cursor?: string | null },
     opts?: RequestOptions,
-  ): Promise<TeamList> {
+  ): Promise<{ teams: TeamList; nextCursor: string | null }> {
     const queryParams = new URLSearchParams();
     queryParams.set("per_page", String(params?.limit ?? 25));
     if (params?.query) {
       queryParams.set("query", params.query);
     }
+    if (params?.cursor) {
+      queryParams.set("cursor", params.cursor);
+    }
     const queryString = queryParams.toString();
     const teamsPath = apiPath`/organizations/${organizationSlug}/teams/`;
     const path = `${teamsPath}?${queryString}`;
 
-    const body = await this.requestJSON(path, undefined, opts);
-    return TeamListSchema.parse(body);
+    const response = await this.request(path, undefined, opts);
+    const body = await this.parseJsonResponse(response);
+
+    return {
+      teams: TeamListSchema.parse(body),
+      nextCursor: getNextCursor(response.headers.get("link")),
+    };
   }
 
   /**
@@ -1740,25 +1789,34 @@ export class SentryApiService {
    * @param params Query parameters
    * @param params.query Search query to filter projects by name/slug
    * @param params.limit Maximum number of projects to return
+   * @param params.cursor Pagination cursor from a previous call's nextCursor
    * @param opts Request options
-   * @returns Array of projects in the organization
+   * @returns Projects in the organization, plus a cursor for the next page (null once exhausted)
    */
   async listProjects(
     organizationSlug: string,
-    params?: { query?: string; limit?: number },
+    params?: { query?: string; limit?: number; cursor?: string | null },
     opts?: RequestOptions,
-  ): Promise<ProjectList> {
+  ): Promise<{ projects: ProjectList; nextCursor: string | null }> {
     const queryParams = new URLSearchParams();
     queryParams.set("per_page", String(params?.limit ?? 25));
     if (params?.query) {
       queryParams.set("query", params.query);
     }
+    if (params?.cursor) {
+      queryParams.set("cursor", params.cursor);
+    }
     const queryString = queryParams.toString();
     const projectsPath = apiPath`/organizations/${organizationSlug}/projects/`;
     const path = `${projectsPath}?${queryString}`;
 
-    const body = await this.requestJSON(path, undefined, opts);
-    return ProjectListSchema.parse(body);
+    const response = await this.request(path, undefined, opts);
+    const body = await this.parseJsonResponse(response);
+
+    return {
+      projects: ProjectListSchema.parse(body),
+      nextCursor: getNextCursor(response.headers.get("link")),
+    };
   }
 
   async listDashboards(
@@ -3640,6 +3698,7 @@ export class SentryApiService {
       attributeTypes,
       substringMatch,
       query,
+      context,
     }: {
       organizationSlug: string;
       itemType?: TraceItemType;
@@ -3650,6 +3709,7 @@ export class SentryApiService {
       attributeTypes?: TraceItemAttributeType[];
       substringMatch?: string;
       query?: string;
+      context?: boolean;
     },
     opts?: RequestOptions,
   ): Promise<TraceItemAttribute[]> {
@@ -3662,6 +3722,7 @@ export class SentryApiService {
       end,
       substringMatch,
       query,
+      context,
       opts,
     );
 
@@ -3773,6 +3834,7 @@ export class SentryApiService {
     end?: string,
     substringMatch?: string,
     query?: string,
+    context?: boolean,
     opts?: RequestOptions,
   ): Promise<TraceItemAttribute[]> {
     const queryParams = new URLSearchParams();
@@ -3785,6 +3847,9 @@ export class SentryApiService {
     }
     if (query) {
       queryParams.set("query", query);
+    }
+    if (context) {
+      queryParams.set("expand", "context");
     }
     this.applyTimeParams(queryParams, statsPeriod, start, end);
 
@@ -4968,6 +5033,7 @@ export class SentryApiService {
     start?: string;
     end?: string;
     sort: string;
+    crossEventQueries?: CrossEventQueries;
   }): URLSearchParams {
     const queryParams = new URLSearchParams();
 
@@ -4991,6 +5057,11 @@ export class SentryApiService {
     if (params.dataset === "spans") {
       queryParams.set("sampling", "NORMAL");
     }
+
+    const { spanQuery, logQuery, metricQuery } = params.crossEventQueries ?? {};
+    if (spanQuery) queryParams.set("spanQuery", spanQuery);
+    if (logQuery) queryParams.set("logQuery", logQuery);
+    if (metricQuery) queryParams.set("metricQuery", metricQuery);
 
     queryParams.set("sort", params.sort);
 
@@ -5024,6 +5095,7 @@ export class SentryApiService {
       start,
       end,
       sort = "-timestamp",
+      crossEventQueries,
     }: {
       organizationSlug: string;
       query: string;
@@ -5035,6 +5107,7 @@ export class SentryApiService {
       start?: string;
       end?: string;
       sort?: string;
+      crossEventQueries?: CrossEventQueries;
     },
     opts?: RequestOptions,
   ) {
@@ -5070,6 +5143,7 @@ export class SentryApiService {
         start,
         end,
         sort,
+        crossEventQueries,
       });
     }
 
@@ -5180,6 +5254,55 @@ export class SentryApiService {
       opts,
     );
     return AutofixRunStateSchema.parse(body);
+  }
+
+  // POST https://us.sentry.io/api/0/organizations/my-org/search-agent/start/
+  async startSearchAgent(
+    {
+      organizationSlug,
+      projectIds,
+      naturalLanguageQuery,
+      strategy,
+    }: {
+      organizationSlug: string;
+      projectIds: number[];
+      naturalLanguageQuery: string;
+      strategy: "Traces" | "Issues" | "Logs" | "Errors" | "Metrics";
+    },
+    opts?: RequestOptions,
+  ): Promise<SearchAgentStart> {
+    const body = await this.requestJSON(
+      apiPath`/organizations/${organizationSlug}/search-agent/start/`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          project_ids: projectIds,
+          natural_language_query: naturalLanguageQuery,
+          strategy,
+        }),
+      },
+      opts,
+    );
+    return SearchAgentStartSchema.parse(body);
+  }
+
+  // GET https://us.sentry.io/api/0/organizations/my-org/search-agent/state/{runId}/
+  async getSearchAgentState(
+    {
+      organizationSlug,
+      runId,
+    }: {
+      organizationSlug: string;
+      runId: string;
+    },
+    opts?: RequestOptions,
+  ): Promise<SearchAgentState> {
+    const body = await this.requestJSON(
+      apiPath`/organizations/${organizationSlug}/search-agent/state/${runId}/`,
+      undefined,
+      opts,
+    );
+    return SearchAgentStateSchema.parse(body);
   }
 
   /**

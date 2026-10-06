@@ -1,0 +1,542 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5ea209e29 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -1277,6 +1277,35 @@ var RouteMapSymbol = Symbol("RouteMap");
+ var CommandSymbol = Symbol("Command");
+ 
+ // src/routing/scanner.ts
++// PATCH(getsentry/cli): pluggable top-level (global) flags allow-list.
++// Stricli only parses flags at the leaf command, so a flag placed before the
++// subcommand (e.g. `mycli --verbose sub cmd`) is treated as an unknown route
++// segment and fails route resolution. When the host application declares a
++// `scanner.topLevelFlags` allow-list, `buildRouteScanner` recognizes those
++// flags at any route depth and forwards them (and, for value-taking flags,
++// their value) to the leaf command via unprocessedInputs instead of erroring.
++// The option is inert when unset, so stock Stricli behavior is unchanged. This
++// is written to be upstreamable; the Sentry CLI supplies the allow-list from
++// its GLOBAL_FLAGS definition. If `matchTopLevelFlag` is missing, the CLI's
++// `check:patches` fails.
++function matchTopLevelFlag(input, topLevelFlags) {
++  if (!topLevelFlags) {
++    return null;
++  }
++  const booleanFlags = topLevelFlags.booleanFlags;
++  const valueFlags = topLevelFlags.valueFlags;
++  if (booleanFlags && booleanFlags.has(input)) {
++    return { takesValue: false, inlineValue: false };
++  }
++  if (valueFlags && valueFlags.has(input)) {
++    return { takesValue: true, inlineValue: false };
++  }
++  const eqIndex = input.indexOf("=");
++  if (eqIndex !== -1 && valueFlags && valueFlags.has(input.slice(0, eqIndex))) {
++    return { takesValue: true, inlineValue: true };
++  }
++  return null;
++}
+ function buildRouteScanner(root, config, startingPrefix) {
+   const prefix = [...startingPrefix];
+   const unprocessedInputs = [];
+@@ -1285,7 +1314,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+   let target;
+   let rootLevel = true;
+   let helpRequested = false;
++  // PATCH(getsentry/cli): track a `--version` request at any route depth so a
++  // host app can print its version even when the flag follows a subcommand
++  // (e.g. `mycli sub --version`). Mirrors `helpRequested`; the app decides how
++  // to render it (guarded by `config.versionInfo` in runApplication). If this
++  // marker is missing, the CLI's `check:patches` fails.
++  let versionRequested = false;
+   let treatInputsAsArguments = false;
++  let expectTopLevelFlagValue = false;
+   return {
+     next: (input) => {
+       if (!treatInputsAsArguments && config.allowArgumentEscapeSequence && input === "--") {
+@@ -1293,6 +1329,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+         unprocessedInputs.push(input);
+         return;
+       }
++      if (!treatInputsAsArguments && !target && expectTopLevelFlagValue && input.startsWith("-")) {
++        expectTopLevelFlagValue = false;
++      }
++      if (!treatInputsAsArguments && !target && expectTopLevelFlagValue && !input.startsWith("-") && input !== "--help" && input !== "-h" && input !== "--helpAll" && input !== "--help-all" && input !== "--version") {
++        expectTopLevelFlagValue = false;
++        unprocessedInputs.push(input);
++        return;
++      }
+       if (!treatInputsAsArguments) {
+         if (input === "--help" || input === "-h") {
+           helpRequested = true;
+@@ -1300,12 +1341,28 @@ function buildRouteScanner(root, config, startingPrefix) {
+             target = current;
+           }
+           return;
+-        } else if (input === "--helpAll" || input === "--help-all" || input === "-H") {
++        } else if (input === "--helpAll" || input === "--help-all") {
+           helpRequested = "all";
+           if (!target) {
+             target = current;
+           }
+           return;
++        } else if (input === "--version") {
++          versionRequested = true;
++          if (!target) {
++            target = current;
++          }
++          return;
++        }
++      }
++      if (!treatInputsAsArguments && !target) {
++        const topLevelFlag = matchTopLevelFlag(input, config.topLevelFlags);
++        if (topLevelFlag) {
++          unprocessedInputs.push(input);
++          if (topLevelFlag.takesValue && !topLevelFlag.inlineValue) {
++            expectTopLevelFlagValue = true;
++          }
++          return;
+         }
+       }
+       if (target) {
+@@ -1357,6 +1414,7 @@ function buildRouteScanner(root, config, startingPrefix) {
+         target,
+         unprocessedInputs,
+         helpRequested,
++        versionRequested,
+         prefix,
+         rootLevel,
+         aliases
+@@ -1410,16 +1468,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+     }
+   }
+   const inputs = rawInputs.slice();
+-  if (config.versionInfo && (inputs[0] === "--version" || inputs[0] === "-v")) {
+-    let currentVersion;
+-    if ("currentVersion" in config.versionInfo) {
+-      currentVersion = config.versionInfo.currentVersion;
+-    } else {
+-      currentVersion = await config.versionInfo.getCurrentVersion.call(context);
+-    }
+-    context.process.stdout.write(currentVersion + "\n");
+-    return ExitCode.Success;
+-  }
+   const scanner = buildRouteScanner(root, config.scanner, [config.name]);
+   let error;
+   while (inputs.length > 0 && !error) {
+@@ -1445,7 +1493,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+     return ExitCode.UnknownCommand;
+   }
+   const result = scanner.finish();
++  // PATCH(getsentry/cli): print the version when `--version` was seen at any
++  // route depth (the scanner tracks `versionRequested`), not just when it is
++  // the first token. Guarded by `config.versionInfo`. If this marker is
++  // missing, the CLI's `check:patches` fails.
++  if (config.versionInfo && result.versionRequested) {
++    let currentVersion;
++    if ("currentVersion" in config.versionInfo) {
++      currentVersion = config.versionInfo.currentVersion;
++    } else {
++      currentVersion = await config.versionInfo.getCurrentVersion.call(context);
++    }
++    context.process.stdout.write(currentVersion + "\n");
++    return ExitCode.Success;
++  }
+   if (result.helpRequested || result.target.kind === RouteMapSymbol) {
++    // PATCH(getsentry/cli): pluggable help renderer. When the host app supplies
++    // `config.documentation.renderHelp`, give it a chance to render help for the
++    // resolved target (e.g. structured `--json` help). It receives the resolved
++    // route prefix and the unprocessed top-level flags; returning a string wins,
++    // returning undefined falls back to the built-in `formatHelp` text. This
++    // keeps `--json` knowledge in the app, not the framework. If this marker is
++    // missing, the CLI's `check:patches` fails.
++    const rendered = config.documentation.renderHelp?.({
++      prefix: result.prefix,
++      unprocessedInputs: result.unprocessedInputs,
++      helpRequested: result.helpRequested
++    });
++    if (typeof rendered === "string") {
++      context.process.stdout.write(rendered);
++      return ExitCode.Success;
++    }
+     const ansiColor = shouldUseAnsiColor(context.process, context.process.stdout, config.documentation);
+     context.process.stdout.write(
+       result.target.formatHelp({
+@@ -1514,6 +1592,9 @@ function withDefaults(config) {
+   const scannerConfig = {
+     caseStyle: scannerCaseStyle,
+     allowArgumentEscapeSequence: config.scanner?.allowArgumentEscapeSequence ?? false,
++    // PATCH(getsentry/cli): carry the optional top-level-flags allow-list through
++    // config normalization so it reaches buildRouteScanner. Inert when unset.
++    topLevelFlags: config.scanner?.topLevelFlags,
+     distanceOptions: config.scanner?.distanceOptions ?? {
+       threshold: 7,
+       weights: {
+@@ -1529,7 +1610,10 @@ function withDefaults(config) {
+     useAliasInUsageLine: config.documentation?.useAliasInUsageLine ?? false,
+     onlyRequiredInUsageLine: config.documentation?.onlyRequiredInUsageLine ?? false,
+     caseStyle: displayCaseStyle,
+-    disableAnsiColor: config.documentation?.disableAnsiColor ?? false
++    disableAnsiColor: config.documentation?.disableAnsiColor ?? false,
++    // PATCH(getsentry/cli): carry the optional pluggable help renderer through
++    // config normalization so it reaches runApplication. Inert when unset.
++    renderHelp: config.documentation?.renderHelp
+   };
+   const completionConfig = {
+     includeAliases: config.completion?.includeAliases ?? documentationConfig.useAliasInUsageLine,
+@@ -1881,7 +1965,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
+   if (args.includeHelpAllFlag) {
+     const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
+     rows.push({
+-      aliases: "-H",
++      aliases: "",
+       flagName: atLeastOneOptional ? ` --${helpAllFlagName}` : `--${helpAllFlagName}`,
+       brief: briefs.helpAll,
+       hidden: !args.config.alwaysShowHelpAllFlag
+@@ -1920,7 +2004,7 @@ function* generateBuiltInFlagUsageLines(args) {
+   yield args.config.useAliasInUsageLine ? "-h" : "--help";
+   if (args.includeHelpAllFlag) {
+     const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
+-    yield args.config.useAliasInUsageLine ? "-H" : `--${helpAllFlagName}`;
++    yield `--${helpAllFlagName}`;
+   }
+   if (args.includeVersionFlag) {
+     yield args.config.useAliasInUsageLine ? "-v" : "--version";
+@@ -2057,7 +2141,7 @@ function checkForInvalidVariadicSeparators(flags) {
+ function buildCommand(builderArgs) {
+   const { flags = {}, aliases = {} } = builderArgs.parameters;
+   checkForReservedFlags(flags, ["help", "helpAll", "help-all"]);
+-  checkForReservedAliases(aliases, ["h", "H"]);
++  checkForReservedAliases(aliases, ["h"]);
+   checkForNegationCollisions(flags);
+   checkForInvalidVariadicSeparators(flags);
+   let loader;
+diff --git a/dist/index.d.cts b/dist/index.d.cts
+index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab670451851709a7e2 100644
+--- a/dist/index.d.cts
++++ b/dist/index.d.cts
+@@ -402,6 +402,25 @@ interface ScannerConfiguration {
+      * Default value is `false`
+      */
+     readonly allowArgumentEscapeSequence: boolean;
++    /**
++     * Optional allow-list of "top-level" (global) flags recognized at any route
++     * depth, not just at the leaf command. By default Stricli only parses flags
++     * at the resolved command, so a flag placed before the subcommand
++     * (`cli --verbose sub cmd`) is treated as an unknown route segment. When this
++     * is set, the route scanner forwards a matching flag (and, for value flags,
++     * its value) to the leaf command instead of failing route resolution.
++     *
++     * - `booleanFlags` — standalone flag tokens (e.g. `--verbose`, `-v`,
++     *   `--no-verbose`) that do not consume a value.
++     * - `valueFlags` — flag tokens (e.g. `--org`) that consume the following
++     *   argv token, or an `=`-joined value (`--org=acme`), as their value.
++     *
++     * Default value is `undefined` (no top-level flags; stock behavior).
++     */
++    readonly topLevelFlags?: {
++        readonly booleanFlags: ReadonlySet<string>;
++        readonly valueFlags: ReadonlySet<string>;
++    };
+     /**
+      * Options used when calculating distance for alternative inputs ("did you mean?").
+      *
+@@ -470,6 +489,28 @@ interface DocumentationConfiguration {
+      * Defaults to `false`.
+      */
+     readonly disableAnsiColor: boolean;
++    /**
++     * Optional pluggable help renderer. When set, the application gives this
++     * hook a chance to render help for the resolved target before falling back
++     * to the built-in text `formatHelp`. Returning a string uses that output
++     * verbatim (written to stdout); returning `undefined` falls through to the
++     * default help text. Lets a host application render alternative help formats
++     * (e.g. structured JSON) driven by top-level flags without the framework
++     * needing to know about them.
++     *
++     * - `prefix` — the resolved route path (including the application name).
++     * - `unprocessedInputs` — leftover inputs, including any top-level flags
++     *   (e.g. `--json`) that were forwarded past route resolution.
++     * - `helpRequested` — `false` when help is shown for a bare route map,
++     *   `true` for `--help`, or `"all"` for `--helpAll`.
++     *
++     * Default value is `undefined` (no hook; built-in text help is used).
++     */
++    readonly renderHelp?: (ctx: {
++        readonly prefix: readonly string[];
++        readonly unprocessedInputs: readonly string[];
++        readonly helpRequested: boolean | "all";
++    }) => string | undefined;
+ }
+ /**
+  * Configuration for controlling the behavior of completion proposals.
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab670451851709a7e2 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -402,6 +402,25 @@ interface ScannerConfiguration {
+      * Default value is `false`
+      */
+     readonly allowArgumentEscapeSequence: boolean;
++    /**
++     * Optional allow-list of "top-level" (global) flags recognized at any route
++     * depth, not just at the leaf command. By default Stricli only parses flags
++     * at the resolved command, so a flag placed before the subcommand
++     * (`cli --verbose sub cmd`) is treated as an unknown route segment. When this
++     * is set, the route scanner forwards a matching flag (and, for value flags,
++     * its value) to the leaf command instead of failing route resolution.
++     *
++     * - `booleanFlags` — standalone flag tokens (e.g. `--verbose`, `-v`,
++     *   `--no-verbose`) that do not consume a value.
++     * - `valueFlags` — flag tokens (e.g. `--org`) that consume the following
++     *   argv token, or an `=`-joined value (`--org=acme`), as their value.
++     *
++     * Default value is `undefined` (no top-level flags; stock behavior).
++     */
++    readonly topLevelFlags?: {
++        readonly booleanFlags: ReadonlySet<string>;
++        readonly valueFlags: ReadonlySet<string>;
++    };
+     /**
+      * Options used when calculating distance for alternative inputs ("did you mean?").
+      *
+@@ -470,6 +489,28 @@ interface DocumentationConfiguration {
+      * Defaults to `false`.
+      */
+     readonly disableAnsiColor: boolean;
++    /**
++     * Optional pluggable help renderer. When set, the application gives this
++     * hook a chance to render help for the resolved target before falling back
++     * to the built-in text `formatHelp`. Returning a string uses that output
++     * verbatim (written to stdout); returning `undefined` falls through to the
++     * default help text. Lets a host application render alternative help formats
++     * (e.g. structured JSON) driven by top-level flags without the framework
++     * needing to know about them.
++     *
++     * - `prefix` — the resolved route path (including the application name).
++     * - `unprocessedInputs` — leftover inputs, including any top-level flags
++     *   (e.g. `--json`) that were forwarded past route resolution.
++     * - `helpRequested` — `false` when help is shown for a bare route map,
++     *   `true` for `--help`, or `"all"` for `--helpAll`.
++     *
++     * Default value is `undefined` (no hook; built-in text help is used).
++     */
++    readonly renderHelp?: (ctx: {
++        readonly prefix: readonly string[];
++        readonly unprocessedInputs: readonly string[];
++        readonly helpRequested: boolean | "all";
++    }) => string | undefined;
+ }
+ /**
+  * Configuration for controlling the behavior of completion proposals.
+diff --git a/dist/index.js b/dist/index.js
+index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d87c52de17 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1229,6 +1229,35 @@ var RouteMapSymbol = Symbol("RouteMap");
+ var CommandSymbol = Symbol("Command");
+ 
+ // src/routing/scanner.ts
++// PATCH(getsentry/cli): pluggable top-level (global) flags allow-list.
++// Stricli only parses flags at the leaf command, so a flag placed before the
++// subcommand (e.g. `mycli --verbose sub cmd`) is treated as an unknown route
++// segment and fails route resolution. When the host application declares a
++// `scanner.topLevelFlags` allow-list, `buildRouteScanner` recognizes those
++// flags at any route depth and forwards them (and, for value-taking flags,
++// their value) to the leaf command via unprocessedInputs instead of erroring.
++// The option is inert when unset, so stock Stricli behavior is unchanged. This
++// is written to be upstreamable; the Sentry CLI supplies the allow-list from
++// its GLOBAL_FLAGS definition. If `matchTopLevelFlag` is missing, the CLI's
++// `check:patches` fails.
++function matchTopLevelFlag(input, topLevelFlags) {
++  if (!topLevelFlags) {
++    return null;
++  }
++  const booleanFlags = topLevelFlags.booleanFlags;
++  const valueFlags = topLevelFlags.valueFlags;
++  if (booleanFlags && booleanFlags.has(input)) {
++    return { takesValue: false, inlineValue: false };
++  }
++  if (valueFlags && valueFlags.has(input)) {
++    return { takesValue: true, inlineValue: false };
++  }
++  const eqIndex = input.indexOf("=");
++  if (eqIndex !== -1 && valueFlags && valueFlags.has(input.slice(0, eqIndex))) {
++    return { takesValue: true, inlineValue: true };
++  }
++  return null;
++}
+ function buildRouteScanner(root, config, startingPrefix) {
+   const prefix = [...startingPrefix];
+   const unprocessedInputs = [];
+@@ -1237,7 +1266,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+   let target;
+   let rootLevel = true;
+   let helpRequested = false;
++  // PATCH(getsentry/cli): track a `--version` request at any route depth so a
++  // host app can print its version even when the flag follows a subcommand
++  // (e.g. `mycli sub --version`). Mirrors `helpRequested`; the app decides how
++  // to render it (guarded by `config.versionInfo` in runApplication). If this
++  // marker is missing, the CLI's `check:patches` fails.
++  let versionRequested = false;
+   let treatInputsAsArguments = false;
++  let expectTopLevelFlagValue = false;
+   return {
+     next: (input) => {
+       if (!treatInputsAsArguments && config.allowArgumentEscapeSequence && input === "--") {
+@@ -1245,6 +1281,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+         unprocessedInputs.push(input);
+         return;
+       }
++      if (!treatInputsAsArguments && !target && expectTopLevelFlagValue && input.startsWith("-")) {
++        expectTopLevelFlagValue = false;
++      }
++      if (!treatInputsAsArguments && !target && expectTopLevelFlagValue && !input.startsWith("-") && input !== "--help" && input !== "-h" && input !== "--helpAll" && input !== "--help-all" && input !== "--version") {
++        expectTopLevelFlagValue = false;
++        unprocessedInputs.push(input);
++        return;
++      }
+       if (!treatInputsAsArguments) {
+         if (input === "--help" || input === "-h") {
+           helpRequested = true;
+@@ -1252,12 +1293,28 @@ function buildRouteScanner(root, config, startingPrefix) {
+             target = current;
+           }
+           return;
+-        } else if (input === "--helpAll" || input === "--help-all" || input === "-H") {
++        } else if (input === "--helpAll" || input === "--help-all") {
+           helpRequested = "all";
+           if (!target) {
+             target = current;
+           }
+           return;
++        } else if (input === "--version") {
++          versionRequested = true;
++          if (!target) {
++            target = current;
++          }
++          return;
++        }
++      }
++      if (!treatInputsAsArguments && !target) {
++        const topLevelFlag = matchTopLevelFlag(input, config.topLevelFlags);
++        if (topLevelFlag) {
++          unprocessedInputs.push(input);
++          if (topLevelFlag.takesValue && !topLevelFlag.inlineValue) {
++            expectTopLevelFlagValue = true;
++          }
++          return;
+         }
+       }
+       if (target) {
+@@ -1309,6 +1366,7 @@ function buildRouteScanner(root, config, startingPrefix) {
+         target,
+         unprocessedInputs,
+         helpRequested,
++        versionRequested,
+         prefix,
+         rootLevel,
+         aliases
+@@ -1362,16 +1420,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+     }
+   }
+   const inputs = rawInputs.slice();
+-  if (config.versionInfo && (inputs[0] === "--version" || inputs[0] === "-v")) {
+-    let currentVersion;
+-    if ("currentVersion" in config.versionInfo) {
+-      currentVersion = config.versionInfo.currentVersion;
+-    } else {
+-      currentVersion = await config.versionInfo.getCurrentVersion.call(context);
+-    }
+-    context.process.stdout.write(currentVersion + "\n");
+-    return ExitCode.Success;
+-  }
+   const scanner = buildRouteScanner(root, config.scanner, [config.name]);
+   let error;
+   while (inputs.length > 0 && !error) {
+@@ -1397,7 +1445,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+     return ExitCode.UnknownCommand;
+   }
+   const result = scanner.finish();
++  // PATCH(getsentry/cli): print the version when `--version` was seen at any
++  // route depth (the scanner tracks `versionRequested`), not just when it is
++  // the first token. Guarded by `config.versionInfo`. If this marker is
++  // missing, the CLI's `check:patches` fails.
++  if (config.versionInfo && result.versionRequested) {
++    let currentVersion;
++    if ("currentVersion" in config.versionInfo) {
++      currentVersion = config.versionInfo.currentVersion;
++    } else {
++      currentVersion = await config.versionInfo.getCurrentVersion.call(context);
++    }
++    context.process.stdout.write(currentVersion + "\n");
++    return ExitCode.Success;
++  }
+   if (result.helpRequested || result.target.kind === RouteMapSymbol) {
++    // PATCH(getsentry/cli): pluggable help renderer. When the host app supplies
++    // `config.documentation.renderHelp`, give it a chance to render help for the
++    // resolved target (e.g. structured `--json` help). It receives the resolved
++    // route prefix and the unprocessed top-level flags; returning a string wins,
++    // returning undefined falls back to the built-in `formatHelp` text. This
++    // keeps `--json` knowledge in the app, not the framework. If this marker is
++    // missing, the CLI's `check:patches` fails.
++    const rendered = config.documentation.renderHelp?.({
++      prefix: result.prefix,
++      unprocessedInputs: result.unprocessedInputs,
++      helpRequested: result.helpRequested
++    });
++    if (typeof rendered === "string") {
++      context.process.stdout.write(rendered);
++      return ExitCode.Success;
++    }
+     const ansiColor = shouldUseAnsiColor(context.process, context.process.stdout, config.documentation);
+     context.process.stdout.write(
+       result.target.formatHelp({
+@@ -1466,6 +1544,9 @@ function withDefaults(config) {
+   const scannerConfig = {
+     caseStyle: scannerCaseStyle,
+     allowArgumentEscapeSequence: config.scanner?.allowArgumentEscapeSequence ?? false,
++    // PATCH(getsentry/cli): carry the optional top-level-flags allow-list through
++    // config normalization so it reaches buildRouteScanner. Inert when unset.
++    topLevelFlags: config.scanner?.topLevelFlags,
+     distanceOptions: config.scanner?.distanceOptions ?? {
+       threshold: 7,
+       weights: {
+@@ -1481,7 +1562,10 @@ function withDefaults(config) {
+     useAliasInUsageLine: config.documentation?.useAliasInUsageLine ?? false,
+     onlyRequiredInUsageLine: config.documentation?.onlyRequiredInUsageLine ?? false,
+     caseStyle: displayCaseStyle,
+-    disableAnsiColor: config.documentation?.disableAnsiColor ?? false
++    disableAnsiColor: config.documentation?.disableAnsiColor ?? false,
++    // PATCH(getsentry/cli): carry the optional pluggable help renderer through
++    // config normalization so it reaches runApplication. Inert when unset.
++    renderHelp: config.documentation?.renderHelp
+   };
+   const completionConfig = {
+     includeAliases: config.completion?.includeAliases ?? documentationConfig.useAliasInUsageLine,
+@@ -1833,7 +1917,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
+   if (args.includeHelpAllFlag) {
+     const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
+     rows.push({
+-      aliases: "-H",
++      aliases: "",
+       flagName: atLeastOneOptional ? ` --${helpAllFlagName}` : `--${helpAllFlagName}`,
+       brief: briefs.helpAll,
+       hidden: !args.config.alwaysShowHelpAllFlag
+@@ -1872,7 +1956,7 @@ function* generateBuiltInFlagUsageLines(args) {
+   yield args.config.useAliasInUsageLine ? "-h" : "--help";
+   if (args.includeHelpAllFlag) {
+     const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
+-    yield args.config.useAliasInUsageLine ? "-H" : `--${helpAllFlagName}`;
++    yield `--${helpAllFlagName}`;
+   }
+   if (args.includeVersionFlag) {
+     yield args.config.useAliasInUsageLine ? "-v" : "--version";
+@@ -2009,7 +2093,7 @@ function checkForInvalidVariadicSeparators(flags) {
+ function buildCommand(builderArgs) {
+   const { flags = {}, aliases = {} } = builderArgs.parameters;
+   checkForReservedFlags(flags, ["help", "helpAll", "help-all"]);
+-  checkForReservedAliases(aliases, ["h", "H"]);
++  checkForReservedAliases(aliases, ["h"]);
+   checkForNegationCollisions(flags);
+   checkForInvalidVariadicSeparators(flags);
+   let loader;

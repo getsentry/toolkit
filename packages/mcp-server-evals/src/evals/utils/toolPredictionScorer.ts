@@ -106,7 +106,7 @@ Consider:
 1. Match the expected tool sequence exactly - the expected tools show realistic AI behavior
 2. When a value like "sentry-mcp-evals" appears alone, it's typically an organizationSlug, not a projectSlug
 3. Arguments should match expected values (organizationSlug, projectSlug, name, etc.)
-4. For natural language queries in search_events, exact phrasing doesn't need to match
+4. For natural language queries in search tools (search_errors, search_traces, search_logs, etc.), exact phrasing doesn't need to match
 5. Extra parameters like regionUrl are acceptable
 6. The AI commonly does discovery calls even when slugs appear to be provided, to get region info
 

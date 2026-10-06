@@ -2,7 +2,7 @@ name: Post-merge tasks
 
 on:
   push:
-    branches: ["main", "release/*"]
+    branches: ["main", "release/*", "release/mcp/**"]
   workflow_dispatch:
 
 jobs:
@@ -26,7 +26,7 @@ jobs:
         run: pnpm install
 
       - name: Build
-        run: pnpm build
+        run: pnpm --filter '@sentry/mcp-server...' --if-present run build
 
       - name: Run linter
         run: pnpm lint

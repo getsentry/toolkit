@@ -1,0 +1,12 @@
+file($name, $body) where {
+  $name <: not r".*migration\.ts$",
+  $name <: not r".*db/sqlite\.ts$",
+  $body <: contains `$db.exec($sql)` as $match where {
+    $sql <: or {
+      r".*BEGIN.*",
+      r".*COMMIT.*",
+      r".*ROLLBACK.*"
+    }
+  },
+  register_diagnostic(span=$match, message="Use db.transaction()() instead of manual BEGIN/COMMIT/ROLLBACK.")
+}

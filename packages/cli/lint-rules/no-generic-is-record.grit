@@ -1,0 +1,22 @@
+file($name, $body) where {
+  $name <: r".*src/.*",
+  $body <: contains or {
+    `function isRecord($args): $return_type { $function_body }` as $match,
+    `function isRecord($args) { $function_body }` as $match,
+    `async function isRecord($args): $return_type { $function_body }` as $match,
+    `async function isRecord($args) { $function_body }` as $match,
+    `const isRecord = ($args): $return_type => $implementation` as $match,
+    `const isRecord = ($args) => $implementation` as $match,
+    `const isRecord = $arg => $implementation` as $match,
+    `const isRecord: $type = ($args) => $implementation` as $match,
+    `const isRecord = function ($args) { $function_body }` as $match,
+    `const isRecord: $type = function ($args) { $function_body }` as $match,
+    `let isRecord = ($args): $return_type => $implementation` as $match,
+    `let isRecord = ($args) => $implementation` as $match,
+    `let isRecord = $arg => $implementation` as $match,
+    `let isRecord: $type = ($args) => $implementation` as $match,
+    `let isRecord = function ($args) { $function_body }` as $match,
+    `let isRecord: $type = function ($args) { $function_body }` as $match
+  },
+  register_diagnostic(span=$match, message="Use a local, shape-specific guard (for example, hasFileMap()) instead of the generic isRecord() name.")
+}

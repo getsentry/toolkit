@@ -39,6 +39,12 @@ import updateIssue from "./update-issue";
 import linkIssue from "./link-issue";
 import unlinkIssue from "./unlink-issue";
 import searchEvents from "./search-events";
+import searchErrors from "./search-errors";
+import searchLogs from "./search-logs";
+import searchTraces from "./search-traces";
+import searchMetrics from "./search-metrics";
+import searchProfiles from "./search-profiles";
+import searchReplays from "./search-replays";
 import createTeam from "./create-team";
 import createProject from "./create-project";
 import updateProject from "./update-project";
@@ -135,6 +141,12 @@ const catalogTools = {
   update_issue: updateIssue,
   link_issue: linkIssue,
   unlink_issue: unlinkIssue,
+  search_errors: searchErrors,
+  search_logs: searchLogs,
+  search_traces: searchTraces,
+  search_metrics: searchMetrics,
+  search_profiles: searchProfiles,
+  search_replays: searchReplays,
   search_events: searchEvents,
   create_team: createTeam,
   create_project: createProject,

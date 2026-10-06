@@ -1,0 +1,43 @@
+{
+  "data": [
+    {
+      "sentry.item_id": "a0a1a2a3a4a5a6a7a8a9b0b1b2b3b4b5",
+      "timestamp": "2025-01-30T14:32:15+00:00",
+      "timestamp_precise": 1770060419044800300,
+      "message": "Detailed test log message",
+      "severity": "info",
+      "trace": "abc123def456abc123def456abc12345",
+      "project": "test-project",
+      "environment": "production",
+      "release": "1.0.0",
+      "sdk.name": "sentry.javascript.node",
+      "sdk.version": "8.0.0",
+      "span_id": "span123abc",
+      "code.function": "handleRequest",
+      "code.file.path": "src/handlers/api.ts",
+      "code.line.number": "42",
+      "sentry.otel.kind": null,
+      "sentry.otel.status_code": null,
+      "sentry.otel.instrumentation_scope.name": null
+    }
+  ],
+  "meta": {
+    "fields": {
+      "sentry.item_id": "string",
+      "timestamp": "string",
+      "timestamp_precise": "number",
+      "message": "string",
+      "severity": "string",
+      "trace": "string",
+      "project": "string",
+      "environment": "string",
+      "release": "string",
+      "sdk.name": "string",
+      "sdk.version": "string",
+      "span_id": "string",
+      "code.function": "string",
+      "code.file.path": "string",
+      "code.line.number": "string"
+    }
+  }
+}

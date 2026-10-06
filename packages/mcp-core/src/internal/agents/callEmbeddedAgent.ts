@@ -5,7 +5,7 @@ import {
   NoOutputGeneratedError,
   Output,
   RetryError,
-  stepCountIs,
+  type StepResult,
   type Tool,
 } from "ai";
 import type { z } from "zod";
@@ -17,6 +17,9 @@ import {
 } from "../../errors";
 import { logIssue, logWarn } from "../../telem/logging";
 import { getAgentProvider } from "./provider-factory";
+
+// Tool work gets this many model steps; a validated final response may get one more.
+const MAX_WORK_STEPS = 5;
 
 /**
  * Resolve the underlying provider failure from an AI SDK error.
@@ -112,13 +115,24 @@ export async function callEmbeddedAgent<
   prompt,
   tools,
   schema,
+  isReadyToFinalize,
 }: {
   system: string;
   prompt: string;
   tools: Record<string, Tool>;
   schema: TSchema;
+  /** Whether this step produced a result that permits a final response. */
+  isReadyToFinalize?: (step: StepResult<Record<string, Tool>>) => boolean;
 }): Promise<EmbeddedAgentResult<TOutput>> {
   const capturedToolCalls: ToolCall[] = [];
+
+  function shouldAllowFinalResponseStep(
+    steps: StepResult<Record<string, Tool>>[],
+  ): boolean {
+    if (steps.length !== MAX_WORK_STEPS) return false;
+    const lastStep = steps.at(-1);
+    return lastStep !== undefined && (isReadyToFinalize?.(lastStep) ?? false);
+  }
 
   // Get the configured provider (OpenAI, Azure OpenAI, or Anthropic)
   const provider = getAgentProvider();
@@ -129,7 +143,12 @@ export async function callEmbeddedAgent<
       system,
       prompt,
       tools,
-      stopWhen: stepCountIs(5),
+      stopWhen: ({ steps }) =>
+        steps.length >= MAX_WORK_STEPS && !shouldAllowFinalResponseStep(steps),
+      prepareStep: ({ steps }) => {
+        if (shouldAllowFinalResponseStep(steps)) return { toolChoice: "none" };
+        return undefined;
+      },
       experimental_output: Output.object({ schema }),
       experimental_telemetry: {
         isEnabled: true,

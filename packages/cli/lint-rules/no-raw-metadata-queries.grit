@@ -1,0 +1,14 @@
+file($name, $body) where {
+  $name <: not r".*utils\.ts$",
+  $name <: not r".*migration\.ts$",
+  $body <: contains or {
+    `$db.query($sql)` as $match where {
+      $sql <: or {
+        r".*SELECT value FROM metadata.*",
+        r".*DELETE FROM metadata.*"
+      }
+    },
+    `runUpsert($db, "metadata", $data, $keys)` as $match
+  },
+  register_diagnostic(span=$match, message="Use getMetadata/setMetadata/clearMetadata from db/utils.js instead of raw metadata queries.")
+}

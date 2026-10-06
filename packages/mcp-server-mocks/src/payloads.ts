@@ -76,6 +76,12 @@ import traceItemsAttributesSpansNumberFixture from "./fixtures/trace-items-attri
 import traceItemsAttributesSpansStringFixture from "./fixtures/trace-items-attributes-spans-string.json" with {
   type: "json",
 };
+import traceItemsAttributesSpansNumberWithContextFixture from "./fixtures/trace-items-attributes-spans-number-with-context.json" with {
+  type: "json",
+};
+import traceItemsAttributesSpansStringWithContextFixture from "./fixtures/trace-items-attributes-spans-string-with-context.json" with {
+  type: "json",
+};
 import traceItemsAttributesFixture from "./fixtures/trace-items-attributes.json" with {
   type: "json",
 };
@@ -129,6 +135,8 @@ export {
   traceItemsAttributesFixture,
   traceItemsAttributesSpansStringFixture,
   traceItemsAttributesSpansNumberFixture,
+  traceItemsAttributesSpansNumberWithContextFixture,
+  traceItemsAttributesSpansStringWithContextFixture,
   traceItemsAttributesLogsStringFixture,
   traceItemsAttributesLogsNumberFixture,
   traceMetaFixture,

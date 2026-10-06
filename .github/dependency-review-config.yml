@@ -1,4 +1,8 @@
 # React Router's advisory only affects applications using its unstable RSC APIs.
 # This application uses the stable browser router and has no RSC integration.
+# provider-utils 2.2.8 retains APIs required by ui-utils 1.2.11. Its checked-in
+# pnpm patch backports the upstream bounded-response fix, and check:patches
+# exercises oversized-body rejection and cancellation against the nested copy.
 allow-ghsas:
   - GHSA-qwww-vcr4-c8h2
+  - GHSA-866g-f22w-33x8

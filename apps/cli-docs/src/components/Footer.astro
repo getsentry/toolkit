@@ -1,0 +1,7 @@
+---
+import StarlightThemeFooter from "@sentry/starlight-theme/components/Footer.astro";
+
+const isHomepage = Astro.locals.starlightRoute.id === "";
+---
+
+{!isHomepage && <StarlightThemeFooter />}

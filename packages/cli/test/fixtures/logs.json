@@ -1,0 +1,23 @@
+{
+  "data": [
+    {
+      "sentry.item_id": "log-001",
+      "timestamp": "2025-01-30T14:32:15+00:00",
+      "timestamp_precise": 1770060419044800300,
+      "message": "Test log message",
+      "severity": "info",
+      "trace": "abc123def456abc123def456abc12345"
+    },
+    {
+      "sentry.item_id": "log-002",
+      "timestamp": "2025-01-30T14:32:10+00:00",
+      "timestamp_precise": 1770060414044800300,
+      "message": "Error occurred in payment processing",
+      "severity": "error",
+      "trace": "def456abc123def456abc123def45678"
+    }
+  ],
+  "meta": {
+    "fields": {}
+  }
+}

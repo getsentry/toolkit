@@ -4,6 +4,8 @@
   "files": {
     "includes": [
       "**",
+      "!!apps/cli-docs",
+      "!!packages/cli",
       "!**/worker-configuration.d.ts",
       "!**/tsconfig*.json",
       "!**/packages/mcp-server-mocks/src/fixtures"

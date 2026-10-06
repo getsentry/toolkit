@@ -1,0 +1,80 @@
+---
+import config from "virtual:starlight/user-config";
+
+import Search from "virtual:starlight/components/Search";
+import SiteTitle from "virtual:starlight/components/SiteTitle";
+import SocialIcons from "virtual:starlight/components/SocialIcons";
+
+const isHomepage = Astro.locals.starlightRoute.id === "";
+const shouldRenderSearch =
+  config.pagefind ||
+  config.components.Search !== "@astrojs/starlight/components/Search.astro";
+
+const baseUrl = import.meta.env.BASE_URL;
+const base = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+---
+
+<div class:list={["header", "sl-flex", { "header-homepage": isHomepage }]}>
+  <div class="sl-flex header-left">
+    <SiteTitle />
+  </div>
+
+  <div class="sl-flex header-right">
+    {!isHomepage && shouldRenderSearch && <Search />}
+    {isHomepage && <a href={`${base}getting-started/`} class="header-nav-link">Docs</a>}
+    {!isHomepage && <span class="header-nav-link header-nav-active">Docs</span>}
+    <SocialIcons />
+  </div>
+</div>
+
+<style>
+  .header {
+    gap: 1rem;
+    justify-content: space-between;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+    padding: 0;
+  }
+
+  .header-homepage {
+    max-width: var(--sl-content-width);
+    margin: 0 auto;
+  }
+
+  .header-left {
+    flex: 0 0 auto;
+  }
+
+  .header-right {
+    flex: 0 0 auto;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .header-nav-link {
+    color: #fff !important;
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 500;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    opacity: 0.9;
+  }
+
+  .header-nav-link:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .header-nav-active {
+    opacity: 1;
+    cursor: default;
+  }
+
+  .header-nav-active:hover {
+    background: none;
+  }
+</style>

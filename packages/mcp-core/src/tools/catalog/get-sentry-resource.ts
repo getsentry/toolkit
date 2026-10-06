@@ -1,6 +1,5 @@
-import { getActiveSpan, setTag } from "@sentry/core";
+import { getActiveSpan, setAttributes, setTags } from "@sentry/core";
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
 import type { SentryApiService } from "../../api-client";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -19,6 +18,7 @@ import {
   ParamOrganizationSlug,
   ParamPackageNames,
 } from "../../schema";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId } from "../../utils/slug-validation";
 import getAIConversationDetails from "./get-agent-conversation-details";
@@ -200,7 +200,7 @@ function resolveFromParsedUrl(
   if (detectedType === "unknown") {
     if (parsed.transaction) {
       throw new UserInputError(
-        `Detected a performance summary URL for transaction "${parsed.transaction}". Use \`search_events\` to find traces and performance data for this transaction.`,
+        `Detected a performance summary URL for transaction "${parsed.transaction}". Use \`search_traces\` to find traces and performance data for this transaction.`,
       );
     }
     throw new UserInputError(
@@ -544,11 +544,13 @@ export default defineTool({
       );
     }
 
-    setTag("resource.type", resolved.type);
-    setOrganizationContext(resolved.organizationSlug);
-    if (resolved.spanId) {
-      setTag("trace.span_id", resolved.spanId);
-    }
+    const resourceContext = { "resource.type": resolved.type };
+    setTags(resourceContext);
+    setAttributes(resourceContext);
+    setTargetTagsAndAttributes({
+      organizationSlug: resolved.organizationSlug,
+      spanId: resolved.spanId,
+    });
 
     getActiveSpan()?.setAttribute("app.resource.type", resolved.type);
 

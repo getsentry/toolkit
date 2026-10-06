@@ -24,8 +24,8 @@ concurrency:
 jobs:
   publish:
     if: >-
-      github.repository == 'getsentry/sentry-mcp' &&
-      ((github.event_name == 'release' && !github.event.release.prerelease) ||
+      (github.repository == 'getsentry/sentry-mcp' || github.repository == 'getsentry/toolkit') &&
+      ((github.event_name == 'release' && !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'cli@')) ||
        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -1,0 +1,5 @@
+file($name, $body) where {
+  $name <: r".*src/commands/.*",
+  $body <: contains `stdout.write($args)` as $call,
+  register_diagnostic(span=$call, message="Don't call stdout.write() in commands. Yield CommandOutput instead and let the buildCommand wrapper handle output rendering.")
+}

@@ -1,21 +1,21 @@
+import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
-import { getActiveSpan, setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
+import { UserInputError } from "../../errors";
+import { hasAgentProvider } from "../../internal/agents/provider-factory";
+import { withProviderFallback } from "../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
 import { ensureIssueWithinProjectConstraint } from "../../internal/tool-helpers/issue";
-import type { ServerContext } from "../../types";
 import {
   ParamOrganizationSlug,
   ParamPeriod,
-  ParamRegionUrl,
   ParamProjectSlug,
+  ParamRegionUrl,
 } from "../../schema";
-import { hasAgentProvider } from "../../internal/agents/provider-factory";
-import { withProviderFallback } from "../../internal/agents/provider-fallback";
-import { UserInputError } from "../../errors";
-import { searchIssueEventsAgent } from "../support/search-issue-events/agent";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 import { formatErrorResults } from "../support/search-events/formatters";
+import { searchIssueEventsAgent } from "../support/search-issue-events/agent";
 import { RECOMMENDED_FIELDS } from "../support/search-issue-events/config";
 import { parseIssueParams } from "../support/search-issue-events/utils";
 
@@ -143,11 +143,11 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    setOrganizationContext(organizationSlug);
-    setTag("issue.id", issueId);
-    if (params.projectSlug) {
-      setTag("project.slug", params.projectSlug);
-    }
+    setTargetTagsAndAttributes({
+      organizationSlug,
+      projectSlug: params.projectSlug,
+      issueId,
+    });
 
     await ensureIssueWithinProjectConstraint({
       apiService,

@@ -1,0 +1,190 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": ["ultracite/core"],
+  // The .gitignore Biome honors lives at the monorepo root (two levels up).
+  // Point Biome's VCS integration there so `useIgnoreFile` reads the root file,
+  // whose patterns are `packages/cli/`-prefixed. (The package-level .gitignore
+  // is for plain git only; Biome does not read it.)
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true,
+    "root": "../.."
+  },
+  "plugins": [
+    "./lint-rules/no-stdout-write-in-commands.grit",
+    "./lint-rules/no-process-stdout-in-commands.grit",
+    "./lint-rules/no-raw-metadata-queries.grit",
+    "./lint-rules/no-manual-transactions.grit",
+    "./lint-rules/no-inline-touch-cache.grit",
+    "./lint-rules/no-stderr-write-in-commands.grit",
+    "./lint-rules/no-args-join-in-release.grit",
+    "./lint-rules/no-direct-target-resolution.grit",
+    "./lint-rules/no-generic-is-record.grit",
+    "./lint-rules/prefer-paginate-helper.grit"
+  ],
+  "files": {
+    // custom-ca.ts excluded: Biome's type analysis hits the 200k type limit
+    // on the node:tls module graph — an internal Biome bug that surfaces
+    // non-deterministically as error vs warning. See biome issue tracker.
+    "includes": [
+      "!test/init-eval/templates",
+      "!dist-build",
+      // The codemod package is a self-contained Codemod (jssg) project with
+      // its own tooling/tests (`codemods/sentry-v3-to-v4`); it uses the
+      // `codemod:ast-grep` runtime import and intentionally "bad" v3 fixtures,
+      // so it must not be linted/formatted by the repo's Biome config.
+      "!codemods",
+      // custom-ca.ts blows past Biome's type-analysis limit when pulled into
+      // the module graph (internal Biome bug); force-ignore even via a test.
+      "!!src/lib/custom-ca.ts",
+      // output.ts hits the same 200k type-analysis limit once valibot's
+      // GenericSchema graph is pulled in — the same internal Biome bug, surfacing
+      // non-deterministically (main passes by a hair; unrelated PRs trip it,
+      // e.g. #1499, #1501). Force-ignore until Biome raises/fixes the limit.
+      "!!src/lib/formatters/output.ts"
+    ]
+  },
+  "javascript": {},
+  "linter": {
+    "rules": {
+      "style": {
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "@stricli/core": {
+                "importNames": ["buildCommand", "buildRouteMap"],
+                "message": "Import buildCommand from '../lib/command.js' and buildRouteMap from '../lib/route-map.js' instead. The wrappers inject telemetry and standard subcommand aliases."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "overrides": [
+    {
+      // Silent-catch enforcement is scoped to production code under src/**.
+      // The grandfathered backlog is pinned with inline `// biome-ignore
+      // lint/plugin` comments; `pnpm run lint` runs with `--error-on-warnings`
+      // so an orphaned suppression fails as `suppressions/unused`, keeping the
+      // backlog shrink-only. Replaces the old script/silent-catch-baseline.json
+      // ratchet (see #1531).
+      "includes": ["src/**/*.ts"],
+      "plugins": ["./lint-rules/no-silent-catch.grit"]
+    },
+    {
+      // The React-hook lint rules infer "this is a hook" from the
+      // `use*` naming convention. We have a couple of test helpers
+      // (`useTestConfigDir`, `useEnvSandbox`) that share the prefix
+      // by coincidence — they register `beforeEach`/`afterEach` and
+      // have nothing to do with React. Without these overrides every
+      // call site lights up `useHookAtTopLevel` since making the
+      // tsconfig JSX-aware (for `OpenTuiUI`) flipped the rule on.
+      // The actual React tree lives in `src/lib/init/ui/opentui-app.tsx`
+      // and keeps the rule active.
+      "includes": ["test/**/*.ts", "src/**/*.ts", "!src/**/*.tsx"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useHookAtTopLevel": "off",
+            "useExhaustiveDependencies": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["test/**/*.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "useTopLevelRegex": "off",
+            "noDelete": "off"
+          },
+          "style": {
+            "useBlockStatements": "off",
+            "noNonNullAssertion": "off"
+          },
+          "suspicious": {
+            "useAwait": "off"
+          }
+        }
+      }
+    },
+    {
+      // A few DB modules still have genuinely async functions (stat() for mtime validation,
+      // clearResponseCache for auth cleanup). The useAwait rule is off for these specific files.
+      "includes": [
+        "src/lib/db/dsn-cache.ts",
+        "src/lib/db/project-root-cache.ts",
+        "src/lib/db/auth.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "useAwait": "off"
+          }
+        }
+      }
+    },
+    {
+      // src/index.ts is the library entry point — re-exports SentryError, SentryOptions, SentrySDK
+      // db/index.ts exports db connection utilities - not a barrel file but triggers the rule
+      // api-client.ts is a barrel that re-exports from src/lib/api/ domain modules
+      // to preserve the existing import path for all consumers
+      // markdown.ts re-exports isPlainOutput from plain-detect.ts for backward compat
+      // script/debug-id.ts re-exports from src/lib/sourcemap/debug-id.ts for build scripts
+      "includes": [
+        "src/index.ts",
+        "src/lib/db/index.ts",
+        "src/lib/api-client.ts",
+        "src/lib/formatters/markdown.ts",
+        "script/debug-id.ts"
+      ],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    },
+    {
+      // command.ts and route-map.ts are the canonical wrappers — they must import from @stricli/core
+      "includes": ["src/lib/command.ts", "src/lib/route-map.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      // Commands must use colorTag() from markdown.ts — not raw chalk.
+      // Raw chalk bypasses the plain-output pipeline (NO_COLOR, SENTRY_PLAIN_OUTPUT).
+      "includes": ["src/commands/**/*.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@stricli/core": {
+                    "importNames": ["buildCommand", "buildRouteMap"],
+                    "message": "Import buildCommand from '../lib/command.js' and buildRouteMap from '../lib/route-map.js' instead. The wrappers inject telemetry and standard subcommand aliases."
+                  },
+                  "chalk": {
+                    "message": "Use colorTag() from formatters/markdown.js for colored output. Raw chalk bypasses the plain-output pipeline (NO_COLOR, SENTRY_PLAIN_OUTPUT)."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

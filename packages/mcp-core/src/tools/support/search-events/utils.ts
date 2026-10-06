@@ -590,6 +590,7 @@ export async function fetchCustomAttributes(
     attributeTypes?: TraceItemAttributeType[];
     substringMatch?: string;
     query?: string;
+    context?: boolean;
   } = {},
 ): Promise<{
   attributes: Record<string, string>;
@@ -640,6 +641,7 @@ export async function fetchCustomAttributes(
       attributeTypes: options.attributeTypes,
       substringMatch: options.substringMatch,
       query: options.query,
+      context: options.context,
     });
 
     for (const attr of attributesResponse) {

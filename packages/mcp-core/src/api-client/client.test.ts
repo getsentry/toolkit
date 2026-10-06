@@ -1309,6 +1309,7 @@ describe("listOrganizations", () => {
       if (url.includes("/organizations/")) {
         return Promise.resolve({
           ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
           json: () => Promise.resolve(mockOrgs),
         });
       }
@@ -1320,12 +1321,17 @@ describe("listOrganizations", () => {
       accessToken: "test-token",
     });
 
-    const result = await apiService.listOrganizations();
+    const { organizations, nextCursor } = await apiService.listOrganizations();
 
     expect(callCount).toBe(1); // Single call, no region fanout
-    expect(result).toHaveLength(2);
-    expect(result).toContainEqual(expect.objectContaining({ slug: "org-us" }));
-    expect(result).toContainEqual(expect.objectContaining({ slug: "org-eu" }));
+    expect(organizations).toHaveLength(2);
+    expect(organizations).toContainEqual(
+      expect.objectContaining({ slug: "org-us" }),
+    );
+    expect(organizations).toContainEqual(
+      expect.objectContaining({ slug: "org-eu" }),
+    );
+    expect(nextCursor).toBeNull();
     // Region fanout is no longer used
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/users/me/regions/"),
@@ -1345,6 +1351,7 @@ describe("listOrganizations", () => {
       if (url.includes("/organizations/")) {
         return Promise.resolve({
           ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
           json: () => Promise.resolve(mockOrgs),
         });
       }
@@ -1356,11 +1363,12 @@ describe("listOrganizations", () => {
       accessToken: "test-token",
     });
 
-    const result = await apiService.listOrganizations();
+    const { organizations, nextCursor } = await apiService.listOrganizations();
 
     expect(callCount).toBe(1); // Only 1 org call, no regions call
-    expect(result).toHaveLength(2);
-    expect(result).toEqual(mockOrgs);
+    expect(organizations).toHaveLength(2);
+    expect(organizations).toEqual(mockOrgs);
+    expect(nextCursor).toBeNull();
     // Verify that regions endpoint was not called
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/users/me/regions/"),
@@ -1970,6 +1978,39 @@ describe("API query builders", () => {
       expect(params.get("substringMatch")).toBe("tags[");
       expect(params.get("query")).toBe('transaction:"VPN connections"');
       expect(params.get("attributeType")).toBeNull();
+      expect(params.get("expand")).toBeNull();
+    });
+
+    it("should request attribute context when context is enabled", async () => {
+      const apiService = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+      const urls: string[] = [];
+
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        urls.push(url);
+
+        return Promise.resolve({
+          ok: true,
+          headers: {
+            get: (key: string) =>
+              key === "content-type" ? "application/json" : null,
+          },
+          json: () => Promise.resolve([]),
+        });
+      });
+
+      await apiService.listTraceItemAttributes({
+        organizationSlug: "test-org",
+        itemType: "spans",
+        context: true,
+      });
+
+      expect(urls).toHaveLength(1);
+      const params = new URL(urls[0]!).searchParams;
+      expect(params.get("itemType")).toBe("spans");
+      expect(params.get("expand")).toBe("context");
     });
 
     it("should validate events requests via the validate endpoint", async () => {

@@ -15,6 +15,20 @@ import {
 } from "./utils";
 
 const SEARCH_EVENTS_DATASETS = [...PUBLIC_EVENTS_DATASETS, "replays"] as const;
+const successfulValidateSearchOutputSchema = z.object({
+  result: z.object({ valid: z.literal(true) }),
+});
+
+export function hasSuccessfulSearchValidation(
+  toolResults: readonly { toolName: string; output: unknown }[],
+): boolean {
+  // A step may validate several candidates; any successful one qualifies.
+  return toolResults.some(
+    ({ toolName, output }) =>
+      toolName === "validateSearch" &&
+      successfulValidateSearchOutputSchema.safeParse(output).success,
+  );
+}
 
 // .default("") on explanation is safe because structuredOutputs: false is set via providerOptions.
 // If structuredOutputs is re-enabled, remove .default() calls (OpenAI requires all fields in 'required').
@@ -228,5 +242,7 @@ export async function searchEventsAgent(
       whoami: whoamiTool,
     },
     schema: searchEventsAgentOutputSchema,
+    isReadyToFinalize: ({ toolResults }) =>
+      hasSuccessfulSearchValidation(toolResults),
   });
 }

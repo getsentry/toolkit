@@ -1,0 +1,5 @@
+file($name, $body) where {
+  $name <: r".*src/commands/release/.*",
+  $body <: contains `args.join($sep)` as $call,
+  register_diagnostic(span=$call, message="Don't join variadic release args with args.join(). Declare positionals as a Stricli tuple and resolve them via resolveReleaseTarget()/parseReleaseArg() so Stricli enforces arity instead of silently swallowing extra arguments. See src/commands/release/parse.ts.")
+}
