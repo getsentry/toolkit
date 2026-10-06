@@ -14,13 +14,65 @@ import {
   property,
   uniqueArray,
 } from "fast-check";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { SENTRY_SCOPES } from "../../src/lib/api-scope.js";
 import { ValidationError } from "../../src/lib/errors.js";
-import { OAUTH_SCOPES, resolveOAuthScopeString } from "../../src/lib/oauth.js";
+import {
+  OAUTH_SCOPES,
+  performDeviceFlow,
+  resolveOAuthScopeString,
+} from "../../src/lib/oauth.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 const knownScopeArb = constantFrom(...SENTRY_SCOPES);
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe("performDeviceFlow polling", () => {
+  test("keeps the interval for pending responses and adds five seconds after slow_down", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+
+    const token = {
+      access_token: "test-token",
+      token_type: "Bearer",
+      expires_in: 3600,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          device_code: "test-code",
+          user_code: "ABCD",
+          verification_uri: "https://sentry.example/oauth/device/",
+          interval: 1,
+          expires_in: 30,
+        })
+      )
+      .mockResolvedValueOnce(
+        Response.json({ error: "authorization_pending" }, { status: 400 })
+      )
+      .mockResolvedValueOnce(
+        Response.json({ error: "slow_down" }, { status: 400 })
+      )
+      .mockResolvedValueOnce(Response.json(token));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = performDeviceFlow({ onUserCode: vi.fn() });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(5999);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toEqual(token);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+});
 
 describe("resolveOAuthScopeString", () => {
   test("default scopes include Team Admin for project creation", () => {

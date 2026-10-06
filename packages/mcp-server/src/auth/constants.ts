@@ -15,9 +15,6 @@ export const DEVICE_CODE_ENDPOINT = "/oauth/device/code/";
 export const TOKEN_ENDPOINT = "/oauth/token/";
 export const DEVICE_CODE_SCOPES = Object.keys(SCOPES).join(" ");
 
-/** Interval increment on slow_down response (RFC 8628). */
-export const SLOW_DOWN_INCREMENT_SEC = 5;
-
 /**
  * Whether device code auth is available for this host.
  * Supports sentry.io and regional subdomains (us.sentry.io, eu.sentry.io).

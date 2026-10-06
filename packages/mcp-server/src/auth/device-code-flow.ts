@@ -5,10 +5,10 @@ import {
   deviceCodeRequestBody,
   deviceTokenRequestBody,
 } from "@sentry/toolkit-core/oauth-device";
+import { nextDevicePollInterval } from "@sentry/toolkit-core/oauth-poll";
 import {
   DEVICE_CODE_ENDPOINT,
   DEVICE_CODE_SCOPES,
-  SLOW_DOWN_INCREMENT_SEC,
   TOKEN_ENDPOINT,
 } from "./constants";
 import {
@@ -102,10 +102,8 @@ export async function pollForToken({
 
     switch (errorCode) {
       case "authorization_pending":
-        // Keep polling at current interval
-        continue;
       case "slow_down":
-        pollInterval += SLOW_DOWN_INCREMENT_SEC;
+        pollInterval = nextDevicePollInterval(pollInterval, errorCode);
         continue;
       case "access_denied":
         throw new DeviceCodeError(

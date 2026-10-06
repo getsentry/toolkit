@@ -14,6 +14,10 @@
     "./oauth-device": {
       "types": "./src/oauth-device.ts",
       "default": "./src/oauth-device.ts"
+    },
+    "./oauth-poll": {
+      "types": "./src/oauth-poll.ts",
+      "default": "./src/oauth-poll.ts"
     }
   },
   "scripts": {
