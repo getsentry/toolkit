@@ -44,9 +44,7 @@ describe("API bearer token validation", () => {
       accessToken: "valid\nsecret",
     });
 
-    const error = await api
-      .listOrganizations()
-      .catch((cause: unknown) => cause);
+    const error = await api.listOrganizations().catch((cause: unknown) => cause);
     expect(error).toBeInstanceOf(ConfigurationError);
     expect(String(error)).toContain("Malformed authentication token");
     expect(String(error)).not.toContain("valid\nsecret");
@@ -56,9 +54,7 @@ describe("API bearer token validation", () => {
       host: "sentry.example.com",
       accessToken: "",
     });
-    await expect(emptyTokenApi.listOrganizations()).rejects.toThrow(
-      ConfigurationError,
-    );
+    await expect(emptyTokenApi.listOrganizations()).rejects.toThrow(ConfigurationError);
     expect(requests).toBe(0);
   });
 });
