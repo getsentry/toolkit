@@ -389,7 +389,7 @@ Authenticate with Sentry
 Work with Sentry organizations
 
 - `sentry org list` — List organizations
-- `sentry org view <org>` — View details of an organization
+- `sentry org view [<org>]` — View details of an organization
 
 → Full flags and examples: `references/org.md`
 
@@ -399,8 +399,8 @@ Work with Sentry projects
 
 - `sentry project create [<org>/]<name>:<platform>...` — Create one or more projects
 - `sentry project delete <org/project>` — Delete a project
-- `sentry project list <org/project>` — List projects
-- `sentry project view <org/project>` — View details of a project
+- `sentry project list [<org/project>]` — List projects
+- `sentry project view [<org/project>]` — View details of a project
 
 → Full flags and examples: `references/project.md`
 
@@ -408,7 +408,7 @@ Work with Sentry projects
 
 Manage Sentry issues
 
-- `sentry issue list <org/project>` — List issues in a project
+- `sentry issue list [<org/project>]` — List issues in a project
 - `sentry issue events <issue>` — List events for a specific issue
 - `sentry issue explain <issue...>` — Analyze one or more issues using Seer AI
 - `sentry issue plan <issue>` — Generate a solution plan using Seer AI
@@ -444,12 +444,12 @@ Make an authenticated API request
 
 Manage Sentry alert rules
 
-- `sentry alert issues list <org/project>` — List issue alert rules
+- `sentry alert issues list [<org/project>]` — List issue alert rules
 - `sentry alert issues view <org/project/rule-id-or-name>` — View an issue alert rule
-- `sentry alert issues create <target>` — Create an issue alert rule
+- `sentry alert issues create [<target>]` — Create an issue alert rule
 - `sentry alert issues delete <org/project/rule-id-or-name>` — Delete an issue alert rule
 - `sentry alert issues edit <org/project/rule-id-or-name>` — Edit an issue alert rule
-- `sentry alert metrics list <target>` — List metric alert rules
+- `sentry alert metrics list [<target>]` — List metric alert rules
 - `sentry alert metrics view <org/rule-id-or-name>` — View a metric alert rule
 - `sentry alert metrics create <target>` — Create a metric alert rule
 - `sentry alert metrics delete <org/rule-id-or-name>` — Delete a metric alert rule
@@ -470,14 +470,14 @@ Manage mobile build artifacts
 
 CLI-related commands
 
-- `sentry cli completion <shell>` — Print the shell completion script
+- `sentry cli completion [<shell>]` — Print the shell completion script
 - `sentry cli defaults <key value...>` — View and manage default settings
 - `sentry cli feedback <message...>` — Send feedback about the CLI
 - `sentry cli fix` — Diagnose and repair CLI database issues
 - `sentry cli import` — Import settings from legacy .sentryclirc files
 - `sentry cli setup` — Configure shell integration
 - `sentry cli uninstall` — Uninstall Sentry CLI
-- `sentry cli upgrade <version>` — Update the Sentry CLI to the latest version
+- `sentry cli upgrade [<version>]` — Update the Sentry CLI to the latest version
 
 → Full flags and examples: `references/cli.md`
 
@@ -493,8 +493,8 @@ Manage code mappings for stack trace linking
 
 List and view agent conversations
 
-- `sentry agent-conversation list <org>` — List recent agent conversations
-- `sentry agent-conversation view <org/conversation-id>` — View an agent conversation transcript
+- `sentry agent-conversation list [<org>]` — List recent agent conversations
+- `sentry agent-conversation view [<org>/]<conversation-id>` — View an agent conversation transcript
 
 → Full flags and examples: `references/agent-conversation.md`
 
@@ -547,7 +547,7 @@ Search and query current Sentry documentation
 
 Find Sentry DSNs
 
-- `sentry dsn list <org/project>` — List DSNs
+- `sentry dsn list [<org/project>]` — List DSNs
 
 → Full flags and examples: `references/dsn.md`
 
@@ -581,7 +581,7 @@ Upload React Native sourcemaps from build steps
 
 Search and inspect Session Replays
 
-- `sentry replay list <org/project>` — List recent Session Replays
+- `sentry replay list [<org/project>]` — List recent Session Replays
 - `sentry replay view <replay-id-or-url...>` — View a Session Replay
 - `sentry replay download <replay-id-or-url...>` — Download a Session Replay as rrweb JSON
 
@@ -591,14 +591,14 @@ Search and inspect Session Replays
 
 Work with Sentry releases
 
-- `sentry release list <org/project>` — List releases with adoption and health metrics
+- `sentry release list [<org/project>]` — List releases with adoption and health metrics
 - `sentry release view <org/version>` — View release details with health metrics
 - `sentry release create <org/version>` — Create a release
 - `sentry release finalize <org/version>` — Finalize a release
 - `sentry release delete <org/version>` — Delete a release
 - `sentry release archive <org/version>` — Archive a release
 - `sentry release restore <org/version>` — Restore an archived release
-- `sentry release deploy <org/version> <environment> <name>` — Create a deploy for a release
+- `sentry release deploy <org/version> <environment> [<name>]` — Create a deploy for a release
 - `sentry release deploys <org/version>` — List deploys for a release
 - `sentry release set-commits <org/version>` — Set commits for a release
 - `sentry release propose-version` — Propose a release version
@@ -609,7 +609,7 @@ Work with Sentry releases
 
 Work with Sentry repositories
 
-- `sentry repo list <org/project>` — List repositories
+- `sentry repo list [<org/project>]` — List repositories
 
 → Full flags and examples: `references/repo.md`
 
@@ -617,7 +617,7 @@ Work with Sentry repositories
 
 Work with Sentry teams
 
-- `sentry team list <org/project>` — List teams
+- `sentry team list [<org/project>]` — List teams
 
 → Full flags and examples: `references/team.md`
 
@@ -625,7 +625,7 @@ Work with Sentry teams
 
 Query aggregate event data (Explore)
 
-- `sentry explore <target>` — Query aggregate event data (Explore)
+- `sentry explore [<target>]` — Query aggregate event data (Explore)
 
 → Full flags and examples: `references/explore.md`
 
@@ -633,7 +633,7 @@ Query aggregate event data (Explore)
 
 Manage User Feedback
 
-- `sentry feedback list <org/project>` — List and search User Feedback
+- `sentry feedback list [<org/project>]` — List and search User Feedback
 - `sentry feedback view <feedback>` — View a User Feedback item
 - `sentry feedback resolve <feedback>` — Mark User Feedback as resolved
 - `sentry feedback unresolve <feedback>` — Return User Feedback to the inbox
@@ -655,7 +655,7 @@ View Sentry logs
 Work with Sentry cron monitors
 
 - `sentry monitor run <monitor-slug command...>` — Wrap a command with cron monitor check-ins
-- `sentry monitor list <org/project>` — List cron monitors
+- `sentry monitor list [<org/project>]` — List cron monitors
 
 → Full flags and examples: `references/monitor.md`
 
@@ -700,7 +700,7 @@ Check Sentry service status
 
 View distributed traces
 
-- `sentry trace list <org/project>` — List recent traces in a project
+- `sentry trace list [<org/project>]` — List recent traces in a project
 - `sentry trace view <org/project/trace-id...>` — View details of a specific trace
 - `sentry trace logs <org/project/trace-id...>` — View logs associated with a trace
 
@@ -710,8 +710,8 @@ View distributed traces
 
 Manage product trials
 
-- `sentry trial list <org>` — List product trials
-- `sentry trial start <name> <org>` — Start a product trial
+- `sentry trial list [<org>]` — List product trials
+- `sentry trial start <name> [<org>]` — Start a product trial
 
 → Full flags and examples: `references/trial.md`
 
@@ -719,7 +719,7 @@ Manage product trials
 
 Initialize Sentry in your project (experimental)
 
-- `sentry init <target> <directory>` — Initialize Sentry in your project (experimental)
+- `sentry init [<target>] [<directory>]` — Initialize Sentry in your project (experimental)
 
 → Full flags and examples: `references/init.md`
 

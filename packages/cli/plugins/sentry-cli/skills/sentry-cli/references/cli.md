@@ -11,7 +11,7 @@ requires:
 
 CLI-related commands
 
-### `sentry cli completion <shell>`
+### `sentry cli completion [<shell>]`
 
 Print the shell completion script
 
@@ -172,7 +172,7 @@ sentry cli uninstall --yes --keep-config
 sentry cli uninstall
 ```
 
-### `sentry cli upgrade <version>`
+### `sentry cli upgrade [<version>]`
 
 Update the Sentry CLI to the latest version
 

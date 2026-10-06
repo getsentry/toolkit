@@ -27,6 +27,7 @@ import type { Token } from "marked";
 import { marked } from "marked";
 import {
   extractCommandPathFromHeading,
+  formatCommandExamples,
   matchExampleToCommand,
 } from "./generate-skill-markdown.js";
 import { DOCS_CONTENT, DOCS_PUBLIC } from "./paths.js";
@@ -596,13 +597,9 @@ function generateFullCommandDoc(cmd: CommandInfo): string {
     }
   }
 
-  if (cmd.examples.length > 0) {
-    lines.push("");
-    lines.push("**Examples:**");
-    lines.push("");
-    lines.push("```bash");
-    lines.push(cmd.examples.join("\n\n"));
-    lines.push("```");
+  const examples = formatCommandExamples(cmd.examples);
+  if (examples) {
+    lines.push("", examples);
   }
 
   return lines.join("\n");

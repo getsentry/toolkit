@@ -11,7 +11,7 @@ requires:
 
 Manage Sentry issues
 
-### `sentry issue list <org/project>`
+### `sentry issue list [<org/project>]`
 
 List issues in a project
 

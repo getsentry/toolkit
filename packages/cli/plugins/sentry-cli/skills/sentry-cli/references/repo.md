@@ -11,7 +11,7 @@ requires:
 
 Work with Sentry repositories
 
-### `sentry repo list <org/project>`
+### `sentry repo list [<org/project>]`
 
 List repositories
 

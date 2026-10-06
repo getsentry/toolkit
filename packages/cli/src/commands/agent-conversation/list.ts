@@ -17,6 +17,8 @@ import { ContextError } from "../../lib/errors.js";
 import { formatConversationTable } from "../../lib/formatters/conversation.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import { validateResourceId } from "../../lib/input-validation.js";
+import { getPositionalString } from "../../lib/introspect.js";
 import {
   buildListCommand,
   LIST_DEFAULT_LIMIT,
@@ -60,6 +62,18 @@ type ConversationListResult = {
 const COMMAND_NAME = "agent-conversation list";
 const PAGINATION_KEY = "agent-conversation-list";
 const DEFAULT_PERIOD = "7d";
+const POSITIONAL = {
+  kind: "tuple",
+  parameters: [
+    {
+      placeholder: "org",
+      brief: "Organization slug",
+      parse: String,
+      optional: true,
+    },
+  ],
+} as const;
+const USAGE_HINT = `sentry ${COMMAND_NAME} ${getPositionalString(POSITIONAL)}`;
 
 function parseLimit(value: string): number {
   return validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT);
@@ -100,12 +114,29 @@ export const listCommand = buildListCommand("agent-conversation", {
     brief: "List recent agent conversations",
     fullDescription:
       "List recent agent conversations from a Sentry organization.\n\n" +
-      "Examples:\n" +
-      "  sentry agent-conversation list                # List recent conversations\n" +
-      "  sentry agent-conversation list my-org         # Explicit org\n" +
-      "  sentry agent-conversation list --limit 50     # Show more\n" +
-      "  sentry agent-conversation list --period 24h   # Last 24 hours\n" +
-      '  sentry agent-conversation list -q "has:errors" # Filter\n',
+      "The organization is auto-detected when omitted.",
+    examples: [
+      {
+        description: "List recent agent conversations",
+        command: "sentry agent-conversation list",
+      },
+      {
+        description: "Explicit organization",
+        command: "sentry agent-conversation list my-org",
+      },
+      {
+        description: "Show more, last 24 hours",
+        command: "sentry agent-conversation list --limit 50 --period 24h",
+      },
+      {
+        description: "Filter conversations",
+        command: 'sentry agent-conversation list -q "has:errors"',
+      },
+      {
+        description: "Paginate through results",
+        command: "sentry agent-conversation list my-org -c next",
+      },
+    ],
   },
   output: {
     human: formatListHuman,
@@ -113,17 +144,7 @@ export const listCommand = buildListCommand("agent-conversation", {
     schema: ConversationListItemSchema,
   },
   parameters: {
-    positional: {
-      kind: "tuple",
-      parameters: [
-        {
-          placeholder: "org",
-          brief: "Organization slug",
-          parse: String,
-          optional: true,
-        },
-      ],
-    },
+    positional: POSITIONAL,
     flags: {
       limit: {
         kind: "parsed",
@@ -147,10 +168,13 @@ export const listCommand = buildListCommand("agent-conversation", {
   },
   async *func(this: SentryContext, flags: ListFlags, target?: string) {
     const { cwd } = this;
+    if (target !== undefined) {
+      validateResourceId(target, "organization slug");
+    }
 
     const resolved = await resolveOrg({ org: target, cwd });
     if (!resolved) {
-      throw new ContextError("Organization", `sentry ${COMMAND_NAME} <org>`);
+      throw new ContextError("Organization", USAGE_HINT);
     }
     const org = resolved.org;
 

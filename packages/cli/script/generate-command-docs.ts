@@ -25,6 +25,10 @@
 
 import { mkdirSync, rmSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
+import {
+  formatCommandArguments,
+  formatCommandExamples,
+} from "./generate-skill-markdown.js";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
 
 // Ensure src/generated/skill-content.ts exists before importing the route tree.
@@ -49,7 +53,6 @@ import type { EnvVarEntry } from "../src/lib/env-registry.js";
 import type {
   CommandInfo,
   FlagInfo,
-  PositionalInfo,
   RouteInfo,
   RouteMap,
 } from "../src/lib/introspect.js";
@@ -134,32 +137,6 @@ function formatFlagRow(
   return `| \`${syntax}\` | ${desc} |`;
 }
 
-/**
- * Escape angle brackets in text so they render as literal `<` / `>`
- * in HTML output rather than being interpreted as HTML tags.
- */
-function escapeAngleBrackets(text: string): string {
-  return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-/** Format positional arguments as a markdown table */
-function formatPositionalsTable(positionals: PositionalInfo[]): string {
-  if (positionals.length === 0) {
-    return "";
-  }
-
-  const lines: string[] = [];
-  lines.push("**Arguments:**");
-  lines.push("");
-  lines.push("| Argument | Description |");
-  lines.push("|----------|-------------|");
-  for (const p of positionals) {
-    const placeholder = `\`<${p.placeholder}>\``;
-    lines.push(`| ${placeholder} | ${escapeAngleBrackets(p.brief)} |`);
-  }
-  return lines.join("\n");
-}
-
 /** Format flags as a markdown options table */
 function formatFlagsTable(
   flags: FlagInfo[],
@@ -197,7 +174,7 @@ function generateCommandSection(cmd: CommandInfo): string {
   // Arguments table
   if (cmd.positionals.length > 0) {
     lines.push("");
-    lines.push(formatPositionalsTable(cmd.positionals));
+    lines.push(formatCommandArguments(cmd.positionals));
   }
 
   // Options table
@@ -205,6 +182,11 @@ function generateCommandSection(cmd: CommandInfo): string {
   if (visibleFlags.length > 0) {
     lines.push("");
     lines.push(formatFlagsTable(visibleFlags, cmd.aliases));
+  }
+
+  const examples = formatCommandExamples(cmd.examples);
+  if (examples) {
+    lines.push("", examples);
   }
 
   return lines.join("\n");

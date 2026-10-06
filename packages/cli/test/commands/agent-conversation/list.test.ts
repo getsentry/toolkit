@@ -44,7 +44,7 @@ vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
 
 // biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
-import { ContextError } from "../../../src/lib/errors.js";
+import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
   const actual =
@@ -278,6 +278,33 @@ describe("listCommand.func", () => {
     await expect(func.call(context, HUMAN_FLAGS, undefined)).rejects.toThrow(
       ContextError
     );
+  });
+
+  test("uses the optional-org syntax in resolution errors", async () => {
+    resolveOrgSpy.mockResolvedValue(null);
+    const { context } = createMockContext();
+    const func = await listCommand.loader();
+    await expect(
+      func.call(context, HUMAN_FLAGS, undefined)
+    ).rejects.toMatchObject({
+      command: "sentry agent-conversation list [<org>]",
+    });
+  });
+
+  test.each([
+    "acme?x=1",
+    "acme#fragment",
+    "acme%20bad",
+    "acme bad",
+    "acme\tbad",
+  ])("rejects unsafe explicit organization %s before resolution", async (target) => {
+    const { context } = createMockContext();
+    const func = await listCommand.loader();
+    await expect(func.call(context, HUMAN_FLAGS, target)).rejects.toThrow(
+      ValidationError
+    );
+    expect(resolveOrgSpy).not.toHaveBeenCalled();
+    expect(listConversationsSpy).not.toHaveBeenCalled();
   });
 
   test("yields CommandOutput with conversation data (JSON)", async () => {
