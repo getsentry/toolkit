@@ -9,6 +9,7 @@ import {
   deviceCodeRequestBody,
   deviceTokenRequestBody,
 } from "@sentry/toolkit-core/oauth-device";
+import { nextDevicePollInterval } from "@sentry/toolkit-core/oauth-poll";
 import { safeParse } from "valibot";
 import type { TokenResponse } from "../types/index.js";
 import {
@@ -372,7 +373,7 @@ function pollForToken(deviceCode: string): Promise<TokenResponse> {
 
 type PollResult =
   | { status: "success"; token: TokenResponse }
-  | { status: "pending" }
+  | { status: "authorization_pending" }
   | { status: "slow_down" }
   | { status: "error"; message: string };
 
@@ -390,7 +391,7 @@ async function attemptPoll(deviceCode: string): Promise<PollResult> {
 
     switch (error.code) {
       case "authorization_pending":
-        return { status: "pending" };
+        return { status: "authorization_pending" };
       case "slow_down":
         return { status: "slow_down" };
       case "expired_token":
@@ -460,10 +461,9 @@ export async function performDeviceFlow(
     switch (result.status) {
       case "success":
         return result.token;
-      case "pending":
-        continue;
+      case "authorization_pending":
       case "slow_down":
-        pollInterval += 5;
+        pollInterval = nextDevicePollInterval(pollInterval, result.status);
         continue;
       case "error":
         throw new DeviceFlowError("authorization_failed", result.message);
