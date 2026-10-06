@@ -134,7 +134,7 @@ const issueAlertListMeta: ListCommandMeta = {
  */
 async function fetchRulesForTarget(
   target: ResolvedTarget,
-  options: { limit: number; startCursor?: string }
+  options: { limit: number; startCursor?: string },
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
     const rules: IssueAlertRule[] = [];
@@ -147,7 +147,7 @@ async function fetchRulesForTarget(
         {
           perPage: Math.min(options.limit - rules.length, API_MAX_PER_PAGE),
           cursor: serverCursor,
-        }
+        },
       );
 
       for (const rule of data) {
@@ -188,7 +188,7 @@ async function fetchRulesForTarget(
 
 async function resolveWebUrl(
   parsed: ReturnType<typeof parseOrgProjectArg>,
-  cwd: string
+  cwd: string,
 ): Promise<string> {
   if (parsed.type === "explicit") {
     return buildIssueAlertsUrl(parsed.org, parsed.project);
@@ -206,7 +206,7 @@ async function resolveWebUrl(
     const resolution = await classifyProjectSearchTarget(parsed);
     if (resolution.kind === "organization") {
       logger.warn(
-        `'${parsed.projectSlug}' is an organization, not a project. Opening organization '${resolution.org}'.`
+        `'${parsed.projectSlug}' is an organization, not a project. Opening organization '${resolution.org}'.`,
       );
       return buildIssueAlertsUrl(resolution.org);
     }
@@ -226,15 +226,15 @@ async function resolveWebUrl(
   if (orgs.length !== 1) {
     throw new ValidationError(
       "--web resolved alert rules in multiple organizations. Specify an explicit <org>/ or <org>/<project> target.",
-      "target"
+      "target",
     );
   }
 
   const projects = [...new Set(targets.map((t) => t.project))];
   return buildIssueAlertsUrl(
-    // biome-ignore lint/style/noNonNullAssertion: orgs length is checked above
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- orgs length is checked above
     orgs[0]!,
-    projects.length === 1 ? projects[0] : undefined
+    projects.length === 1 ? projects[0] : undefined,
   );
 }
 
@@ -247,15 +247,15 @@ type ResolvedTargetsOptions = {
   projectSearchResolution?: ProjectSearchTargetResolution;
 };
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: inherent multi-target resolution, compound cursor, error handling, and display logic
+// inherent multi-target resolution, compound cursor, error handling, and display logic
 async function handleResolvedTargets(
-  options: ResolvedTargetsOptions
+  options: ResolvedTargetsOptions,
 ): Promise<IssueAlertListResult> {
   const { parsed, flags, cwd, projectSearchResolution } = options;
 
   const { targets, footer, detectedDsns } = await resolveProjectBoundTargets(
     parsed,
-    { cwd, usageHint: USAGE_HINT, projectSearchResolution }
+    { cwd, usageHint: USAGE_HINT, projectSearchResolution },
   );
 
   if (targets.length === 0) {
@@ -270,11 +270,11 @@ async function handleResolvedTargets(
   const { cursor: rawCursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
   const { startCursors, exhausted: exhaustedTargets } = decodeTargetCursors(
     rawCursor,
-    sortedTargetKeys
+    sortedTargetKeys,
   );
 
   const activeTargets =
@@ -298,32 +298,32 @@ async function handleResolvedTargets(
         fetchGroup: fetchRulesForTarget,
         onProgress: (fetched) => {
           setMessage(
-            `${baseMessage}, ${fetched} and counting (up to ${flags.limit})...`
+            `${baseMessage}, ${fetched} and counting (up to ${flags.limit})...`,
           );
         },
-      })
+      }),
   );
 
   const validResults: AlertRuleListFetchResult[] = [];
   const failures: { target: ResolvedTarget; error: Error }[] = [];
 
   for (let i = 0; i < results.length; i++) {
-    // biome-ignore lint/style/noNonNullAssertion: index within bounds
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- index within bounds
     const result = results[i]!;
     if (result.success) {
       validResults.push(result.data);
     } else {
-      // biome-ignore lint/style/noNonNullAssertion: index within bounds
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- index within bounds
       failures.push({ target: activeTargets[i]!, error: result.error });
     }
   }
 
   if (validResults.length === 0 && failures.length > 0) {
-    // biome-ignore lint/style/noNonNullAssertion: guarded by failures.length > 0
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- guarded by failures.length > 0
     const { error: first } = failures[0]!;
     throwAlertListFetchFailure(
       `Failed to fetch alert rules from ${targets.length} project(s)`,
-      first
+      first,
     );
   }
 
@@ -332,7 +332,7 @@ async function handleResolvedTargets(
       .map(({ target: t }) => `${t.org}/${t.project}`)
       .join(", ");
     logger.warn(
-      `Failed to fetch alert rules from ${failedNames}. Showing results from ${validResults.length} project(s).`
+      `Failed to fetch alert rules from ${failedNames}. Showing results from ${validResults.length} project(s).`,
     );
   }
 
@@ -353,20 +353,20 @@ async function handleResolvedTargets(
 
   // Apply client-side name filter
   const allRows: AlertRuleRow[] = validResults.flatMap((r) =>
-    r.rules.map((rule) => ({ rule, target: r.target }))
+    r.rules.map((rule) => ({ rule, target: r.target })),
   );
   const filteredRows = flags.query
     ? allRows.filter((row) =>
         (row.rule.name ?? "")
           .toLowerCase()
-          .includes(flags.query?.toLowerCase() ?? "")
+          .includes(flags.query?.toLowerCase() ?? ""),
       )
     : allRows;
 
   const displayRows = trimWithGroupGuarantee(
     filteredRows,
     flags.limit,
-    (row) => `${row.target.org}/${row.target.project}`
+    (row) => `${row.target.org}/${row.target.project}`,
   );
   const trimmed = displayRows.length < filteredRows.length;
   const cursorValues: (string | null)[] = sortedTargetKeys.map((key) => {
@@ -397,7 +397,7 @@ async function handleResolvedTargets(
     PAGINATION_KEY,
     contextKey,
     direction,
-    compoundNextCursor
+    compoundNextCursor,
   );
   const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 
@@ -406,7 +406,7 @@ async function handleResolvedTargets(
     failures,
     "project",
     ({ target: t }) => `${t.org}/${t.project}`,
-    ({ error }) => error
+    ({ error }) => error,
   );
 
   const nav = paginationHint({
@@ -465,7 +465,7 @@ function formatIssueAlertListHuman(result: IssueAlertListResult): string {
 
   const rows = result.displayRows ?? [];
   const uniqueProjects = new Set(
-    rows.map((r) => `${r.target.org}/${r.target.project}`)
+    rows.map((r) => `${r.target.org}/${r.target.project}`),
   );
   const isMultiProject = uniqueProjects.size > 1;
 
@@ -574,12 +574,12 @@ export const listCommand = buildListCommand("alert issues", {
     if (flags.web) {
       await openInBrowser(
         await resolveWebUrl(parsed, cwd),
-        "issue alert rules"
+        "issue alert rules",
       );
       return;
     }
 
-    // biome-ignore lint/suspicious/noExplicitAny: shared handler accepts any mode variant
+    // oxlint-disable-next-line typescript/no-explicit-any -- shared handler accepts any mode variant
     const resolveAndHandle: ModeHandler<any> = (ctx) =>
       handleResolvedTargets({ ...ctx, flags });
 

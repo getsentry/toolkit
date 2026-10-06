@@ -88,13 +88,13 @@ const scopedHeadersOverride = new AsyncLocalStorage<{
 function assertValidHeaderName(name: string, source: string): void {
   if (!VALID_HEADER_NAME_RE.test(name)) {
     throw new ConfigError(
-      `Invalid header name '${name}' in ${source}. Header names must contain only alphanumeric characters, hyphens, and RFC 7230 token characters.`
+      `Invalid header name '${name}' in ${source}. Header names must contain only alphanumeric characters, hyphens, and RFC 7230 token characters.`,
     );
   }
 
   if (FORBIDDEN_HEADER_NAMES.has(name.toLowerCase())) {
     throw new ConfigError(
-      `Cannot override reserved header '${name}' in ${source}. This header is managed by the CLI.`
+      `Cannot override reserved header '${name}' in ${source}. This header is managed by the CLI.`,
     );
   }
 }
@@ -124,7 +124,7 @@ export function parseCustomHeaders(raw: string): readonly [string, string][] {
     const colonIndex = trimmed.indexOf(":");
     if (colonIndex === -1) {
       throw new ConfigError(
-        `Invalid header in SENTRY_CUSTOM_HEADERS: '${trimmed}'. Expected 'Name: Value' format.`
+        `Invalid header in SENTRY_CUSTOM_HEADERS: '${trimmed}'. Expected 'Name: Value' format.`,
       );
     }
 
@@ -133,7 +133,7 @@ export function parseCustomHeaders(raw: string): readonly [string, string][] {
 
     if (!name) {
       throw new ConfigError(
-        `Invalid header in SENTRY_CUSTOM_HEADERS: empty header name in '${trimmed}'.`
+        `Invalid header in SENTRY_CUSTOM_HEADERS: empty header name in '${trimmed}'.`,
       );
     }
 
@@ -160,7 +160,7 @@ export function parseCustomHeaders(raw: string): readonly [string, string][] {
  * @throws {ConfigError} On invalid or reserved header names
  */
 function validateCustomHeadersOverride(
-  headers: Record<string, string> | undefined
+  headers: Record<string, string> | undefined,
 ): readonly [string, string][] | undefined {
   if (headers === undefined) {
     return;
@@ -171,7 +171,7 @@ function validateCustomHeadersOverride(
     const name = rawName.trim();
     if (!name) {
       throw new ConfigError(
-        "Invalid header in SentryOptions.headers: empty header name."
+        "Invalid header in SentryOptions.headers: empty header name.",
       );
     }
     assertValidHeaderName(name, "SentryOptions.headers");
@@ -181,18 +181,18 @@ function validateCustomHeadersOverride(
 }
 
 export function setCustomHeadersOverride(
-  headers: Record<string, string> | undefined
+  headers: Record<string, string> | undefined,
 ): void {
   getHeaderState().overrideHeaders = validateCustomHeadersOverride(headers);
 }
 
 export function withCustomHeadersOverride<T>(
   headers: Record<string, string> | undefined,
-  callback: () => T
+  callback: () => T,
 ): T {
   return scopedHeadersOverride.run(
     { value: validateCustomHeadersOverride(headers) },
-    callback
+    callback,
   );
 }
 
@@ -239,7 +239,7 @@ function passesSelfHostedGuard(): boolean {
   if (!state.saasWarningLogged) {
     state.saasWarningLogged = true;
     log.warn(
-      "Custom headers are set but no self-hosted Sentry instance is configured. Headers will be ignored."
+      "Custom headers are set but no self-hosted Sentry instance is configured. Headers will be ignored.",
     );
   }
   return false;
@@ -300,7 +300,7 @@ export function getCustomHeaders(): readonly [string, string][] {
 export function applyCustomHeaders(
   headers: Headers,
   requestUrl: string | URL | Request,
-  isTrusted = isRequestOriginTrustedForCustomHeaders(requestUrl)
+  isTrusted = isRequestOriginTrustedForCustomHeaders(requestUrl),
 ): void {
   const state = getHeaderState();
   const customHeaders = getCustomHeaders();
@@ -313,7 +313,7 @@ export function applyCustomHeaders(
       state.untrustedDestinationWarningLogged = true;
       log.warn(
         "Skipping custom headers for request to untrusted host. " +
-          "If this is legitimate, run 'sentry auth login --url <url>' against the intended instance."
+          "If this is legitimate, run 'sentry auth login --url <url>' against the intended instance.",
       );
     }
     return;

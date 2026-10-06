@@ -80,19 +80,19 @@ describe("compilePattern", () => {
 
   test("caseSensitive: false adds i flag", () => {
     expect(compilePattern("foo", { caseSensitive: false }).toString()).toBe(
-      "/foo/i"
+      "/foo/i",
     );
   });
 
   test("inline + caseSensitive merge cleanly", () => {
     expect(
-      compilePattern("(?m)^foo", { caseSensitive: false }).toString()
+      compilePattern("(?m)^foo", { caseSensitive: false }).toString(),
     ).toBe("/^foo/im");
   });
 
   test("multiline: true adds m flag", () => {
     expect(compilePattern("foo", { multiline: true }).toString()).toBe(
-      "/foo/m"
+      "/foo/m",
     );
   });
 
@@ -108,7 +108,7 @@ describe("compilePattern", () => {
     } catch (error) {
       expect((error as ValidationError).field).toBe("pattern");
       expect((error as ValidationError).message).toMatch(
-        /Invalid grep pattern:/
+        /Invalid grep pattern:/,
       );
     }
   });

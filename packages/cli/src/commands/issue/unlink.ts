@@ -46,7 +46,7 @@ export const unlinkCommand = buildDeleteCommand({
     this: SentryContext,
     flags: UnlinkFlags,
     issueArg: string,
-    url: string
+    url: string,
   ) {
     const { org, issueId } = await resolveOrgAndIssueId({
       issueArg,
@@ -56,7 +56,7 @@ export const unlinkCommand = buildDeleteCommand({
     if (!(flags["dry-run"] || isConfirmationBypassed(flags))) {
       const confirmed = await confirmByTyping(
         issueArg,
-        `Type '${issueArg}' to unlink ${url}:`
+        `Type '${issueArg}' to unlink ${url}:`,
       );
       if (!confirmed) {
         return { hint: "Cancelled." };

@@ -60,7 +60,7 @@ const COMMAND_NAME = "project delete";
  */
 async function buildPermissionError(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<ApiError> {
   const label = `'${orgSlug}/${projectSlug}'`;
   const rolesWithAccess = "Manager, Owner, or Admin";
@@ -70,7 +70,7 @@ async function buildPermissionError(
   // org listing has already been fetched during this session.
   let orgRole = getCachedOrgRole(orgSlug);
   if (!orgRole) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       const org = await getOrganization(orgSlug);
       orgRole = (org as Record<string, unknown>).orgRole as string | undefined;
@@ -85,7 +85,7 @@ async function buildPermissionError(
         `Your organization role is '${orgRole}'. ` +
         `Project deletion requires a ${rolesWithAccess} role.\n` +
         "  Contact an org admin to change your role or delete the project for you.",
-      403
+      403,
     );
   }
 
@@ -94,7 +94,7 @@ async function buildPermissionError(
       `Permission denied: cannot delete ${label}.\n\n` +
         `Your org role ('${orgRole}') should have permission. ` +
         "If using a custom auth token, ensure it includes the 'project:admin' scope.",
-      403
+      403,
     );
   }
 
@@ -102,7 +102,7 @@ async function buildPermissionError(
     `Permission denied: cannot delete ${label}.\n\n` +
       `This requires a ${rolesWithAccess} role, or a token with the 'project:admin' scope.\n` +
       `  Check your role:  sentry org view ${orgSlug}`,
-    403
+    403,
   );
 }
 
@@ -110,7 +110,7 @@ async function buildPermissionError(
 function buildResult(
   orgSlug: string,
   project: { slug: string; name: string },
-  dryRun?: boolean
+  dryRun?: boolean,
 ): ProjectDeleteResult {
   return {
     orgSlug,
@@ -181,7 +181,7 @@ export const deleteCommand = buildDeleteCommand({
     requireExplicitTarget(
       parsed,
       "Project target",
-      `sentry ${COMMAND_NAME} <org>/<project>`
+      `sentry ${COMMAND_NAME} <org>/<project>`,
     );
 
     const resolved = await resolveProjectBoundTarget(parsed, cwd, COMMAND_NAME);
@@ -203,7 +203,7 @@ export const deleteCommand = buildDeleteCommand({
       const expected = `${orgSlug}/${project.slug}`;
       const confirmed = await confirmByTyping(
         expected,
-        `Type '${expected}' to permanently delete project '${project.name}':`
+        `Type '${expected}' to permanently delete project '${project.name}':`,
       );
       if (!confirmed) {
         log.info("Cancelled.");

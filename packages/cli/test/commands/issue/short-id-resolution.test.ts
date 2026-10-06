@@ -85,7 +85,7 @@ beforeEach(async () => {
     if (url.pathname === "/api/0/organizations/") {
       return Response.json(
         listingStatus === 200 ? listedOrgs : { detail: "Forbidden" },
-        { status: listingStatus }
+        { status: listingStatus },
       );
     }
     for (const [key, issue] of issues) {
@@ -120,26 +120,26 @@ describe("short IDs with configured organization context", () => {
   test.each([
     { envOrg: secondOrg.slug, expectedOrg: secondOrg.slug },
     { envOrg: undefined, expectedOrg: targetOrg.slug },
-  ])("honors env and .sentryclirc precedence: $expectedOrg", async ({
-    envOrg,
-    expectedOrg,
-  }) => {
-    setDefaultOrganization(cachedOrg.slug);
-    writeFileSync(
-      join(getConfigDir(), ".sentryclirc"),
-      `[defaults]\norg = ${targetOrg.slug}\n`
-    );
-    if (envOrg) {
-      process.env.SENTRY_ORG = envOrg;
-    }
-    for (const org of [cachedOrg, targetOrg, secondOrg]) {
-      addIssue(org.slug);
-    }
+  ])(
+    "honors env and .sentryclirc precedence: $expectedOrg",
+    async ({ envOrg, expectedOrg }) => {
+      setDefaultOrganization(cachedOrg.slug);
+      writeFileSync(
+        join(getConfigDir(), ".sentryclirc"),
+        `[defaults]\norg = ${targetOrg.slug}\n`,
+      );
+      if (envOrg) {
+        process.env.SENTRY_ORG = envOrg;
+      }
+      for (const org of [cachedOrg, targetOrg, secondOrg]) {
+        addIssue(org.slug);
+      }
 
-    expect((await resolve()).org).toBe(expectedOrg);
-    expect(listingRequests()).toHaveLength(0);
-    expect(shortIdRequests()).toHaveLength(1);
-  });
+      expect((await resolve()).org).toBe(expectedOrg);
+      expect(listingRequests()).toHaveLength(0);
+      expect(shortIdRequests()).toHaveLength(1);
+    },
+  );
 
   test("does not fall through to another org when the configured org returns 404", async () => {
     setDefaultOrganization(targetOrg.slug);
@@ -157,7 +157,7 @@ describe("short IDs with configured organization context", () => {
     setDefaultOrganization(targetOrg.slug);
     setProjectAliases(
       { f: { orgSlug: cachedOrg.slug, projectSlug: "frontend" } },
-      ""
+      "",
     );
     addIssue(cachedOrg.slug, "FRONTEND-5BS");
 
@@ -181,26 +181,27 @@ describe("short IDs missing from cached organizations", () => {
       `/api/0/organizations/target-org/shortids/${SHORT_ID}/`,
     ]);
     expect(shortIdRequests().every((url) => url.origin === REGION_URL)).toBe(
-      true
+      true,
     );
   });
 
   test.each([
     { label: "unchanged", inventory: [cachedOrg] },
     { label: "new organization", inventory: [cachedOrg, targetOrg] },
-  ])("keeps a still-missing lookup bounded after refresh: $label", async ({
-    inventory,
-  }) => {
-    listedOrgs = inventory;
+  ])(
+    "keeps a still-missing lookup bounded after refresh: $label",
+    async ({ inventory }) => {
+      listedOrgs = inventory;
 
-    await expect(resolve()).rejects.toBeInstanceOf(ResolutionError);
+      await expect(resolve()).rejects.toBeInstanceOf(ResolutionError);
 
-    expect(listingRequests()).toHaveLength(1);
-    expect(shortIdRequests()).toHaveLength(inventory.length);
-    expect(new Set(shortIdRequests().map((url) => url.pathname)).size).toBe(
-      inventory.length
-    );
-  });
+      expect(listingRequests()).toHaveLength(1);
+      expect(shortIdRequests()).toHaveLength(inventory.length);
+      expect(new Set(shortIdRequests().map((url) => url.pathname)).size).toBe(
+        inventory.length,
+      );
+    },
+  );
 
   test("reports ambiguity when the refresh discovers two matching orgs", async () => {
     listedOrgs = [cachedOrg, targetOrg, secondOrg];
@@ -226,7 +227,7 @@ describe("short IDs missing from cached organizations", () => {
   test("does not scope the search to a DSN for a different project", async () => {
     writeFileSync(
       join(getConfigDir(), ".env"),
-      "SENTRY_DSN=https://abc@o123.ingest.de.sentry.io/456"
+      "SENTRY_DSN=https://abc@o123.ingest.de.sentry.io/456",
     );
     setCachedProject("123", "456", {
       orgSlug: cachedOrg.slug,

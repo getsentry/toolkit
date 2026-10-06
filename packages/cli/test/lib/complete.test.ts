@@ -28,7 +28,7 @@ useTestConfigDir("test-complete-");
 // -- Helpers --
 
 async function seedOrgs(
-  orgs: { slug: string; name: string; regionUrl?: string }[]
+  orgs: { slug: string; name: string; regionUrl?: string }[],
 ): Promise<void> {
   const entries: OrgRegionEntry[] = orgs.map((o) => ({
     slug: o.slug,
@@ -46,7 +46,7 @@ async function seedProjects(
     orgSlug: string;
     projectSlug: string;
     projectName: string;
-  }[]
+  }[],
 ): Promise<void> {
   for (const p of projects) {
     setCachedProject(p.orgId, p.projectId, {
@@ -112,7 +112,7 @@ describe("getCompletions: context detection", () => {
     ]);
     setProjectAliases(
       { app: { orgSlug: "acme", projectSlug: "existing" } },
-      "fingerprint"
+      "fingerprint",
     );
 
     expect(getCompletions(["project", "create"], "")).toEqual([
@@ -132,7 +132,7 @@ describe("getCompletions: context detection", () => {
     // Completion only ever looks at the current partial — a self-contained
     // colon pair completes the same way no matter what preceded it.
     expect(
-      getCompletions(["project", "create", "api:node"], "worker:java")
+      getCompletions(["project", "create", "api:node"], "worker:java"),
     ).toContainEqual({
       value: "worker:javascript",
       description: "Platform",
@@ -150,7 +150,7 @@ describe("completeProjectCreateSpec", () => {
       description: "Platform",
     });
     expect(result.every((completion) => completion.value.includes(":"))).toBe(
-      true
+      true,
     );
   });
 
@@ -170,14 +170,12 @@ describe("completeProjectCreateSpec", () => {
     expect(completeProjectCreateSpec("My App:java")).toEqual([]);
   });
 
-  test.each([
-    ":java",
-    "acme/:java",
-    "/app:java",
-    "acme/app/child:java",
-  ])("does not complete a malformed project target in %s", (partial) => {
-    expect(completeProjectCreateSpec(partial)).toEqual([]);
-  });
+  test.each([":java", "acme/:java", "/app:java", "acme/app/child:java"])(
+    "does not complete a malformed project target in %s",
+    (partial) => {
+      expect(completeProjectCreateSpec(partial)).toEqual([]);
+    },
+  );
 });
 
 describe("completeOrgSlugs", () => {
@@ -343,7 +341,7 @@ describe("completeAliases", () => {
         a: { orgSlug: "my-org", projectSlug: "frontend" },
         b: { orgSlug: "my-org", projectSlug: "backend" },
       },
-      "fingerprint"
+      "fingerprint",
     );
 
     const result = completeAliases("");
@@ -361,7 +359,7 @@ describe("completeAliases", () => {
         b: { orgSlug: "org", projectSlug: "proj-b" },
         abc: { orgSlug: "org", projectSlug: "proj-abc" },
       },
-      "fingerprint"
+      "fingerprint",
     );
 
     const result = completeAliases("a");

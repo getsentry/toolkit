@@ -119,10 +119,10 @@ function rowToCachedDsnEntry(row: DsnCacheRow): CachedDsnEntry {
 
   // Parse allResolved from all_dsns_json for inferred sources
   if (row.source === "inferred" && row.all_dsns_json) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       entry.allResolved = JSON.parse(
-        row.all_dsns_json
+        row.all_dsns_json,
       ) as CachedDsnEntry["allResolved"];
     } catch {
       // Ignore parse errors, allResolved will be undefined
@@ -163,7 +163,7 @@ export function getCachedDsn(directory: string): CachedDsnEntry | undefined {
 
 export function setCachedDsn(
   directory: string,
-  entry: Omit<CachedDsnEntry, "cachedAt">
+  entry: Omit<CachedDsnEntry, "cachedAt">,
 ): void {
   const db = getDatabase();
   const now = Date.now();
@@ -189,7 +189,7 @@ export function setCachedDsn(
       cached_at: now,
       last_accessed: now,
     },
-    ["directory"]
+    ["directory"],
   );
 
   maybeCleanupCaches();
@@ -198,7 +198,7 @@ export function setCachedDsn(
 /** Update resolved org/project info after API resolution. */
 export function updateCachedResolution(
   directory: string,
-  resolved: ResolvedProjectInfo
+  resolved: ResolvedProjectInfo,
 ): void {
   const db = getDatabase();
 
@@ -223,7 +223,7 @@ export function updateCachedResolution(
     resolved.projectSlug,
     resolved.projectName,
     Date.now(),
-    directory
+    directory,
   );
 }
 
@@ -247,9 +247,9 @@ export function clearDsnCache(directory?: string): void {
  */
 async function validateDirMtime(
   fullPath: string,
-  cachedMtime: number
+  cachedMtime: number,
 ): Promise<boolean> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const stats = await stat(fullPath);
     return Math.floor(stats.mtimeMs) === cachedMtime;
@@ -264,9 +264,9 @@ async function validateDirMtime(
  */
 async function validateFileMtime(
   fullPath: string,
-  cachedMtime: number
+  cachedMtime: number,
 ): Promise<boolean> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const stats = await stat(fullPath);
     if (!stats.isFile()) {
@@ -287,7 +287,7 @@ async function validateFileMtime(
  */
 async function validateSourceMtimes(
   projectRoot: string,
-  sourceMtimes: Record<string, number>
+  sourceMtimes: Record<string, number>,
 ): Promise<boolean> {
   for (const [relativePath, cachedMtime] of Object.entries(sourceMtimes)) {
     const fullPath = join(projectRoot, relativePath);
@@ -308,7 +308,7 @@ async function validateSourceMtimes(
  */
 async function validateDirMtimes(
   projectRoot: string,
-  dirMtimes: Record<string, number>
+  dirMtimes: Record<string, number>,
 ): Promise<boolean> {
   for (const [relativePath, cachedMtime] of Object.entries(dirMtimes)) {
     const fullPath = join(projectRoot, relativePath);
@@ -326,7 +326,7 @@ function isMtimesRecord(value: unknown): value is Record<string, number> {
     value !== null &&
     !Array.isArray(value) &&
     Object.values(value as Record<string, unknown>).every(
-      (v) => typeof v === "number"
+      (v) => typeof v === "number",
     )
   );
 }
@@ -349,7 +349,7 @@ function isArray(value: unknown): value is DetectedDsn[] {
  * @returns Cached detection or undefined if not cached/invalid
  */
 export async function getCachedDetection(
-  projectRoot: string
+  projectRoot: string,
 ): Promise<CachedDetection | undefined> {
   if (dsnCacheDisabled) {
     return;
@@ -440,7 +440,7 @@ export async function getCachedDetection(
  */
 export function setCachedDetection(
   projectRoot: string,
-  entry: DetectionCacheEntry
+  entry: DetectionCacheEntry,
 ): void {
   const db = getDatabase();
   const now = Date.now();
@@ -474,7 +474,7 @@ export function setCachedDetection(
       cached_at: now,
       last_accessed: now,
     },
-    ["directory"]
+    ["directory"],
   );
 
   maybeCleanupCaches();

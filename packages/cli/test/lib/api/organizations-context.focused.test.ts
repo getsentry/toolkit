@@ -92,7 +92,7 @@ describe("organization discovery credential context", () => {
               headers: {
                 Link: '<https://sentry.io/api/0/organizations/?cursor=next>; rel="next"; results="true"; cursor="next"',
               },
-            }
+            },
           );
         }
         return Response.json([
@@ -103,7 +103,7 @@ describe("organization discovery credential context", () => {
             links: { regionUrl: "https://de.sentry.io" },
           },
         ]);
-      }
+      },
     );
 
     const organizations = await listOrganizationsUncached();
@@ -119,15 +119,15 @@ describe("organization discovery credential context", () => {
       getOrgRegion(
         "page-two",
         "https://sentry.io",
-        identity("first-page-token")
-      )
+        identity("first-page-token"),
+      ),
     ).toBe("https://de.sentry.io");
     expect(
       getOrgRegion(
         "page-two",
         "https://sentry.io",
-        identity("concurrent-login-token")
-      )
+        identity("concurrent-login-token"),
+      ),
     ).toBeUndefined();
   });
 
@@ -154,7 +154,7 @@ describe("organization discovery credential context", () => {
         }
         requests.pages += 1;
         expect(request.headers.get("authorization")).toBe(
-          `Bearer rotated-access-${requests.refreshes}`
+          `Bearer rotated-access-${requests.refreshes}`,
         );
         return Response.json(
           [
@@ -170,9 +170,9 @@ describe("organization discovery credential context", () => {
                   Link: '<https://sentry.io/api/0/organizations/?cursor=next>; rel="next"; results="true"; cursor="next"',
                 },
               }
-            : undefined
+            : undefined,
         );
-      }
+      },
     );
 
     const orgs = await listOrganizationsUncached();
@@ -189,10 +189,10 @@ describe("organization discovery credential context", () => {
     globalThis.fetch = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         authorization.push(
-          new Request(input, init).headers.get("authorization")
+          new Request(input, init).headers.get("authorization"),
         );
         return Response.json([]);
-      }
+      },
     );
     const pending = listOrganizations();
     setAuthToken("second", undefined, undefined, { host: "https://sentry.io" });
@@ -215,11 +215,11 @@ describe("organization discovery credential context", () => {
           name: "Malformed Region",
           links: { regionUrl },
         },
-      ])
+      ]),
     );
     await listOrganizationsUncached();
     expect(
-      getOrgRegion("malformed-region", "https://sentry.io", identity(token))
+      getOrgRegion("malformed-region", "https://sentry.io", identity(token)),
     ).toBeUndefined();
   });
 
@@ -240,7 +240,7 @@ describe("organization discovery credential context", () => {
                 name: "Invalid Region",
                 links: { regionUrl: "ftp://region.example.com" },
               },
-            ]
+            ],
       );
     });
 
@@ -262,19 +262,19 @@ describe("organization discovery credential context", () => {
       "invalid-org",
     ]);
     expect(
-      getOrgRegion("invalid-org", "https://sentry.io", identity(token))
+      getOrgRegion("invalid-org", "https://sentry.io", identity(token)),
     ).toBeUndefined();
     expect(
-      getOrgRegion("valid-org", "https://sentry.io", identity(token))
+      getOrgRegion("valid-org", "https://sentry.io", identity(token)),
     ).toBe("https://sentry.io");
     expect(
-      getCachedOrganizations("https://sentry.io", identity(token))
+      getCachedOrganizations("https://sentry.io", identity(token)),
     ).toEqual([]);
     expect(
       getCachedOrganizations(
         "https://sentry.io",
-        identity("another-token")
-      ).map((org) => org.slug)
+        identity("another-token"),
+      ).map((org) => org.slug),
     ).toEqual(["foreign-org"]);
     expect((await listOrganizations()).map((org) => org.slug)).toEqual([
       "valid-org",
@@ -292,13 +292,13 @@ describe("organization discovery credential context", () => {
       return Response.json(
         requests.count === 1
           ? [{ id: "13", slug: "former-org", name: "Former" }]
-          : []
+          : [],
       );
     });
 
     await listOrganizationsUncached();
     expect(
-      getCachedOrganizations("https://sentry.io", identity(token))
+      getCachedOrganizations("https://sentry.io", identity(token)),
     ).toHaveLength(1);
     await expect(listOrganizationsUncached()).resolves.toEqual([]);
     await expect(listOrganizations()).resolves.toEqual([]);
@@ -327,9 +327,9 @@ describe("organization discovery credential context", () => {
     expect(
       getDatabase()
         .query(
-          "SELECT source_origin, response_origin, region_url FROM org_regions WHERE credential_identity = ? AND org_slug = ?"
+          "SELECT source_origin, response_origin, region_url FROM org_regions WHERE credential_identity = ? AND org_slug = ?",
         )
-        .get(identity("redirect-provenance-token"), "redirected-org")
+        .get(identity("redirect-provenance-token"), "redirected-org"),
     ).toEqual({
       source_origin: "https://sentry.io",
       response_origin: "https://de.sentry.io",
@@ -349,7 +349,7 @@ describe("organization discovery credential context", () => {
           name: "Path Region",
           links: { regionUrl: "https://sentry.example.com/sentry/" },
         },
-      ])
+      ]),
     );
 
     await listOrganizationsUncached();
@@ -357,8 +357,8 @@ describe("organization discovery credential context", () => {
       getOrgRegion(
         "path-region-org",
         "https://sentry.example.com",
-        identity("path-region-token")
-      )
+        identity("path-region-token"),
+      ),
     ).toBe("https://sentry.example.com/sentry");
   });
 
@@ -368,7 +368,7 @@ describe("organization discovery credential context", () => {
       host: "https://sentry.example.com",
     });
     globalThis.fetch = vi.fn(async () =>
-      Response.json([{ id: "6", slug: "pathless-org", name: "Pathless" }])
+      Response.json([{ id: "6", slug: "pathless-org", name: "Pathless" }]),
     );
 
     await listOrganizationsUncached();
@@ -376,8 +376,8 @@ describe("organization discovery credential context", () => {
       getOrgRegion(
         "pathless-org",
         "https://sentry.example.com",
-        identity("pathless-region-token")
-      )
+        identity("pathless-region-token"),
+      ),
     ).toBe("https://sentry.example.com/sentry");
   });
 
@@ -395,7 +395,7 @@ describe("organization discovery credential context", () => {
             headers: {
               Link: '<https://sentry.io/api/0/organizations/?cursor=next>; rel="next"; results="true"; cursor="next"',
             },
-          }
+          },
         );
       }
       if (requests.count <= 4) {
@@ -407,14 +407,14 @@ describe("organization discovery credential context", () => {
     });
 
     await expect(listOrganizationsUncached()).rejects.toThrow(
-      "Failed to list organizations"
+      "Failed to list organizations",
     );
     expect(
       getOrgRegion(
         "partial-org",
         "https://sentry.io",
-        identity("partial-page-token")
-      )
+        identity("partial-page-token"),
+      ),
     ).toBeUndefined();
     expect((await listOrganizations()).map((org) => org.slug)).toEqual([
       "complete-org",
@@ -436,17 +436,17 @@ describe("organization discovery credential context", () => {
       Response.json([{ id: "9", slug: "cached-org", name: "Cached" }], {
         headers: { "Cache-Control": "public, max-age=300" },
       }),
-      identity(token)
+      identity(token),
     );
     globalThis.fetch = vi.fn(async () =>
-      Response.json([{ id: "10", slug: "fresh-org", name: "Fresh" }])
+      Response.json([{ id: "10", slug: "fresh-org", name: "Fresh" }]),
     );
 
     const organizations = await listOrganizationsUncached();
     expect(organizations.map((org) => org.slug)).toEqual(["fresh-org"]);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     expect(
-      getOrgRegion("fresh-org", "https://sentry.io", identity(token))
+      getOrgRegion("fresh-org", "https://sentry.io", identity(token)),
     ).toBe("https://sentry.io");
   });
 });

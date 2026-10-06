@@ -20,7 +20,7 @@ describe("property: levenshtein", () => {
       property(shortStringArb, (s) => {
         expect(levenshtein(s, s)).toBe(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -29,7 +29,7 @@ describe("property: levenshtein", () => {
       property(shortStringArb, shortStringArb, (a, b) => {
         expect(levenshtein(a, b)).toBe(levenshtein(b, a));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -39,7 +39,7 @@ describe("property: levenshtein", () => {
         const dist = levenshtein(a, b);
         expect(dist).toBeLessThanOrEqual(Math.max(a.length, b.length));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -48,7 +48,7 @@ describe("property: levenshtein", () => {
       property(shortStringArb, shortStringArb, (a, b) => {
         expect(levenshtein(a, b)).toBeGreaterThanOrEqual(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -58,7 +58,7 @@ describe("property: levenshtein", () => {
         expect(levenshtein(s, "")).toBe(s.length);
         expect(levenshtein("", s)).toBe(s.length);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -70,7 +70,7 @@ describe("property: levenshtein", () => {
         const dbc = levenshtein(b, c);
         expect(dac).toBeLessThanOrEqual(dab + dbc);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -147,7 +147,7 @@ describe("fuzzyMatch: unit tests", () => {
     const items = ["prefix-match", "contains-prefix", "no-match"];
     const result = fuzzyMatch("prefix", items);
     expect(result.indexOf("prefix-match")).toBeLessThan(
-      result.indexOf("contains-prefix")
+      result.indexOf("contains-prefix"),
     );
   });
 });
@@ -165,7 +165,7 @@ describe("property: fuzzyMatch", () => {
         const result = fuzzyMatch(partial, candidates);
         expect(result).toContain(partial);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -179,7 +179,7 @@ describe("property: fuzzyMatch", () => {
         const result = fuzzyMatch("", candidates);
         expect(result.length).toBe(candidates.length);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -195,7 +195,7 @@ describe("property: fuzzyMatch", () => {
           expect(candidates).toContain(r);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

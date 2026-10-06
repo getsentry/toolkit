@@ -66,42 +66,45 @@ describe("legacy auth migration", () => {
     ["number", 123],
     ["null", null],
     ["object", { value: "synthetic-secret" }],
-  ])("preserves the original config and migrates other settings for %s", (_, token) => {
-    const { path, contents } = writeLegacyConfig(token);
+  ])(
+    "preserves the original config and migrates other settings for %s",
+    (_, token) => {
+      const { path, contents } = writeLegacyConfig(token);
 
-    // Opening the DB must remain possible so login/logout can recover.
-    const db = getDatabase();
-    expect(getAuthConfig()).toBeUndefined();
-    expect(db.query("SELECT * FROM auth").get()).toBeNull();
-    expect(getDefaultOrganization()).toBe("synthetic-org");
-    expect(getDefaultProject()).toBe("synthetic-project");
-    expect(
-      db
-        .query("SELECT org_slug FROM project_cache WHERE cache_key = ?")
-        .get("synthetic-cache-key")
-    ).toEqual({ org_slug: "synthetic-org" });
-    expect(
-      getMetadata(db, ["json_migration_completed"]).get(
-        "json_migration_completed"
-      )
-    ).toBe("true");
-    expect(readFileSync(path, "utf8")).toBe(contents);
+      // Opening the DB must remain possible so login/logout can recover.
+      const db = getDatabase();
+      expect(getAuthConfig()).toBeUndefined();
+      expect(db.query("SELECT * FROM auth").get()).toBeNull();
+      expect(getDefaultOrganization()).toBe("synthetic-org");
+      expect(getDefaultProject()).toBe("synthetic-project");
+      expect(
+        db
+          .query("SELECT org_slug FROM project_cache WHERE cache_key = ?")
+          .get("synthetic-cache-key"),
+      ).toEqual({ org_slug: "synthetic-org" });
+      expect(
+        getMetadata(db, ["json_migration_completed"]).get(
+          "json_migration_completed",
+        ),
+      ).toBe("true");
+      expect(readFileSync(path, "utf8")).toBe(contents);
 
-    const output = stderr.mock.calls.map(([chunk]) => String(chunk)).join("");
-    expect(output).toContain(
-      "Malformed authentication credentials were not migrated"
-    );
-    expect(output).toContain("config.json was kept");
-    expect(output).toContain("sentry auth login");
-    expect(output).not.toContain("synthetic-secret");
-    expect(output).not.toContain("synthetic-legacy-refresh");
-  });
+      const output = stderr.mock.calls.map(([chunk]) => String(chunk)).join("");
+      expect(output).toContain(
+        "Malformed authentication credentials were not migrated",
+      );
+      expect(output).toContain("config.json was kept");
+      expect(output).toContain("sentry auth login");
+      expect(output).not.toContain("synthetic-secret");
+      expect(output).not.toContain("synthetic-legacy-refresh");
+    },
+  );
 
   test("keeps an existing SQLite session when legacy credentials are invalid", () => {
     setAuthToken(
       "synthetic-existing-token",
       3600,
-      "synthetic-existing-refresh"
+      "synthetic-existing-refresh",
     );
     const before = getAuthConfig();
     const db = getDatabase();

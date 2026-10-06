@@ -57,7 +57,7 @@ type EditResult = {
 /** Merge query-level flags over existing widget query */
 function mergeQueries(
   flags: EditFlags,
-  existingQuery: DashboardWidgetQuery | undefined
+  existingQuery: DashboardWidgetQuery | undefined,
 ): DashboardWidgetQuery[] | undefined {
   const hasChanges =
     flags.query || flags.where !== undefined || flags["group-by"] || flags.sort;
@@ -83,7 +83,7 @@ function mergeQueries(
 /** Merge layout flags over existing layout, returning the result or the existing layout unchanged */
 function mergeLayout(
   flags: WidgetLayoutFlags,
-  existing: DashboardWidget
+  existing: DashboardWidget,
 ): DashboardWidget["layout"] {
   const hasChange =
     flags.col !== undefined ||
@@ -106,12 +106,12 @@ function mergeLayout(
 
 /**
  * Validate enum and aggregate constraints on the effective (merged) widget state.
- * Extracted from buildReplacement to stay under Biome's complexity limit.
+ * Extracted from buildReplacement to keep the validation readable.
  */
 function validateEnumsAndAggregates(
   flags: EditFlags,
   existing: DashboardWidget,
-  mergedQueries: DashboardWidgetQuery[] | undefined
+  mergedQueries: DashboardWidgetQuery[] | undefined,
 ): void {
   const newDataset = flags.dataset ?? existing.widgetType;
   const aggregatesToValidate =
@@ -137,7 +137,7 @@ function validateEnumsAndAggregates(
 function validateQueryConstraints(
   flags: EditFlags,
   existing: DashboardWidget,
-  mergedQueries: DashboardWidgetQuery[] | undefined
+  mergedQueries: DashboardWidgetQuery[] | undefined,
 ): void {
   if (!flags.sort) {
     return;
@@ -153,7 +153,7 @@ function validateQueryConstraints(
 /** Build the replacement widget object by merging flags over existing */
 function buildReplacement(
   flags: EditFlags,
-  existing: DashboardWidget
+  existing: DashboardWidget,
 ): DashboardWidget {
   const mergedQueries = mergeQueries(flags, existing.queries?.[0]);
   const baseLimit = flags.limit !== undefined ? flags.limit : existing.limit;
@@ -162,7 +162,7 @@ function buildReplacement(
   const limit = applyGroupLimitAutoDefault(
     flags["group-by"],
     columns,
-    baseLimit
+    baseLimit,
   );
 
   validateEnumsAndAggregates(flags, existing, mergedQueries);
@@ -327,7 +327,7 @@ export const editCommand = buildCommand({
         "Specify --index or --title to identify the widget to edit.\n\n" +
           "Example:\n" +
           "  sentry dashboard widget edit <dashboard> --title 'My Widget' --display bar",
-        "index"
+        "index",
       );
     }
 
@@ -350,20 +350,24 @@ export const editCommand = buildCommand({
     const orgSlug = await resolveOrgFromTarget(
       parsed,
       cwd,
-      "sentry dashboard widget edit <org>/ <dashboard> --title <name> --display <type>"
+      "sentry dashboard widget edit <org>/ <dashboard> --title <name> --display <type>",
     );
     const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
 
     // GET current dashboard → find widget → merge changes → PUT
     const current = await getDashboard(orgSlug, dashboardId).catch(
       async (error: unknown) =>
-        enrichDashboardError(error, { orgSlug, dashboardId, operation: "view" })
+        enrichDashboardError(error, {
+          orgSlug,
+          dashboardId,
+          operation: "view",
+        }),
     );
     const widgets = current.widgets ?? [];
     const widgetIndex = resolveWidgetIndex(
       widgets,
       normalizedFlags.index,
-      normalizedFlags.title
+      normalizedFlags.title,
     );
 
     const updateBody = prepareDashboardForUpdate(current);
@@ -380,7 +384,7 @@ export const editCommand = buildCommand({
     if (replacement.layout && !existing.layout) {
       validateWidgetLayout(
         { col: replacement.layout.x, width: replacement.layout.w },
-        replacement.layout
+        replacement.layout,
       );
     }
 
@@ -389,13 +393,13 @@ export const editCommand = buildCommand({
     const updated = await updateDashboard(
       orgSlug,
       dashboardId,
-      updateBody
+      updateBody,
     ).catch(async (error: unknown) =>
       enrichDashboardError(error, {
         orgSlug,
         dashboardId,
         operation: "update",
-      })
+      }),
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 

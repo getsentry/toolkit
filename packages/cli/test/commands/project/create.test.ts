@@ -21,11 +21,11 @@ vi.mock("../../../src/lib/api/teams.js");
 vi.mock("../../../src/lib/api/organizations.js");
 vi.mock("../../../src/lib/resolve-target.js");
 
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.spyOn mocking
 import * as orgsApi from "../../../src/lib/api/organizations.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.spyOn mocking
 import * as projectsApi from "../../../src/lib/api/projects.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.spyOn mocking
 import * as teamsApi from "../../../src/lib/api/teams.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
@@ -38,7 +38,7 @@ import {
   ValidationError,
 } from "../../../src/lib/errors.js";
 import type { ProjectCreatedResult } from "../../../src/lib/formatters/human.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { slugify } from "../../../src/lib/utils.js";
 import type { SentryProject, SentryTeam } from "../../../src/types/index.js";
@@ -109,7 +109,7 @@ describe("project create", () => {
   // doesn't internally call createProject, so we assert on this spy.
   const createProjectWithDsnSpy = vi.mocked(projectsApi.createProjectWithDsn);
   const createProjectWithAutoTeamSpy = vi.mocked(
-    projectsApi.createProjectWithAutoTeam
+    projectsApi.createProjectWithAutoTeam,
   );
   const createTeamSpy = vi.mocked(teamsApi.createTeam);
   const tryGetPrimaryDsnSpy = vi.mocked(projectsApi.tryGetPrimaryDsn);
@@ -136,12 +136,12 @@ describe("project create", () => {
       new ApiError(
         "Forbidden",
         403,
-        "Your organization has disabled this feature for members."
-      )
+        "Your organization has disabled this feature for members.",
+      ),
     );
     createTeamSpy.mockResolvedValue(sampleTeam);
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc@o123.ingest.us.sentry.io/999"
+      "https://abc@o123.ingest.us.sentry.io/999",
     );
     listOrgsSpy.mockResolvedValue([
       { slug: "acme-corp", name: "Acme Corp" },
@@ -170,7 +170,7 @@ describe("project create", () => {
       {
         name: "my-app",
         platform: "node",
-      }
+      },
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -192,41 +192,42 @@ describe("project create", () => {
     });
   });
 
-  test.each([
-    "python-flask",
-    "node-mastra",
-    "node-flue",
-    "node-eve",
-  ])("passes the paired platform %s to createProject", async (platform) => {
-    const { context } = createMockContext();
-    const func = await createCommand.loader();
-    await func.call(context, { json: false }, `my-app:${platform}`);
+  test.each(["python-flask", "node-mastra", "node-flue", "node-eve"])(
+    "passes the paired platform %s to createProject",
+    async (platform) => {
+      const { context } = createMockContext();
+      const func = await createCommand.loader();
+      await func.call(context, { json: false }, `my-app:${platform}`);
 
-    expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
-      "acme-corp",
-      "engineering",
-      {
-        name: "my-app",
-        platform,
-      }
-    );
-  });
+      expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
+        "acme-corp",
+        "engineering",
+        {
+          name: "my-app",
+          platform,
+        },
+      );
+    },
+  );
 
   test.each([
     ["without an org", ["my-app", "python-flask"]],
     ["with an explicit org", ["my-org/my-app", "python-flask"]],
-  ])("rejects the space-separated form %s — platform must use :", async (_label, args) => {
-    const { context } = createMockContext();
-    const func = await createCommand.loader();
+  ])(
+    "rejects the space-separated form %s — platform must use :",
+    async (_label, args) => {
+      const { context } = createMockContext();
+      const func = await createCommand.loader();
 
-    const err = await func
-      .call(context, { json: false }, ...args)
-      .catch((error: Error) => error);
+      const err = await func
+        .call(context, { json: false }, ...args)
+        .catch((error: Error) => error);
 
-    expect(err).toBeInstanceOf(ValidationError);
-    expect(err.message).toContain("must use <name>:<platform> syntax");
-    expect(createProjectWithDsnSpy).not.toHaveBeenCalled();
-  });
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.message).toContain("must use <name>:<platform> syntax");
+      expect(createProjectWithDsnSpy).not.toHaveBeenCalled();
+    },
+  );
 
   test("rejects the space-separated form through Stricli", async () => {
     const { context, stdoutWrite } = createMockContext();
@@ -246,7 +247,7 @@ describe("project create", () => {
           "backend",
           "--dry-run",
         ],
-        context
+        context,
       );
 
       expect(createProjectWithDsnSpy).not.toHaveBeenCalled();
@@ -274,7 +275,7 @@ describe("project create", () => {
       {
         name: "api:europe",
         platform: "node",
-      }
+      },
     );
   });
 
@@ -293,7 +294,7 @@ describe("project create", () => {
       {
         name: "my-app",
         platform: "go",
-      }
+      },
     );
   });
 
@@ -312,7 +313,7 @@ describe("project create", () => {
       {
         name: "my-app",
         platform: "node",
-      }
+      },
     );
   });
 
@@ -391,7 +392,7 @@ describe("project create", () => {
       {
         name: "my-app",
         platform: "node",
-      }
+      },
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -406,7 +407,7 @@ describe("project create", () => {
     const func = await createCommand.loader();
 
     await expect(
-      func.call(context, { json: false }, "my-app:node")
+      func.call(context, { json: false }, "my-app:node"),
     ).rejects.toThrow(ContextError);
   });
 
@@ -415,8 +416,8 @@ describe("project create", () => {
       new ApiError(
         "API request failed: 409 Conflict",
         409,
-        "Project already exists"
-      )
+        "Project already exists",
+      ),
     );
 
     const { context } = createMockContext();
@@ -432,7 +433,7 @@ describe("project create", () => {
 
   test("handles 404 from createProject as team-not-found with available teams", async () => {
     createProjectWithDsnSpy.mockRejectedValue(
-      new ApiError("API request failed: 404 Not Found", 404)
+      new ApiError("API request failed: 404 Not Found", 404),
     );
 
     const { context } = createMockContext();
@@ -454,7 +455,7 @@ describe("project create", () => {
     // This used to produce a contradictory "Team 'engineering' not found"
     // while listing "engineering" as an available team.
     createProjectWithDsnSpy.mockRejectedValue(
-      new ApiError("API request failed: 404 Not Found", 404)
+      new ApiError("API request failed: 404 Not Found", 404),
     );
     // Default listTeams returns [sampleTeam] (slug: "engineering")
     // resolveOrCreateTeam auto-selects "engineering", then handleCreateProject404
@@ -475,11 +476,11 @@ describe("project create", () => {
 
   test("handles 404 from createProject with bad org — shows user's orgs", async () => {
     createProjectWithDsnSpy.mockRejectedValue(
-      new ApiError("API request failed: 404 Not Found", 404)
+      new ApiError("API request failed: 404 Not Found", 404),
     );
     // listTeams also fails → org is bad
     listTeamsSpy.mockRejectedValue(
-      new ApiError("API request failed: 404 Not Found", 404)
+      new ApiError("API request failed: 404 Not Found", 404),
     );
 
     const { context } = createMockContext();
@@ -496,11 +497,11 @@ describe("project create", () => {
 
   test("handles 404 with non-404 listTeams failure — shows generic error", async () => {
     createProjectWithDsnSpy.mockRejectedValue(
-      new ApiError("API request failed: 404 Not Found", 404)
+      new ApiError("API request failed: 404 Not Found", 404),
     );
     // listTeams returns 403 (not 404) — can't tell if org or team is wrong
     listTeamsSpy.mockRejectedValue(
-      new ApiError("API request failed: 403 Forbidden", 403)
+      new ApiError("API request failed: 403 Forbidden", 403),
     );
 
     const { context } = createMockContext();
@@ -537,8 +538,8 @@ describe("project create", () => {
       new ApiError(
         "API request failed: 400 Bad Request",
         400,
-        '{"platform":["Invalid platform"]}'
-      )
+        '{"platform":["Invalid platform"]}',
+      ),
     );
 
     const { context } = createMockContext();
@@ -557,7 +558,7 @@ describe("project create", () => {
     // createProjectWithDsn fails with a non-403 server error (e.g. 500).
     // The fallback is only attempted on 403; this should surface directly.
     createProjectWithDsnSpy.mockRejectedValue(
-      new ApiError("Internal Server Error", 500, "Something went wrong")
+      new ApiError("Internal Server Error", 500, "Something went wrong"),
     );
 
     const { context } = createMockContext();
@@ -579,7 +580,7 @@ describe("project create", () => {
     // Simulate: member has a team (via listTeams) but can't create projects on it.
     // The fallback to POST /organizations/{org}/projects/ should kick in.
     createProjectWithDsnSpy.mockRejectedValue(
-      new ApiError("Forbidden", 403, "You do not have permission")
+      new ApiError("Forbidden", 403, "You do not have permission"),
     );
     createProjectWithAutoTeamSpy.mockResolvedValue({
       project: sampleProject,
@@ -603,8 +604,8 @@ describe("project create", () => {
       new ApiError(
         "Bad Request",
         400,
-        '{"name":["Ensure this field has no more than 50 characters."]}'
-      )
+        '{"name":["Ensure this field has no more than 50 characters."]}',
+      ),
     );
     const { context } = createMockContext();
     const func = await createCommand.loader();
@@ -619,14 +620,14 @@ describe("project create", () => {
 
   test("preserves unrelated API 400 errors on the org-scoped fallback", async () => {
     createProjectWithDsnSpy.mockRejectedValue(
-      new ApiError("Forbidden", 403, "You do not have permission")
+      new ApiError("Forbidden", 403, "You do not have permission"),
     );
     createProjectWithAutoTeamSpy.mockRejectedValue(
       new ApiError(
         "Bad Request",
         400,
-        '{"name":["Ensure this field has no more than 50 characters."]}'
-      )
+        '{"name":["Ensure this field has no more than 50 characters."]}',
+      ),
     );
     const { context } = createMockContext();
     const func = await createCommand.loader();
@@ -642,14 +643,14 @@ describe("project create", () => {
 
   test("handles API platform errors on the org-scoped fallback", async () => {
     createProjectWithDsnSpy.mockRejectedValue(
-      new ApiError("Forbidden", 403, "You do not have permission")
+      new ApiError("Forbidden", 403, "You do not have permission"),
     );
     createProjectWithAutoTeamSpy.mockRejectedValue(
       new ApiError(
         "API request failed: 400 Bad Request",
         400,
-        '{"platform":["Invalid platform"]}'
-      )
+        '{"platform":["Invalid platform"]}',
+      ),
     );
     const { context } = createMockContext();
     const func = await createCommand.loader();
@@ -666,7 +667,7 @@ describe("project create", () => {
     // Both paths 403: team-based creation fails, and the fallback returns
     // the org-level policy error ("disabled this feature").
     createProjectWithDsnSpy.mockRejectedValue(
-      new ApiError("Forbidden", 403, "You do not have permission")
+      new ApiError("Forbidden", 403, "You do not have permission"),
     );
     // createProjectWithAutoTeamSpy already defaults to "disabled this feature" 403
 
@@ -717,7 +718,7 @@ describe("project create", () => {
 
     // Missing name after slash
     await expect(
-      func.call(context, { json: false }, "acme-corp/:node")
+      func.call(context, { json: false }, "acme-corp/:node"),
     ).rejects.toThrow(ContextError);
   });
 
@@ -737,7 +738,7 @@ describe("project create", () => {
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     expect(output).toContain(
-      "sentry.io/organizations/acme-corp/projects/my-app/"
+      "sentry.io/organizations/acme-corp/projects/my-app/",
     );
   });
 
@@ -778,44 +779,44 @@ describe("project create", () => {
     expect(err).toBeInstanceOf(ContextError);
     expect(err.message).toContain("Project specification is required");
     expect(err.message).toContain(
-      "sentry project create [<org>/]<name>:<platform>..."
+      "sentry project create [<org>/]<name>:<platform>...",
     );
   });
 
-  test.each([
-    "",
-    "   ",
-  ])("rejects an empty project name argument (%j)", async (name) => {
-    const { context } = createMockContext();
-    const func = await createCommand.loader();
+  test.each(["", "   "])(
+    "rejects an empty project name argument (%j)",
+    async (name) => {
+      const { context } = createMockContext();
+      const func = await createCommand.loader();
 
-    const err = await func
-      .call(context, { json: false }, `${name}:node`)
-      .catch((error: Error) => error);
-    expect(err).toBeInstanceOf(ValidationError);
-    expect(err.message).toContain("Project name cannot be empty");
-  });
+      const err = await func
+        .call(context, { json: false }, `${name}:node`)
+        .catch((error: Error) => error);
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.message).toContain("Project name cannot be empty");
+    },
+  );
 
-  test.each([
-    "my-app",
-    "my-app:",
-  ])("shows a helpful error when platform is missing from %s", async (projectArg) => {
-    const { context } = createMockContext();
-    const func = await createCommand.loader();
+  test.each(["my-app", "my-app:"])(
+    "shows a helpful error when platform is missing from %s",
+    async (projectArg) => {
+      const { context } = createMockContext();
+      const func = await createCommand.loader();
 
-    const err = await func
-      .call(context, { json: false }, projectArg)
-      .catch((e: Error) => e);
-    expect(err).toBeInstanceOf(ValidationError);
-    expect((err as ValidationError).exitCode).toBe(EXIT.VALIDATION);
-    expect(err.message).toContain("Platform is required");
-    expect(err.message).toContain("Common platforms:");
-    expect(err.message).toContain("javascript-nextjs");
-    expect(err.message).toContain("python");
-    expect(err.message).toContain("Run 'sentry platform list'");
-    // There is no space-separated form at all, so it must never be suggested.
-    expect(err.message).not.toContain(" <platform>");
-  });
+      const err = await func
+        .call(context, { json: false }, projectArg)
+        .catch((e: Error) => e);
+      expect(err).toBeInstanceOf(ValidationError);
+      expect((err as ValidationError).exitCode).toBe(EXIT.VALIDATION);
+      expect(err.message).toContain("Platform is required");
+      expect(err.message).toContain("Common platforms:");
+      expect(err.message).toContain("javascript-nextjs");
+      expect(err.message).toContain("python");
+      expect(err.message).toContain("Run 'sentry platform list'");
+      // There is no space-separated form at all, so it must never be suggested.
+      expect(err.message).not.toContain(" <platform>");
+    },
+  );
 
   test("rejects trailing-platform batches that were never supported", async () => {
     const { context } = createMockContext();
@@ -831,7 +832,7 @@ describe("project create", () => {
 
   test("wraps listTeams API failure with org list", async () => {
     listTeamsSpy.mockRejectedValue(
-      new ApiError("API request failed: 404 Not Found", 404)
+      new ApiError("API request failed: 404 Not Found", 404),
     );
 
     const { context } = createMockContext();
@@ -854,7 +855,7 @@ describe("project create", () => {
       detectedFrom: "test/mocks/routes.ts",
     });
     listTeamsSpy.mockRejectedValue(
-      new ApiError("API request failed: 404 Not Found", 404)
+      new ApiError("API request failed: 404 Not Found", 404),
     );
 
     const { context } = createMockContext();
@@ -875,7 +876,7 @@ describe("project create", () => {
     // The default beforeEach mock has createProjectWithAutoTeam reject with
     // "disabled this feature", so the final error is the policy-disabled message.
     listTeamsSpy.mockRejectedValue(
-      new ApiError("API request failed: 403 Forbidden", 403)
+      new ApiError("API request failed: 403 Forbidden", 403),
     );
 
     const { context } = createMockContext();
@@ -901,7 +902,7 @@ describe("project create", () => {
       {
         name: "my-app",
         platform: "javascript-nextjs",
-      }
+      },
     );
   });
 
@@ -917,7 +918,7 @@ describe("project create", () => {
       {
         name: "my-app",
         platform: "javascript-nextjs",
-      }
+      },
     );
   });
 
@@ -941,7 +942,7 @@ describe("project create", () => {
       { json: false },
       "web:javascript",
       "api:python-django",
-      "worker:node"
+      "worker:node",
     );
 
     expect(createProjectWithDsnSpy).toHaveBeenCalledTimes(3);
@@ -953,7 +954,7 @@ describe("project create", () => {
       expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
         "acme-corp",
         "engineering",
-        { name, platform }
+        { name, platform },
       );
     }
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -963,7 +964,7 @@ describe("project create", () => {
   test("creates one hundred project pairs in one command", async () => {
     const specs = Array.from(
       { length: 100 },
-      (_, index) => `project-${index}:node`
+      (_, index) => `project-${index}:node`,
     );
     const { context } = createMockContext();
     const func = await createCommand.loader();
@@ -974,7 +975,7 @@ describe("project create", () => {
     expect(createProjectWithDsnSpy).toHaveBeenLastCalledWith(
       "acme-corp",
       "engineering",
-      { name: "project-99", platform: "node" }
+      { name: "project-99", platform: "node" },
     );
   });
 
@@ -1042,21 +1043,22 @@ describe("project create", () => {
     expect(err.message).toContain("sentry project create proj2:<platform>");
   });
 
-  test.each([
-    ["paired", ["My Cool App:node"]],
-  ])("rejects whitespace in a %s project name", async (_syntax, args) => {
-    const { context } = createMockContext();
-    const func = await createCommand.loader();
-    const err = await func
-      .call(context, { json: false }, ...args)
-      .catch((error: Error) => error);
+  test.each([["paired", ["My Cool App:node"]]])(
+    "rejects whitespace in a %s project name",
+    async (_syntax, args) => {
+      const { context } = createMockContext();
+      const func = await createCommand.loader();
+      const err = await func
+        .call(context, { json: false }, ...args)
+        .catch((error: Error) => error);
 
-    expect(err).toBeInstanceOf(ValidationError);
-    expect(err.message).toContain(
-      "Project name 'My Cool App' cannot contain whitespace"
-    );
-    expect(createProjectWithDsnSpy).not.toHaveBeenCalled();
-  });
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.message).toContain(
+        "Project name 'My Cool App' cannot contain whitespace",
+      );
+      expect(createProjectWithDsnSpy).not.toHaveBeenCalled();
+    },
+  );
 
   test("preserves commas inside a project name", async () => {
     const { context } = createMockContext();
@@ -1067,7 +1069,7 @@ describe("project create", () => {
     expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
       "acme-corp",
       "engineering",
-      { name: "payments,eu", platform: "node" }
+      { name: "payments,eu", platform: "node" },
     );
   });
 
@@ -1079,7 +1081,7 @@ describe("project create", () => {
     expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
       "acme-corp",
       "engineering",
-      { name: "api:europe", platform: "node" }
+      { name: "api:europe", platform: "node" },
     );
   });
 
@@ -1112,7 +1114,7 @@ describe("project create", () => {
       { json: false, "dry-run": true },
       "web:javascript",
       "api:python-django",
-      "worker:node"
+      "worker:node",
     );
 
     // Dry-run never creates teams or projects.
@@ -1135,7 +1137,7 @@ describe("project create", () => {
       .call(
         context,
         { json: false, "dry-run": true },
-        "my-app:invalid-platform"
+        "my-app:invalid-platform",
       )
       .catch((e: Error) => e);
     expect(err).toBeInstanceOf(CliError);
@@ -1148,7 +1150,7 @@ describe("project create", () => {
     await func.call(
       context,
       { json: false, "dry-run": true },
-      "my-org/my-app:python"
+      "my-org/my-app:python",
     );
 
     expect(resolveOrgSpy).toHaveBeenCalledWith({
@@ -1184,14 +1186,14 @@ describe("project create", () => {
       context,
       { json: true, "dry-run": true },
       "web:node",
-      "api:node"
+      "api:node",
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
     const parsed = JSON.parse(output);
     expect(parsed).toHaveLength(2);
     expect(
-      parsed.map((result: ProjectCreatedResult) => result.project.name)
+      parsed.map((result: ProjectCreatedResult) => result.project.name),
     ).toEqual(["web", "api"]);
   });
 
@@ -1235,7 +1237,7 @@ describe("project create", () => {
       context,
       { json: false, "dry-run": true },
       "!!!:node",
-      "my-app:python"
+      "my-app:python",
     );
 
     expect(createTeamSpy).not.toHaveBeenCalled();

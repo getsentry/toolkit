@@ -115,7 +115,7 @@ describe.each([
         projectKey(),
         { ...projectKey(1), isActive: false, dateCreated: null },
         { ...projectKey(2), projectId: 7, dsn: { public: BACKEND_DSN } },
-      ])
+      ]),
     );
 
     const result = await list();
@@ -139,7 +139,7 @@ describe.each([
         ...(organization
           ? { project: index === 2 ? "backend" : "frontend" }
           : {}),
-      }))
+      })),
     );
     expect(projectIds.sort()).toEqual(organization ? ["42", "7"] : []);
   });
@@ -152,11 +152,11 @@ describe.each([
       const offset = Number(url.searchParams.get("cursor")?.split(":")[1] ?? 0);
       const count = Math.min(
         Number(url.searchParams.get("per_page")),
-        200 - offset
+        200 - offset,
       );
       return keysResponse(
         Array.from({ length: count }, (_, index) => projectKey(offset + index)),
-        offset + count < 200 ? `0:${offset + count}:0` : undefined
+        offset + count < 200 ? `0:${offset + count}:0` : undefined,
       );
     });
 
@@ -170,7 +170,7 @@ describe.each([
       requests.map(({ url }) => {
         const query = new URL(url).searchParams;
         return [query.get("per_page"), query.get("cursor")];
-      })
+      }),
     ).toEqual([
       ["100", "0:25:0"],
       ["50", "0:125:0"],
@@ -178,7 +178,7 @@ describe.each([
     ]);
     expect(second.nextCursor).toBeUndefined();
     expect([...first.data, ...second.data].map((key) => key.name)).toEqual(
-      Array.from({ length: 175 }, (_, index) => `Key ${index + 25}`)
+      Array.from({ length: 175 }, (_, index) => `Key ${index + 25}`),
     );
   });
 });
@@ -197,6 +197,6 @@ test("org metadata lookup failures surface instead of dropping keys or exposing 
   });
 
   await expect(listOrganizationDsns("test-org")).rejects.toBeInstanceOf(
-    ApiError
+    ApiError,
   );
 });

@@ -50,13 +50,13 @@ describe("performDeviceFlow polling", () => {
           verification_uri: "https://sentry.example/oauth/device/",
           interval: 1,
           expires_in: 30,
-        })
+        }),
       )
       .mockResolvedValueOnce(
-        Response.json({ error: "authorization_pending" }, { status: 400 })
+        Response.json({ error: "authorization_pending" }, { status: 400 }),
       )
       .mockResolvedValueOnce(
-        Response.json({ error: "slow_down" }, { status: 400 })
+        Response.json({ error: "slow_down" }, { status: 400 }),
       )
       .mockResolvedValueOnce(Response.json(token));
     vi.stubGlobal("fetch", fetchMock);
@@ -104,13 +104,13 @@ describe("resolveOAuthScopeString", () => {
   test("readOnly is ignored when explicit scopes are provided", () => {
     // `scopes` takes precedence over `readOnly`.
     expect(
-      resolveOAuthScopeString({ readOnly: true, scopes: ["project:write"] })
+      resolveOAuthScopeString({ readOnly: true, scopes: ["project:write"] }),
     ).toBe("project:write");
   });
 
   test("explicit scopes preserve first-seen order and lowercase", () => {
     expect(
-      resolveOAuthScopeString({ scopes: ["ORG:READ", "project:read"] })
+      resolveOAuthScopeString({ scopes: ["ORG:READ", "project:read"] }),
     ).toBe("org:read project:read");
   });
 
@@ -118,13 +118,13 @@ describe("resolveOAuthScopeString", () => {
     expect(
       resolveOAuthScopeString({
         scopes: ["org:read", "project:read", "org:read"],
-      })
+      }),
     ).toBe("org:read project:read");
   });
 
   test("blank entries are skipped", () => {
     expect(resolveOAuthScopeString({ scopes: ["  ", "org:read", ""] })).toBe(
-      "org:read"
+      "org:read",
     );
   });
 
@@ -141,10 +141,10 @@ describe("resolveOAuthScopeString", () => {
 
   test("throws ValidationError when scopes resolve to empty", () => {
     expect(() => resolveOAuthScopeString({ scopes: [] })).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() => resolveOAuthScopeString({ scopes: ["", "   "] })).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 });
@@ -157,7 +157,7 @@ describe("property: resolveOAuthScopeString", () => {
         // Order preserved, lowercase, space-joined.
         expect(result).toBe(scopes.map((s) => s.toLowerCase()).join(" "));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -166,7 +166,7 @@ describe("property: resolveOAuthScopeString", () => {
       property(knownScopeArb, (scope) => {
         expect(resolveOAuthScopeString({ scopes: [scope] })).toBe(scope);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

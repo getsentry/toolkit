@@ -108,7 +108,7 @@ export function normalizeHexId(value: string): string {
  * @returns Normalized 32-char lowercase hex ID, or undefined
  */
 export function tryNormalizeHexId(
-  value: string | null | undefined
+  value: string | null | undefined,
 ): string | undefined {
   if (!value) {
     return;
@@ -256,7 +256,7 @@ const UUID_V7 = "7";
  * @returns `{ createdAt }` when the value is UUIDv7, else `null`
  */
 export function decodeUuidV7Timestamp(
-  value: string
+  value: string,
 ): { createdAt: Date } | null {
   const normalized = normalizeHexId(value);
   if (!HEX_ID_RE.test(normalized)) {
@@ -279,7 +279,7 @@ export function decodeUuidV7Timestamp(
  */
 export function ageInDaysFromUuidV7(
   value: string,
-  now: Date = new Date()
+  now: Date = new Date(),
 ): number | null {
   const decoded = decodeUuidV7Timestamp(value);
   if (!decoded) {

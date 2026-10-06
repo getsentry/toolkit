@@ -96,7 +96,7 @@ export function getConfiguredSentryUrl(): string | undefined {
     return normalized;
   } catch {
     throw new ConfigError(
-      "SENTRY_HOST/SENTRY_URL is not a valid URL; use a credential-free HTTP(S) URL."
+      "SENTRY_HOST/SENTRY_URL is not a valid URL; use a credential-free HTTP(S) URL.",
     );
   }
 }
@@ -166,12 +166,12 @@ export const SENTRY_CLI_DSN =
  * mechanism directly.
  */
 if (typeof __SENTRY_DEBUG_ID__ !== "undefined") {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    // biome-ignore lint/suspicious/useErrorMessage: stack trace capture only
+    // stack trace capture only
     const stack = new Error().stack;
     if (stack) {
-      // biome-ignore lint/suspicious/noExplicitAny: SDK reads this untyped global
+      // oxlint-disable-next-line typescript/no-explicit-any -- SDK reads this untyped global
       const g = globalThis as any;
       g._sentryDebugIds = g._sentryDebugIds || {};
       g._sentryDebugIds[stack] = __SENTRY_DEBUG_ID__;

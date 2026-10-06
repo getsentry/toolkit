@@ -43,7 +43,7 @@ const binaryNameArb = constantFrom(
   "test-tool",
   "acme",
   "dev-helper",
-  "s"
+  "s",
 );
 
 // -- Helpers --
@@ -117,7 +117,7 @@ describe("property: cross-shell consistency", () => {
           expect(fish).toContain(group.name);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -136,7 +136,7 @@ describe("property: cross-shell consistency", () => {
           }
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -153,7 +153,7 @@ describe("property: cross-shell consistency", () => {
           expect(fish).toContain(cmd.name);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -171,7 +171,7 @@ describe("property: binary name parametrization", () => {
         expect(zsh).toContain(`_${name}()`);
         expect(fish).toContain(`complete -c ${name}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -210,7 +210,7 @@ describe("proposeCompletions: Stricli integration", () => {
       const completions = await proposeCompletions(
         app,
         [group.name, ""],
-        completionContext
+        completionContext,
       );
       const actual = completions.map((c) => c.completion).sort();
       const expected = group.subcommands.map((s) => s.name).sort();
@@ -226,7 +226,7 @@ describe("proposeCompletions: Stricli integration", () => {
       const completions = await proposeCompletions(
         app,
         [group.name, ""],
-        completionContext
+        completionContext,
       );
       const actual = completions.map((c) => c.completion);
       // With defaultCommand: "view", Stricli proposes flags for the view
@@ -250,7 +250,7 @@ describe("proposeCompletions: Stricli integration", () => {
       const completions = await proposeCompletions(
         app,
         [group.name, prefix],
-        completionContext
+        completionContext,
       );
 
       // Every returned completion should start with the prefix
@@ -316,7 +316,7 @@ describe("property: dynamic completion callback", () => {
         expect(zsh).toContain("__complete");
         expect(fish).toContain("__complete");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -348,7 +348,7 @@ _sentry_completions
 echo "\${COMPREPLY[*]}"
 `,
       ],
-      { stdio: ["pipe", "pipe", "pipe"] }
+      { stdio: ["pipe", "pipe", "pipe"] },
     );
     const output = result.stdout.toString().trim();
     const completions = output.split(/\s+/);
@@ -389,7 +389,7 @@ _sentry_completions
 echo "\${COMPREPLY[*]}"
 `,
         ],
-        { stdio: ["pipe", "pipe", "pipe"] }
+        { stdio: ["pipe", "pipe", "pipe"] },
       );
       const output = result.stdout.toString().trim();
       const completions = output.split(/\s+/);

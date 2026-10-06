@@ -19,15 +19,15 @@ describe("buildFeedbackQuery", () => {
           "unresolved",
           "resolved",
           "spam",
-          "all"
+          "all",
         ),
         fc.string(),
         (status, query) => {
           expect(buildFeedbackQuery(status, query)).toStartWith(
-            CATEGORY_FILTER
+            CATEGORY_FILTER,
           );
-        }
-      )
+        },
+      ),
     );
   });
 
@@ -41,7 +41,7 @@ describe("buildFeedbackQuery", () => {
 
   test("omits the generated status filter for all", () => {
     expect(buildFeedbackQuery("all", "browser:Chrome")).toBe(
-      `${CATEGORY_FILTER} browser:Chrome`
+      `${CATEGORY_FILTER} browser:Chrome`,
     );
   });
 });

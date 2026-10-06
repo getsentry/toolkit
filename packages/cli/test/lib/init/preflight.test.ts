@@ -12,7 +12,7 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
@@ -20,7 +20,7 @@ vi.mock("../../../src/lib/scope-recovery.js", () => ({
   captureOAuthScopeRecoveryGate: vi.fn(),
 }));
 
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
@@ -30,11 +30,11 @@ vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as auth from "../../../src/lib/db/auth.js";
 
 vi.mock("../../../src/lib/dsn/index.js", async (importOriginal) => {
@@ -44,11 +44,11 @@ vi.mock("../../../src/lib/dsn/index.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as dsnIndex from "../../../src/lib/dsn/index.js";
 import {
   ApiError,
@@ -66,16 +66,16 @@ vi.mock("../../../src/lib/init/org-prefetch.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as prefetch from "../../../src/lib/init/org-prefetch.js";
 import { resolveInitContext } from "../../../src/lib/init/preflight.js";
 import type { WizardOptions } from "../../../src/lib/init/types.js";
 import { CANCELLED } from "../../../src/lib/init/ui/types.js";
-// biome-ignore lint/performance/noNamespaceImport: scope decision is mocked at the module boundary
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- scope decision is mocked at the module boundary
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -85,11 +85,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 vi.mock("../../../src/lib/resolve-team.js", async (importOriginal) => {
@@ -99,11 +99,11 @@ vi.mock("../../../src/lib/resolve-team.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as resolveTeam from "../../../src/lib/resolve-team.js";
 import { createMockUI, type MockCall } from "./ui/mock-ui.js";
 
@@ -119,7 +119,8 @@ function makeOptions(overrides?: Partial<WizardOptions>): WizardOptions {
 function feedbackOutcomes(calls: MockCall[]): string[] {
   return calls
     .filter(
-      (c): c is Extract<MockCall, { kind: "feedback" }> => c.kind === "feedback"
+      (c): c is Extract<MockCall, { kind: "feedback" }> =>
+        c.kind === "feedback",
     )
     .map((c) => c.outcome);
 }
@@ -233,7 +234,7 @@ describe("resolveInitContext", () => {
           orgSlug: "acme",
           projectSlug: "my-app",
         }),
-      })
+      }),
     );
     expect(getProjectSpy).toHaveBeenCalledTimes(1);
     expect(tryGetPrimaryDsnSpy).toHaveBeenCalledTimes(1);
@@ -262,7 +263,7 @@ describe("resolveInitContext", () => {
         org: "acme",
         project: "my-app",
         team: "platform",
-      })
+      }),
     );
     expect(context?.existingProject).toBeUndefined();
   });
@@ -297,7 +298,7 @@ describe("resolveInitContext", () => {
       expect.objectContaining({
         orgSlug: "acme",
         projectSlug: "my-app",
-      })
+      }),
     );
     expect(getProjectSpy).toHaveBeenCalledTimes(2);
     expect(tryGetPrimaryDsnSpy).toHaveBeenCalledTimes(1);
@@ -321,7 +322,7 @@ describe("resolveInitContext", () => {
 
     const context = await resolveInitContext(
       makeOptions({ yes: false, project: "my-app" }),
-      ui
+      ui,
     );
 
     expect(context?.project).toBe("my-app");
@@ -334,7 +335,7 @@ describe("resolveInitContext", () => {
     const { ui } = createMockUI();
     const context = await resolveInitContext(
       makeOptions({ yes: false, project: "my-app" }),
-      ui
+      ui,
     );
 
     expect(context?.project).toBe("my-app");
@@ -366,7 +367,7 @@ describe("resolveInitContext", () => {
 
     const context = await resolveInitContext(
       makeOptions({ yes: false, project: "my-app" }),
-      ui
+      ui,
     );
 
     expect(context?.project).toBeUndefined();
@@ -382,7 +383,7 @@ describe("resolveInitContext", () => {
     const { ui } = createMockUI();
     const context = await resolveInitContext(
       makeOptions({ team: "backend", yes: false }),
-      ui
+      ui,
     );
 
     expect(context?.team).toBe("backend");
@@ -391,7 +392,7 @@ describe("resolveInitContext", () => {
       expect.objectContaining({
         team: "backend",
         deferAutoCreateOnEmptyOrg: true,
-      })
+      }),
     );
   });
 
@@ -499,7 +500,7 @@ describe("resolveInitContext", () => {
     const { ui } = createMockUI();
 
     await expect(
-      resolveInitContext(makeOptions({ yes: true }), ui)
+      resolveInitContext(makeOptions({ yes: true }), ui),
     ).rejects.toThrow("Multiple organizations found (a-org, z-org).");
   });
 
@@ -518,7 +519,7 @@ describe("resolveInitContext", () => {
     expect(context).toBeNull();
     const cancelCall = calls.find((c) => c.kind === "cancel");
     expect(cancelCall?.kind === "cancel" && cancelCall.message).toBe(
-      "Setup cancelled."
+      "Setup cancelled.",
     );
     expect(feedbackOutcomes(calls)).toEqual(["cancelled"]);
   });
@@ -529,18 +530,18 @@ describe("resolveInitContext", () => {
       new ApiError(
         "Failed to list organizations",
         403,
-        "You do not have permission."
-      )
+        "You do not have permission.",
+      ),
     );
 
     const { ui, calls } = createMockUI();
     await expect(
-      resolveInitContext(makeOptions({ yes: true }), ui)
+      resolveInitContext(makeOptions({ yes: true }), ui),
     ).rejects.toThrow("403 Forbidden");
 
     const errorCall = calls.find(
       (c): c is Extract<MockCall, { kind: "log.error" }> =>
-        c.kind === "log.error"
+        c.kind === "log.error",
     );
     expect(errorCall?.message).toContain("403 Forbidden");
     expect(errorCall?.message).toContain("sentry init <org-slug>/");
@@ -550,7 +551,7 @@ describe("resolveInitContext", () => {
     const error = new ApiError(
       "Failed to list organizations",
       403,
-      "Missing org:read"
+      "Missing org:read",
     );
     resolveOrgPrefetchedSpy.mockResolvedValue(null);
     listOrganizationsSpy.mockRejectedValueOnce(error);
@@ -559,24 +560,24 @@ describe("resolveInitContext", () => {
     const { ui } = createMockUI();
 
     await expect(
-      resolveInitContext(makeOptions({ yes: false }), ui)
+      resolveInitContext(makeOptions({ yes: false }), ui),
     ).rejects.toBe(error);
   });
 
   test("surfaces 401 guidance when listOrganizations is unauthorized", async () => {
     resolveOrgPrefetchedSpy.mockResolvedValue(null);
     listOrganizationsSpy.mockRejectedValueOnce(
-      new ApiError("Failed to list organizations", 401, "Token expired")
+      new ApiError("Failed to list organizations", 401, "Token expired"),
     );
 
     const { ui, calls } = createMockUI();
     await expect(
-      resolveInitContext(makeOptions({ yes: true }), ui)
+      resolveInitContext(makeOptions({ yes: true }), ui),
     ).rejects.toThrow("401 Unauthorized");
 
     const errorCall = calls.find(
       (c): c is Extract<MockCall, { kind: "log.error" }> =>
-        c.kind === "log.error"
+        c.kind === "log.error",
     );
     expect(errorCall?.message).toContain("401 Unauthorized");
     expect(errorCall?.message).toContain("Token expired");
@@ -598,7 +599,7 @@ describe("resolveInitContext", () => {
     const { ui } = createMockUI();
     const context = await resolveInitContext(
       makeOptions({ team: "backend" }),
-      ui
+      ui,
     );
 
     expect(context?.isExplicitTeam).toBe(true);
@@ -614,13 +615,13 @@ describe("resolveInitContext", () => {
 
   test("keeps the org-scoped fallback for an unattended explicit-team 403", async () => {
     resolveOrCreateTeamSpy.mockRejectedValueOnce(
-      new ApiError("Forbidden", 403, "No team:admin access")
+      new ApiError("Forbidden", 403, "No team:admin access"),
     );
 
     const { ui } = createMockUI();
     const context = await resolveInitContext(
       makeOptions({ team: "backend", yes: true }),
-      ui
+      ui,
     );
 
     expect(context?.team).toBeUndefined();
@@ -634,13 +635,13 @@ describe("resolveInitContext", () => {
     const { ui } = createMockUI();
 
     await expect(
-      resolveInitContext(makeOptions({ team: "backend", yes: false }), ui)
+      resolveInitContext(makeOptions({ team: "backend", yes: false }), ui),
     ).rejects.toBe(error);
   });
 
   test("swallows 403 from listTeams and resolves context with team:undefined", async () => {
     listTeamsSpy.mockRejectedValueOnce(
-      new ApiError("Forbidden", 403, "No team:read access")
+      new ApiError("Forbidden", 403, "No team:read access"),
     );
 
     const { ui } = createMockUI();
@@ -661,7 +662,7 @@ describe("resolveInitContext", () => {
     const { ui } = createMockUI();
 
     await expect(
-      resolveInitContext(makeOptions({ yes: false }), ui)
+      resolveInitContext(makeOptions({ yes: false }), ui),
     ).rejects.toBe(error);
     expect(shouldDelegateScopeRecovery).toHaveBeenCalledWith(error, {
       unattended: false,
@@ -676,13 +677,13 @@ describe("resolveInitContext", () => {
     const { ui } = createMockUI();
 
     await expect(
-      resolveInitContext(makeOptions({ yes: false }), ui)
+      resolveInitContext(makeOptions({ yes: false }), ui),
     ).rejects.toBe(error);
   });
 
   test("keeps the org-scoped fallback when OAuth recovery is unattended", async () => {
     listTeamsSpy.mockRejectedValueOnce(
-      new ApiError("Forbidden", 403, "No team:read access")
+      new ApiError("Forbidden", 403, "No team:read access"),
     );
 
     const { ui } = createMockUI();
@@ -693,7 +694,7 @@ describe("resolveInitContext", () => {
       expect.any(ApiError),
       {
         unattended: true,
-      }
+      },
     );
   });
 
@@ -704,17 +705,17 @@ describe("resolveInitContext", () => {
       { id: "2", slug: "beta", name: "Beta" },
     ]);
     listTeamsSpy.mockRejectedValueOnce(
-      new ApiError("Not found", 404, "Organization not found")
+      new ApiError("Not found", 404, "Organization not found"),
     );
 
     const { ui, calls } = createMockUI();
     await expect(resolveInitContext(makeOptions(), ui)).rejects.toThrow(
-      "Organization 'missing-org'"
+      "Organization 'missing-org'",
     );
 
     const errorCall = calls.find(
       (c): c is Extract<MockCall, { kind: "log.error" }> =>
-        c.kind === "log.error"
+        c.kind === "log.error",
     );
     expect(errorCall?.message).toContain("Your organizations:");
     expect(errorCall?.message).toContain("acme");
@@ -728,8 +729,8 @@ describe("resolveInitContext", () => {
       new ApiError(
         "Failed to list teams",
         401,
-        "Your account is disabled in this organization because it is over its member limit."
-      )
+        "Your account is disabled in this organization because it is over its member limit.",
+      ),
     );
 
     const { ui, calls } = createMockUI();
@@ -737,7 +738,7 @@ describe("resolveInitContext", () => {
 
     const errorCall = calls.find(
       (c): c is Extract<MockCall, { kind: "log.error" }> =>
-        c.kind === "log.error"
+        c.kind === "log.error",
     );
     expect(errorCall?.message).toContain("over its member limit");
   });
@@ -747,35 +748,35 @@ describe("resolveInitContext", () => {
       new ApiError(
         "Failed to list teams",
         401,
-        "Your account is disabled in this organization because it is over its member limit."
-      )
+        "Your account is disabled in this organization because it is over its member limit.",
+      ),
     );
 
     const { ui, calls } = createMockUI();
     await expect(
-      resolveInitContext(makeOptions({ team: "backend" }), ui)
+      resolveInitContext(makeOptions({ team: "backend" }), ui),
     ).rejects.toThrow();
 
     const errorCall = calls.find(
       (c): c is Extract<MockCall, { kind: "log.error" }> =>
-        c.kind === "log.error"
+        c.kind === "log.error",
     );
     expect(errorCall?.message).toContain("over its member limit");
   });
 
   test("passes a pre-rendered WizardError through team resolution unchanged", async () => {
     listTeamsSpy.mockRejectedValueOnce(
-      new WizardError("custom preflight failure")
+      new WizardError("custom preflight failure"),
     );
 
     const { ui, calls } = createMockUI();
     await expect(resolveInitContext(makeOptions(), ui)).rejects.toThrow(
-      "custom preflight failure"
+      "custom preflight failure",
     );
 
     const errorCall = calls.find(
       (c): c is Extract<MockCall, { kind: "log.error" }> =>
-        c.kind === "log.error"
+        c.kind === "log.error",
     );
     expect(errorCall?.message).toBe("custom preflight failure");
   });
@@ -783,35 +784,38 @@ describe("resolveInitContext", () => {
   test.each([
     ["AuthError", new AuthError("expired")],
     ["HostScopeError", new HostScopeError("host mismatch")],
-  ])("propagates %s without turning it into a wizard failure", async (_, error) => {
-    listTeamsSpy.mockRejectedValueOnce(error);
+  ])(
+    "propagates %s without turning it into a wizard failure",
+    async (_, error) => {
+      listTeamsSpy.mockRejectedValueOnce(error);
 
-    const { ui, calls } = createMockUI();
-    await expect(resolveInitContext(makeOptions(), ui)).rejects.toBe(error);
+      const { ui, calls } = createMockUI();
+      await expect(resolveInitContext(makeOptions(), ui)).rejects.toBe(error);
 
-    expect(calls.some((call) => call.kind === "log.error")).toBe(false);
-    expect(calls.some((call) => call.kind === "cancel")).toBe(false);
-    expect(calls.some((call) => call.kind === "feedback")).toBe(false);
-  });
+      expect(calls.some((call) => call.kind === "log.error")).toBe(false);
+      expect(calls.some((call) => call.kind === "cancel")).toBe(false);
+      expect(calls.some((call) => call.kind === "feedback")).toBe(false);
+    },
+  );
 
   test("surfaces a non-API error message from implicit team resolution", async () => {
     listTeamsSpy.mockRejectedValueOnce(new Error("network down"));
 
     const { ui, calls } = createMockUI();
     await expect(resolveInitContext(makeOptions(), ui)).rejects.toThrow(
-      "network down"
+      "network down",
     );
 
     const errorCall = calls.find(
       (c): c is Extract<MockCall, { kind: "log.error" }> =>
-        c.kind === "log.error"
+        c.kind === "log.error",
     );
     expect(errorCall?.message).toContain("network down");
   });
 
   test("fails early when listTeams is forbidden and member project creation is disabled", async () => {
     listTeamsSpy.mockRejectedValueOnce(
-      new ApiError("Forbidden", 403, "No team:read access")
+      new ApiError("Forbidden", 403, "No team:read access"),
     );
     getOrganizationSpy.mockResolvedValueOnce({
       id: "1",
@@ -823,7 +827,7 @@ describe("resolveInitContext", () => {
 
     const { ui } = createMockUI();
     await expect(resolveInitContext(makeOptions(), ui)).rejects.toThrow(
-      "Project creation is disabled for members"
+      "Project creation is disabled for members",
     );
   });
 
@@ -839,12 +843,12 @@ describe("resolveInitContext", () => {
 
     const { ui, calls } = createMockUI();
     await expect(resolveInitContext(makeOptions(), ui)).rejects.toThrow(
-      "Project creation is disabled for members"
+      "Project creation is disabled for members",
     );
 
     const errorCall = calls.find(
       (c): c is Extract<MockCall, { kind: "log.error" }> =>
-        c.kind === "log.error"
+        c.kind === "log.error",
     );
     expect(errorCall?.message).toContain("sentry init acme/<project-slug>");
   });
@@ -899,7 +903,7 @@ describe("resolveInitContext", () => {
 
   test("allows org-scoped creation when listTeams returns 403 and user has project:admin scope", async () => {
     listTeamsSpy.mockRejectedValueOnce(
-      new ApiError("Forbidden", 403, "No team:read access")
+      new ApiError("Forbidden", 403, "No team:read access"),
     );
     getOrganizationSpy.mockResolvedValueOnce({
       id: "1",

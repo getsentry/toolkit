@@ -60,14 +60,14 @@ function parseAddPositionalArgs(args: string[]): {
       "Widget title is required as a positional argument.\n\n" +
         "Example:\n" +
         '  sentry dashboard widget add <dashboard> "My Widget" --display line --query count',
-      "title"
+      "title",
     );
   }
   if (args.length > 3) {
     throw new ValidationError(
       `Too many positional arguments (got ${args.length}, expected at most 3).\n\n` +
         "Usage: sentry dashboard widget add [<org/project>] <dashboard> <title>",
-      "positional"
+      "positional",
     );
   }
 
@@ -221,7 +221,7 @@ export const addCommand = buildCommand({
     const orgSlug = await resolveOrgFromTarget(
       parsed,
       cwd,
-      "sentry dashboard widget add <org>/ <dashboard> <title> --display <type>"
+      "sentry dashboard widget add <org>/ <dashboard> <title> --display <type>",
     );
     const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
 
@@ -244,7 +244,7 @@ export const addCommand = buildCommand({
     ) {
       throw new ValidationError(
         `Invalid --layout mode "${flags.layout}". Valid values: sequential, dense`,
-        "layout"
+        "layout",
       );
     }
     const layoutMode: WidgetLayoutMode =
@@ -257,7 +257,11 @@ export const addCommand = buildCommand({
     // GET current dashboard → append widget with layout → PUT
     const current = await getDashboard(orgSlug, dashboardId).catch(
       async (error: unknown) =>
-        enrichDashboardError(error, { orgSlug, dashboardId, operation: "view" })
+        enrichDashboardError(error, {
+          orgSlug,
+          dashboardId,
+          operation: "view",
+        }),
     );
     const updateBody = prepareDashboardForUpdate(current);
 
@@ -288,7 +292,7 @@ export const addCommand = buildCommand({
       const finalLayout = newWidget.layout ?? baseLayout;
       validateWidgetLayout(
         { col: finalLayout.x, width: finalLayout.w },
-        finalLayout
+        finalLayout,
       );
     }
 
@@ -297,13 +301,13 @@ export const addCommand = buildCommand({
     const updated = await updateDashboard(
       orgSlug,
       dashboardId,
-      updateBody
+      updateBody,
     ).catch(async (error: unknown) =>
       enrichDashboardError(error, {
         orgSlug,
         dashboardId,
         operation: "update",
-      })
+      }),
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 

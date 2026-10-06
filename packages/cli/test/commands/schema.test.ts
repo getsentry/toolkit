@@ -33,7 +33,7 @@ describe("resolveResourceQuery", () => {
 
   test("does not interpret a partial operation identifier as exact", () => {
     expect(() => resolveResourceQuery("OrganizationEvents")).toThrow(
-      ResolutionError
+      ResolutionError,
     );
   });
   test("no-match resource throws ResolutionError instead of listing everything", () => {

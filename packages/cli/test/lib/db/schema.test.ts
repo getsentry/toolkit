@@ -26,7 +26,7 @@ import { useTestConfigDir } from "../../helpers.js";
  */
 function createDatabaseWithMissingTables(
   db: Database,
-  missingTables: string[]
+  missingTables: string[],
 ): void {
   const statements: string[] = [];
   for (const tableName of Object.keys(EXPECTED_TABLES)) {
@@ -35,7 +35,7 @@ function createDatabaseWithMissingTables(
   }
   db.exec(statements.join(";\n"));
   db.query("INSERT INTO schema_version (version) VALUES (?)").run(
-    CURRENT_SCHEMA_VERSION
+    CURRENT_SCHEMA_VERSION,
   );
 }
 
@@ -45,7 +45,7 @@ function createDatabaseWithMissingTables(
  */
 function createPreMigrationDatabase(
   db: Database,
-  preMigrationTables: string[]
+  preMigrationTables: string[],
 ): void {
   const statements: string[] = [];
   for (const tableName of Object.keys(EXPECTED_TABLES)) {
@@ -57,7 +57,7 @@ function createPreMigrationDatabase(
   }
   db.exec(statements.join(";\n"));
   db.query("INSERT INTO schema_version (version) VALUES (?)").run(
-    CURRENT_SCHEMA_VERSION
+    CURRENT_SCHEMA_VERSION,
   );
 }
 
@@ -161,7 +161,7 @@ describe("repairSchema", () => {
     // Should have created the table
     expect(tableExists(db, "dsn_cache")).toBe(true);
     expect(
-      result.fixed.some((f) => f.includes("Created table dsn_cache"))
+      result.fixed.some((f) => f.includes("Created table dsn_cache")),
     ).toBe(true);
     expect(result.failed).toEqual([]);
     db.close();
@@ -185,7 +185,7 @@ describe("repairSchema", () => {
     expect(hasColumn(db, "dsn_cache", "fingerprint")).toBe(true);
     expect(hasColumn(db, "dsn_cache", "dir_mtimes_json")).toBe(true);
     expect(result.fixed.some((f) => f.includes("dsn_cache.fingerprint"))).toBe(
-      true
+      true,
     );
     expect(result.failed).toEqual([]);
     db.close();
@@ -318,7 +318,7 @@ describe("runMigrations", () => {
     initSchema(db);
     db.exec("DROP TABLE pagination_cursors");
     db.exec(
-      "CREATE TABLE pagination_cursors (command_key TEXT PRIMARY KEY, context TEXT NOT NULL, cursor TEXT NOT NULL, expires_at INTEGER NOT NULL)"
+      "CREATE TABLE pagination_cursors (command_key TEXT PRIMARY KEY, context TEXT NOT NULL, cursor TEXT NOT NULL, expires_at INTEGER NOT NULL)",
     );
     // Set version to 5 so migration 5→6 fires
     db.query("UPDATE schema_version SET version = 5").run();
@@ -328,7 +328,7 @@ describe("runMigrations", () => {
     // Table should now have the correct composite PK
     const row = db
       .query(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='pagination_cursors'"
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='pagination_cursors'",
       )
       .get() as { sql: string };
     expect(row.sql).toContain("PRIMARY KEY (command_key, context)");
@@ -353,7 +353,7 @@ describe("runMigrations", () => {
 
     const row = db
       .query(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='pagination_cursors'"
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='pagination_cursors'",
       )
       .get() as { sql: string };
     expect(row.sql).toContain("PRIMARY KEY (command_key, context)");
@@ -387,7 +387,7 @@ describe("runMigrations", () => {
       updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
     )`);
     db.query(
-      "INSERT INTO defaults (id, organization, project) VALUES (1, ?, ?)"
+      "INSERT INTO defaults (id, organization, project) VALUES (1, ?, ?)",
     ).run("migrated-org", "migrated-project");
 
     // Set version to 12 so migration 12→13 fires
@@ -442,7 +442,7 @@ describe("runMigrations", () => {
       updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
     )`);
     db.query(
-      "INSERT INTO defaults (id, organization, project) VALUES (1, ?, NULL)"
+      "INSERT INTO defaults (id, organization, project) VALUES (1, ?, NULL)",
     ).run("only-org");
     db.query("UPDATE schema_version SET version = 12").run();
 
@@ -483,19 +483,19 @@ describe("repairSchema: wrong primary key", () => {
     // Simulate the bug: drop and recreate with wrong PK
     db.exec("DROP TABLE pagination_cursors");
     db.exec(
-      "CREATE TABLE pagination_cursors (command_key TEXT PRIMARY KEY, context TEXT NOT NULL, cursor TEXT NOT NULL, expires_at INTEGER NOT NULL)"
+      "CREATE TABLE pagination_cursors (command_key TEXT PRIMARY KEY, context TEXT NOT NULL, cursor TEXT NOT NULL, expires_at INTEGER NOT NULL)",
     );
 
     const result = repairSchema(db);
 
     expect(result.fixed.some((f) => f.includes("pagination_cursors"))).toBe(
-      true
+      true,
     );
     expect(result.failed).toEqual([]);
 
     const row = db
       .query(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='pagination_cursors'"
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='pagination_cursors'",
       )
       .get() as { sql: string };
     expect(row.sql).toContain("PRIMARY KEY (command_key, context)");
@@ -510,7 +510,7 @@ describe("repairSchema: wrong primary key", () => {
 
     // Should not report pagination_cursors as fixed
     expect(result.fixed.some((f) => f.includes("pagination_cursors"))).toBe(
-      false
+      false,
     );
     db.close();
   });
@@ -522,7 +522,7 @@ describe("getSchemaIssues: wrong primary key", () => {
     initSchema(db);
     db.exec("DROP TABLE pagination_cursors");
     db.exec(
-      "CREATE TABLE pagination_cursors (command_key TEXT PRIMARY KEY, context TEXT NOT NULL, cursor TEXT NOT NULL, expires_at INTEGER NOT NULL)"
+      "CREATE TABLE pagination_cursors (command_key TEXT PRIMARY KEY, context TEXT NOT NULL, cursor TEXT NOT NULL, expires_at INTEGER NOT NULL)",
     );
 
     const issues = getSchemaIssues(db);

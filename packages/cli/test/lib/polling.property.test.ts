@@ -38,7 +38,7 @@ describe("poll properties", () => {
         expect(result.value).toBe(stateValue);
         expect(fetchCount).toBe(1); // Only called once
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -65,9 +65,9 @@ describe("poll properties", () => {
           // Result should satisfy the stop condition
           expect(result.count).toBeGreaterThanOrEqual(stopAfter);
           expect(result.value).toBe(stateValue);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -94,7 +94,7 @@ describe("poll properties", () => {
           expect((error as TimeoutError).message).toBe(customMessage);
         }
       }),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) } // Fewer runs since timeout tests are slow
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) }, // Fewer runs since timeout tests are slow
     );
   });
 
@@ -152,9 +152,9 @@ describe("poll properties", () => {
             Math.ceil(actualTimeout / pollIntervalMs) + 2;
           expect(fetchCount).toBeLessThanOrEqual(maxExpectedCalls);
           expect(fetchCount).toBeGreaterThanOrEqual(1); // At least one call
-        }
+        },
       ),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) },
     );
   });
 
@@ -184,9 +184,9 @@ describe("poll properties", () => {
 
           expect(result.value).toBe(stateValue);
           expect(fetchCount).toBe(nullCount + 1);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -219,9 +219,9 @@ describe("poll properties", () => {
 
           // Messages should have been generated for each non-null state
           expect(messages.length).toBeGreaterThanOrEqual(1);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -237,7 +237,7 @@ describe("poll edge cases", () => {
         json: true,
         pollIntervalMs: 10,
         timeoutMs: 0,
-      })
+      }),
     ).rejects.toBeInstanceOf(TimeoutError);
   });
 
@@ -252,7 +252,7 @@ describe("poll edge cases", () => {
         json: true,
         pollIntervalMs: 10,
         timeoutMs: 1000,
-      })
+      }),
     ).rejects.toThrow("Fetch failed");
   });
 });

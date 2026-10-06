@@ -214,7 +214,7 @@ export function parseCursorFlag(value: string): string {
   }
   if (ALL_DIGITS_RE.test(value)) {
     throw new Error(
-      `'${value}' is not a valid cursor. Cursors look like "1735689600:0:0". Use "next" / "prev" to navigate pages.`
+      `'${value}' is not a valid cursor. Cursors look like "1735689600:0:0". Use "next" / "prev" to navigate pages.`,
     );
   }
   return value;
@@ -281,7 +281,7 @@ export function paginationHint(opts: {
  */
 export function appendQueryHint(
   parts: string[],
-  query: string | undefined
+  query: string | undefined,
 ): void {
   if (query) {
     parts.push(`-q "${query}"`);
@@ -298,7 +298,7 @@ export function appendQueryHint(
 export function appendSortHint(
   parts: string[],
   sort: string | undefined,
-  defaultSort?: string
+  defaultSort?: string,
 ): void {
   if (sort && sort !== defaultSort) {
     parts.push(`--sort "${sort}"`);
@@ -315,7 +315,7 @@ export function appendSortHint(
  */
 export function buildListLimitFlag(
   entityPlural: string,
-  defaultValue = String(LIST_DEFAULT_LIMIT)
+  defaultValue = String(LIST_DEFAULT_LIMIT),
 ): {
   kind: "parsed";
   parse: typeof numberParser;
@@ -429,8 +429,8 @@ function getSubcommandsForRoute(routeName: string): Set<string> {
           _subcommandsByRoute.set(
             entry.name.original,
             collectChildNames(
-              target as { getAllEntries: () => readonly RouteEntry[] }
-            )
+              target as { getAllEntries: () => readonly RouteEntry[] },
+            ),
           );
         }
       }
@@ -463,7 +463,7 @@ function getSubcommandsForRoute(routeName: string): Set<string> {
 export function interceptSubcommand(
   target: string | undefined,
   stderr: { write(s: string): void },
-  routeName: string
+  routeName: string,
 ): string | undefined {
   if (!target) {
     return target;
@@ -472,8 +472,8 @@ export function interceptSubcommand(
   if (trimmed && getSubcommandsForRoute(routeName).has(trimmed)) {
     stderr.write(
       warning(
-        `Tip: "${trimmed}" is a subcommand. Running: sentry ${routeName} ${trimmed}\n`
-      )
+        `Tip: "${trimmed}" is a subcommand. Running: sentry ${routeName} ${trimmed}\n`,
+      ),
     );
     return;
   }
@@ -504,7 +504,7 @@ type ListCommandFunction<
   this: CONTEXT,
   flags: FLAGS,
   ...args: ARGS
-  // biome-ignore lint/suspicious/noConfusingVoidType: void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
+  // void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
 ) => AsyncGenerator<unknown, CommandReturn | void, undefined>;
 
 /**
@@ -551,11 +551,11 @@ export function buildListCommand<
       readonly fullDescription?: string;
     };
     readonly func: ListCommandFunction<FLAGS, ARGS, CONTEXT>;
-    // biome-ignore lint/suspicious/noExplicitAny: OutputConfig is generic but type is erased at the builder level
+    // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig is generic but type is erased at the builder level
     readonly output?: OutputConfig<any>;
     readonly auth?: boolean;
   },
-  options?: ListCommandOptions
+  options?: ListCommandOptions,
 ): Command<CONTEXT> {
   const originalFunc = builderArgs.func;
 
@@ -593,7 +593,7 @@ export function buildListCommand<
     aliases: mergedAliases,
   };
 
-  // biome-ignore lint/suspicious/noExplicitAny: Stricli's CommandFunction type is complex
+  // oxlint-disable-next-line typescript/no-explicit-any -- Stricli's CommandFunction type is complex
   const wrappedFunc = function (this: CONTEXT, flags: FLAGS, ...args: any[]) {
     // Auto-apply fresh flag before command runs
     applyFreshFlag(flags as unknown as { readonly fresh: boolean });
@@ -609,7 +609,7 @@ export function buildListCommand<
       args[0] = interceptSubcommand(
         args[0] as string | undefined,
         ctx.stderr,
-        routeName
+        routeName,
       );
     }
     return originalFunc.call(this, flags, ...(args as unknown as ARGS));
@@ -645,7 +645,7 @@ export type OrgListCommandDocs = {
  */
 function formatListHuman<TEntity, TWithOrg>(
   result: ListResult<TWithOrg>,
-  config: OrgListConfig<TEntity, TWithOrg>
+  config: OrgListConfig<TEntity, TWithOrg>,
 ): string {
   const parts: string[] = [];
 
@@ -691,7 +691,7 @@ function formatListHuman<TEntity, TWithOrg>(
 export function buildOrgListCommand<TEntity, TWithOrg>(
   config: OrgListConfig<TEntity, TWithOrg>,
   docs: OrgListCommandDocs,
-  routeName: string
+  routeName: string,
 ): Command<SentryContext> {
   return buildListCommand(routeName, {
     docs,
@@ -717,7 +717,7 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
         readonly fresh: boolean;
         readonly fields?: string[];
       },
-      target?: string
+      target?: string,
     ) {
       const { cwd } = this;
       const parsed = parseOrgProjectArg(target);

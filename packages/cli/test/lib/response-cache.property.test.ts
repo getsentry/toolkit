@@ -31,7 +31,7 @@ const TEST_IDENTITY = "identity-a";
 
 /** Generate simple path segments */
 const pathSegmentArb = string({ minLength: 1, maxLength: 20 }).filter((s) =>
-  /^[a-zA-Z0-9_-]+$/.test(s)
+  /^[a-zA-Z0-9_-]+$/.test(s),
 );
 
 /** Generate URL-like strings with paths and query params */
@@ -39,20 +39,20 @@ const sentryUrlArb = tuple(
   constantFrom(
     "https://us.sentry.io",
     "https://de.sentry.io",
-    "https://sentry.io"
+    "https://sentry.io",
   ),
   array(pathSegmentArb, { minLength: 1, maxLength: 5 }),
   array(
     tuple(
       string({ minLength: 1, maxLength: 10 }).filter((s) =>
-        /^[a-zA-Z]+$/.test(s)
+        /^[a-zA-Z]+$/.test(s),
       ),
       string({ minLength: 1, maxLength: 20 }).filter((s) =>
-        /^[a-zA-Z0-9]+$/.test(s)
-      )
+        /^[a-zA-Z0-9]+$/.test(s),
+      ),
     ),
-    { minLength: 0, maxLength: 4 }
-  )
+    { minLength: 0, maxLength: 4 },
+  ),
 ).map(([base, paths, params]) => {
   const pathStr = `/api/0/${paths.join("/")}`;
   const query =
@@ -71,10 +71,10 @@ describe("property: buildCacheKey", () => {
     fcAssert(
       property(methodArb, sentryUrlArb, (method, url) => {
         expect(buildCacheKey(method, url, TEST_IDENTITY)).toMatch(
-          /^[0-9a-f]{64}$/
+          /^[0-9a-f]{64}$/,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -82,10 +82,10 @@ describe("property: buildCacheKey", () => {
     fcAssert(
       property(methodArb, sentryUrlArb, (method, url) => {
         expect(buildCacheKey(method, url, TEST_IDENTITY)).toBe(
-          buildCacheKey(method, url, TEST_IDENTITY)
+          buildCacheKey(method, url, TEST_IDENTITY),
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -93,10 +93,10 @@ describe("property: buildCacheKey", () => {
     fcAssert(
       property(sentryUrlArb, (url) => {
         expect(buildCacheKey("GET", url, TEST_IDENTITY)).not.toBe(
-          buildCacheKey("POST", url, TEST_IDENTITY)
+          buildCacheKey("POST", url, TEST_IDENTITY),
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -109,11 +109,11 @@ describe("property: buildCacheKey", () => {
           const url1 = `${base}/api/0/${path}?a=1&b=2&c=3`;
           const url2 = `${base}/api/0/${path}?c=3&a=1&b=2`;
           expect(buildCacheKey("GET", url1, TEST_IDENTITY)).toBe(
-            buildCacheKey("GET", url2, TEST_IDENTITY)
+            buildCacheKey("GET", url2, TEST_IDENTITY),
           );
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -121,10 +121,10 @@ describe("property: buildCacheKey", () => {
     fcAssert(
       property(sentryUrlArb, (url) => {
         expect(buildCacheKey("get", url, TEST_IDENTITY)).toBe(
-          buildCacheKey("GET", url, TEST_IDENTITY)
+          buildCacheKey("GET", url, TEST_IDENTITY),
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -147,9 +147,9 @@ describe("property: normalizeUrl", () => {
         (method, url) => {
           const normalized = normalizeUrl(method, url);
           expect(normalized.startsWith(method.toUpperCase())).toBe(true);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -161,7 +161,7 @@ describe("property: normalizeUrl", () => {
         const [m] = normalized.split("|", 1);
         expect(m).toBe(method.toUpperCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -177,7 +177,7 @@ describe("property: classifyUrl", () => {
         const tier = classifyUrl(url);
         expect(["immutable", "stable", "volatile", "no-cache"]).toContain(tier);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 

@@ -105,7 +105,7 @@ async function uploadOne(
   path: string,
   org: string,
   project: string,
-  metadata: BuildUploadMetadata
+  metadata: BuildUploadMetadata,
 ): Promise<string> {
   let info: Awaited<ReturnType<typeof stat>>;
   try {
@@ -139,7 +139,7 @@ async function uploadOne(
       } else {
         throw new ValidationError(
           `Unsupported build format (expected APK, AAB, IPA, or XCArchive): ${path}`,
-          "path"
+          "path",
         );
       }
     }
@@ -177,7 +177,8 @@ export const uploadCommand = buildCommand({
     positional: {
       kind: "array",
       parameter: {
-        brief: "Path(s) to the build(s) to upload (APK, AAB, IPA, or XCArchive)",
+        brief:
+          "Path(s) to the build(s) to upload (APK, AAB, IPA, or XCArchive)",
         parse: String,
         placeholder: "path",
       },
@@ -226,7 +227,8 @@ export const uploadCommand = buildCommand({
       "head-repo-name": {
         kind: "parsed",
         parse: String,
-        brief: "Head repository name, e.g. owner/repo (defaults to the current)",
+        brief:
+          "Head repository name, e.g. owner/repo (defaults to the current)",
         optional: true,
       },
       "base-repo-name": {
@@ -244,7 +246,8 @@ export const uploadCommand = buildCommand({
       "base-ref": {
         kind: "parsed",
         parse: String,
-        brief: "Base branch/reference (defaults to the merge-base tracking ref)",
+        brief:
+          "Base branch/reference (defaults to the merge-base tracking ref)",
         optional: true,
       },
       "pr-number": {
@@ -284,19 +287,14 @@ export const uploadCommand = buildCommand({
     if (flags["force-git-metadata"] && flags["no-git-metadata"]) {
       throw new ValidationError(
         "--force-git-metadata and --no-git-metadata cannot be used together",
-        "force-git-metadata"
+        "force-git-metadata",
       );
     }
     // Collect git metadata automatically in CI (unless disabled), or when forced.
     const shouldCollectVcs =
       Boolean(flags["force-git-metadata"]) ||
       (!flags["no-git-metadata"] && isCi(this.env));
-    const vcs = collectVcsMetadata(
-      flags,
-      this.cwd,
-      this.env,
-      shouldCollectVcs
-    );
+    const vcs = collectVcsMetadata(flags, this.cwd, this.env, shouldCollectVcs);
 
     const metadata: BuildUploadMetadata = {
       buildConfiguration: flags["build-configuration"],

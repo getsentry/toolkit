@@ -215,7 +215,7 @@ function extractFields(iniData: ReturnType<typeof parseIni>): {
 /** Read and parse a single .sentryclirc file into a DiscoveredRcFile */
 async function readRcFile(
   rcPath: string,
-  location: RcFileLocation
+  location: RcFileLocation,
 ): Promise<DiscoveredRcFile | null> {
   const content = await tryReadSentryCliRc(rcPath);
   if (content === null) {
@@ -241,7 +241,7 @@ async function readRcFile(
  * content hashes, and location classification.
  */
 export async function discoverRcFiles(
-  cwd: string
+  cwd: string,
 ): Promise<DiscoveredRcFile[]> {
   const files: DiscoveredRcFile[] = [];
   const globalPathSet = getGlobalPaths();
@@ -268,7 +268,7 @@ export async function discoverRcFiles(
     seen.add(globalPath);
     const file = await readRcFile(
       globalPath,
-      classifyRcFileLocation(globalPath)
+      classifyRcFileLocation(globalPath),
     );
     if (file) {
       files.push(file);
@@ -351,7 +351,7 @@ function isDefaultSet(getter: () => string | null): boolean {
 /** Determine which effective fields would be new (not already in SQLite) */
 function computeNewFields(
   effective: ImportPlan["effective"],
-  isSaas: boolean
+  isSaas: boolean,
 ): ImportableField[] {
   const fields: ImportableField[] = [];
 
@@ -388,7 +388,7 @@ function computeNewFields(
  */
 export function checkSntrysClaim(
   token: string,
-  url: string
+  url: string,
 ): string | undefined {
   const claim = parseSntrysClaim(token);
   if (!claim?.url) {
@@ -408,7 +408,7 @@ export function checkSntrysClaim(
 function buildSecurityWarnings(
   effectiveSources: ImportPlan["effectiveSources"],
   effective: ImportPlan["effective"],
-  isSaas: boolean
+  isSaas: boolean,
 ): string[] {
   const warnings: string[] = [];
 
@@ -422,7 +422,7 @@ function buildSecurityWarnings(
     warnings.push(
       "Token and URL come from different files — URL may have been injected.\n" +
         `  Token: ${effectiveSources.token}\n` +
-        `  URL:   ${effectiveSources.url}`
+        `  URL:   ${effectiveSources.url}`,
     );
   }
 
@@ -517,14 +517,14 @@ async function validateAndFetchUser(result: ImportResult): Promise<boolean> {
       result.stored.token = false;
       result.tokenValid = false;
       result.warnings.push(
-        "Token validation failed (invalid credentials) — the token was not stored."
+        "Token validation failed (invalid credentials) — the token was not stored.",
       );
       return false;
     }
     // Transient network error — keep the token, warn the user
     log.debug("Token validation failed with transient error", error);
     result.warnings.push(
-      "Could not validate token (network error). Token was stored — run 'sentry auth status' to verify."
+      "Could not validate token (network error). Token was stored — run 'sentry auth status' to verify.",
     );
     return true;
   }
@@ -563,7 +563,7 @@ function trySetDefault(
   getter: () => string | null,
   setter: (v: string) => void,
   value: string,
-  label: string
+  label: string,
 ): boolean {
   try {
     if (!getter()) {
@@ -579,14 +579,14 @@ function trySetDefault(
 /** Store default values that are not already set */
 function storeDefaults(
   effective: ImportPlan["effective"],
-  result: ImportResult
+  result: ImportResult,
 ): void {
   if (effective.url && !isSaaSTrustOrigin(effective.url)) {
     result.stored.url = trySetDefault(
       getDefaultUrl,
       setDefaultUrl,
       effective.url,
-      "URL"
+      "URL",
     );
   }
   if (effective.org) {
@@ -594,7 +594,7 @@ function storeDefaults(
       getDefaultOrganization,
       setDefaultOrganization,
       effective.org,
-      "org"
+      "org",
     );
   }
   if (effective.project) {
@@ -602,7 +602,7 @@ function storeDefaults(
       getDefaultProject,
       setDefaultProject,
       effective.project,
-      "project"
+      "project",
     );
   }
 }
@@ -619,7 +619,7 @@ function storeDefaults(
  */
 export async function executeImport(
   plan: ImportPlan,
-  options: ExecuteImportOptions = {}
+  options: ExecuteImportOptions = {},
 ): Promise<ImportResult> {
   const { validateToken = true } = options;
   const { effective } = plan;
@@ -718,7 +718,7 @@ function getImportRecord(): ImportRecord | null {
   try {
     const db = getDatabase();
     const raw = getMetadata(db, [IMPORT_COMPLETED_KEY]).get(
-      IMPORT_COMPLETED_KEY
+      IMPORT_COMPLETED_KEY,
     );
     if (!raw) {
       return null;
@@ -836,7 +836,7 @@ function hasStoredAuth(): boolean {
  */
 async function verifyFileHash(
   filePath: string,
-  expectedHash: string
+  expectedHash: string,
 ): Promise<boolean> {
   try {
     const content = await tryReadSentryCliRc(filePath);

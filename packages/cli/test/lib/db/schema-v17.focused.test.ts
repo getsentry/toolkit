@@ -33,13 +33,13 @@ describe("schema v17 organization region provenance", () => {
       org_name TEXT, org_role TEXT, updated_at INTEGER NOT NULL
     )`);
     db.query(
-      "INSERT INTO org_regions (org_slug, region_url, updated_at) VALUES (?, ?, ?)"
+      "INSERT INTO org_regions (org_slug, region_url, updated_at) VALUES (?, ?, ?)",
     ).run("legacy", "https://legacy.example.com", Date.now());
     db.query("UPDATE schema_version SET version = 16").run();
     closeDatabase();
     const migrated = getDatabase();
     expect(
-      migrated.query("SELECT COUNT(*) AS count FROM org_regions").get()
+      migrated.query("SELECT COUNT(*) AS count FROM org_regions").get(),
     ).toEqual({ count: 0 });
     expect(migrated.query("SELECT version FROM schema_version").get()).toEqual({
       version: 17,

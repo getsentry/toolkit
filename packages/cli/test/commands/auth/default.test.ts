@@ -24,17 +24,17 @@ describe("resolveAuthDefaultTarget", () => {
     expect(resolveAuthDefaultTarget({ token: "t" }, true)).toBe("login");
     expect(resolveAuthDefaultTarget({ force: true }, true)).toBe("login");
     expect(
-      resolveAuthDefaultTarget({ url: "https://sentry.example.com" }, true)
+      resolveAuthDefaultTarget({ url: "https://sentry.example.com" }, true),
     ).toBe("login");
     expect(resolveAuthDefaultTarget({ "read-only": true }, true)).toBe("login");
     expect(resolveAuthDefaultTarget({ scope: ["org:read"] }, true)).toBe(
-      "login"
+      "login",
     );
   });
 
   test("status-only flags keep status when authenticated", () => {
     expect(
-      resolveAuthDefaultTarget({ "show-token": true, fresh: true }, true)
+      resolveAuthDefaultTarget({ "show-token": true, fresh: true }, true),
     ).toBe("status");
   });
 
@@ -47,7 +47,7 @@ describe("authDefaultCommand", () => {
   test("dispatches to login raw func when logged out", async () => {
     const isAuthenticated = vi.spyOn(
       await import("../../../src/lib/db/auth.js"),
-      "isAuthenticated"
+      "isAuthenticated",
     );
     isAuthenticated.mockReturnValue(false);
 
@@ -98,7 +98,7 @@ describe("authDefaultCommand", () => {
   test("dispatches to status raw func when logged in", async () => {
     const isAuthenticated = vi.spyOn(
       await import("../../../src/lib/db/auth.js"),
-      "isAuthenticated"
+      "isAuthenticated",
     );
     isAuthenticated.mockReturnValue(true);
 

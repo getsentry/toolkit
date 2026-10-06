@@ -223,7 +223,7 @@ function isJvmSourceFile(name: string, relPath: string): boolean {
  */
 async function resolveEntryKind(
   entry: import("node:fs").Dirent,
-  fullPath: string
+  fullPath: string,
 ): Promise<"dir" | "file" | "other"> {
   if (entry.isDirectory()) {
     return "dir";
@@ -263,7 +263,7 @@ async function resolveEntryKind(
 async function collectJvmSources(
   rootDir: string,
   userExcludes: Set<string>,
-  rootIsSrc: boolean
+  rootIsSrc: boolean,
 ): Promise<Map<string, string>> {
   const files = new Map<string, string>();
   // Track canonicalized directory paths already visited so that symlink
@@ -293,7 +293,7 @@ async function collectJvmSources(
   /** Process a single directory entry: recurse into dirs, collect source files. */
   async function processEntry(
     entry: import("node:fs").Dirent,
-    dir: string
+    dir: string,
   ): Promise<void> {
     const fullPath = join(dir, entry.name);
     const kind = await resolveEntryKind(entry, fullPath);
@@ -350,7 +350,7 @@ type ValidatedEntry = {
  * @returns Array of validated entries suitable for ZIP inclusion.
  */
 async function readAndValidateFiles(
-  urlToAbsPath: Map<string, string>
+  urlToAbsPath: Map<string, string>,
 ): Promise<ValidatedEntry[]> {
   const validated: ValidatedEntry[] = [];
 
@@ -382,13 +382,13 @@ async function readAndValidateFiles(
 async function writeBundle(
   outputPath: string,
   manifest: SourceBundleManifest,
-  validatedFiles: ValidatedEntry[]
+  validatedFiles: ValidatedEntry[],
 ): Promise<void> {
   const zip = await ZipWriter.create(outputPath);
   try {
     await zip.addEntry(
       "manifest.json",
-      Buffer.from(JSON.stringify(manifest, null, 2), "utf-8")
+      Buffer.from(JSON.stringify(manifest, null, 2), "utf-8"),
     );
 
     for (const { bundlePath, content } of validatedFiles) {
@@ -414,7 +414,7 @@ async function writeBundle(
  * @returns Result with file count and output path
  */
 export async function buildJvmBundle(
-  options: JvmBundleOptions
+  options: JvmBundleOptions,
 ): Promise<JvmBundleResult> {
   const { sourcePath, outputPath, debugId, excludePatterns = [] } = options;
 
@@ -432,7 +432,7 @@ export async function buildJvmBundle(
   const sourceFiles = await collectJvmSources(
     sourcePath,
     userExcludes,
-    prependSrc
+    prependSrc,
   );
   log.debug(`Found ${sourceFiles.size} JVM source files`);
 
@@ -450,7 +450,7 @@ export async function buildJvmBundle(
     if (existingRel !== undefined) {
       log.warn(
         `URL collision on ${url}: skipping '${relPath}' (already bundled from '${existingRel}'). ` +
-          "Use --exclude to drop the unwanted source set."
+          "Use --exclude to drop the unwanted source set.",
       );
       collisionCount += 1;
       continue;

@@ -10,7 +10,7 @@
  * - Invariant violations (e.g., clearAuth also clears regions)
  */
 
-// biome-ignore-all lint/suspicious/noMisplacedAssertion: Model-based testing uses expect() inside command classes, not directly in test() functions. This is the standard fast-check pattern for stateful testing.
+// Model-based tests use expect() inside command classes, as required by fast-check.
 
 import {
   type AsyncCommand,
@@ -130,7 +130,7 @@ class SetAuthTokenCommand implements AsyncCommand<DbModel, RealDb> {
   constructor(
     token: string,
     expiresIn: number | undefined,
-    refreshToken: string | undefined
+    refreshToken: string | undefined,
   ) {
     this.token = token;
     this.expiresIn = expiresIn;
@@ -213,7 +213,7 @@ class GetAuthConfigCommand implements AsyncCommand<DbModel, RealDb> {
       expect(realConfig?.token).toBe(model.auth.token as string);
       expect(realConfig?.source).toBe("oauth");
       expect(realConfig?.refreshToken).toBe(
-        (model.auth.refreshToken ?? undefined) as string | undefined
+        (model.auth.refreshToken ?? undefined) as string | undefined,
       );
       if (model.auth.expiresAt !== null) {
         expect(realConfig?.expiresAt).toBeDefined();
@@ -436,7 +436,7 @@ class SetOrgRegionsCommand implements AsyncCommand<DbModel, RealDb> {
 
   async run(model: DbModel, _real: RealDb): Promise<void> {
     setOrgRegions(
-      this.entries.map(([slug, regionUrl]) => ({ slug, regionUrl }))
+      this.entries.map(([slug, regionUrl]) => ({ slug, regionUrl })),
     );
 
     for (const [orgSlug, regionUrl] of this.entries) {
@@ -485,7 +485,7 @@ class SetProjectAliasesCommand implements AsyncCommand<DbModel, RealDb> {
 
   constructor(
     aliases: Record<string, { orgSlug: string; projectSlug: string }>,
-    fingerprint: string | undefined
+    fingerprint: string | undefined,
   ) {
     this.aliases = aliases;
     this.fingerprint = fingerprint;
@@ -508,7 +508,8 @@ class SetProjectAliasesCommand implements AsyncCommand<DbModel, RealDb> {
   toString(): string {
     const aliasStr = Object.entries(this.aliases)
       .map(
-        ([a, e]) => `"${a}": {org: "${e.orgSlug}", project: "${e.projectSlug}"}`
+        ([a, e]) =>
+          `"${a}": {org: "${e.orgSlug}", project: "${e.projectSlug}"}`,
       )
       .join(", ");
     return `setProjectAliases({${aliasStr}}, ${this.fingerprint ? `"${this.fingerprint}"` : undefined})`;
@@ -629,7 +630,7 @@ class GetVersionCheckCommand implements AsyncCommand<DbModel, RealDb> {
       expect(realInfo.lastChecked).not.toBeNull();
       // Should be within 1 second of expected
       expect(
-        Math.abs(realInfo.lastChecked! - model.versionCheck.lastChecked)
+        Math.abs(realInfo.lastChecked! - model.versionCheck.lastChecked),
       ).toBeLessThan(1000);
     } else {
       expect(realInfo.lastChecked).toBeNull();
@@ -657,7 +658,7 @@ const regionUrlArb = constantFrom(
   "https://us.sentry.io",
   "https://de.sentry.io",
   "https://eu.sentry.io",
-  "https://sentry.io"
+  "https://sentry.io",
 );
 
 /** Generate alias (single letter) */
@@ -666,18 +667,18 @@ const aliasArb = constantFrom(...aliasChars.split(""));
 
 /** Generate alias with optional uppercase */
 const aliasWithCaseArb = tuple(aliasArb, boolean()).map(([alias, upper]) =>
-  upper ? alias.toUpperCase() : alias
+  upper ? alias.toUpperCase() : alias,
 );
 
 /** Generate DSN fingerprint */
 const fingerprintArb = option(
   tuple(nat(1000), nat(1000)).map(([a, b]) => `${a}:${b}`),
-  { nil: undefined }
+  { nil: undefined },
 );
 
 /** Generate version string */
 const versionArb = tuple(nat(10), nat(20), nat(100)).map(
-  ([major, minor, patch]) => `${major}.${minor}.${patch}`
+  ([major, minor, patch]) => `${major}.${minor}.${patch}`,
 );
 
 /** Generate expiresIn (seconds) - can be negative for testing expiry */
@@ -690,10 +691,10 @@ const expiresInArb = option(integer({ min: -10, max: 7200 }), {
 const setAuthTokenCmdArb = tuple(
   storedTokenArb,
   expiresInArb,
-  option(tokenArb, { nil: undefined })
+  option(tokenArb, { nil: undefined }),
 ).map(
   ([token, expiresIn, refreshToken]) =>
-    new SetAuthTokenCommand(token, expiresIn, refreshToken)
+    new SetAuthTokenCommand(token, expiresIn, refreshToken),
 );
 
 const getAuthTokenCmdArb = constant(new GetAuthTokenCommand());
@@ -705,17 +706,17 @@ const clearAuthCmdArb = constant(new ClearAuthCommand());
 const isAuthenticatedCmdArb = constant(new IsAuthenticatedCommand());
 
 const setEnvAuthTokenCmdArb = tokenArb.map(
-  (t) => new SetEnvAuthTokenCommand(t)
+  (t) => new SetEnvAuthTokenCommand(t),
 );
 const clearEnvAuthTokenCmdArb = constant(new ClearEnvAuthTokenCommand());
 const setEnvSentryTokenCmdArb = tokenArb.map(
-  (t) => new SetEnvSentryTokenCommand(t)
+  (t) => new SetEnvSentryTokenCommand(t),
 );
 const clearEnvSentryTokenCmdArb = constant(new ClearEnvSentryTokenCommand());
 const isEnvTokenActiveCmdArb = constant(new IsEnvTokenActiveCommand());
 
 const setOrgRegionCmdArb = tuple(slugArb, regionUrlArb).map(
-  ([org, url]) => new SetOrgRegionCommand(org, url)
+  ([org, url]) => new SetOrgRegionCommand(org, url),
 );
 
 const getOrgRegionCmdArb = slugArb.map((org) => new GetOrgRegionCommand(org));
@@ -731,7 +732,7 @@ const clearOrgRegionsCmdArb = constant(new ClearOrgRegionsCommand());
 
 const setProjectAliasesCmdArb = tuple(
   array(tuple(aliasArb, slugArb, slugArb), { minLength: 0, maxLength: 5 }),
-  fingerprintArb
+  fingerprintArb,
 ).map(([entries, fp]) => {
   const aliases: Record<string, { orgSlug: string; projectSlug: string }> = {};
   for (const [alias, org, project] of entries) {
@@ -743,13 +744,13 @@ const setProjectAliasesCmdArb = tuple(
 const getProjectAliasesCmdArb = constant(new GetProjectAliasesCommand());
 
 const getProjectByAliasCmdArb = tuple(aliasWithCaseArb, fingerprintArb).map(
-  ([alias, fp]) => new GetProjectByAliasCommand(alias, fp)
+  ([alias, fp]) => new GetProjectByAliasCommand(alias, fp),
 );
 
 const clearProjectAliasesCmdArb = constant(new ClearProjectAliasesCommand());
 
 const setVersionCheckCmdArb = versionArb.map(
-  (v) => new SetVersionCheckCommand(v)
+  (v) => new SetVersionCheckCommand(v),
 );
 
 const getVersionCheckCmdArb = constant(new GetVersionCheckCommand());
@@ -824,7 +825,7 @@ describe("model-based: database layer", () => {
       {
         numRuns: DEFAULT_NUM_RUNS,
         verbose: false, // Set to true for debugging
-      }
+      },
     );
   });
 
@@ -838,7 +839,7 @@ describe("model-based: database layer", () => {
             // Set up auth and some regions
             setAuthToken("test-token");
             setOrgRegions(
-              entries.map(([slug, regionUrl]) => ({ slug, regionUrl }))
+              entries.map(([slug, regionUrl]) => ({ slug, regionUrl })),
             );
 
             // Verify regions were set (use unique count since setOrgRegions uses upsert)
@@ -855,9 +856,9 @@ describe("model-based: database layer", () => {
           } finally {
             cleanup();
           }
-        }
+        },
       ),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 
@@ -872,7 +873,7 @@ describe("model-based: database layer", () => {
             commandKey,
             context,
             "next",
-            "1735689600000:100:0"
+            "1735689600000:100:0",
           );
 
           // Verify state was stored
@@ -890,7 +891,7 @@ describe("model-based: database layer", () => {
           cleanup();
         }
       }),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 
@@ -921,9 +922,9 @@ describe("model-based: database layer", () => {
           } finally {
             cleanup();
           }
-        }
+        },
       ),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 
@@ -952,7 +953,7 @@ describe("model-based: database layer", () => {
           cleanup();
         }
       }),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 
@@ -965,7 +966,7 @@ describe("model-based: database layer", () => {
       nat(1000),
       nat(1000),
       nat(1000),
-      nat(1000)
+      nat(1000),
     );
 
     await fcAssert(
@@ -980,7 +981,7 @@ describe("model-based: database layer", () => {
           // Set alias with fingerprint 1
           setProjectAliases(
             { [alias]: { orgSlug: org, projectSlug: project } },
-            fp1
+            fp1,
           );
 
           // Lookup with fingerprint 2 should fail
@@ -994,7 +995,7 @@ describe("model-based: database layer", () => {
           cleanup();
         }
       }),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 
@@ -1034,7 +1035,7 @@ describe("model-based: database layer", () => {
             const result = getProjectAliases();
             expect(result).toBeDefined();
             expect(Object.keys(result!).length).toBe(
-              Object.keys(aliases2).length
+              Object.keys(aliases2).length,
             );
 
             // Check second batch aliases are present
@@ -1051,9 +1052,9 @@ describe("model-based: database layer", () => {
           } finally {
             cleanup();
           }
-        }
+        },
       ),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 });

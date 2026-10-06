@@ -50,7 +50,7 @@ describe("runCommands breadcrumb on failure", () => {
     // requiring shell built-ins.
     const result = await runCommands(
       makePayload(["ls /nonexistent-sentry-test-path-xyz"]),
-      { dryRun: false }
+      { dryRun: false },
     );
 
     expect(result.ok).toBe(false);
@@ -77,7 +77,7 @@ describe("runCommands breadcrumb on failure", () => {
   test("does not emit a breadcrumb in dry-run mode", async () => {
     const result = await runCommands(
       makePayload(["ls /nonexistent-sentry-test-path-xyz"]),
-      { dryRun: true }
+      { dryRun: true },
     );
 
     expect(result.ok).toBe(true);

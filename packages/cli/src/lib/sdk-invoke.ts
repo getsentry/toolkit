@@ -36,7 +36,7 @@ function hasStreamingFlag(args: string[]): boolean {
  */
 function buildIsolatedEnv(
   options?: SentryOptions,
-  jsonByDefault = true
+  jsonByDefault = true,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (options?.token) {
@@ -100,7 +100,7 @@ async function resolveCommand(path: string[]): Promise<ResolvedCommand> {
   if (!cached) {
     const { routes } = await import("../app.js");
     // Walk route tree: routes → sub-route → command
-    // biome-ignore lint/suspicious/noExplicitAny: Stricli's RoutingTarget union requires runtime duck-typing
+    // oxlint-disable-next-line typescript/no-explicit-any -- Stricli's RoutingTarget union requires runtime duck-typing
     let target: any = routes;
     for (const segment of path) {
       target = target.getRoutingTargetForInput(segment);
@@ -114,8 +114,8 @@ async function resolveCommand(path: string[]): Promise<ResolvedCommand> {
     cached = {
       loader: () =>
         command.loader().then(
-          // biome-ignore lint/suspicious/noExplicitAny: Stricli CommandModule shape has a default export
-          (m: any) => (typeof m === "function" ? m : m.default)
+          // oxlint-disable-next-line typescript/no-explicit-any -- Stricli CommandModule shape has a default export
+          (m: any) => (typeof m === "function" ? m : m.default),
         ),
       flagDefs,
     };
@@ -168,7 +168,7 @@ function resolveFlagDefault(def: FlagDef): unknown {
  */
 export function applyFlagDefaults(
   flags: Record<string, unknown>,
-  flagDefs: Record<string, FlagDef>
+  flagDefs: Record<string, FlagDef>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   // Copy caller-provided flags, skipping undefined values so they
@@ -191,7 +191,7 @@ export function applyFlagDefaults(
   return result;
 }
 
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape sequences use ESC (0x1b)
+// oxlint-disable-next-line no-control-regex -- ANSI escape sequences use ESC (0x1b)
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
 /** Command output and telemetry still require sequential SDK invocations. */
@@ -203,13 +203,13 @@ let invocationActive = false;
  */
 async function withSdkEnvironment<T>(
   options: SentryOptions | undefined,
-  execute: (env: NodeJS.ProcessEnv, cwd: string) => Promise<T>
+  execute: (env: NodeJS.ProcessEnv, cwd: string) => Promise<T>,
 ): Promise<T> {
   if (invocationActive) {
     throw new SentryError(
       "Concurrent SDK calls are not supported. Await the previous call or close its stream first.",
       EXIT.GENERAL,
-      ""
+      "",
     );
   }
   invocationActive = true;
@@ -226,7 +226,7 @@ async function withSdkEnvironment<T>(
       ]);
       envTokenHost.captureEnvTokenHost();
       return headers.withCustomHeadersOverride(customHeaders, () =>
-        execute(env, cwd)
+        execute(env, cwd),
       );
     });
   } catch (thrown) {
@@ -240,7 +240,7 @@ async function withSdkEnvironment<T>(
 
 /** Flush Sentry telemetry (no beforeExit handler in library mode). */
 async function flushTelemetry(): Promise<void> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const Sentry = await import("@sentry/node-core/light");
     const client = Sentry.getClient();
@@ -256,7 +256,7 @@ async function flushTelemetry(): Promise<void> {
 function buildSdkError(
   stderrChunks: string[],
   exitCode: number,
-  thrown?: unknown
+  thrown?: unknown,
 ): SentryError {
   const stderrStr = stderrChunks.join("");
   const message =
@@ -285,7 +285,7 @@ function extractExitCode(thrown: unknown): number {
  */
 function concatChunksToBytes(chunks: Array<string | Uint8Array>): Uint8Array {
   const parts = chunks.map((c) =>
-    typeof c === "string" ? new TextEncoder().encode(c) : c
+    typeof c === "string" ? new TextEncoder().encode(c) : c,
   );
   const total = parts.reduce((sum, p) => sum + p.byteLength, 0);
   const out = new Uint8Array(total);
@@ -303,7 +303,7 @@ function concatChunksToBytes(chunks: Array<string | Uint8Array>): Uint8Array {
  */
 export function parseOutput<T>(
   capturedResult: unknown,
-  stdoutChunks: Array<string | Uint8Array>
+  stdoutChunks: Array<string | Uint8Array>,
 ): T {
   if (capturedResult !== undefined) {
     return capturedResult as T;
@@ -318,7 +318,7 @@ export function parseOutput<T>(
   if (!stdoutStr.trim()) {
     return undefined as T;
   }
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return JSON.parse(stdoutStr) as T;
   } catch {
@@ -363,7 +363,7 @@ type CaptureOptions = {
 async function buildCaptureContext(
   env: NodeJS.ProcessEnv,
   cwd: string,
-  opts?: CaptureOptions
+  opts?: CaptureOptions,
 ): Promise<CaptureContext> {
   const stdoutChunks: Array<string | Uint8Array> = [];
   const stderrChunks: string[] = [];
@@ -391,7 +391,7 @@ async function buildCaptureContext(
 
   const { getConfigDir } = await import("./db/index.js");
 
-  // biome-ignore lint/suspicious/noExplicitAny: abortSignal is an internal extension to the fake process
+  // oxlint-disable-next-line typescript/no-explicit-any -- abortSignal is an internal extension to the fake process
   const fakeProcess: any = {
     stdout,
     stderr,
@@ -442,8 +442,8 @@ function executeWithCapture<T>(
   options: SentryOptions | undefined,
   executor: (
     captureCtx: CaptureContext,
-    span: Span | undefined
-  ) => Promise<void>
+    span: Span | undefined,
+  ) => Promise<void>,
 ): Promise<T> {
   return withSdkEnvironment(options, async (env, cwd) => {
     const captureCtx = await buildCaptureContext(env, cwd);
@@ -475,13 +475,13 @@ function executeWithCapture<T>(
     if (captureCtx.context.process.exitCode !== 0) {
       throw buildSdkError(
         captureCtx.stderrChunks,
-        captureCtx.context.process.exitCode
+        captureCtx.context.process.exitCode,
       );
     }
 
     return parseOutput<T>(
       captureCtx.getCapturedResult(),
-      captureCtx.stdoutChunks
+      captureCtx.stdoutChunks,
     );
   });
 }
@@ -498,8 +498,8 @@ function executeWithStream<T>(
   options: SentryOptions | undefined,
   executor: (
     captureCtx: CaptureContext,
-    span: Span | undefined
-  ) => Promise<void>
+    span: Span | undefined,
+  ) => Promise<void>,
 ): AsyncChannel<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -537,7 +537,7 @@ function executeWithStream<T>(
 
           const { withTelemetry } = await import("./telemetry.js");
 
-          // biome-ignore lint/style/noNonNullAssertion: captureCtx is assigned on the line above
+          // oxlint-disable-next-line typescript/no-non-null-assertion -- captureCtx is assigned on the line above
           await withTelemetry(async (span) => executor(captureCtx!, span), {
             libraryMode: true,
           });
@@ -546,7 +546,7 @@ function executeWithStream<T>(
           if (captureCtx.context.process.exitCode !== 0) {
             throw buildSdkError(
               captureCtx.stderrChunks,
-              captureCtx.context.process.exitCode
+              captureCtx.context.process.exitCode,
             );
           }
           // Drain any raw stdout the command wrote directly (via stdout.write)
@@ -595,7 +595,7 @@ export function buildInvoker(options?: SentryOptions) {
     commandPath: string[],
     flags: Record<string, unknown>,
     positionalArgs: string[],
-    meta?: { streaming?: boolean }
+    meta?: { streaming?: boolean },
   ): Promise<T> | AsyncIterable<T> {
     if (meta?.streaming) {
       return executeWithStream<T>(options, async (ctx, span) => {
@@ -608,7 +608,7 @@ export function buildInvoker(options?: SentryOptions) {
         await handler.call(
           ctx.context,
           { ...resolvedFlags, json: true },
-          ...positionalArgs
+          ...positionalArgs,
         );
       });
     }
@@ -623,7 +623,7 @@ export function buildInvoker(options?: SentryOptions) {
       await handler.call(
         ctx.context,
         { ...resolvedFlags, json: true },
-        ...positionalArgs
+        ...positionalArgs,
       );
     });
   };
@@ -649,7 +649,7 @@ export function buildRunner(options?: SentryOptions) {
         const { run: stricliRun } = await import("@stricli/core");
         const { app } = await import("../app.js");
         const { buildContext } = await import("../context.js");
-        // biome-ignore lint/suspicious/noExplicitAny: fakeProcess duck-types the process interface
+        // oxlint-disable-next-line typescript/no-explicit-any -- fakeProcess duck-types the process interface
         const process_ = ctx.context.process as any;
         await stricliRun(app, args, buildContext(process_, span));
       });
@@ -659,7 +659,7 @@ export function buildRunner(options?: SentryOptions) {
       const { run: stricliRun } = await import("@stricli/core");
       const { app } = await import("../app.js");
       const { buildContext } = await import("../context.js");
-      // biome-ignore lint/suspicious/noExplicitAny: fakeProcess duck-types the process interface
+      // oxlint-disable-next-line typescript/no-explicit-any -- fakeProcess duck-types the process interface
       const process_ = ctx.context.process as any;
       await stricliRun(app, args, buildContext(process_, span));
     });

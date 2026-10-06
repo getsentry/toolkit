@@ -97,7 +97,7 @@ beforeEach(async () => {
     if (path.endsWith("/external-issue-actions/")) {
       return json(
         actionStatus < 300 ? actionLink : { detail: "Provider failed" },
-        actionStatus
+        actionStatus,
       );
     }
     if (request.method === "DELETE") {
@@ -117,94 +117,101 @@ function writes(): Request[] {
 }
 
 describe("app issue-link action", () => {
-  test.each([
-    undefined,
-    { issueId: "" },
-  ])("resolves Linear key to UUID with target fields %j, then sends the schema URI and fields top-level", async (fields) => {
-    const prepared = await resolveAppIssueLink({ ...OPTIONS, fields });
-    expect(writes()).toHaveLength(0);
-    expect(prepared.fields).toEqual({ issueId: "linear-uuid" });
-    const search = calls.find((request) =>
-      request.url.includes("external-requests")
-    );
-    expect(search?.url).toContain(
-      "https://sentry.io/api/0/sentry-app-installations/install-uuid/"
-    );
-    expect(search?.url).toContain("query=ENG-42");
-    expect(search?.url).toContain("projectId=77");
-    expect(calls[0]?.url).toContain(
-      "https://de.sentry.io/api/0/organizations/"
-    );
-    expect(await linkAppIssue(prepared)).toEqual({ changed: true, link: LINK });
-    expect(writes()).toHaveLength(1);
-    expect(
-      new globalThis.URL(writes()[0]!.url).searchParams.get(
-        "expectedExternalIssueUrl"
-      )
-    ).toBe(URL);
-    expect(await writes()[0]?.json()).toEqual({
-      groupId: ISSUE,
-      action: "link",
-      uri: FORM.uri,
-      issueId: "linear-uuid",
-    });
-    expect(
-      calls.filter((request) => request.url.includes("/external-issues/"))
-    ).toHaveLength(1);
-  });
+  test.each([undefined, { issueId: "" }])(
+    "resolves Linear key to UUID with target fields %j, then sends the schema URI and fields top-level",
+    async (fields) => {
+      const prepared = await resolveAppIssueLink({ ...OPTIONS, fields });
+      expect(writes()).toHaveLength(0);
+      expect(prepared.fields).toEqual({ issueId: "linear-uuid" });
+      const search = calls.find((request) =>
+        request.url.includes("external-requests"),
+      );
+      expect(search?.url).toContain(
+        "https://sentry.io/api/0/sentry-app-installations/install-uuid/",
+      );
+      expect(search?.url).toContain("query=ENG-42");
+      expect(search?.url).toContain("projectId=77");
+      expect(calls[0]?.url).toContain(
+        "https://de.sentry.io/api/0/organizations/",
+      );
+      expect(await linkAppIssue(prepared)).toEqual({
+        changed: true,
+        link: LINK,
+      });
+      expect(writes()).toHaveLength(1);
+      expect(
+        new globalThis.URL(writes()[0]!.url).searchParams.get(
+          "expectedExternalIssueUrl",
+        ),
+      ).toBe(URL);
+      expect(await writes()[0]?.json()).toEqual({
+        groupId: ISSUE,
+        action: "link",
+        uri: FORM.uri,
+        issueId: "linear-uuid",
+      });
+      expect(
+        calls.filter((request) => request.url.includes("/external-issues/")),
+      ).toHaveLength(1);
+    },
+  );
 
-  test.each([
-    "ENG-420: Other issue",
-    "ENG-99: Follow up on ENG-42",
-  ])("rejects a nonmatching Linear label: %s", async (label) => {
-    choices = [["wrong", label]];
-    await expect(resolveAppIssueLink(OPTIONS)).rejects.toThrow(
-      "did not return an exact match"
-    );
-    expect(writes()).toHaveLength(0);
-  });
+  test.each(["ENG-420: Other issue", "ENG-99: Follow up on ENG-42"])(
+    "rejects a nonmatching Linear label: %s",
+    async (label) => {
+      choices = [["wrong", label]];
+      await expect(resolveAppIssueLink(OPTIONS)).rejects.toThrow(
+        "did not return an exact match",
+      );
+      expect(writes()).toHaveLength(0);
+    },
+  );
 
   test("rejects multiple exact matches rather than selecting the first", async () => {
     choices.push(["another-uuid", "ENG-42: Another issue"]);
     await expect(resolveAppIssueLink(OPTIONS)).rejects.toThrow(
-      "multiple exact issue matches"
+      "multiple exact issue matches",
     );
     expect(writes()).toHaveLength(0);
   });
 
-  test.each([
-    200, 201,
-  ])("guards an existing Linear link with its canonical URL (HTTP %s)", async (status) => {
-    links = [
-      { ...LINK, webUrl: "https://linear.app/example/issue/eng-42/new-title" },
-    ];
-    const prepared = await resolveAppIssueLink(OPTIONS);
-    expect(prepared.existing?.id).toBe(LINK.id);
-    expect(prepared.fields).toEqual({ issueId: "linear-uuid" });
-    actionStatus = status;
-    actionLink = links[0]!;
-    expect(await linkAppIssue(prepared)).toEqual({
-      changed: status === 201,
-      link: links[0],
-    });
-    expect(
-      new globalThis.URL(writes()[0]!.url).searchParams.get(
-        "expectedExternalIssueUrl"
-      )
-    ).toBe(links[0]!.webUrl);
-    expect(await writes()[0]?.json()).toMatchObject({
-      uri: FORM.uri,
-      issueId: "linear-uuid",
-    });
-    expect(writes()).toHaveLength(1);
-  });
+  test.each([200, 201])(
+    "guards an existing Linear link with its canonical URL (HTTP %s)",
+    async (status) => {
+      links = [
+        {
+          ...LINK,
+          webUrl: "https://linear.app/example/issue/eng-42/new-title",
+        },
+      ];
+      const prepared = await resolveAppIssueLink(OPTIONS);
+      expect(prepared.existing?.id).toBe(LINK.id);
+      expect(prepared.fields).toEqual({ issueId: "linear-uuid" });
+      actionStatus = status;
+      actionLink = links[0]!;
+      expect(await linkAppIssue(prepared)).toEqual({
+        changed: status === 201,
+        link: links[0],
+      });
+      expect(
+        new globalThis.URL(writes()[0]!.url).searchParams.get(
+          "expectedExternalIssueUrl",
+        ),
+      ).toBe(links[0]!.webUrl);
+      expect(await writes()[0]?.json()).toMatchObject({
+        uri: FORM.uri,
+        issueId: "linear-uuid",
+      });
+      expect(writes()).toHaveLength(1);
+    },
+  );
 
   test("refuses to replace another issue linked to the same app", async () => {
     links = [
       { ...LINK, webUrl: "https://linear.app/example/issue/ENG-99/other" },
     ];
     await expect(resolveAppIssueLink(OPTIONS)).rejects.toThrow(
-      "Unlink it before"
+      "Unlink it before",
     );
     expect(writes()).toHaveLength(0);
   });
@@ -262,8 +269,8 @@ describe("app issue-link action", () => {
     expect(await writes()[0]?.json()).toMatchObject({ task_id: "123" });
     expect(
       new globalThis.URL(writes()[0]!.url).searchParams.get(
-        "expectedExternalIssueUrl"
-      )
+        "expectedExternalIssueUrl",
+      ),
     ).toBe(url);
     expect(writes()).toHaveLength(1);
   });
@@ -283,28 +290,25 @@ describe("app issue-link action", () => {
       value: "https://tracker.example/tasks/456",
       appSlug: "custom",
     },
-  ])("rejects a conflicting $type target", async ({
-    type,
-    name,
-    url,
-    value,
-    appSlug,
-  }) => {
-    installation = {
-      ...INSTALLATION,
-      app: { ...INSTALLATION.app, slug: appSlug },
-    };
-    form = { uri: "/link", required_fields: [{ name, type }] };
-    await expect(
-      resolveAppIssueLink({
-        ...OPTIONS,
-        url,
-        appSlug,
-        fields: { [name]: value },
-      })
-    ).rejects.toThrow("conflicts");
-    expect(writes()).toHaveLength(0);
-  });
+  ])(
+    "rejects a conflicting $type target",
+    async ({ type, name, url, value, appSlug }) => {
+      installation = {
+        ...INSTALLATION,
+        app: { ...INSTALLATION.app, slug: appSlug },
+      };
+      form = { uri: "/link", required_fields: [{ name, type }] };
+      await expect(
+        resolveAppIssueLink({
+          ...OPTIONS,
+          url,
+          appSlug,
+          fields: { [name]: value },
+        }),
+      ).rejects.toThrow("conflicts");
+      expect(writes()).toHaveLength(0);
+    },
+  );
 
   test.each([
     { url: "https://tracker.example/view?id=42#issue" },
@@ -313,35 +317,35 @@ describe("app issue-link action", () => {
     { url: "https://tracker.example" },
     { url: "https://tracker.example/tasks/42#some text" },
     { url: "https://tracker.example/tasks/42", fields: { url: "" } },
-  ])("preserves the requested URL in the form and backend guard: %j", async ({
-    url,
-    fields,
-  }) => {
-    installation = {
-      ...INSTALLATION,
-      app: { ...INSTALLATION.app, slug: "custom" },
-    };
-    form = { uri: "/link", required_fields: [{ name: "url", type: "text" }] };
-    actionLink = { ...LINK, serviceType: "custom", webUrl: url };
-    const prepared = await resolveAppIssueLink({
-      ...OPTIONS,
-      appSlug: "custom",
-      url,
-      fields,
-    });
-    await linkAppIssue(prepared);
-    expect(await writes()[0]!.json()).toMatchObject({ url });
-    expect(
-      new globalThis.URL(writes()[0]!.url).searchParams.get(
-        "expectedExternalIssueUrl"
-      )
-    ).toBe(url);
-  });
+  ])(
+    "preserves the requested URL in the form and backend guard: %j",
+    async ({ url, fields }) => {
+      installation = {
+        ...INSTALLATION,
+        app: { ...INSTALLATION.app, slug: "custom" },
+      };
+      form = { uri: "/link", required_fields: [{ name: "url", type: "text" }] };
+      actionLink = { ...LINK, serviceType: "custom", webUrl: url };
+      const prepared = await resolveAppIssueLink({
+        ...OPTIONS,
+        appSlug: "custom",
+        url,
+        fields,
+      });
+      await linkAppIssue(prepared);
+      expect(await writes()[0]!.json()).toMatchObject({ url });
+      expect(
+        new globalThis.URL(writes()[0]!.url).searchParams.get(
+          "expectedExternalIssueUrl",
+        ),
+      ).toBe(url);
+    },
+  );
 
   test("requires an installation in the requested organization", async () => {
     installation = { ...INSTALLATION, organization: { slug: "other-org" } };
     await expect(resolveAppIssueLink(OPTIONS)).rejects.toThrow(
-      "not installed in this organization"
+      "not installed in this organization",
     );
     expect(writes()).toHaveLength(0);
   });
@@ -365,11 +369,11 @@ describe("app issue-link action", () => {
     const prepared = await resolveAppIssueLink(OPTIONS);
     expect(prepared.installationUuid).toBe(INSTALLATION.uuid);
     const pages = calls.filter((request) =>
-      request.url.includes("/sentry-app-installations/?")
+      request.url.includes("/sentry-app-installations/?"),
     );
     expect(pages).toHaveLength(1);
     expect(pages[0]?.url).toBe(
-      "https://sentry.io/api/0/organizations/example-org/sentry-app-installations/?cursor=install-page-2"
+      "https://sentry.io/api/0/organizations/example-org/sentry-app-installations/?cursor=install-page-2",
     );
     expect(writes()).toHaveLength(0);
   });
@@ -391,17 +395,20 @@ describe("app issue-link action", () => {
   test("rejects unsupported app link forms instead of using direct registration", async () => {
     form = undefined;
     await expect(resolveAppIssueLink(OPTIONS)).rejects.toThrow(
-      "does not expose"
+      "does not expose",
     );
     expect(writes()).toHaveLength(0);
   });
 
   test("does not allow user fields to override the action URI or target", async () => {
     await expect(
-      resolveAppIssueLink({ ...OPTIONS, fields: { uri: "/create" } })
+      resolveAppIssueLink({ ...OPTIONS, fields: { uri: "/create" } }),
     ).rejects.toThrow("reserved app link field");
     await expect(
-      resolveAppIssueLink({ ...OPTIONS, fields: { issueId: "different-uuid" } })
+      resolveAppIssueLink({
+        ...OPTIONS,
+        fields: { issueId: "different-uuid" },
+      }),
     ).rejects.toThrow("conflicts");
     expect(writes()).toHaveLength(0);
   });
@@ -421,31 +428,34 @@ describe("app issue-link action", () => {
       resolveAppIssueLink({
         ...OPTIONS,
         fields: { issueId: "wrong" },
-      })
+      }),
     ).rejects.toThrow("conflicts");
     expect(writes()).toHaveLength(0);
   });
 
-  test.each([
-    "ENG-42",
-    "ENG-99",
-  ])("uses Linear choice ID %s before the label's key", async (id) => {
-    choices = [
-      [
-        id,
-        id === "ENG-42"
-          ? "ENG-99 mentioned in title"
-          : "ENG-42 misleading label",
-      ],
-    ];
-    const result = resolveAppIssueLink({ ...OPTIONS, fields: { issueId: id } });
-    if (id === "ENG-42") {
-      expect((await result).fields).toEqual({ issueId: id });
-    } else {
-      await expect(result).rejects.toThrow("conflicts");
-    }
-    expect(writes()).toHaveLength(0);
-  });
+  test.each(["ENG-42", "ENG-99"])(
+    "uses Linear choice ID %s before the label's key",
+    async (id) => {
+      choices = [
+        [
+          id,
+          id === "ENG-42"
+            ? "ENG-99 mentioned in title"
+            : "ENG-42 misleading label",
+        ],
+      ];
+      const result = resolveAppIssueLink({
+        ...OPTIONS,
+        fields: { issueId: id },
+      });
+      if (id === "ENG-42") {
+        expect((await result).fields).toEqual({ issueId: id });
+      } else {
+        await expect(result).rejects.toThrow("conflicts");
+      }
+      expect(writes()).toHaveLength(0);
+    },
+  );
 
   test("keeps the query guard separate from an app field with the same name", async () => {
     form = {
@@ -459,8 +469,8 @@ describe("app issue-link action", () => {
     await linkAppIssue(prepared);
     expect(
       new globalThis.URL(writes()[0]!.url).searchParams.get(
-        "expectedExternalIssueUrl"
-      )
+        "expectedExternalIssueUrl",
+      ),
     ).toBe(URL);
     expect(await writes()[0]?.json()).toMatchObject({
       expectedExternalIssueUrl: "provider-field",
@@ -488,10 +498,10 @@ describe("app issue-link action", () => {
       issueId: "linear-uuid",
     });
     const search = calls.find((request) =>
-      request.url.includes("external-requests")
+      request.url.includes("external-requests"),
     );
     expect(
-      new globalThis.URL(search?.url ?? "").searchParams.get("dependentData")
+      new globalThis.URL(search?.url ?? "").searchParams.get("dependentData"),
     ).toBe('{"team":"team-uuid"}');
   });
 
@@ -512,7 +522,7 @@ describe("app issue-link action", () => {
           json({
             choices: [["team-uuid", "Engineering"]],
             defaultValue: "team-uuid",
-          })
+          }),
         );
       }
       return defaultFetch(input, init);
@@ -523,28 +533,30 @@ describe("app issue-link action", () => {
       issueId: "linear-uuid",
     });
     const search = calls.find((request) =>
-      new globalThis.URL(request.url).searchParams.has("dependentData")
+      new globalThis.URL(request.url).searchParams.has("dependentData"),
     );
     expect(
-      new globalThis.URL(search!.url).searchParams.get("dependentData")
+      new globalThis.URL(search!.url).searchParams.get("dependentData"),
     ).toBe('{"team":"team-uuid"}');
   });
 
   test.each([
     { defaultValue: "", fields: undefined },
     { defaultValue: "preset", fields: { note: "" } },
-  ])("omits empty optional fields ($defaultValue)", async ({
-    defaultValue,
-    fields,
-  }) => {
-    form = {
-      ...FORM,
-      optional_fields: [{ name: "note", type: "text", defaultValue }],
-    };
-    expect((await resolveAppIssueLink({ ...OPTIONS, fields })).fields).toEqual({
-      issueId: "linear-uuid",
-    });
-  });
+  ])(
+    "omits empty optional fields ($defaultValue)",
+    async ({ defaultValue, fields }) => {
+      form = {
+        ...FORM,
+        optional_fields: [{ name: "note", type: "text", defaultValue }],
+      };
+      expect(
+        (await resolveAppIssueLink({ ...OPTIONS, fields })).fields,
+      ).toEqual({
+        issueId: "linear-uuid",
+      });
+    },
+  );
 
   test("reports required fields rather than sending a partial form", async () => {
     form = {
@@ -555,30 +567,30 @@ describe("app issue-link action", () => {
       ],
     };
     await expect(resolveAppIssueLink(OPTIONS)).rejects.toThrow(
-      "--field team=VALUE"
+      "--field team=VALUE",
     );
     expect(writes()).toHaveLength(0);
   });
 
-  test.each([
-    undefined,
-    { team: "" },
-  ])("requires missing or empty dependencies (%j)", async (fields) => {
-    form = {
-      ...FORM,
-      required_fields: [
-        { ...FORM.required_fields[0], depends_on: ["team"] },
-        { name: "team", type: "text" },
-      ],
-    };
-    await expect(resolveAppIssueLink({ ...OPTIONS, fields })).rejects.toThrow(
-      "Missing app link fields: --field team=VALUE"
-    );
-    expect(
-      calls.some((request) => request.url.includes("external-requests"))
-    ).toBe(false);
-    expect(writes()).toHaveLength(0);
-  });
+  test.each([undefined, { team: "" }])(
+    "requires missing or empty dependencies (%j)",
+    async (fields) => {
+      form = {
+        ...FORM,
+        required_fields: [
+          { ...FORM.required_fields[0], depends_on: ["team"] },
+          { name: "team", type: "text" },
+        ],
+      };
+      await expect(resolveAppIssueLink({ ...OPTIONS, fields })).rejects.toThrow(
+        "Missing app link fields: --field team=VALUE",
+      );
+      expect(
+        calls.some((request) => request.url.includes("external-requests")),
+      ).toBe(false);
+      expect(writes()).toHaveLength(0);
+    },
+  );
 
   test("distinguishes actual dependency cycles from missing values", async () => {
     form = {
@@ -592,7 +604,7 @@ describe("app issue-link action", () => {
       resolveAppIssueLink({
         ...OPTIONS,
         fields: { team: "Engineering", issueId: "ENG-42" },
-      })
+      }),
     ).rejects.toThrow("App link fields have circular dependencies");
     expect(writes()).toHaveLength(0);
   });
@@ -631,7 +643,7 @@ describe("list and unlink app associations", () => {
     });
     expect(await listAppIssueLinks(ORG, ISSUE)).toHaveLength(2);
     expect(calls[1]?.url).toContain(
-      "https://de.sentry.io/api/0/organizations/example-org/issues/123/external-issues/?cursor=next-page"
+      "https://de.sentry.io/api/0/organizations/example-org/issues/123/external-issues/?cursor=next-page",
     );
   });
 
@@ -639,10 +651,10 @@ describe("list and unlink app associations", () => {
     globalThis.fetch = mockFetch(async () =>
       json([LINK], 200, {
         Link: '<https://sentry.io/>; rel="next"; results="true"; cursor="same"',
-      })
+      }),
     );
     await expect(listAppIssueLinks(ORG, ISSUE)).rejects.toThrow(
-      "repeated a cursor"
+      "repeated a cursor",
     );
   });
 
@@ -650,17 +662,17 @@ describe("list and unlink app associations", () => {
     await unlinkAppIssueLink(ORG, ISSUE, LINK.id);
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toBe(
-      "https://de.sentry.io/api/0/organizations/example-org/issues/123/external-issues/99/"
+      "https://de.sentry.io/api/0/organizations/example-org/issues/123/external-issues/99/",
     );
     expect(calls[0]?.method).toBe("DELETE");
   });
 
   test("rejects relative path segments before issuing an unlink", async () => {
     await expect(unlinkAppIssueLink(ORG, ISSUE, "..")).rejects.toThrow(
-      ValidationError
+      ValidationError,
     );
     await expect(unlinkAppIssueLink(ORG, "..", LINK.id)).rejects.toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(calls).toHaveLength(0);
   });
@@ -671,7 +683,7 @@ describe("list and unlink app associations", () => {
       return json({ detail: "Requires event:admin" }, 403);
     });
     await expect(
-      unlinkAppIssueLink(ORG, ISSUE, LINK.id)
+      unlinkAppIssueLink(ORG, ISSUE, LINK.id),
     ).rejects.toBeInstanceOf(ApiError);
     expect(calls).toHaveLength(1);
   });
@@ -683,16 +695,16 @@ describe("list and unlink app associations", () => {
       serviceType: "custom",
     };
     expect(findAppIssueLink([link], "https://tracker.example/issues/42")).toBe(
-      link
+      link,
     );
     expect(() =>
       findAppIssueLink(
         [link, { ...link, serviceType: "other" }],
-        "https://tracker.example/issues/42"
-      )
+        "https://tracker.example/issues/42",
+      ),
     ).toThrow(ValidationError);
     expect(
-      findAppIssueLink([link], "https://tracker.example/issues/42", "other")
+      findAppIssueLink([link], "https://tracker.example/issues/42", "other"),
     ).toBeUndefined();
   });
 
@@ -700,16 +712,19 @@ describe("list and unlink app associations", () => {
     "invalid",
     "https://linear.app/example/settings",
     "javascript:alert(1)",
-  ])("ignores malformed stored sibling %s when matching a valid target", (webUrl) => {
-    const sibling = { ...LINK, id: "100", webUrl };
-    expect(findAppIssueLink([sibling, LINK], URL)).toBe(LINK);
-    expect(() => findAppIssueLink([LINK], webUrl)).toThrow(ValidationError);
-  });
+  ])(
+    "ignores malformed stored sibling %s when matching a valid target",
+    (webUrl) => {
+      const sibling = { ...LINK, id: "100", webUrl };
+      expect(findAppIssueLink([sibling, LINK], URL)).toBe(LINK);
+      expect(() => findAppIssueLink([LINK], webUrl)).toThrow(ValidationError);
+    },
+  );
 
   test("still refuses replacement of a corrupt link belonging to the selected app", async () => {
     links = [{ ...LINK, webUrl: "invalid" }];
     await expect(resolveAppIssueLink(OPTIONS)).rejects.toThrow(
-      "Unlink it before"
+      "Unlink it before",
     );
     expect(writes()).toHaveLength(0);
   });
@@ -725,15 +740,15 @@ describe("list and unlink app associations", () => {
       findAppIssueLink(
         [link],
         "https://tracker.example/view?id=2#issue/42",
-        "custom"
-      )
+        "custom",
+      ),
     ).toBeUndefined();
     expect(
       findAppIssueLink(
         [link],
         "https://tracker.example/view?id=1#issue/43",
-        "custom"
-      )
+        "custom",
+      ),
     ).toBeUndefined();
   });
 });

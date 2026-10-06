@@ -32,7 +32,7 @@ function makeResponse(body: unknown, status = 200): Response {
 let originalFetch: typeof globalThis.fetch;
 type FetchHandler = (
   input: Request | string | URL,
-  init?: RequestInit
+  init?: RequestInit,
 ) => Promise<Response>;
 
 beforeEach(() => {
@@ -71,13 +71,13 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       { identity: getIdentityFingerprint(), headers: {} },
-      makeResponse({ id: "12345" })
+      makeResponse({ id: "12345" }),
     );
     await storeCachedResponse(
       "GET",
       `${LIST_URL}?cursor=abc`,
       { identity: getIdentityFingerprint(), headers: {} },
-      makeResponse({ data: [] })
+      makeResponse({ data: [] }),
     );
 
     installMockFetch(async (input, init) => {
@@ -94,13 +94,13 @@ describe("HTTP-layer auto-invalidation", () => {
       await getCachedResponse("GET", DETAIL_URL, {
         identity: getIdentityFingerprint(),
         headers: {},
-      })
+      }),
     ).toBeUndefined();
     expect(
       await getCachedResponse("GET", `${LIST_URL}?cursor=abc`, {
         identity: getIdentityFingerprint(),
         headers: {},
-      })
+      }),
     ).toBeUndefined();
   });
 
@@ -109,7 +109,7 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       { identity: getIdentityFingerprint(), headers: {} },
-      makeResponse({ id: "12345" })
+      makeResponse({ id: "12345" }),
     );
 
     installMockFetch(async () => makeResponse({ error: "denied" }, 403));
@@ -119,7 +119,7 @@ describe("HTTP-layer auto-invalidation", () => {
       await getCachedResponse("GET", DETAIL_URL, {
         identity: getIdentityFingerprint(),
         headers: {},
-      })
+      }),
     ).toBeDefined();
   });
 
@@ -128,19 +128,19 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       { identity: getIdentityFingerprint(), headers: {} },
-      makeResponse({ id: "12345" })
+      makeResponse({ id: "12345" }),
     );
 
     installMockFetch(async () => makeResponse({ id: "99999" }));
     await runAuthenticatedFetch(
       `${BASE}organizations/acme/issues/99999/`,
-      "GET"
+      "GET",
     );
     expect(
       await getCachedResponse("GET", DETAIL_URL, {
         identity: getIdentityFingerprint(),
         headers: {},
-      })
+      }),
     ).toBeDefined();
   });
 
@@ -150,7 +150,7 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       `${orgListUrl}?cursor=xyz`,
       { identity: getIdentityFingerprint(), headers: {} },
-      makeResponse({ data: [] })
+      makeResponse({ data: [] }),
     );
 
     installMockFetch(async () => new Response(null, { status: 204 }));
@@ -160,7 +160,7 @@ describe("HTTP-layer auto-invalidation", () => {
       await getCachedResponse("GET", `${orgListUrl}?cursor=xyz`, {
         identity: getIdentityFingerprint(),
         headers: {},
-      })
+      }),
     ).toBeUndefined();
   });
 
@@ -170,7 +170,7 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       { identity: getIdentityFingerprint(), headers: {} },
-      makeResponse({ owner: "a" })
+      makeResponse({ owner: "a" }),
     );
 
     setAuthToken("identity-b", 3600, "refresh-b");
@@ -182,7 +182,7 @@ describe("HTTP-layer auto-invalidation", () => {
       await getCachedResponse("GET", DETAIL_URL, {
         identity: getIdentityFingerprint(),
         headers: {},
-      })
+      }),
     ).toBeDefined();
   });
 });

@@ -51,7 +51,7 @@ async function preloadProjectContext(cwd: string): Promise<void> {
   // Apply persistent URL default (lower priority than env vars and .sentryclirc).
   const env = getEnv();
   if (!(env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim())) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       const { getDefaultUrl } = await import("./lib/db/defaults.js");
       const url = getDefaultUrl();
@@ -172,15 +172,14 @@ function isUnknownCommandExit(unknownCode: number): boolean {
 async function recoverUnknownCommandHelp(
   cliArgs: string[],
   executor: (argv: string[]) => Promise<void>,
-  unknownCode: number
+  unknownCode: number,
 ): Promise<void> {
   if (!isUnknownCommandExit(unknownCode) || cliArgs[0] === "help") {
     return;
   }
 
-  const { isVersionRequest, rewriteHelpJsonToHelpCommand } = await import(
-    "./lib/help.js"
-  );
+  const { isVersionRequest, rewriteHelpJsonToHelpCommand } =
+    await import("./lib/help.js");
 
   if (isVersionRequest(cliArgs)) {
     process.exitCode = 0;
@@ -202,8 +201,8 @@ async function recoverUnknownCommandHelp(
     const { warning } = await import("./lib/formatters/colors.js");
     process.stderr.write(
       warning(
-        `Tip: use --help for help (e.g., sentry ${groupArgs.join(" ")} --help)\n`
-      )
+        `Tip: use --help for help (e.g., sentry ${groupArgs.join(" ")} --help)\n`,
+      ),
     );
     await executor(["help", ...groupArgs]);
   }
@@ -226,7 +225,7 @@ async function recoverUnknownCommandHelp(
  */
 type ErrorMiddleware = (
   proceed: (cmdInput: string[]) => Promise<void>,
-  retryArgs: string[]
+  retryArgs: string[],
 ) => Promise<void>;
 
 /**
@@ -240,18 +239,16 @@ export async function runCli(cliArgs: string[]): Promise<void> {
   const { ExitCode, run } = await import("@stricli/core");
   const { app } = await import("./app.js");
   const { buildContext } = await import("./context.js");
-  const { AuthError, OutputError, getExitCode } = await import(
-    "./lib/errors.js"
-  );
+  const { AuthError, OutputError, getExitCode } =
+    await import("./lib/errors.js");
   const { error } = await import("./lib/formatters/colors.js");
   const { runInteractiveLogin } = await import("./lib/interactive-login.js");
   const { recoverWithAutoLogin } = await import("./lib/auto-auth.js");
   const { getEnvLogLevel, setLogLevel } = await import("./lib/logger.js");
   const { scheduleForceExit } = await import("./lib/force-exit.js");
   const { closeGlobalDispatcher } = await import("./lib/close-dispatcher.js");
-  const { isTrialEligible, promptAndStartTrial } = await import(
-    "./lib/seer-trial.js"
-  );
+  const { isTrialEligible, promptAndStartTrial } =
+    await import("./lib/seer-trial.js");
   const { withTelemetry } = await import("./lib/telemetry.js");
   const { startCleanupOldBinary } = await import("./lib/upgrade.js");
   const {
@@ -285,9 +282,9 @@ export async function runCli(cliArgs: string[]): Promise<void> {
     } catch (err) {
       if (isTrialEligible(err)) {
         const started = await promptAndStartTrial(
-          // biome-ignore lint/style/noNonNullAssertion: isTrialEligible guarantees orgSlug is defined
+          // oxlint-disable-next-line typescript/no-non-null-assertion -- isTrialEligible guarantees orgSlug is defined
           err.orgSlug!,
-          err.reason
+          err.reason,
         );
 
         if (started) {
@@ -345,14 +342,13 @@ export async function runCli(cliArgs: string[]): Promise<void> {
     const source = plan.sources.find((s) => s.token)?.path ?? "~/.sentryclirc";
     process.stderr.write(
       `\nFound auth token in ${source}\n` +
-        "Import settings to the new CLI? This stores your token with proper host scoping.\n\n"
+        "Import settings to the new CLI? This stores your token with proper host scoping.\n\n",
     );
 
     const consent = await promptImportConsent();
     if (consent === "declined") {
-      const { markImportDeclined } = await import(
-        "./lib/sentryclirc-import.js"
-      );
+      const { markImportDeclined } =
+        await import("./lib/sentryclirc-import.js");
       markImportDeclined(plan.sources);
       return "declined";
     }
@@ -503,7 +499,7 @@ export async function runCli(cliArgs: string[]): Promise<void> {
           return;
         }
         // Best-effort: telemetry must never crash the CLI
-        // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+        // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
         try {
           await reportUnknownCommand(argv);
         } catch {
@@ -553,7 +549,7 @@ export async function runCli(cliArgs: string[]): Promise<void> {
     const pathSegments = argv.filter((t) => !t.startsWith("-"));
     const resolved = resolveCommandPath(
       routes as unknown as Parameters<typeof resolveCommandPath>[0],
-      pathSegments
+      pathSegments,
     );
     const unknownToken =
       resolved?.kind === "unresolved" ? resolved.input : (argv.at(-1) ?? "");

@@ -36,8 +36,8 @@ describe("matchExampleToCommand", () => {
       matchExampleToCommand(
         code,
         ["sentry project create", "sentry project delete"],
-        "sentry project"
-      )
+        "sentry project",
+      ),
     ).toBe("sentry project create");
   });
 
@@ -47,8 +47,8 @@ describe("matchExampleToCommand", () => {
         "sentry auth\nsentry auth --token YOUR_SENTRY_API_TOKEN",
         ["sentry auth login", "sentry auth logout", "sentry auth status"],
         "sentry auth",
-        "sentry auth login"
-      )
+        "sentry auth login",
+      ),
     ).toBe("sentry auth login");
   });
 
@@ -58,33 +58,33 @@ describe("matchExampleToCommand", () => {
         "sentry auth login --token TOKEN",
         ["sentry auth login", "sentry auth status"],
         "sentry auth",
-        "sentry auth login"
-      )
+        "sentry auth login",
+      ),
     ).toBe("sentry auth login");
   });
 
   test("the generated project reference retains create examples", async () => {
     const reference = await readFile(
       "plugins/sentry-cli/skills/sentry-cli/references/project.md",
-      "utf8"
+      "utf8",
     );
 
     expect(reference).toContain(
-      "### `sentry project create [<org>/]<name>:<platform>...`"
+      "### `sentry project create [<org>/]<name>:<platform>...`",
     );
     expect(reference).not.toContain('sentry project create "My New App":');
     // The platform must always be attached with ":" — no space-separated form.
     expect(reference).not.toContain(
-      "sentry project create my-new-app javascript-nextjs"
+      "sentry project create my-new-app javascript-nextjs",
     );
     expect(reference).not.toContain(
-      "sentry project create my-org/my-new-app javascript-nextjs"
+      "sentry project create my-org/my-new-app javascript-nextjs",
     );
     expect(reference).toContain(
-      "sentry project create web:javascript api:python-django worker:node"
+      "sentry project create web:javascript api:python-django worker:node",
     );
     expect(reference).toContain(
-      "sentry project create my-new-app:javascript-nextjs"
+      "sentry project create my-new-app:javascript-nextjs",
     );
   });
 });
@@ -94,10 +94,10 @@ test("published skill matches the plugin and links to its references", async () 
   const published = "../../apps/cli-docs/public/.well-known/skills/sentry-cli";
 
   expect(await readFile(`${published}/SKILL.md`)).toEqual(
-    await readFile(`${plugin}/SKILL.md`)
+    await readFile(`${plugin}/SKILL.md`),
   );
   expect((await lstat(`${published}/references`)).isSymbolicLink()).toBe(true);
   expect(await realpath(`${published}/references`)).toBe(
-    await realpath(`${plugin}/references`)
+    await realpath(`${plugin}/references`),
   );
 });

@@ -56,20 +56,20 @@ describe("API base URL for org-auth credentials", () => {
           name: "Claim Host Region Org",
           links: { regionUrl: "/" },
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     });
 
     try {
       await expect(resolveOrgRegion("claim-host-region-org")).resolves.toBe(
-        claimHost
+        claimHost,
       );
       expect(requests).toHaveLength(1);
       expect(requests[0]?.url).toBe(
-        `${claimHost}/api/0/organizations/claim-host-region-org/`
+        `${claimHost}/api/0/organizations/claim-host-region-org/`,
       );
       expect(requests[0]?.headers.get("authorization")).toBe(
-        `Bearer ${orgAuthToken}`
+        `Bearer ${orgAuthToken}`,
       );
     } finally {
       globalThis.fetch = originalFetch;
@@ -104,13 +104,13 @@ describe("API base URL for org-auth credentials", () => {
     process.env.SENTRY_AUTH_TOKEN = orgAuthToken;
     const db = getDatabase();
     db.query(
-      "INSERT OR REPLACE INTO auth (id, token, refresh_token, host, updated_at) VALUES (1, 'stored-token', 'refresh-token', NULL, ?)"
+      "INSERT OR REPLACE INTO auth (id, token, refresh_token, host, updated_at) VALUES (1, 'stored-token', 'refresh-token', NULL, ?)",
     ).run(Date.now());
 
     expect(getApiBaseUrl()).toBe(DEFAULT_SENTRY_URL);
     expect(
       (db.query("SELECT host FROM auth WHERE id = 1").get() as { host: string })
-        .host
+        .host,
     ).toBe(DEFAULT_SENTRY_URL);
   });
 
@@ -131,13 +131,13 @@ describe("API base URL for org-auth credentials", () => {
     });
     const db = getDatabase();
     db.query(
-      "INSERT OR REPLACE INTO auth (id, token, refresh_token, host, updated_at) VALUES (1, 'stored-token', 'refresh-token', NULL, ?)"
+      "INSERT OR REPLACE INTO auth (id, token, refresh_token, host, updated_at) VALUES (1, 'stored-token', 'refresh-token', NULL, ?)",
     ).run(Date.now());
 
     expect(getApiBaseUrl()).toBe(DEFAULT_SENTRY_URL);
     expect(
       (db.query("SELECT host FROM auth WHERE id = 1").get() as { host: string })
-        .host
+        .host,
     ).toBe(DEFAULT_SENTRY_URL);
   });
 

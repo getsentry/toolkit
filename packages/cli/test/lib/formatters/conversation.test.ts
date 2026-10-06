@@ -12,7 +12,7 @@ import type {
 } from "../../../src/types/conversation.js";
 
 function makeListItem(
-  overrides: Partial<ConversationListItem> = {}
+  overrides: Partial<ConversationListItem> = {},
 ): ConversationListItem {
   return {
     conversationId: "conv-abc-123",
@@ -27,7 +27,7 @@ function makeListItem(
 }
 
 function makeSpan(
-  overrides: Partial<AgentConversationSpan> = {}
+  overrides: Partial<AgentConversationSpan> = {},
 ): AgentConversationSpan {
   return {
     span_id: "aabb112233445566",
@@ -247,7 +247,7 @@ describe("buildTranscriptResult", () => {
       "conv-123",
       "my-org",
       [makeSpan()],
-      "Refund a duplicate charge"
+      "Refund a duplicate charge",
     );
     expect(result.title).toBe("Refund a duplicate charge");
   });
@@ -322,7 +322,7 @@ describe("formatTranscriptResult", () => {
       "conv-123",
       "my-org",
       [makeSpan()],
-      "Refund a duplicate charge"
+      "Refund a duplicate charge",
     );
     const output = formatTranscriptResult(transcript);
     expect(output).toContain("Agent Conversation: conv-123");

@@ -6,7 +6,7 @@
  * Supports trace ID as a positional argument to filter logs by trace.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import type { SentryContext } from "../../context.js";
 import {
@@ -161,7 +161,7 @@ type FetchResult = {
  * trace-mode usage hint for log list.
  */
 function parseLogListArgs(
-  args: string[]
+  args: string[],
 ): ReturnType<typeof parseDualModeArgs> {
   return parseDualModeArgs(args, TRACE_USAGE_HINT);
 }
@@ -176,7 +176,7 @@ async function executeSingleFetch(
   org: string,
   project: string,
   flags: ListFlags,
-  options: { timeRange: TimeRange; projectId?: number }
+  options: { timeRange: TimeRange; projectId?: number },
 ): Promise<FetchResult> {
   const { timeRange, projectId } = options;
   const logs = await listLogs(org, project, {
@@ -305,15 +305,15 @@ function renderLogRows(
   logs: LogLike[],
   includeTrace: boolean,
   table?: StreamingTable,
-  extraFields?: string[]
+  extraFields?: string[],
 ): string {
   let text = "";
   for (const log of logs) {
     if (table) {
       text += table.row(
         buildLogRowCells(log, true, includeTrace, extraFields).map(
-          renderInlineMarkdown
-        )
+          renderInlineMarkdown,
+        ),
       );
     } else {
       text += formatLogRow(log, includeTrace, extraFields);
@@ -331,7 +331,7 @@ function renderLogRows(
  */
 async function fetchPoll<T extends LogLike>(
   config: FollowGeneratorConfig<T>,
-  lastTimestamp: number
+  lastTimestamp: number,
 ): Promise<T[] | undefined> {
   try {
     const rawLogs = await config.fetch("10m", lastTimestamp);
@@ -367,7 +367,7 @@ async function fetchPoll<T extends LogLike>(
  * @throws {AuthError} if the API returns an authentication error
  */
 async function* generateFollowLogs<T extends LogLike>(
-  config: FollowGeneratorConfig<T>
+  config: FollowGeneratorConfig<T>,
 ): AsyncGenerator<T[], void, undefined> {
   const { flags } = config;
   const pollInterval = flags.follow ?? DEFAULT_POLL_INTERVAL;
@@ -428,7 +428,7 @@ async function* generateFollowLogs<T extends LogLike>(
  */
 async function* yieldFollowItems<T extends LogLike>(
   generator: AsyncGenerator<T[], void, undefined>,
-  extraFields?: string[]
+  extraFields?: string[],
 ): AsyncGenerator<CommandOutput<LogOutput>, void, undefined> {
   let contextSent = !extraFields?.length;
   for await (const batch of generator) {
@@ -456,7 +456,7 @@ async function* yieldFollowItems<T extends LogLike>(
  */
 async function* yieldTraceFollowItems<T extends LogLike>(
   generator: AsyncGenerator<T[], void, undefined>,
-  traceId: string
+  traceId: string,
 ): AsyncGenerator<CommandOutput<LogOutput>, void, undefined> {
   let contextSent = false;
   for await (const batch of generator) {
@@ -497,7 +497,7 @@ type TraceFetchOptions = {
 async function executeTraceSingleFetch(
   org: string,
   traceId: string,
-  options: TraceFetchOptions
+  options: TraceFetchOptions,
 ): Promise<FetchResult> {
   const { flags, timeRange, projectFilter } = options;
   const query = buildProjectQuery(flags.query, projectFilter);
@@ -550,7 +550,7 @@ async function executeTraceSingleFetch(
 function writeFollowBanner(
   pollInterval: number,
   bannerText: string,
-  json: boolean
+  json: boolean,
 ): void {
   if (json) {
     return;
@@ -598,7 +598,7 @@ type LogRendererState = {
 function initFirstRender(
   state: LogRendererState,
   data: LogOutput,
-  plain: boolean
+  plain: boolean,
 ): void {
   if (isLogListResult(data)) {
     if (data.traceId) {
@@ -637,7 +637,7 @@ function createLogRenderer(): HumanRenderer<LogOutput> {
           logs,
           state.includeTrace,
           state.table,
-          state.extraFields
+          state.extraFields,
         );
         return text.trimEnd();
       }
@@ -646,7 +646,7 @@ function createLogRenderer(): HumanRenderer<LogOutput> {
         logs,
         state.includeTrace,
         state.table,
-        state.extraFields
+        state.extraFields,
       ).trimEnd();
     },
 
@@ -696,7 +696,7 @@ function validateFollowFlags(flags: ListFlags): void {
   if (flags.follow && flags.sort === "oldest") {
     throw new ValidationError(
       '--sort "oldest" cannot be used with --follow. Follow mode streams new logs as they arrive.',
-      "sort"
+      "sort",
     );
   }
 }
@@ -800,7 +800,7 @@ export const listCommand = buildListCommand(
         throw new ValidationError(
           "--follow cannot be used with an absolute date range. " +
             "Use a relative duration (e.g., --period 1h) or omit --period.",
-          "period"
+          "period",
         );
       }
 
@@ -810,14 +810,14 @@ export const listCommand = buildListCommand(
         const { traceId, org } = await resolveTraceOrg(
           parsed.parsed,
           cwd,
-          TRACE_USAGE_HINT
+          TRACE_USAGE_HINT,
         );
 
         // Warn if --fields was passed — the trace-logs endpoint has a fixed
         // field set and doesn't support arbitrary extra fields.
         if (flags.fields?.length) {
           logger.warn(
-            "--fields is not supported for trace-scoped log queries. Use project-scoped mode instead."
+            "--fields is not supported for trace-scoped log queries. Use project-scoped mode instead.",
           );
         }
 
@@ -833,7 +833,7 @@ export const listCommand = buildListCommand(
           writeFollowBanner(
             flags.follow ?? DEFAULT_POLL_INTERVAL,
             `Streaming logs for trace ${traceId}...`,
-            flags.json
+            flags.json,
           );
 
           // Track IDs of logs seen without timestamp_precise so they are
@@ -892,7 +892,7 @@ export const listCommand = buildListCommand(
               flags,
               timeRange,
               projectFilter,
-            })
+            }),
         );
         yield new CommandOutput(result);
         return { hint };
@@ -903,7 +903,7 @@ export const listCommand = buildListCommand(
         const { org, project } = await resolveProjectBoundFromArg(
           parsed.target,
           cwd,
-          COMMAND_NAME
+          COMMAND_NAME,
         );
         // Resolve the slug to a numeric project ID so the Events query scopes
         // via the `project` param. The `project:<slug>` filter only matches
@@ -913,7 +913,7 @@ export const listCommand = buildListCommand(
           writeFollowBanner(
             flags.follow ?? DEFAULT_POLL_INTERVAL,
             "Streaming logs...",
-            flags.json
+            flags.json,
           );
 
           const generator = generateFollowLogs({
@@ -947,7 +947,7 @@ export const listCommand = buildListCommand(
             json: flags.json,
           },
           () =>
-            executeSingleFetch(org, project, flags, { timeRange, projectId })
+            executeSingleFetch(org, project, flags, { timeRange, projectId }),
         );
         yield new CommandOutput(result);
         return { hint };
@@ -957,5 +957,5 @@ export const listCommand = buildListCommand(
   {
     noCursorFlag: true,
     noFreshAlias: true,
-  }
+  },
 );

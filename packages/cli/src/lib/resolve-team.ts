@@ -129,14 +129,14 @@ export type ResolvedTeam = ResolvedConcreteTeam | DeferredResolvedTeam;
 async function handleListTeamsError(
   error: unknown,
   orgSlug: string,
-  options: ResolveTeamOptions
+  options: ResolveTeamOptions,
 ): Promise<never> {
   if (error instanceof ApiError) {
     if (error.status === 404) {
       return await buildOrgNotFoundError(
         orgSlug,
         options.usageHint,
-        options.detectedFrom
+        options.detectedFrom,
       );
     }
     if (error.status === 403) {
@@ -149,7 +149,7 @@ async function handleListTeamsError(
       `Organization '${orgSlug}'`,
       `could not be accessed (${error.status})`,
       `${options.usageHint} --team <team-slug>`,
-      ["The organization may not exist, or you may lack access"]
+      ["The organization may not exist, or you may lack access"],
     );
   }
   throw error;
@@ -159,15 +159,15 @@ export async function resolveOrCreateTeam(
   orgSlug: string,
   options: ResolveTeamOptions & {
     deferAutoCreateOnEmptyOrg?: false | undefined;
-  }
+  },
 ): Promise<ResolvedConcreteTeam>;
 export async function resolveOrCreateTeam(
   orgSlug: string,
-  options: ResolveTeamOptions & { deferAutoCreateOnEmptyOrg: true }
+  options: ResolveTeamOptions & { deferAutoCreateOnEmptyOrg: true },
 ): Promise<ResolvedTeam>;
 export async function resolveOrCreateTeam(
   orgSlug: string,
-  options: ResolveTeamOptions
+  options: ResolveTeamOptions,
 ): Promise<ResolvedTeam> {
   if (options.team) {
     return { slug: options.team, source: "explicit" };
@@ -217,7 +217,7 @@ export async function resolveOrCreateTeam(
     [
       `${label}. Specify one with --team`,
       ...candidates.map((t) => `Available: ${t.slug}`),
-    ]
+    ],
   );
 }
 
@@ -228,7 +228,7 @@ export async function resolveOrCreateTeam(
  */
 function resolveEmptyTeams(
   orgSlug: string,
-  options: ResolveTeamOptions
+  options: ResolveTeamOptions,
 ): Promise<ResolvedTeam> | ResolvedTeam {
   if (options.deferAutoCreateOnEmptyOrg) {
     return { source: "deferred" };
@@ -252,7 +252,7 @@ function resolveEmptyTeams(
  */
 async function autoCreateTeam(
   orgSlug: string,
-  slug: string
+  slug: string,
 ): Promise<ResolvedTeam> {
   try {
     const team = await createTeam(orgSlug, slug);
@@ -274,7 +274,7 @@ async function autoCreateTeam(
         `Create a team manually at ${getSentryBaseUrl()}/settings/${orgSlug}/teams/` +
         (error instanceof ApiError
           ? `\n\nAPI error (${error.status}): ${error.detail ?? error.message}`
-          : "")
+          : ""),
     );
   }
 }
@@ -291,7 +291,7 @@ async function autoCreateTeam(
 export async function buildOrgNotFoundError(
   orgSlug: string,
   usageHint: string,
-  detectedFrom?: string
+  detectedFrom?: string,
 ): Promise<never> {
   // Try resolving DSN-style org IDs (e.g., o1081365 → actual slug)
   const effectiveOrg = await resolveEffectiveOrg(orgSlug);
@@ -300,12 +300,12 @@ export async function buildOrgNotFoundError(
       `Organization '${orgSlug}'`,
       `not found (did you mean '${effectiveOrg}'?)`,
       usageHint,
-      [`Try using '${effectiveOrg}' as the org slug instead of '${orgSlug}'`]
+      [`Try using '${effectiveOrg}' as the org slug instead of '${orgSlug}'`],
     );
   }
 
   const orgHint = await fetchOrgListHint(
-    `Specify org explicitly: ${usageHint}`
+    `Specify org explicitly: ${usageHint}`,
   );
 
   const suggestions: string[] = [];
@@ -318,6 +318,6 @@ export async function buildOrgNotFoundError(
     `Organization '${orgSlug}'`,
     "not found",
     usageHint,
-    suggestions
+    suggestions,
   );
 }

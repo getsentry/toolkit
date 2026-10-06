@@ -35,7 +35,7 @@ function getCacheDir(): string {
 /** Build a simple patch chain for testing */
 function makeChain(
   patchDataList: Uint8Array[],
-  expectedSha256: string
+  expectedSha256: string,
 ): {
   patches: { data: Uint8Array; size: number }[];
   expectedSha256: string;
@@ -48,7 +48,7 @@ function makeChain(
 
 /** Build version steps for a sequential chain */
 function makeSteps(
-  versions: string[]
+  versions: string[],
 ): { fromVersion: string; toVersion: string }[] {
   const steps: { fromVersion: string; toVersion: string }[] = [];
   for (let i = 0; i < versions.length - 1; i++) {
@@ -72,13 +72,13 @@ describe("patchFileName", () => {
 
   test("sanitizes special characters in version strings", () => {
     expect(patchFileName("0.14.0-dev.100", "0.14.0-dev.101")).toBe(
-      "0.14.0-dev.100-0.14.0-dev.101.patch"
+      "0.14.0-dev.100-0.14.0-dev.101.patch",
     );
   });
 
   test("replaces non-safe characters with underscore", () => {
     expect(patchFileName("1.0.0+build", "1.0.1+build")).toBe(
-      "1.0.0_build-1.0.1_build.patch"
+      "1.0.0_build-1.0.1_build.patch",
     );
   });
 });
@@ -90,7 +90,7 @@ describe("chainFileName", () => {
 
   test("handles nightly versions", () => {
     expect(chainFileName("0.14.0-dev.100", "0.14.0-dev.101")).toBe(
-      "chain-0.14.0-dev.100-0.14.0-dev.101.json"
+      "chain-0.14.0-dev.100-0.14.0-dev.101.json",
     );
   });
 });
@@ -115,8 +115,8 @@ describe("savePatchesToCache", () => {
     expect(
       await access(patchFilePath).then(
         () => true,
-        () => false
-      )
+        () => false,
+      ),
     ).toBe(true);
     expect(new Uint8Array(await readFile(patchFilePath))).toEqual(patchData);
 
@@ -125,8 +125,8 @@ describe("savePatchesToCache", () => {
     expect(
       await access(metaFilePath).then(
         () => true,
-        () => false
-      )
+        () => false,
+      ),
     ).toBe(true);
     const meta = JSON.parse(await readFile(metaFilePath, "utf-8")) as ChainMeta;
     expect(meta.fromVersion).toBe("0.13.0");
@@ -152,26 +152,26 @@ describe("savePatchesToCache", () => {
     expect(
       await access(join(cacheDir, patchFileName("0.12.0", "0.13.0"))).then(
         () => true,
-        () => false
-      )
+        () => false,
+      ),
     ).toBe(true);
     expect(
       await access(join(cacheDir, patchFileName("0.13.0", "0.14.0"))).then(
         () => true,
-        () => false
-      )
+        () => false,
+      ),
     ).toBe(true);
     expect(
       await access(join(cacheDir, patchFileName("0.14.0", "0.15.0"))).then(
         () => true,
-        () => false
-      )
+        () => false,
+      ),
     ).toBe(true);
 
     // Chain metadata spans 0.12.0 → 0.15.0
     const metaFilePath2 = join(cacheDir, chainFileName("0.12.0", "0.15.0"));
     const meta = JSON.parse(
-      await readFile(metaFilePath2, "utf-8")
+      await readFile(metaFilePath2, "utf-8"),
     ) as ChainMeta;
     expect(meta.patches).toHaveLength(3);
     expect(meta.expectedSha256).toBe("target-hash");
@@ -254,7 +254,7 @@ describe("loadCachedChain", () => {
     mkdirSync(cacheDir, { recursive: true });
     await writeFile(
       join(cacheDir, patchFileName("0.13.0", "0.14.0")),
-      new Uint8Array([1, 2, 3])
+      new Uint8Array([1, 2, 3]),
     );
 
     const result = await loadCachedChain("0.13.0", "0.14.0");
@@ -274,7 +274,7 @@ describe("loadCachedChain", () => {
     };
     await writeFile(
       join(cacheDir, chainFileName("0.13.0", "0.14.0")),
-      JSON.stringify(meta)
+      JSON.stringify(meta),
     );
 
     const result = await loadCachedChain("0.13.0", "0.14.0");
@@ -309,11 +309,11 @@ describe("loadCachedChain", () => {
     };
     await writeFile(
       join(cacheDir, chainFileName("0.13.0", "0.14.0")),
-      JSON.stringify(meta)
+      JSON.stringify(meta),
     );
     await writeFile(
       join(cacheDir, patchFileName("0.13.0", "0.14.0")),
-      new Uint8Array([1, 2, 3])
+      new Uint8Array([1, 2, 3]),
     );
 
     const result = await loadCachedChain("0.13.0", "0.14.0");
@@ -325,7 +325,7 @@ describe("loadCachedChain", () => {
     mkdirSync(cacheDir, { recursive: true });
     writeFileSync(
       join(cacheDir, "chain-0.13.0-0.14.0.json"),
-      "not valid json!!!"
+      "not valid json!!!",
     );
 
     const result = await loadCachedChain("0.13.0", "0.14.0");
@@ -373,21 +373,21 @@ describe("cleanupPatchCache", () => {
     };
     await writeFile(
       join(cacheDir, chainFileName("0.13.0", "0.14.0")),
-      JSON.stringify(meta)
+      JSON.stringify(meta),
     );
     await writeFile(
       join(cacheDir, patchFileName("0.13.0", "0.14.0")),
-      new Uint8Array([1, 2, 3])
+      new Uint8Array([1, 2, 3]),
     );
 
     await cleanupPatchCache();
 
     // Both metadata and patch file should be removed
     expect(existsSync(join(cacheDir, chainFileName("0.13.0", "0.14.0")))).toBe(
-      false
+      false,
     );
     expect(existsSync(join(cacheDir, patchFileName("0.13.0", "0.14.0")))).toBe(
-      false
+      false,
     );
   });
 
@@ -406,21 +406,21 @@ describe("cleanupPatchCache", () => {
     };
     await writeFile(
       join(cacheDir, chainFileName("0.13.0", "0.14.0")),
-      JSON.stringify(meta)
+      JSON.stringify(meta),
     );
     await writeFile(
       join(cacheDir, patchFileName("0.13.0", "0.14.0")),
-      new Uint8Array([1, 2, 3])
+      new Uint8Array([1, 2, 3]),
     );
 
     await cleanupPatchCache();
 
     // Both files should still exist
     expect(existsSync(join(cacheDir, chainFileName("0.13.0", "0.14.0")))).toBe(
-      true
+      true,
     );
     expect(existsSync(join(cacheDir, patchFileName("0.13.0", "0.14.0")))).toBe(
-      true
+      true,
     );
   });
 
@@ -450,11 +450,11 @@ describe("cleanupPatchCache", () => {
     };
     await writeFile(
       join(cacheDir, chainFileName("0.12.0", "0.13.0")),
-      JSON.stringify(oldMeta)
+      JSON.stringify(oldMeta),
     );
     await writeFile(
       join(cacheDir, patchFileName("0.12.0", "0.13.0")),
-      new Uint8Array([1])
+      new Uint8Array([1]),
     );
 
     // Fresh entry
@@ -467,29 +467,29 @@ describe("cleanupPatchCache", () => {
     };
     await writeFile(
       join(cacheDir, chainFileName("0.13.0", "0.14.0")),
-      JSON.stringify(freshMeta)
+      JSON.stringify(freshMeta),
     );
     await writeFile(
       join(cacheDir, patchFileName("0.13.0", "0.14.0")),
-      new Uint8Array([2])
+      new Uint8Array([2]),
     );
 
     await cleanupPatchCache();
 
     // Old entry removed
     expect(existsSync(join(cacheDir, chainFileName("0.12.0", "0.13.0")))).toBe(
-      false
+      false,
     );
     expect(existsSync(join(cacheDir, patchFileName("0.12.0", "0.13.0")))).toBe(
-      false
+      false,
     );
 
     // Fresh entry preserved
     expect(existsSync(join(cacheDir, chainFileName("0.13.0", "0.14.0")))).toBe(
-      true
+      true,
     );
     expect(existsSync(join(cacheDir, patchFileName("0.13.0", "0.14.0")))).toBe(
-      true
+      true,
     );
   });
 
@@ -510,11 +510,11 @@ describe("cleanupPatchCache", () => {
     };
     await writeFile(
       join(cacheDir, chainFileName("0.12.0", "0.13.0")),
-      JSON.stringify(oldMeta)
+      JSON.stringify(oldMeta),
     );
     await writeFile(
       join(cacheDir, patchFileName("0.12.0", "0.13.0")),
-      new Uint8Array([1])
+      new Uint8Array([1]),
     );
 
     // Fresh chain: A→B→C (alive) — shares the A→B patch file
@@ -530,31 +530,31 @@ describe("cleanupPatchCache", () => {
     };
     await writeFile(
       join(cacheDir, chainFileName("0.12.0", "0.14.0")),
-      JSON.stringify(freshMeta)
+      JSON.stringify(freshMeta),
     );
     await writeFile(
       join(cacheDir, patchFileName("0.13.0", "0.14.0")),
-      new Uint8Array([2])
+      new Uint8Array([2]),
     );
 
     await cleanupPatchCache();
 
     // Old chain metadata removed
     expect(existsSync(join(cacheDir, chainFileName("0.12.0", "0.13.0")))).toBe(
-      false
+      false,
     );
 
     // Shared A→B patch file preserved (still used by fresh chain)
     expect(existsSync(join(cacheDir, patchFileName("0.12.0", "0.13.0")))).toBe(
-      true
+      true,
     );
 
     // Fresh chain fully intact
     expect(existsSync(join(cacheDir, chainFileName("0.12.0", "0.14.0")))).toBe(
-      true
+      true,
     );
     expect(existsSync(join(cacheDir, patchFileName("0.13.0", "0.14.0")))).toBe(
-      true
+      true,
     );
   });
 });
@@ -579,31 +579,31 @@ describe("clearPatchCache", () => {
       [
         { fromVersion: "0.10.0", toVersion: "0.11.0" },
         { fromVersion: "0.11.0", toVersion: "0.12.0" },
-      ]
+      ],
     );
 
     // Verify files exist
     expect(existsSync(join(cacheDir, patchFileName("0.10.0", "0.11.0")))).toBe(
-      true
+      true,
     );
     expect(existsSync(join(cacheDir, patchFileName("0.11.0", "0.12.0")))).toBe(
-      true
+      true,
     );
     expect(existsSync(join(cacheDir, chainFileName("0.10.0", "0.12.0")))).toBe(
-      true
+      true,
     );
 
     await clearPatchCache();
 
     // All files gone
     expect(existsSync(join(cacheDir, patchFileName("0.10.0", "0.11.0")))).toBe(
-      false
+      false,
     );
     expect(existsSync(join(cacheDir, patchFileName("0.11.0", "0.12.0")))).toBe(
-      false
+      false,
     );
     expect(existsSync(join(cacheDir, chainFileName("0.10.0", "0.12.0")))).toBe(
-      false
+      false,
     );
   });
 

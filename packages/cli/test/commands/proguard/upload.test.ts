@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { uploadCommand } from "../../../src/commands/proguard/upload.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as proguardApi from "../../../src/lib/api/proguard.js";
 import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 
@@ -99,7 +99,7 @@ describe("sentry proguard upload", () => {
         ctx,
         { uuid: "5db7294d-87fc-5726-a5c0-4a90679657a5" },
         f1,
-        f2
+        f2,
       );
       expect.unreachable("should have thrown");
     } catch (err) {
@@ -168,7 +168,7 @@ describe("sentry proguard upload", () => {
     const ctx = makeContext();
     // Should succeed without org/project set
     await expect(
-      func.call(ctx, { "no-upload": true }, f)
+      func.call(ctx, { "no-upload": true }, f),
     ).resolves.toBeUndefined();
   });
 
@@ -191,7 +191,7 @@ describe("sentry proguard upload", () => {
       expect(callArgs?.project).toBe("test-project");
       expect(callArgs?.mappings).toHaveLength(1);
       expect(callArgs?.mappings[0]?.uuid).toBe(
-        "5db7294d-87fc-5726-a5c0-4a90679657a5"
+        "5db7294d-87fc-5726-a5c0-4a90679657a5",
       );
       expect(callArgs?.mappings[0]?.content).toBeInstanceOf(Buffer);
     } finally {

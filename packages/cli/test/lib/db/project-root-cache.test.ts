@@ -98,12 +98,12 @@ describe("getCachedProjectRoot", () => {
     utimesSync(testProjectDir, futureTime, futureTime);
 
     const pending = withEnv({ ...process.env }, () =>
-      getCachedProjectRoot(testProjectDir)
+      getCachedProjectRoot(testProjectDir),
     );
     // The filesystem check yields while another invocation uses its store.
     withEnv(
       { ...process.env, SENTRY_CONFIG_DIR: join(getConfigDir(), "other") },
-      getDatabase
+      getDatabase,
     );
 
     await expect(pending).resolves.toBeUndefined();
@@ -154,7 +154,7 @@ describe("setCachedProjectRoot", () => {
       setCachedProjectRoot(testProjectDir, {
         projectRoot: testProjectDir,
         reason: "vcs",
-      })
+      }),
     );
     // The filesystem check yields while another invocation uses its store.
     const otherEnv = {
@@ -169,7 +169,7 @@ describe("setCachedProjectRoot", () => {
       reason: "vcs",
     });
     await expect(
-      withEnv(otherEnv, () => getCachedProjectRoot(testProjectDir))
+      withEnv(otherEnv, () => getCachedProjectRoot(testProjectDir)),
     ).resolves.toBeUndefined();
   });
 });

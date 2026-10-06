@@ -33,7 +33,7 @@ describe("parseCustomHeaders", () => {
 
   test("parses multiple headers separated by semicolon", () => {
     const result = parseCustomHeaders(
-      "X-First: one; X-Second: two; X-Third: three"
+      "X-First: one; X-Second: two; X-Third: three",
     );
     expect(result).toEqual([
       ["X-First", "one"],
@@ -52,7 +52,7 @@ describe("parseCustomHeaders", () => {
 
   test("parses mixed semicolon and newline separators", () => {
     const result = parseCustomHeaders(
-      "X-First: one; X-Second: two\nX-Third: three"
+      "X-First: one; X-Second: two\nX-Third: three",
     );
     expect(result).toEqual([
       ["X-First", "one"],
@@ -104,19 +104,19 @@ describe("parseCustomHeaders", () => {
 
   test("throws ConfigError on segment without colon", () => {
     expect(() => parseCustomHeaders("bad-header-no-colon")).toThrow(
-      /Expected 'Name: Value' format/
+      /Expected 'Name: Value' format/,
     );
   });
 
   test("throws ConfigError on empty header name", () => {
     expect(() => parseCustomHeaders(": value-only")).toThrow(
-      /empty header name/
+      /empty header name/,
     );
   });
 
   test("throws ConfigError on header name with spaces", () => {
     expect(() => parseCustomHeaders("Bad Name: value")).toThrow(
-      /Header names must contain only/
+      /Header names must contain only/,
     );
   });
 
@@ -134,17 +134,17 @@ describe("parseCustomHeaders", () => {
   for (const header of forbiddenHeaders) {
     test(`throws ConfigError for forbidden header: ${header}`, () => {
       expect(() => parseCustomHeaders(`${header}: some-value`)).toThrow(
-        /Cannot override reserved header/
+        /Cannot override reserved header/,
       );
     });
   }
 
   test("forbidden header check is case-insensitive", () => {
     expect(() => parseCustomHeaders("AUTHORIZATION: token")).toThrow(
-      /Cannot override reserved header/
+      /Cannot override reserved header/,
     );
     expect(() => parseCustomHeaders("content-type: json")).toThrow(
-      /Cannot override reserved header/
+      /Cannot override reserved header/,
     );
   });
 });
@@ -348,19 +348,19 @@ describe("setCustomHeadersOverride", () => {
 
   test("throws ConfigError on empty header name", () => {
     expect(() => setCustomHeadersOverride({ "  ": "value" })).toThrow(
-      "empty header name"
+      "empty header name",
     );
   });
 
   test("throws ConfigError on invalid header name", () => {
     expect(() => setCustomHeadersOverride({ "X Bad": "value" })).toThrow(
-      "Invalid header name 'X Bad' in SentryOptions.headers"
+      "Invalid header name 'X Bad' in SentryOptions.headers",
     );
   });
 
   test("throws ConfigError on reserved header name", () => {
     expect(() => setCustomHeadersOverride({ Authorization: "x" })).toThrow(
-      "Cannot override reserved header 'Authorization' in SentryOptions.headers"
+      "Cannot override reserved header 'Authorization' in SentryOptions.headers",
     );
   });
 });
@@ -403,7 +403,7 @@ describe("applyCustomHeaders", () => {
     const headers = new Headers({ Accept: "application/json" });
     applyCustomHeaders(
       headers,
-      "https://sentry.example.com/api/0/organizations/"
+      "https://sentry.example.com/api/0/organizations/",
     );
 
     expect(headers.get("X-Test")).toBe("hello");
@@ -417,7 +417,7 @@ describe("applyCustomHeaders", () => {
     const headers = new Headers({ Accept: "application/json" });
     applyCustomHeaders(
       headers,
-      "https://sentry.example.com/api/0/organizations/"
+      "https://sentry.example.com/api/0/organizations/",
     );
 
     expect(headers.get("Accept")).toBe("application/json");
@@ -448,7 +448,7 @@ describe("applyCustomHeaders", () => {
     const headers = new Headers({ Accept: "application/json" });
     applyCustomHeaders(
       headers,
-      "https://evil.example.com/api/0/shared/issues/deadbeef/"
+      "https://evil.example.com/api/0/shared/issues/deadbeef/",
     );
 
     expect(headers.get("X-IAP-Token")).toBeNull();

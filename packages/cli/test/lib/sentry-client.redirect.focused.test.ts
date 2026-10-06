@@ -37,7 +37,7 @@ describe("authenticated discovery redirects", () => {
         return requests.length === 1
           ? Response.redirect("https://de.sentry.io/api/0/organizations/", 307)
           : Response.json([]);
-      }
+      },
     );
     const response = await getSdkConfig("https://sentry.io", {
       validatedRedirects: true,
@@ -51,8 +51,8 @@ describe("authenticated discovery redirects", () => {
       requests.every(
         (request) =>
           request.redirect === "manual" &&
-          request.headers.get("authorization") === "Bearer redirect-token"
-      )
+          request.headers.get("authorization") === "Bearer redirect-token",
+      ),
     ).toBe(true);
   });
 
@@ -65,12 +65,12 @@ describe("authenticated discovery redirects", () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         destinations.push(new Request(input, init).url);
         return Response.redirect("https://evil.example.net/steal", 302);
-      }
+      },
     );
     await expect(
       getSdkConfig("https://control.example.com", {
         validatedRedirects: true,
-      }).fetch("https://control.example.com/api/0/organizations/")
+      }).fetch("https://control.example.com/api/0/organizations/"),
     ).rejects.toBeInstanceOf(HostScopeError);
     expect(destinations).toEqual([
       "https://control.example.com/api/0/organizations/",
@@ -85,13 +85,13 @@ describe("authenticated discovery redirects", () => {
         if (destinations.length === 1 || destinations.length === 3) {
           return Response.redirect(
             "https://de.sentry.io/api/0/organizations/",
-            307
+            307,
           );
         }
         return destinations.length === 2
           ? new Response("retry", { status: 503 })
           : Response.json([]);
-      }
+      },
     );
     const response = await getSdkConfig("https://sentry.io", {
       validatedRedirects: true,
@@ -112,12 +112,12 @@ describe("authenticated discovery redirects", () => {
         const request = new Request(input, init);
         destinations.push(request.url);
         return Response.redirect(request.url, 307);
-      }
+      },
     );
     await expect(
       getSdkConfig("https://sentry.io", { validatedRedirects: true }).fetch(
-        "https://sentry.io/api/0/organizations/"
-      )
+        "https://sentry.io/api/0/organizations/",
+      ),
     ).rejects.toBeInstanceOf(HostScopeError);
     expect(destinations).toEqual(["https://sentry.io/api/0/organizations/"]);
   });
@@ -125,43 +125,42 @@ describe("authenticated discovery redirects", () => {
   test.each([
     { status: 303, expectedMethod: "GET", expectedBody: "" },
     { status: 307, expectedMethod: "POST", expectedBody: "payload" },
-  ])("preserves fetch redirect semantics for $status", async ({
-    status,
-    expectedMethod,
-    expectedBody,
-  }) => {
-    const requests: Array<{
-      method: string;
-      body: string;
-      contentType: string | null;
-    }> = [];
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
-      const request = new Request(input);
-      requests.push({
-        method: request.method,
-        body: request.body ? await request.text() : "",
-        contentType: request.headers.get("content-type"),
+  ])(
+    "preserves fetch redirect semantics for $status",
+    async ({ status, expectedMethod, expectedBody }) => {
+      const requests: Array<{
+        method: string;
+        body: string;
+        contentType: string | null;
+      }> = [];
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const request = new Request(input);
+        requests.push({
+          method: request.method,
+          body: request.body ? await request.text() : "",
+          contentType: request.headers.get("content-type"),
+        });
+        return requests.length === 1
+          ? Response.redirect("https://sentry.io/api/0/redirected/", status)
+          : Response.json({ ok: true });
       });
-      return requests.length === 1
-        ? Response.redirect("https://sentry.io/api/0/redirected/", status)
-        : Response.json({ ok: true });
-    });
 
-    const response = await getSdkConfig("https://sentry.io", {
-      validatedRedirects: true,
-    }).fetch("https://sentry.io/api/0/organizations/", {
-      method: "POST",
-      headers: { "Content-Type": "text/plain" },
-      body: "payload",
-    });
+      const response = await getSdkConfig("https://sentry.io", {
+        validatedRedirects: true,
+      }).fetch("https://sentry.io/api/0/organizations/", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: "payload",
+      });
 
-    expect(response.status).toBe(200);
-    expect(requests[1]).toEqual({
-      method: expectedMethod,
-      body: expectedBody,
-      contentType: status === 303 ? null : "text/plain",
-    });
-  });
+      expect(response.status).toBe(200);
+      expect(requests[1]).toEqual({
+        method: expectedMethod,
+        body: expectedBody,
+        contentType: status === 303 ? null : "text/plain",
+      });
+    },
+  );
 
   test("cancels an untrusted redirect body without masking the trust error", async () => {
     setAuthToken("self-hosted-token", undefined, undefined, {
@@ -179,14 +178,14 @@ describe("authenticated discovery redirects", () => {
           {
             status: 302,
             headers: { Location: "https://evil.example.net/steal" },
-          }
-        )
+          },
+        ),
     );
 
     await expect(
       getSdkConfig("https://control.example.com", {
         validatedRedirects: true,
-      }).fetch("https://control.example.com/api/0/organizations/")
+      }).fetch("https://control.example.com/api/0/organizations/"),
     ).rejects.toBeInstanceOf(HostScopeError);
     expect(cancellation.observed).toBe(true);
   });

@@ -13,17 +13,17 @@ export function formatIssueLinkResult(result: ExternalIssueLinkResult): string {
     return renderMarkdown(
       needsChange
         ? `Would ${result.action} ${external} ${result.action === "link" ? "to" : "from"} ${issue}. (dry run)`
-        : `Already ${result.linked ? "linked" : "unlinked"}: ${external}. (dry run)`
+        : `Already ${result.linked ? "linked" : "unlinked"}: ${external}. (dry run)`,
     );
   }
   if (!result.changed) {
     return renderMarkdown(
-      `Already ${result.linked ? "linked" : "unlinked"}: ${external}.`
+      `Already ${result.linked ? "linked" : "unlinked"}: ${external}.`,
     );
   }
   return renderMarkdown(
     result.linked
       ? `Linked ${external} to ${issue}.`
-      : `Unlinked ${external} from ${issue}. The external issue was not deleted.`
+      : `Unlinked ${external} from ${issue}. The external issue was not deleted.`,
   );
 }

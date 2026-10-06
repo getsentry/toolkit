@@ -114,11 +114,11 @@ export function collectIssueArgs(args: readonly string[]): string[] {
 export async function mapIssueArgsConcurrently<T>(
   issueArgs: readonly string[],
   operation: (issueArg: string) => Promise<T>,
-  onError: (issueArg: string, reason: unknown) => void
+  onError: (issueArg: string, reason: unknown) => void,
 ): Promise<T[]> {
   const limit = pLimit(ORG_FANOUT_CONCURRENCY);
   const settled = await Promise.allSettled(
-    issueArgs.map((issueArg) => limit(() => operation(issueArg)))
+    issueArgs.map((issueArg) => limit(() => operation(issueArg))),
   );
 
   const values: T[] = [];
@@ -162,7 +162,7 @@ export async function mapIssueArgsConcurrently<T>(
 export function buildCommandHint(
   command: string,
   issueId: string,
-  base = "sentry issue"
+  base = "sentry issue",
 ): string {
   // URLs are self-contained — no enrichment needed
   if (issueId.startsWith("http://") || issueId.startsWith("https://")) {
@@ -253,7 +253,7 @@ type IssueCommandContext = {
 async function tryResolveFromAlias(
   alias: string,
   suffix: string,
-  cwd: string
+  cwd: string,
 ): Promise<StrictResolvedIssue | null> {
   // Detect DSNs to get fingerprint for validation
   const detection = await detectAllDsns(cwd);
@@ -282,7 +282,7 @@ async function tryResolveFromAlias(
 async function resolveProjectSearchFallback(
   projectSlug: string,
   suffix: string,
-  commandContext: IssueCommandContext
+  commandContext: IssueCommandContext,
 ): Promise<StrictResolvedIssue> {
   const { command, commandBase, commandHint } = commandContext;
   const { projects } = await findProjectsBySlug(projectSlug.toLowerCase());
@@ -297,7 +297,7 @@ async function resolveProjectSearchFallback(
         "No issue with this short ID found in any accessible organization",
         "Check the project prefix and suffix, or use a numeric issue ID",
         `Specify the org: ${commandBase} ${command} <org>/${fullShortId}`,
-      ]
+      ],
     );
   }
 
@@ -310,7 +310,7 @@ async function resolveProjectSearchFallback(
       [
         `Found in: ${orgList}`,
         `Specify the org: ${commandBase} ${command} <org>/${projectSlug}-${suffix}`,
-      ]
+      ],
     );
   }
 
@@ -330,14 +330,14 @@ async function resolveProjectSearchFallback(
   throw new ResolutionError(
     `Project '${projectSlug}'`,
     "not found",
-    commandHint
+    commandHint,
   );
 }
 
 /** Search the supplied orgs and preserve failures when none could be queried. */
 async function findIssuesByShortId(
   orgSlugs: readonly string[],
-  fullShortId: string
+  fullShortId: string,
 ): Promise<StrictResolvedIssue[]> {
   const limit = pLimit(ORG_FANOUT_CONCURRENCY);
   const results = await Promise.all(
@@ -348,9 +348,9 @@ async function findIssuesByShortId(
             collapse: ISSUE_DETAIL_COLLAPSE,
           });
           return issue ? { org, issue } : null;
-        })
-      )
-    )
+        }),
+      ),
+    ),
   );
 
   // If every org failed with a real error (403, 5xx, network timeout),
@@ -359,7 +359,7 @@ async function findIssuesByShortId(
   // 404s ({ok: true, value: null}), fall through to the fallback for a
   // precise error message.
   const realErrors = results.filter(
-    (r): r is AuthGuardFailure => r !== undefined && !r.ok
+    (r): r is AuthGuardFailure => r !== undefined && !r.ok,
   );
   if (realErrors.length === results.length && realErrors.length > 0) {
     const firstError = realErrors[0]?.error;
@@ -369,7 +369,7 @@ async function findIssuesByShortId(
   }
 
   return results.flatMap((result) =>
-    result.ok && result.value ? [result.value] : []
+    result.ok && result.value ? [result.value] : [],
   );
 }
 
@@ -392,14 +392,14 @@ async function resolveProjectSearch(
   projectSlug: string,
   suffix: string,
   cwd: string,
-  commandContext: IssueCommandContext
+  commandContext: IssueCommandContext,
 ): Promise<StrictResolvedIssue> {
   const { command, commandBase, commandHint } = commandContext;
   // 1. Try alias cache first (fast, local lookup)
   const aliasResult = await tryResolveFromAlias(
     projectSlug.toLowerCase(),
     suffix,
-    cwd
+    cwd,
   );
   if (aliasResult) {
     return aliasResult;
@@ -446,7 +446,7 @@ async function resolveProjectSearch(
 
   let successes = await findIssuesByShortId(
     orgs.map((org) => org.slug),
-    fullShortId
+    fullShortId,
   );
 
   // A nonempty cache need not include every accessible org. Refresh once on
@@ -473,7 +473,7 @@ async function resolveProjectSearch(
       [
         `Found in: ${orgList}`,
         `Specify the org: ${commandBase} ${command} <org>/${projectSlug}-${suffix}`,
-      ]
+      ],
     );
   }
 
@@ -492,14 +492,14 @@ async function resolveProjectSearch(
 async function resolveSuffixOnly(
   suffix: string,
   cwd: string,
-  commandHint: string
+  commandHint: string,
 ): Promise<StrictResolvedIssue> {
   const target = await resolveOrgAndProject({ cwd });
   if (!target) {
     throw new ResolutionError(
       `Issue suffix '${suffix}'`,
       "could not be resolved without project context",
-      commandHint
+      commandHint,
     );
   }
   const fullShortId = expandToFullShortId(suffix, target.project);
@@ -524,7 +524,7 @@ async function resolveSuffixOnly(
 function resolveExplicitOrgSuffix(
   org: string,
   suffix: string,
-  commandContext: IssueCommandContext
+  commandContext: IssueCommandContext,
 ): never {
   const { command, commandBase, commandHint } = commandContext;
   throw new ResolutionError(
@@ -534,7 +534,7 @@ function resolveExplicitOrgSuffix(
     [
       `The format '${org}/${suffix}' requires a project to build the full issue ID.`,
       `Use: ${commandBase} ${command} ${org}/<project>-${suffix}`,
-    ]
+    ],
   );
 }
 
@@ -575,7 +575,7 @@ async function resolveSelector(
   selector: IssueSelector,
   explicitOrg: string | undefined,
   cwd: string,
-  commandContext: IssueCommandContext
+  commandContext: IssueCommandContext,
 ): Promise<StrictResolvedIssue> {
   const { commandHint } = commandContext;
   // Resolve org: explicit from `org/@latest` or auto-detected from DSN/defaults
@@ -608,7 +608,7 @@ async function resolveSelector(
       `Selector '${selector}'`,
       "no unresolved issues found",
       `sentry issue list ${orgSlug}/ -q "is:resolved"`,
-      [`The ${label} issue selector only matches unresolved issues.`]
+      [`The ${label} issue selector only matches unresolved issues.`],
     );
   }
 
@@ -630,7 +630,7 @@ async function resolveSelector(
 async function resolveShareIssue(
   share: Extract<ParsedIssueArg, { type: "share" }>,
   cwd: string,
-  commandHint: string
+  commandHint: string,
 ): Promise<StrictResolvedIssue> {
   const { shareId, org, baseUrl } = share;
   const resolvedOrg = org
@@ -671,7 +671,7 @@ export type ResolveIssueOptions = {
  * @param permalink - Issue permalink URL from the Sentry API response
  */
 function extractOrgFromPermalink(
-  permalink: string | undefined
+  permalink: string | undefined,
 ): string | undefined {
   if (!permalink) {
     return;
@@ -705,7 +705,7 @@ type FetchIssueByNumericIdResult = {
 async function fetchIssueByNumericId(
   id: string,
   explicitOrg: string | undefined,
-  cachedOrg: string | null | undefined
+  cachedOrg: string | null | undefined,
 ): Promise<FetchIssueByNumericIdResult> {
   if (explicitOrg) {
     const issue = await getIssueInOrg(explicitOrg, id, {
@@ -754,7 +754,7 @@ async function resolveNumericIssue(
   id: string,
   cwd: string,
   command: string,
-  commandBase = "sentry issue"
+  commandBase = "sentry issue",
 ): Promise<ResolvedIssueResult> {
   const resolvedOrg = await resolveOrg({ cwd });
   // Prefer explicit context over the cache — `resolveOrg()` already factors
@@ -764,7 +764,7 @@ async function resolveNumericIssue(
     const { issue, cacheEvicted } = await fetchIssueByNumericId(
       id,
       resolvedOrg?.org,
-      cachedOrg
+      cachedOrg,
     );
     // When `cacheEvicted` is true, the cached org slug was stale (404'd) and
     // the helper fell through to the unscoped endpoint. Do NOT let the stale
@@ -787,7 +787,7 @@ async function resolveNumericIssue(
         setCachedIssueOrg(id, org);
       } catch (cacheErr) {
         log.debug(
-          `Failed to cache issue-org mapping for ${id}: ${String(cacheErr)}`
+          `Failed to cache issue-org mapping for ${id}: ${String(cacheErr)}`,
         );
       }
     }
@@ -832,7 +832,7 @@ async function resolveNumericIssue(
  * @throws {ResolutionError} When an issue or project could not be found or resolved
  */
 export async function resolveIssue(
-  options: ResolveIssueOptions
+  options: ResolveIssueOptions,
 ): Promise<ResolvedIssueResult> {
   const { issueArg, cwd, command, commandBase } = options;
   const effectiveCommandBase = commandBase ?? "sentry issue";
@@ -879,7 +879,7 @@ export async function resolveIssue(
             [
               `No issue with numeric ID ${parsed.numericId} found in org '${org}' — you may not have access, or it may have been deleted.`,
               `If this is a short ID suffix, try: ${effectiveCommandBase} ${command} <project>-${parsed.numericId}`,
-            ]
+            ],
           );
         }
         throw err;
@@ -900,7 +900,7 @@ export async function resolveIssue(
         parsed.projectSlug,
         parsed.suffix,
         cwd,
-        commandContext
+        commandContext,
       );
       break;
 
@@ -915,7 +915,7 @@ export async function resolveIssue(
         parsed.selector,
         parsed.org,
         cwd,
-        commandContext
+        commandContext,
       );
       break;
 
@@ -928,7 +928,7 @@ export async function resolveIssue(
       // Exhaustive check - this should never be reached
       const _exhaustive: never = parsed;
       throw new Error(
-        `Unexpected issue arg type: ${JSON.stringify(_exhaustive)}`
+        `Unexpected issue arg type: ${JSON.stringify(_exhaustive)}`,
       );
     }
   }
@@ -937,7 +937,7 @@ export async function resolveIssue(
   if (result.org) {
     setOrgProjectContext(
       [result.org],
-      result.issue.project?.slug ? [result.issue.project.slug] : []
+      result.issue.project?.slug ? [result.issue.project.slug] : [],
     );
   }
 
@@ -954,7 +954,7 @@ export async function resolveIssue(
  * @throws {ContextError} When organization cannot be resolved
  */
 export async function resolveOrgAndIssueId(
-  options: ResolveIssueOptions
+  options: ResolveIssueOptions,
 ): Promise<{ org: string; issueId: string; projectId?: string }> {
   const result = await resolveIssue(options);
   if (!result.org) {
@@ -1010,7 +1010,7 @@ type EnsureRootCauseOptions = {
  * @returns The completed autofix state with root causes
  */
 export async function ensureRootCauseAnalysis(
-  options: EnsureRootCauseOptions
+  options: EnsureRootCauseOptions,
 ): Promise<AutofixState> {
   const { org, issueId, json, force = false } = options;
 
@@ -1065,7 +1065,7 @@ export async function ensureRootCauseAnalysis(
  */
 function shouldStopPolling(
   state: AutofixState,
-  stopOnWaitingForUser: boolean
+  stopOnWaitingForUser: boolean,
 ): boolean {
   if (isTerminalStatus(state.status)) {
     return true;
@@ -1089,7 +1089,7 @@ function shouldStopPolling(
  * @throws {Error} On timeout
  */
 export async function pollAutofixState(
-  options: PollAutofixOptions
+  options: PollAutofixOptions,
 ): Promise<AutofixState> {
   const {
     orgSlug,

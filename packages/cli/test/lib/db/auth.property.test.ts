@@ -34,7 +34,7 @@ useEnvSandbox(["SENTRY_AUTH_TOKEN", "SENTRY_TOKEN", "SENTRY_FORCE_ENV_TOKEN"]);
 
 /** Arbitrary for non-empty, trimmed token strings */
 const tokenArb = string({ minLength: 1, maxLength: 100 }).filter(
-  (s) => s.trim().length > 0
+  (s) => s.trim().length > 0,
 );
 
 /** Stored tokens must satisfy the persistence boundary; malformed inputs have separate coverage. */
@@ -55,10 +55,10 @@ describe("property: env var priority", () => {
 
         expect(getAuthToken()).toBe(authToken.trim());
         expect(getAuthConfig()?.source).toBe(
-          "env:SENTRY_AUTH_TOKEN" satisfies AuthSource
+          "env:SENTRY_AUTH_TOKEN" satisfies AuthSource,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -74,7 +74,7 @@ describe("property: env var priority", () => {
         expect(getAuthConfig()?.source).toBe("oauth" satisfies AuthSource);
         expect(isEnvTokenActive()).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -89,14 +89,14 @@ describe("property: env var priority", () => {
           resetAuthCaches();
           expect(getAuthToken()).toBe(envToken.trim());
           expect(getAuthConfig()?.source).toBe(
-            "env:SENTRY_AUTH_TOKEN" satisfies AuthSource
+            "env:SENTRY_AUTH_TOKEN" satisfies AuthSource,
           );
         } finally {
           delete process.env.SENTRY_FORCE_ENV_TOKEN;
           resetAuthCaches();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -109,7 +109,7 @@ describe("property: env var priority", () => {
         expect(getAuthToken()).toBe(storedToken);
         expect(getAuthConfig()?.source).toBe("oauth" satisfies AuthSource);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -127,7 +127,7 @@ describe("property: env tokens never trigger refresh", () => {
         expect(result.expiresAt).toBeUndefined();
         expect(result.expiresIn).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -141,7 +141,7 @@ describe("property: env tokens never trigger refresh", () => {
         expect(result.token).toBe(envToken.trim());
         expect(result.refreshed).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -167,7 +167,7 @@ describe("property: isEnvTokenActive consistency", () => {
           expect(config.source).toBe("oauth");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -183,7 +183,7 @@ describe("property: source round-trip", () => {
         // Verify we can extract the env var name
         expect(config?.source.slice(4)).toBe("SENTRY_AUTH_TOKEN");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -196,7 +196,7 @@ describe("property: source round-trip", () => {
         expect(config?.source).toBe("env:SENTRY_TOKEN");
         expect(config?.source.slice(4)).toBe("SENTRY_TOKEN");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

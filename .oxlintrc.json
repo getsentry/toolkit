@@ -1,12 +1,12 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "jsx-a11y"],
+  "jsPlugins": ["./packages/cli/lint-rules/cli-oxlint-plugin.js"],
   "categories": {
     "correctness": "error"
   },
   "ignorePatterns": [
     "apps/cli-docs/**",
-    "packages/cli/**",
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json",
     "packages/mcp-server-mocks/src/fixtures/**"
@@ -20,6 +20,88 @@
       "files": ["packages/mcp-cloudflare/src/client/**/*.tsx"],
       "rules": {
         "jsx-a11y/no-static-element-interactions": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/cli/src/**/*.{ts,tsx}",
+        "packages/cli/test/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "sentry-cli/no-silent-catch": "error",
+        "sentry-cli/no-stdout-write-in-commands": "error",
+        "sentry-cli/no-process-stdout-in-commands": "error",
+        "sentry-cli/no-stderr-write-in-commands": "error",
+        "sentry-cli/no-raw-metadata-queries": "error",
+        "sentry-cli/no-manual-transactions": "error",
+        "sentry-cli/no-inline-touch-cache": "error",
+        "sentry-cli/no-args-join-in-release": "error",
+        "sentry-cli/no-direct-target-resolution": "error",
+        "sentry-cli/no-generic-is-record": "error",
+        "sentry-cli/prefer-paginate-helper": "error",
+        "sentry-cli/no-namespace-import": "error",
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@stricli/core",
+                "importNames": ["buildCommand", "buildRouteMap"],
+                "message": "Import the CLI command and route-map wrappers instead; they provide telemetry and standard aliases."
+              }
+            ]
+          }
+        ],
+        "no-bitwise": "error",
+        "max-params": ["error", 5],
+        "sentry-cli/no-skipped-tests": "error"
+      }
+    },
+    {
+      "files": ["packages/cli/src/**/*.{ts,tsx}"],
+      "rules": {
+        "typescript/no-explicit-any": "error",
+        "typescript/no-non-null-assertion": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/cli/src/lib/command.ts",
+        "packages/cli/src/lib/route-map.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["packages/cli/src/commands/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@stricli/core",
+                "importNames": ["buildCommand", "buildRouteMap"],
+                "message": "Import the CLI command and route-map wrappers instead; they provide telemetry and standard aliases."
+              },
+              {
+                "name": "chalk",
+                "message": "Use colorTag() from formatters/markdown.js so plain output works."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "packages/cli/src/lib/build/zip-writer.ts",
+        "packages/cli/src/lib/build/index.ts",
+        "packages/cli/test/lib/build/zip-writer.test.ts"
+      ],
+      "rules": {
+        "no-bitwise": "off"
       }
     }
   ]

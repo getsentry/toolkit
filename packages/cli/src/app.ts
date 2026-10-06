@@ -224,9 +224,9 @@ const routesWithDefaultCommand: ReadonlySet<string> = new Set(
     .filter(
       (e) =>
         isRouteMap(e.target as unknown) &&
-        (e.target as unknown as RouteMap).getDefaultCommand?.()
+        (e.target as unknown as RouteMap).getDefaultCommand?.(),
     )
-    .map((e) => e.name.original)
+    .map((e) => e.name.original),
 );
 
 /**
@@ -278,7 +278,7 @@ function detectPluralAliasMisuse(ansiColor: boolean): string | undefined {
  */
 function formatSynonymError(
   exc: unknown,
-  ansiColor: boolean
+  ansiColor: boolean,
 ): string | undefined {
   if (!(exc instanceof CliError)) {
     return;
@@ -315,7 +315,7 @@ const customText: ApplicationText = {
   ...text_en,
   exceptionWhileParsingArguments: (
     exc: unknown,
-    ansiColor: boolean
+    ansiColor: boolean,
   ): string => {
     // Case A: bare route group with no subcommand (e.g., `sentry issue`)
     if (exc instanceof UnsatisfiedPositionalError) {

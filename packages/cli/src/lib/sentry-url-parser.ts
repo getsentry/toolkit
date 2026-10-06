@@ -57,7 +57,7 @@ export type ParsedSentryUrl = {
 function matchOrganizationsPath(
   baseUrl: string,
   segments: string[],
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): ParsedSentryUrl | null {
   if (segments[0] !== "organizations" || !segments[1]) {
     return null;
@@ -110,7 +110,7 @@ function matchOrganizationsPath(
  */
 function matchSettingsPath(
   baseUrl: string,
-  segments: string[]
+  segments: string[],
 ): ParsedSentryUrl | null {
   if (
     segments[0] !== "settings" ||
@@ -133,7 +133,7 @@ function matchSettingsPath(
  */
 function matchSubdomainPath(
   segments: string[],
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): Omit<ParsedSentryUrl, "baseUrl" | "org"> | null {
   // /issues/{id}/ (optionally with /events/{eventId}/)
   if (segments[0] === "issues" && segments[1]) {
@@ -166,7 +166,7 @@ function matchSubdomainPath(
 
 function matchSubdomainTailPath(
   segments: string[],
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): Omit<ParsedSentryUrl, "baseUrl" | "org"> | null {
   // /settings/projects/{project}/ (org-scoped subdomain settings URL)
   if (segments[0] === "settings" && segments[1] === "projects" && segments[2]) {
@@ -207,7 +207,7 @@ function matchSubdomainTailPath(
  */
 function matchTracePath(
   segments: string[],
-  startIndex: number
+  startIndex: number,
 ): { status: "absent" | "list" } | { status: "detail"; traceId: string } {
   let index = startIndex;
   const hasExplorePrefix = segments[index] === "explore";
@@ -240,7 +240,7 @@ function matchTracePath(
 function matchFeedbackPath(
   segments: string[],
   startIndex: number,
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): Omit<ParsedSentryUrl, "baseUrl" | "org"> | null {
   if (
     segments[startIndex] !== "feedback" ||
@@ -259,7 +259,7 @@ function matchFeedbackPath(
 
 function matchReplayPath(
   segments: string[],
-  startIndex: number
+  startIndex: number,
 ):
   | { status: "absent" | "list" | "invalid" }
   | { status: "detail"; replayId: string } {
@@ -301,7 +301,7 @@ function matchSubdomainOrg(
   baseUrl: string,
   hostname: string,
   segments: string[],
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): ParsedSentryUrl | null {
   // Must be a subdomain of sentry.io (e.g., "my-org.sentry.io")
   if (!hostname.endsWith(`.${DEFAULT_SENTRY_HOST}`)) {
@@ -334,7 +334,7 @@ function matchSubdomainOrg(
  */
 function matchSharePath(
   baseUrl: string,
-  segments: string[]
+  segments: string[],
 ): ParsedSentryUrl | null {
   if (segments[0] !== "share" || segments[1] !== "issue" || !segments[2]) {
     return null;
@@ -417,9 +417,9 @@ export function applySentryUrlContext(baseUrl: string): void {
   // the trust check.
   if (isSaaSTrustOrigin(baseUrl)) {
     // Clear any self-hosted URL so API calls fall back to default SaaS routing.
-    // biome-ignore lint/performance/noDelete: env registry requires delete to truly unset; assignment coerces to string in Node.js
+    // env registry requires delete to truly unset; assignment coerces to string in Node.js
     delete env.SENTRY_HOST;
-    // biome-ignore lint/performance/noDelete: env registry requires delete to truly unset; assignment coerces to string in Node.js
+    // env registry requires delete to truly unset; assignment coerces to string in Node.js
     delete env.SENTRY_URL;
     return;
   }

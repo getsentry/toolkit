@@ -26,9 +26,9 @@ const NEWLINE_RE = /\r?\n/;
  */
 export function whichSync(
   command: string,
-  opts?: { PATH?: string }
+  opts?: { PATH?: string },
 ): string | null {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const isWindows = process.platform === "win32";
     // If a custom PATH is provided, override it in the subprocess env.
@@ -58,7 +58,7 @@ export function whichSync(
           encoding: "utf-8",
           stdio: ["pipe", "pipe", "ignore"],
           env,
-        }
+        },
       );
     }
 

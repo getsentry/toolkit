@@ -129,7 +129,7 @@ function parseTarget(raw: string) {
   if (!url) {
     throw new ValidationError(
       "External issue must be an absolute HTTP(S) URL without credentials.",
-      "url"
+      "url",
     );
   }
   const linear =
@@ -137,7 +137,7 @@ function parseTarget(raw: string) {
   if (url.hostname === "linear.app" && !linear) {
     throw new ValidationError(
       "Expected a Linear issue URL containing /issue/TEAM-123",
-      "url"
+      "url",
     );
   }
   const identity = linear
@@ -150,14 +150,14 @@ function parseTarget(raw: string) {
 export function findAppIssueLink(
   links: AppIssueLink[],
   url: string,
-  appSlug?: string
+  appSlug?: string,
 ): AppIssueLink | undefined {
   const target = parseTarget(url);
   const matches = links.filter((link) => {
     if (appSlug && link.serviceType !== appSlug) {
       return false;
     }
-    // biome-ignore lint/plugin: Invalid persisted URLs cannot identify the requested target.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- Invalid persisted URLs cannot identify the requested target.
     try {
       return parseTarget(link.webUrl).identity === target.identity;
     } catch {
@@ -168,7 +168,7 @@ export function findAppIssueLink(
   if (matches.length > 1) {
     throw new ValidationError(
       "Multiple app links match this URL; specify the app with --app",
-      "app"
+      "app",
     );
   }
   return matches[0];
@@ -183,7 +183,7 @@ function requireIssueTarget(orgSlug: string, issueId: string): void {
   ) {
     throw new ValidationError(
       "App links require an organization and numeric Sentry issue ID",
-      "issueId"
+      "issueId",
     );
   }
 }
@@ -191,7 +191,7 @@ function requireIssueTarget(orgSlug: string, issueId: string): void {
 /** Retrieve all app associations in the issue's region. */
 export async function listAppIssueLinks(
   orgSlug: string,
-  issueId: string
+  issueId: string,
 ): Promise<AppIssueLink[]> {
   requireIssueTarget(orgSlug, issueId);
   const config = getSdkConfig(await resolveOrgRegion(orgSlug));
@@ -205,7 +205,7 @@ export async function listAppIssueLinks(
       return unwrapPaginatedResult(result, "Failed to list app issue links");
     },
     vGroupExternalIssueResponse,
-    "listing app issue links"
+    "listing app issue links",
   );
 }
 
@@ -213,17 +213,17 @@ export async function listAppIssueLinks(
 function checkExisting(
   links: AppIssueLink[],
   url: string,
-  appSlug: string
+  appSlug: string,
 ): AppIssueLink | undefined {
   const existing = findAppIssueLink(links, url, appSlug);
   if (
     links.some(
-      (link) => link.serviceType === appSlug && link.id !== existing?.id
+      (link) => link.serviceType === appSlug && link.id !== existing?.id,
     )
   ) {
     throw new ValidationError(
       `This issue already has a different ${appSlug} link. Unlink it before linking another issue.`,
-      "app"
+      "app",
     );
   }
   return existing;
@@ -238,14 +238,14 @@ function validateUri(uri: unknown): asserts uri is string {
   ) {
     throw new ValidationError(
       "The installed app has an invalid relative action URI",
-      "app"
+      "app",
     );
   }
 }
 
 async function resolveInstallation(
   orgSlug: string,
-  appSlug: string
+  appSlug: string,
 ): Promise<AppInstallation> {
   const config = getSdkConfig(getControlSiloUrl());
   const installations = await fetchAllPages(
@@ -257,17 +257,17 @@ async function resolveInstallation(
       });
       return unwrapPaginatedResult(
         result,
-        "Failed to list Sentry App installations"
+        "Failed to list Sentry App installations",
       );
     },
     vListOrganizationSentryAppInstallationsResponse,
-    "listing Sentry App installations"
+    "listing Sentry App installations",
   );
   const matches = installations.filter(
     (item) =>
       item.organization.slug === orgSlug &&
       item.app.slug === appSlug &&
-      item.status === "installed"
+      item.status === "installed",
   );
   const installation = matches[0];
   if (matches.length !== 1 || !installation) {
@@ -275,7 +275,7 @@ async function resolveInstallation(
       matches.length
         ? `Multiple installed apps match ${appSlug}`
         : `App ${appSlug} is not installed in this organization`,
-      "app"
+      "app",
     );
   }
   return installation;
@@ -283,7 +283,7 @@ async function resolveInstallation(
 
 async function getLinkForm(
   orgSlug: string,
-  installation: AppInstallation
+  installation: AppInstallation,
 ): Promise<LinkForm> {
   const config = getSdkConfig(getControlSiloUrl());
   const components = await fetchAllPages(
@@ -296,25 +296,25 @@ async function getLinkForm(
       return unwrapPaginatedResult(result, "Failed to list app components");
     },
     vListOrganizationSentryAppComponentsResponse,
-    "listing Sentry App components"
+    "listing Sentry App components",
   );
   const matches = components.filter(
     (item) =>
       item.type === "issue-link" &&
-      item.sentryApp.uuid === installation.app.uuid
+      item.sentryApp.uuid === installation.app.uuid,
   );
   const component = matches[0];
   if (matches.length !== 1 || !component) {
     throw new ValidationError(
       `App ${installation.app.slug} does not expose an unambiguous issue-link form`,
-      "app"
+      "app",
     );
   }
   if (component.error) {
     throw new ApiError(
       `App ${installation.app.slug} could not prepare its issue-link form`,
       0,
-      JSON.stringify(component.error)
+      JSON.stringify(component.error),
     );
   }
   // App-defined form schemas are intentionally untyped in the API contract.
@@ -322,7 +322,7 @@ async function getLinkForm(
   if (!form.success) {
     throw new ValidationError(
       `App ${installation.app.slug} does not expose a supported issue-link form`,
-      "app"
+      "app",
     );
   }
   validateUri(form.output.uri);
@@ -347,7 +347,7 @@ async function getChoices({
   }
   validateUri(field.uri);
   const dependentData = Object.fromEntries(
-    (field.depends_on ?? []).map((name) => [name, values[name]])
+    (field.depends_on ?? []).map((name) => [name, values[name]]),
   );
   const result = await getSentryAppInstallationExternalRequestOptions({
     ...getSdkConfig(getControlSiloUrl()),
@@ -363,7 +363,7 @@ async function getChoices({
   });
   const parsed = safeParse(
     ChoicesResponseSchema,
-    unwrapResult(result, "Failed to search app issues")
+    unwrapResult(result, "Failed to search app issues"),
   );
   if (!parsed.success) {
     throw new ApiError("App search returned invalid issue choices", 0);
@@ -382,13 +382,13 @@ function choiceLabelKey(label: string | number): string | undefined {
 function validateLinearChoice(
   choice: Choice,
   choices: Choice[],
-  key: string
+  key: string,
 ): void {
   const valueKey = String(choice[0]).toUpperCase();
   const labelKey = choiceLabelKey(choice[1]);
   const identified = choices.filter(
     ([value, label]) =>
-      String(value).toUpperCase() === key || choiceLabelKey(label) === key
+      String(value).toUpperCase() === key || choiceLabelKey(label) === key,
   );
   if (
     (LINEAR_ISSUE_KEY.test(valueKey) && valueKey !== key) ||
@@ -399,7 +399,7 @@ function validateLinearChoice(
   ) {
     throw new ValidationError(
       "App issue choice conflicts with the requested issue URL",
-      "field"
+      "field",
     );
   }
 }
@@ -408,7 +408,7 @@ function selectChoice(
   choices: Choice[],
   query: string,
   linearKey?: string,
-  supplied?: string
+  supplied?: string,
 ): string | number {
   const wanted = supplied ?? query;
   const matches = choices.filter(
@@ -419,7 +419,7 @@ function selectChoice(
         choiceLabelKey(label) === linearKey &&
         (supplied === undefined ||
           supplied === query ||
-          String(value) === supplied))
+          String(value) === supplied)),
   );
   const choice = matches[0];
   if (matches.length !== 1 || !choice) {
@@ -431,7 +431,7 @@ function selectChoice(
       matches.length
         ? "App search returned multiple exact issue matches"
         : missingMessage,
-      "url"
+      "url",
     );
   }
   if (linearKey) {
@@ -457,7 +457,7 @@ async function resolveFields(
   options: ResolveAppIssueLinkOptions,
   form: LinkForm,
   installationUuid: string,
-  targetKey: string | undefined
+  targetKey: string | undefined,
 ): Promise<Record<string, string | number>> {
   const required = form.required_fields ?? [];
   const fields = [...required, ...(form.optional_fields ?? [])];
@@ -467,26 +467,26 @@ async function resolveFields(
     (field) =>
       field === targetField ||
       required.includes(field) ||
-      values[field.name] !== undefined
+      values[field.name] !== undefined,
   );
   addDependencies(pending, fields);
   const resolved = new Set<string>();
   while (pending.length) {
     const index = pending.findIndex((item) =>
-      (item.depends_on ?? []).every((name) => resolved.has(name))
+      (item.depends_on ?? []).every((name) => resolved.has(name)),
     );
     const field = pending[index];
     if (!field) {
       const missing = new Set(
         pending.flatMap((item) =>
-          (item.depends_on ?? []).filter((name) => values[name] === undefined)
-        )
+          (item.depends_on ?? []).filter((name) => values[name] === undefined),
+        ),
       );
       throw new ValidationError(
         missing.size
           ? `Missing app link fields: ${[...missing].map((name) => `--field ${name}=VALUE`).join(", ")}`
           : "App link fields have circular dependencies",
-        "field"
+        "field",
       );
     }
     pending.splice(index, 1);
@@ -505,13 +505,13 @@ async function resolveFields(
 
 function seedFields(
   fields: Field[],
-  supplied: Record<string, string>
+  supplied: Record<string, string>,
 ): Record<string, string | number> {
   const values: Record<string, string | number> = {};
   if (new Set(fields.map((field) => field.name)).size !== fields.length) {
     throw new ValidationError(
       "App link schema contains duplicate field names",
-      "app"
+      "app",
     );
   }
   for (const [name, value] of Object.entries(supplied)) {
@@ -521,7 +521,7 @@ function seedFields(
     ) {
       throw new ValidationError(
         `Unknown or reserved app link field: ${name}`,
-        "field"
+        "field",
       );
     }
     if (value !== "") {
@@ -532,13 +532,13 @@ function seedFields(
     if (RESERVED_FIELDS.has(field.name)) {
       throw new ValidationError(
         `App link schema uses reserved field ${field.name}`,
-        "app"
+        "app",
       );
     }
     if (field.multiple) {
       throw new ValidationError(
         `App link field ${field.name} requires multiple values and is not supported`,
-        "field"
+        "field",
       );
     }
     if (
@@ -562,7 +562,7 @@ function findTargetField(fields: Field[], required: Field[]): Field {
   if (!targetField) {
     throw new ValidationError(
       "Cannot identify one external issue field in the app link schema",
-      "app"
+      "app",
     );
   }
   return targetField;
@@ -573,7 +573,7 @@ function validateFieldValue(
   fieldName: string,
   value: string | number | undefined,
   query: string | number | undefined,
-  supplied?: string
+  supplied?: string,
 ): asserts value is string | number {
   if (
     supplied !== undefined &&
@@ -582,13 +582,13 @@ function validateFieldValue(
   ) {
     throw new ValidationError(
       `App field ${fieldName} conflicts with the requested issue URL`,
-      "field"
+      "field",
     );
   }
   if (value === undefined || value === "") {
     throw new ValidationError(
       `Missing app link fields: --field ${fieldName}=VALUE`,
-      "field"
+      "field",
     );
   }
 }
@@ -638,7 +638,7 @@ async function resolveFieldValue({
         optionsResponse.choices,
         String(value),
         targetKey,
-        supplied
+        supplied,
       );
     }
   } else if (isTarget && URL_FIELD.test(field.name)) {
@@ -650,14 +650,14 @@ async function resolveFieldValue({
 
 /** Resolve the installed app and form using reads only; never register a local-only fallback. */
 export async function resolveAppIssueLink(
-  options: ResolveAppIssueLinkOptions
+  options: ResolveAppIssueLinkOptions,
 ): Promise<PreparedAppIssueLink> {
   const { key } = parseTarget(options.url);
   const { appSlug } = options;
   const existing = checkExisting(
     await listAppIssueLinks(options.orgSlug, options.issueId),
     options.url,
-    appSlug
+    appSlug,
   );
   const installation = await resolveInstallation(options.orgSlug, appSlug);
   const form = await getLinkForm(options.orgSlug, installation);
@@ -675,7 +675,7 @@ export async function resolveAppIssueLink(
 
 /** Execute the callback with the backend's atomic no-op and replacement guard. */
 export async function linkAppIssue(
-  prepared: PreparedAppIssueLink
+  prepared: PreparedAppIssueLink,
 ): Promise<{ link: AppIssueLink; changed: boolean }> {
   const result = await executeSentryAppInstallationExternalIssueAction({
     ...getSdkConfig(getControlSiloUrl()),
@@ -700,12 +700,12 @@ export async function linkAppIssue(
 export async function unlinkAppIssueLink(
   orgSlug: string,
   issueId: string,
-  linkId: string
+  linkId: string,
 ): Promise<void> {
   if (!isAllDigits(linkId)) {
     throw new ValidationError(
       "App unlink requires the numeric association ID",
-      "linkId"
+      "linkId",
     );
   }
   requireIssueTarget(orgSlug, issueId);

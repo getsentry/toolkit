@@ -304,7 +304,7 @@ const DIGIT_FONT_LG: Record<string, string[]> = {
 /** Build glyph row arrays from a formatted string and font. */
 function buildGlyphRows(
   formatted: string,
-  font: Record<string, string[]>
+  font: Record<string, string[]>,
 ): string[][] {
   const sampleGlyph = font["0"];
   const numRows = sampleGlyph?.length ?? 3;
@@ -453,7 +453,7 @@ function buildTopBorder(title: string, width: number): string {
 /** Build the bottom border line: `╰──────────╯` */
 function buildBottomBorder(width: number): string {
   return borderColor(
-    `${BORDER.bl}${BORDER.h.repeat(Math.max(0, width - 2))}${BORDER.br}`
+    `${BORDER.bl}${BORDER.h.repeat(Math.max(0, width - 2))}${BORDER.br}`,
   );
 }
 
@@ -508,7 +508,7 @@ function noDataLine(): string {
  */
 function renderTimeseriesContent(
   data: TimeseriesResult,
-  innerWidth: number
+  innerWidth: number,
 ): string[] {
   if (data.series.length === 0) {
     return [noDataLine()];
@@ -533,7 +533,7 @@ function renderTimeseriesContent(
       lines.push(`${label} ${graph} ${formatted}`);
     } else {
       lines.push(
-        `${chalk.hex(COLORS.cyan)(label)} ${chalk.hex(COLORS.magenta)(graph)} ${chalk.bold(formatted)}`
+        `${chalk.hex(COLORS.cyan)(label)} ${chalk.hex(COLORS.magenta)(graph)} ${chalk.bold(formatted)}`,
       );
     }
   }
@@ -625,7 +625,7 @@ function buildYAxisSegment(opts: {
  */
 function renderVerticalBarsContent(
   data: TimeseriesResult,
-  opts: { innerWidth: number; contentHeight: number }
+  opts: { innerWidth: number; contentHeight: number },
 ): string[] {
   const { innerWidth, contentHeight } = opts;
   if (data.series.length === 0) {
@@ -645,7 +645,7 @@ function renderVerticalBarsContent(
   const maxVal = Math.max(
     ...nonOther.map((i) => i.total),
     ...(nonOther.length === 0 ? items.map((i) => i.total) : []),
-    1
+    1,
   );
   // Y-axis gutter
   const gutterW = yAxisGutterWidth(maxVal);
@@ -655,7 +655,7 @@ function renderVerticalBarsContent(
   const numItems = items.length;
   const barWidth = Math.max(
     1,
-    Math.floor((chartWidth - (numItems - 1) * gap) / numItems)
+    Math.floor((chartWidth - (numItems - 1) * gap) / numItems),
   );
 
   // Check if non-Other labels fit directly below bars
@@ -722,7 +722,7 @@ function renderVBarRow(
     barWidth: number;
     gap: number;
     maxBarHeight: number;
-  }
+  },
 ): string {
   const plain = isPlainOutput();
   const parts: string[] = [];
@@ -732,7 +732,7 @@ function renderVBarRow(
       continue;
     }
     const barHeight = Math.round(
-      (item.total / opts.maxVal) * opts.maxBarHeight
+      (item.total / opts.maxVal) * opts.maxBarHeight,
     );
     if (barHeight >= opts.row) {
       const fill = plain ? seriesFill(item.label, i) : "█";
@@ -755,7 +755,7 @@ function renderVBarRow(
  */
 function buildColorLegend(
   entries: { label: string; index: number }[],
-  maxWidth: number
+  maxWidth: number,
 ): string {
   const plain = isPlainOutput();
   const parts: string[] = [];
@@ -786,7 +786,7 @@ const TABLE_COL_GAP = 2;
 /** Measure the max visual width of each column across headers and rows. */
 function measureTableColWidths(
   headers: string[],
-  cellRows: string[][]
+  cellRows: string[][],
 ): number[] {
   return headers.map((h, i) => {
     let maxW = stringWidth(h);
@@ -872,7 +872,7 @@ function renderTableContent(data: TableResult, innerWidth: number): string[] {
         return formatWithUnit(val, col.unit);
       }
       return String(val);
-    })
+    }),
   );
 
   // Detect right-aligned (numeric) columns
@@ -882,7 +882,7 @@ function renderTableContent(data: TableResult, innerWidth: number): string[] {
       cellRows.every((_, ri) => {
         const v = cellRows[ri]?.[ci] ?? "";
         return v === "" || typeof data.rows[ri]?.[col.name] === "number";
-      })
+      }),
   );
 
   const colWidths = measureTableColWidths(headers, cellRows);
@@ -925,9 +925,9 @@ function renderTableContent(data: TableResult, innerWidth: number): string[] {
   const dataLines = cellRows.map((row) =>
     row
       .map((cell, i) =>
-        fitTableCell(cell, colWidths[i] ?? 3, rightAlign[i] ?? false)
+        fitTableCell(cell, colWidths[i] ?? 3, rightAlign[i] ?? false),
       )
-      .join(gap)
+      .join(gap),
   );
 
   return [
@@ -958,7 +958,7 @@ function centerVertically(lines: string[], contentHeight: number): string[] {
  */
 function renderBigNumberContent(
   data: ScalarResult,
-  opts: { innerWidth: number; contentHeight: number }
+  opts: { innerWidth: number; contentHeight: number },
 ): string[] {
   const { innerWidth, contentHeight } = opts;
   const formatted = formatBigNumberValue(data.value);
@@ -987,7 +987,7 @@ function renderBigNumberContent(
 function tryBigNumberFonts(
   formatted: string,
   innerWidth: number,
-  contentHeight: number
+  contentHeight: number,
 ): string[] | undefined {
   // Font tiers: [font, glyphWidth, minContentHeight]
   const tiers: [Record<string, string[]>, number, number][] = [
@@ -1014,7 +1014,7 @@ function tryBigNumberFonts(
  */
 function renderTimeseriesBarsContent(
   data: TimeseriesResult,
-  opts: { innerWidth: number; contentHeight: number }
+  opts: { innerWidth: number; contentHeight: number },
 ): string[] {
   const { innerWidth, contentHeight } = opts;
   if (data.series.length === 0) {
@@ -1056,7 +1056,7 @@ function renderTimeseriesBarsContent(
       label: s.label,
       values: downsample(
         s.values.map((v) => v.value),
-        maxBars
+        maxBars,
       ),
     }));
     lines.push(
@@ -1065,7 +1065,7 @@ function renderTimeseriesBarsContent(
         barHeight,
         gutterWidth: gutterW,
         chartWidth,
-      })
+      }),
     );
   } else {
     const sampled = downsample(values, maxBars);
@@ -1075,7 +1075,7 @@ function renderTimeseriesBarsContent(
         barHeight,
         gutterWidth: gutterW,
         chartWidth,
-      })
+      }),
     );
   }
 
@@ -1085,7 +1085,7 @@ function renderTimeseriesBarsContent(
       timestamps: sampledTs,
       chartWidth,
       gutterWidth: gutterW,
-    })
+    }),
   );
 
   // Color legend for multi-series (below time labels)
@@ -1115,7 +1115,7 @@ type AggregatedTimeseries = {
 };
 
 function aggregateTimeseriesValues(
-  data: TimeseriesResult
+  data: TimeseriesResult,
 ): AggregatedTimeseries {
   const first = data.series[0];
   if (!first || first.values.length === 0) {
@@ -1139,6 +1139,7 @@ function aggregateTimeseriesValues(
 
   // Multiple series — sum per time bucket
   const bucketCount = first.values.length;
+  // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
   const summed = new Array<number>(bucketCount).fill(0);
   for (const s of data.series) {
     for (let i = 0; i < s.values.length; i += 1) {
@@ -1174,7 +1175,7 @@ const FRAC_BLOCKS = [" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"
  */
 function buildTimeseriesBarColumn(
   fractionalHeight: number,
-  row: number
+  row: number,
 ): string {
   if (fractionalHeight >= row) {
     return "█";
@@ -1196,7 +1197,7 @@ function renderTimeBarRows(
     barHeight: number;
     gutterWidth: number;
     chartWidth: number;
-  }
+  },
 ): string[] {
   const { maxVal, barHeight, gutterWidth, chartWidth } = opts;
   const plain = isPlainOutput();
@@ -1210,7 +1211,7 @@ function renderTimeBarRows(
   // so the total rendered width exactly equals chartWidth.
   const barWidth = Math.max(
     1,
-    Math.floor(chartWidth / Math.max(1, sampled.length))
+    Math.floor(chartWidth / Math.max(1, sampled.length)),
   );
   const barRemainder = chartWidth - barWidth * sampled.length;
 
@@ -1278,7 +1279,7 @@ function renderStackedTimeBarRows(
     barHeight: number;
     gutterWidth: number;
     chartWidth: number;
-  }
+  },
 ): string[] {
   const { maxVal, barHeight, gutterWidth, chartWidth } = opts;
   const plain = isPlainOutput();
@@ -1288,7 +1289,7 @@ function renderStackedTimeBarRows(
   // Distribute the floor-division remainder across the first N bars.
   const barWidth = Math.max(
     1,
-    Math.floor(chartWidth / Math.max(1, numBuckets))
+    Math.floor(chartWidth / Math.max(1, numBuckets)),
   );
   const barRemainder = chartWidth - barWidth * numBuckets;
 
@@ -1346,7 +1347,7 @@ function buildStackedColumn(
   segments: { bottom: number; top: number; label: string; seriesIdx: number }[],
   row: number,
   plain: boolean,
-  barWidth: number
+  barWidth: number,
 ): string {
   // Walk segments top-down to find which series fills this row
   for (let s = segments.length - 1; s >= 0; s -= 1) {
@@ -1369,7 +1370,7 @@ function buildStackedColumn(
       return fill.repeat(barWidth);
     }
     return chalk.hex(seriesColor(seg.label, seg.seriesIdx))(
-      ch.repeat(barWidth)
+      ch.repeat(barWidth),
     );
   }
   return " ".repeat(barWidth);
@@ -1381,7 +1382,7 @@ function buildStackedColumn(
  */
 function downsampleTimestamps(
   timestamps: number[],
-  targetLen: number
+  targetLen: number,
 ): number[] {
   if (timestamps.length <= targetLen) {
     return timestamps;
@@ -1442,13 +1443,14 @@ function formatTimestamp(ts: number, spanDays: number): string {
 /** Place labels onto a character array, centered on their positions. */
 function placeLabelsOnLine(
   labels: { pos: number; text: string }[],
-  width: number
+  width: number,
 ): string {
+  // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
   const line = new Array(width).fill(" ");
   for (const { pos, text } of labels) {
     const start = Math.min(
       width - text.length,
-      Math.max(0, pos - Math.floor(text.length / 2))
+      Math.max(0, pos - Math.floor(text.length / 2)),
     );
     for (let c = 0; c < text.length; c += 1) {
       const target = start + c;
@@ -1501,6 +1503,7 @@ function buildTimeAxis(opts: {
 
   // Build axis line with ┬ at tick positions
   const tickPositions = new Set(labels.map((l) => l.pos));
+  // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
   const axisChars = new Array(chartWidth).fill("─");
   for (const pos of tickPositions) {
     if (pos >= 0 && pos < chartWidth) {
@@ -1586,7 +1589,7 @@ function heatmapCell(normalized: number, plain: boolean): string {
  */
 function renderHeatmapContent(
   data: TimeseriesResult,
-  opts: { innerWidth: number; contentHeight: number }
+  opts: { innerWidth: number; contentHeight: number },
 ): string[] {
   const { innerWidth, contentHeight } = opts;
   if (data.series.length === 0) {
@@ -1602,7 +1605,7 @@ function renderHeatmapContent(
 
   const maxLabelLen = Math.min(
     20,
-    Math.max(4, ...series.map((s) => s.label.length))
+    Math.max(4, ...series.map((s) => s.label.length)),
   );
   const gutterW = maxLabelLen + 1; // label + space
   const chartWidth = Math.max(1, innerWidth - gutterW);
@@ -1616,10 +1619,11 @@ function renderHeatmapContent(
   const rows = series.map((s) => {
     const ds = downsample(
       s.values.map((v) => v.value),
-      bucketCount
+      bucketCount,
     );
     return ds.length < bucketCount
-      ? [...ds, ...new Array(bucketCount - ds.length).fill(0)]
+      ? // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
+        [...ds, ...new Array(bucketCount - ds.length).fill(0)]
       : ds;
   });
   const globalMax = Math.max(1, ...rows.flat());
@@ -1644,7 +1648,7 @@ function renderHeatmapContent(
   // Find the longest series so its timestamps match the bucketCount.
   const longest = series.reduce(
     (a, b) => (b.values.length > a.values.length ? b : a),
-    series[0] ?? { values: [] }
+    series[0] ?? { values: [] },
   );
   const axisTs = longest.values.map((v) => v.timestamp);
   if (axisTs.length > 0) {
@@ -1654,7 +1658,7 @@ function renderHeatmapContent(
         timestamps: dsTs,
         chartWidth: bucketCount,
         gutterWidth: gutterW,
-      })
+      }),
     );
   }
 
@@ -1730,7 +1734,7 @@ function renderContentLines(opts: {
  */
 function renderWidgetLines(
   widget: DashboardViewWidget,
-  width: number
+  width: number,
 ): string[] {
   const layout = widget.layout;
   const totalHeight = layout ? layout.h * LINES_PER_UNIT : LINES_PER_UNIT;
@@ -1778,7 +1782,7 @@ function isAsciiLetter(ch: string): boolean {
 function advanceEscape(
   state: { type: EscapeType },
   ch: string,
-  buffer: string
+  buffer: string,
 ): boolean {
   return advanceEscapeInner(state, ch, buffer.at(-1));
 }
@@ -1786,7 +1790,7 @@ function advanceEscape(
 function advanceEscapeInner(
   state: { type: EscapeType },
   ch: string,
-  prev: string | undefined
+  prev: string | undefined,
 ): boolean {
   const stTerminator = ch === "\\" && prev === "\x1b";
   switch (state.type) {
@@ -1865,7 +1869,7 @@ function composeTermRow(
   active: DashboardViewWidget[],
   termRow: number,
   termWidth: number,
-  rendered: Map<DashboardViewWidget, string[]>
+  rendered: Map<DashboardViewWidget, string[]>,
 ): string {
   let line = "";
   let currentCol = 0;
@@ -1904,7 +1908,7 @@ function composeTermRow(
  */
 function renderGrid(
   widgets: DashboardViewWidget[],
-  termWidth: number
+  termWidth: number,
 ): string[] {
   let maxGridBottom = 0;
   for (const w of widgets) {
@@ -2058,17 +2062,17 @@ function logDashboardGraphicsRenderer(render: DashboardGraphicsRender): void {
     details.push(`effective pixel width=${render.pixelWidth}`);
   }
   details.push(
-    `graphics cap=${render.graphicsCapApplied ? "applied" : "not applied"}`
+    `graphics cap=${render.graphicsCapApplied ? "applied" : "not applied"}`,
   );
   const reason = render.reason ? ` (reason: ${render.reason})` : "";
   logger.debug(
-    `Dashboard graphics renderer: ${render.renderer}${reason}; ${details.join("; ")}`
+    `Dashboard graphics renderer: ${render.renderer}${reason}; ${details.join("; ")}`,
   );
 }
 
 function renderCompleteDashboardAsGraphics(
   data: DashboardViewData,
-  termWidth: number | undefined
+  termWidth: number | undefined,
 ): DashboardGraphicsRender {
   const rendererPreference = data.rendererPreference ?? "auto";
   const format = selectGraphicsFormat(rendererPreference);

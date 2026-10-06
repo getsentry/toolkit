@@ -286,7 +286,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
 function columnDefsToDDL(
   tableName: string,
   columns: [string, ColumnDef][],
-  compositePrimaryKey?: string[]
+  compositePrimaryKey?: string[],
 ): string {
   const columnDefs = columns.map(([name, col]) => {
     const parts = [name, col.type];
@@ -315,12 +315,12 @@ function columnDefsToDDL(
 /** Generate CREATE TABLE DDL from a table schema */
 export function generateTableDDL(
   tableName: string,
-  schema: TableSchema
+  schema: TableSchema,
 ): string {
   return columnDefsToDDL(
     tableName,
     Object.entries(schema.columns),
-    schema.compositePrimaryKey
+    schema.compositePrimaryKey,
   );
 }
 
@@ -337,12 +337,12 @@ export function generatePreMigrationTableDDL(tableName: string): string {
   }
 
   const baseColumns = Object.entries(schema.columns).filter(
-    ([, col]) => col.addedInVersion === undefined
+    ([, col]) => col.addedInVersion === undefined,
   );
 
   if (baseColumns.length === 0) {
     throw new Error(
-      `Table ${tableName} has no base columns (all columns were added in migrations)`
+      `Table ${tableName} has no base columns (all columns were added in migrations)`,
     );
   }
 
@@ -354,7 +354,7 @@ export const EXPECTED_TABLES: Record<string, string> = Object.fromEntries(
   Object.entries(TABLE_SCHEMAS).map(([name, schema]) => [
     name,
     generateTableDDL(name, schema),
-  ])
+  ]),
 );
 
 /** Column info for repair operations */
@@ -373,14 +373,14 @@ export const EXPECTED_COLUMNS: Record<string, RepairColumnDef[]> =
           .map(([name, col]) => ({ name, type: col.type }));
         return [tableName, migratedColumns] as const;
       })
-      .filter(([, cols]) => cols.length > 0)
+      .filter(([, cols]) => cols.length > 0),
   );
 
 /** Check if a table exists in the database */
 export function tableExists(db: Database, table: string): boolean {
   const result = db
     .query(
-      "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name=?"
+      "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name=?",
     )
     .get(table) as { count: number };
   return result.count > 0;
@@ -390,11 +390,11 @@ export function tableExists(db: Database, table: string): boolean {
 export function hasColumn(
   db: Database,
   table: string,
-  column: string
+  column: string,
 ): boolean {
   const result = db
     .query(
-      `SELECT COUNT(*) as count FROM pragma_table_info('${table}') WHERE name='${column}'`
+      `SELECT COUNT(*) as count FROM pragma_table_info('${table}') WHERE name='${column}'`,
     )
     .get() as { count: number };
   return result.count > 0;
@@ -411,7 +411,7 @@ export function hasColumn(
 function hasCompositePrimaryKey(
   db: Database,
   table: string,
-  expectedColumns: string[]
+  expectedColumns: string[],
 ): boolean {
   const row = db
     .query("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")
@@ -430,7 +430,7 @@ function addColumnIfMissing(
   db: Database,
   table: string,
   column: string,
-  type: string
+  type: string,
 ): void {
   if (!hasColumn(db, table, column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
@@ -524,7 +524,7 @@ function repairMissingColumns(db: Database, result: RepairResult): void {
       } catch (e) {
         const msg = stringifyUnknown(e);
         result.failed.push(
-          `Failed to add column ${tableName}.${col.name}: ${msg}`
+          `Failed to add column ${tableName}.${col.name}: ${msg}`,
         );
       }
     }
@@ -556,7 +556,7 @@ function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
       db.exec(`DROP TABLE ${tableName}`);
       db.exec(EXPECTED_TABLES[tableName] as string);
       result.fixed.push(
-        `Recreated table ${tableName} with correct primary key`
+        `Recreated table ${tableName} with correct primary key`,
       );
     } catch (e) {
       const msg = stringifyUnknown(e);
@@ -580,10 +580,10 @@ export function repairSchema(db: Database): RepairResult {
   repairWrongPrimaryKeys(db, result);
 
   if (result.fixed.length > 0) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       db.query("UPDATE schema_version SET version = ?").run(
-        CURRENT_SCHEMA_VERSION
+        CURRENT_SCHEMA_VERSION,
       );
     } catch {
       // Ignore version update failures - schema is still fixed
@@ -664,7 +664,7 @@ export type RepairAttemptResult<T> =
  */
 export function tryRepairAndRetry<T>(
   operation: () => T,
-  error: unknown
+  error: unknown,
 ): RepairAttemptResult<T> {
   // Skip repair if disabled via environment variable
   if (getEnv()[NO_AUTO_REPAIR_ENV] === "1") {
@@ -683,7 +683,7 @@ export function tryRepairAndRetry<T>(
 
   isRepairing = true;
   let repairSucceeded = false;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     // Dynamic imports to avoid circular dependencies with db/index.js
     const { getRawDatabase } = _require("./index.js") as {
@@ -722,7 +722,7 @@ export function initSchema(db: Database): void {
 
   if (!versionRow) {
     db.query("INSERT OR IGNORE INTO schema_version (version) VALUES (?)").run(
-      CURRENT_SCHEMA_VERSION
+      CURRENT_SCHEMA_VERSION,
     );
   }
 }
@@ -743,7 +743,7 @@ function getSchemaVersion(db: Database): number {
  * - Column renames (requires data copy in SQLite)
  * - Complex constraints
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: sequential migration steps are inherently linear
+// sequential migration steps are inherently linear
 export function runMigrations(db: Database): void {
   const currentVersion = getSchemaVersion(db);
 
@@ -841,12 +841,12 @@ export function runMigrations(db: Database): void {
       .get() as { organization: string | null; project: string | null } | null;
     if (row?.organization) {
       db.query(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)"
+        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
       ).run("defaults.org", row.organization);
     }
     if (row?.project) {
       db.query(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)"
+        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
       ).run("defaults.project", row.project);
     }
     db.exec("DROP TABLE defaults");
@@ -885,7 +885,7 @@ export function runMigrations(db: Database): void {
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {
     db.query("UPDATE schema_version SET version = ?").run(
-      CURRENT_SCHEMA_VERSION
+      CURRENT_SCHEMA_VERSION,
     );
   }
 }

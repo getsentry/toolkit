@@ -6,7 +6,7 @@
  */
 
 import { listOrganizationEvents } from "@sentry/api";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import { type GenericSchema, safeParse } from "valibot";
 
@@ -52,7 +52,7 @@ function toApiSort(sort: LogSortDirection | undefined): string {
  */
 function resolveNumericProjectId(
   projectSlug: string,
-  projectId: number | undefined
+  projectId: number | undefined,
 ): number | undefined {
   if (projectId !== undefined) {
     return projectId;
@@ -81,7 +81,7 @@ function assertObjectResponse(data: unknown, context: string): void {
       `${context}: unexpected response format`,
       0,
       `Expected an object but received ${data === null ? "null" : typeof data}. ` +
-        "This may indicate an incompatible self-hosted Sentry version or a proxy interfering with the response."
+        "This may indicate an incompatible self-hosted Sentry version or a proxy interfering with the response.",
     );
   }
 }
@@ -93,7 +93,7 @@ function assertObjectResponse(data: unknown, context: string): void {
 function safeParseResponse<T>(
   schema: GenericSchema<unknown, T>,
   data: unknown,
-  context: string
+  context: string,
 ): T {
   assertObjectResponse(data, context);
   const result = safeParse(schema, data);
@@ -112,7 +112,7 @@ function safeParseResponse<T>(
     throw new ApiError(
       `${context}: unexpected response format`,
       0,
-      result.issues.map((issue) => issue.message).join(", ")
+      result.issues.map((issue) => issue.message).join(", "),
     );
   }
   return result.output;
@@ -168,11 +168,11 @@ type ListLogsOptions = {
 export async function listLogs(
   orgSlug: string,
   projectSlug: string,
-  options: ListLogsOptions = {}
+  options: ListLogsOptions = {},
 ): Promise<SentryLog[]> {
   const numericProjectId = resolveNumericProjectId(
     projectSlug,
-    options.projectId
+    options.projectId,
   );
 
   // Only fall back to `project:<slug>` search scoping when we have no numeric
@@ -224,16 +224,16 @@ export async function listLogs(
 
       const { data: raw, nextCursor } = unwrapPaginatedResult<unknown>(
         result,
-        "Failed to list logs"
+        "Failed to list logs",
       );
       const logsResponse = safeParseResponse(
         LogsResponseSchema,
         raw,
-        "Failed to list logs"
+        "Failed to list logs",
       );
       return { data: logsResponse.data, nextCursor };
     },
-    API_MAX_PER_PAGE
+    API_MAX_PER_PAGE,
   );
 
   return data;
@@ -276,7 +276,7 @@ async function getLogsBatch(
   orgSlug: string,
   projectSlug: string,
   batchIds: string[],
-  { config, extraFields, projectId }: GetLogsBatchOptions
+  { config, extraFields, projectId }: GetLogsBatchOptions,
 ): Promise<DetailedSentryLog[]> {
   const numericProjectId = resolveNumericProjectId(projectSlug, projectId);
 
@@ -310,7 +310,7 @@ async function getLogsBatch(
   const logsResponse = safeParseResponse(
     DetailedLogsResponseSchema,
     data,
-    "Failed to get log"
+    "Failed to get log",
   );
   return logsResponse.data;
 }
@@ -344,7 +344,7 @@ export async function getLogs(
   orgSlug: string,
   projectSlug: string,
   logIds: string[],
-  options: GetLogsOptions = {}
+  options: GetLogsOptions = {},
 ): Promise<DetailedSentryLog[]> {
   const { extraFields, projectId } = options;
   const config = await getOrgSdkConfig(orgSlug);
@@ -363,8 +363,8 @@ export async function getLogs(
 
   const results = await Promise.all(
     batches.map((batch) =>
-      getLogsBatch(orgSlug, projectSlug, batch, batchOptions)
-    )
+      getLogsBatch(orgSlug, projectSlug, batch, batchOptions),
+    ),
   );
 
   return results.flat();
@@ -408,7 +408,7 @@ type ListTraceLogsOptions = {
 export async function listTraceLogs(
   orgSlug: string,
   traceId: string,
-  options: ListTraceLogsOptions = {}
+  options: ListTraceLogsOptions = {},
 ): Promise<TraceLog[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
 
@@ -437,7 +437,7 @@ export async function listTraceLogs(
       const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
       return { data: response.data, nextCursor };
     },
-    API_MAX_PER_PAGE
+    API_MAX_PER_PAGE,
   );
 
   return data;
@@ -466,7 +466,7 @@ export function getLogItemDetail(
   orgSlug: string,
   projectSlug: string,
   logId: string,
-  traceId: string
+  traceId: string,
 ): Promise<TraceItemDetail> {
   return getTraceItemDetail(orgSlug, projectSlug, logId, {
     traceId,

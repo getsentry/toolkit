@@ -60,7 +60,7 @@ async function fetchEventsPage(
   regionUrl: string,
   orgSlug: string,
   options: ExploreQueryOptions,
-  perPage: number
+  perPage: number,
 ): Promise<PaginatedResponse<EventsTableResponse>> {
   const { data, headers } = await apiRequestToRegion<EventsTableResponse>(
     regionUrl,
@@ -81,7 +81,7 @@ async function fetchEventsPage(
         cursor: options.cursor,
       },
       schema: EventsTableResponseSchema,
-    }
+    },
   );
 
   const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
@@ -111,7 +111,7 @@ export async function queryMetricsMeta(
     start?: string;
     end?: string;
     project?: string;
-  }
+  },
 ): Promise<MetricMeta[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const query = options?.project ? `project:${options.project}` : undefined;
@@ -136,7 +136,7 @@ export async function queryMetricsMeta(
       regionUrl,
       orgSlug,
       { ...baseOptions, cursor },
-      API_MAX_PER_PAGE
+      API_MAX_PER_PAGE,
     );
 
     allRows.push(...result.data.data);
@@ -171,7 +171,7 @@ export async function queryMetricsMeta(
  */
 export async function queryEvents(
   orgSlug: string,
-  options: ExploreQueryOptions
+  options: ExploreQueryOptions,
 ): Promise<PaginatedResponse<EventsTableResponse>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const limit = options.limit ?? 25;
@@ -192,7 +192,7 @@ export async function queryEvents(
       regionUrl,
       orgSlug,
       { ...options, cursor },
-      perPage
+      perPage,
     );
 
     if (page === 0) {

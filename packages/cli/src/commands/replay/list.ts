@@ -114,7 +114,7 @@ export function parseSort(value: string): ReplaySortValue {
   }
 
   throw new Error(
-    `Invalid sort value. Must be one of: ${Object.keys(SORT_MAP).join(", ")} or a replay sort like -count_rage_clicks`
+    `Invalid sort value. Must be one of: ${Object.keys(SORT_MAP).join(", ")} or a replay sort like -count_rage_clicks`,
   );
 }
 
@@ -177,7 +177,7 @@ function formatScope(org: string, project?: string): string {
 
 function appendReplayFlags(
   base: string,
-  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">
+  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">,
 ): string {
   const parts: string[] = [];
   appendQueryHint(parts, flags.query);
@@ -194,22 +194,22 @@ function appendReplayFlags(
 function nextPageHint(
   org: string,
   project: string | undefined,
-  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">
+  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">,
 ): string {
   return appendReplayFlags(
     `sentry replay list ${formatScope(org, project)} -c next`,
-    flags
+    flags,
   );
 }
 
 function prevPageHint(
   org: string,
   project: string | undefined,
-  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">
+  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">,
 ): string {
   return appendReplayFlags(
     `sentry replay list ${formatScope(org, project)} -c prev`,
-    flags
+    flags,
   );
 }
 
@@ -225,7 +225,7 @@ function formatReplayListHuman(result: ReplayListResult): string {
 
 function jsonTransformReplayList(
   result: ReplayListResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const items =
     fields && fields.length > 0
@@ -338,12 +338,12 @@ export const listCommand = buildListCommand("replay", {
         sort: flags.sort,
         q: query,
         period: serializeTimeRange(timeRange),
-      }
+      },
     );
     const { cursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const { data: replays, nextCursor } = await withProgress(
@@ -364,7 +364,7 @@ export const listCommand = buildListCommand("replay", {
         }).catch((error: unknown): never => {
           // An unparseable user --query is a user input mistake, not a CLI bug.
           throw toSearchQueryError(error, flags.query);
-        })
+        }),
     );
 
     advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);

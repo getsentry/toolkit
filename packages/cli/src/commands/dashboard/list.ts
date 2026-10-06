@@ -82,7 +82,7 @@ type DashboardListResult = {
  */
 export function encodeCursor(
   serverCursor: string | undefined,
-  afterId?: string
+  afterId?: string,
 ): string | undefined {
   if (afterId) {
     return `${serverCursor ?? ""}|${afterId}`;
@@ -134,7 +134,7 @@ function formatDashboardListHuman(result: DashboardListResult): string {
         result.allTitles,
         {
           maxResults: 5,
-        }
+        },
       );
       if (similar.length > 0) {
         return `No dashboards matching '${result.titleFilter}'. Did you mean:\n${similar.map((t) => `  • ${t}`).join("\n")}`;
@@ -182,7 +182,7 @@ function formatDashboardListHuman(result: DashboardListResult): string {
  */
 function jsonTransformDashboardList(
   result: DashboardListResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const items =
     fields && fields.length > 0
@@ -235,7 +235,7 @@ function processPage(
     serverCursor: string | undefined;
     afterId: string | undefined;
     glob: ((input: string) => boolean) | undefined;
-  }
+  },
 ): PageResult {
   // When resuming mid-page, find the afterId and skip everything up to and
   // including it. If the afterId was deleted between requests, fall through
@@ -285,7 +285,7 @@ async function fetchDashboards(
     serverCursor: string | undefined;
     afterId: string | undefined;
     glob: ((input: string) => boolean) | undefined;
-  }
+  },
 ): Promise<FetchResult> {
   let { serverCursor, afterId } = opts;
   const results: DashboardListItem[] = [];
@@ -341,7 +341,7 @@ async function fetchDashboards(
  */
 function buildHint(
   result: DashboardListResult,
-  orgSlug: string
+  orgSlug: string,
 ): string | undefined {
   const filterArg = result.titleFilter ? ` '${result.titleFilter}'` : "";
   const navRaw = paginationHint({
@@ -413,7 +413,7 @@ export const listCommand = buildListCommand("dashboard", {
     const orgSlug = await resolveOrgFromTarget(
       parsed,
       cwd,
-      "sentry dashboard list <org>/"
+      "sentry dashboard list <org>/",
     );
 
     if (flags.web) {
@@ -430,7 +430,7 @@ export const listCommand = buildListCommand("dashboard", {
     const { cursor: rawCursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
     const { serverCursor, afterId } = decodeCursor(rawCursor ?? "");
 
@@ -460,9 +460,9 @@ export const listCommand = buildListCommand("dashboard", {
           serverCursor,
           afterId,
           glob,
-        })
+        }),
     ).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "list" })
+      enrichDashboardError(error, { orgSlug, operation: "list" }),
     );
 
     // Advance the pagination cursor stack
@@ -470,7 +470,7 @@ export const listCommand = buildListCommand("dashboard", {
       PAGINATION_KEY,
       contextKey,
       direction,
-      cursorToStore
+      cursorToStore,
     );
 
     const hasMore = !!cursorToStore;

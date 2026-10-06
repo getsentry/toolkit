@@ -27,7 +27,7 @@ const traceIdArb = stringMatching(/^[a-f0-9]{32}$/);
 
 /** Valid org/project slugs (no xn-- punycode prefix) */
 const slugArb = stringMatching(/^[a-z][a-z0-9-]{1,20}[a-z0-9]$/).filter(
-  (s) => !s.startsWith("xn--")
+  (s) => !s.startsWith("xn--"),
 );
 
 const HINT = "sentry trace view [<org>/<project>/]<trace-id>";
@@ -47,7 +47,7 @@ describe("parseTraceTarget properties", () => {
         expect(result.type).toBe("auto-detect");
         expect(result.traceId).toBe(input);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -64,9 +64,9 @@ describe("parseTraceTarget properties", () => {
             expect(result.org).toBe(org);
             expect(result.project).toBe(project);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -81,7 +81,7 @@ describe("parseTraceTarget properties", () => {
           expect(result.org).toBe(org);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -94,9 +94,9 @@ describe("parseTraceTarget properties", () => {
           const result = parseTraceTarget([target, traceId], HINT);
           expect(result.type).toBe("explicit");
           expect(result.traceId).toBe(traceId);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -108,7 +108,7 @@ describe("parseTraceTarget properties", () => {
         const result2 = parseTraceTarget(args, HINT);
         expect(result1).toEqual(result2);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -123,7 +123,7 @@ describe("parseTraceTarget properties", () => {
         expect(result.traceId).toBeDefined();
         expect(typeof result.traceId).toBe("string");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -134,7 +134,7 @@ describe("parseTraceTarget properties", () => {
         const result = parseTraceTarget([uuid], HINT);
         expect(result.traceId).toBe(hex);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -144,7 +144,7 @@ describe("parseTraceTarget properties", () => {
       property(invalidIdArb, (badId) => {
         expect(() => parseTraceTarget([badId], HINT)).toThrow(ValidationError);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -158,7 +158,7 @@ describe("parseTraceTarget properties", () => {
  * parentIndex = -1 means root. Otherwise index into the flat list.
  */
 function buildTree(
-  items: Array<{ id: string; parentIdx: number }>
+  items: Array<{ id: string; parentIdx: number }>,
 ): TraceSpan[] {
   const nodes: TraceSpan[] = items.map((item) => ({
     span_id: item.id,
@@ -201,9 +201,9 @@ const spanTreeArb = uniqueArray(stringMatching(/^[a-f0-9]{16}$/), {
         integer({ min: -1, max: Math.max(0, i - 1) }).map((parentIdx) => ({
           id,
           parentIdx,
-        }))
-      )
-    )
+        })),
+      ),
+    ),
   )
   .map((items) => buildTree(items));
 
@@ -240,7 +240,7 @@ describe("flattenSpanTree properties", () => {
         const result = flattenSpanTree(tree);
         expect(result).toHaveLength(countSpans(tree));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -253,7 +253,7 @@ describe("flattenSpanTree properties", () => {
           expect(originalIds.has(span.span_id)).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 

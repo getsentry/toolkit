@@ -87,7 +87,7 @@ export function parseEndpointQuery(query: string): ParsedEndpointQuery {
  */
 export function findEndpointsByPath(
   path: string,
-  method?: string
+  method?: string,
 ): ApiEndpoint[] {
   const methodUpper = method?.toUpperCase();
   const normalized = normalizeApiPath(path);
@@ -102,7 +102,7 @@ export function findEndpointsByPath(
   }
 
   const exact = candidates.filter(
-    (endpoint) => normalizeApiPath(endpoint.path) === normalized
+    (endpoint) => normalizeApiPath(endpoint.path) === normalized,
   );
   if (exact.length > 0) {
     return exact;
@@ -137,7 +137,7 @@ export function findEndpointsByIdentifier(identifier: string): ApiEndpoint[] {
   return schema.filter(
     (endpoint) =>
       endpoint.fn.toLowerCase() === normalized ||
-      endpoint.operationId.toLowerCase() === normalized
+      endpoint.operationId.toLowerCase() === normalized,
   );
 }
 
@@ -159,20 +159,20 @@ export function getEndpointsByResource(resource: string): ApiEndpoint[] {
  */
 export function getEndpoint(
   resource: string,
-  operationQuery: string
+  operationQuery: string,
 ): ApiEndpoint | undefined {
   const lowerResource = resource.toLowerCase();
   const lowerQuery = operationQuery.toLowerCase();
 
   const candidates = schema.filter(
-    (e) => e.resource.toLowerCase() === lowerResource
+    (e) => e.resource.toLowerCase() === lowerResource,
   );
 
   // Priority 1: operationId starts with the query (e.g., "list" → "List an Org's Issues")
   const startMatch = candidates.find(
     (e) =>
       e.operationId.toLowerCase().startsWith(lowerQuery) ||
-      e.fn.toLowerCase().startsWith(lowerQuery)
+      e.fn.toLowerCase().startsWith(lowerQuery),
   );
   if (startMatch) {
     return startMatch;
@@ -182,7 +182,7 @@ export function getEndpoint(
   return candidates.find(
     (e) =>
       e.operationId.toLowerCase().includes(lowerQuery) ||
-      e.fn.toLowerCase().includes(lowerQuery)
+      e.fn.toLowerCase().includes(lowerQuery),
   );
 }
 
@@ -209,7 +209,7 @@ export function searchEndpoints(query: string): ApiEndpoint[] {
       e.path.toLowerCase().includes(lower) ||
       e.description.toLowerCase().includes(lower) ||
       e.resource.toLowerCase().includes(lower) ||
-      e.operationId.toLowerCase().includes(lower)
+      e.operationId.toLowerCase().includes(lower),
   );
   if (!parsed.method) {
     return matches;

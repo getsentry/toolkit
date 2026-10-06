@@ -28,7 +28,7 @@ import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 /** Generate a valid relative period string like "7d", "24h", "1m" */
 const relativePeriodArb = integer({ min: 1, max: 999 }).chain((n) =>
-  constantFrom("m", "h", "d", "w").map((u) => `${n}${u}`)
+  constantFrom("m", "h", "d", "w").map((u) => `${n}${u}`),
 );
 
 /** Generate an ISO date string (YYYY-MM-DD) in a sensible range */
@@ -49,7 +49,7 @@ const sortedDatePairArb = array(isoDateArb, { minLength: 2, maxLength: 2 }).map(
       sorted[1] = d.toISOString().slice(0, 10);
     }
     return sorted as [string, string];
-  }
+  },
 );
 
 // ---------------------------------------------------------------------------
@@ -66,7 +66,7 @@ describe("property: parsePeriod relative", () => {
           expect(result.period).toBe(period);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -86,7 +86,7 @@ describe("property: parsePeriod range syntax", () => {
           expect(result.end).toBeDefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -100,7 +100,7 @@ describe("property: parsePeriod range syntax", () => {
           expect(result.end).toBeUndefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -114,7 +114,7 @@ describe("property: parsePeriod range syntax", () => {
           expect(result.end).toBeDefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -134,7 +134,7 @@ describe("property: parsePeriod operators", () => {
           expect(result.end).toBeUndefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -148,7 +148,7 @@ describe("property: parsePeriod operators", () => {
           expect(result.end).toBeUndefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -162,7 +162,7 @@ describe("property: parsePeriod operators", () => {
           expect(result.end).toBeDefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -176,7 +176,7 @@ describe("property: parsePeriod operators", () => {
           expect(result.end).toBeDefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -191,7 +191,7 @@ describe("property: parsePeriod operators", () => {
           expect(exclTime).toBeGreaterThan(inclTime);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -206,7 +206,7 @@ describe("property: parsePeriod operators", () => {
           expect(exclTime).toBeLessThan(inclTime);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -222,7 +222,7 @@ describe("property: timeRangeToApiParams mutual exclusivity", () => {
     isoDateArb.map((d) => parsePeriod(`${d}..`)),
     isoDateArb.map((d) => parsePeriod(`..${d}`)),
     isoDateArb.map((d) => parsePeriod(`>=${d}`)),
-    isoDateArb.map((d) => parsePeriod(`<=${d}`))
+    isoDateArb.map((d) => parsePeriod(`<=${d}`)),
   );
 
   test("statsPeriod and start/end are never both set", () => {
@@ -235,11 +235,11 @@ describe("property: timeRangeToApiParams mutual exclusivity", () => {
         } else {
           // At least one of start/end should be defined for absolute
           expect(params.start !== undefined || params.end !== undefined).toBe(
-            true
+            true,
           );
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -255,7 +255,7 @@ describe("property: serializeTimeRange", () => {
         const range = parsePeriod(period);
         expect(serializeTimeRange(range)).toBe(serializeTimeRange(range));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -266,7 +266,7 @@ describe("property: serializeTimeRange", () => {
         const fromRange = parsePeriod(`${d}..`);
         expect(serializeTimeRange(fromOp)).toBe(serializeTimeRange(fromRange));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -277,7 +277,7 @@ describe("property: serializeTimeRange", () => {
         const fromRange = parsePeriod(`..${d}`);
         expect(serializeTimeRange(fromOp)).toBe(serializeTimeRange(fromRange));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -295,7 +295,7 @@ describe("property: timeRangeToSeconds", () => {
         expect(seconds).toBeDefined();
         expect(seconds).toBeGreaterThan(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -307,7 +307,7 @@ describe("property: timeRangeToSeconds", () => {
         expect(seconds).toBeDefined();
         expect(seconds).toBeGreaterThanOrEqual(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -317,7 +317,7 @@ describe("property: timeRangeToSeconds", () => {
         expect(timeRangeToSeconds(parsePeriod(`${d}..`))).toBeUndefined();
         expect(timeRangeToSeconds(parsePeriod(`..${d}`))).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

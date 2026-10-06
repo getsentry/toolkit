@@ -243,11 +243,10 @@ describe("printLine", () => {
 
 describe("printJsonLine", () => {
   test("writes an NDJSON record only to stdout", async () => {
-    const loggerModule = (await import(
-      "../../src/lib/logger.js"
-    )) as typeof import("../../src/lib/logger.js") & {
-      printJsonLine?: (line: string) => void;
-    };
+    const loggerModule =
+      (await import("../../src/lib/logger.js")) as typeof import("../../src/lib/logger.js") & {
+        printJsonLine?: (line: string) => void;
+      };
     const stdout = vi
       .spyOn(process.stdout, "write")
       .mockImplementation(() => true);
@@ -258,7 +257,7 @@ describe("printJsonLine", () => {
       expect(loggerModule.printJsonLine).toBeTypeOf("function");
       loggerModule.printJsonLine?.('{"schema_version":1,"type":"error"}');
       expect(stdout).toHaveBeenCalledWith(
-        '{"schema_version":1,"type":"error"}\n'
+        '{"schema_version":1,"type":"error"}\n',
       );
       expect(stderr).not.toHaveBeenCalled();
     } finally {

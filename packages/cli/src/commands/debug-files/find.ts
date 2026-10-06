@@ -47,10 +47,10 @@ function formatFindResult(data: FindResult): string {
           (m) =>
             `${colorTag("muted", m.id)} \`${m.path}\` [${colorTag(
               "yellow",
-              m.type
-            )}]`
+              m.type,
+            )}]`,
         )
-        .join("\n")
+        .join("\n"),
     );
   } else {
     sections.push(colorTag("muted", "No debug information files found."));
@@ -58,7 +58,7 @@ function formatFindResult(data: FindResult): string {
   if (data.missing.length > 0) {
     const lines = data.missing.map((m) => `  ${m.id} (${m.hint})`).join("\n");
     sections.push(
-      `${colorTag("yellow", "Missing debug information files:")}\n${lines}`
+      `${colorTag("yellow", "Missing debug information files:")}\n${lines}`,
     );
   }
   return renderMarkdown(sections.join("\n\n"));
@@ -74,9 +74,9 @@ function resolveTypes(flags: FindFlags): string[] {
     if (!FIND_DIF_TYPES.includes(type)) {
       throw new ValidationError(
         `Unknown debug file type '${type}'. Valid types: ${FIND_DIF_TYPES.join(
-          ", "
+          ", ",
         )}`,
-        "type"
+        "type",
       );
     }
   }
@@ -87,7 +87,7 @@ function resolveTypes(flags: FindFlags): string[] {
 async function resolveSearchPaths(
   flags: FindFlags,
   types: string[],
-  cwd: string
+  cwd: string,
 ): Promise<string[]> {
   const paths: string[] = [];
   // dSYMs live in Xcode DerivedData; only search it when dSYMs are wanted.
@@ -178,7 +178,7 @@ export const findCommand = buildCommand({
 
     const result = await findDebugFiles({ ids, types, paths });
     log.debug(
-      `Located ${result.matches.length} file(s); ${result.missing.length} id(s) missing`
+      `Located ${result.matches.length} file(s); ${result.missing.length} id(s) missing`,
     );
 
     yield new CommandOutput(result);

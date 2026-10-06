@@ -27,11 +27,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { parseOrgProjectArg } from "../../../src/lib/arg-parsing.js";
 import {
@@ -48,11 +48,11 @@ vi.mock("../../../src/lib/region.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as region from "../../../src/lib/region.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -62,11 +62,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 // ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ describe("parseDashboardPositionalArgs", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ValidationError);
       expect((error as ValidationError).message).toContain(
-        "Dashboard ID or title"
+        "Dashboard ID or title",
       );
     }
   });
@@ -143,7 +143,7 @@ describe("parseDashboardPositionalArgs", () => {
 
   test("URL with org but no dashboard ID and no second arg throws", () => {
     expect(() =>
-      parseDashboardPositionalArgs(["https://my-org.sentry.io/"])
+      parseDashboardPositionalArgs(["https://my-org.sentry.io/"]),
     ).toThrow(ValidationError);
   });
 });
@@ -261,7 +261,7 @@ describe("parseDashboardListArgs", () => {
     expect(() =>
       parseDashboardListArgs([
         "https://sentry-sdks.sentry.io/dashboard/4326879/",
-      ])
+      ]),
     ).toThrow(ValidationError);
     try {
       parseDashboardListArgs([
@@ -494,7 +494,7 @@ describe("resolveOrgFromTarget", () => {
     const org = await resolveOrgFromTarget(
       parsed,
       "/tmp",
-      "sentry dashboard view"
+      "sentry dashboard view",
     );
     expect(org).toBe("my-org");
     expect(resolveEffectiveOrgSpy).toHaveBeenCalledWith("my-org");
@@ -506,7 +506,7 @@ describe("resolveOrgFromTarget", () => {
     const org = await resolveOrgFromTarget(
       parsed,
       "/tmp",
-      "sentry dashboard list"
+      "sentry dashboard list",
     );
     expect(org).toBe("my-org");
     expect(resolveEffectiveOrgSpy).toHaveBeenCalledWith("o1169445");
@@ -514,12 +514,12 @@ describe("resolveOrgFromTarget", () => {
 
   test("auto-detect propagates missing-organization ContextError", async () => {
     resolveOrgOnlyTargetSpy.mockRejectedValue(
-      new ContextError("Organization", "sentry dashboard view")
+      new ContextError("Organization", "sentry dashboard view"),
     );
     const parsed = parseOrgProjectArg(undefined);
 
     await expect(
-      resolveOrgFromTarget(parsed, "/tmp", "sentry dashboard view")
+      resolveOrgFromTarget(parsed, "/tmp", "sentry dashboard view"),
     ).rejects.toThrow(ContextError);
   });
 
@@ -529,7 +529,7 @@ describe("resolveOrgFromTarget", () => {
     const org = await resolveOrgFromTarget(
       parsed,
       "/tmp",
-      "sentry dashboard list"
+      "sentry dashboard list",
     );
     expect(org).toBe("detected-org");
     expect(resolveOrgOnlyTargetSpy).toHaveBeenCalled();
@@ -544,14 +544,14 @@ describe("enrichDashboardError", () => {
   test("re-throws non-ApiError unchanged", async () => {
     const original = new Error("network failure");
     await expect(
-      enrichDashboardError(original, { orgSlug: "my-org", operation: "list" })
+      enrichDashboardError(original, { orgSlug: "my-org", operation: "list" }),
     ).rejects.toThrow(original);
   });
 
   test("re-throws ApiError with unhandled status unchanged", async () => {
     const original = new ApiError("rate limited", 429, "Too many requests");
     await expect(
-      enrichDashboardError(original, { orgSlug: "my-org", operation: "list" })
+      enrichDashboardError(original, { orgSlug: "my-org", operation: "list" }),
     ).rejects.toThrow(ApiError);
     try {
       await enrichDashboardError(original, {
@@ -747,7 +747,7 @@ describe("enrichDashboardError", () => {
     const apiErr = new ApiError(
       "Bad Request",
       400,
-      "You may not exceed 10 dashboards on your current plan."
+      "You may not exceed 10 dashboards on your current plan.",
     );
     try {
       await enrichDashboardError(apiErr, {
@@ -761,7 +761,7 @@ describe("enrichDashboardError", () => {
       expect(msg).toContain("Dashboard create failed");
       expect(msg).toContain("'my-org'");
       expect((error as ApiError).detail).toContain(
-        "You may not exceed 10 dashboards"
+        "You may not exceed 10 dashboards",
       );
     }
   });
@@ -769,7 +769,7 @@ describe("enrichDashboardError", () => {
   test("400 on non-create/update operation re-throws unchanged", async () => {
     const apiErr = new ApiError("Bad Request", 400, "some detail");
     await expect(
-      enrichDashboardError(apiErr, { orgSlug: "my-org", operation: "list" })
+      enrichDashboardError(apiErr, { orgSlug: "my-org", operation: "list" }),
     ).rejects.toThrow(apiErr);
   });
 });
@@ -823,7 +823,7 @@ describe("validateWidgetEnums (with normalizeDataset)", () => {
     // Pipeline: caller runs normalizeDataset first, then passes the canonical
     // value to validateWidgetEnums. This simulates the wiring in add/edit.
     expect(() =>
-      validateWidgetEnums("bar", normalizeDataset("errors"))
+      validateWidgetEnums("bar", normalizeDataset("errors")),
     ).not.toThrow();
   });
 
@@ -835,13 +835,13 @@ describe("validateWidgetEnums (with normalizeDataset)", () => {
 
   test("rejects unknown datasets (no such alias)", () => {
     expect(() => validateWidgetEnums(undefined, "bogus-dataset")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("rejects unknown display types", () => {
     expect(() => validateWidgetEnums("pie-chart", undefined)).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 });
@@ -857,10 +857,10 @@ describe("autoDefaultGroupLimit", () => {
 
   test("returns DEFAULT_GROUP_BY_LIMIT for grouped widgets with no limit", () => {
     expect(autoDefaultGroupLimit(["browser.name"], undefined)).toBe(
-      DEFAULT_GROUP_BY_LIMIT
+      DEFAULT_GROUP_BY_LIMIT,
     );
     expect(autoDefaultGroupLimit(["browser.name"], null)).toBe(
-      DEFAULT_GROUP_BY_LIMIT
+      DEFAULT_GROUP_BY_LIMIT,
     );
   });
 
@@ -879,19 +879,19 @@ describe("applyGroupLimitAutoDefault", () => {
     // Auto-defaulted columns (e.g., ["issue"] for issue/table) should NOT
     // trigger the auto-default limit — caller signals intent via userGroupBy.
     expect(
-      applyGroupLimitAutoDefault(undefined, ["issue"], undefined)
+      applyGroupLimitAutoDefault(undefined, ["issue"], undefined),
     ).toBeUndefined();
   });
 
   test("applies default when --group-by passed without limit", () => {
     expect(
-      applyGroupLimitAutoDefault(["browser.name"], ["browser.name"], undefined)
+      applyGroupLimitAutoDefault(["browser.name"], ["browser.name"], undefined),
     ).toBe(DEFAULT_GROUP_BY_LIMIT);
   });
 
   test("preserves explicit limit", () => {
     expect(
-      applyGroupLimitAutoDefault(["browser.name"], ["browser.name"], 25)
+      applyGroupLimitAutoDefault(["browser.name"], ["browser.name"], 25),
     ).toBe(25);
   });
 

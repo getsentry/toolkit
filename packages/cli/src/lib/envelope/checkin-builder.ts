@@ -44,7 +44,7 @@ type MonitorConfig = NonNullable<SerializedCheckIn["monitor_config"]>;
  * CLI's `requires("schedule")` constraint.
  */
 export function buildMonitorConfig(
-  flags: CheckInConfigFlags
+  flags: CheckInConfigFlags,
 ): MonitorConfig | undefined {
   const dependentFlags: [keyof CheckInConfigFlags, string][] = [
     ["check-in-margin", "--check-in-margin"],
@@ -59,7 +59,7 @@ export function buildMonitorConfig(
       if (flags[key] !== undefined) {
         throw new ValidationError(
           `${flagName} requires --schedule to be set.`,
-          "schedule"
+          "schedule",
         );
       }
     }

@@ -75,9 +75,8 @@ vi.mock("../../../src/lib/logger.js", () => ({
 
 // Dynamic import: must load AFTER vi.mock() registrations above so the
 // `log = logger.withTag(...)` binding inside view.ts picks up fakeLog.
-const { parsePositionalArgs, viewCommand } = await import(
-  "../../../src/commands/log/view.js"
-);
+const { parsePositionalArgs, viewCommand } =
+  await import("../../../src/commands/log/view.js");
 
 import type { ProjectWithOrg } from "../../../src/lib/api-client.js";
 
@@ -88,11 +87,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
@@ -102,11 +101,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
@@ -115,7 +114,7 @@ import {
   ResolutionError,
   ValidationError,
 } from "../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
 import type { DetailedSentryLog } from "../../../src/types/index.js";
@@ -234,7 +233,7 @@ describe("parsePositionalArgs", () => {
 
     test("throws ContextError for empty log ID after target", () => {
       expect(() => parsePositionalArgs(["my-org/frontend", ""])).toThrow(
-        ContextError
+        ContextError,
       );
     });
   });
@@ -332,7 +331,7 @@ describe("resolveProjectBoundSlug", () => {
       findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
 
       await expect(resolveProjectBoundSlug("my-project", HINT)).rejects.toThrow(
-        ResolutionError
+        ResolutionError,
       );
     });
 
@@ -345,10 +344,10 @@ describe("resolveProjectBoundSlug", () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ResolutionError);
         expect((error as ResolutionError).message).toContain(
-          'Project "frontend"'
+          'Project "frontend"',
         );
         expect((error as ResolutionError).message).toContain(
-          "Check that you have access"
+          "Check that you have access",
         );
         // Message says "not found", not "is required"
         expect((error as ResolutionError).message).toContain("not found");
@@ -367,7 +366,7 @@ describe("resolveProjectBoundSlug", () => {
       });
 
       await expect(resolveProjectBoundSlug("frontend", HINT)).rejects.toThrow(
-        ValidationError
+        ValidationError,
       );
     });
 
@@ -384,7 +383,7 @@ describe("resolveProjectBoundSlug", () => {
         await resolveProjectBoundSlug(
           "frontend",
           HINT,
-          "sentry log view <org>/frontend log-456"
+          "sentry log view <org>/frontend log-456",
         );
         expect.unreachable("Should have thrown");
       } catch (error) {
@@ -411,7 +410,7 @@ describe("resolveProjectBoundSlug", () => {
         await resolveProjectBoundSlug(
           "api",
           HINT,
-          "sentry log view <org>/api abc123"
+          "sentry log view <org>/api abc123",
         );
         expect.unreachable("Should have thrown");
       } catch (error) {
@@ -537,7 +536,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false },
       "968c763c740cfda8b6728f27fb9e9b01",
-      "test-org/test-proj"
+      "test-org/test-proj",
     );
 
     // Should resolve correctly despite swapped args
@@ -561,7 +560,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false },
       "frontend",
-      "968c763c740cfda8b6728f27fb9e9b01"
+      "968c763c740cfda8b6728f27fb9e9b01",
     );
 
     expect(findProjectsBySlugSpy).toHaveBeenCalledWith("frontend");
@@ -584,7 +583,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false },
       "CAM-82X",
-      "968c763c740cfda8b6728f27fb9e9b01"
+      "968c763c740cfda8b6728f27fb9e9b01",
     );
 
     // The suggestion path fires (looksLikeIssueShortId("CAM-82X") → true)
@@ -608,7 +607,7 @@ describe("viewCommand.func", () => {
         context,
         { json: true, web: false },
         "test-org/test-project",
-        expiredLogId
+        expiredLogId,
       );
       expect.unreachable("Should have thrown");
     } catch (err) {
@@ -667,7 +666,7 @@ describe("log view --web interactive prompt", () => {
       { json: false, web: true },
       "my-org/proj",
       PROMPT_ID1,
-      PROMPT_ID2
+      PROMPT_ID2,
     );
 
     expect(mockPrompt).toHaveBeenCalled();
@@ -689,7 +688,7 @@ describe("log view --web interactive prompt", () => {
       { json: false, web: true },
       "my-org/proj",
       PROMPT_ID1,
-      PROMPT_ID2
+      PROMPT_ID2,
     );
 
     expect(mockPrompt).toHaveBeenCalled();
@@ -710,7 +709,7 @@ describe("log view --web interactive prompt", () => {
       { json: false, web: true },
       "my-org/proj",
       PROMPT_ID1,
-      PROMPT_ID2
+      PROMPT_ID2,
     );
 
     expect(mockPrompt).toHaveBeenCalled();

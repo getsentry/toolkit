@@ -155,7 +155,7 @@ function postRelease(): void {
   if (diffResult.status !== 0) {
     console.log("Committing version bump");
     exec(
-      'git commit -anm "meta: Bump new development version\n\n#skip-changelog"'
+      'git commit -anm "meta: Bump new development version\n\n#skip-changelog"',
     );
     exec("git pull --rebase");
     exec("git push");

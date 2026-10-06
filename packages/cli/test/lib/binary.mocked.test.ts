@@ -30,7 +30,7 @@ describe("installBinary canonical() fallback when realpath throws", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `binary-mocked-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `binary-mocked-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     installDir = join(testDir, "install");
     mkdirSync(installDir, { recursive: true });
@@ -59,7 +59,7 @@ describe("installBinary canonical() fallback when realpath throws", () => {
     expect(await readFile(result, "utf-8")).toBe("upgraded binary");
     expect(debugSpy).toHaveBeenCalledWith(
       "realpath failed, falling back to resolve()",
-      expect.any(Error)
+      expect.any(Error),
     );
   });
 });

@@ -138,7 +138,7 @@ describe("SDK streaming invocation isolation", () => {
   /** Open the public typed or argument-based follow entry point. */
   function stream(
     sdk: ReturnType<typeof createSentrySDK>,
-    entryPoint: "typed" | "run" = "typed"
+    entryPoint: "typed" | "run" = "typed",
   ): AsyncIterable<unknown> {
     const result =
       entryPoint === "typed"
@@ -154,23 +154,23 @@ describe("SDK streaming invocation isolation", () => {
     return client(SECOND_TOKEN).api({ endpoint: ENDPOINT });
   }
 
-  test.each([
-    "typed",
-    "run",
-  ] as const)("%s consumer break finishes cleanup before the next call", async (entryPoint) => {
-    const envBefore = { ...process.env };
-    let received = false;
-    for await (const item of stream(client(FIRST_TOKEN), entryPoint)) {
-      expect(item).toMatchObject({ data: [{ id: "log-1" }] });
-      received = true;
-      break;
-    }
-    expect(received).toBe(true);
-    expect(process.env).toEqual(envBefore);
-    await expect(secondClientRequest()).resolves.toMatchObject({
-      body: { owner: "second" },
-    });
-  });
+  test.each(["typed", "run"] as const)(
+    "%s consumer break finishes cleanup before the next call",
+    async (entryPoint) => {
+      const envBefore = { ...process.env };
+      let received = false;
+      for await (const item of stream(client(FIRST_TOKEN), entryPoint)) {
+        expect(item).toMatchObject({ data: [{ id: "log-1" }] });
+        received = true;
+        break;
+      }
+      expect(received).toBe(true);
+      expect(process.env).toEqual(envBefore);
+      await expect(secondClientRequest()).resolves.toMatchObject({
+        body: { owner: "second" },
+      });
+    },
+  );
 
   test("AbortSignal completion leaves the next invocation usable", async () => {
     const controller = new AbortController();
@@ -231,7 +231,7 @@ describe("SDK streaming invocation isolation", () => {
       () => {
         expect(requests.at(-1)?.url).toContain("/dashboards/1/");
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     controller.abort();
@@ -249,16 +249,16 @@ describe("SDK streaming invocation isolation", () => {
     });
     const second = client(SECOND_TOKEN);
     await expect(second.api({ endpoint: ENDPOINT })).rejects.toThrow(
-      "Concurrent SDK calls are not supported"
+      "Concurrent SDK calls are not supported",
     );
     const overlapping = stream(second)[Symbol.asyncIterator]();
     await expect(overlapping.next()).rejects.toThrow(
-      "Concurrent SDK calls are not supported"
+      "Concurrent SDK calls are not supported",
     );
 
     expect((await iterator.next()).value).toMatchObject({ id: "log-2" });
     expect(
-      requests.map((request) => request.headers.get("Authorization"))
+      requests.map((request) => request.headers.get("Authorization")),
     ).toEqual(requests.map(() => `Bearer ${FIRST_TOKEN}`));
     await iterator.return?.();
     await expect(secondClientRequest()).resolves.toMatchObject({

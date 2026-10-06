@@ -6,14 +6,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolve from "../../../src/commands/dashboard/resolve.js";
 import { revisionsCommand } from "../../../src/commands/dashboard/revisions.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../../src/lib/db/pagination.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 import type { DashboardRevision } from "../../../src/types/dashboard.js";
 
@@ -106,7 +106,7 @@ describe("dashboard revisions command", () => {
   beforeEach(() => {
     listDashboardRevisionsPaginatedSpy = vi.spyOn(
       apiClient,
-      "listDashboardRevisionsPaginated"
+      "listDashboardRevisionsPaginated",
     );
     resolveOrgFromTargetSpy = vi.spyOn(resolve, "resolveOrgFromTarget");
     resolveDashboardIdSpy = vi.spyOn(resolve, "resolveDashboardId");
@@ -116,7 +116,7 @@ describe("dashboard revisions command", () => {
       .mockImplementation((_opts, fn) =>
         fn(() => {
           /* no-op setMessage */
-        })
+        }),
       );
     advancePaginationStateSpy = vi
       .spyOn(paginationDb, "advancePaginationState")
@@ -312,7 +312,7 @@ describe("dashboard revisions command", () => {
     expect(listDashboardRevisionsPaginatedSpy).toHaveBeenCalledWith(
       "test-org",
       "123",
-      { perPage: 25, cursor: undefined }
+      { perPage: 25, cursor: undefined },
     );
   });
 
@@ -340,12 +340,12 @@ describe("dashboard revisions command", () => {
     await func.call(
       context,
       defaultFlags({ json: true }),
-      "My Dashboard Title"
+      "My Dashboard Title",
     );
 
     expect(resolveDashboardIdSpy).toHaveBeenCalledWith(
       "test-org",
-      "My Dashboard Title"
+      "My Dashboard Title",
     );
   });
 });

@@ -87,10 +87,7 @@ export function isCi(env: NodeJS.ProcessEnv = process.env): boolean {
     // Treat explicit opt-out values ("", "false", "0") as not-in-CI so a local
     // `CI=false` does not silently enable git-metadata collection.
     return (
-      value !== undefined &&
-      value !== "" &&
-      value !== "false" &&
-      value !== "0"
+      value !== undefined && value !== "" && value !== "false" && value !== "0"
     );
   });
 }
@@ -122,7 +119,7 @@ function validateShaFlag(value: string, flagName: string): string | undefined {
   if (!SHA1_RE.test(trimmed)) {
     throw new ValidationError(
       `Invalid --${flagName}: expected a 40-character hex SHA-1`,
-      flagName
+      flagName,
     );
   }
   return trimmed;
@@ -137,7 +134,7 @@ function validateShaFlag(value: string, flagName: string): string | undefined {
  */
 function readGithubEventSha(
   kind: "head" | "base",
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
 ): string | undefined {
   const eventPath = env.GITHUB_EVENT_PATH;
   if (!eventPath) {
@@ -224,7 +221,7 @@ function resolveHeadSha(
   flags: VcsFlags,
   cwd: string,
   env: NodeJS.ProcessEnv,
-  auto: boolean
+  auto: boolean,
 ): string | undefined {
   if (flags["head-sha"] !== undefined) {
     return validateShaFlag(flags["head-sha"], "head-sha");
@@ -239,7 +236,7 @@ function resolveHeadSha(
 function resolveHeadRepoName(
   flags: VcsFlags,
   cwd: string,
-  auto: boolean
+  auto: boolean,
 ): string | undefined {
   return flags["head-repo-name"] || (auto ? getRepositoryName(cwd) : undefined);
 }
@@ -257,7 +254,7 @@ function resolveBaseSha(
   baseRef: string | undefined,
   cwd: string,
   env: NodeJS.ProcessEnv,
-  auto: boolean
+  auto: boolean,
 ): string | undefined {
   if (flags["base-sha"] !== undefined) {
     return validateShaFlag(flags["base-sha"], "base-sha");
@@ -289,7 +286,7 @@ export function collectVcsMetadata(
   flags: VcsFlags,
   cwd: string,
   env: NodeJS.ProcessEnv,
-  autoCollect: boolean
+  autoCollect: boolean,
 ): VcsInfo {
   const remoteUrl = autoCollect ? getRemoteUrl(cwd) : undefined;
 

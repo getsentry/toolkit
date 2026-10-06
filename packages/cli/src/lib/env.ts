@@ -34,7 +34,7 @@ export function withEnv<T>(env: NodeJS.ProcessEnv, run: () => T): T {
  * without clearing state still needed by pending requests.
  */
 export function createInvocationState<T extends object>(
-  create: () => T
+  create: () => T,
 ): () => T {
   const states = new WeakMap<InvocationContext, T>();
   let cliState: T | undefined;

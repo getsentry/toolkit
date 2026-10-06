@@ -20,7 +20,7 @@ import { textImportPlugin } from "../../script/text-import-plugin.js";
 const TEST_DIR = join(
   process.env.VITEST_POOL_ID
     ? `/tmp/opencode/tip-test-${process.env.VITEST_POOL_ID}`
-    : "/tmp/opencode/tip-test"
+    : "/tmp/opencode/tip-test",
 );
 
 beforeEach(() => {
@@ -35,7 +35,7 @@ afterEach(() => {
 async function buildWithPlugin(
   srcDir: string,
   outDir: string,
-  entryFile: string
+  entryFile: string,
 ): Promise<void> {
   await build({
     entryPoints: [join(srcDir, entryFile)],
@@ -56,18 +56,18 @@ describe("text-import-plugin file handler", () => {
 
     writeFileSync(
       join(srcDir, "types.ts"),
-      "export type Foo = { x: number };\nexport const VALUE = 42;\n"
+      "export type Foo = { x: number };\nexport const VALUE = 42;\n",
     );
     writeFileSync(
       join(srcDir, "mod.ts"),
       [
         'import { type Foo, VALUE } from "./types.js";',
         "export function getFoo(): number { return VALUE; }",
-      ].join("\n")
+      ].join("\n"),
     );
     writeFileSync(
       join(srcDir, "entry.ts"),
-      'import path from "./mod.ts" with { type: "file" };\nexport default path;\n'
+      'import path from "./mod.ts" with { type: "file" };\nexport default path;\n',
     );
 
     const outDir = join(TEST_DIR, "out");
@@ -91,11 +91,11 @@ describe("text-import-plugin file handler", () => {
 
     writeFileSync(
       join(srcDir, "comp.tsx"),
-      "export function App() { return null; }\n"
+      "export function App() { return null; }\n",
     );
     writeFileSync(
       join(srcDir, "entry.ts"),
-      'import path from "./comp.tsx" with { type: "file" };\nexport default path;\n'
+      'import path from "./comp.tsx" with { type: "file" };\nexport default path;\n',
     );
 
     const outDir = join(TEST_DIR, "out");
@@ -112,7 +112,7 @@ describe("text-import-plugin file handler", () => {
     writeFileSync(join(srcDir, "plain.js"), "export const x = 42;\n");
     writeFileSync(
       join(srcDir, "entry.ts"),
-      'import path from "./plain.js" with { type: "file" };\nexport default path;\n'
+      'import path from "./plain.js" with { type: "file" };\nexport default path;\n',
     );
 
     const outDir = join(TEST_DIR, "out");
@@ -130,7 +130,7 @@ describe("text-import-plugin file handler", () => {
     writeFileSync(join(srcDir, "mod.ts"), "export const y = 1;\n");
     writeFileSync(
       join(srcDir, "entry.ts"),
-      'import path from "./mod.ts" with { type: "file" };\nexport default path;\n'
+      'import path from "./mod.ts" with { type: "file" };\nexport default path;\n',
     );
 
     const outDir = join(TEST_DIR, "out");
@@ -148,11 +148,11 @@ describe("text-import-plugin file handler", () => {
     writeFileSync(join(srcDir, "helper.ts"), "export const MAGIC = 999;\n");
     writeFileSync(
       join(srcDir, "mod.ts"),
-      'import { MAGIC } from "./helper.js";\nexport function getMagic() { return MAGIC; }\n'
+      'import { MAGIC } from "./helper.js";\nexport function getMagic() { return MAGIC; }\n',
     );
     writeFileSync(
       join(srcDir, "entry.ts"),
-      'import path from "./mod.ts" with { type: "file" };\nexport default path;\n'
+      'import path from "./mod.ts" with { type: "file" };\nexport default path;\n',
     );
 
     const outDir = join(TEST_DIR, "out");

@@ -5,7 +5,7 @@
  * and viewCommand func() body in src/commands/event/view.ts
  */
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -30,11 +30,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.mocked access
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ProjectSpecificationType } from "../../../src/lib/arg-parsing.js";
 
@@ -45,11 +45,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
@@ -68,11 +68,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
 
@@ -83,11 +83,11 @@ vi.mock("../../../src/lib/span-tree.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as spanTree from "../../../src/lib/span-tree.js";
 import type { SentryEvent } from "../../../src/types/index.js";
 
@@ -185,7 +185,7 @@ describe("parsePositionalArgs", () => {
       // "my-org/my-project" is a normal org/project target, not an issue short ID.
       // parseSlashSeparatedArg will throw ContextError as expected.
       expect(() => parsePositionalArgs(["my-org/my-project"])).toThrow(
-        "Event ID"
+        "Event ID",
       );
     });
   });
@@ -276,7 +276,7 @@ describe("parsePositionalArgs", () => {
 
     test("'latest' as second arg throws ContextError", () => {
       expect(() => parsePositionalArgs(["my-org/frontend", "latest"])).toThrow(
-        ContextError
+        ContextError,
       );
     });
 
@@ -431,9 +431,8 @@ describe("parsePositionalArgs", () => {
       savedSentryHost = process.env.SENTRY_HOST;
       delete process.env.SENTRY_URL;
       delete process.env.SENTRY_HOST;
-      const { resetEnvTokenHostForTesting } = await import(
-        "../../../src/lib/env-token-host.js"
-      );
+      const { resetEnvTokenHostForTesting } =
+        await import("../../../src/lib/env-token-host.js");
       resetEnvTokenHostForTesting();
     });
 
@@ -448,9 +447,8 @@ describe("parsePositionalArgs", () => {
       } else {
         delete process.env.SENTRY_HOST;
       }
-      const { resetEnvTokenHostForTesting } = await import(
-        "../../../src/lib/env-token-host.js"
-      );
+      const { resetEnvTokenHostForTesting } =
+        await import("../../../src/lib/env-token-host.js");
       resetEnvTokenHostForTesting();
     });
 
@@ -483,7 +481,7 @@ describe("parsePositionalArgs", () => {
 
     test("org-only URL throws ContextError", () => {
       expect(() =>
-        parsePositionalArgs(["https://sentry.io/organizations/my-org/"])
+        parsePositionalArgs(["https://sentry.io/organizations/my-org/"]),
       ).toThrow(ContextError);
     });
   });
@@ -512,7 +510,7 @@ describe("resolveProjectBoundSlug", () => {
       findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
 
       await expect(resolveProjectBoundSlug("my-project", HINT)).rejects.toThrow(
-        ResolutionError
+        ResolutionError,
       );
     });
 
@@ -525,10 +523,10 @@ describe("resolveProjectBoundSlug", () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ResolutionError);
         expect((error as ResolutionError).message).toContain(
-          'Project "frontend"'
+          'Project "frontend"',
         );
         expect((error as ResolutionError).message).toContain(
-          "Check that you have access"
+          "Check that you have access",
         );
         // Message says "not found", not "is required"
         expect((error as ResolutionError).message).toContain("not found");
@@ -604,7 +602,7 @@ describe("resolveProjectBoundSlug", () => {
       });
 
       await expect(resolveProjectBoundSlug("frontend", HINT)).rejects.toThrow(
-        ValidationError
+        ValidationError,
       );
     });
 
@@ -621,7 +619,7 @@ describe("resolveProjectBoundSlug", () => {
         await resolveProjectBoundSlug(
           "frontend",
           HINT,
-          "sentry event view <org>/frontend event-456"
+          "sentry event view <org>/frontend event-456",
         );
         expect.unreachable("Should have thrown");
       } catch (error) {
@@ -648,14 +646,14 @@ describe("resolveProjectBoundSlug", () => {
         await resolveProjectBoundSlug(
           "api",
           HINT,
-          "sentry event view <org>/api abc123"
+          "sentry event view <org>/api abc123",
         );
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ValidationError);
         const message = (error as ValidationError).message;
         expect(message).toContain(
-          "Example: sentry event view <org>/api abc123"
+          "Example: sentry event view <org>/api abc123",
         );
       }
     });
@@ -766,7 +764,7 @@ describe("resolveEventTarget", () => {
     resolveOrgAndProjectSpy = vi.spyOn(resolveTarget, "resolveOrgAndProject");
     resolveProjectBoundSlugSpy = vi.spyOn(
       resolveTarget,
-      "resolveProjectBoundSlug"
+      "resolveProjectBoundSlug",
     );
     setTagSpy = vi.spyOn(Sentry, "setTag");
     setOrgRegion("acme", DEFAULT_SENTRY_URL);
@@ -900,7 +898,7 @@ describe("resolveOrgAllTarget", () => {
     resolveEventInOrgSpy.mockResolvedValue(null);
 
     await expect(
-      resolveOrgAllTarget("acme", "notfound", "/tmp")
+      resolveOrgAllTarget("acme", "notfound", "/tmp"),
     ).rejects.toBeInstanceOf(ResolutionError);
   });
 
@@ -909,7 +907,7 @@ describe("resolveOrgAllTarget", () => {
     resolveEventInOrgSpy.mockRejectedValue(err);
 
     await expect(resolveOrgAllTarget("acme", "abc123", "/tmp")).rejects.toBe(
-      err
+      err,
     );
   });
 });
@@ -1034,7 +1032,7 @@ describe("viewCommand.func", () => {
     openInBrowserSpy = vi.spyOn(browser, "openInBrowser");
     resolveProjectBoundSlugSpy = vi.spyOn(
       resolveTarget,
-      "resolveProjectBoundSlug"
+      "resolveProjectBoundSlug",
     );
     listEventAttachmentsSpy = vi
       .spyOn(apiClient, "listEventAttachments")
@@ -1071,7 +1069,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       VALID_EVENT_ID,
-      "test-org/test-proj"
+      "test-org/test-proj",
     );
 
     // Command should complete without error (warning goes to consola, not stdout)
@@ -1093,7 +1091,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "test-org/test-proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     expect(result?.hint).toBeUndefined();
@@ -1115,16 +1113,16 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "test-org/test-proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     expect(listEventAttachmentsSpy).toHaveBeenCalledWith(
       "test-org",
       "test-proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
     const output = JSON.parse(
-      stdoutWrite.mock.calls.map((call) => call[0]).join("")
+      stdoutWrite.mock.calls.map((call) => call[0]).join(""),
     );
     expect(output.attachments).toEqual([
       expect.objectContaining({
@@ -1153,7 +1151,7 @@ describe("viewCommand.func", () => {
       context,
       { json: false, web: false, spans: 0 },
       "test-org/test-proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     const output = stdoutWrite.mock.calls
@@ -1173,7 +1171,7 @@ describe("viewCommand.func", () => {
       success: false,
     });
     listEventAttachmentsSpy.mockRejectedValue(
-      new Error("attachments unavailable")
+      new Error("attachments unavailable"),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -1182,11 +1180,11 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "test-org/test-proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     const output = JSON.parse(
-      stdoutWrite.mock.calls.map((call) => call[0]).join("")
+      stdoutWrite.mock.calls.map((call) => call[0]).join(""),
     );
     expect(output.eventID).toBe(VALID_EVENT_ID);
     expect(output.attachments).toEqual([]);
@@ -1220,7 +1218,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "CAM-82X",
-      "95fd7f5a"
+      "95fd7f5a",
     );
 
     // Should NOT go through resolveProjectBoundSlug (the old buggy path)
@@ -1263,7 +1261,7 @@ describe("viewCommand.func", () => {
     expect(listEventAttachmentsSpy).toHaveBeenCalledWith(
       "auto-org",
       "auto-project",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     resolveOrgSpy.mockRestore();
@@ -1289,11 +1287,11 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
-      "my-org/17370"
+      "my-org/17370",
     );
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: "my-org" })
+      expect.objectContaining({ org: "my-org" }),
     );
     expect(getLatestEventSpy).toHaveBeenCalledWith("my-org", "17370");
 
@@ -1327,11 +1325,11 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "my-org/my-project",
-      "CAM-82X"
+      "CAM-82X",
     );
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: "my-org" })
+      expect.objectContaining({ org: "my-org" }),
     );
     expect(getLatestEventSpy).toHaveBeenCalled();
 
@@ -1359,7 +1357,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "test_org/test_proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     // parseOrgProjectArg normalizes "test_org/test_proj" → "test-org/test-proj"
@@ -1378,7 +1376,7 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false, spans: 0 }, "--h")
+      func.call(context, { json: false, web: false, spans: 0 }, "--h"),
     ).rejects.toThrow();
   });
 
@@ -1387,7 +1385,7 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false, spans: 0 }, "not-a-hex-id")
+      func.call(context, { json: false, web: false, spans: 0 }, "not-a-hex-id"),
     ).rejects.toThrow();
   });
 });
@@ -1415,7 +1413,7 @@ describe("fetchEventWithContext", () => {
       mockEvent,
       "my-org",
       "my-project",
-      "abc123"
+      "abc123",
     );
     expect(result).toEqual({
       org: "my-org",
@@ -1433,7 +1431,7 @@ describe("fetchEventWithContext", () => {
       null,
       "my-org",
       "my-project",
-      "abc123"
+      "abc123",
     );
     expect(result).toEqual({
       org: "my-org",
@@ -1445,7 +1443,7 @@ describe("fetchEventWithContext", () => {
 
   test("falls back to org-wide search on 404 and finds event", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     const resolvedEvent = {
       ...mockEvent,
@@ -1461,7 +1459,7 @@ describe("fetchEventWithContext", () => {
       null,
       "my-org",
       "my-project",
-      "abc123"
+      "abc123",
     );
     expect(result).toEqual({
       org: "my-org",
@@ -1472,19 +1470,19 @@ describe("fetchEventWithContext", () => {
 
   test("throws ResolutionError when project-scoped, org-wide, and cross-org all fail", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.spyOn(apiClient, "resolveEventInOrg").mockResolvedValue(null);
     vi.spyOn(apiClient, "findEventAcrossOrgs").mockResolvedValue(null);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(ResolutionError);
   });
 
   test("falls back to cross-org search when org-wide returns null", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.spyOn(apiClient, "resolveEventInOrg").mockResolvedValue(null);
     const crossOrgEvent = {
@@ -1501,7 +1499,7 @@ describe("fetchEventWithContext", () => {
       null,
       "my-org",
       "my-project",
-      "abc123"
+      "abc123",
     );
     expect(result).toEqual({
       org: "other-org",
@@ -1512,7 +1510,7 @@ describe("fetchEventWithContext", () => {
 
   test("cross-org fallback passes excludeOrgs when same-org search succeeded", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     // Same-org search completed successfully (returned null = definitive "not found")
     vi.spyOn(apiClient, "resolveEventInOrg").mockResolvedValue(null);
@@ -1521,7 +1519,7 @@ describe("fetchEventWithContext", () => {
       .mockResolvedValue(null);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(ResolutionError);
 
     expect(findSpy).toHaveBeenCalledWith("abc123", {
@@ -1531,18 +1529,18 @@ describe("fetchEventWithContext", () => {
 
   test("cross-org does not exclude org when same-org search threw", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     // Same-org search threw a transient error — org was NOT definitively searched
     vi.spyOn(apiClient, "resolveEventInOrg").mockRejectedValue(
-      new Error("500 Internal Server Error")
+      new Error("500 Internal Server Error"),
     );
     const findSpy = vi
       .spyOn(apiClient, "findEventAcrossOrgs")
       .mockResolvedValue(null);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(ResolutionError);
 
     // excludeOrgs should be undefined so cross-org retries the same org
@@ -1553,18 +1551,18 @@ describe("fetchEventWithContext", () => {
 
   test("cross-org excludes org when same-org search was rate-limited (429)", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     // Same-org search hit a rate limit — retrying it immediately is futile (CLI-2Y1)
     vi.spyOn(apiClient, "resolveEventInOrg").mockRejectedValue(
-      new ApiError("Too Many Requests", 429)
+      new ApiError("Too Many Requests", 429),
     );
     const findSpy = vi
       .spyOn(apiClient, "findEventAcrossOrgs")
       .mockResolvedValue(null);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(ResolutionError);
 
     // org must be excluded — re-querying a rate-limited endpoint immediately
@@ -1576,29 +1574,29 @@ describe("fetchEventWithContext", () => {
 
   test("swallows non-auth cross-org errors and throws ResolutionError", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.spyOn(apiClient, "resolveEventInOrg").mockResolvedValue(null);
     vi.spyOn(apiClient, "findEventAcrossOrgs").mockRejectedValue(
-      new Error("Network timeout")
+      new Error("Network timeout"),
     );
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(ResolutionError);
   });
 
   test("propagates AuthError from cross-org fallback", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.spyOn(apiClient, "resolveEventInOrg").mockResolvedValue(null);
     vi.spyOn(apiClient, "findEventAcrossOrgs").mockRejectedValue(
-      new AuthError("expired", "Token expired")
+      new AuthError("expired", "Token expired"),
     );
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(AuthError);
   });
 
@@ -1606,18 +1604,18 @@ describe("fetchEventWithContext", () => {
   // that event/view.ts captured at module load time. The resolveEventInOrg
   // mock doesn't take effect, so AuthError isn't thrown before cross-org
   // fallback. Tested via the Bun test suite.
-  // biome-ignore lint/suspicious/noSkippedTests: vitest barrel-mock limitation — mock doesn't intercept module-load binding
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest barrel-mock limitation — mock doesn't intercept module-load binding
   test.skip("propagates AuthError from same-org fallback", async () => {
     vi.mocked(apiClient.getEvent).mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.mocked(apiClient.resolveEventInOrg).mockRejectedValue(
-      new AuthError("expired", "Token expired")
+      new AuthError("expired", "Token expired"),
     );
     const findSpy = vi.mocked(apiClient.findEventAcrossOrgs);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(AuthError);
     // Cross-org should never be attempted when auth is broken
     expect(findSpy).not.toHaveBeenCalled();
@@ -1625,10 +1623,10 @@ describe("fetchEventWithContext", () => {
 
   test("tries cross-org fallback even when org-wide search throws", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.spyOn(apiClient, "resolveEventInOrg").mockRejectedValue(
-      new Error("500 Internal Server Error")
+      new Error("500 Internal Server Error"),
     );
     const crossOrgEvent = {
       ...mockEvent,
@@ -1646,7 +1644,7 @@ describe("fetchEventWithContext", () => {
       null,
       "my-org",
       "my-project",
-      "abc123"
+      "abc123",
     );
     expect(result).toEqual({
       org: "other-org",
@@ -1658,15 +1656,15 @@ describe("fetchEventWithContext", () => {
 
   // Skip: same vitest barrel-mock limitation — getEvent mock doesn't
   // intercept the binding captured by event/view.ts at module load time.
-  // biome-ignore lint/suspicious/noSkippedTests: vitest barrel-mock limitation — mock doesn't intercept module-load binding
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest barrel-mock limitation — mock doesn't intercept module-load binding
   test.skip("propagates non-404 errors without fallback", async () => {
     vi.mocked(apiClient.getEvent).mockRejectedValue(
-      new ApiError("Server error", 500)
+      new ApiError("Server error", 500),
     );
     const resolveEventSpy = vi.mocked(apiClient.resolveEventInOrg);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow("Server error");
     expect(resolveEventSpy).not.toHaveBeenCalled();
   });
@@ -1849,7 +1847,7 @@ describe("jsonTransformEventView", () => {
       requestedCount: 1,
     });
     expect(result).toEqual(
-      expect.objectContaining({ eventID: "abc123", trace: null })
+      expect.objectContaining({ eventID: "abc123", trace: null }),
     );
     // Should NOT be an array
     expect(Array.isArray(result)).toBe(false);
@@ -1887,7 +1885,7 @@ describe("jsonTransformEventView", () => {
         events: [{ event: mockEvent("abc123"), trace: null }],
         requestedCount: 1,
       },
-      ["eventID"]
+      ["eventID"],
     );
     expect(result).toEqual({ eventID: "abc123" });
   });
@@ -1901,7 +1899,7 @@ describe("jsonTransformEventView", () => {
         ],
         requestedCount: 2,
       },
-      ["eventID"]
+      ["eventID"],
     );
     expect(result).toEqual([{ eventID: "event1" }, { eventID: "event2" }]);
   });
@@ -1952,7 +1950,7 @@ describe("fetchMultipleEvents", () => {
     const event2 = mockEvent("event2");
     vi.spyOn(apiClient, "getEvent").mockImplementation(
       (_org: string, _proj: string, id: string) =>
-        Promise.resolve(id === "event1" ? event1 : event2)
+        Promise.resolve(id === "event1" ? event1 : event2),
     );
 
     const result = await fetchMultipleEvents({
@@ -1973,7 +1971,7 @@ describe("fetchMultipleEvents", () => {
       (_org: string, _proj: string, id: string) =>
         id === "event1"
           ? Promise.resolve(event1)
-          : Promise.reject(new Error("not found"))
+          : Promise.reject(new Error("not found")),
     );
 
     const result = await fetchMultipleEvents({
@@ -2000,7 +1998,7 @@ describe("fetchMultipleEvents", () => {
         project: "my-project",
         prefetchedEvent: null,
         primaryId: "event1",
-      })
+      }),
     ).rejects.toThrow("Server error");
   });
 });

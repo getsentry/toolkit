@@ -86,7 +86,7 @@ export const viewCommand = buildCommand({
     if (flags.web && parsed.type === "org-all") {
       await openInBrowser(
         buildMetricAlertsUrl(parsed.org),
-        "metric alert rules"
+        "metric alert rules",
       );
       return;
     }
@@ -94,7 +94,7 @@ export const viewCommand = buildCommand({
     const org = await resolveOrgOnlyFromArg(
       targetArg,
       cwd,
-      "alert metrics view"
+      "alert metrics view",
     );
 
     if (flags.web) {

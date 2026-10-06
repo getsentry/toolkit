@@ -33,7 +33,7 @@ export type AutoAuthDeps = {
  */
 export function shouldAutoAuth(
   err: unknown,
-  isInteractive: () => boolean
+  isInteractive: () => boolean,
 ): err is InstanceType<typeof AuthError> {
   return (
     err instanceof AuthError &&
@@ -73,7 +73,7 @@ export function assertAutoLoginHostTrusted(): void {
 export async function recoverWithAutoLogin(
   err: unknown,
   retry: () => Promise<void>,
-  deps: AutoAuthDeps
+  deps: AutoAuthDeps,
 ): Promise<number | undefined> {
   const isInteractive = deps.isInteractive ?? (() => isatty(0));
   if (!shouldAutoAuth(err, isInteractive)) {
@@ -91,7 +91,7 @@ export async function recoverWithAutoLogin(
   write(
     err.reason === "expired"
       ? "Authentication expired. Starting login flow...\n\n"
-      : "Authentication required. Starting login flow...\n\n"
+      : "Authentication required. Starting login flow...\n\n",
   );
 
   const loginSuccess = await deps.runInteractiveLogin();

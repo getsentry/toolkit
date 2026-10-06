@@ -68,7 +68,7 @@ function buildViewHint(
   traceId: string,
   org: string,
   projectFilter: string | undefined,
-  summary: ReturnType<typeof computeTraceSummary>
+  summary: ReturnType<typeof computeTraceSummary>,
 ): string {
   if (projectFilter) {
     return `Filtered to project '${projectFilter}'. Full trace: sentry trace view ${org}/${traceId}`;
@@ -112,7 +112,7 @@ const STANDARD_TRACE_VIEW_FIELDS = new Set([
  * @returns Attribute names to request, or undefined when none are needed
  */
 export function extractAdditionalAttributes(
-  fields: string[] | undefined
+  fields: string[] | undefined,
 ): string[] | undefined {
   if (!fields || fields.length === 0) {
     return;
@@ -257,7 +257,7 @@ export function flattenSpanTree(spans: TraceSpan[]): TraceSpan[] {
  */
 function mergeSpanDetails(
   span: TraceSpan,
-  details: Map<string, TraceItemDetail>
+  details: Map<string, TraceItemDetail>,
 ): TraceSpan & { data?: Record<string, unknown> } {
   const { children, ...rest } = span;
   const result: TraceSpan & { data?: Record<string, unknown> } = { ...rest };
@@ -303,14 +303,14 @@ export function formatTraceView(data: TraceViewData): string {
   if (attrsCount > 0) {
     const spanWord = attrsCount === 1 ? "span has" : "spans have";
     parts.push(
-      `\n${attrsCount} ${spanWord} additional attributes. Use --json to see them.`
+      `\n${attrsCount} ${spanWord} additional attributes. Use --json to see them.`,
     );
   }
 
   // Note spans with full detail data (from --full or auto-fetched with --json)
   if (data.details && data.details.size > 0) {
     parts.push(
-      `\n${data.details.size} span(s) have attribute data. Use --json to see full details.`
+      `\n${data.details.size} span(s) have attribute data. Use --json to see full details.`,
     );
   }
 
@@ -335,7 +335,7 @@ function filterSpanMeasurements(span: TraceSpan): TraceSpan {
   let cleanedMeasurements: Record<string, number> | undefined;
   if (measurements) {
     const nonZero = Object.fromEntries(
-      Object.entries(measurements).filter(([, v]) => v !== 0)
+      Object.entries(measurements).filter(([, v]) => v !== 0),
     );
     if (Object.keys(nonZero).length > 0) {
       cleanedMeasurements = nonZero;
@@ -364,7 +364,7 @@ function filterSpanMeasurements(span: TraceSpan): TraceSpan {
  */
 function jsonTransformTraceView(
   data: TraceViewData,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const { summary, spans, details } = data;
   const cleanedSpans = (spans as TraceSpan[]).map((span) => {
@@ -395,11 +395,11 @@ type ResolvedTrace = {
  */
 async function resolveTraceFromIssue(
   issueShortId: string,
-  cwd: string
+  cwd: string,
 ): Promise<ResolvedTrace> {
   const log = logger.withTag("trace.view");
   log.warn(
-    `'${issueShortId}' is an issue short ID, not a trace ID. Looking up the issue's trace.`
+    `'${issueShortId}' is an issue short ID, not a trace ID. Looking up the issue's trace.`,
   );
 
   const resolved = await resolveOrg({ cwd });
@@ -420,7 +420,7 @@ async function resolveTraceFromIssue(
   if (!traceId) {
     throw new ValidationError(
       `Could not find a trace for issue '${issueShortId}'. The latest event has no trace context.\n\n` +
-        `Try: sentry issue view ${issueShortId}`
+        `Try: sentry issue view ${issueShortId}`,
     );
   }
 
@@ -430,8 +430,8 @@ async function resolveTraceFromIssue(
 /**
  * Fetch per-span details when --full or --json is active.
  *
- * Extracted from func() to keep cognitive complexity under the Biome
- * limit of 15. Logs a warning for large traces and reports progress
+ * Extracted from func() to keep cognitive complexity manageable.
+ * Logs a warning for large traces and reports progress
  * on stderr for traces with more than {@link PROGRESS_THRESHOLD} spans.
  */
 function fetchTraceSpanDetails(
@@ -441,7 +441,7 @@ function fetchTraceSpanDetails(
     org: string;
     fallbackProject: string;
     traceId: string;
-  }
+  },
 ): Promise<Map<string, TraceItemDetail>> {
   const log = logger.withTag("trace.view");
   const flat = flattenSpanTree(spans);
@@ -449,7 +449,7 @@ function fetchTraceSpanDetails(
   if (totalCount > LARGE_TRACE_WARN_THRESHOLD) {
     log.warn(
       `Trace has ${totalCount} spans \u2014 this may take a moment. ` +
-        "Use 'sentry span view' for specific spans."
+        "Use 'sentry span view' for specific spans.",
     );
   }
 
@@ -526,13 +526,13 @@ export const viewCommand = buildCommand({
     } else {
       const parsed = await parseTraceTargetWithRecovery(
         correctedArgs,
-        USAGE_HINT
+        USAGE_HINT,
       );
       warnIfNormalized(parsed, "trace.view");
       const target = await resolveTraceOrgOptionalProject(
         parsed,
         cwd,
-        USAGE_HINT
+        USAGE_HINT,
       );
       resolved = {
         ...target,
@@ -573,7 +573,7 @@ export const viewCommand = buildCommand({
         [
           "Check that you are querying the right org/project",
           "The trace may be past your plan's retention window",
-        ]
+        ],
       );
     }
 

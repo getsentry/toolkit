@@ -49,7 +49,7 @@ afterEach(() => {
 function mockResponse(
   body: unknown,
   status = 200,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -76,7 +76,7 @@ describe("store and retrieve", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      response
+      response,
     );
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {
@@ -98,7 +98,7 @@ describe("store and retrieve", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      response
+      response,
     );
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {
@@ -113,7 +113,7 @@ describe("store and retrieve", () => {
     const cached = await getCachedResponse(
       TEST_METHOD,
       "https://us.sentry.io/api/0/organizations/nonexistent/projects/",
-      { headers: {}, identity: TEST_IDENTITY }
+      { headers: {}, identity: TEST_IDENTITY },
     );
     expect(cached).toBeUndefined();
   });
@@ -128,13 +128,13 @@ describe("store and retrieve", () => {
       TEST_METHOD,
       url1,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(body1)
+      mockResponse(body1),
     );
     await storeCachedResponse(
       TEST_METHOD,
       url2,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(body2)
+      mockResponse(body2),
     );
 
     const cached1 = await getCachedResponse(TEST_METHOD, url1, {
@@ -158,7 +158,7 @@ describe("store and retrieve", () => {
       TEST_METHOD,
       url1,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, url2, {
@@ -180,7 +180,7 @@ describe("method isolation", () => {
       "POST",
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     const cached = await getCachedResponse("POST", TEST_URL, {
@@ -196,7 +196,7 @@ describe("method isolation", () => {
       "GET",
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     // GET should find it
@@ -225,7 +225,7 @@ describe("non-2xx responses", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ detail: "not found" }, 404)
+      mockResponse({ detail: "not found" }, 404),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {
@@ -240,7 +240,7 @@ describe("non-2xx responses", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ detail: "server error" }, 500)
+      mockResponse({ detail: "server error" }, 500),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {
@@ -264,7 +264,7 @@ describe("Cache-Control: no-store", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      response
+      response,
     );
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {
@@ -288,13 +288,13 @@ describe("clearResponseCache", () => {
       TEST_METHOD,
       url1,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ a: 1 })
+      mockResponse({ a: 1 }),
     );
     await storeCachedResponse(
       TEST_METHOD,
       url2,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ b: 2 })
+      mockResponse({ b: 2 }),
     );
 
     // Verify entries exist
@@ -302,7 +302,7 @@ describe("clearResponseCache", () => {
       await getCachedResponse(TEST_METHOD, url1, {
         headers: {},
         identity: TEST_IDENTITY,
-      })
+      }),
     ).toBeDefined();
 
     await clearResponseCache();
@@ -312,13 +312,13 @@ describe("clearResponseCache", () => {
       await getCachedResponse(TEST_METHOD, url1, {
         headers: {},
         identity: TEST_IDENTITY,
-      })
+      }),
     ).toBeUndefined();
     expect(
       await getCachedResponse(TEST_METHOD, url2, {
         headers: {},
         identity: TEST_IDENTITY,
-      })
+      }),
     ).toBeUndefined();
   });
 
@@ -339,7 +339,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     process.env.SENTRY_NO_CACHE = "1";
@@ -358,7 +358,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     // Remove the bypass to verify nothing was written
@@ -376,7 +376,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     disableResponseCache();
@@ -396,7 +396,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(freshBody)
+      mockResponse(freshBody),
     );
 
     // Re-enable cache reads to verify the write succeeded
@@ -419,7 +419,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(staleBody)
+      mockResponse(staleBody),
     );
 
     // Activate --fresh: reads are bypassed, but writes still go through
@@ -437,7 +437,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(freshBody)
+      mockResponse(freshBody),
     );
 
     // Re-enable cache reads (simulates next invocation without --fresh)
@@ -461,7 +461,7 @@ describe("normalizeUrl", () => {
   test("sorts query params alphabetically", () => {
     const result = normalizeUrl(
       "GET",
-      "https://sentry.io/api/0/issues/?b=2&a=1"
+      "https://sentry.io/api/0/issues/?b=2&a=1",
     );
     expect(result).toBe("GET|https://sentry.io/api/0/issues/?a=1&b=2");
   });
@@ -478,7 +478,7 @@ describe("normalizeUrl", () => {
   test("handles self-hosted URLs with unusual schemes", () => {
     const result = normalizeUrl(
       "GET",
-      "https://sentry.mycompany.internal/api/0/issues/"
+      "https://sentry.mycompany.internal/api/0/issues/",
     );
     expect(result).toBe("GET|https://sentry.mycompany.internal/api/0/issues/");
   });
@@ -491,19 +491,19 @@ describe("normalizeUrl", () => {
 describe("buildCacheKey", () => {
   test("produces a 64-char hex string", () => {
     expect(buildCacheKey("GET", TEST_URL, TEST_IDENTITY)).toMatch(
-      /^[0-9a-f]{64}$/
+      /^[0-9a-f]{64}$/,
     );
   });
 
   test("is deterministic", () => {
     expect(buildCacheKey("GET", TEST_URL, TEST_IDENTITY)).toBe(
-      buildCacheKey("GET", TEST_URL, TEST_IDENTITY)
+      buildCacheKey("GET", TEST_URL, TEST_IDENTITY),
     );
   });
 
   test("different methods produce different keys", () => {
     expect(buildCacheKey("GET", TEST_URL, TEST_IDENTITY)).not.toBe(
-      buildCacheKey("POST", TEST_URL, TEST_IDENTITY)
+      buildCacheKey("POST", TEST_URL, TEST_IDENTITY),
     );
   });
 
@@ -535,7 +535,7 @@ describe("invalid URL handling", () => {
       "GET",
       "not-a-valid-url",
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ ok: true })
+      mockResponse({ ok: true }),
     );
   });
 });
@@ -552,7 +552,7 @@ describe("no-cache tier", () => {
       TEST_METHOD,
       autofixUrl,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ autofix: { status: "PROCESSING" } })
+      mockResponse({ autofix: { status: "PROCESSING" } }),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, autofixUrl, {
@@ -569,7 +569,7 @@ describe("no-cache tier", () => {
       TEST_METHOD,
       rootCauseUrl,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ cause: "something" })
+      mockResponse({ cause: "something" }),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, rootCauseUrl, {
@@ -597,12 +597,12 @@ describe("file structure", () => {
     const firstCacheDir = join(
       firstEnv.SENTRY_CONFIG_DIR,
       "cache",
-      "responses"
+      "responses",
     );
     const secondCacheDir = join(
       secondEnv.SENTRY_CONFIG_DIR,
       "cache",
-      "responses"
+      "responses",
     );
     const expiredEntry = JSON.stringify({ createdAt: 0, expiresAt: 0 });
     for (const cacheDir of [firstCacheDir, secondCacheDir]) {
@@ -628,8 +628,8 @@ describe("file structure", () => {
               "cache-control": "private, max-age=300",
               vary: "Authorization",
             },
-          })
-        )
+          }),
+        ),
       );
 
       await withEnv(secondEnv, async () => {
@@ -638,7 +638,7 @@ describe("file structure", () => {
         await pendingWrite;
 
         const entry = JSON.parse(
-          await readFile(join(firstCacheDir, `${key}.json`), "utf-8")
+          await readFile(join(firstCacheDir, `${key}.json`), "utf-8"),
         );
         expect(entry).toMatchObject({ identity, body: TEST_BODY });
         await vi.waitFor(async () => {
@@ -649,11 +649,11 @@ describe("file structure", () => {
           await getCachedResponse(TEST_METHOD, TEST_URL, {
             headers: {},
             identity: "identity-b",
-          })
+          }),
         ).toBeUndefined();
       });
       const cached = await withEnv(firstEnv, () =>
-        getCachedResponse(TEST_METHOD, TEST_URL, { headers, identity })
+        getCachedResponse(TEST_METHOD, TEST_URL, { headers, identity }),
       );
       expect(await cached?.json()).toEqual(TEST_BODY);
     } finally {
@@ -666,7 +666,7 @@ describe("file structure", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     const cacheDir = join(getConfigDir(), "cache", "responses");
@@ -680,7 +680,7 @@ describe("file structure", () => {
       TEST_METHOD,
       TEST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     const cacheDir = join(getConfigDir(), "cache", "responses");
@@ -709,14 +709,14 @@ describe("atomic write regression", () => {
         TEST_METHOD,
         TEST_URL,
         { headers: {}, identity: TEST_IDENTITY },
-        mockResponse({ data: `stale-${i}` })
+        mockResponse({ data: `stale-${i}` }),
       );
       const freshBody = { data: `fresh-${i}` };
       await storeCachedResponse(
         TEST_METHOD,
         TEST_URL,
         { headers: {}, identity: TEST_IDENTITY },
-        mockResponse(freshBody)
+        mockResponse(freshBody),
       );
 
       const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {
@@ -744,13 +744,13 @@ describe("invalidateCachedResponsesMatching", () => {
       "GET",
       ORG_LIST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ matched: true })
+      mockResponse({ matched: true }),
     );
     await storeCachedResponse(
       "GET",
       `${OTHER_PREFIX}?cursor=def`,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ matched: false })
+      mockResponse({ matched: false }),
     );
 
     await invalidateCachedResponsesMatching(ORG_PREFIX, TEST_IDENTITY);
@@ -760,12 +760,12 @@ describe("invalidateCachedResponsesMatching", () => {
       await getCachedResponse("GET", ORG_LIST_URL, {
         headers: {},
         identity: TEST_IDENTITY,
-      })
+      }),
     ).toBeUndefined();
     const survivor = await getCachedResponse(
       "GET",
       `${OTHER_PREFIX}?cursor=def`,
-      { headers: {}, identity: TEST_IDENTITY }
+      { headers: {}, identity: TEST_IDENTITY },
     );
     expect(survivor).toBeDefined();
   });
@@ -777,13 +777,13 @@ describe("invalidateCachedResponsesMatching", () => {
       "GET",
       ORG_LIST_URL,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ owner: "a" })
+      mockResponse({ owner: "a" }),
     );
     expect(
       await getCachedResponse("GET", ORG_LIST_URL, {
         headers: {},
         identity: TEST_IDENTITY,
-      })
+      }),
     ).toBeDefined();
 
     await invalidateCachedResponsesMatching(ORG_PREFIX, "identity-b");
@@ -792,7 +792,7 @@ describe("invalidateCachedResponsesMatching", () => {
       await getCachedResponse("GET", ORG_LIST_URL, {
         headers: {},
         identity: TEST_IDENTITY,
-      })
+      }),
     ).toBeDefined();
   });
 
@@ -817,14 +817,14 @@ describe("invalidateCachedResponsesMatching with query params", () => {
       "GET",
       `${DETAIL_BASE}?collapse=stats&collapse=lifetime`,
       { headers: {}, identity: TEST_IDENTITY },
-      mockResponse({ id: "12345" })
+      mockResponse({ id: "12345" }),
     );
     expect(
       await getCachedResponse(
         "GET",
         `${DETAIL_BASE}?collapse=stats&collapse=lifetime`,
-        { headers: {}, identity: TEST_IDENTITY }
-      )
+        { headers: {}, identity: TEST_IDENTITY },
+      ),
     ).toBeDefined();
 
     // Mutation-side invalidator uses the base URL (no params).
@@ -834,8 +834,8 @@ describe("invalidateCachedResponsesMatching with query params", () => {
       await getCachedResponse(
         "GET",
         `${DETAIL_BASE}?collapse=stats&collapse=lifetime`,
-        { headers: {}, identity: TEST_IDENTITY }
-      )
+        { headers: {}, identity: TEST_IDENTITY },
+      ),
     ).toBeUndefined();
   });
 });

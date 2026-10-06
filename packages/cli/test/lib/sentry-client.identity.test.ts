@@ -63,7 +63,7 @@ describe("authenticated response cache identity", () => {
       // No Vary header: credential isolation must hold independently of it.
       return Response.json(
         { owner },
-        { headers: { "Cache-Control": "private, max-age=300" } }
+        { headers: { "Cache-Control": "private, max-age=300" } },
       );
     });
     login("A");
@@ -90,7 +90,7 @@ describe("authenticated response cache identity", () => {
   async function waitForCacheEntries(count: number): Promise<void> {
     await vi.waitUntil(async () => {
       const files = await readdir(
-        join(getConfigDir(), "cache", "responses")
+        join(getConfigDir(), "cache", "responses"),
       ).catch(() => []);
       return files.filter((file) => file.endsWith(".json")).length === count;
     });
@@ -171,7 +171,7 @@ describe("authenticated response cache identity", () => {
       if (request.url === `${HOST}/oauth/token/`) {
         calls.push("refresh");
         expect(
-          new URLSearchParams(await request.text()).get("refresh_token")
+          new URLSearchParams(await request.text()).get("refresh_token"),
         ).toBe("synthetic-refresh-A");
         return Response.json({
           access_token: TOKENS.B,
@@ -236,7 +236,7 @@ describe("authenticated response cache identity", () => {
       login("A");
       const mutation = getSdkConfig(HOST).fetch(
         `${HOST}/api/0/projects/synthetic-org/synthetic-project/`,
-        { method: "PUT" }
+        { method: "PUT" },
       );
       await requestStarted?.promise;
       invocation(() => login("B"));

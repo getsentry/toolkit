@@ -43,7 +43,7 @@ export type AsyncChannel<T> = AsyncIterable<T> & {
  * is called, and a pending resolver for when `next()` is called first.
  */
 export function createAsyncChannel<T>(
-  options?: AsyncChannelOptions
+  options?: AsyncChannelOptions,
 ): AsyncChannel<T> {
   const buffer: T[] = [];
   let pending:

@@ -34,7 +34,7 @@ vi.mock("node:child_process", async () => {
     spawn: (
       command: string,
       args: string[],
-      options: { shell?: boolean; windowsVerbatimArguments?: boolean }
+      options: { shell?: boolean; windowsVerbatimArguments?: boolean },
     ) => {
       spawnCalls.push({ command, args, options });
       const child = new EventEmitter() as any;
@@ -106,7 +106,7 @@ describe("runCommands spawn options", () => {
 
     const result = await runCommands(
       makePayload('pnpm --filter "./apps/web app" add @sentry/nextjs@^8.0.0'),
-      { dryRun: false }
+      { dryRun: false },
     );
 
     expect(result.ok).toBe(true);
@@ -147,7 +147,7 @@ describe("runCommands spawn options", () => {
 
     const result = await runCommands(
       makePayload('pnpm add "value \\"quoted\\""'),
-      { dryRun: false }
+      { dryRun: false },
     );
 
     const commandLine = spawnCalls[0]?.args.at(-1) ?? "";
@@ -166,7 +166,7 @@ describe("runCommands spawn options", () => {
 
     const result = await runCommands(
       makePayload(String.raw`pnpm add "path\\\"name"`),
-      { dryRun: false }
+      { dryRun: false },
     );
 
     const commandLine = spawnCalls[0]?.args.at(-1) ?? "";

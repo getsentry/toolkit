@@ -43,8 +43,8 @@ export const ConversationListItemSchema = object({
         email: nullable(string()),
         username: nullable(string()),
         ip_address: nullable(string()),
-      })
-    )
+      }),
+    ),
   ),
   toolNames: array(string()),
   toolErrors: number(),

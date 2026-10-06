@@ -95,7 +95,7 @@ function loadWasmBytes(): Uint8Array {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(
       `Could not locate the DIF parser WASM (${SYMBOLIC_WASM_SUBPATH}). ` +
-        `Expected it next to the bundle or via @sentry/symbolic: ${msg}`
+        `Expected it next to the bundle or via @sentry/symbolic: ${msg}`,
     );
   }
 }
@@ -179,7 +179,7 @@ export type EmbeddedPpdbResult = {
  * @throws If the buffer cannot be parsed as a known object format.
  */
 export function extractEmbeddedPpdb(
-  data: Uint8Array
+  data: Uint8Array,
 ): EmbeddedPpdbResult | null {
   ensureInitialized();
   using archive = new Archive(data);
@@ -196,7 +196,7 @@ export function extractEmbeddedPpdb(
     } catch (err) {
       log.debug(
         `Failed to extract embedded Portable PDB for ${object.debugId}`,
-        err
+        err,
       );
     }
   }
@@ -216,7 +216,7 @@ export function extractEmbeddedPpdb(
  * @returns The selected object, or `undefined` if the archive has no objects.
  */
 export function selectBundledObject<T extends { hasDebugInfo: boolean }>(
-  objects: readonly T[]
+  objects: readonly T[],
 ): T | undefined {
   return objects.find((object) => object.hasDebugInfo) ?? objects[0];
 }
@@ -263,7 +263,7 @@ export function createSourceBundle(
   data: Uint8Array,
   objectName: string,
   readSource: (path: string) => Uint8Array | null,
-  options?: { collectIl2cppSources?: boolean }
+  options?: { collectIl2cppSources?: boolean },
 ): SourceBundleResult {
   ensureInitialized();
   using archive = new Archive(data);
@@ -334,7 +334,7 @@ export type Il2cppMappingResult = {
 export function createIl2cppLineMapping(
   data: Uint8Array,
   readSource: (path: string) => Uint8Array | null,
-  targetDebugId?: string
+  targetDebugId?: string,
 ): Il2cppMappingResult | null {
   ensureInitialized();
   using archive = new Archive(data);
@@ -351,7 +351,7 @@ export function createIl2cppLineMapping(
   }
   const mapping = il2cppLineMapping(
     object,
-    (path: string) => readSource(path) ?? undefined
+    (path: string) => readSource(path) ?? undefined,
   );
   if (!mapping) {
     return null;

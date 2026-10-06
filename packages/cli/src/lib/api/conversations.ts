@@ -53,7 +53,7 @@ async function fetchConversationsPage(
     end?: string;
     project?: string;
   },
-  perPage: number
+  perPage: number,
 ): Promise<PaginatedResponse<ConversationListItem[]>> {
   const params: Record<string, string> = {
     per_page: String(perPage),
@@ -80,7 +80,7 @@ async function fetchConversationsPage(
   const { data, headers } = await apiRequestToRegion<ConversationListItem[]>(
     regionUrl,
     `/organizations/${orgSlug}/agents/conversations/`,
-    { params, schema: array(ConversationListItemSchema) }
+    { params, schema: array(ConversationListItemSchema) },
   );
 
   const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
@@ -108,11 +108,11 @@ export async function listConversations(
     start?: string;
     end?: string;
     project?: string;
-  } = {}
+  } = {},
 ): Promise<PaginatedResponse<ConversationListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   return paginate(options, (perPage, cursor) =>
-    fetchConversationsPage(regionUrl, orgSlug, { ...options, cursor }, perPage)
+    fetchConversationsPage(regionUrl, orgSlug, { ...options, cursor }, perPage),
   );
 }
 
@@ -123,7 +123,7 @@ export async function getConversationSpans(
     statsPeriod?: string;
     project?: string;
     perPage?: number;
-  } = {}
+  } = {},
 ): Promise<{
   spans: AgentConversationSpan[];
   truncated: boolean;
@@ -152,7 +152,7 @@ export async function getConversationSpans(
       await apiRequestToRegion<AgentConversationDetails>(
         regionUrl,
         `/organizations/${orgSlug}/agents/conversations/${encodeURIComponent(conversationId)}/`,
-        { params, schema: AgentConversationDetailsSchema }
+        { params, schema: AgentConversationDetailsSchema },
       );
 
     if (page === 0) {
@@ -169,7 +169,7 @@ export async function getConversationSpans(
   const truncated = !!cursor;
   if (truncated) {
     log.warn(
-      `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${spans.length} spans). Conversation transcript may be incomplete.`
+      `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${spans.length} spans). Conversation transcript may be incomplete.`,
     );
   }
 

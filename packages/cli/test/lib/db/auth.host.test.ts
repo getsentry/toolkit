@@ -86,15 +86,14 @@ describe("db/auth host scoping", () => {
     // Simulate a pre-v16 row: direct INSERT bypassing setAuthToken
     const db = getDatabase();
     db.query(
-      "INSERT OR REPLACE INTO auth (id, token, host, updated_at) VALUES (1, 'legacy-token', NULL, ?)"
+      "INSERT OR REPLACE INTO auth (id, token, host, updated_at) VALUES (1, 'legacy-token', NULL, ?)",
     ).run(Date.now());
 
     // Simulate the boot ordering: SHELL-exports SENTRY_HOST, then
     // captureEnvTokenHost snapshots it. Migration reads this snapshot
     // (not the current env, which could be rc-poisoned by the shim).
-    const { captureEnvTokenHost, resetEnvTokenHostForTesting } = await import(
-      "../../../src/lib/env-token-host.js"
-    );
+    const { captureEnvTokenHost, resetEnvTokenHostForTesting } =
+      await import("../../../src/lib/env-token-host.js");
     resetEnvTokenHostForTesting();
     const prevHost = process.env.SENTRY_HOST;
     process.env.SENTRY_HOST = "https://legacy-configured.example.com";
@@ -122,12 +121,11 @@ describe("db/auth host scoping", () => {
   test("lazy migration: NULL host + no boot-time env falls back to SaaS", async () => {
     const db = getDatabase();
     db.query(
-      "INSERT OR REPLACE INTO auth (id, token, host, updated_at) VALUES (1, 'legacy-token', NULL, ?)"
+      "INSERT OR REPLACE INTO auth (id, token, host, updated_at) VALUES (1, 'legacy-token', NULL, ?)",
     ).run(Date.now());
 
-    const { captureEnvTokenHost, resetEnvTokenHostForTesting } = await import(
-      "../../../src/lib/env-token-host.js"
-    );
+    const { captureEnvTokenHost, resetEnvTokenHostForTesting } =
+      await import("../../../src/lib/env-token-host.js");
     resetEnvTokenHostForTesting();
     const prevHost = process.env.SENTRY_HOST;
     const prevUrl = process.env.SENTRY_URL;
@@ -156,12 +154,11 @@ describe("db/auth host scoping", () => {
     // boot snapshot so rc writes don't affect it.
     const db = getDatabase();
     db.query(
-      "INSERT OR REPLACE INTO auth (id, token, host, updated_at) VALUES (1, 'legacy-token', NULL, ?)"
+      "INSERT OR REPLACE INTO auth (id, token, host, updated_at) VALUES (1, 'legacy-token', NULL, ?)",
     ).run(Date.now());
 
-    const { captureEnvTokenHost, resetEnvTokenHostForTesting } = await import(
-      "../../../src/lib/env-token-host.js"
-    );
+    const { captureEnvTokenHost, resetEnvTokenHostForTesting } =
+      await import("../../../src/lib/env-token-host.js");
     resetEnvTokenHostForTesting();
     const prevHost = process.env.SENTRY_HOST;
     const prevUrl = process.env.SENTRY_URL;
@@ -215,12 +212,10 @@ describe("db/auth host scoping", () => {
     // and IAP-protected re-authentication would fail. The anchor is
     // process-local and overwritten by the NEXT applyLoginUrl, so we
     // don't need to clear it on logout.
-    const { isLoginTrustAnchorFor, registerLoginTrustAnchor } = await import(
-      "../../../src/lib/token-host.js"
-    );
-    const { isTrustedRegionOrigin, registerTrustedRegionUrls } = await import(
-      "../../../src/lib/db/regions.js"
-    );
+    const { isLoginTrustAnchorFor, registerLoginTrustAnchor } =
+      await import("../../../src/lib/token-host.js");
+    const { isTrustedRegionOrigin, registerTrustedRegionUrls } =
+      await import("../../../src/lib/db/regions.js");
     setAuthToken("tok-A", 3600, "refresh", {
       host: "https://sentry.host-a.com",
     });

@@ -42,7 +42,7 @@ afterEach(() => {
  * rejects in non-TTY test environments without an explicit bypass flag.
  */
 async function runUninstall(
-  args: string[]
+  args: string[],
 ): Promise<{ output: string; exitCode: number | undefined }> {
   let output = "";
   const mockContext: SentryContext = {
@@ -174,15 +174,14 @@ describe("removeSentryLinesFromConfig", () => {
   });
 
   test("removes single # sentry block", async () => {
-    const { removeSentryLinesFromConfig } = await import(
-      "../../../src/commands/cli/uninstall.js"
-    );
+    const { removeSentryLinesFromConfig } =
+      await import("../../../src/commands/cli/uninstall.js");
 
     const configFile = join(tempDir, ".bashrc");
     await writeFile(
       configFile,
       '# existing\nexport FOO=bar\n\n# sentry\nexport PATH="/home/.sentry/bin:$PATH"\n\nalias ll="ls -la"\n',
-      "utf-8"
+      "utf-8",
     );
 
     const result = await removeSentryLinesFromConfig(configFile);
@@ -196,9 +195,8 @@ describe("removeSentryLinesFromConfig", () => {
   });
 
   test("removes multiple # sentry blocks from same file", async () => {
-    const { removeSentryLinesFromConfig } = await import(
-      "../../../src/commands/cli/uninstall.js"
-    );
+    const { removeSentryLinesFromConfig } =
+      await import("../../../src/commands/cli/uninstall.js");
 
     const configFile = join(tempDir, ".zshrc");
     await writeFile(
@@ -215,7 +213,7 @@ describe("removeSentryLinesFromConfig", () => {
         "alias ll='ls -la'",
         "",
       ].join("\n"),
-      "utf-8"
+      "utf-8",
     );
 
     const result = await removeSentryLinesFromConfig(configFile);
@@ -230,15 +228,14 @@ describe("removeSentryLinesFromConfig", () => {
   });
 
   test("does not remove # sentry-wizard or similar", async () => {
-    const { removeSentryLinesFromConfig } = await import(
-      "../../../src/commands/cli/uninstall.js"
-    );
+    const { removeSentryLinesFromConfig } =
+      await import("../../../src/commands/cli/uninstall.js");
 
     const configFile = join(tempDir, ".bashrc");
     await writeFile(
       configFile,
       "# sentry-wizard config\nexport WIZARD=true\n",
-      "utf-8"
+      "utf-8",
     );
 
     const result = await removeSentryLinesFromConfig(configFile);
@@ -250,15 +247,14 @@ describe("removeSentryLinesFromConfig", () => {
   });
 
   test("returns false when no sentry entries exist", async () => {
-    const { removeSentryLinesFromConfig } = await import(
-      "../../../src/commands/cli/uninstall.js"
-    );
+    const { removeSentryLinesFromConfig } =
+      await import("../../../src/commands/cli/uninstall.js");
 
     const configFile = join(tempDir, ".bashrc");
     await writeFile(
       configFile,
       "# just a normal config\nexport FOO=bar\n",
-      "utf-8"
+      "utf-8",
     );
 
     const result = await removeSentryLinesFromConfig(configFile);

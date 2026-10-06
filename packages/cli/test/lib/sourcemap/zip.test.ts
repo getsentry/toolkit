@@ -110,62 +110,62 @@ describe("ZipWriter", () => {
   });
 });
 
-describe.each([
-  "deflate",
-  "stored",
-] as const)("property: ZipWriter round-trip (%s)", (compression) => {
-  test("arbitrary string content survives write → extract", async () => {
-    await fcAssert(
-      asyncProperty(
-        string({ minLength: 0, maxLength: 10_000 }),
-        async (input) => {
-          const zipPath = join(
-            tmpDir,
-            `prop-${compression}-${Date.now()}-${Math.random()}.zip`
-          );
-          const zip = await ZipWriter.create(zipPath, { compression });
-          await zip.addEntry("data.txt", Buffer.from(input, "utf-8"));
-          await zip.finalize();
+describe.each(["deflate", "stored"] as const)(
+  "property: ZipWriter round-trip (%s)",
+  (compression) => {
+    test("arbitrary string content survives write → extract", async () => {
+      await fcAssert(
+        asyncProperty(
+          string({ minLength: 0, maxLength: 10_000 }),
+          async (input) => {
+            const zipPath = join(
+              tmpDir,
+              `prop-${compression}-${Date.now()}-${Math.random()}.zip`,
+            );
+            const zip = await ZipWriter.create(zipPath, { compression });
+            await zip.addEntry("data.txt", Buffer.from(input, "utf-8"));
+            await zip.finalize();
 
-          const proc = spawnSync("unzip", ["-p", zipPath, "data.txt"], {
-            stdio: ["pipe", "pipe", "pipe"],
-            maxBuffer: 50_000,
-          });
-          expect(proc.status).toBe(0);
-          expect(proc.stdout.toString()).toBe(input);
-        }
-      ),
-      { numRuns: DEFAULT_NUM_RUNS }
-    );
-  });
+            const proc = spawnSync("unzip", ["-p", zipPath, "data.txt"], {
+              stdio: ["pipe", "pipe", "pipe"],
+              maxBuffer: 50_000,
+            });
+            expect(proc.status).toBe(0);
+            expect(proc.stdout.toString()).toBe(input);
+          },
+        ),
+        { numRuns: DEFAULT_NUM_RUNS },
+      );
+    });
 
-  test("arbitrary binary content survives write → extract", async () => {
-    await fcAssert(
-      asyncProperty(
-        // minLength: 1 — empty files have a separate unit test;
-        // unzip -p returns exit code 9 for empty entries on some systems
-        uint8Array({ minLength: 1, maxLength: 10_000 }),
-        async (input) => {
-          const zipPath = join(
-            tmpDir,
-            `prop-bin-${compression}-${Date.now()}-${Math.random()}.zip`
-          );
-          const zip = await ZipWriter.create(zipPath, { compression });
-          await zip.addEntry("data.bin", Buffer.from(input));
-          await zip.finalize();
+    test("arbitrary binary content survives write → extract", async () => {
+      await fcAssert(
+        asyncProperty(
+          // minLength: 1 — empty files have a separate unit test;
+          // unzip -p returns exit code 9 for empty entries on some systems
+          uint8Array({ minLength: 1, maxLength: 10_000 }),
+          async (input) => {
+            const zipPath = join(
+              tmpDir,
+              `prop-bin-${compression}-${Date.now()}-${Math.random()}.zip`,
+            );
+            const zip = await ZipWriter.create(zipPath, { compression });
+            await zip.addEntry("data.bin", Buffer.from(input));
+            await zip.finalize();
 
-          const proc = spawnSync("unzip", ["-p", zipPath, "data.bin"], {
-            stdio: ["pipe", "pipe", "pipe"],
-            maxBuffer: 50_000,
-          });
-          expect(proc.status).toBe(0);
-          expect(Buffer.from(proc.stdout)).toEqual(Buffer.from(input));
-        }
-      ),
-      { numRuns: DEFAULT_NUM_RUNS }
-    );
-  });
-});
+            const proc = spawnSync("unzip", ["-p", zipPath, "data.bin"], {
+              stdio: ["pipe", "pipe", "pipe"],
+              maxBuffer: 50_000,
+            });
+            expect(proc.status).toBe(0);
+            expect(Buffer.from(proc.stdout)).toEqual(Buffer.from(input));
+          },
+        ),
+        { numRuns: DEFAULT_NUM_RUNS },
+      );
+    });
+  },
+);
 
 describe("ZipWriter compression mode", () => {
   // The local file header records the entry's compression method at

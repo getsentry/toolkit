@@ -14,11 +14,11 @@ vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../src/lib/api-client.js";
 import {
   ContextError,
@@ -48,7 +48,7 @@ describe("parseSlashSeparatedTraceTarget", () => {
   test("normalizes uppercase trace ID", () => {
     const result = parseSlashSeparatedTraceTarget(
       "AAAA1111BBBB2222CCCC3333DDDD4444",
-      HINT
+      HINT,
     );
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
@@ -56,7 +56,7 @@ describe("parseSlashSeparatedTraceTarget", () => {
   test("strips UUID dashes from trace ID", () => {
     const result = parseSlashSeparatedTraceTarget(
       "aaaa1111-bbbb-2222-cccc-3333dddd4444",
-      HINT
+      HINT,
     );
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
@@ -64,7 +64,7 @@ describe("parseSlashSeparatedTraceTarget", () => {
   test("org/trace-id → org-scoped", () => {
     const result = parseSlashSeparatedTraceTarget(
       `my-org/${VALID_TRACE_ID}`,
-      HINT
+      HINT,
     );
     expect(result.type).toBe("org-scoped");
     expect(result.traceId).toBe(VALID_TRACE_ID);
@@ -76,7 +76,7 @@ describe("parseSlashSeparatedTraceTarget", () => {
   test("org/project/trace-id → explicit", () => {
     const result = parseSlashSeparatedTraceTarget(
       `my-org/my-project/${VALID_TRACE_ID}`,
-      HINT
+      HINT,
     );
     expect(result.type).toBe("explicit");
     expect(result.traceId).toBe(VALID_TRACE_ID);
@@ -91,7 +91,7 @@ describe("parseSlashSeparatedTraceTarget", () => {
     // through the trace-target parser unchanged.
     const result = parseSlashSeparatedTraceTarget(
       `my_org/my_project/${VALID_TRACE_ID}`,
-      HINT
+      HINT,
     );
     expect(result.type).toBe("explicit");
     if (result.type === "explicit") {
@@ -103,13 +103,13 @@ describe("parseSlashSeparatedTraceTarget", () => {
 
   test("trailing slash without trace ID throws", () => {
     expect(() => parseSlashSeparatedTraceTarget("my-org/", HINT)).toThrow(
-      ContextError
+      ContextError,
     );
   });
 
   test("invalid trace ID throws ValidationError", () => {
     expect(() =>
-      parseSlashSeparatedTraceTarget("not-a-trace-id", HINT)
+      parseSlashSeparatedTraceTarget("not-a-trace-id", HINT),
     ).toThrow(ValidationError);
   });
 });
@@ -181,7 +181,7 @@ describe("trace target resolution", () => {
     const resolved = await resolveTraceOrg(
       parsed,
       "/tmp",
-      "sentry trace logs [<org>/[<project>/]]<trace-id>"
+      "sentry trace logs [<org>/[<project>/]]<trace-id>",
     );
 
     expect(resolved.org).toBe("project-owner");
@@ -232,7 +232,7 @@ describe("parseTraceTarget", () => {
   test("single arg: org/project/trace-id → explicit", () => {
     const result = parseTraceTarget(
       [`my-org/my-project/${VALID_TRACE_ID}`],
-      HINT
+      HINT,
     );
     expect(result.type).toBe("explicit");
     expect(result.traceId).toBe(VALID_TRACE_ID);
@@ -246,7 +246,7 @@ describe("parseTraceTarget", () => {
   test("two args: target + trace-id", () => {
     const result = parseTraceTarget(
       ["my-org/my-project", VALID_TRACE_ID],
-      HINT
+      HINT,
     );
     expect(result.type).toBe("explicit");
     expect(result.traceId).toBe(VALID_TRACE_ID);
@@ -260,7 +260,7 @@ describe("parseTraceTarget", () => {
 
   test("invalid trace ID throws ValidationError", () => {
     expect(() => parseTraceTarget(["not-valid"], HINT)).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 });

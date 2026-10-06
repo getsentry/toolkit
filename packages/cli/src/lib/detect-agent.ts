@@ -318,7 +318,7 @@ export async function detectAgentFromProcessTree(): Promise<
 const log = logger.withTag("detect-agent");
 
 export async function getProcessInfoFromOS(
-  pid: number
+  pid: number,
 ): Promise<ProcessInfo | undefined> {
   // Linux: /proc is an in-memory filesystem — fast even though async
   try {
@@ -338,7 +338,7 @@ export async function getProcessInfoFromOS(
       const result = await execFileUnreffed(
         "ps",
         ["-p", String(pid), "-o", "ppid=,comm="],
-        { timeout: 500 }
+        { timeout: 500 },
       );
       const match = result.trim().match(PS_PPID_COMM_RE);
       if (match?.[1] && match?.[2]) {
@@ -357,7 +357,7 @@ export async function getProcessInfoFromOS(
 function execFileUnreffed(
   cmd: string,
   args: readonly string[],
-  opts: { timeout?: number }
+  opts: { timeout?: number },
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(
@@ -370,7 +370,7 @@ function execFileUnreffed(
         } else {
           resolve(stdout);
         }
-      }
+      },
     );
     child.unref();
   });

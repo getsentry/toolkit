@@ -58,7 +58,7 @@ function isValidTrialArg(name: string): boolean {
  */
 function parseTrialStartArgs(
   first: string,
-  second?: string
+  second?: string,
 ): { name: string; org?: string; warning?: string } {
   if (!second) {
     // Single arg — must be a trial name
@@ -112,7 +112,7 @@ export const startCommand = buildCommand({
     this: SentryContext,
     flags: { json?: boolean },
     first: string,
-    second?: string
+    second?: string,
   ) {
     const logger = log.withTag("trial");
     const parsed = parseTrialStartArgs(first, second);
@@ -125,7 +125,7 @@ export const startCommand = buildCommand({
     if (parsed.name !== "plan" && !isTrialName(parsed.name)) {
       throw new ValidationError(
         `Unknown trial name: '${parsed.name}'. Valid names: ${NAMES_LIST}`,
-        "name"
+        "name",
       );
     }
 
@@ -155,7 +155,7 @@ export const startCommand = buildCommand({
       const displayName = getDisplayNameForTrialName(parsed.name);
       throw new ValidationError(
         `No ${displayName} trial available for organization '${orgSlug}'.`,
-        "name"
+        "name",
       );
     }
 
@@ -216,7 +216,7 @@ async function promptOpenBrowser(url: string): Promise<boolean> {
  */
 async function* handlePlanTrial(
   orgSlug: string,
-  json: boolean
+  json: boolean,
 ): AsyncGenerator<unknown, void, undefined> {
   const logger = log.withTag("trial");
 
@@ -227,7 +227,7 @@ async function* handlePlanTrial(
     const planName = info.planDetails?.name ?? "Business";
     throw new ValidationError(
       `Organization '${orgSlug}' is already on a ${planName} plan trial.`,
-      "name"
+      "name",
     );
   }
 
@@ -235,7 +235,7 @@ async function* handlePlanTrial(
   if (info.canTrial !== true) {
     throw new ValidationError(
       `No plan trial available for organization '${orgSlug}'.`,
-      "name"
+      "name",
     );
   }
 
@@ -246,7 +246,7 @@ async function* handlePlanTrial(
   if (!json) {
     const currentPlan = info.planDetails?.name ?? "current plan";
     logger.info(
-      `The ${currentPlan} → Business plan trial must be activated in the Sentry UI.`
+      `The ${currentPlan} → Business plan trial must be activated in the Sentry UI.`,
     );
 
     // Show URL and QR code through the output framework

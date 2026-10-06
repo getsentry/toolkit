@@ -18,7 +18,7 @@ describe("property: Ink prompt option window", () => {
           const [start, end] = getOptionWindow(
             totalCount,
             highlighted,
-            maxVisible
+            maxVisible,
           );
           const expectedSize = Math.min(totalCount, Math.max(1, maxVisible));
 
@@ -29,14 +29,14 @@ describe("property: Ink prompt option window", () => {
           if (totalCount > 0) {
             const normalizedHighlight = Math.min(
               totalCount - 1,
-              Math.max(0, highlighted)
+              Math.max(0, highlighted),
             );
             expect(start).toBeLessThanOrEqual(normalizedHighlight);
             expect(end).toBeGreaterThan(normalizedHighlight);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

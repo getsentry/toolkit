@@ -49,7 +49,7 @@ const EXPLICIT_SCHEME_RE = /^([a-z][a-z\d+.-]*):\/\//i;
 
 function normalizeHost(
   input: string | undefined,
-  source: string
+  source: string,
 ): string | undefined {
   if (!input) {
     return;
@@ -98,7 +98,7 @@ function captureClaimHost(token: string | undefined): {
 }
 
 const getHostState = createInvocationState<{ snapshot?: HostSnapshot }>(
-  () => ({})
+  () => ({}),
 );
 
 /**
@@ -122,7 +122,7 @@ export function captureEnvTokenHost(): void {
   const configuredHost =
     normalizeHost(
       env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim(),
-      env.SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL"
+      env.SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL",
     ) ?? null;
   // Claim first: for sntrys_ tokens, the embedded url is authoritative.
   const claim = captureClaimHost(getRawEnvToken());

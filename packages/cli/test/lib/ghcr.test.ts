@@ -28,7 +28,7 @@ let originalFetch: typeof globalThis.fetch;
 
 /** Helper to mock fetch without TypeScript errors about missing Bun-specific properties */
 function mockFetch(
-  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>
+  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
   globalThis.fetch = fn as typeof globalThis.fetch;
 }
@@ -81,7 +81,7 @@ describe("getAnonymousToken", () => {
   test("returns token from successful response", async () => {
     mockFetch(async (url) => {
       expect(String(url)).toContain(
-        `https://ghcr.io/token?scope=repository:${GHCR_REPO}:pull`
+        `https://ghcr.io/token?scope=repository:${GHCR_REPO}:pull`,
       );
       return new Response(JSON.stringify({ token: "test-token-abc" }), {
         status: 200,
@@ -102,7 +102,7 @@ describe("getAnonymousToken", () => {
     });
 
     await expect(getAnonymousToken(UPGRADE_SOURCES[0])).resolves.toBe(
-      "toolkit-token"
+      "toolkit-token",
     );
   });
 
@@ -111,7 +111,7 @@ describe("getAnonymousToken", () => {
 
     await expect(getAnonymousToken()).rejects.toThrow(UpgradeError);
     await expect(getAnonymousToken()).rejects.toThrow(
-      "GHCR token exchange failed: HTTP 401"
+      "GHCR token exchange failed: HTTP 401",
     );
   });
 
@@ -122,7 +122,7 @@ describe("getAnonymousToken", () => {
 
     await expect(getAnonymousToken()).rejects.toThrow(UpgradeError);
     await expect(getAnonymousToken()).rejects.toThrow(
-      "Failed to connect to GHCR: fetch failed"
+      "Failed to connect to GHCR: fetch failed",
     );
   });
 
@@ -135,7 +135,7 @@ describe("getAnonymousToken", () => {
         init?.signal?.addEventListener(
           "abort",
           () => reject(new DOMException("aborted", "AbortError")),
-          { once: true }
+          { once: true },
         );
       });
     });
@@ -157,7 +157,7 @@ describe("getAnonymousToken", () => {
     });
 
     await expect(getAnonymousToken(undefined, controller.signal)).rejects.toBe(
-      "cancelled"
+      "cancelled",
     );
     expect(requests).toBe(1);
   });
@@ -168,12 +168,12 @@ describe("getAnonymousToken", () => {
         new Response(JSON.stringify({}), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     await expect(getAnonymousToken()).rejects.toThrow(UpgradeError);
     await expect(getAnonymousToken()).rejects.toThrow(
-      "GHCR token exchange returned no token"
+      "GHCR token exchange returned no token",
     );
   });
 
@@ -181,7 +181,7 @@ describe("getAnonymousToken", () => {
     mockFetch(async () => Response.json({ token: {} }));
 
     await expect(getAnonymousToken()).rejects.toThrow(
-      "GHCR token exchange returned no token"
+      "GHCR token exchange returned no token",
     );
   });
 
@@ -189,7 +189,7 @@ describe("getAnonymousToken", () => {
     mockFetch(async () => Response.json({ token }));
 
     await expect(getAnonymousToken()).rejects.toThrow(
-      "GHCR token exchange returned no token"
+      "GHCR token exchange returned no token",
     );
   });
 
@@ -206,7 +206,7 @@ describe("getAnonymousToken", () => {
     });
 
     await expect(getAnonymousToken(undefined, controller.signal)).rejects.toBe(
-      reason
+      reason,
     );
   });
 });
@@ -219,7 +219,7 @@ describe("fetchNightlyManifest", () => {
     mockFetch(async (url, init) => {
       expect(String(url)).toContain(`/v2/${GHCR_REPO}/manifests/${GHCR_TAG}`);
       capturedHeaders = Object.fromEntries(
-        new Headers(init?.headers as HeadersInit).entries()
+        new Headers(init?.headers as HeadersInit).entries(),
       );
       return new Response(JSON.stringify(manifest), {
         status: 200,
@@ -233,7 +233,7 @@ describe("fetchNightlyManifest", () => {
     expect(result).toEqual(manifest);
     expect(capturedHeaders.authorization).toBe("Bearer my-token");
     expect(capturedHeaders.accept).toBe(
-      "application/vnd.oci.image.manifest.v1+json"
+      "application/vnd.oci.image.manifest.v1+json",
     );
   });
 
@@ -245,7 +245,7 @@ describe("fetchNightlyManifest", () => {
     });
 
     await expect(
-      fetchNightlyManifest("token", undefined, UPGRADE_SOURCES[0])
+      fetchNightlyManifest("token", undefined, UPGRADE_SOURCES[0]),
     ).resolves.toEqual(manifest);
   });
 
@@ -254,7 +254,7 @@ describe("fetchNightlyManifest", () => {
 
     await expect(fetchNightlyManifest("token")).rejects.toThrow(UpgradeError);
     await expect(fetchNightlyManifest("token")).rejects.toThrow(
-      'Failed to fetch manifest for tag "nightly": HTTP 404'
+      'Failed to fetch manifest for tag "nightly": HTTP 404',
     );
   });
 
@@ -265,7 +265,7 @@ describe("fetchNightlyManifest", () => {
 
     await expect(fetchNightlyManifest("token")).rejects.toThrow(UpgradeError);
     await expect(fetchNightlyManifest("token")).rejects.toThrow(
-      'Failed to fetch manifest for tag "nightly": fetch failed'
+      'Failed to fetch manifest for tag "nightly": fetch failed',
     );
   });
 });
@@ -280,7 +280,7 @@ describe("getNightlyVersion", () => {
     const manifest = makeManifest({ annotations: {} });
     expect(() => getNightlyVersion(manifest)).toThrow(UpgradeError);
     expect(() => getNightlyVersion(manifest)).toThrow(
-      "Nightly manifest has no version annotation"
+      "Nightly manifest has no version annotation",
     );
   });
 
@@ -289,17 +289,16 @@ describe("getNightlyVersion", () => {
     expect(() => getNightlyVersion(manifest)).toThrow(UpgradeError);
   });
 
-  test.each([
-    "not-semver",
-    "1.2.3",
-    "1.2.3-dev.foo",
-  ])("rejects invalid nightly version annotation %s", (version) => {
-    const manifest = makeManifest({ annotations: { version } });
+  test.each(["not-semver", "1.2.3", "1.2.3-dev.foo"])(
+    "rejects invalid nightly version annotation %s",
+    (version) => {
+      const manifest = makeManifest({ annotations: { version } });
 
-    expect(() => getNightlyVersion(manifest)).toThrow(
-      "Nightly manifest has invalid version annotation"
-    );
-  });
+      expect(() => getNightlyVersion(manifest)).toThrow(
+        "Nightly manifest has invalid version annotation",
+      );
+    },
+  );
 });
 
 describe("findLayerByFilename", () => {
@@ -318,10 +317,10 @@ describe("findLayerByFilename", () => {
   test("throws UpgradeError when filename not found", () => {
     const manifest = makeManifest();
     expect(() =>
-      findLayerByFilename(manifest, "sentry-freebsd-x64.gz")
+      findLayerByFilename(manifest, "sentry-freebsd-x64.gz"),
     ).toThrow(UpgradeError);
     expect(() =>
-      findLayerByFilename(manifest, "sentry-freebsd-x64.gz")
+      findLayerByFilename(manifest, "sentry-freebsd-x64.gz"),
     ).toThrow("No nightly build found for sentry-freebsd-x64.gz");
   });
 
@@ -337,7 +336,7 @@ describe("findLayerByFilename", () => {
       ],
     });
     expect(() => findLayerByFilename(manifest, "sentry-linux-x64.gz")).toThrow(
-      UpgradeError
+      UpgradeError,
     );
   });
 });
@@ -364,19 +363,19 @@ describe("downloadNightlyBlob", () => {
         // First request: return 307 redirect to Azure
         return Response.redirect(
           "https://blob.storage.azure.com/signed?token=xyz",
-          307
+          307,
         );
       }
       // Second request: the actual download (no auth header expected)
       secondRequestHeaders = Object.fromEntries(
-        new Headers(init?.headers as HeadersInit).entries()
+        new Headers(init?.headers as HeadersInit).entries(),
       );
       return new Response(binaryContent, { status: 200 });
     });
 
     const response = await downloadNightlyBlob(
       "my-bearer-token",
-      "sha256:abc123"
+      "sha256:abc123",
     );
     expect(requestCount).toBe(2);
     expect(response.status).toBe(200);
@@ -404,10 +403,10 @@ describe("downloadNightlyBlob", () => {
     mockFetch(async () => new Response(null, { status: 307 }));
 
     await expect(downloadNightlyBlob("token", "sha256:abc")).rejects.toThrow(
-      UpgradeError
+      UpgradeError,
     );
     await expect(downloadNightlyBlob("token", "sha256:abc")).rejects.toThrow(
-      "GHCR blob redirect (307) had no Location header"
+      "GHCR blob redirect (307) had no Location header",
     );
   });
 
@@ -423,7 +422,7 @@ describe("downloadNightlyBlob", () => {
 
     // Call once and capture to avoid stateful mock issues on repeated calls
     const error = await downloadNightlyBlob("token", "sha256:abc").catch(
-      (e) => e
+      (e) => e,
     );
     expect(error).toBeInstanceOf(UpgradeError);
     expect(error.message).toContain("Blob storage download failed: HTTP 403");
@@ -433,7 +432,7 @@ describe("downloadNightlyBlob", () => {
     mockFetch(async () => new Response("Server Error", { status: 500 }));
 
     const error = await downloadNightlyBlob("token", "sha256:abc").catch(
-      (e) => e
+      (e) => e,
     );
     expect(error).toBeInstanceOf(UpgradeError);
     expect(error.message).toContain("Unexpected GHCR blob response: HTTP 500");
@@ -445,7 +444,7 @@ describe("downloadNightlyBlob", () => {
     });
 
     const error = await downloadNightlyBlob("token", "sha256:abc").catch(
-      (e) => e
+      (e) => e,
     );
     expect(error).toBeInstanceOf(UpgradeError);
     expect(error.message).toContain("Failed to connect to GHCR: fetch failed");
@@ -463,11 +462,11 @@ describe("downloadNightlyBlob", () => {
 
     // Call once and capture to avoid stateful mock issues on repeated calls
     const error = await downloadNightlyBlob("token", "sha256:abc").catch(
-      (e) => e
+      (e) => e,
     );
     expect(error).toBeInstanceOf(UpgradeError);
     expect(error.message).toContain(
-      "Failed to download from blob storage: fetch failed"
+      "Failed to download from blob storage: fetch failed",
     );
   });
 
@@ -481,7 +480,7 @@ describe("downloadNightlyBlob", () => {
     });
 
     await expect(
-      downloadNightlyBlob("token", "sha256:abc", controller.signal)
+      downloadNightlyBlob("token", "sha256:abc", controller.signal),
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(requestCount).toBe(1);
   });
@@ -497,7 +496,7 @@ describe("downloadNightlyBlob", () => {
     });
 
     await expect(
-      downloadNightlyBlob("token", "sha256:abc", controller.signal)
+      downloadNightlyBlob("token", "sha256:abc", controller.signal),
     ).rejects.toBe(reason);
     expect(requestCount).toBe(1);
   });
@@ -516,7 +515,7 @@ describe("downloadNightlyBlob", () => {
     });
 
     await expect(
-      downloadNightlyBlob("token", "sha256:abc", controller.signal)
+      downloadNightlyBlob("token", "sha256:abc", controller.signal),
     ).rejects.toBe(reason);
     expect(headers).toHaveLength(2);
     expect(headers[1]?.has("authorization")).toBe(false);
@@ -548,7 +547,7 @@ describe("fetchManifest", () => {
     mockFetch(async () => Response.json(manifest));
 
     await expect(fetchManifest("token", "nightly")).rejects.toThrow(
-      'Manifest for tag "nightly" returned invalid metadata'
+      'Manifest for tag "nightly" returned invalid metadata',
     );
   });
 
@@ -587,7 +586,7 @@ describe("fetchManifest", () => {
     mockFetch(async () => new Response("Not Found", { status: 404 }));
 
     const error = await fetchManifest("token", "patch-0.13.0").catch(
-      (reason: unknown) => reason
+      (reason: unknown) => reason,
     );
     expect(error).toBeInstanceOf(GhcrManifestHttpError);
     expect(error).toMatchObject({
@@ -603,10 +602,10 @@ describe("fetchManifest", () => {
     });
 
     await expect(fetchManifest("token", "some-tag")).rejects.toThrow(
-      UpgradeError
+      UpgradeError,
     );
     await expect(fetchManifest("token", "some-tag")).rejects.toThrow(
-      'Failed to fetch manifest for tag "some-tag": fetch failed'
+      'Failed to fetch manifest for tag "some-tag": fetch failed',
     );
   });
 });
@@ -623,7 +622,7 @@ describe("listTags", () => {
     });
 
     await expect(listTags("token")).rejects.toThrow(
-      "GHCR tag pagination returned a repeated cursor"
+      "GHCR tag pagination returned a repeated cursor",
     );
     expect(requests).toBe(2);
   });
@@ -632,7 +631,7 @@ describe("listTags", () => {
       expect(String(url)).toContain(`/v2/${GHCR_REPO}/tags/list`);
       return new Response(
         JSON.stringify({ tags: ["nightly", "patch-0.13.0", "patch-0.14.0"] }),
-        { status: 200 }
+        { status: 200 },
       );
     });
 
@@ -645,8 +644,8 @@ describe("listTags", () => {
       async () =>
         new Response(
           JSON.stringify({ tags: ["nightly", "patch-0.13.0", "patch-0.14.0"] }),
-          { status: 200 }
-        )
+          { status: 200 },
+        ),
     );
 
     const tags = await listTags("token", "patch-");
@@ -658,7 +657,7 @@ describe("listTags", () => {
       async () =>
         new Response(JSON.stringify({ tags: ["nightly", "latest"] }), {
           status: 200,
-        })
+        }),
     );
 
     const tags = await listTags("token", "patch-");
@@ -677,7 +676,7 @@ describe("listTags", () => {
 
     await expect(listTags("token")).rejects.toThrow(UpgradeError);
     await expect(listTags("token")).rejects.toThrow(
-      "Failed to list GHCR tags: HTTP 500"
+      "Failed to list GHCR tags: HTTP 500",
     );
   });
 
@@ -688,7 +687,7 @@ describe("listTags", () => {
 
     await expect(listTags("token")).rejects.toThrow(UpgradeError);
     await expect(listTags("token")).rejects.toThrow(
-      "Failed to list GHCR tags: fetch failed"
+      "Failed to list GHCR tags: fetch failed",
     );
   });
 
@@ -696,7 +695,7 @@ describe("listTags", () => {
     // Generate exactly 100 tags for page 1 (triggers pagination), then 2 for page 2
     const page1Tags = Array.from(
       { length: 100 },
-      (_, i) => `tag-${String(i).padStart(3, "0")}`
+      (_, i) => `tag-${String(i).padStart(3, "0")}`,
     );
     const page2Tags = ["tag-100", "tag-101"];
     const responses = [page1Tags, page2Tags];
@@ -730,7 +729,7 @@ describe("listTags", () => {
       async () =>
         new Response(JSON.stringify({ tags: mixedTags }), {
           status: 200,
-        })
+        }),
     );
 
     const tags = await listTags("token", "patch-");
@@ -767,7 +766,7 @@ describe("downloadLayerBlob", () => {
     });
 
     await expect(downloadLayerBlob("token", "sha256:abc")).rejects.toThrow(
-      UpgradeError
+      UpgradeError,
     );
   });
 });

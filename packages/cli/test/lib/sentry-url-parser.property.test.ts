@@ -29,12 +29,12 @@ import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
  * `sentry.io` and dropping the org subdomain.
  */
 const orgSlugArb = stringMatching(/^[a-z][a-z0-9-]{1,20}[a-z0-9]$/).filter(
-  (s) => !s.startsWith("xn--")
+  (s) => !s.startsWith("xn--"),
 );
 
 /** Generates valid project slugs (lowercase, alphanumeric with hyphens) */
 const projectSlugArb = stringMatching(/^[a-z][a-z0-9-]{1,20}[a-z0-9]$/).filter(
-  (s) => !s.startsWith("xn--")
+  (s) => !s.startsWith("xn--"),
 );
 
 /** Generates valid 32-character hex trace IDs */
@@ -62,7 +62,7 @@ describe("parseSentryUrl round-trip properties", () => {
         expect(parsed?.project).toBeUndefined();
         expect(parsed?.traceId).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -77,7 +77,7 @@ describe("parseSentryUrl round-trip properties", () => {
         expect(parsed?.project).toBe(project);
         expect(parsed?.issueId).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -92,7 +92,7 @@ describe("parseSentryUrl round-trip properties", () => {
         expect(parsed?.traceId).toBe(traceId);
         expect(parsed?.issueId).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -107,7 +107,7 @@ describe("parseSentryUrl round-trip properties", () => {
         expect(parsed?.replayId).toBe(replayId);
         expect(parsed?.issueId).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -123,7 +123,7 @@ describe("parseSentryUrl round-trip properties", () => {
         expect(parsed?.issueId).toBe(issueId);
         expect(parsed?.eventId).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -139,9 +139,9 @@ describe("parseSentryUrl round-trip properties", () => {
           expect(parsed?.org).toBe(org);
           expect(parsed?.issueId).toBe(issueId);
           expect(parsed?.eventId).toBe(eventId);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -151,7 +151,7 @@ describe("parseSentryUrl round-trip properties", () => {
       property(orgSlugArb, (org) => {
         expect(parseSentryUrl(org)).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -164,7 +164,7 @@ describe("parseSentryUrl round-trip properties", () => {
         expect(parsed).not.toBeNull();
         expect(parsed?.baseUrl).toMatch(/^https?:\/\/.+/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

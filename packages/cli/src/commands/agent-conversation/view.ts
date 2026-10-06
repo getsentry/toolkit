@@ -108,7 +108,7 @@ export const viewCommand = buildCommand({
         message: "Fetching conversation spans...",
         json: flags.json,
       },
-      () => getConversationSpans(org, conversationId)
+      () => getConversationSpans(org, conversationId),
     );
 
     const result = buildTranscriptResult(conversationId, org, spans, title);

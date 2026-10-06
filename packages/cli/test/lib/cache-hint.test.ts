@@ -95,7 +95,7 @@ describe("appendCacheHint", () => {
   test("returns just the cache hint when no existing hint", () => {
     setLastCacheHitAgeForTesting(180_000);
     expect(appendCacheHint(undefined)).toBe(
-      "cached · 3m ago · use -f to refresh"
+      "cached · 3m ago · use -f to refresh",
     );
     clearLastCacheHitAge();
   });
@@ -103,7 +103,7 @@ describe("appendCacheHint", () => {
   test("joins existing and cache hints with ' | ' separator", () => {
     setLastCacheHitAgeForTesting(180_000);
     expect(appendCacheHint("Showing 5 issues")).toBe(
-      "Showing 5 issues | cached · 3m ago · use -f to refresh"
+      "Showing 5 issues | cached · 3m ago · use -f to refresh",
     );
     clearLastCacheHitAge();
   });

@@ -114,7 +114,7 @@ const VALID_DATASETS = new Set([
  * Used by pagination hints so they emit `--dataset metrics` not `--dataset tracemetrics`.
  */
 const API_TO_USER_DATASET = new Map(
-  Array.from(VALID_DATASETS, (name) => [DATASET_ALIASES[name] ?? name, name])
+  Array.from(VALID_DATASETS, (name) => [DATASET_ALIASES[name] ?? name, name]),
 );
 
 // ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ function parseDataset(value: string): string {
   }
   throw new ValidationError(
     `Invalid dataset "${value}". Must be one of: ${Array.from(VALID_DATASETS).join(", ")}`,
-    "dataset"
+    "dataset",
   );
 }
 
@@ -196,20 +196,20 @@ function inferReplayFieldType(field: string): string {
 
 function buildReplayExploreResponse(
   fields: string[],
-  replays: Awaited<ReturnType<typeof listReplays>>["data"]
+  replays: Awaited<ReturnType<typeof listReplays>>["data"],
 ): { data: Record<string, unknown>[]; meta: NonNullable<ExploreData["meta"]> } {
   return {
     data: replays.map((replay) =>
       Object.fromEntries(
-        fields.map((field) => [field, getReplayFieldValue(replay, field)])
-      )
+        fields.map((field) => [field, getReplayFieldValue(replay, field)]),
+      ),
     ),
     meta: {
       fields: Object.fromEntries(
-        fields.map((field) => [field, inferReplayFieldType(field)])
+        fields.map((field) => [field, inferReplayFieldType(field)]),
       ),
       units: Object.fromEntries(
-        fields.map((field) => [field, field === "duration" ? "s" : null])
+        fields.map((field) => [field, field === "duration" ? "s" : null]),
       ),
     },
   };
@@ -229,7 +229,7 @@ function buildReplayExploreResponse(
  */
 function orderFieldNames(
   requestedFields: string[],
-  data: ExploreData
+  data: ExploreData,
 ): string[] {
   const apiFields = data.meta?.fields
     ? Object.keys(data.meta.fields)
@@ -264,7 +264,7 @@ function formatExploreHuman(data: ExploreData): string {
   const columns = buildMetaColumns(
     fieldNames,
     data.meta?.fields,
-    data.meta?.units
+    data.meta?.units,
   );
 
   const scope = data.project ? `${data.org}/${data.project}` : data.org;
@@ -318,7 +318,7 @@ function defaultFieldsForDataset(dataset: string): readonly string[] {
 function appendMetricHints(
   parts: string[],
   metric: string | undefined,
-  agg: string
+  agg: string,
 ): void {
   if (metric) {
     parts.push(`-m "${metric}"`);
@@ -333,7 +333,7 @@ function appendFieldHints(
   parts: string[],
   rawFields: string[] | undefined,
   dataset: string,
-  metricActive: boolean
+  metricActive: boolean,
 ): void {
   const fields = rawFields ?? [];
   const fieldList = metricActive
@@ -361,7 +361,7 @@ function appendFlagHints(
     | "limit"
     | "metric"
     | "agg"
-  >
+  >,
 ): string {
   const parts: string[] = [];
   const defaultSort =
@@ -422,7 +422,7 @@ function isTracemetricsAggregate(aggregate: string): boolean {
  */
 function validateMetricsFields(fieldList: string[]): void {
   const badAggs = fieldList.filter(
-    (f) => isAggregate(f) && !isTracemetricsAggregate(f)
+    (f) => isAggregate(f) && !isTracemetricsAggregate(f),
   );
   if (badAggs.length === 0) {
     return;
@@ -439,7 +439,7 @@ function validateMetricsFields(fieldList: string[]): void {
       "  - metric_name: the metric name emitted by the SDK (e.g., llm.token_usage)\n" +
       "  - metric_type: distribution, gauge, counter, or set\n" +
       "  - unit: none, byte, second, millisecond, etc.",
-    "field"
+    "field",
   );
 }
 
@@ -496,7 +496,7 @@ type DatasetConfig = {
  * syntax so they are ORed rather than ANDed.
  */
 function buildEnvironmentQuery(
-  environment: string[] | undefined
+  environment: string[] | undefined,
 ): string | undefined {
   if (!environment || environment.length === 0) {
     return;
@@ -541,12 +541,12 @@ function resolveDatasetConfig(params: {
 
   if (dataset === "replays") {
     const unsupportedField = fieldList.find(
-      (field) => !isSupportedReplayField(field)
+      (field) => !isSupportedReplayField(field),
     );
     if (unsupportedField) {
       throw new ValidationError(
         `Unsupported replay field "${unsupportedField}". Supported fields include: ${listSupportedReplayFields().slice(0, 12).join(", ")}...`,
-        "field"
+        "field",
       );
     }
 
@@ -554,7 +554,7 @@ function resolveDatasetConfig(params: {
     if (!isReplaySortValue(sort)) {
       throw new ValidationError(
         `Invalid replay sort "${sort}". Use a replay sort like ${DEFAULT_REPLAY_SORT} or -count_errors.`,
-        "sort"
+        "sort",
       );
     }
 
@@ -603,7 +603,7 @@ function resolveDatasetConfig(params: {
     if (rawSort && flags.sort) {
       const displayDataset = API_TO_USER_DATASET.get(dataset) ?? dataset;
       log.warn(
-        `--sort is not supported on the ${displayDataset} dataset. Ignoring sort.`
+        `--sort is not supported on the ${displayDataset} dataset. Ignoring sort.`,
       );
     }
     sort = undefined;
@@ -767,7 +767,7 @@ export const exploreCommand = buildListCommand("explore", {
     const { org, project } = await resolveOrgOptionalFromArg(
       target,
       cwd,
-      "explore"
+      "explore",
     );
 
     let dataset = flags.dataset;
@@ -797,7 +797,7 @@ export const exploreCommand = buildListCommand("explore", {
           queryMetricsMeta(org, {
             ...metaParams,
             project,
-          })
+          }),
       );
 
       const aggField = resolveMetricField(flags.metric, flags.agg, metrics);
@@ -815,7 +815,7 @@ export const exploreCommand = buildListCommand("explore", {
             "  sentry explore my-org/ -m llm.token_usage --agg avg --dataset metrics\n\n" +
             "Manual mode (tracemetrics format):\n" +
             '  sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics',
-          "field"
+          "field",
         );
       }
       validateMetricsFields(fieldList);
@@ -840,12 +840,12 @@ export const exploreCommand = buildListCommand("explore", {
         q: flags.query,
         sort: config.sort,
         period: serializeTimeRange(timeRange),
-      }
+      },
     );
     const { cursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const { data: response, nextCursor } = await withProgress(
@@ -859,7 +859,7 @@ export const exploreCommand = buildListCommand("explore", {
           .catch((error: unknown): never => {
             // An unparseable user --query is a user input mistake, not a CLI bug.
             throw toSearchQueryError(error, flags.query);
-          })
+          }),
     );
 
     advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);
@@ -873,11 +873,11 @@ export const exploreCommand = buildListCommand("explore", {
       hasMore,
       prevHint: appendFlagHints(
         `sentry explore ${baseTarget} -c prev`,
-        hintFlags
+        hintFlags,
       ),
       nextHint: appendFlagHints(
         `sentry explore ${baseTarget} -c next`,
-        hintFlags
+        hintFlags,
       ),
     });
 

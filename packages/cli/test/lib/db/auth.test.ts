@@ -134,19 +134,19 @@ describe("env var auth: refreshToken edge cases", () => {
 });
 
 describe("env var auth: getRawEnvToken", () => {
-  test.each([
-    "SENTRY_AUTH_TOKEN",
-    "SENTRY_TOKEN",
-  ] as const)("shares normalization and source selection for %s", (source) => {
-    process.env[source] = "\x01\u00a0synthetic-token\x7f";
-    expect(getRawEnvToken()).toBe("synthetic-token");
-    expect(getAuthToken()).toBe("synthetic-token");
-    expect(getAuthConfig()).toMatchObject({
-      token: "synthetic-token",
-      source: `env:${source}`,
-    });
-    expect(getActiveEnvVarName()).toBe(source);
-  });
+  test.each(["SENTRY_AUTH_TOKEN", "SENTRY_TOKEN"] as const)(
+    "shares normalization and source selection for %s",
+    (source) => {
+      process.env[source] = "\x01\u00a0synthetic-token\x7f";
+      expect(getRawEnvToken()).toBe("synthetic-token");
+      expect(getAuthToken()).toBe("synthetic-token");
+      expect(getAuthConfig()).toMatchObject({
+        token: "synthetic-token",
+        source: `env:${source}`,
+      });
+      expect(getActiveEnvVarName()).toBe(source);
+    },
+  );
 
   test("keeps a control-only primary credential selected over the alias", () => {
     process.env.SENTRY_AUTH_TOKEN = "\x01\x7f";
@@ -180,20 +180,18 @@ describe("stored credential validation", () => {
     });
   });
 
-  test.each([
-    "prefix\0secret-tail",
-    "prefix\nsecret-tail",
-    "",
-    "\x01\x7f",
-  ])("rejects a malformed replacement without changing stored credentials %#", (token) => {
-    setAuthToken("previous-token", 3600, "previous-refresh-token");
-    const before = getDatabase().query("SELECT * FROM auth").get();
-    expect(() => setAuthToken(token, 60, "new-refresh-token")).toThrow(
-      MalformedAuthTokenError
-    );
-    expect(getDatabase().query("SELECT * FROM auth").get()).toEqual(before);
-    expect(getAuthToken()).toBe("previous-token");
-  });
+  test.each(["prefix\0secret-tail", "prefix\nsecret-tail", "", "\x01\x7f"])(
+    "rejects a malformed replacement without changing stored credentials %#",
+    (token) => {
+      setAuthToken("previous-token", 3600, "previous-refresh-token");
+      const before = getDatabase().query("SELECT * FROM auth").get();
+      expect(() => setAuthToken(token, 60, "new-refresh-token")).toThrow(
+        MalformedAuthTokenError,
+      );
+      expect(getDatabase().query("SELECT * FROM auth").get()).toEqual(before);
+      expect(getAuthToken()).toBe("previous-token");
+    },
+  );
 });
 
 describe("OAuth-preferred auth (#646)", () => {
@@ -234,9 +232,8 @@ describe("OAuth-preferred auth (#646)", () => {
 
 describe("clearAuth: integration with per-account caches", () => {
   test("clearAuth drops issue_org_cache entries (prevents cross-account leakage)", async () => {
-    const { setCachedIssueOrg, getCachedIssueOrg } = await import(
-      "../../../src/lib/db/issue-org-cache.js"
-    );
+    const { setCachedIssueOrg, getCachedIssueOrg } =
+      await import("../../../src/lib/db/issue-org-cache.js");
 
     // Seed a mapping as if a previous session resolved this issue.
     await setAuthToken("test-token");
@@ -416,89 +413,89 @@ describe("getAuthToken memoization", () => {
 });
 
 describe("refreshToken stored session updates", () => {
-  test.each([
-    "config alias",
-    "legacy host",
-  ] as const)("shares an in-flight refresh across a %s", async (variant) => {
-    const configDir = getConfigDir();
-    const secondConfigDir =
-      variant === "config alias" ? join(configDir, "alias") : configDir;
-    if (variant === "config alias") {
-      await symlink(configDir, secondConfigDir, "junction");
-    }
-    const originalFetch = globalThis.fetch;
-    const refreshTokens: (string | null)[] = [];
-    const host = "https://synthetic.example.invalid";
-    const env = { ...process.env, SENTRY_URL: host, SENTRY_HOST: host };
-    let markStarted: (() => void) | undefined;
-    const refreshStarted = new Promise<void>((resolve) => {
-      markStarted = resolve;
-    });
-    let releaseRefresh: (() => void) | undefined;
-    const refreshGate = new Promise<void>((resolve) => {
-      releaseRefresh = resolve;
-    });
-    const pending: Promise<unknown>[] = [];
-
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const request = new Request(input, init);
-      expect(request.url).toBe(`${host}/oauth/token/`);
-      refreshTokens.push(
-        new URLSearchParams(await request.text()).get("refresh_token")
-      );
-      const duplicate = refreshTokens.length > 1;
-      markStarted?.();
-      await refreshGate;
-      if (duplicate) {
-        return Response.json({ error: "invalid_grant" }, { status: 400 });
+  test.each(["config alias", "legacy host"] as const)(
+    "shares an in-flight refresh across a %s",
+    async (variant) => {
+      const configDir = getConfigDir();
+      const secondConfigDir =
+        variant === "config alias" ? join(configDir, "alias") : configDir;
+      if (variant === "config alias") {
+        await symlink(configDir, secondConfigDir, "junction");
       }
-      return Response.json({
-        access_token: "synthetic-new-token",
-        refresh_token: "synthetic-new-refresh",
-        expires_in: 3600,
-        token_type: "bearer",
+      const originalFetch = globalThis.fetch;
+      const refreshTokens: (string | null)[] = [];
+      const host = "https://synthetic.example.invalid";
+      const env = { ...process.env, SENTRY_URL: host, SENTRY_HOST: host };
+      let markStarted: (() => void) | undefined;
+      const refreshStarted = new Promise<void>((resolve) => {
+        markStarted = resolve;
       });
-    });
+      let releaseRefresh: (() => void) | undefined;
+      const refreshGate = new Promise<void>((resolve) => {
+        releaseRefresh = resolve;
+      });
+      const pending: Promise<unknown>[] = [];
 
-    try {
-      setAuthToken(
-        "synthetic-original-token",
-        3600,
-        "synthetic-original-refresh",
-        {
-          host,
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const request = new Request(input, init);
+        expect(request.url).toBe(`${host}/oauth/token/`);
+        refreshTokens.push(
+          new URLSearchParams(await request.text()).get("refresh_token"),
+        );
+        const duplicate = refreshTokens.length > 1;
+        markStarted?.();
+        await refreshGate;
+        if (duplicate) {
+          return Response.json({ error: "invalid_grant" }, { status: 400 });
         }
-      );
-      if (variant === "legacy host") {
-        // OAuth's trust check migrates pre-v16 rows while refresh is pending.
-        getDatabase().query("UPDATE auth SET host = NULL WHERE id = 1").run();
-      }
-      pending.push(withEnv(env, () => refreshToken({ force: true })));
-      await refreshStarted;
-      pending.push(
-        withEnv({ ...env, SENTRY_CONFIG_DIR: secondConfigDir }, () =>
-          refreshToken({ force: true })
-        )
-      );
-      // Let the second invocation reach the pending refresh before releasing it.
-      await setImmediate();
-      const completed = Promise.all(pending);
-      releaseRefresh?.();
-      await expect(completed).resolves.toMatchObject([
-        { token: "synthetic-new-token", refreshed: true },
-        { token: "synthetic-new-token", refreshed: true },
-      ]);
-      expect(refreshTokens).toEqual(["synthetic-original-refresh"]);
-      expect(getAuthConfig()).toMatchObject({
-        token: "synthetic-new-token",
-        refreshToken: "synthetic-new-refresh",
+        return Response.json({
+          access_token: "synthetic-new-token",
+          refresh_token: "synthetic-new-refresh",
+          expires_in: 3600,
+          token_type: "bearer",
+        });
       });
-    } finally {
-      releaseRefresh?.();
-      await Promise.allSettled(pending);
-      globalThis.fetch = originalFetch;
-    }
-  });
+
+      try {
+        setAuthToken(
+          "synthetic-original-token",
+          3600,
+          "synthetic-original-refresh",
+          {
+            host,
+          },
+        );
+        if (variant === "legacy host") {
+          // OAuth's trust check migrates pre-v16 rows while refresh is pending.
+          getDatabase().query("UPDATE auth SET host = NULL WHERE id = 1").run();
+        }
+        pending.push(withEnv(env, () => refreshToken({ force: true })));
+        await refreshStarted;
+        pending.push(
+          withEnv({ ...env, SENTRY_CONFIG_DIR: secondConfigDir }, () =>
+            refreshToken({ force: true }),
+          ),
+        );
+        // Let the second invocation reach the pending refresh before releasing it.
+        await setImmediate();
+        const completed = Promise.all(pending);
+        releaseRefresh?.();
+        await expect(completed).resolves.toMatchObject([
+          { token: "synthetic-new-token", refreshed: true },
+          { token: "synthetic-new-token", refreshed: true },
+        ]);
+        expect(refreshTokens).toEqual(["synthetic-original-refresh"]);
+        expect(getAuthConfig()).toMatchObject({
+          token: "synthetic-new-token",
+          refreshToken: "synthetic-new-refresh",
+        });
+      } finally {
+        releaseRefresh?.();
+        await Promise.allSettled(pending);
+        globalThis.fetch = originalFetch;
+      }
+    },
+  );
 
   test("keeps refresh identity aliases scoped to their credential store", async () => {
     const host = "https://synthetic.example.invalid";
@@ -514,7 +511,7 @@ describe("refreshToken stored session updates", () => {
         refresh_token: "synthetic-new-refresh",
         expires_in: 3600,
         token_type: "bearer",
-      })
+      }),
     );
     try {
       const original = withEnv(env, () => {
@@ -524,7 +521,7 @@ describe("refreshToken stored session updates", () => {
           "synthetic-original-refresh",
           {
             host,
-          }
+          },
         );
         return getCredentialContext();
       });
@@ -538,7 +535,7 @@ describe("refreshToken stored session updates", () => {
           "synthetic-original-refresh",
           {
             host,
-          }
+          },
         );
         const expectedCredential = getCredentialContext();
         setAuthToken("synthetic-new-token", 3600, "synthetic-new-refresh", {
@@ -546,13 +543,13 @@ describe("refreshToken stored session updates", () => {
         });
         // A rotation in another store cannot authorize this store's new login.
         await expect(refreshToken({ expectedCredential })).rejects.toThrow(
-          "Active credentials changed"
+          "Active credentials changed",
         );
       });
 
       // Login in the other store must not erase this session's refresh lineage.
       await expect(
-        withEnv(env, () => refreshToken({ expectedCredential: original }))
+        withEnv(env, () => refreshToken({ expectedCredential: original })),
       ).resolves.toMatchObject({
         token: "synthetic-new-token",
         refreshed: false,
@@ -574,7 +571,7 @@ describe("refreshToken stored session updates", () => {
       const request = new Request(input, init);
       expect(request.url).toBe(`${host}/oauth/token/`);
       refreshTokens.push(
-        new URLSearchParams(await request.text()).get("refresh_token")
+        new URLSearchParams(await request.text()).get("refresh_token"),
       );
       if (refreshTokens.length > 1) {
         return Response.json({ error: "invalid_grant" }, { status: 400 });
@@ -594,7 +591,7 @@ describe("refreshToken stored session updates", () => {
         "synthetic-original-refresh",
         {
           host,
-        }
+        },
       );
       // Start just above the 10% refresh threshold for a one-hour session.
       getDatabase()
@@ -682,7 +679,7 @@ describe("hasStoredAuthCredentials memoization", () => {
     // (simulates a code path the cache doesn't know about).
     const db = getDatabase();
     db.query(
-      "INSERT OR REPLACE INTO auth (id, token) VALUES (1, 'sneaky')"
+      "INSERT OR REPLACE INTO auth (id, token) VALUES (1, 'sneaky')",
     ).run();
 
     // Cache still returns stale false
