@@ -5,6 +5,7 @@
  * Supports self-hosted instances via SENTRY_URL environment variable.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   DEFAULT_SENTRY_HOST,
   DEFAULT_SENTRY_URL,
@@ -12,12 +13,23 @@ import {
   normalizeUrl,
 } from "./constants.js";
 
+const HTTP_URL_RE = /^https?:\/\//i;
+const TRAILING_SLASHES_RE = /\/+$/;
+const scopedBaseUrl = new AsyncLocalStorage<string>();
+
+/** Render one web URL against the same credential host used for API calls. */
+export function withSentryBaseUrl<T>(baseUrl: string, build: () => T): T {
+  return scopedBaseUrl.run(baseUrl, build);
+}
+
 /**
  * Get the Sentry web base URL.
  * Supports self-hosted instances via SENTRY_URL env var.
  */
 export function getSentryBaseUrl(): string {
-  return getConfiguredSentryUrl() ?? DEFAULT_SENTRY_URL;
+  return (
+    scopedBaseUrl.getStore() ?? getConfiguredSentryUrl() ?? DEFAULT_SENTRY_URL
+  );
 }
 
 /**
@@ -134,6 +146,52 @@ export function normalizeOrigin(
   // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return new URL(raw).origin;
+  } catch {
+    return;
+  }
+}
+
+/** Normalize only credential-free HTTP(S) origins; allow root-relative URLs with a base. */
+export function normalizeHttpOrigin(
+  input: string | undefined | null,
+  base?: string
+): string | undefined {
+  if (!input) {
+    return;
+  }
+  // biome-ignore lint/plugin: malformed external URLs are rejected with undefined by design.
+  try {
+    const parsed = base ? new URL(input, base) : new URL(input);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      !parsed.hostname ||
+      parsed.username ||
+      parsed.password
+    ) {
+      return;
+    }
+    return parsed.origin;
+  } catch {
+    return;
+  }
+}
+
+/** Validate an API-provided region URL while retaining an installation path. */
+export function normalizeRegionBaseUrl(
+  raw: string,
+  responseOrigin: string
+): string | undefined {
+  if (!(raw.startsWith("/") || HTTP_URL_RE.test(raw))) {
+    return;
+  }
+  // biome-ignore lint/plugin: reject malformed region metadata without making discovery fail.
+  try {
+    const parsed = new URL(raw, responseOrigin);
+    const origin = normalizeHttpOrigin(parsed.href);
+    if (!origin || parsed.search || parsed.hash) {
+      return;
+    }
+    return `${origin}${parsed.pathname.replace(TRAILING_SLASHES_RE, "")}`;
   } catch {
     return;
   }

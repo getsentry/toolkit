@@ -86,7 +86,7 @@ import {
   SEARCH_SYNTAX_REFERENCE,
   sanitizeQuery,
 } from "../../lib/search-query.js";
-import { isSaaS } from "../../lib/sentry-urls.js";
+import { isSaaS } from "../../lib/sentry-web-urls.js";
 import {
   appendPeriodHint,
   formatTimeRangeFlag,

@@ -18,7 +18,8 @@ import {
   setCustomHeadersOverride,
 } from "../../src/lib/custom-headers.js";
 import { setDefaultHeaders } from "../../src/lib/db/defaults.js";
-import { useTestConfigDir } from "../helpers.js";
+import { resetEnvTokenHostForTesting } from "../../src/lib/env-token-host.js";
+import { mintSntrysToken, useTestConfigDir } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // parseCustomHeaders — parsing logic
@@ -221,6 +222,32 @@ describe("getCustomHeaders", () => {
     expect(getCustomHeaders()).toEqual([["X-IAP-Token", "abc123"]]);
   });
 
+  test("sends custom headers to a claim-routed self-hosted instance", () => {
+    const previousToken = process.env.SENTRY_AUTH_TOKEN;
+    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+      iat: 1,
+      url: "https://sentry.example.com",
+    });
+    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: scoped-value";
+    resetEnvTokenHostForTesting();
+    try {
+      const trusted = new Headers();
+      applyCustomHeaders(trusted, "https://sentry.example.com/api/0/");
+      expect(trusted.get("X-IAP-Token")).toBe("scoped-value");
+
+      const other = new Headers();
+      applyCustomHeaders(other, "https://other.example.com/api/0/");
+      expect(other.get("X-IAP-Token")).toBeNull();
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.SENTRY_AUTH_TOKEN;
+      } else {
+        process.env.SENTRY_AUTH_TOKEN = previousToken;
+      }
+      resetEnvTokenHostForTesting();
+    }
+  });
+
   test("env var takes priority over SQLite defaults", () => {
     process.env.SENTRY_HOST = "https://sentry.example.com";
     process.env.SENTRY_CUSTOM_HEADERS = "X-Env: from-env";
@@ -350,9 +377,6 @@ describe("applyCustomHeaders", () => {
     savedHeaders = process.env.SENTRY_CUSTOM_HEADERS;
     savedHost = process.env.SENTRY_HOST;
     _resetCustomHeadersCache();
-    const { resetEnvTokenHostForTesting } = await import(
-      "../../src/lib/env-token-host.js"
-    );
     resetEnvTokenHostForTesting();
   });
 
@@ -368,9 +392,6 @@ describe("applyCustomHeaders", () => {
       delete process.env.SENTRY_HOST;
     }
     _resetCustomHeadersCache();
-    const { resetEnvTokenHostForTesting } = await import(
-      "../../src/lib/env-token-host.js"
-    );
     resetEnvTokenHostForTesting();
   });
 

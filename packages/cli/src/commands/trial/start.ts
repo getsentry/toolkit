@@ -26,7 +26,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger as log } from "../../lib/logger.js";
 import { generateQRCode } from "../../lib/qrcode.js";
 import { resolveOrg } from "../../lib/resolve-target.js";
-import { buildBillingUrl } from "../../lib/sentry-urls.js";
+import { buildBillingUrl } from "../../lib/sentry-web-urls.js";
 import {
   findAvailableTrial,
   getDisplayNameForTrialName,

@@ -49,7 +49,7 @@ import {
   resolveProjectBoundSlug,
 } from "../../lib/resolve-target.js";
 import { RETENTION_DAYS } from "../../lib/retention.js";
-import { buildLogsUrl } from "../../lib/sentry-urls.js";
+import { buildLogsUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits } from "../../lib/utils.js";
 import type { DetailedSentryLog, TraceItemDetail } from "../../types/index.js";

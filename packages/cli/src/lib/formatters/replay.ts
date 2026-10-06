@@ -13,7 +13,7 @@ import type {
   ReplayRelatedTrace,
 } from "../../types/index.js";
 import { getReplayUserLabel } from "../replay-search.js";
-import { buildReplayUrl } from "../sentry-urls.js";
+import { buildReplayUrl } from "../sentry-web-urls.js";
 import {
   escapeMarkdownCell,
   escapeMarkdownInline,

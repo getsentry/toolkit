@@ -64,7 +64,7 @@ import {
   type ResolvedTarget,
   resolveProjectBoundTargets,
 } from "../../../lib/resolve-target.js";
-import { buildMetricAlertsUrl } from "../../../lib/sentry-urls.js";
+import { buildMetricAlertsUrl } from "../../../lib/sentry-web-urls.js";
 import type { Writer } from "../../../types/index.js";
 import {
   assertAlertListLimit,

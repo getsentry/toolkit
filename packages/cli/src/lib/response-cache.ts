@@ -14,7 +14,7 @@
  * @module
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import {
   mkdir,
   readdir,
@@ -119,11 +119,13 @@ export function classifyUrl(url: string): TtlTier {
  *
  * @internal Exported for testing
  */
-export function buildCacheKey(method: string, url: string): string {
+export function buildCacheKey(
+  method: string,
+  url: string,
+  identity = getIdentityFingerprint()
+): string {
   const normalized = normalizeUrl(method, url);
-  return createHash("sha256")
-    .update(`${getIdentityFingerprint()}|${normalized}`)
-    .digest("hex");
+  return createHmac("sha256", identity).update(normalized).digest("hex");
 }
 
 /**
@@ -426,7 +428,8 @@ function isCacheWriteDisabled(): boolean {
 export async function getCachedResponse(
   method: string,
   url: string,
-  requestHeaders: Record<string, string>
+  requestHeaders: Record<string, string>,
+  identity = getIdentityFingerprint()
 ): Promise<Response | undefined> {
   if (
     method !== "GET" ||
@@ -439,7 +442,7 @@ export async function getCachedResponse(
   let key: string;
   // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    key = buildCacheKey(method, url);
+    key = buildCacheKey(method, url, identity);
   } catch {
     // Malformed URL — skip cache lookup. The request itself will surface
     // any real URL error.
@@ -539,11 +542,13 @@ async function readCacheEntry(key: string): Promise<CacheEntry | undefined> {
  * @param requestHeaders - Request headers
  * @param response - The fetch Response to cache (must be cloned before passing)
  */
+// biome-ignore lint/nursery/useMaxParams: preserve the public cache API; the final identity pins an in-flight request.
 export async function storeCachedResponse(
   method: string,
   url: string,
   requestHeaders: Record<string, string>,
-  response: Response
+  response: Response,
+  identity = getIdentityFingerprint()
 ): Promise<void> {
   if (
     method !== "GET" ||
@@ -557,7 +562,7 @@ export async function storeCachedResponse(
   let key: string;
   // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    key = buildCacheKey(method, url);
+    key = buildCacheKey(method, url, identity);
   } catch {
     // Malformed URL — skip caching this response
     return;
@@ -571,7 +576,7 @@ export async function storeCachedResponse(
       async (span) => {
         const size = await writeResponseToCache({
           key,
-          identity: getIdentityFingerprint(),
+          identity,
           url,
           requestHeaders,
           response,
@@ -699,7 +704,8 @@ async function writeResponseToCache(req: WriteRequest): Promise<number> {
  * `identity` field and are treated as foreign.
  */
 export async function invalidateCachedResponsesMatching(
-  prefix: string
+  prefix: string,
+  identity = getIdentityFingerprint()
 ): Promise<void> {
   // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
@@ -710,18 +716,13 @@ export async function invalidateCachedResponsesMatching(
       return;
     }
 
-    const currentIdentity = getIdentityFingerprint();
-
     await cacheIO.map(jsonFiles, async (file) => {
       const filePath = join(cacheDir, file);
       // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         const raw = await readFile(filePath, "utf-8");
         const entry = JSON.parse(raw) as CacheEntry;
-        if (
-          entry.identity === currentIdentity &&
-          entry.url?.startsWith(prefix)
-        ) {
+        if (entry.identity === identity && entry.url?.startsWith(prefix)) {
           // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
           await unlink(filePath).catch(() => {
             /* another process may have deleted it */

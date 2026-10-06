@@ -25,7 +25,7 @@ import {
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
-import { buildTraceUrl } from "../../lib/sentry-urls.js";
+import { buildTraceUrl } from "../../lib/sentry-web-urls.js";
 import {
   formatTimeRangeFlag,
   PERIOD_BRIEF,

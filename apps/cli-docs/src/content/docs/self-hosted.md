@@ -9,6 +9,8 @@ The CLI works with self-hosted Sentry instances. Set the `SENTRY_HOST` (or `SENT
 export SENTRY_HOST=https://sentry.example.com
 ```
 
+If you use an `sntrys_` organization token, the CLI uses the instance URL in its token claim when neither URL variable is set. A stored login also keeps its instance URL. An explicit URL takes precedence, but the CLI rejects requests outside the active credential's trusted host.
+
 ## Authenticating
 
 ### With OAuth (Sentry 26.1.0+)

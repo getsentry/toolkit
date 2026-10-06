@@ -1,3 +1,4 @@
+import { normalizeAuthToken } from "@sentry/toolkit-core/auth-token";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
@@ -126,8 +127,6 @@ import type {
   AlertRuleUpdate,
   AutofixRun,
   AutofixRunState,
-  SearchAgentStart,
-  SearchAgentState,
   ClientKey,
   ClientKeyList,
   CommitList,
@@ -170,6 +169,8 @@ import type {
   ReplayDetails,
   ReplayList,
   ReplayRecordingSegments,
+  SearchAgentStart,
+  SearchAgentState,
   SentryAppComponentList,
   SentryAppExternalRequestOptions,
   SentryAppInstallationList,
@@ -794,8 +795,12 @@ export class SentryApiService {
       "Content-Type": "application/json",
       "User-Agent": USER_AGENT,
     };
-    if (this.accessToken) {
-      headers.Authorization = `Bearer ${this.accessToken}`;
+    if (this.accessToken !== null) {
+      const token = normalizeAuthToken(this.accessToken);
+      if (token === null) {
+        throw new ConfigurationError("Malformed authentication token");
+      }
+      headers.Authorization = `Bearer ${token}`;
     }
     if (this.clientId) {
       headers["X-Sentry-MCP-Client-Id"] = this.clientId;

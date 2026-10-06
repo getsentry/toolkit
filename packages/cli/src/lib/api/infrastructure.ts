@@ -14,7 +14,11 @@ import * as Sentry from "@sentry/node-core/light";
 import { type GenericSchema, safeParse } from "valibot";
 
 import { extractRequiredScopes } from "../api-scope.js";
-import { getActiveEnvVarName, isEnvTokenActive } from "../db/auth.js";
+import {
+  type CredentialContext,
+  getActiveEnvVarName,
+  isEnvTokenActive,
+} from "../db/auth.js";
 import { getEnv } from "../env.js";
 import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
@@ -191,6 +195,10 @@ export type ApiRequestOptions<T = unknown> = {
   params?: Record<string, string | number | boolean | string[] | undefined>;
   /** Optional valibot schema for runtime validation of response data */
   schema?: GenericSchema<unknown, T>;
+  /** Internal immutable credential for a multi-request operation. */
+  credential?: CredentialContext;
+  /** Manually validate each redirect before forwarding credentials. */
+  validatedRedirects?: boolean;
 };
 
 /**
@@ -302,6 +310,9 @@ export function unwrapPaginatedResult<T>(
     response?.headers.get("link") ?? null
   );
   const out: PaginatedResponse<T> = { data };
+  if (response) {
+    out.response = response;
+  }
   if (nextCursor !== undefined) {
     out.nextCursor = nextCursor;
   }
@@ -415,6 +426,8 @@ export type PaginatedResponse<T> = {
   nextCursor?: string;
   /** Cursor for the previous page (undefined on the first page) */
   prevCursor?: string;
+  /** Exact validated response, for provenance-sensitive callers. */
+  response?: Response;
 };
 
 /**
@@ -568,8 +581,16 @@ export async function apiRequestToRegion<T>(
   endpoint: string,
   options: ApiRequestOptions<T> = {}
 ): Promise<{ data: T; headers: Headers }> {
-  const { method = "GET", body, bodyEncoding, params, schema } = options;
-  const config = getSdkConfig(regionUrl);
+  const {
+    method = "GET",
+    body,
+    bodyEncoding,
+    params,
+    schema,
+    credential,
+    validatedRedirects,
+  } = options;
+  const config = getSdkConfig(regionUrl, { credential, validatedRedirects });
 
   const normalizedEndpoint = endpoint.startsWith("/")
     ? endpoint.slice(1)

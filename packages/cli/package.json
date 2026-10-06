@@ -103,6 +103,7 @@
     "@sentry/node-core": "10.63.0",
     "@sentry/sqlish": "^1.0.1",
     "@sentry/symbolic": "13.7.0",
+    "@sentry/toolkit-core": "workspace:*",
     "@spotlightjs/spotlight": "^4.11.7",
     "@stricli/auto-complete": "^1.2.8",
     "@stricli/core": "1.2.8",

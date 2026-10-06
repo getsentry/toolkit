@@ -33,7 +33,7 @@ import { reportCliError } from "../error-reporting.js";
 import { type AuthGuardSuccess, withAuthGuard } from "../errors.js";
 import { logger } from "../logger.js";
 import { getApiBaseUrl } from "../sentry-client.js";
-import { buildProjectUrl } from "../sentry-urls.js";
+import { buildProjectUrl } from "../sentry-web-urls.js";
 import { isAllDigits } from "../utils.js";
 
 import {

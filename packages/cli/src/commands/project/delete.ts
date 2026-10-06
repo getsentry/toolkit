@@ -40,7 +40,7 @@ import {
   requireExplicitTarget,
 } from "../../lib/mutate-command.js";
 import { resolveProjectBoundTarget } from "../../lib/resolve-target.js";
-import { buildProjectUrl } from "../../lib/sentry-urls.js";
+import { buildProjectUrl } from "../../lib/sentry-web-urls.js";
 
 const log = logger.withTag("project.delete");
 

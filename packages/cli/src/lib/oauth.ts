@@ -5,6 +5,10 @@
  * https://datatracker.ietf.org/doc/html/rfc8628
  */
 
+import {
+  deviceCodeRequestBody,
+  deviceTokenRequestBody,
+} from "@sentry/toolkit-core/oauth-device";
 import { safeParse } from "valibot";
 import type { TokenResponse } from "../types/index.js";
 import {
@@ -31,9 +35,9 @@ import {
   ValidationError,
 } from "./errors.js";
 import { logger } from "./logger.js";
-import { normalizeOrigin } from "./sentry-urls.js";
+import { normalizeHttpOrigin } from "./sentry-urls.js";
 import { withHttpSpan } from "./telemetry.js";
-import { getActiveTokenHost, isRequestOriginTrusted } from "./token-host.js";
+import { getActiveTokenHost } from "./token-host.js";
 
 /**
  * Get the Sentry instance URL for OAuth endpoints.
@@ -195,12 +199,13 @@ function sleep(ms: number): Promise<void> {
  */
 async function fetchWithConnectionError(
   url: string,
-  init: RequestInit
+  init: RequestInit,
+  customHeadersTrusted?: boolean
 ): Promise<Response> {
   // Inject custom headers for self-hosted proxies (IAP, mTLS, etc.) —
   // URL-scoped so they don't leak to untrusted hosts.
   const merged = new Headers(init.headers);
-  applyCustomHeaders(merged, url);
+  applyCustomHeaders(merged, url, customHeadersTrusted);
   const effectiveInit: RequestInit = { ...init, headers: merged };
 
   try {
@@ -214,11 +219,12 @@ async function fetchWithConnectionError(
     if (!(error instanceof Error)) {
       throw error;
     }
+    const targetOrigin = new URL(url).origin;
 
     // TLS certificate errors — give actionable guidance
     if (isTlsCertError(error)) {
       throw new ApiError(
-        `TLS certificate error connecting to ${getSentryUrl()}`,
+        `TLS certificate error connecting to ${targetOrigin}`,
         0,
         buildTlsErrorDetail(error)
       );
@@ -231,7 +237,7 @@ async function fetchWithConnectionError(
 
     if (isConnectionError) {
       throw new ApiError(
-        `Cannot connect to Sentry at ${getSentryUrl()}`,
+        `Cannot connect to Sentry at ${targetOrigin}`,
         0,
         "Check your network connection and SENTRY_URL configuration"
       );
@@ -245,15 +251,16 @@ async function fetchWithConnectionError(
  * token's scope. Defense-in-depth for the rare case where SENTRY_HOST/URL
  * was mutated without going through the URL-arg / rc-shim guards.
  */
-function assertRefreshHostTrusted(): void {
-  const refreshUrl = getSentryUrl();
-  if (!isRequestOriginTrusted(refreshUrl)) {
+function assertRefreshHostTrusted(refreshUrl: string): string {
+  const origin = normalizeHttpOrigin(refreshUrl);
+  if (!origin) {
     throw new HostScopeError(
       "OAuth refresh token",
-      normalizeOrigin(refreshUrl) ?? "<unknown host>",
+      "<unknown host>",
       getActiveTokenHost()
     );
   }
+  return origin;
 }
 
 /**
@@ -270,10 +277,7 @@ function requestDeviceCode(scope: string = SCOPES) {
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: clientId,
-          scope,
-        }),
+        body: deviceCodeRequestBody(clientId, scope),
       }
     );
 
@@ -324,11 +328,7 @@ function pollForToken(deviceCode: string): Promise<TokenResponse> {
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: getClientId(),
-          device_code: deviceCode,
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        }),
+        body: deviceTokenRequestBody(getClientId(), deviceCode),
       }
     );
 
@@ -509,42 +509,52 @@ export async function setApiToken(token: string): Promise<void> {
 
 /** Refresh an access token using a refresh token. */
 export function refreshAccessToken(
-  refreshToken: string
+  refreshToken: string,
+  options: { credentialHost: string }
 ): Promise<TokenResponse> {
   const clientId = getClientId();
-  assertRefreshHostTrusted();
+  const credentialHost = assertRefreshHostTrusted(options.credentialHost);
 
   return withHttpSpan("POST", "/oauth/token/", async () => {
     const response = await fetchWithConnectionError(
-      `${getSentryUrl()}/oauth/token/`,
+      `${credentialHost}/oauth/token/`,
       {
         method: "POST",
+        // Never replay a refresh credential to a server-selected destination.
+        redirect: "error",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           client_id: clientId,
           grant_type: "refresh_token",
           refresh_token: refreshToken,
         }),
-      }
+      },
+      true
     );
 
     if (!response.ok) {
-      let errorDetail = "Token refresh failed";
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      let rejected = false;
       try {
-        const errorData = await response.json();
-        const errorResult = safeParse(TokenErrorResponseSchema, errorData);
-        if (errorResult.success) {
-          errorDetail =
-            errorResult.output.error_description ?? errorResult.output.error;
-        }
-      } catch {
-        // Ignore JSON parse errors
+        const errorResult = safeParse(
+          TokenErrorResponseSchema,
+          await response.json()
+        );
+        rejected =
+          errorResult.success && errorResult.output.error === "invalid_grant";
+      } catch (error) {
+        logger.debug("Failed to parse token refresh error response", error);
       }
-
-      throw new AuthError(
-        "expired",
-        `Session expired: ${errorDetail}. Run 'sentry auth login' to re-authenticate.`
+      if (rejected) {
+        throw new AuthError(
+          "expired",
+          "Session expired because the refresh credential was rejected. Run 'sentry auth login' to re-authenticate."
+        );
+      }
+      throw new ApiError(
+        "Token refresh failed",
+        response.status,
+        "The refresh endpoint returned an unexpected failure.",
+        "/oauth/token/"
       );
     }
 
