@@ -943,7 +943,7 @@ function isAdditiveAggregate(yAxis: string): boolean {
  * `interval` is null when Sentry chose the bucket size for the range.
  */
 export function formatTimeSeriesResults(params: {
-  series: { data: Array<[number, Array<{ count?: number | null }>]> };
+  series: { data: Array<[number, Array<{ count?: string | number | null }>]> };
   yAxis: string;
   interval: string | null;
   inputQuery: string;
@@ -965,7 +965,7 @@ export function formatTimeSeriesResults(params: {
 
   const points = series.data.map(([ts, values]) => ({
     time: new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " "),
-    value: values[0]?.count ?? 0,
+    value: Number(values[0]?.count ?? 0),
   }));
 
   // Total is only meaningful for additive aggregates; summing count_unique /

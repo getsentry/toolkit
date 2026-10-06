@@ -306,6 +306,66 @@ describe("search_events", () => {
     expect(result).toContain("**Peak**: 8");
   });
 
+  it("handles timeseries when the API returns count as a string (e.g. max(timestamp))", async () => {
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "max(timestamp)", interval: "1d" },
+      timeRange: { statsPeriod: "45d" },
+      explanation: "Max timestamp per day",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    // The Sentry API returns `count` as a string for non-count aggregates like max(timestamp).
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-stats/",
+        () =>
+          HttpResponse.json({
+            data: [
+              [1757548800, [{ count: "1757548800" }]],
+              [1757635200, [{ count: "1757635200" }]],
+              [1757721600, [{ count: "1757721600" }]],
+            ],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "latest event timestamp per day",
+        fields: null,
+        sort: null,
+        period: "45d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("max(timestamp) over time");
+  });
+
   it("should handle spans dataset queries", async () => {
     // Mock AI response for spans dataset
     mockGenerateText.mockResolvedValueOnce(
