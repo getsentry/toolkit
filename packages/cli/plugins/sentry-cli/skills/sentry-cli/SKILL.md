@@ -418,6 +418,7 @@ Manage Sentry issues
 - `sentry issue archive <issue>` — Archive (ignore) an issue
 - `sentry issue merge <issue...>` — Merge 2+ issues into a single canonical group
 - `sentry issue link <issue> <url>` — Link an existing external issue
+- `sentry issue unlink <issue> <url>` — Unlink an external issue
 
 → Full flags and examples: `references/issue.md`
 
