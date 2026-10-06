@@ -240,15 +240,27 @@ async function listOrganizationPages({
 export async function listOrganizationsUncached(
   credential = getCredentialContext()
 ): Promise<SentryOrganization[]> {
-  const { setOrgRegions } = await import("../db/regions.js");
+  const { invalidateCachedOrganizations, setOrgRegions } = await import(
+    "../db/regions.js"
+  );
   if (!credential) {
     throw new AuthError("not_authenticated");
   }
+  const baseUrl = getControlSiloUrl(credential);
   const result = await listOrganizationPages({
-    baseUrl: getControlSiloUrl(credential),
+    baseUrl,
     credential,
   });
-  setOrgRegions(result.regions);
+  if (
+    result.organizations.length > 0 &&
+    result.regions.length === result.organizations.length
+  ) {
+    setOrgRegions(result.regions);
+  } else {
+    // A skipped or unverified region has no safe route. Existing scoped rows
+    // may still route requests, but cannot represent the complete org list.
+    invalidateCachedOrganizations(baseUrl, credential.identity);
+  }
   return result.organizations;
 }
 

@@ -404,6 +404,19 @@ export function setOrgRegions(entries: OrgRegionEntry[]): void {
   }
 }
 
+/** Keep trusted region routes but make an incomplete org list a cache miss. */
+export function invalidateCachedOrganizations(
+  sourceOrigin: string,
+  identity: string
+): void {
+  const source = requireOrigin(sourceOrigin, "Region lookup origin");
+  getDatabase()
+    .query(
+      `UPDATE ${TABLE} SET org_id = NULL, org_name = NULL, org_role = NULL WHERE source_origin = ? AND credential_identity = ?`
+    )
+    .run(source, identity);
+}
+
 /**
  * Clear all cached organization regions.
  * Should be called when the user logs out.

@@ -6,7 +6,12 @@ import {
 } from "../../../src/lib/api/organizations.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { getDatabase } from "../../../src/lib/db/index.js";
-import { clearOrgRegions, getOrgRegion } from "../../../src/lib/db/regions.js";
+import {
+  clearOrgRegions,
+  getCachedOrganizations,
+  getOrgRegion,
+  setOrgRegions,
+} from "../../../src/lib/db/regions.js";
 import {
   disableResponseCache,
   resetCacheState,
@@ -213,6 +218,88 @@ describe("organization discovery credential context", () => {
     expect(
       getOrgRegion("malformed-region", "https://sentry.io", identity(token))
     ).toBeUndefined();
+  });
+
+  test("an invalid region among valid siblings never makes a partial org list authoritative", async () => {
+    const token = "mixed-region-token";
+    setAuthToken(token, undefined, undefined, { host: "https://sentry.io" });
+    const requests = { count: 0 };
+    globalThis.fetch = vi.fn(async () => {
+      requests.count += 1;
+      return Response.json(
+        requests.count === 1
+          ? [{ id: "11", slug: "valid-org", name: "Valid" }]
+          : [
+              { id: "11", slug: "valid-org", name: "Valid" },
+              {
+                id: "12",
+                slug: "invalid-org",
+                name: "Invalid Region",
+                links: { regionUrl: "ftp://region.example.com" },
+              },
+            ]
+      );
+    });
+
+    expect((await listOrganizationsUncached()).map((org) => org.slug)).toEqual([
+      "valid-org",
+    ]);
+    setOrgRegions([
+      {
+        slug: "foreign-org",
+        regionUrl: "https://sentry.io",
+        cacheOrigin: "https://sentry.io",
+        identity: identity("another-token"),
+        orgId: "99",
+        orgName: "Other",
+      },
+    ]);
+    expect((await listOrganizationsUncached()).map((org) => org.slug)).toEqual([
+      "valid-org",
+      "invalid-org",
+    ]);
+    expect(
+      getOrgRegion("invalid-org", "https://sentry.io", identity(token))
+    ).toBeUndefined();
+    expect(
+      getOrgRegion("valid-org", "https://sentry.io", identity(token))
+    ).toBe("https://sentry.io");
+    expect(
+      getCachedOrganizations("https://sentry.io", identity(token))
+    ).toEqual([]);
+    expect(
+      getCachedOrganizations(
+        "https://sentry.io",
+        identity("another-token")
+      ).map((org) => org.slug)
+    ).toEqual(["foreign-org"]);
+    expect((await listOrganizations()).map((org) => org.slug)).toEqual([
+      "valid-org",
+      "invalid-org",
+    ]);
+    expect(requests.count).toBe(3);
+  });
+
+  test("an empty live org list invalidates previously cached membership", async () => {
+    const token = "empty-region-token";
+    setAuthToken(token, undefined, undefined, { host: "https://sentry.io" });
+    const requests = { count: 0 };
+    globalThis.fetch = vi.fn(async () => {
+      requests.count += 1;
+      return Response.json(
+        requests.count === 1
+          ? [{ id: "13", slug: "former-org", name: "Former" }]
+          : []
+      );
+    });
+
+    await listOrganizationsUncached();
+    expect(
+      getCachedOrganizations("https://sentry.io", identity(token))
+    ).toHaveLength(1);
+    await expect(listOrganizationsUncached()).resolves.toEqual([]);
+    await expect(listOrganizations()).resolves.toEqual([]);
+    expect(requests.count).toBe(3);
   });
 
   test("persists the exact validated final response origin", async () => {
