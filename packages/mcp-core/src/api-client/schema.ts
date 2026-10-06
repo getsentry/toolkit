@@ -2448,7 +2448,9 @@ export const EventsStatsResponseSchema = z
       z.tuple([
         z.number(),
         z.array(
-          z.object({ count: z.union([z.string(), z.number()]).nullish() }).passthrough(),
+          z
+            .object({ count: z.union([z.string(), z.number()]).nullish() })
+            .passthrough(),
         ),
       ]),
     ),

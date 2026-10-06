@@ -394,10 +394,12 @@ describe("search_events", () => {
         "https://sentry.io/api/0/organizations/test-org/events-stats/",
         () =>
           HttpResponse.json({
+            // Empty buckets are zero-filled with a numeric 0 by Sentry.
             data: [
-              [1757548800, [{ count: "2026-07-11T00:00:00" }]],
-              [1757635200, [{ count: "2026-07-12T00:00:00" }]],
-              [1757721600, [{ count: "2026-07-13T00:00:00" }]],
+              [1757462400, [{ count: 0 }]],
+              [1757548800, [{ count: "2026-07-11T00:00:00+00:00" }]],
+              [1757635200, [{ count: "2026-07-12T00:00:00+00:00" }]],
+              [1757721600, [{ count: "2026-07-13T00:00:00+00:00" }]],
             ],
           }),
       ),
@@ -428,7 +430,10 @@ describe("search_events", () => {
 
     expect(result).toContain("max(timestamp) over time");
     // ISO datetime strings must appear in the output as-is, never as "NaN".
-    expect(result).toContain("2026-07-13T00:00:00");
+    expect(result).toContain("2026-07-13T00:00:00+00:00");
+    expect(result).toContain(
+      "**Peak**: 2026-07-13T00:00:00+00:00 at 2025-09-13 00:00",
+    );
     expect(result).not.toContain("NaN");
   });
 

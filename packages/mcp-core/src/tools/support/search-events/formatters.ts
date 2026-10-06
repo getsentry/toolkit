@@ -965,17 +965,13 @@ export function formatTimeSeriesResults(params: {
 
   const points = series.data.map(([ts, values]) => {
     const raw = values[0]?.count ?? 0;
-    // Number() coerces the whole string (unlike parseFloat which stops at the
-    // first non-numeric char), so ISO datetime strings like "2026-07-13T00:00:00"
-    // correctly yield NaN rather than silently truncating to the year.
+    // Date-typed aggregates such as max(timestamp) return ISO datetime
+    // strings. Number() rejects those whole (parseFloat would keep the year),
+    // so order them by parsed time and display the raw string.
     const numeric = typeof raw === "number" ? raw : Number(raw);
-    // Use 0 as a fallback when the value can't be coerced (e.g. ISO datetime
-    // string returned by aggregates like max(timestamp)). The original raw
-    // string is preserved for display so we never render "NaN" to the user.
-    const value = isNaN(numeric) ? 0 : numeric;
-    const display = isNaN(numeric)
-      ? String(raw)
-      : numeric.toLocaleString();
+    const isNumeric = !Number.isNaN(numeric);
+    const value = isNumeric ? numeric : Date.parse(String(raw)) || 0;
+    const display = isNumeric ? numeric.toLocaleString() : String(raw);
     return {
       time: new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " "),
       value,
