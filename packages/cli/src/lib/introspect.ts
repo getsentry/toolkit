@@ -219,7 +219,7 @@ export function getPositionalString(params?: PositionalParams): string {
  * @returns Array of positional info objects
  */
 export function extractPositionals(
-  params?: PositionalParams
+  params?: PositionalParams,
 ): PositionalInfo[] {
   if (!params) {
     return [];
@@ -253,7 +253,7 @@ export function extractPositionals(
  * @returns Normalized flag info array
  */
 export function extractFlags(
-  flags: Record<string, FlagDef> | undefined
+  flags: Record<string, FlagDef> | undefined,
 ): FlagInfo[] {
   if (!flags) {
     return [];
@@ -280,7 +280,7 @@ export function extractFlags(
 export function buildCommandInfo(
   cmd: Command,
   path: string,
-  examples: string[] = []
+  examples: string[] = [],
 ): CommandInfo {
   const jsonFields = cmd.__jsonSchema
     ? extractSchemaFields(cmd.__jsonSchema)
@@ -310,7 +310,7 @@ export function buildCommandInfo(
 export function extractRouteGroupCommands(
   routeMap: RouteMap,
   routeName: string,
-  docExamples: Map<string, string[]> = new Map()
+  docExamples: Map<string, string[]> = new Map(),
 ): CommandInfo[] {
   const commands: CommandInfo[] = [];
 
@@ -327,7 +327,7 @@ export function extractRouteGroupCommands(
     } else if (isRouteMap(subTarget)) {
       const nestedPrefix = `${routeName} ${subEntry.name.original}`;
       commands.push(
-        ...extractRouteGroupCommands(subTarget, nestedPrefix, docExamples)
+        ...extractRouteGroupCommands(subTarget, nestedPrefix, docExamples),
       );
     }
   }
@@ -396,7 +396,7 @@ const MAX_SUGGESTIONS = 3;
  */
 export function resolveCommandPath(
   routeMap: RouteMap,
-  path: string[]
+  path: string[],
 ): ResolvedPath | UnresolvedPath | null {
   if (path.length === 0) {
     return null;

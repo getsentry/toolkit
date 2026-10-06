@@ -23,13 +23,13 @@ import { DOCS_FRAGMENTS } from "./paths.js";
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
 const skillContentExists = await access(SKILL_CONTENT_PATH).then(
   () => true,
-  () => false
+  () => false,
 );
 if (!skillContentExists) {
   mkdirSync("src/generated", { recursive: true });
   await writeFile(
     SKILL_CONTENT_PATH,
-    "export const SKILL_FILES: [string, string][] = [];\n"
+    "export const SKILL_FILES: [string, string][] = [];\n",
   );
 }
 
@@ -48,7 +48,7 @@ const isStrict = process.argv.includes("--strict");
 
 const routeMap = routes as unknown as RouteMap;
 const allRoutes = extractAllRoutes(routeMap).filter(
-  (r) => !SKIP_ROUTES.has(r.name)
+  (r) => !SKIP_ROUTES.has(r.name),
 );
 const routeNames = new Set(allRoutes.map((r) => r.name));
 
@@ -58,7 +58,7 @@ const expectedFragments = new Set([...routeNames, "index"]);
 let fragmentFiles: string[];
 try {
   fragmentFiles = readdirSync(FRAGMENTS_DIR).filter((f) =>
-    MD_EXTENSION_RE.test(f)
+    MD_EXTENSION_RE.test(f),
   );
 } catch {
   console.error(`ERROR: Fragment directory not found: ${FRAGMENTS_DIR}`);
@@ -66,7 +66,7 @@ try {
 }
 
 const actualFragments = new Set(
-  fragmentFiles.map((f) => f.replace(MD_EXTENSION_RE, ""))
+  fragmentFiles.map((f) => f.replace(MD_EXTENSION_RE, "")),
 );
 
 const errors: string[] = [];
@@ -75,7 +75,7 @@ const errors: string[] = [];
 for (const name of expectedFragments) {
   if (!actualFragments.has(name)) {
     errors.push(
-      `Missing fragment: ${FRAGMENTS_DIR}/${name}.md (route "${name}" exists but has no fragment file)`
+      `Missing fragment: ${FRAGMENTS_DIR}/${name}.md (route "${name}" exists but has no fragment file)`,
     );
   }
 }
@@ -84,7 +84,7 @@ for (const name of expectedFragments) {
 for (const name of actualFragments) {
   if (!expectedFragments.has(name)) {
     errors.push(
-      `Stale fragment: ${FRAGMENTS_DIR}/${name}.md (no matching route found — delete it or add the route)`
+      `Stale fragment: ${FRAGMENTS_DIR}/${name}.md (no matching route found — delete it or add the route)`,
     );
   }
 }
@@ -95,13 +95,13 @@ for (const file of fragmentFiles) {
 
   if (content.includes("---\ntitle:") || content.startsWith("---\n")) {
     errors.push(
-      `Fragment contains frontmatter: ${FRAGMENTS_DIR}/${file} (fragments should only contain custom content, not YAML frontmatter)`
+      `Fragment contains frontmatter: ${FRAGMENTS_DIR}/${file} (fragments should only contain custom content, not YAML frontmatter)`,
     );
   }
 
   if (content.includes(GENERATED_END_MARKER)) {
     errors.push(
-      `Fragment contains generated marker: ${FRAGMENTS_DIR}/${file} (the "${GENERATED_END_MARKER}" marker should not appear in fragment files)`
+      `Fragment contains generated marker: ${FRAGMENTS_DIR}/${file} (the "${GENERATED_END_MARKER}" marker should not appear in fragment files)`,
     );
   }
 }
@@ -119,11 +119,11 @@ for (const name of REQUIRED_TOP_LEVEL_FRAGMENTS) {
   const path = `${TOP_LEVEL_FRAGMENTS_DIR}/${name}.md`;
   const exists = await access(path).then(
     () => true,
-    () => false
+    () => false,
   );
   if (!exists) {
     errors.push(
-      `Missing top-level fragment: ${path} (required for generated ${name}.md page)`
+      `Missing top-level fragment: ${path} (required for generated ${name}.md page)`,
     );
   }
 }
@@ -156,7 +156,7 @@ function fragmentMentionsSubcommand(
   content: string,
   routeName: string,
   command: { path: string },
-  isDefaultCommand: boolean
+  isDefaultCommand: boolean,
 ): boolean {
   // Extract the subcommand portion after "sentry <route>"
   const subPath = command.path.slice(`sentry ${routeName} `.length);
@@ -175,7 +175,7 @@ function fragmentMentionsSubcommand(
   if (isDefaultCommand) {
     const bareRouteRe = new RegExp(
       `sentry\\s+${routeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*$|[^\\w-])`,
-      "im"
+      "im",
     );
     if (bareRouteRe.test(lower)) {
       return true;
@@ -290,7 +290,7 @@ for (const [routeName, route] of multiCommandRoutes) {
 
 if (warnings.length > 0) {
   console.warn(
-    `\n${warnings.length} subcommand coverage warning(s)${isStrict ? " (treated as errors with --strict)" : ""}:\n`
+    `\n${warnings.length} subcommand coverage warning(s)${isStrict ? " (treated as errors with --strict)" : ""}:\n`,
   );
   for (const w of warnings) {
     console.warn(`  ⚠ ${w}`);
@@ -306,8 +306,8 @@ if (errors.length > 0) {
 }
 
 console.log(
-  `\nAll ${actualFragments.size} command fragment files valid (${routeNames.size} routes + index)`
+  `\nAll ${actualFragments.size} command fragment files valid (${routeNames.size} routes + index)`,
 );
 console.log(
-  `All ${REQUIRED_TOP_LEVEL_FRAGMENTS.length} top-level fragment(s) valid`
+  `All ${REQUIRED_TOP_LEVEL_FRAGMENTS.length} top-level fragment(s) valid`,
 );

@@ -77,7 +77,7 @@ export function detectShellType(shellPath: string | undefined): ShellType {
 export function getConfigCandidates(
   shellType: ShellType,
   homeDir: string,
-  xdgConfigHome?: string
+  xdgConfigHome?: string,
 ): string[] {
   const xdg = xdgConfigHome || join(homeDir, ".config");
 
@@ -134,7 +134,7 @@ export function findExistingConfigFile(candidates: string[]): string | null {
 export function detectShell(
   shellPath: string | undefined,
   homeDir: string,
-  xdgConfigHome?: string
+  xdgConfigHome?: string,
 ): ShellInfo {
   const type = detectShellType(shellPath);
   const name = shellPath ? basename(shellPath) : type;
@@ -154,7 +154,7 @@ export function detectShell(
  */
 export function getPathCommand(
   shellType: ShellType,
-  directory: string
+  directory: string,
 ): string {
   if (shellType === "fish") {
     return `fish_add_path "${directory}"`;
@@ -167,7 +167,7 @@ export function getPathCommand(
  */
 export function isInPath(
   directory: string,
-  pathEnv: string | undefined
+  pathEnv: string | undefined,
 ): boolean {
   if (!pathEnv) {
     return false;
@@ -192,15 +192,15 @@ async function addToShellConfig(
   configFile: string,
   directory: string,
   command: string,
-  label: string
+  label: string,
 ): Promise<PathModificationResult> {
   const exists = await access(configFile).then(
     () => true,
-    () => false
+    () => false,
   );
 
   if (!exists) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       await writeFile(configFile, `# sentry\n${command}\n`, "utf-8");
       return {
@@ -230,7 +230,7 @@ async function addToShellConfig(
     };
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const newContent = content.endsWith("\n")
       ? `${content}\n# sentry\n${command}\n`
@@ -256,13 +256,13 @@ async function addToShellConfig(
 export function addToPath(
   configFile: string,
   directory: string,
-  shellType: ShellType
+  shellType: ShellType,
 ): Promise<PathModificationResult> {
   return addToShellConfig(
     configFile,
     directory,
     getPathCommand(shellType, directory),
-    "PATH"
+    "PATH",
   );
 }
 
@@ -281,13 +281,13 @@ export function getFpathCommand(directory: string): string {
  */
 export function addToFpath(
   configFile: string,
-  directory: string
+  directory: string,
 ): Promise<PathModificationResult> {
   return addToShellConfig(
     configFile,
     directory,
     getFpathCommand(directory),
-    "fpath"
+    "fpath",
   );
 }
 
@@ -296,7 +296,7 @@ export function addToFpath(
  */
 export async function addToGitHubPath(
   directory: string,
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
 ): Promise<boolean> {
   if (env.GITHUB_ACTIONS !== "true" || !env.GITHUB_PATH) {
     return false;

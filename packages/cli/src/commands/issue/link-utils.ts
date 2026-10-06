@@ -34,7 +34,7 @@ export const EXTERNAL_ISSUE_FLAGS = {
 
 /** Parse repeated App form fields while rejecting ambiguous duplicate keys. */
 export function parseIssueLinkFields(
-  fields: readonly string[] | undefined
+  fields: readonly string[] | undefined,
 ): Record<string, string> | undefined {
   if (!fields?.length) {
     return;
@@ -49,7 +49,7 @@ export function parseIssueLinkFields(
       Object.hasOwn(result, key)
     ) {
       throw new ValidationError(
-        "Each --field must be a unique name=value pair."
+        "Each --field must be a unique name=value pair.",
       );
     }
     result[key] = field.slice(separator + 1);

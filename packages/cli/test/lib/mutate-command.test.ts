@@ -100,7 +100,7 @@ describe("guardNonInteractive", () => {
         yes: false,
         force: false,
         "dry-run": true,
-      })
+      }),
     ).not.toThrow();
   });
 
@@ -110,7 +110,7 @@ describe("guardNonInteractive", () => {
         yes: true,
         force: false,
         "dry-run": false,
-      })
+      }),
     ).not.toThrow();
   });
 
@@ -120,7 +120,7 @@ describe("guardNonInteractive", () => {
         yes: false,
         force: true,
         "dry-run": false,
-      })
+      }),
     ).not.toThrow();
   });
 });
@@ -135,8 +135,8 @@ describe("requireExplicitTarget", () => {
       requireExplicitTarget(
         { type: "auto-detect" },
         "Project target",
-        "sentry project delete <org>/<project>"
-      )
+        "sentry project delete <org>/<project>",
+      ),
     ).toThrow("Project target");
   });
 
@@ -145,8 +145,8 @@ describe("requireExplicitTarget", () => {
       requireExplicitTarget(
         { type: "explicit", org: "acme", project: "my-app" },
         "Project target",
-        "sentry project delete <org>/<project>"
-      )
+        "sentry project delete <org>/<project>",
+      ),
     ).not.toThrow();
   });
 
@@ -155,8 +155,8 @@ describe("requireExplicitTarget", () => {
       requireExplicitTarget(
         { type: "project-search", projectSlug: "my-app" },
         "Project target",
-        "sentry project delete <org>/<project>"
-      )
+        "sentry project delete <org>/<project>",
+      ),
     ).not.toThrow();
   });
 
@@ -165,8 +165,8 @@ describe("requireExplicitTarget", () => {
       requireExplicitTarget(
         { type: "org-all", org: "acme" },
         "Project target",
-        "sentry project delete <org>/<project>"
-      )
+        "sentry project delete <org>/<project>",
+      ),
     ).not.toThrow();
   });
 
@@ -175,12 +175,12 @@ describe("requireExplicitTarget", () => {
       requireExplicitTarget(
         { type: "auto-detect" },
         "Project target",
-        "sentry project delete <org>/<project>"
+        "sentry project delete <org>/<project>",
       );
       expect.unreachable("should have thrown");
     } catch (error) {
       expect((error as Error).message).toContain(
-        "Auto-detection is disabled for destructive operations"
+        "Auto-detection is disabled for destructive operations",
       );
     }
   });

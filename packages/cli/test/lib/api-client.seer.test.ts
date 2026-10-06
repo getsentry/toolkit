@@ -51,7 +51,7 @@ describe("triggerRootCauseAnalysis", () => {
 
     expect(capturedRequest?.method).toBe("POST");
     expect(capturedRequest?.url).toContain(
-      "/organizations/test-org/issues/123456789/autofix/"
+      "/organizations/test-org/issues/123456789/autofix/",
     );
     expect(capturedRequest?.url).toContain("mode=explorer");
   });
@@ -85,7 +85,7 @@ describe("triggerRootCauseAnalysis", () => {
       });
 
     await expect(
-      triggerRootCauseAnalysis("test-org", "123456789")
+      triggerRootCauseAnalysis("test-org", "123456789"),
     ).rejects.toThrow();
   });
 
@@ -97,7 +97,7 @@ describe("triggerRootCauseAnalysis", () => {
       });
 
     await expect(
-      triggerRootCauseAnalysis("test-org", "123456789")
+      triggerRootCauseAnalysis("test-org", "123456789"),
     ).rejects.toThrow();
   });
 });
@@ -121,7 +121,7 @@ describe("getAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     };
 
@@ -131,7 +131,7 @@ describe("getAutofixState", () => {
     expect(result?.status).toBe("PROCESSING");
     expect(capturedRequest?.method).toBe("GET");
     expect(capturedRequest?.url).toContain(
-      "/organizations/test-org/issues/123456789/autofix/"
+      "/organizations/test-org/issues/123456789/autofix/",
     );
     expect(capturedRequest?.url).toContain("mode=explorer");
   });
@@ -150,7 +150,7 @@ describe("getAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
 
     const result = await getAutofixState("test-org", "123456789");
@@ -173,7 +173,7 @@ describe("getAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
 
     const result = await getAutofixState("test-org", "123456789");
@@ -194,7 +194,7 @@ describe("getAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
 
     const result = await getAutofixState("test-org", "123456789");
@@ -215,7 +215,7 @@ describe("getAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
 
     const result = await getAutofixState("test-org", "123456789");
@@ -290,7 +290,7 @@ describe("getAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
 
     const result = await getAutofixState("test-org", "123456789");
@@ -318,7 +318,7 @@ describe("triggerSolutionPlanning", () => {
 
     expect(capturedRequest?.method).toBe("POST");
     expect(capturedRequest?.url).toContain(
-      "/organizations/test-org/issues/123456789/autofix/"
+      "/organizations/test-org/issues/123456789/autofix/",
     );
     expect(capturedRequest?.url).toContain("mode=explorer");
     expect(capturedBody).toEqual({
@@ -342,14 +342,14 @@ describe("triggerSolutionPlanning", () => {
         {
           status: 202,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     };
 
     await triggerSolutionPlanning(
       "test-org",
       "123456789",
-      "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     );
 
     // sentry_run_id is a UUIDField server-side; run_id is an IntegerField.
@@ -375,13 +375,12 @@ describe("normalizeAgentStatus", () => {
     expect(normalizeAgentStatus(input)).toBe(expected);
   });
 
-  test.each([
-    [null],
-    [undefined],
-    [""],
-  ])("defaults %s status to PROCESSING", (input) => {
-    expect(normalizeAgentStatus(input)).toBe("PROCESSING");
-  });
+  test.each([[null], [undefined], [""]])(
+    "defaults %s status to PROCESSING",
+    (input) => {
+      expect(normalizeAgentStatus(input)).toBe("PROCESSING");
+    },
+  );
 
   test("uppercases unknown statuses", () => {
     expect(normalizeAgentStatus("some_new_status")).toBe("SOME_NEW_STATUS");

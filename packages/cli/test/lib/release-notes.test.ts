@@ -119,11 +119,11 @@ describe("buildChangelogSummary", () => {
     makeRelease("0.21.0", SAMPLE_RELEASE_BODY),
     makeRelease(
       "0.20.0",
-      "### New Features ✨\n\n- Feature from 0.20 by @user in [#100](url)\n\n### Bug Fixes 🐛\n\n- Fix from 0.20 by @user in [#101](url)"
+      "### New Features ✨\n\n- Feature from 0.20 by @user in [#100](url)\n\n### Bug Fixes 🐛\n\n- Fix from 0.20 by @user in [#101](url)",
     ),
     makeRelease(
       "0.19.0",
-      "### New Features ✨\n\n- Feature from 0.19 by @user in [#99](url)"
+      "### New Features ✨\n\n- Feature from 0.19 by @user in [#99](url)",
     ),
     makeRelease("0.18.0", "### Internal Changes 🔧\n\n- Only internal stuff"),
   ];
@@ -268,7 +268,7 @@ describe("parseCommitMessages", () => {
 describe("extractNightlyTimestamp", () => {
   test("extracts timestamp from standard nightly format", () => {
     expect(extractNightlyTimestamp("0.22.0-dev.1772661724")).toBe(
-      1_772_661_724
+      1_772_661_724,
     );
   });
 
@@ -321,18 +321,18 @@ describe("fetchChangelog source affinity", () => {
         JSON.stringify([
           makeRelease(
             "mcp@99.0.0",
-            "### New Features ✨\n\n- Unrelated Toolkit package release"
+            "### New Features ✨\n\n- Unrelated Toolkit package release",
           ),
           makeRelease(
             "0.21.0",
-            "### Bug Fixes 🐛\n\n- Unprefixed Toolkit release"
+            "### Bug Fixes 🐛\n\n- Unprefixed Toolkit release",
           ),
           makeRelease(
             "cli@0.21.0",
-            "### Bug Fixes 🐛\n\n- Keep release stages source-affine"
+            "### Bug Fixes 🐛\n\n- Keep release stages source-affine",
           ),
         ]),
-        { status: 200 }
+        { status: 200 },
       );
     });
 
@@ -345,16 +345,16 @@ describe("fetchChangelog source affinity", () => {
 
     expect(changelog?.totalItems).toBe(1);
     expect(changelog?.sections[0]?.markdown).not.toContain(
-      "Unrelated Toolkit package release"
+      "Unrelated Toolkit package release",
     );
     expect(changelog?.sections[0]?.markdown).not.toContain(
-      "Unprefixed Toolkit release"
+      "Unprefixed Toolkit release",
     );
     expect(requestedUrls).toEqual([
       "https://api.github.com/repos/getsentry/toolkit/releases?per_page=30",
     ]);
     expect(requestedUrls.some((url) => url.includes("getsentry/cli"))).toBe(
-      false
+      false,
     );
   });
 
@@ -365,11 +365,11 @@ describe("fetchChangelog source affinity", () => {
           JSON.stringify([
             makeRelease(
               "cli@0.21.0",
-              "### Bug Fixes 🐛\n\n- Reuse prefetched releases"
+              "### Bug Fixes 🐛\n\n- Reuse prefetched releases",
             ),
           ]),
-          { status: 200 }
-        )
+          { status: 200 },
+        ),
     );
 
     const releases = await fetchRecentReleases(undefined, toolkitSource);
@@ -383,7 +383,7 @@ describe("fetchChangelog source affinity", () => {
 
     expect(changelog?.totalItems).toBe(1);
     expect(changelog?.sections[0]?.markdown).toContain(
-      "Reuse prefetched releases"
+      "Reuse prefetched releases",
     );
   });
 
@@ -416,7 +416,7 @@ describe("fetchChangelog source affinity", () => {
         makeRelease("mcp@0.21.0", "- Unrelated MCP release"),
         makeRelease(
           "cli@0.21.0",
-          "### Bug Fixes 🐛\n\n- Raw prefetched release"
+          "### Bug Fixes 🐛\n\n- Raw prefetched release",
         ),
       ] as never,
     });
@@ -462,10 +462,10 @@ describe("fetchChangelog source affinity", () => {
         JSON.stringify([
           makeRelease(
             "0.21.0",
-            "### Bug Fixes 🐛\n\n- Keep the legacy bridge working"
+            "### Bug Fixes 🐛\n\n- Keep the legacy bridge working",
           ),
         ]),
-        { status: 200 }
+        { status: 200 },
       );
     });
 
@@ -490,7 +490,7 @@ describe("fetchChangelog source affinity", () => {
         JSON.stringify([
           { commit: { message: "fix: keep nightly stages affine" } },
         ]),
-        { status: 200 }
+        { status: 200 },
       );
     });
 
@@ -506,7 +506,7 @@ describe("fetchChangelog source affinity", () => {
       "https://api.github.com/repos/getsentry/toolkit/commits?sha=main&since=1970-01-01T00:01:41.000Z&until=1970-01-01T00:03:21.000Z&per_page=100",
     ]);
     expect(requestedUrls.some((url) => url.includes("getsentry/cli"))).toBe(
-      false
+      false,
     );
   });
 });

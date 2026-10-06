@@ -33,7 +33,7 @@ const ROOT_DIR = join(import.meta.dirname, "../..");
  */
 async function runNodeScript(
   script: string,
-  timeout = 15_000
+  timeout = 15_000,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const env: Record<string, string | undefined> = {
     ...process.env,
@@ -63,7 +63,7 @@ async function runNodeScript(
   });
 
   const exitCode = await new Promise<number>((resolve) =>
-    proc.on("close", (code) => resolve(code ?? 1))
+    proc.on("close", (code) => resolve(code ?? 1)),
   );
   clearTimeout(timer);
 
@@ -76,12 +76,12 @@ async function runNodeScript(
  */
 async function runNodeScriptOk(
   script: string,
-  timeout?: number
+  timeout?: number,
 ): Promise<{ stdout: string; stderr: string }> {
   const result = await runNodeScript(script, timeout);
   if (result.exitCode !== 0) {
     throw new Error(
-      `Node exited ${result.exitCode}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`
+      `Node exited ${result.exitCode}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
     );
   }
   return result;
@@ -209,7 +209,7 @@ describe("library mode (bundled)", () => {
     const directory = getConfigDir();
     await writeFile(
       join(directory, "app.js"),
-      "console.log('fixture');\n//# sourceMappingURL=app.js.map\n"
+      "console.log('fixture');\n//# sourceMappingURL=app.js.map\n",
     );
     await writeFile(
       join(directory, "app.js.map"),
@@ -219,10 +219,10 @@ describe("library mode (bundled)", () => {
         sourcesContent: ["console.log('fixture');"],
         names: [],
         mappings: "AAAA",
-      })
+      }),
     );
     const claim = Buffer.from(
-      JSON.stringify({ org: "test-org", url: "http://localhost:9000" })
+      JSON.stringify({ org: "test-org", url: "http://localhost:9000" }),
     ).toString("base64");
     const token = `sntrys_${claim}_ab\nSYNTHETIC-SECRET-TAIL`;
     const { stdout, stderr } = await runNodeScriptOk(`

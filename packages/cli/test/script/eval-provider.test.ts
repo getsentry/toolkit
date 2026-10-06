@@ -18,7 +18,7 @@ describe("resolveEvalProvider", () => {
 
   test("treats blank/whitespace keys as unset", () => {
     expect(
-      resolveEvalProvider({ OPENROUTER_API_KEY: "  ", ANTHROPIC_API_KEY: "" })
+      resolveEvalProvider({ OPENROUTER_API_KEY: "  ", ANTHROPIC_API_KEY: "" }),
     ).toBeNull();
   });
 
@@ -40,8 +40,8 @@ describe("resolveEvalProvider", () => {
       async () =>
         new Response(
           JSON.stringify({ choices: [{ message: { content: "hi there" } }] }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        )
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -52,7 +52,7 @@ describe("resolveEvalProvider", () => {
         { role: "system", content: "sys" },
         { role: "user", content: "hello" },
       ],
-      128
+      128,
     );
 
     expect(text).toBe("hi there");
@@ -70,17 +70,18 @@ describe("resolveEvalProvider", () => {
   test("OpenRouter chat throws with status detail on non-2xx", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("nope", { status: 404 }))
+      vi.fn(async () => new Response("nope", { status: 404 })),
     );
     const p = resolveEvalProvider({ OPENROUTER_API_KEY: "or-key" });
     await expect(
-      p?.chat("anthropic/claude-sonnet-4.6", [], 16)
+      p?.chat("anthropic/claude-sonnet-4.6", [], 16),
     ).rejects.toThrow(/OpenRouter 404/);
   });
 
   test("honors OPENROUTER_BASE_URL override", async () => {
     const fetchMock = vi.fn(
-      async () => new Response(JSON.stringify({ choices: [] }), { status: 200 })
+      async () =>
+        new Response(JSON.stringify({ choices: [] }), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
     const p = resolveEvalProvider({
@@ -89,7 +90,7 @@ describe("resolveEvalProvider", () => {
     });
     await p?.chat("m", [], 16);
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "https://proxy.example/v1/chat/completions"
+      "https://proxy.example/v1/chat/completions",
     );
   });
 });

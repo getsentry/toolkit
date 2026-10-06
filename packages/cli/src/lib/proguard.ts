@@ -85,7 +85,7 @@ function uuidV5(name: Buffer, namespaceBytes: Buffer): string {
  */
 export const PROGUARD_NAMESPACE = uuidV5(
   Buffer.from("guardsquare.com", "utf-8"),
-  NAMESPACE_DNS_BYTES
+  NAMESPACE_DNS_BYTES,
 );
 
 /**

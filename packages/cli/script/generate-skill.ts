@@ -43,7 +43,7 @@ if (!existsSync(SKILL_CONTENT_PATH)) {
   mkdirSync("src/generated", { recursive: true });
   writeFileSync(
     SKILL_CONTENT_PATH,
-    "export const SKILL_FILES: ReadonlyMap<string, string> = new Map();\n"
+    "export const SKILL_FILES: ReadonlyMap<string, string> = new Map();\n",
   );
 }
 
@@ -153,7 +153,7 @@ function stripMdxComponents(markdown: string): string {
   result = result.replace(/<[A-Z][a-zA-Z]*[^>]*\/>/g, "");
   result = result.replace(
     /<[A-Z][a-zA-Z]*[^>]*>[\s\S]*?<\/[A-Z][a-zA-Z]*>/g,
-    ""
+    "",
   );
   result = result.replace(/\n{3,}/g, "\n\n");
   return result.trim();
@@ -163,7 +163,7 @@ function stripMdxComponents(markdown: string): string {
 function extractSection(markdown: string, heading: string): string | null {
   const headingPattern = new RegExp(
     `^(#{1,6})\\s+${escapeRegex(heading)}\\s*$`,
-    "m"
+    "m",
   );
   const match = markdown.match(headingPattern);
   if (!match || match.index === undefined) {
@@ -183,7 +183,7 @@ function extractSection(markdown: string, heading: string): string | null {
 /** Extract all code blocks from markdown */
 function extractCodeBlocks(
   markdown: string,
-  language?: string
+  language?: string,
 ): { code: string; lang: string }[] {
   const blocks: { code: string; lang: string }[] = [];
   const pattern = new RegExp(CODE_BLOCK_REGEX.source, CODE_BLOCK_REGEX.flags);
@@ -213,7 +213,7 @@ async function loadDoc(relativePath: string): Promise<string | null> {
   const fullPath = `${DOCS_PATH}/${relativePath}`;
   const exists = await access(fullPath).then(
     () => true,
-    () => false
+    () => false,
   );
   if (!exists) {
     return null;
@@ -231,7 +231,7 @@ function extractPackageManagerCommand(rawContent: string): string | null {
 /** Generate installation section from docs content */
 function generateInstallSection(
   installSection: string,
-  rawContent: string
+  rawContent: string,
 ): string[] {
   const lines: string[] = [];
   lines.push("### Installation");
@@ -276,7 +276,7 @@ async function loadPrerequisites(): Promise<string> {
   const fullPath = `${DOCS_PATH}/getting-started.mdx`;
   const exists = await access(fullPath).then(
     () => true,
-    () => false
+    () => false,
   );
   if (!exists) {
     return getDefaultPrerequisites();
@@ -334,7 +334,7 @@ sentry auth status
 function appendExample(
   map: Map<string, string[]>,
   key: string,
-  code: string
+  code: string,
 ): void {
   const list = map.get(key) ?? [];
   list.push(code);
@@ -347,7 +347,7 @@ function appendExample(
  */
 function collectCommandPaths(
   tokens: Token[],
-  examples: Map<string, string[]>
+  examples: Map<string, string[]>,
 ): string[] {
   const paths: string[] = [];
   for (const token of tokens) {
@@ -376,7 +376,7 @@ function associateCodeBlocks(
     commandGroup: string;
     examples: Map<string, string[]>;
     defaultCommandPath?: string;
-  }
+  },
 ): void {
   const { commandPaths, commandGroup, examples, defaultCommandPath } = context;
   const groupFallback = `sentry ${commandGroup}`;
@@ -397,7 +397,7 @@ function associateCodeBlocks(
         code,
         commandPaths,
         groupFallback,
-        defaultCommandPath
+        defaultCommandPath,
       );
       if (target) {
         appendExample(examples, target, code);
@@ -417,7 +417,7 @@ function associateCodeBlocks(
  */
 async function loadCommandExamples(
   commandGroup: string,
-  defaultCommandName?: string
+  defaultCommandName?: string,
 ): Promise<Map<string, string[]>> {
   const docContent = await loadDoc(`commands/${commandGroup}.md`);
   if (!docContent) {
@@ -488,7 +488,7 @@ async function extractRoutes(routeMap: RouteMap): Promise<RouteInfo[]> {
       : undefined;
     const docExamples = await loadCommandExamples(
       routeName,
-      defaultCommandName
+      defaultCommandName,
     );
     if (isRouteMap(target)) {
       result.push({
@@ -583,7 +583,7 @@ function generateFullCommandDoc(cmd: CommandInfo): string {
   if (cmd.jsonFields && cmd.jsonFields.length > 0) {
     lines.push("");
     lines.push(
-      "**JSON Fields** (use `--json --fields` to select specific fields):"
+      "**JSON Fields** (use `--json --fields` to select specific fields):",
     );
     lines.push("");
     lines.push("| Field | Type | Description |");
@@ -632,7 +632,7 @@ function capitalize(s: string): string {
 function generateReferenceFile(
   refName: string,
   groupRoutes: RouteInfo[],
-  version: string
+  version: string,
 ): string {
   const route = groupRoutes[0];
   const title = `${capitalize(refName)} Commands`;
@@ -665,7 +665,7 @@ function generateReferenceFile(
 
   // Note about global flags
   lines.push(
-    "All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags."
+    "All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.",
   );
   lines.push("");
 
@@ -691,7 +691,7 @@ function generateCompactCommandLine(cmd: CommandInfo): string {
  */
 function generateCompactCommandsSection(
   routeInfos: RouteInfo[],
-  referenceFiles: Map<string, string>
+  referenceFiles: Map<string, string>,
 ): string {
   const lines: string[] = [];
   lines.push("## Command Reference");
@@ -748,7 +748,7 @@ async function generateSupplementarySections(): Promise<string> {
     lines.push("");
   } else {
     lines.push(
-      "Most commands support `--json` flag for JSON output, making it easy to integrate with other tools."
+      "Most commands support `--json` flag for JSON output, making it easy to integrate with other tools.",
     );
     lines.push("");
   }
@@ -759,7 +759,7 @@ async function generateSupplementarySections(): Promise<string> {
     lines.push(overview.webFlag);
   } else {
     lines.push(
-      "View commands support `-w` or `--web` flag to open the resource in your browser."
+      "View commands support `-w` or `--web` flag to open the resource in your browser.",
     );
   }
 
@@ -781,7 +781,7 @@ type GeneratedFiles = Map<string, string>;
  * need for manual route-to-reference mappings that can go stale.
  */
 function groupRoutesByReference(
-  routeInfos: RouteInfo[]
+  routeInfos: RouteInfo[],
 ): Map<string, RouteInfo[]> {
   const groups = new Map<string, RouteInfo[]>();
   for (const route of routeInfos) {
@@ -799,7 +799,7 @@ function groupRoutesByReference(
  * @returns Map of relative file paths → content
  */
 async function generateAllSkillFiles(
-  routeMap: RouteMap
+  routeMap: RouteMap,
 ): Promise<GeneratedFiles> {
   const files: GeneratedFiles = new Map();
   const version = await getPackageVersion();
@@ -847,7 +847,7 @@ async function generateAllSkillFiles(
     indexSections.push("");
     const nestedGuidance = agentGuidance.replace(
       /^(#{2,6})\s/gm,
-      (_, hashes: string) => `#${hashes} `
+      (_, hashes: string) => `#${hashes} `,
     );
     indexSections.push(nestedGuidance);
     indexSections.push("");
@@ -859,7 +859,7 @@ async function generateAllSkillFiles(
 
   // Compact command reference
   indexSections.push(
-    generateCompactCommandsSection(routeInfos, referenceFileNames)
+    generateCompactCommandsSection(routeInfos, referenceFileNames),
   );
 
   // Supplementary sections
@@ -926,7 +926,7 @@ await writeFile(`${PUBLIC_SKILL_DIR}/SKILL.md`, publicSkill);
 const indexJson = generateIndexJson(files);
 const indexJsonDir = INDEX_JSON_PATH.substring(
   0,
-  INDEX_JSON_PATH.lastIndexOf("/")
+  INDEX_JSON_PATH.lastIndexOf("/"),
 );
 mkdirSync(indexJsonDir, { recursive: true });
 await writeFile(INDEX_JSON_PATH, indexJson);
@@ -960,8 +960,8 @@ await writeFile(SKILL_CONTENT_PATH, skillContentModule);
 
 // Report what was generated
 const refCount = [...files.keys()].filter((k) =>
-  k.startsWith("references/")
+  k.startsWith("references/"),
 ).length;
 console.log(
-  `Generated ${OUTPUT_PATH} + ${refCount} reference files + ${INDEX_JSON_PATH} + ${SKILL_CONTENT_PATH}`
+  `Generated ${OUTPUT_PATH} + ${refCount} reference files + ${INDEX_JSON_PATH} + ${SKILL_CONTENT_PATH}`,
 );

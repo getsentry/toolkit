@@ -59,7 +59,7 @@ describe("CVE defense-in-depth: refresh token", () => {
     process.env.SENTRY_URL = "https://evil.com";
 
     await expect(
-      refreshAccessToken("fake-refresh-token", { credentialHost })
+      refreshAccessToken("fake-refresh-token", { credentialHost }),
     ).rejects.toThrow(/unexpected fetch|Cannot connect|fetch failed/);
 
     // The captured host remains the only destination; evil.com sees nothing.
@@ -80,7 +80,7 @@ describe("CVE defense-in-depth: refresh token", () => {
     await expect(
       refreshAccessToken("fake-refresh-token", {
         credentialHost: getEnvTokenHost(),
-      })
+      }),
     ).rejects.toThrow(/unexpected fetch|Cannot connect|fetch failed/);
 
     // A request was attempted, and it went to the correct host
@@ -95,18 +95,21 @@ describe("CVE defense-in-depth: refresh token", () => {
       new Error("unable to verify the first certificate"),
       "TLS certificate error connecting to",
     ],
-  ])("%s refresh failure names the credential host", async (_, failure, prefix) => {
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
-    const credentialHost = "https://sentry.example.com:8443";
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      fetchCalls.push(extractFetchUrl(input));
-      throw failure;
-    }) as typeof fetch;
+  ])(
+    "%s refresh failure names the credential host",
+    async (_, failure, prefix) => {
+      delete process.env.SENTRY_HOST;
+      delete process.env.SENTRY_URL;
+      const credentialHost = "https://sentry.example.com:8443";
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        fetchCalls.push(extractFetchUrl(input));
+        throw failure;
+      }) as typeof fetch;
 
-    await expect(
-      refreshAccessToken("fake-refresh-token", { credentialHost })
-    ).rejects.toThrow(`${prefix} ${credentialHost}`);
-    expect(fetchCalls).toEqual([`${credentialHost}/oauth/token/`]);
-  });
+      await expect(
+        refreshAccessToken("fake-refresh-token", { credentialHost }),
+      ).rejects.toThrow(`${prefix} ${credentialHost}`);
+      expect(fetchCalls).toEqual([`${credentialHost}/oauth/token/`]);
+    },
+  );
 });

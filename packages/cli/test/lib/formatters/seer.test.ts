@@ -27,7 +27,7 @@ import type {
 
 /** Strip ANSI escape codes */
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -335,7 +335,7 @@ describe("issue explain batch formatting", () => {
       jsonTransformIssueExplain({
         results: data.results.slice(0, 1),
         requestedCount: 1,
-      })
+      }),
     ).toEqual([expect.objectContaining({ description: "First cause" })]);
   });
 
@@ -442,7 +442,7 @@ describe("SeerError formatting", () => {
     const formatted = error.format();
     expect(formatted).toContain("Seer requires a paid plan");
     expect(formatted).toContain(
-      "https://my-org.sentry.io/settings/billing/overview/?product=seer"
+      "https://my-org.sentry.io/settings/billing/overview/?product=seer",
     );
   });
 
@@ -451,7 +451,7 @@ describe("SeerError formatting", () => {
     const formatted = error.format();
     expect(formatted).toContain("AI features are disabled");
     expect(formatted).toContain(
-      "https://my-org.sentry.io/settings/#hideAiFeatures"
+      "https://my-org.sentry.io/settings/#hideAiFeatures",
     );
   });
 
@@ -468,7 +468,7 @@ describe("SeerError formatting", () => {
 
 describe("formatSolution", () => {
   function makeSolution(
-    overrides: Partial<SolutionArtifact["data"]> = {}
+    overrides: Partial<SolutionArtifact["data"]> = {},
   ): SolutionArtifact {
     return {
       key: "solution",
@@ -508,8 +508,8 @@ describe("formatSolution", () => {
             { title: "Step One", description: "Do the first thing." },
             { title: "Step Two", description: "Do the second thing." },
           ],
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Step One");
     expect(result).toContain("Step Two");
@@ -534,8 +534,8 @@ describe("formatSolution", () => {
               description: "Change `foo()` to `bar()`\nThen redeploy.",
             },
           ],
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Fix code");
     expect(result).toContain("foo()");

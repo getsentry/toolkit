@@ -137,7 +137,7 @@ pnpm run test -- --coverage
 
 ## Code Style
 
-The project uses [Ultracite](https://github.com/getsentry/ultracite) for linting and formatting:
+The project uses Oxlint and Oxfmt for linting and formatting:
 
 ```bash
 # Check for issues

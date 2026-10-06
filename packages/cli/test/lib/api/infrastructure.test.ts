@@ -19,20 +19,20 @@ describe("throwApiError", () => {
       throwApiError(
         new TypeError("fetch failed"),
         undefined,
-        "Failed to resolve short ID"
-      )
+        "Failed to resolve short ID",
+      ),
     ).toThrow(
       expect.objectContaining({
         message: "Failed to resolve short ID: Network error",
         status: 0,
-      })
+      }),
     );
 
     try {
       throwApiError(
         new TypeError("fetch failed"),
         undefined,
-        "Failed to resolve short ID"
+        "Failed to resolve short ID",
       );
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
@@ -40,7 +40,7 @@ describe("throwApiError", () => {
       expect(apiError.detail).toContain("fetch failed");
       expect(apiError.detail).toContain("Unable to reach Sentry API");
       expect(apiError.detail).toContain(
-        "Check your internet connection and try again"
+        "Check your internet connection and try again",
       );
     }
   });
@@ -67,7 +67,7 @@ describe("throwApiError", () => {
       throwApiError(
         { detail: "Invalid query syntax" },
         mockResponse,
-        "Failed to list issues"
+        "Failed to list issues",
       );
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
@@ -90,7 +90,7 @@ describe("throwApiError", () => {
       expect(error).toBeInstanceOf(ApiError);
       const apiError = error as ApiError;
       expect(apiError.message).toBe(
-        "Failed to fetch: 500 Internal Server Error"
+        "Failed to fetch: 500 Internal Server Error",
       );
       expect(apiError.status).toBe(500);
       expect(apiError.detail).toBe("something went wrong");
@@ -120,7 +120,7 @@ describe("throwApiError", () => {
       throwApiError(
         { detail: "Resource not found" },
         mockResponse,
-        "Failed to get org"
+        "Failed to get org",
       );
     } catch (error) {
       const apiError = error as ApiError;
@@ -145,7 +145,7 @@ describe("throwApiError", () => {
             detail: "Your organization has disabled this feature for members.",
           },
           mockResponse,
-          "Failed to create project"
+          "Failed to create project",
         );
       } catch (error) {
         const apiError = error as ApiError;
@@ -166,18 +166,18 @@ describe("throwApiError", () => {
         throwApiError(
           { detail: "You do not have permission to perform this action." },
           mockResponse,
-          "Failed to get organization"
+          "Failed to get organization",
         );
       } catch (error) {
         const apiError = error as ApiError;
         expect(apiError.enriched403).toBe(true);
         expect(apiError.status).toBe(403);
         expect(apiError.detail).toContain(
-          "You do not have permission to perform this action."
+          "You do not have permission to perform this action.",
         );
         expect(apiError.detail).toContain("SENTRY_AUTH_TOKEN");
         expect(apiError.detail).toContain(
-          "https://sentry.io/settings/account/api/auth-tokens/"
+          "https://sentry.io/settings/account/api/auth-tokens/",
         );
       }
     });
@@ -195,13 +195,13 @@ describe("throwApiError", () => {
               "You do not have permission. Required scope: org:read, project:read",
           },
           mockResponse,
-          "Failed to list issues"
+          "Failed to list issues",
         );
       } catch (error) {
         const apiError = error as ApiError;
         expect(apiError.enriched403).toBe(true);
         expect(apiError.detail).toContain(
-          "missing the required scope(s) 'org:read', 'project:read'"
+          "missing the required scope(s) 'org:read', 'project:read'",
         );
       }
     });
@@ -216,12 +216,12 @@ describe("throwApiError", () => {
         throwApiError(
           { detail: "You do not have permission to perform this action." },
           mockResponse,
-          "Failed to get organization"
+          "Failed to get organization",
         );
       } catch (error) {
         const apiError = error as ApiError;
         expect(apiError.detail).toContain(
-          "may lack the required scope for this operation"
+          "may lack the required scope for this operation",
         );
       }
     });
@@ -236,7 +236,7 @@ describe("throwApiError", () => {
         throwApiError(
           { detail: undefined },
           mockResponse,
-          "Failed to get organization"
+          "Failed to get organization",
         );
       } catch (error) {
         const apiError = error as ApiError;
@@ -259,7 +259,7 @@ describe("throwApiError", () => {
         throwApiError(
           { detail: null },
           mockResponse,
-          "Failed to get organization"
+          "Failed to get organization",
         );
       } catch (error) {
         const apiError = error as ApiError;
@@ -308,7 +308,7 @@ describe("throwApiError", () => {
                 "Your organization has disabled this feature for members.",
             },
             mockResponse,
-            "Failed to create project"
+            "Failed to create project",
           );
         } catch (error) {
           const apiError = error as ApiError;
@@ -332,13 +332,13 @@ describe("throwApiError", () => {
               detail: "You do not have permission to perform this action.",
             },
             mockResponse,
-            "Failed to get organization"
+            "Failed to get organization",
           );
         } catch (error) {
           const apiError = error as ApiError;
           expect(apiError.enriched403).toBe(true);
           expect(apiError.detail).toContain(
-            "You may not have access to this resource."
+            "You may not have access to this resource.",
           );
           expect(apiError.detail).toContain("sentry auth login");
           // Should NOT mention SENTRY_AUTH_TOKEN
@@ -359,16 +359,16 @@ describe("throwApiError", () => {
                 "You do not have permission. Required scope: event:read, project:read",
             },
             mockResponse,
-            "Failed to list issues"
+            "Failed to list issues",
           );
         } catch (error) {
           const apiError = error as ApiError;
           expect(apiError.enriched403).toBe(true);
           expect(apiError.detail).toContain(
-            "missing the required scope(s) 'event:read', 'project:read'"
+            "missing the required scope(s) 'event:read', 'project:read'",
           );
           expect(apiError.detail).toContain(
-            "sentry auth refresh --scope event:read --scope project:read"
+            "sentry auth refresh --scope event:read --scope project:read",
           );
           // Should NOT mention env var or web UI
           expect(apiError.detail).not.toContain("SENTRY_AUTH_TOKEN");
@@ -392,19 +392,19 @@ describe("throwApiError", () => {
         throwApiError(
           { detail: "Invalid token" },
           mockResponse,
-          "Failed to list organizations"
+          "Failed to list organizations",
         );
       } catch (error) {
         const apiError = error as ApiError;
         expect(apiError.status).toBe(401);
         expect(apiError.message).toBe(
-          "Failed to list organizations: 401 Unauthorized"
+          "Failed to list organizations: 401 Unauthorized",
         );
         expect(apiError.detail).toContain("Invalid token");
         expect(apiError.detail).toContain("SENTRY_AUTH_TOKEN");
         expect(apiError.detail).toContain("not recognized or has been revoked");
         expect(apiError.detail).toContain(
-          "https://sentry.io/settings/account/api/auth-tokens/"
+          "https://sentry.io/settings/account/api/auth-tokens/",
         );
       }
     });
@@ -419,7 +419,7 @@ describe("throwApiError", () => {
         throwApiError(
           { detail: "Token expired" },
           mockResponse,
-          "Failed to list organizations"
+          "Failed to list organizations",
         );
       } catch (error) {
         const apiError = error as ApiError;
@@ -429,7 +429,7 @@ describe("throwApiError", () => {
         expect(apiError.detail).toContain("has expired");
         expect(apiError.detail).not.toContain("not recognized");
         expect(apiError.detail).toContain(
-          "https://sentry.io/settings/account/api/auth-tokens/"
+          "https://sentry.io/settings/account/api/auth-tokens/",
         );
       }
     });
@@ -444,7 +444,7 @@ describe("throwApiError", () => {
         throwApiError(
           { detail: undefined },
           mockResponse,
-          "Failed to list organizations"
+          "Failed to list organizations",
         );
       } catch (error) {
         const apiError = error as ApiError;
@@ -473,7 +473,7 @@ describe("throwApiError", () => {
             },
           },
           mockResponse,
-          "Failed to list teams"
+          "Failed to list teams",
         );
       } catch (error) {
         captured = error as ApiError;
@@ -523,7 +523,7 @@ describe("throwApiError", () => {
           throwApiError(
             { detail: "Authentication credentials were not provided." },
             mockResponse,
-            "Failed to list organizations"
+            "Failed to list organizations",
           );
         } catch (error) {
           const apiError = error as ApiError;
@@ -601,7 +601,7 @@ describe("rawApiRequest binary handling", () => {
     await expect(
       rawApiRequest("organizations/", {
         baseUrl: "https://example.invalid",
-      })
+      }),
     ).rejects.toBeInstanceOf(HostScopeError);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -619,11 +619,11 @@ describe("rawApiRequest binary handling", () => {
         new Response(pngBytes, {
           status: 200,
           headers: { "content-type": "image/png" },
-        })
+        }),
     );
 
     const result = await rawApiRequest(
-      "projects/org/proj/events/abc/attachments/1/?download=1"
+      "projects/org/proj/events/abc/attachments/1/?download=1",
     );
 
     expect(result.status).toBe(200);
@@ -644,7 +644,7 @@ describe("rawApiRequest binary handling", () => {
         new Response(bytes, {
           status: 200,
           headers: { "content-type": "application/octet-stream" },
-        })
+        }),
     );
 
     const result = await rawApiRequest("debug-files/1/download/");
@@ -658,7 +658,7 @@ describe("rawApiRequest binary handling", () => {
         new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { "content-type": "application/json" },
-        })
+        }),
     );
 
     const result = await rawApiRequest("organizations/");
@@ -670,7 +670,7 @@ describe("rawApiRequest binary handling", () => {
       async () =>
         new Response(JSON.stringify({ slug: "acme" }), {
           status: 200,
-        })
+        }),
     );
 
     const result = await rawApiRequest("organizations/acme/");
@@ -683,7 +683,7 @@ describe("rawApiRequest binary handling", () => {
         new Response("not json", {
           status: 200,
           headers: { "content-type": "text/plain" },
-        })
+        }),
     );
 
     const result = await rawApiRequest("some/text/");
@@ -696,7 +696,7 @@ describe("rawApiRequest binary handling", () => {
         new Response("", {
           status: 404,
           statusText: "Not Found",
-        })
+        }),
     );
 
     const result = await rawApiRequest("missing/");
@@ -786,8 +786,8 @@ describe("fetchAllPages", () => {
   test("follows cursors and returns every validated item", async () => {
     const fetchPage = vi.fn((cursor: string | undefined) =>
       Promise.resolve(
-        cursor ? { data: [3] } : { data: [1, 2], nextCursor: "page-2" }
-      )
+        cursor ? { data: [3] } : { data: [1, 2], nextCursor: "page-2" },
+      ),
     );
     expect(await fetchAllPages(fetchPage, numbers, "listing numbers")).toEqual([
       1, 2, 3,
@@ -820,16 +820,16 @@ describe("fetchAllPages", () => {
       })(),
       message: `Pagination exceeded ${MAX_PAGINATION_PAGES} pages when listing numbers`,
     },
-  ])("fails instead of returning a partial list on $name", async ({
-    page,
-    message,
-  }) => {
-    const result = fetchAllPages(
-      () => Promise.resolve(page()),
-      numbers,
-      "listing numbers"
-    );
-    await expect(result).rejects.toBeInstanceOf(ApiError);
-    await expect(result).rejects.toThrow(message);
-  });
+  ])(
+    "fails instead of returning a partial list on $name",
+    async ({ page, message }) => {
+      const result = fetchAllPages(
+        () => Promise.resolve(page()),
+        numbers,
+        "listing numbers",
+      );
+      await expect(result).rejects.toBeInstanceOf(ApiError);
+      await expect(result).rejects.toThrow(message);
+    },
+  );
 });

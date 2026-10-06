@@ -216,7 +216,7 @@ const SEEN_STATS_FIELDS = new Set([...LIFETIME_FIELDS, "stats"]);
  */
 function shouldCollapseForFields(
   fields: string[] | undefined,
-  dependentFields: ReadonlySet<string>
+  dependentFields: ReadonlySet<string>,
 ): boolean {
   return (
     fields !== undefined &&
@@ -275,7 +275,7 @@ function resolveCompact(flag: boolean | undefined, rowCount: number): boolean {
 function parseSort(value: string): SortValue {
   if (!VALID_SORT_VALUES.includes(value as SortValue)) {
     throw new Error(
-      `Invalid sort value. Must be one of: ${VALID_SORT_VALUES.join(", ")}`
+      `Invalid sort value. Must be one of: ${VALID_SORT_VALUES.join(", ")}`,
     );
   }
   return value as SortValue;
@@ -328,7 +328,7 @@ function formatListFooter(mode: "single" | "multi" | "none"): string {
 function attachFormatOptions(
   results: IssueListFetchResult[],
   aliasMap: Map<string, string>,
-  isMultiProject: boolean
+  isMultiProject: boolean,
 ): IssueTableRow[] {
   return results.flatMap((result) =>
     result.issues.map((issue) => {
@@ -343,7 +343,7 @@ function attachFormatOptions(
           isMultiProject,
         },
       };
-    })
+    }),
   );
 }
 
@@ -363,7 +363,7 @@ function compareDates(a: string | undefined, b: string | undefined): number {
  * @returns Comparator function for Array.sort()
  */
 function getComparator(
-  sort: SortValue
+  sort: SortValue,
 ): (a: SentryIssue, b: SentryIssue) => number {
   switch (sort) {
     case "date":
@@ -419,7 +419,7 @@ async function fetchIssuesForTarget(
     collapse?: IssueCollapseField[];
     /** Stats period resolution — undefined when stats are collapsed. */
     groupStatsPeriod?: "" | "14d" | "24h" | "auto";
-  }
+  },
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
     const { issues, nextCursor } = await listIssuesAllPages(
@@ -431,7 +431,7 @@ async function fetchIssuesForTarget(
         groupStatsPeriod: options.groupStatsPeriod,
         start: options.start,
         end: options.end,
-      }
+      },
     );
     return { target, issues, hasMore: !!nextCursor, nextCursor };
   });
@@ -457,7 +457,7 @@ async function runPhase2(
   context: {
     surplus: number;
     options: Omit<BudgetFetchOptions, "limit" | "startCursors">;
-  }
+  },
 ): Promise<void> {
   const { surplus, options } = context;
   const extraQuotas = distributeFetchBudget(surplus, expandableIndices.length);
@@ -475,24 +475,24 @@ async function runPhase2(
   const phase2 = await Promise.all(
     requests.map(({ targetIndex, limit }) => {
       // expandableIndices only contains indices where r.success && r.data.nextCursor
-      // biome-ignore lint/style/noNonNullAssertion: guaranteed by expandableIndices filter
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- guaranteed by expandableIndices filter
       const target = targets[targetIndex]!;
       const r = phase1[targetIndex] as {
         success: true;
         data: IssueListFetchResult;
       };
-      // biome-ignore lint/style/noNonNullAssertion: same guarantee
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- same guarantee
       const cursor = r.data.nextCursor!;
       return fetchIssuesForTarget(target, {
         ...options,
         limit,
         startCursor: cursor,
       });
-    })
+    }),
   );
 
   for (let j = 0; j < requests.length; j++) {
-    // biome-ignore lint/style/noNonNullAssertion: j is within requests bounds
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- j is within requests bounds
     const i = requests[j]!.targetIndex;
     const p2 = phase2[j];
     const p1 = phase1[i];
@@ -543,7 +543,7 @@ type BudgetFetchOptions = {
 async function fetchWithBudget(
   targets: ResolvedTarget[],
   options: BudgetFetchOptions,
-  onProgress: (fetched: number) => void
+  onProgress: (fetched: number) => void,
 ): Promise<{ results: FetchResult[]; hasMore: boolean }> {
   const { limit, startCursors } = options;
   const quotas = distributeFetchBudget(limit, targets.length, {
@@ -557,8 +557,8 @@ async function fetchWithBudget(
         ...options,
         limit: quotas[i] ?? 1,
         startCursor: startCursors?.get(`${t.org}/${t.project}`),
-      })
-    )
+      }),
+    ),
   );
 
   let totalFetched = 0;
@@ -619,12 +619,12 @@ async function fetchWithBudget(
  */
 function trimWithProjectGuarantee(
   issues: IssueTableRow[],
-  limit: number
+  limit: number,
 ): IssueTableRow[] {
   return trimWithGroupGuarantee(
     issues,
     limit,
-    (r) => `${r.orgSlug}/${r.formatOptions.projectSlug ?? ""}`
+    (r) => `${r.orgSlug}/${r.formatOptions.projectSlug ?? ""}`,
   );
 }
 
@@ -663,7 +663,7 @@ async function fetchOrgAllIssues(
   options: {
     cursor?: string;
     onPage?: (fetched: number, limit: number) => void;
-  }
+  },
 ): Promise<IssuesPage> {
   const apiOpts = buildListApiOptions(flags.json, flags.fields);
   const timeParams = timeRangeToApiParams(timeRange);
@@ -712,7 +712,7 @@ type OrgAllIssuesOptions = {
  * is responsible for rendering (JSON or human output).
  */
 async function handleOrgAllIssues(
-  options: OrgAllIssuesOptions
+  options: OrgAllIssuesOptions,
 ): Promise<IssueListResult> {
   const { org, flags, timeRange } = options;
   // Encode sort + query in context key so cursors from different searches don't collide.
@@ -724,7 +724,7 @@ async function handleOrgAllIssues(
   const { cursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
 
   let issuesResult: IssuesPage;
@@ -739,9 +739,9 @@ async function handleOrgAllIssues(
           cursor,
           onPage: (fetched, limit) =>
             setMessage(
-              `Fetching issues, ${fetched} and counting (up to ${limit})...`
+              `Fetching issues, ${fetched} and counting (up to ${limit})...`,
             ),
-        })
+        }),
     );
   } catch (error) {
     throw enrichIssueListError(error, flags);
@@ -839,7 +839,7 @@ const UNSUPPORTED_SORT_RE = /sort key/i;
  */
 function build400Detail(
   originalDetail: string | undefined,
-  flags: Pick<ListFlags, "query" | "period" | "sort">
+  flags: Pick<ListFlags, "query" | "period" | "sort">,
 ): string {
   const lines: string[] = [];
 
@@ -856,14 +856,14 @@ function build400Detail(
   // query/time-range/access suggestions, so short-circuit on it.
   if (originalDetail && UNSUPPORTED_SORT_RE.test(originalDetail)) {
     suggestions.push(
-      `This Sentry instance does not support the '${flags.sort}' sort. Use a widely-supported sort such as --sort date (the 'recommended' sort requires a recent Sentry version).`
+      `This Sentry instance does not support the '${flags.sort}' sort. Use a widely-supported sort such as --sort date (the 'recommended' sort requires a recent Sentry version).`,
     );
     return formatDetailWithSuggestions(lines, suggestions);
   }
 
   if (flags.query) {
     suggestions.push(
-      "Check your --query syntax (Sentry search reference: https://docs.sentry.io/concepts/search/)"
+      "Check your --query syntax (Sentry search reference: https://docs.sentry.io/concepts/search/)",
     );
   }
 
@@ -872,7 +872,7 @@ function build400Detail(
   }
 
   suggestions.push(
-    "Verify you have access to the target project: sentry project list <org>/"
+    "Verify you have access to the target project: sentry project list <org>/",
   );
 
   return formatDetailWithSuggestions(lines, suggestions);
@@ -888,7 +888,7 @@ function build400Detail(
  */
 function formatDetailWithSuggestions(
   detailLines: string[],
-  suggestions: string[]
+  suggestions: string[],
 ): string {
   const lines = [...detailLines];
   if (lines.length > 0) {
@@ -909,7 +909,7 @@ function formatDetailWithSuggestions(
  */
 function enrichIssueListError(
   error: unknown,
-  flags: Pick<ListFlags, "query" | "period" | "sort">
+  flags: Pick<ListFlags, "query" | "period" | "sort">,
 ): never {
   // A user-supplied --query the server cannot parse is a user input mistake,
   // not a CLI bug: surface it as a ValidationError. A 400 with no user --query
@@ -924,7 +924,7 @@ function enrichIssueListError(
         error.message,
         error.status,
         build400Detail(error.detail, flags),
-        error.endpoint
+        error.endpoint,
       );
     }
     if (error.status === 403) {
@@ -938,7 +938,7 @@ function enrichIssueListError(
         error.status,
         detail,
         error.endpoint,
-        true
+        true,
       );
     }
   }
@@ -992,7 +992,7 @@ function build403Detail(originalDetail: unknown): string {
         : `Your ${getActiveEnvVarName()} token may lack the required scopes`;
     lines.push(
       `  • ${leader} (${scopeList})`,
-      "  • Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/"
+      "  • Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/",
     );
   } else {
     lines.push("  • Re-authenticate with: sentry auth login");
@@ -1022,9 +1022,9 @@ function appendProjectMembershipHint(detail: string | undefined): string {
  * Cursor pagination uses a compound cursor (one cursor per project, encoded
  * as a pipe-separated string) so `-c next` / `-c prev` works across multi-target results.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: inherent multi-target resolution, compound cursor, error handling, and display logic
+// inherent multi-target resolution, compound cursor, error handling, and display logic
 async function handleResolvedTargets(
-  options: ResolvedTargetsOptions
+  options: ResolvedTargetsOptions,
 ): Promise<IssueListResult> {
   const { parsed, flags, cwd, timeRange, projectSearchResolution } = options;
 
@@ -1043,7 +1043,7 @@ async function handleResolvedTargets(
         "Organization and project",
         USAGE_HINT,
         undefined,
-        `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`
+        `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`,
       );
     }
     throw new ContextError("Organization and project", USAGE_HINT);
@@ -1063,11 +1063,11 @@ async function handleResolvedTargets(
   const { cursor: rawCursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
   const { startCursors, exhausted: exhaustedTargets } = decodeTargetCursors(
     rawCursor,
-    sortedTargetKeys
+    sortedTargetKeys,
   );
 
   const activeTargets =
@@ -1099,28 +1099,28 @@ async function handleResolvedTargets(
         },
         (fetched) => {
           setMessage(
-            `${baseMessage}, ${fetched} and counting (up to ${flags.limit})...`
+            `${baseMessage}, ${fetched} and counting (up to ${flags.limit})...`,
           );
-        }
-      )
+        },
+      ),
   );
 
   const validResults: IssueListFetchResult[] = [];
   const failures: { target: ResolvedTarget; error: Error }[] = [];
 
   for (let i = 0; i < results.length; i++) {
-    // biome-ignore lint/style/noNonNullAssertion: index within bounds
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- index within bounds
     const result = results[i]!;
     if (result.success) {
       validResults.push(result.data);
     } else {
-      // biome-ignore lint/style/noNonNullAssertion: index within bounds
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- index within bounds
       failures.push({ target: activeTargets[i]!, error: result.error });
     }
   }
 
   if (validResults.length === 0 && failures.length > 0) {
-    // biome-ignore lint/style/noNonNullAssertion: guarded by failures.length > 0
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- guarded by failures.length > 0
     const { error: first } = failures[0]!;
     const prefix = `Failed to fetch issues from ${targets.length} project(s)`;
 
@@ -1150,7 +1150,7 @@ async function handleResolvedTargets(
         first.status,
         detail,
         first.endpoint,
-        first.enriched403 || first.status === 403
+        first.enriched403 || first.status === 403,
       );
     }
 
@@ -1175,7 +1175,7 @@ async function handleResolvedTargets(
   const allIssuesWithOptions = attachFormatOptions(
     validResults,
     aliasMap,
-    isMultiProject
+    isMultiProject,
   );
 
   // Only re-sort when merging results from multiple separately-fetched
@@ -1187,14 +1187,14 @@ async function handleResolvedTargets(
   // silently replace the server's ranking with a `lastSeen` fallback.
   if (isMultiProject) {
     allIssuesWithOptions.sort((a, b) =>
-      getComparator(flags.sort)(a.issue, b.issue)
+      getComparator(flags.sort)(a.issue, b.issue),
     );
   }
 
   // Trim to the global limit with project representation guarantee
   const issuesWithOptions = trimWithProjectGuarantee(
     allIssuesWithOptions,
-    flags.limit
+    flags.limit,
   );
   const trimmed = issuesWithOptions.length < allIssuesWithOptions.length;
   // Store compound cursor only after display trimming is known. If rows were
@@ -1230,7 +1230,7 @@ async function handleResolvedTargets(
     PAGINATION_KEY,
     contextKey,
     direction,
-    compoundNextCursor
+    compoundNextCursor,
   );
   const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 
@@ -1245,7 +1245,7 @@ async function handleResolvedTargets(
                 status: e.status,
                 message: e.message,
               }
-            : { project: `${t.org}/${t.project}`, message: e.message }
+            : { project: `${t.org}/${t.project}`, message: e.message },
         )
       : undefined;
 
@@ -1255,7 +1255,7 @@ async function handleResolvedTargets(
       .map(({ target: t }) => `${t.org}/${t.project}`)
       .join(", ");
     logger.warn(
-      `Failed to fetch issues from ${failedNames}. Showing results from ${validResults.length} project(s).`
+      `Failed to fetch issues from ${failedNames}. Showing results from ${validResults.length} project(s).`,
     );
   }
 
@@ -1407,7 +1407,7 @@ function formatIssueListHuman(result: IssueListResult): string {
  */
 function jsonTransformIssueList(
   result: IssueListResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const transformed = jsonTransformListResult(result, fields);
   // Only inject into empty paginated envelopes — helps agents discover
@@ -1540,7 +1540,7 @@ export const listCommand = buildListCommand("issue", {
     ) {
       const shortId = parsed.projectSlug;
       log.warn(
-        `'${shortId}' is an issue short ID, not a project slug. Showing the issue.`
+        `'${shortId}' is an issue short ID, not a project slug. Showing the issue.`,
       );
       const { org, issue } = await resolveIssue({
         issueArg: shortId,
@@ -1579,13 +1579,13 @@ export const listCommand = buildListCommand("issue", {
       throw new ValidationError(
         `--limit cannot exceed ${LIST_MAX_LIMIT}. ` +
           "Use --cursor to paginate through larger result sets.",
-        "limit"
+        "limit",
       );
     }
 
     const timeRange = flags.period;
 
-    // biome-ignore lint/suspicious/noExplicitAny: shared handler accepts any mode variant
+    // oxlint-disable-next-line typescript/no-explicit-any -- shared handler accepts any mode variant
     const resolveAndHandle: ModeHandler<any> = (ctx) =>
       handleResolvedTargets({
         ...ctx,

@@ -82,7 +82,7 @@ describe("listIssueEvents pagination", () => {
             "Content-Type": "application/json",
             Link: nextLinkHeader("page2"),
           },
-        })
+        }),
     );
 
     const result = await listIssueEvents("test-org", "123", { limit: 2 });
@@ -104,7 +104,7 @@ describe("listIssueEvents pagination", () => {
             "Content-Type": "application/json",
             Link: nextLinkHeader("page2"),
           },
-        })
+        }),
     );
 
     const result = await listIssueEvents("test-org", "123", { limit: 2 });
@@ -119,7 +119,7 @@ describe("listIssueEvents pagination", () => {
         new Response(JSON.stringify(makeEvents(3)), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     const result = await listIssueEvents("test-org", "123", { limit: 25 });

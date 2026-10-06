@@ -49,7 +49,7 @@ const traceLogEntryArb = tuple(
   numberOrString(),
   optionalNumberOrString(),
   optionalNumberOrString(),
-  option(string(), { nil: undefined })
+  option(string(), { nil: undefined }),
 ).map(([projectId, sevNum, tsPrecise, msg]) => ({
   id: "test-log-id",
   "project.id": projectId,
@@ -68,7 +68,7 @@ describe("property: TraceLogSchema coercion", () => {
         const result = safeParse(TraceLogSchema, entry);
         expect(result.success).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -87,7 +87,7 @@ describe("property: TraceLogSchema coercion", () => {
           expect(typeof result.output.timestamp_precise).toBe("number");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -104,7 +104,7 @@ describe("property: TraceLogSchema coercion", () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect((result.output as Record<string, unknown>).extra_field).toBe(
-        "should be preserved"
+        "should be preserved",
       );
     }
   });
@@ -118,7 +118,7 @@ describe("property: TraceLogsResponseSchema", () => {
         const result = safeParse(TraceLogsResponseSchema, response);
         expect(result.success).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -151,7 +151,7 @@ describe("property: SentryLogSchema coercion", () => {
           expect(typeof result.output.timestamp_precise).toBe("number");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -171,7 +171,7 @@ describe("property: DetailedSentryLogSchema coercion", () => {
           expect(typeof result.output.timestamp_precise).toBe("number");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

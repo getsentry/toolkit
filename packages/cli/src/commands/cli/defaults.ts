@@ -113,7 +113,7 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
       if (parsed === null) {
         throw new ValidationError(
           `Invalid telemetry value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          "telemetry"
+          "telemetry",
         );
       }
       setTelemetryPreference(parsed);
@@ -136,7 +136,7 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
       if (parsed === null) {
         throw new ValidationError(
           `Invalid agent-skills value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          "agent-skills"
+          "agent-skills",
         );
       }
       setAgentSkillsPreference(parsed);
@@ -159,7 +159,7 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
       if (parsed === null) {
         throw new ValidationError(
           `Invalid graphics value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          "graphics"
+          "graphics",
         );
       }
       setGraphicsPreference(parsed);
@@ -178,7 +178,7 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
       } catch {
         throw new ValidationError(
           `Invalid URL: '${value}'. Provide a valid URL (e.g., https://sentry.example.com).`,
-          "url"
+          "url",
         );
       }
       setDefaultUrl(normalized);
@@ -201,7 +201,7 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
       if (!trimmed) {
         throw new ValidationError(
           "CA certificate path cannot be empty.",
-          "ca-cert"
+          "ca-cert",
         );
       }
       const resolved = resolve(trimmed);
@@ -324,7 +324,7 @@ export const defaultsCommand = buildCommand({
     },
     aliases: { y: "yes", f: "force" },
   },
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: sequential command dispatch
+  // sequential command dispatch
   async *func(
     this: SentryContext,
     flags: {
@@ -340,7 +340,7 @@ export const defaultsCommand = buildCommand({
     if (rest.length > 0) {
       throw new ValidationError(
         "Too many arguments. Usage: sentry cli defaults [<key> [<value>]]",
-        "args"
+        "args",
       );
     }
 
@@ -352,7 +352,7 @@ export const defaultsCommand = buildCommand({
         if (!isConfirmationBypassed(flags)) {
           const confirmed = await log.prompt(
             "This will clear all defaults (organization, project, telemetry, URL, headers, ca-cert, agent-skills, graphics). Continue?",
-            { type: "confirm" }
+            { type: "confirm" },
           );
           if (confirmed !== true) {
             return { hint: "Cancelled." };
@@ -384,7 +384,7 @@ export const defaultsCommand = buildCommand({
       ];
       throw new ValidationError(
         `Unknown default '${keyArg}'. Valid keys: ${validKeys.join(", ")}`,
-        "key"
+        "key",
       );
     }
 
@@ -395,7 +395,7 @@ export const defaultsCommand = buildCommand({
       if (valueArg !== undefined) {
         throw new ValidationError(
           `Cannot use --clear with a value. Use either 'sentry cli defaults ${keyArg} --clear' or 'sentry cli defaults ${keyArg} <value>'.`,
-          "args"
+          "args",
         );
       }
       const previous = handler.get();
@@ -438,7 +438,7 @@ export const defaultsCommand = buildCommand({
         effective.enabled !== (newValue === "on")
       ) {
         log.warn(
-          `Note: ${effective.source.slice("env:".length)} environment variable overrides this preference.`
+          `Note: ${effective.source.slice("env:".length)} environment variable overrides this preference.`,
         );
       }
     }

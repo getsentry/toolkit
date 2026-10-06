@@ -94,7 +94,7 @@ export const proposeVersionCommand = buildCommand({
   parameters: {},
   async *func(
     this: SentryContext,
-    _flags: { readonly json: boolean; readonly fields?: string[] }
+    _flags: { readonly json: boolean; readonly fields?: string[] },
   ) {
     const { cwd, env } = this;
 

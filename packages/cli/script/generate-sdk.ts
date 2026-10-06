@@ -79,7 +79,7 @@ type SdkFlagInfo = {
  */
 function discoverCommands(
   target: RouteMap | Command,
-  pathPrefix: string[]
+  pathPrefix: string[],
 ): DiscoveredCommand[] {
   if (isCommand(target)) {
     return [{ path: pathPrefix, command: target }];
@@ -267,9 +267,8 @@ function formatPropertyName(name: string, opt: string): string {
  */
 function generateReturnType(
   command: Command,
-  typeName: string
+  typeName: string,
 ): { typeDef: string; typeName: string } | null {
-  // biome-ignore lint/suspicious/noExplicitAny: __jsonSchema is a non-standard property
   const schema = (command as any).__jsonSchema;
   if (!schema) {
     return null;
@@ -321,7 +320,7 @@ function buildTypeName(path: string[]): string {
 function generateParamsInterface(
   path: string[],
   positional: PositionalInfo,
-  flags: SdkFlagInfo[]
+  flags: SdkFlagInfo[],
 ): { name: string; code: string } | null {
   const lines: string[] = [];
 
@@ -353,7 +352,7 @@ function generateParamsInterface(
 function buildInvokeArgs(
   path: string[],
   positional: PositionalInfo,
-  flags: SdkFlagInfo[]
+  flags: SdkFlagInfo[],
 ): { flagObj: string; positionalExpr: string; pathStr: string } {
   const flagEntries = flags.map((f) => {
     const camel = camelCase(f.name);
@@ -397,12 +396,12 @@ function generateMethodBody(
   path: string[],
   positional: PositionalInfo,
   flags: SdkFlagInfo[],
-  returnType: string
+  returnType: string,
 ): string {
   const { flagObj, positionalExpr, pathStr } = buildInvokeArgs(
     path,
     positional,
-    flags
+    flags,
   );
   return `invoke<${returnType}>(${pathStr}, ${flagObj}, ${positionalExpr}) as Promise<${returnType}>`;
 }
@@ -427,7 +426,7 @@ function generateStreamingMethodBody(opts: StreamingMethodOpts): string {
   const { flagObj, positionalExpr, pathStr } = buildInvokeArgs(
     opts.path,
     opts.positional,
-    opts.flags
+    opts.flags,
   );
 
   // Build the streaming condition: params?.follow !== undefined || params?.refresh !== undefined
@@ -471,7 +470,7 @@ function insertMethod(
   tree: NamespaceNode,
   path: string[],
   methodCode: string,
-  typeDecl: string
+  typeDecl: string,
 ): void {
   let node = tree;
   const namespaceParts = path.slice(0, -1);

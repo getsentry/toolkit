@@ -35,7 +35,7 @@ export const unresolveCommand = buildCommand({
     const { org, feedback } = await resolveFeedback(
       feedbackArg,
       this.cwd,
-      "unresolve"
+      "unresolve",
     );
     const updated = await updateIssueStatus(feedback.id, "unresolved", {
       orgSlug: org,

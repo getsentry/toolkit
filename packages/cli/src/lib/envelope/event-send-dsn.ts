@@ -72,7 +72,7 @@ export function peelEventSendTarget(files: readonly string[]): {
  */
 export async function resolveEventSendDsn(
   cwd: string,
-  target: EventSendTarget | undefined
+  target: EventSendTarget | undefined,
 ): Promise<string> {
   if (target?.kind === "dsn") {
     return target.dsn.trim();
@@ -117,18 +117,18 @@ function looksLikeFileArgument(value: string): boolean {
  */
 async function dsnFromProjectTarget(
   target: string,
-  cwd: string
+  cwd: string,
 ): Promise<string> {
   if (!getAuthConfig()) {
     throw new ConfigError(
       `Cannot resolve project '${target}' without a logged-in session. Pass the DSN as the first argument or run sentry auth login.`,
-      "sentry auth login"
+      "sentry auth login",
     );
   }
   const { org, project } = await resolveProjectBoundFromArg(
     target,
     cwd,
-    "event send"
+    "event send",
   );
   const keys = await getProjectKeys(org, project, { status: "active" });
   const activeDsns = [
@@ -136,20 +136,20 @@ async function dsnFromProjectTarget(
       keys
         .filter((key) => key.isActive)
         .map((key) => key.dsn.public)
-        .filter(Boolean)
+        .filter(Boolean),
     ),
   ];
   if (activeDsns.length > 1) {
     throw new ConfigError(
       `Project ${org}/${project} has multiple active DSNs. Pass the desired DSN as the first argument.`,
-      EVENT_SEND_DSN_HINT
+      EVENT_SEND_DSN_HINT,
     );
   }
   const dsn = activeDsns[0];
   if (!dsn) {
     throw new ConfigError(
       `No active DSN found for ${org}/${project}. Pass a DSN as the first argument.`,
-      EVENT_SEND_DSN_HINT
+      EVENT_SEND_DSN_HINT,
     );
   }
   log.debug(`Using DSN from ${org}/${project} client keys`);

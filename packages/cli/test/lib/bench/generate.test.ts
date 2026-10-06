@@ -39,7 +39,7 @@ afterAll(() => {
 function makeSpec(
   name: "small" | "medium",
   dir: string,
-  seed = 42
+  seed = 42,
 ): FixtureSpec {
   return { ...PRESETS[name], seed, rootDir: dir };
 }
@@ -54,7 +54,7 @@ describe("generateFixture", () => {
     expect(meta.dsnCount).toBeGreaterThan(0);
     expect(meta.dsnCount).toBeLessThan(meta.fileCount);
     const onDisk = JSON.parse(
-      readFileSync(join(dir, ".meta.json"), "utf8")
+      readFileSync(join(dir, ".meta.json"), "utf8"),
     ) as FixtureMeta;
     expect(onDisk.version).toBe(1);
     expect(onDisk.spec.packages).toBe(0);

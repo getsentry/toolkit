@@ -31,12 +31,12 @@ import { cleanupTestDir, createTestConfigDir } from "../../helpers.js";
 
 /** Valid DSN format for testing */
 const validDsnArb = string({ minLength: 1, maxLength: 20 }).map(
-  (key) => `https://${key.replace(/[^a-z0-9]/gi, "a")}@sentry.io/123`
+  (key) => `https://${key.replace(/[^a-z0-9]/gi, "a")}@sentry.io/123`,
 );
 
 /** Generate content without SENTRY_DSN */
 const envContentWithoutDsnArb = oneof(
-  constantFrom("", "# Just a comment", "OTHER_VAR=value", "SENTRY_OTHER=value")
+  constantFrom("", "# Just a comment", "OTHER_VAR=value", "SENTRY_OTHER=value"),
 );
 
 // ============================================================================
@@ -50,7 +50,7 @@ describe("property: extractDsnFromEnvContent", () => {
         const content = `SENTRY_DSN=${dsn}`;
         expect(extractDsnFromEnvContent(content)).toBe(dsn);
       }),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 
@@ -60,7 +60,7 @@ describe("property: extractDsnFromEnvContent", () => {
         const content = `SENTRY_DSN="${dsn}"`;
         expect(extractDsnFromEnvContent(content)).toBe(dsn);
       }),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 
@@ -70,7 +70,7 @@ describe("property: extractDsnFromEnvContent", () => {
         const content = `SENTRY_DSN='${dsn}'`;
         expect(extractDsnFromEnvContent(content)).toBe(dsn);
       }),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 
@@ -79,7 +79,7 @@ describe("property: extractDsnFromEnvContent", () => {
       property(envContentWithoutDsnArb, (content) => {
         expect(extractDsnFromEnvContent(content)).toBeNull();
       }),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 
@@ -90,7 +90,7 @@ describe("property: extractDsnFromEnvContent", () => {
         // Should return the first one
         expect(extractDsnFromEnvContent(content)).toBe(dsn1);
       }),
-      { numRuns: 30 }
+      { numRuns: 30 },
     );
   });
 
@@ -100,7 +100,7 @@ describe("property: extractDsnFromEnvContent", () => {
         const content = `SENTRY_DSN = ${dsn}`;
         expect(extractDsnFromEnvContent(content)).toBe(dsn);
       }),
-      { numRuns: 30 }
+      { numRuns: 30 },
     );
   });
 });
@@ -129,7 +129,7 @@ describe("extractDsnFromEnvContent edge cases", () => {
     const content = `# SENTRY_DSN=commented-out
 SENTRY_DSN=https://real@sentry.io/123`;
     expect(extractDsnFromEnvContent(content)).toBe(
-      "https://real@sentry.io/123"
+      "https://real@sentry.io/123",
     );
   });
 
@@ -156,7 +156,7 @@ ANOTHER_VAR=bar
   test("handles value with equals signs", () => {
     const content = "SENTRY_DSN=https://key@sentry.io/123?key=value";
     expect(extractDsnFromEnvContent(content)).toBe(
-      "https://key@sentry.io/123?key=value"
+      "https://key@sentry.io/123?key=value",
     );
   });
 
@@ -175,7 +175,7 @@ ANOTHER_VAR=bar
     const content = `SENTRY_DSN_OTHER=https://wrong@sentry.io/123
 SENTRY_DSN=https://correct@sentry.io/456`;
     expect(extractDsnFromEnvContent(content)).toBe(
-      "https://correct@sentry.io/456"
+      "https://correct@sentry.io/456",
     );
   });
 
@@ -219,7 +219,7 @@ describe("extractDsnFromEnvContent framework-prefixed vars", () => {
     const content = `SENTRY_DSN=https://canonical@sentry.io/1
 NEXT_PUBLIC_SENTRY_DSN=https://next@sentry.io/2`;
     expect(extractDsnFromEnvContent(content)).toBe(
-      "https://canonical@sentry.io/1"
+      "https://canonical@sentry.io/1",
     );
   });
 
@@ -274,7 +274,7 @@ describe("integration: file-based detection", () => {
     test("detects DSN from .env file", async () => {
       writeFileSync(
         join(testDir, ".env"),
-        "SENTRY_DSN=https://key@sentry.io/123"
+        "SENTRY_DSN=https://key@sentry.io/123",
       );
 
       const result = await detectFromEnvFiles(testDir);
@@ -286,11 +286,11 @@ describe("integration: file-based detection", () => {
     test("detects DSN from .env.local with higher priority", async () => {
       writeFileSync(
         join(testDir, ".env"),
-        "SENTRY_DSN=https://default@sentry.io/1"
+        "SENTRY_DSN=https://default@sentry.io/1",
       );
       writeFileSync(
         join(testDir, ".env.local"),
-        "SENTRY_DSN=https://local@sentry.io/2"
+        "SENTRY_DSN=https://local@sentry.io/2",
       );
 
       const result = await detectFromEnvFiles(testDir);
@@ -320,11 +320,11 @@ describe("integration: file-based detection", () => {
       // Create multiple files
       writeFileSync(
         join(testDir, ".env.development"),
-        "SENTRY_DSN=https://dev@sentry.io/3"
+        "SENTRY_DSN=https://dev@sentry.io/3",
       );
       writeFileSync(
         join(testDir, ".env.local"),
-        "SENTRY_DSN=https://local@sentry.io/2"
+        "SENTRY_DSN=https://local@sentry.io/2",
       );
 
       const result = await detectFromEnvFiles(testDir);
@@ -343,11 +343,11 @@ describe("integration: file-based detection", () => {
     test("detects multiple DSNs from different .env files", async () => {
       writeFileSync(
         join(testDir, ".env"),
-        "SENTRY_DSN=https://default@sentry.io/1"
+        "SENTRY_DSN=https://default@sentry.io/1",
       );
       writeFileSync(
         join(testDir, ".env.local"),
-        "SENTRY_DSN=https://local@sentry.io/2"
+        "SENTRY_DSN=https://local@sentry.io/2",
       );
 
       const result = await detectFromAllEnvFiles(testDir);
@@ -362,7 +362,7 @@ describe("integration: file-based detection", () => {
     test("includes source mtimes for caching", async () => {
       writeFileSync(
         join(testDir, ".env"),
-        "SENTRY_DSN=https://key@sentry.io/123"
+        "SENTRY_DSN=https://key@sentry.io/123",
       );
 
       const result = await detectFromAllEnvFiles(testDir);
@@ -383,7 +383,7 @@ describe("integration: file-based detection", () => {
       mkdirSync(pkgDir, { recursive: true });
       writeFileSync(
         join(pkgDir, ".env"),
-        "SENTRY_DSN=https://frontend@sentry.io/1"
+        "SENTRY_DSN=https://frontend@sentry.io/1",
       );
 
       const result = await detectFromMonorepoEnvFiles(testDir);
@@ -411,11 +411,11 @@ describe("integration: file-based detection", () => {
       mkdirSync(pkg2, { recursive: true });
       writeFileSync(
         join(pkg1, ".env"),
-        "SENTRY_DSN=https://frontend@sentry.io/1"
+        "SENTRY_DSN=https://frontend@sentry.io/1",
       );
       writeFileSync(
         join(pkg2, ".env"),
-        "SENTRY_DSN=https://backend@sentry.io/2"
+        "SENTRY_DSN=https://backend@sentry.io/2",
       );
 
       const result = await detectFromMonorepoEnvFiles(testDir);
@@ -444,7 +444,7 @@ describe("integration: file-based detection", () => {
       // This file should be ignored (not in a package subdir)
       writeFileSync(
         join(testDir, "packages", ".env"),
-        "SENTRY_DSN=https://root@sentry.io/0"
+        "SENTRY_DSN=https://root@sentry.io/0",
       );
 
       const result = await detectFromMonorepoEnvFiles(testDir);

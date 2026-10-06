@@ -62,11 +62,11 @@ function createMockFetch(
   requests: RequestLog[],
   apiRequestHandler: (
     req: Request,
-    requestCount: number
+    requestCount: number,
   ) => Response | Promise<Response>,
   options: {
     oauthHandler?: (req: Request) => Response | Promise<Response>;
-  } = {}
+  } = {},
 ): typeof globalThis.fetch {
   let apiRequestCount = 0;
 
@@ -94,7 +94,7 @@ function createMockFetch(
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -148,10 +148,10 @@ describe("401 retry behavior", () => {
     // 2. OAuth refresh request
     // 3. Retry API request with refreshed-token -> 200
     const apiRequests = requests.filter((r) =>
-      r.url.includes("/test-endpoint")
+      r.url.includes("/test-endpoint"),
     );
     const oauthRequests = requests.filter((r) =>
-      r.url.includes("/oauth/token/")
+      r.url.includes("/oauth/token/"),
     );
 
     expect(apiRequests).toHaveLength(2);
@@ -183,14 +183,14 @@ describe("401 retry behavior", () => {
 
     // Should only have initial API request, no retry
     const apiRequests = requests.filter((r) =>
-      r.url.includes("/test-endpoint")
+      r.url.includes("/test-endpoint"),
     );
     expect(apiRequests).toHaveLength(1);
     expect(apiRequests[0].isRetry).toBe(false);
 
     // No OAuth refresh should have been attempted
     const oauthRequests = requests.filter((r) =>
-      r.url.includes("/oauth/token/")
+      r.url.includes("/oauth/token/"),
     );
     expect(oauthRequests).toHaveLength(0);
   });
@@ -212,7 +212,7 @@ describe("401 retry behavior", () => {
 
     // Should have exactly 2 API requests (initial + one retry, no infinite loop)
     const apiRequests = requests.filter((r) =>
-      r.url.includes("/test-endpoint")
+      r.url.includes("/test-endpoint"),
     );
     expect(apiRequests).toHaveLength(2);
     expect(apiRequests[0].isRetry).toBe(false);
@@ -220,7 +220,7 @@ describe("401 retry behavior", () => {
 
     // OAuth refresh should have been called once (after first 401)
     const oauthRequests = requests.filter((r) =>
-      r.url.includes("/oauth/token/")
+      r.url.includes("/oauth/token/"),
     );
     expect(oauthRequests).toHaveLength(1);
   });
@@ -229,7 +229,7 @@ describe("401 retry behavior", () => {
     const requests: RequestLog[] = [];
     const body = { detail: "Unauthorized" };
     globalThis.fetch = createMockFetch(requests, (_req, requestCount) =>
-      Response.json(body, { status: requestCount < 3 ? 503 : 401 })
+      Response.json(body, { status: requestCount < 3 ? 503 : 401 }),
     );
 
     const result = await rawApiRequest("/test-endpoint/");
@@ -260,14 +260,14 @@ describe("401 retry behavior", () => {
 
     // Should have exactly 1 API request - no retry since token can't be refreshed
     const apiRequests = requests.filter((r) =>
-      r.url.includes("/test-endpoint")
+      r.url.includes("/test-endpoint"),
     );
     expect(apiRequests).toHaveLength(1);
     expect(apiRequests[0].isRetry).toBe(false);
 
     // No OAuth refresh should have been attempted (no refresh token available)
     const oauthRequests = requests.filter((r) =>
-      r.url.includes("/oauth/token/")
+      r.url.includes("/oauth/token/"),
     );
     expect(oauthRequests).toHaveLength(0);
   });
@@ -487,7 +487,7 @@ describe("rawApiRequest", () => {
 
     // Mixed case Content-TYPE should be detected and preserved
     expect(requests[0].headers.get("Content-Type")).toBe(
-      "application/octet-stream"
+      "application/octet-stream",
     );
   });
 
@@ -620,7 +620,7 @@ describe("findProjectsBySlug", () => {
           JSON.stringify({
             regions: [{ name: "us", url: "https://us.sentry.io" }],
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -631,7 +631,7 @@ describe("findProjectsBySlug", () => {
             { id: "1", slug: "acme", name: "Acme Corp" },
             { id: "2", slug: "beta", name: "Beta Inc" },
           ]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -639,7 +639,7 @@ describe("findProjectsBySlug", () => {
       if (url.includes("/projects/acme/frontend/")) {
         return new Response(
           JSON.stringify({ id: "101", slug: "frontend", name: "Frontend" }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -651,7 +651,7 @@ describe("findProjectsBySlug", () => {
             slug: "frontend",
             name: "Beta Frontend",
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -685,7 +685,7 @@ describe("findProjectsBySlug", () => {
           JSON.stringify({
             regions: [{ name: "us", url: "https://us.sentry.io" }],
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -693,7 +693,7 @@ describe("findProjectsBySlug", () => {
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
           JSON.stringify([{ id: "1", slug: "acme", name: "Acme Corp" }]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -722,7 +722,7 @@ describe("findProjectsBySlug", () => {
           JSON.stringify({
             regions: [{ name: "us", url: "https://us.sentry.io" }],
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -733,7 +733,7 @@ describe("findProjectsBySlug", () => {
             { id: "1", slug: "acme", name: "Acme Corp" },
             { id: "2", slug: "restricted", name: "Restricted Org" },
           ]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -741,7 +741,7 @@ describe("findProjectsBySlug", () => {
       if (url.includes("/projects/acme/frontend/")) {
         return new Response(
           JSON.stringify({ id: "101", slug: "frontend", name: "Frontend" }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -779,7 +779,7 @@ describe("findProjectsBySlug", () => {
           JSON.stringify({
             regions: [{ name: "us", url: "https://us.sentry.io" }],
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -787,7 +787,7 @@ describe("findProjectsBySlug", () => {
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
           JSON.stringify([{ id: "1", slug: "acme", name: "Acme Corp" }]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -800,7 +800,7 @@ describe("findProjectsBySlug", () => {
             slug: "frontend",
             name: "Frontend",
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -829,14 +829,14 @@ describe("findProjectsBySlug", () => {
           JSON.stringify({
             regions: [{ name: "us", url: "https://us.sentry.io" }],
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
           JSON.stringify([{ id: "1", slug: "acme", name: "Acme Corp" }]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -844,7 +844,7 @@ describe("findProjectsBySlug", () => {
       if (url.includes("/projects/acme/wrong-slug/")) {
         return new Response(
           JSON.stringify({ id: "999", slug: "actual-slug", name: "Actual" }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -885,7 +885,7 @@ describe("findProjectsBySlug", () => {
       if (url.includes("/projects/acme/frontend/")) {
         return new Response(
           JSON.stringify({ id: "101", slug: "frontend", name: "Frontend" }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -906,8 +906,8 @@ describe("findProjectsBySlug", () => {
     expect(requests.some((r) => r.includes("/users/me/regions/"))).toBe(false);
     expect(
       requests.some(
-        (r) => r.includes("/organizations/") && !r.includes("/projects/")
-      )
+        (r) => r.includes("/organizations/") && !r.includes("/projects/"),
+      ),
     ).toBe(false);
   });
 });
@@ -951,7 +951,7 @@ describe("resolveEventInOrg", () => {
           JSON.stringify({
             regions: [{ name: "us", url: "https://us.sentry.io" }],
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -964,7 +964,7 @@ describe("resolveEventInOrg", () => {
             eventId: "abc123def456",
             event: sampleEvent,
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -993,7 +993,7 @@ describe("resolveEventInOrg", () => {
           JSON.stringify({
             regions: [{ name: "us", url: "https://us.sentry.io" }],
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -1047,7 +1047,7 @@ describe("findEventAcrossOrgs", () => {
           JSON.stringify({
             regions: [{ name: "us", url: "https://us.sentry.io" }],
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -1057,7 +1057,7 @@ describe("findEventAcrossOrgs", () => {
             { id: "1", slug: "no-event-org", name: "No Event Org" },
             { id: "2", slug: "has-event-org", name: "Has Event Org" },
           ]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -1070,7 +1070,7 @@ describe("findEventAcrossOrgs", () => {
             eventId: "abc123def456",
             event: sampleEvent,
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -1098,14 +1098,14 @@ describe("findEventAcrossOrgs", () => {
           JSON.stringify({
             regions: [{ name: "us", url: "https://us.sentry.io" }],
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
       if (url.includes("/organizations/") && !url.includes("/eventids/")) {
         return new Response(
           JSON.stringify([{ id: "1", slug: "acme", name: "Acme" }]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -1604,7 +1604,7 @@ describe("listTraceLogs", () => {
 
     const result = await listTraceLogs(
       "my-org",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(1);
@@ -1634,7 +1634,7 @@ describe("listTraceLogs", () => {
 
     const url = new URL(capturedUrl);
     expect(url.searchParams.get("traceId")).toBe(
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
     expect(url.searchParams.get("statsPeriod")).toBe("7d");
     expect(url.searchParams.get("per_page")).toBe("100");
@@ -1692,7 +1692,7 @@ describe("listTraceLogs", () => {
 
     const result = await listTraceLogs(
       "my-org",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
     expect(result).toHaveLength(1);
     expect(typeof result[0]["project.id"]).toBe("number");
@@ -1729,7 +1729,7 @@ describe("listTraceLogs", () => {
 
     const result = await listTraceLogs(
       "my-org",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
     expect(result).toHaveLength(1);
     expect(result[0].severity_number).toBeUndefined();
@@ -1800,7 +1800,7 @@ describe("getLogs", () => {
         capturedUrl = req.url;
         return new Response(
           JSON.stringify({ data: [], meta: { fields: {} } }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       return new Response(JSON.stringify({}), { status: 200 });
@@ -1819,7 +1819,7 @@ describe("getLogs", () => {
       if (req.url.includes("/events/")) {
         return new Response(
           JSON.stringify({ data: [], meta: { fields: {} } }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       return new Response(JSON.stringify({}), { status: 200 });
@@ -1834,7 +1834,7 @@ describe("getLogs", () => {
   test("batches requests when IDs exceed API_MAX_PER_PAGE", async () => {
     // Create 150 IDs (should split into 2 batches: 100 + 50)
     const ids = Array.from({ length: 150 }, (_, i) =>
-      i.toString(16).padStart(32, "0")
+      i.toString(16).padStart(32, "0"),
     );
     const capturedUrls: string[] = [];
 
@@ -1852,7 +1852,7 @@ describe("getLogs", () => {
             data: [makeLogEntry(batchIds[0])],
             meta: { fields: {} },
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       return new Response(JSON.stringify({}), { status: 200 });
@@ -1905,7 +1905,7 @@ describe("getProject", () => {
             // Collapsed response: no `name` on organization
             organization: { id: "42", slug: "acme" },
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -1922,7 +1922,7 @@ describe("getProject", () => {
 
     // Verify the outgoing URL carries ?collapse=organization
     const projectRequest = capturedUrls.find((u) =>
-      u.includes("/projects/acme/frontend/")
+      u.includes("/projects/acme/frontend/"),
     );
     expect(projectRequest).toBeDefined();
     const parsed = new URL(projectRequest as string);
@@ -1952,7 +1952,7 @@ describe("getProject", () => {
             name: "Frontend",
             organization: { id: "42", slug: "acme" },
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -1972,17 +1972,15 @@ describe("getProject", () => {
 
 describe("resolveOrgDisplayName", () => {
   test("prefers explicit name when provided", async () => {
-    const { resolveOrgDisplayName } = await import(
-      "../../src/lib/api-client.js"
-    );
+    const { resolveOrgDisplayName } =
+      await import("../../src/lib/api-client.js");
 
     expect(resolveOrgDisplayName("acme", "Acme Corp")).toBe("Acme Corp");
   });
 
   test("falls back to cached org name when explicit name is absent", async () => {
-    const { resolveOrgDisplayName } = await import(
-      "../../src/lib/api-client.js"
-    );
+    const { resolveOrgDisplayName } =
+      await import("../../src/lib/api-client.js");
 
     setOrgRegions([
       {
@@ -1997,18 +1995,16 @@ describe("resolveOrgDisplayName", () => {
   });
 
   test("falls back to slug when no cache entry exists", async () => {
-    const { resolveOrgDisplayName } = await import(
-      "../../src/lib/api-client.js"
-    );
+    const { resolveOrgDisplayName } =
+      await import("../../src/lib/api-client.js");
 
     // Empty cache — no entry for this slug
     expect(resolveOrgDisplayName("unknown-org")).toBe("unknown-org");
   });
 
   test("falls back to slug when explicit name is empty string", async () => {
-    const { resolveOrgDisplayName } = await import(
-      "../../src/lib/api-client.js"
-    );
+    const { resolveOrgDisplayName } =
+      await import("../../src/lib/api-client.js");
 
     // Empty string is falsy, so the cache/slug fallback kicks in
     expect(resolveOrgDisplayName("unknown-org", "")).toBe("unknown-org");

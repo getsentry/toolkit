@@ -140,7 +140,7 @@ export const listCommand = buildCommand({
         message: `Fetching organizations (up to ${flags.limit})...`,
         json: flags.json,
       },
-      () => listOrganizationsUncached()
+      () => listOrganizationsUncached(),
     );
     const limitedOrgs = orgs.slice(0, flags.limit);
 

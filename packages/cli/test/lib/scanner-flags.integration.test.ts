@@ -36,7 +36,7 @@ const emptyCwd = mkdtempSync(join(tmpdir(), "scanner-flags-cwd-"));
 
 /** Run the real app with a mock context, capturing stdout and stderr. */
 async function runApp(
-  args: string[]
+  args: string[],
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   let stdout = "";
   let stderr = "";
@@ -183,13 +183,13 @@ describe("a value flag does not swallow --help", () => {
     expect(stdout).toContain("USAGE");
   });
 
-  test.each([
-    "--json",
-    "-v",
-  ])("%s after a missing value flag still reaches the leaf command", async (flag) => {
-    const { stderr } = await runApp(["--org", flag, "issue", "list"]);
-    expect(stderr).not.toContain(NO_COMMAND_REGISTERED);
-  });
+  test.each(["--json", "-v"])(
+    "%s after a missing value flag still reaches the leaf command",
+    async (flag) => {
+      const { stderr } = await runApp(["--org", flag, "issue", "list"]);
+      expect(stderr).not.toContain(NO_COMMAND_REGISTERED);
+    },
+  );
 });
 
 describe("escape sequence is still respected", () => {

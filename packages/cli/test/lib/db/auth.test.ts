@@ -129,19 +129,19 @@ describe("env var auth: refreshToken edge cases", () => {
 });
 
 describe("env var auth: getRawEnvToken", () => {
-  test.each([
-    "SENTRY_AUTH_TOKEN",
-    "SENTRY_TOKEN",
-  ] as const)("shares normalization and source selection for %s", (source) => {
-    process.env[source] = "\x01\u00a0synthetic-token\x7f";
-    expect(getRawEnvToken()).toBe("synthetic-token");
-    expect(getAuthToken()).toBe("synthetic-token");
-    expect(getAuthConfig()).toMatchObject({
-      token: "synthetic-token",
-      source: `env:${source}`,
-    });
-    expect(getActiveEnvVarName()).toBe(source);
-  });
+  test.each(["SENTRY_AUTH_TOKEN", "SENTRY_TOKEN"] as const)(
+    "shares normalization and source selection for %s",
+    (source) => {
+      process.env[source] = "\x01\u00a0synthetic-token\x7f";
+      expect(getRawEnvToken()).toBe("synthetic-token");
+      expect(getAuthToken()).toBe("synthetic-token");
+      expect(getAuthConfig()).toMatchObject({
+        token: "synthetic-token",
+        source: `env:${source}`,
+      });
+      expect(getActiveEnvVarName()).toBe(source);
+    },
+  );
 
   test("keeps a control-only primary credential selected over the alias", () => {
     process.env.SENTRY_AUTH_TOKEN = "\x01\x7f";
@@ -175,20 +175,18 @@ describe("stored credential validation", () => {
     });
   });
 
-  test.each([
-    "prefix\0secret-tail",
-    "prefix\nsecret-tail",
-    "",
-    "\x01\x7f",
-  ])("rejects a malformed replacement without changing stored credentials %#", (token) => {
-    setAuthToken("previous-token", 3600, "previous-refresh-token");
-    const before = getDatabase().query("SELECT * FROM auth").get();
-    expect(() => setAuthToken(token, 60, "new-refresh-token")).toThrow(
-      MalformedAuthTokenError
-    );
-    expect(getDatabase().query("SELECT * FROM auth").get()).toEqual(before);
-    expect(getAuthToken()).toBe("previous-token");
-  });
+  test.each(["prefix\0secret-tail", "prefix\nsecret-tail", "", "\x01\x7f"])(
+    "rejects a malformed replacement without changing stored credentials %#",
+    (token) => {
+      setAuthToken("previous-token", 3600, "previous-refresh-token");
+      const before = getDatabase().query("SELECT * FROM auth").get();
+      expect(() => setAuthToken(token, 60, "new-refresh-token")).toThrow(
+        MalformedAuthTokenError,
+      );
+      expect(getDatabase().query("SELECT * FROM auth").get()).toEqual(before);
+      expect(getAuthToken()).toBe("previous-token");
+    },
+  );
 });
 
 describe("OAuth-preferred auth (#646)", () => {
@@ -229,9 +227,8 @@ describe("OAuth-preferred auth (#646)", () => {
 
 describe("clearAuth: integration with per-account caches", () => {
   test("clearAuth drops issue_org_cache entries (prevents cross-account leakage)", async () => {
-    const { setCachedIssueOrg, getCachedIssueOrg } = await import(
-      "../../../src/lib/db/issue-org-cache.js"
-    );
+    const { setCachedIssueOrg, getCachedIssueOrg } =
+      await import("../../../src/lib/db/issue-org-cache.js");
 
     // Seed a mapping as if a previous session resolved this issue.
     await setAuthToken("test-token");
@@ -465,7 +462,7 @@ describe("hasStoredAuthCredentials memoization", () => {
     // (simulates a code path the cache doesn't know about).
     const db = getDatabase();
     db.query(
-      "INSERT OR REPLACE INTO auth (id, token) VALUES (1, 'sneaky')"
+      "INSERT OR REPLACE INTO auth (id, token) VALUES (1, 'sneaky')",
     ).run();
 
     // Cache still returns stale false

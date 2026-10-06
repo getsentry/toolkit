@@ -75,7 +75,7 @@ describe("selectNativeIntegration", () => {
   function select(
     fixture: IntegrationFixture,
     url: string,
-    integrationId?: string
+    integrationId?: string,
   ): string {
     return selectNativeIntegration([integration(fixture)], url, integrationId)
       .id;
@@ -107,7 +107,7 @@ describe("selectNativeIntegration", () => {
     "selects the $provider installation at $domainName for $url",
     ({ provider, domainName, url }) => {
       expect(select({ provider, domainName }, url)).toBe("10");
-    }
+    },
   );
 
   test.each`
@@ -119,16 +119,16 @@ describe("selectNativeIntegration", () => {
     "rejects a URL outside the $provider installation at $domainName",
     ({ provider, domainName, url }) => {
       expect(() => select({ provider, domainName }, url)).toThrow(
-        "No installed native"
+        "No installed native",
       );
-    }
+    },
   );
 
   test("selects a GitHub installation without domain metadata by owner", () => {
     const github = { provider: "github", domainName: null, name: "Owner" };
     expect(select(github, "https://github.com/OWNER/repo/issues/7")).toBe("10");
     expect(() =>
-      select(github, "https://github.com/another/repo/issues/7")
+      select(github, "https://github.com/another/repo/issues/7"),
     ).toThrow("No installed native");
   });
 
@@ -164,15 +164,15 @@ describe("selectNativeIntegration", () => {
       ],
       url: "https://gitlab.example.com/deployment/group/repo/-/issues/7",
     },
-  ])("requires --integration for $name installations sharing a host", ({
-    integrations,
-    url,
-  }) => {
-    expect(() => selectNativeIntegration(integrations, url)).toThrow(
-      "Multiple integrations"
-    );
-    expect(selectNativeIntegration(integrations, url, "20").id).toBe("20");
-  });
+  ])(
+    "requires --integration for $name installations sharing a host",
+    ({ integrations, url }) => {
+      expect(() => selectNativeIntegration(integrations, url)).toThrow(
+        "Multiple integrations",
+      );
+      expect(selectNativeIntegration(integrations, url, "20").id).toBe("20");
+    },
+  );
 
   test("ignores installations with malformed domain metadata", () => {
     const integrations = [
@@ -207,7 +207,7 @@ describe("findNativeIssueLink", () => {
     ({ provider, existing, target }) => {
       const link = { ...LINK, provider, url: existing };
       expect(findNativeIssueLink([link], target)).toBe(link);
-    }
+    },
   );
 
   test.each([
@@ -225,8 +225,8 @@ describe("findNativeIssueLink", () => {
             url: "https://tracker.example.com/jira/browse/PROJ-7",
           },
         ],
-        target
-      )
+        target,
+      ),
     ).toBeUndefined();
   });
 
@@ -240,14 +240,14 @@ describe("findNativeIssueLink", () => {
     const malformed = { ...LINK, id: "999", url: "not a URL" };
     expect(findNativeIssueLink([malformed, LINK], JIRA_URL)).toBe(LINK);
     expect(findNativeIssueLink([LINK, enterprise], enterprise.url)).toBe(
-      enterprise
+      enterprise,
     );
   });
 
   test("rejects ambiguous links and accepts an integration selector", () => {
     const second = { ...LINK, id: "5678", integrationId: "20" };
     expect(() => findNativeIssueLink([LINK, second], JIRA_URL)).toThrow(
-      "--integration"
+      "--integration",
     );
     expect(findNativeIssueLink([LINK, second], JIRA_URL, "20")).toBe(second);
   });
@@ -256,14 +256,17 @@ describe("findNativeIssueLink", () => {
     "https://github.com/owner/repo/pull/8",
     "https://github.com/owner/other/pull/7",
     "https://other.example.com/owner/repo/pull/7",
-  ])("distinguishes GitHub PR numbers, repositories and hosts: %s", (target) => {
-    const link = {
-      ...LINK,
-      provider: "github",
-      url: "https://github.com/owner/repo/pull/7",
-    };
-    expect(findNativeIssueLink([link], target)).toBeUndefined();
-  });
+  ])(
+    "distinguishes GitHub PR numbers, repositories and hosts: %s",
+    (target) => {
+      const link = {
+        ...LINK,
+        provider: "github",
+        url: "https://github.com/owner/repo/pull/7",
+      };
+      expect(findNativeIssueLink([link], target)).toBeUndefined();
+    },
+  );
 
   test("never equates URLs just because neither identifies an issue", () => {
     const link = {
@@ -272,10 +275,10 @@ describe("findNativeIssueLink", () => {
       url: "https://github.com/owner/repo/commit/abc",
     };
     expect(
-      findNativeIssueLink([link], "https://github.com/owner/repo/commit/def")
+      findNativeIssueLink([link], "https://github.com/owner/repo/commit/def"),
     ).toBeUndefined();
     expect(
-      findNativeIssueLink([LINK], "https://other.example.com/browse/PROJ-7")
+      findNativeIssueLink([LINK], "https://other.example.com/browse/PROJ-7"),
     ).toBeUndefined();
   });
 });
@@ -295,7 +298,7 @@ describe("native link API", () => {
   });
 
   function mockApi(
-    respond: (request: Request) => Response | Promise<Response>
+    respond: (request: Request) => Response | Promise<Response>,
   ): Request[] {
     const requests: Request[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
@@ -316,7 +319,7 @@ describe("native link API", () => {
         expect(await request.json()).toEqual({ externalIssue: submitted });
         return Response.json(
           { ...LINK, id: 1234, integrationId: 10 },
-          { status: 201 }
+          { status: 201 },
         );
       }
       expect(url.pathname).toBe(INTEGRATIONS);
@@ -366,40 +369,48 @@ describe("native link API", () => {
     expect(requests).toHaveLength(2);
   });
 
-  test.each([
-    200, 201,
-  ])("uses backend HTTP %i even when preflight found a link", async (status) => {
-    mockApi((request) =>
-      request.method === "GET"
-        ? json([integration({ externalIssues: [LINK] })])
-        : Response.json({ ...LINK, id: 1234, integrationId: 10 }, { status })
-    );
-    const prepared = await resolveNativeIssueLink({ ...SOURCE, url: JIRA_URL });
-    expect(prepared.existing).toEqual(LINK);
-    // A concurrent unlink can remove the association after preflight.
-    expect(await linkNativeIssue(prepared)).toEqual({
-      link: LINK,
-      changed: status === 201,
-    });
-  });
+  test.each([200, 201])(
+    "uses backend HTTP %i even when preflight found a link",
+    async (status) => {
+      mockApi((request) =>
+        request.method === "GET"
+          ? json([integration({ externalIssues: [LINK] })])
+          : Response.json({ ...LINK, id: 1234, integrationId: 10 }, { status }),
+      );
+      const prepared = await resolveNativeIssueLink({
+        ...SOURCE,
+        url: JIRA_URL,
+      });
+      expect(prepared.existing).toEqual(LINK);
+      // A concurrent unlink can remove the association after preflight.
+      expect(await linkNativeIssue(prepared)).toEqual({
+        link: LINK,
+        changed: status === 201,
+      });
+    },
+  );
 
   test.each([
     { name: "empty 204", response: () => new Response(null, { status: 204 }) },
     { name: "empty object", response: () => json({}) },
     { name: "invalid numeric IDs", response: () => json(LINK) },
-  ])("does not report success for an invalid mutation response: $name", async ({
-    response,
-  }) => {
-    mockApi((request) =>
-      request.method === "GET" ? json([integration()]) : response()
-    );
-    const prepared = await resolveNativeIssueLink({ ...SOURCE, url: JIRA_URL });
-    const mutation = linkNativeIssue(prepared);
-    await expect(mutation).rejects.toBeInstanceOf(ApiError);
-    await expect(mutation).rejects.toThrow(
-      "inspect the current links before retrying"
-    );
-  });
+  ])(
+    "does not report success for an invalid mutation response: $name",
+    async ({ response }) => {
+      mockApi((request) =>
+        request.method === "GET" ? json([integration()]) : response(),
+      );
+      const prepared = await resolveNativeIssueLink({
+        ...SOURCE,
+        url: JIRA_URL,
+      });
+      const mutation = linkNativeIssue(prepared);
+      await expect(mutation).rejects.toBeInstanceOf(ApiError);
+      await expect(mutation).rejects.toThrow(
+        "inspect the current links before retrying",
+      );
+    },
+  );
 
   test("propagates the backend's rejection of an issue URL", async () => {
     const requests = mockApi((request) =>
@@ -409,24 +420,24 @@ describe("native link API", () => {
           ])
         : Response.json(
             { detail: "Invalid provider reference" },
-            { status: 400 }
-          )
+            { status: 400 },
+          ),
     );
     await expect(
       resolveNativeIssueLink({
         ...SOURCE,
         url: "https://github.com/owner/repo/commit/abcdef",
-      }).then(linkNativeIssue)
+      }).then(linkNativeIssue),
     ).rejects.toBeInstanceOf(ApiError);
     expect(requests.map((request) => request.method)).toEqual(["GET", "PUT"]);
   });
 
   test("rejects an invalid integration page without linking", async () => {
     const requests = mockApi(() =>
-      json([{ ...integration(), externalIssues: [{}] }])
+      json([{ ...integration(), externalIssues: [{}] }]),
     );
     await expect(
-      resolveNativeIssueLink({ ...SOURCE, url: JIRA_URL })
+      resolveNativeIssueLink({ ...SOURCE, url: JIRA_URL }),
     ).rejects.toBeInstanceOf(ApiError);
     expect(requests.map((request) => request.method)).toEqual(["GET"]);
   });
@@ -437,7 +448,7 @@ describe("native link API", () => {
         integration({
           externalIssues: [{ ...LINK, id: "999", url: "not a URL" }, LINK],
         }),
-      ])
+      ]),
     );
     const prepared = await resolveNativeIssueLink({ ...SOURCE, url: JIRA_URL });
     expect(prepared.existing).toEqual(LINK);
@@ -467,7 +478,7 @@ describe("native link API", () => {
         // The mutation returns GitHub's html_url; listing reconstructs /issues/N.
         return Response.json(
           { ...storedLink, id: 1234, integrationId: 10, url: pullUrl },
-          { status: 201 }
+          { status: 201 },
         );
       }
       return json([
@@ -490,7 +501,7 @@ describe("native link API", () => {
     expect(
       requests
         .filter((request) => request.method !== "GET")
-        .map((request) => request.method)
+        .map((request) => request.method),
     ).toEqual(["PUT"]);
   });
 });

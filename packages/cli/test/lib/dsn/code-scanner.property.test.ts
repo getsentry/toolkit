@@ -63,7 +63,7 @@ describe("property: extractDsnsFromContent fast-path invariance", () => {
           .replace(/HTTP/g, "XXXX");
         expect(extractDsnsFromContent(clean)).toEqual([]);
       }),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 100) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 100) },
     );
   });
 
@@ -80,7 +80,7 @@ describe("property: extractDsnsFromContent fast-path invariance", () => {
           expect(reference.has(dsn)).toBe(true);
         }
       }),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 100) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 100) },
     );
   });
 });

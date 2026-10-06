@@ -138,7 +138,7 @@ export function buildLogRowCells(
   log: LogLike,
   padSeverity = true,
   includeTrace = true,
-  extraFields?: string[]
+  extraFields?: string[],
 ): string[] {
   const logId = getLogId(log);
   const shortId = logId ? colorTag("muted", logId.slice(0, 8)) : "";
@@ -154,7 +154,9 @@ export function buildLogRowCells(
     for (const field of extraFields) {
       const val = log[field];
       cells.push(
-        escapeMarkdownCell(val !== null && val !== undefined ? String(val) : "")
+        escapeMarkdownCell(
+          val !== null && val !== undefined ? String(val) : "",
+        ),
       );
     }
   }
@@ -173,7 +175,7 @@ export function buildLogRowCells(
 export function formatLogRow(
   log: LogLike,
   includeTrace = true,
-  extraFields?: string[]
+  extraFields?: string[],
 ): string {
   return mdRow(buildLogRowCells(log, true, includeTrace, extraFields));
 }
@@ -201,7 +203,7 @@ const LOG_HINT_ROWS: string[][] = [
  */
 export function createLogStreamingTable(
   options: Partial<StreamingTableOptions> = {},
-  extraColumns?: string[]
+  extraColumns?: string[],
 ): StreamingTable {
   const cols = [...LOG_TABLE_COLS, ...(extraColumns ?? [])];
   // ID, Timestamp, Level are fixed-width; Message + extra columns are shrinkable
@@ -261,13 +263,13 @@ export function formatLogsHeader(extraColumns?: string[]): string {
 export function formatLogTable(
   logs: LogLike[],
   includeTrace = true,
-  extraFields?: string[]
+  extraFields?: string[],
 ): string {
   const headers = [...LOG_TABLE_COLS, ...(extraFields ?? [])];
   const rows = logs.map((log) =>
     buildLogRowCells(log, false, includeTrace, extraFields).map((c) =>
-      renderInlineMarkdown(c)
-    )
+      renderInlineMarkdown(c),
+    ),
   );
   return renderTextTable(headers, rows);
 }
@@ -338,12 +340,12 @@ const REDUNDANT_LOG_DETAIL_ATTRS = new Set([
  * @param extraFields - Optional --fields filter: limits which custom attributes are shown
  * @returns Rendered terminal string
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: log detail formatting requires multiple conditional sections
+// log detail formatting requires multiple conditional sections
 export function formatLogDetails(
   log: DetailedSentryLog,
   orgSlug: string,
   allAttributes?: TraceItemAttribute[],
-  extraFields?: string[]
+  extraFields?: string[],
 ): string {
   const logId = log["sentry.item_id"];
   const lines: string[] = [];
@@ -357,7 +359,7 @@ export function formatLogDetails(
       ["ID", `\`${logId}\``],
       ["Timestamp", formatTimestamp(log.timestamp)],
       ["Severity", formatSeverityLabel(log.severity)],
-    ])
+    ]),
   );
 
   if (log.message) {
@@ -448,7 +450,7 @@ export function formatLogDetails(
   // Custom Attributes — from trace-items detail endpoint (all non-standard attributes)
   if (allAttributes?.length) {
     let customAttrs = allAttributes.filter(
-      (a) => !REDUNDANT_LOG_DETAIL_ATTRS.has(a.name)
+      (a) => !REDUNDANT_LOG_DETAIL_ATTRS.has(a.name),
     );
     if (extraFields?.length) {
       const wanted = new Set(extraFields);
@@ -462,8 +464,8 @@ export function formatLogDetails(
             a.name,
             a.type === "array" ? JSON.stringify(a.value) : String(a.value),
           ]),
-          "Custom Attributes"
-        )
+          "Custom Attributes",
+        ),
       );
     }
   } else if (extraFields?.length) {

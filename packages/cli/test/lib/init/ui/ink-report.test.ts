@@ -14,7 +14,7 @@ describe("formatSuccessReport with summary fields", () => {
           { label: "Project", value: "my-app" },
           { label: "Org", value: "acme" },
         ],
-      })
+      }),
     );
     expect(output).toContain("Project");
     expect(output).toContain("my-app");
@@ -29,7 +29,7 @@ describe("formatSuccessReport with summary fields", () => {
           { label: "Short", value: "x" },
           { label: "LongerLabel", value: "y" },
         ],
-      })
+      }),
     );
     const lines = output
       .split("\n")
@@ -59,7 +59,7 @@ describe("formatSuccessReport with featureBlurbs", () => {
           { label: "Error Monitoring", blurb: "Captures exceptions." },
           { label: "Tracing", blurb: "Traces requests end-to-end." },
         ],
-      })
+      }),
     );
     expect(output).toContain("Here's what we set up");
     expect(output).toContain("Error Monitoring");
@@ -75,7 +75,7 @@ describe("formatSuccessReport with featureBlurbs", () => {
 
   test("no blurbs section when featureBlurbs is empty", () => {
     const output = stripAnsi(
-      formatSuccessReport("Done!", { fields: [], featureBlurbs: [] })
+      formatSuccessReport("Done!", { fields: [], featureBlurbs: [] }),
     );
     expect(output).not.toContain("Here's what we set up");
   });
@@ -90,7 +90,7 @@ describe("formatSuccessReport with changedFiles", () => {
           { path: "src/index.ts", action: "modify" },
           { path: "sentry.config.ts", action: "create" },
         ],
-      })
+      }),
     );
     expect(output).toContain("Changed files");
     expect(output).toContain("index.ts");
@@ -99,7 +99,7 @@ describe("formatSuccessReport with changedFiles", () => {
 
   test("no Changed files heading when list is empty", () => {
     const output = stripAnsi(
-      formatSuccessReport("Done!", { fields: [], changedFiles: [] })
+      formatSuccessReport("Done!", { fields: [], changedFiles: [] }),
     );
     expect(output).not.toContain("Changed files");
   });
@@ -116,7 +116,7 @@ describe("formatFailureReport with error log entries", () => {
       formatFailureReport("Setup failed", [
         { severity: "error", text: "Could not reach Sentry" },
         { severity: "error", text: "Auth token missing" },
-      ])
+      ]),
     );
     expect(output).toContain("Could not reach Sentry");
     expect(output).toContain("Auth token missing");
@@ -140,7 +140,7 @@ describe("formatFailureReport with error log entries", () => {
       formatFailureReport("Setup failed", [
         { severity: "error", text: "Setup failed" },
         { severity: "error", text: "Underlying cause" },
-      ])
+      ]),
     );
     const lines = output.split("\n");
     // "Setup failed" appears once (the heading), not a second time as a log entry
@@ -153,7 +153,7 @@ describe("formatFailureReport with error log entries", () => {
     const output = stripAnsi(
       formatFailureReport("Setup failed", [
         { severity: "error", text: "Network error: connection refused" },
-      ])
+      ]),
     );
     const lines = output
       .split("\n")
@@ -171,7 +171,7 @@ describe("formatFailureReport with error log entries", () => {
         { severity: "info", text: "Info message" },
         { severity: "warn", text: "Warn message" },
         { severity: "error", text: "Real error" },
-      ])
+      ]),
     );
     expect(output).not.toContain("Info message");
     expect(output).not.toContain("Warn message");
@@ -189,8 +189,8 @@ describe("Ink post-dispose feedback reports", () => {
           "Nice, setup made it through.",
           "Tell us what felt great or rough:",
           '$ sentry cli feedback "sentry init worked well"',
-        ].join("\n")
-      )
+        ].join("\n"),
+      ),
     );
 
     expect(output).toContain("Sentry SDK installed successfully!");
@@ -200,7 +200,7 @@ describe("Ink post-dispose feedback reports", () => {
         "   Tell us what felt great or rough:",
         '   $ sentry cli feedback "sentry init worked well"',
         "",
-      ].join("\n")
+      ].join("\n"),
     );
     expect(output.endsWith("\n")).toBe(true);
   });
@@ -214,8 +214,8 @@ describe("Ink post-dispose feedback reports", () => {
           "Setup hit a wall.",
           "Tell us what happened so we can fix it:",
           '$ sentry cli feedback "sentry init failed"',
-        ].join("\n")
-      )
+        ].join("\n"),
+      ),
     );
 
     expect(output).toContain("Setup failed");
@@ -225,7 +225,7 @@ describe("Ink post-dispose feedback reports", () => {
         "   Tell us what happened so we can fix it:",
         '   $ sentry cli feedback "sentry init failed"',
         "",
-      ].join("\n")
+      ].join("\n"),
     );
     expect(output.endsWith("\n")).toBe(true);
   });
@@ -239,8 +239,8 @@ describe("Ink post-dispose feedback reports", () => {
           "Sad to see setup stop. Was something going sideways?",
           "Tell us so we can fix it:",
           '$ sentry cli feedback "sentry init was cancelled"',
-        ].join("\n")
-      )
+        ].join("\n"),
+      ),
     );
 
     expect(output).toContain("Setup cancelled.");
@@ -250,7 +250,7 @@ describe("Ink post-dispose feedback reports", () => {
         "   Tell us so we can fix it:",
         '   $ sentry cli feedback "sentry init was cancelled"',
         "",
-      ].join("\n")
+      ].join("\n"),
     );
     expect(output.endsWith("\n")).toBe(true);
   });
@@ -273,7 +273,7 @@ describe("formatSuccessExitLine", () => {
         changedFiles: [{ action: "create", path: "instrument.ts" }],
         featureBlurbs: [{ label: "Errors", blurb: "Captures exceptions." }],
         completion: { ...baseCompletion, verification: { received: false } },
-      })
+      }),
     );
     expect(output).toContain("Sentry is watching my-app");
     expect(output).toContain("See your first error");
@@ -297,7 +297,7 @@ describe("formatSuccessExitLine", () => {
             eventUrl: "https://acme.sentry.io/issues/?query=event.id:abc",
           },
         },
-      })
+      }),
     );
     expect(output).toContain("View your first event");
     expect(output).toContain("event.id:abc");

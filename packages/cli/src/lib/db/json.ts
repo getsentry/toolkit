@@ -30,7 +30,7 @@ const log = logger.withTag("db-json");
  */
 export function safeParseJson<T>(
   raw: string | null | undefined,
-  validate?: (value: unknown) => value is T
+  validate?: (value: unknown) => value is T,
 ): T | undefined {
   if (raw === null || raw === undefined) {
     return;

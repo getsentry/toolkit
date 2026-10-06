@@ -40,7 +40,7 @@ vi.mock("node:child_process", async (importOriginal) => {
     spawn: (
       cmd: string,
       args: readonly string[],
-      options: Parameters<typeof actual.spawn>[2]
+      options: Parameters<typeof actual.spawn>[2],
     ) => {
       spawnCapture.args = args;
       spawnCapture.env = (options as { env?: NodeJS.ProcessEnv })?.env;
@@ -114,7 +114,7 @@ describe("sentry local run", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(ValidationError);
       expect((err as ValidationError).message).toContain(
-        "No command provided and could not auto-detect"
+        "No command provided and could not auto-detect",
       );
     }
   });
@@ -126,7 +126,7 @@ describe("sentry local run", () => {
       await func.call(
         ctx,
         { port: 0, host: "localhost", verify: false, timeout: 0 },
-        "--"
+        "--",
       );
       expect.unreachable("should have thrown");
     } catch (err) {
@@ -137,7 +137,7 @@ describe("sentry local run", () => {
   test("auto-detects dev command from package.json", async () => {
     await writeFile(
       join(tmpDir, "package.json"),
-      JSON.stringify({ scripts: { dev: "echo hello" } })
+      JSON.stringify({ scripts: { dev: "echo hello" } }),
     );
 
     const func = (await runCommand.loader()) as unknown as RunFunc;
@@ -163,7 +163,7 @@ describe("sentry local run", () => {
       ctx,
       { port, host: "127.0.0.1", verify: false, timeout: 0 },
       "echo",
-      "ok"
+      "ok",
     );
   });
 
@@ -181,13 +181,13 @@ describe("sentry local run", () => {
         timeout: 0,
         open: true,
       },
-      "true"
+      "true",
     );
 
     expect(openBrowserMock).toHaveBeenCalledWith(
       expect.stringMatching(
-        /^http:\/\/localhost:5173\/#stream=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fstream$/
-      )
+        /^http:\/\/localhost:5173\/#stream=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fstream$/,
+      ),
     );
   });
 
@@ -204,8 +204,8 @@ describe("sentry local run", () => {
           timeout: 0,
           open: true,
         },
-        "true"
-      )
+        "true",
+      ),
     ).rejects.toMatchObject({
       field: "open",
       message: "--open cannot be used with --verify.",
@@ -225,8 +225,8 @@ describe("sentry local run", () => {
           timeout: 0,
           open: true,
         },
-        "true"
-      )
+        "true",
+      ),
     ).rejects.toMatchObject({
       field: "host",
       message:
@@ -245,14 +245,14 @@ describe("sentry local run", () => {
       makeContext(),
       { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
       fakeWrangler,
-      "dev"
+      "dev",
     );
 
     expect(spawnCapture.args).toEqual([
       "dev",
       "--var",
       expect.stringMatching(
-        /^SENTRY_SPOTLIGHT:http:\/\/127\.0\.0\.1:\d+\/stream$/
+        /^SENTRY_SPOTLIGHT:http:\/\/127\.0\.0\.1:\d+\/stream$/,
       ),
     ]);
   });
@@ -269,7 +269,7 @@ describe("sentry local run", () => {
         ctx,
         { port: 19_878, host: "127.0.0.1", verify: false, timeout: 0 },
         "printenv",
-        "SENTRY_TRACES_SAMPLE_RATE"
+        "SENTRY_TRACES_SAMPLE_RATE",
       );
     } finally {
       if (originalRate === undefined) {
@@ -289,7 +289,7 @@ describe("sentry local run", () => {
       await func.call(
         ctx,
         { port, host: "127.0.0.1", verify: false, timeout: 0 },
-        "false"
+        "false",
       );
       expect.unreachable("should have thrown");
     } catch (err) {
@@ -308,7 +308,7 @@ describe("sentry local run", () => {
         ctx,
         { port: 0, host: "127.0.0.1", verify: false, timeout: 1 },
         "sleep",
-        "60"
+        "60",
       );
       expect.unreachable("should have thrown");
     } catch (err) {
@@ -326,13 +326,13 @@ describe("sentry local run", () => {
       await func.call(
         ctx,
         { port: 0, host: "127.0.0.1", verify: true, timeout: 0 },
-        "true"
+        "true",
       );
       expect.unreachable("should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(CliError);
       expect((err as CliError).message).toContain(
-        "Process exited before sending any events"
+        "Process exited before sending any events",
       );
       expect((err as CliError).exitCode).toBe(64);
     }
@@ -347,7 +347,7 @@ describe("sentry local run", () => {
         ctx,
         { port: 0, host: "127.0.0.1", verify: true, timeout: 1 },
         "sleep",
-        "60"
+        "60",
       );
       expect.unreachable("should have thrown");
     } catch (err) {
@@ -365,13 +365,13 @@ describe("sentry local run", () => {
       await func.call(
         ctx,
         { port: 19_879, host: "127.0.0.1", verify: false, timeout: 0 },
-        "nonexistent-command-that-does-not-exist"
+        "nonexistent-command-that-does-not-exist",
       );
       expect.unreachable("should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(Error);
       expect((err as Error).message).toMatch(
-        /exited with code|Failed to start|ENOENT|spawn/i
+        /exited with code|Failed to start|ENOENT|spawn/i,
       );
     }
   });
@@ -385,7 +385,7 @@ describe("sentry local run", () => {
       ctx,
       { port: 19_880, host: "127.0.0.1", verify: false, timeout: 0 },
       "--",
-      "true"
+      "true",
     );
   });
 
@@ -427,7 +427,7 @@ describe("sentry local run", () => {
         makeContext(),
         { port, host: "127.0.0.1", verify: false, timeout: 0 },
         "sleep",
-        "1"
+        "1",
       );
     } finally {
       spy.mockRestore();
@@ -482,7 +482,7 @@ describe("sentry local run", () => {
           filter: ["error"],
         },
         "sleep",
-        "1"
+        "1",
       );
     } finally {
       stdoutSpy.mockRestore();
@@ -517,7 +517,7 @@ describe("sentry local run", () => {
         format: "json",
         attributes: false,
       },
-      "true"
+      "true",
     );
 
     expect(spawnCapture.stdio).toEqual(["inherit", "pipe", "pipe"]);
@@ -554,7 +554,7 @@ describe("sentry local run", () => {
         makeContext(),
         { port, host: "127.0.0.1", verify: false, timeout: 0 },
         "sleep",
-        "1"
+        "1",
       );
     } finally {
       spy.mockRestore();

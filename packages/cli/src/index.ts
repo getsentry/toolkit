@@ -54,7 +54,7 @@ export type { SentrySDK } from "./sdk.generated.js";
  * ```
  */
 export function createSentrySDK(
-  options?: import("./lib/sdk-types.js").SentryOptions
+  options?: import("./lib/sdk-types.js").SentryOptions,
 ) {
   const methods = createSDKMethods(buildInvoker(options));
   const run = buildRunner(options);

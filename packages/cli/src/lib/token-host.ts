@@ -32,7 +32,7 @@ import { isSaaSTrustOrigin, normalizeOrigin } from "./sentry-urls.js";
  */
 export function isHostTrusted(
   candidate: string | URL | Request | undefined | null,
-  trusted: string | undefined | null
+  trusted: string | undefined | null,
 ): boolean {
   if (!trusted) {
     return false;
@@ -104,7 +104,7 @@ export function resetLoginTrustAnchorForTesting(): void {
 function isOriginTrustedFor(
   requestInput: string | URL | Request | undefined | null,
   anchorHost: string,
-  identity: string
+  identity: string,
 ): boolean {
   if (isHostTrusted(requestInput, anchorHost)) {
     return true;
@@ -121,7 +121,7 @@ function isOriginTrustedFor(
  * Returns `true` when no token is active (nothing to protect).
  */
 export function isRequestOriginTrusted(
-  requestInput: string | URL | Request | undefined | null
+  requestInput: string | URL | Request | undefined | null,
 ): boolean {
   const credential = getCredentialContext();
   if (!credential) {
@@ -133,7 +133,7 @@ export function isRequestOriginTrusted(
 /** Evaluate the host trust against the credential captured for this request. */
 export function isRequestOriginTrustedForContext(
   requestInput: string | URL | Request | undefined | null,
-  context: { host: string; identity: string }
+  context: { host: string; identity: string },
 ): boolean {
   return isOriginTrustedFor(requestInput, context.host, context.identity);
 }
@@ -145,7 +145,7 @@ export function isRequestOriginTrustedForContext(
 export function isHostTrustedForClaim(
   requestInput: string | URL | Request | undefined | null,
   claimUrl: string,
-  identity = getIdentityFingerprint()
+  identity = getIdentityFingerprint(),
 ): boolean {
   return isOriginTrustedFor(requestInput, claimUrl, identity);
 }
@@ -159,7 +159,7 @@ export function isHostTrustedForClaim(
  * No anchor at all → fail closed.
  */
 export function isRequestOriginTrustedForCustomHeaders(
-  requestInput: string | URL | Request | undefined | null
+  requestInput: string | URL | Request | undefined | null,
 ): boolean {
   if (getActiveTokenHost()) {
     return isRequestOriginTrusted(requestInput);

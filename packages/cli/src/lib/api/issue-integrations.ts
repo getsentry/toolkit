@@ -70,7 +70,7 @@ function parseUrl(value: string): URL {
   if (!url) {
     throw new ValidationError(
       "External issue must be an absolute HTTP(S) URL without credentials.",
-      "url"
+      "url",
     );
   }
   return url;
@@ -154,7 +154,7 @@ function issueIdentity(url: URL, provider: string): string | undefined {
 function matchesIntegration(
   url: URL,
   integration: NativeIntegration,
-  explicitlySelected: boolean
+  explicitlySelected: boolean,
 ): boolean {
   const provider = integration.provider.key;
   // Older Enterprise metadata may omit its host. Only an explicit selection
@@ -200,7 +200,7 @@ function matchesIntegration(
 /** Read every integration page; partial discovery could hide an ambiguous match. */
 async function listIntegrations(
   orgSlug: string,
-  issueId: string
+  issueId: string,
 ): Promise<NativeIntegration[]> {
   const config = getSdkConfig(await resolveOrgRegion(orgSlug));
   return fetchAllPages(
@@ -213,7 +213,7 @@ async function listIntegrations(
       return unwrapPaginatedResult(result, "Failed to list issue integrations");
     },
     vIssueIntegrationsResponse,
-    "listing issue integrations"
+    "listing issue integrations",
   );
 }
 
@@ -235,7 +235,7 @@ function flattenLinks(integrations: NativeIntegration[]): NativeIssueLink[] {
           url: url.href,
         },
       ];
-    })
+    }),
   );
 }
 
@@ -268,17 +268,17 @@ function matchesNativeUrl(link: NativeIssueLink, target: URL): boolean {
 export function findNativeIssueLink(
   links: NativeIssueLink[],
   url: string,
-  integrationId?: string
+  integrationId?: string,
 ): NativeIssueLink | undefined {
   const target = parseUrl(url);
   const matches = links.filter(
     (link) =>
       (!integrationId || integrationId === link.integrationId) &&
-      matchesNativeUrl(link, target)
+      matchesNativeUrl(link, target),
   );
   if (matches.length > 1) {
     throw new ValidationError(
-      "This issue is linked through multiple integrations. Specify --integration <id>."
+      "This issue is linked through multiple integrations. Specify --integration <id>.",
     );
   }
   return matches[0];
@@ -288,23 +288,23 @@ export function findNativeIssueLink(
 export function selectNativeIntegration(
   integrations: NativeIntegration[],
   url: string,
-  integrationId?: string
+  integrationId?: string,
 ): NativeIntegration {
   const target = parseUrl(url);
   const candidates = integrations.filter(
     (integration) =>
       integration.status === "active" &&
       (!integrationId || integrationId === integration.id) &&
-      matchesIntegration(target, integration, Boolean(integrationId))
+      matchesIntegration(target, integration, Boolean(integrationId)),
   );
   if (candidates.length === 0) {
     throw new ValidationError(
-      "No installed native issue-tracker integration matches this URL. Check --integration, or use --app <slug> for a Sentry App."
+      "No installed native issue-tracker integration matches this URL. Check --integration, or use --app <slug> for a Sentry App.",
     );
   }
   if (candidates.length > 1) {
     throw new ValidationError(
-      `Multiple integrations match this URL. Specify --integration <id>: ${candidates.map((integration) => `${integration.id} (${integration.name})`).join(", ")}`
+      `Multiple integrations match this URL. Specify --integration <id>: ${candidates.map((integration) => `${integration.id} (${integration.name})`).join(", ")}`,
     );
   }
   const selected = candidates[0];
@@ -326,7 +326,7 @@ export async function resolveNativeIssueLink(options: {
   const selected = selectNativeIntegration(
     integrations,
     url.href,
-    options.integrationId
+    options.integrationId,
   );
   return {
     orgSlug: options.orgSlug,
@@ -338,14 +338,14 @@ export async function resolveNativeIssueLink(options: {
     existing: findNativeIssueLink(
       flattenLinks(integrations),
       url.href,
-      selected.id
+      selected.id,
     ),
   };
 }
 
 /** Link by URL; the backend resolves provider identifiers and enforces idempotency. */
 export async function linkNativeIssue(
-  prepared: PreparedNativeIssueLink
+  prepared: PreparedNativeIssueLink,
 ): Promise<{ link: NativeIssueLink; changed: boolean }> {
   const result = await updateOrganizationIssueIntegration({
     ...getSdkConfig(prepared.regionUrl),
@@ -358,12 +358,12 @@ export async function linkNativeIssue(
   });
   const parsed = safeParse(
     vExternalIssueLinkResponse,
-    unwrapResult<unknown>(result, "Failed to link external issue")
+    unwrapResult<unknown>(result, "Failed to link external issue"),
   );
   if (!parsed.success) {
     throw new ApiError(
       "Unexpected response format after linking; inspect the current links before retrying",
-      0
+      0,
     );
   }
   const data = parsed.output;

@@ -32,7 +32,7 @@ function makeResponse(body: unknown, status = 200): Response {
 let originalFetch: typeof globalThis.fetch;
 type FetchHandler = (
   input: Request | string | URL,
-  init?: RequestInit
+  init?: RequestInit,
 ) => Promise<Response>;
 
 beforeEach(() => {
@@ -71,13 +71,13 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       {},
-      makeResponse({ id: "12345" })
+      makeResponse({ id: "12345" }),
     );
     await storeCachedResponse(
       "GET",
       `${LIST_URL}?cursor=abc`,
       {},
-      makeResponse({ data: [] })
+      makeResponse({ data: [] }),
     );
 
     installMockFetch(async (input, init) => {
@@ -92,7 +92,7 @@ describe("HTTP-layer auto-invalidation", () => {
     // already cleared when the caller sees the response.
     expect(await getCachedResponse("GET", DETAIL_URL, {})).toBeUndefined();
     expect(
-      await getCachedResponse("GET", `${LIST_URL}?cursor=abc`, {})
+      await getCachedResponse("GET", `${LIST_URL}?cursor=abc`, {}),
     ).toBeUndefined();
   });
 
@@ -101,7 +101,7 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       {},
-      makeResponse({ id: "12345" })
+      makeResponse({ id: "12345" }),
     );
 
     installMockFetch(async () => makeResponse({ error: "denied" }, 403));
@@ -115,13 +115,13 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       {},
-      makeResponse({ id: "12345" })
+      makeResponse({ id: "12345" }),
     );
 
     installMockFetch(async () => makeResponse({ id: "99999" }));
     await runAuthenticatedFetch(
       `${BASE}organizations/acme/issues/99999/`,
-      "GET"
+      "GET",
     );
     expect(await getCachedResponse("GET", DETAIL_URL, {})).toBeDefined();
   });
@@ -132,14 +132,14 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       `${orgListUrl}?cursor=xyz`,
       {},
-      makeResponse({ data: [] })
+      makeResponse({ data: [] }),
     );
 
     installMockFetch(async () => new Response(null, { status: 204 }));
     await runAuthenticatedFetch(`${BASE}projects/acme/frontend/`, "DELETE");
 
     expect(
-      await getCachedResponse("GET", `${orgListUrl}?cursor=xyz`, {})
+      await getCachedResponse("GET", `${orgListUrl}?cursor=xyz`, {}),
     ).toBeUndefined();
   });
 
@@ -149,7 +149,7 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       {},
-      makeResponse({ owner: "a" })
+      makeResponse({ owner: "a" }),
     );
 
     setAuthToken("identity-b", 3600, "refresh-b");

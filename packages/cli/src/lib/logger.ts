@@ -116,7 +116,7 @@ const DEFAULT_LOG_LEVEL = 3;
  */
 export function parseLogLevel(name: string): number {
   const idx = LOG_LEVEL_NAMES.indexOf(
-    name.toLowerCase().trim() as LogLevelName
+    name.toLowerCase().trim() as LogLevelName,
   );
   return idx === -1 ? DEFAULT_LOG_LEVEL : idx;
 }
@@ -277,11 +277,10 @@ export function attachSentryReporter(): void {
     return;
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     // Dynamic import to avoid pulling in Sentry at module load time.
     // The reporter is exported from @sentry/node-core/light (via @sentry/node → @sentry/core).
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Sentry = _require("@sentry/node-core/light") as {
       createConsolaReporter: (options?: Record<string, unknown>) => {
         log: (logObj: unknown) => void;

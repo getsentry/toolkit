@@ -43,7 +43,7 @@ async function analyzeIssue(
   issueArg: string,
   cwd: string,
   flags: ExplainFlags,
-  suppressProgress: boolean
+  suppressProgress: boolean,
 ): Promise<IssueExplainResult> {
   let resolvedOrg: string | undefined;
 
@@ -65,7 +65,7 @@ async function analyzeIssue(
     if (rootCauses.length === 0) {
       throw new Error(
         "Analysis completed but no root causes found. " +
-          "The issue may not have enough context for root cause analysis."
+          "The issue may not have enough context for root cause analysis.",
       );
     }
 
@@ -146,7 +146,7 @@ export const explainCommand = buildCommand({
       (issueArg) => analyzeIssue(issueArg, cwd, flags, flags.json || isBatch),
       (issueArg, reason) => {
         log.warn(`Failed to analyze issue ${issueArg}: ${reason}`);
-      }
+      },
     );
 
     yield new CommandOutput({

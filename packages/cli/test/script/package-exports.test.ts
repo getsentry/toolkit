@@ -49,12 +49,11 @@ describe("package.json exports (dual ESM/CJS)", () => {
         "import assert from 'node:assert/strict'; const mod = await import(process.argv[1]); assert.equal(typeof mod.default, 'function'); assert.equal(typeof mod.createSentrySDK, 'function');",
         resolve("dist/index.mjs"),
       ],
-      { timeout: 15_000 }
+      { timeout: 15_000 },
     );
   });
 
   test.runIf(built)("built CJS entry exposes createSentrySDK", () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require(resolve("dist/index.cjs"));
     expect(typeof mod.createSentrySDK).toBe("function");
     expect(typeof mod.default).toBe("function");
@@ -73,6 +72,6 @@ describe("package.json exports (dual ESM/CJS)", () => {
       const namedZlibImport =
         /import\s*\{[^}]*zstd[^}]*\}\s*from\s*["'](?:node:)?zlib["']/;
       expect(src).not.toMatch(namedZlibImport);
-    }
+    },
   );
 });

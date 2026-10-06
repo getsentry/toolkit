@@ -106,7 +106,7 @@ function formatSetupResult(result: SetupResult): string {
 async function migrateLegacyConfig(
   homeDir: string,
   env: NodeJS.ProcessEnv,
-  emit: Logger
+  emit: Logger,
 ): Promise<void> {
   const legacyDir = join(homeDir, ".sentry");
   // Target the XDG location directly — resolveConfigDir keeps returning the
@@ -118,7 +118,7 @@ async function migrateLegacyConfig(
 
   const configFiles = ["cli.db", "cli.db-wal", "cli.db-shm", "config.json"];
   const hasLegacyConfig = configFiles.some((name) =>
-    existsSync(join(legacyDir, name))
+    existsSync(join(legacyDir, name)),
   );
   if (!hasLegacyConfig || existsSync(join(targetConfigDir, "cli.db"))) {
     return;
@@ -145,7 +145,7 @@ async function migrateLegacyConfig(
 function findMigratableBinary(
   homeDir: string,
   targetDir: string,
-  filename: string
+  filename: string,
 ): string | undefined {
   for (const dir of getLegacyInstallDirs(homeDir)) {
     if (samePath(dir, targetDir)) {
@@ -168,7 +168,7 @@ function findMigratableBinary(
 async function migrateLegacyBinary(
   homeDir: string,
   env: NodeJS.ProcessEnv,
-  emit: Logger
+  emit: Logger,
 ): Promise<string | undefined> {
   const filename = getBinaryFilename();
   const targetDir = determineInstallDir(homeDir, env);
@@ -218,7 +218,7 @@ async function handleInstall(
   execPath: string,
   homeDir: string,
   env: NodeJS.ProcessEnv,
-  emit: Logger
+  emit: Logger,
 ): Promise<{ binaryPath: string; binaryDir: string; created: boolean }> {
   const installDir = determineInstallDir(homeDir, env);
   const targetPath = join(installDir, getBinaryFilename());
@@ -231,7 +231,7 @@ async function handleInstall(
 
   // Clean up temp binary (Posix only — the inode stays alive for the running process)
   if (process.platform !== "win32") {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       unlinkSync(execPath);
     } catch {
@@ -249,7 +249,7 @@ async function handlePathModification(
   binaryDir: string,
   shell: ShellInfo,
   env: NodeJS.ProcessEnv,
-  emit: Logger
+  emit: Logger,
 ) {
   const alreadyInPath = isInPath(binaryDir, env.PATH);
 
@@ -295,7 +295,7 @@ async function handlePathModification(
 async function tryBashCompletionFallback(
   homeDir: string,
   xdgDataHome: string | undefined,
-  pathEnv: string | undefined
+  pathEnv: string | undefined,
 ): Promise<CompletionLocation | null> {
   if (!isBashAvailable(pathEnv)) {
     return null;
@@ -316,7 +316,7 @@ async function tryBashCompletionFallback(
 async function handleZshFpath(
   shell: ShellInfo,
   completionDir: string,
-  isNewInstall: boolean
+  isNewInstall: boolean,
 ): Promise<string[]> {
   const lines: string[] = [];
 
@@ -328,7 +328,7 @@ async function handleZshFpath(
     } else if (result.manualCommand) {
       lines.push(`Completions: ${result.message}`);
       lines.push(
-        `      Add manually to ${shell.configFile}: ${result.manualCommand}`
+        `      Add manually to ${shell.configFile}: ${result.manualCommand}`,
       );
     }
   } else if (isNewInstall) {
@@ -353,7 +353,7 @@ async function handleCompletions(
   shell: ShellInfo,
   homeDir: string,
   xdgDataHome: string | undefined,
-  pathEnv: string | undefined
+  pathEnv: string | undefined,
 ): Promise<string[]> {
   const location = await installCompletions(shell.type, homeDir, xdgDataHome);
 
@@ -363,7 +363,7 @@ async function handleCompletions(
     if (shell.type === "zsh") {
       const completionDir = dirname(location.path);
       lines.push(
-        ...(await handleZshFpath(shell, completionDir, location.created))
+        ...(await handleZshFpath(shell, completionDir, location.created)),
       );
     }
 
@@ -392,7 +392,7 @@ async function handleCompletions(
   const fallback = await tryBashCompletionFallback(
     homeDir,
     xdgDataHome,
-    pathEnv
+    pathEnv,
   );
 
   if (fallback) {
@@ -435,7 +435,7 @@ async function handleAgentSkills(homeDir: string, emit: Logger) {
 function printWelcomeMessage(
   emit: Logger,
   version: string,
-  binaryPath: string
+  binaryPath: string,
 ): void {
   emit("");
   emit(`Installed sentry v${version} to ${binaryPath}`);
@@ -461,7 +461,7 @@ type WarnLogger = (step: string, error: unknown) => void;
 async function bestEffort(
   stepName: string,
   fn: () => void | Promise<void>,
-  warn: WarnLogger
+  warn: WarnLogger,
 ) {
   try {
     await fn();
@@ -510,7 +510,7 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
           emit(`Recorded installation method: ${method}`);
         }
       },
-      warn
+      warn,
     );
   }
 
@@ -525,7 +525,7 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
           emit(`Recorded release channel: ${channel}`);
         }
       },
-      warn
+      warn,
     );
   }
 
@@ -534,7 +534,7 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
     await bestEffort(
       "PATH modification",
       () => handlePathModification(binaryDir, shell, env, emit),
-      warn
+      warn,
     );
   }
 
@@ -547,13 +547,13 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
           shell,
           homeDir,
           env.XDG_DATA_HOME,
-          env.PATH
+          env.PATH,
         );
         for (const line of completionLines) {
           emit(line);
         }
       },
-      warn
+      warn,
     );
   }
 
@@ -565,7 +565,7 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
     await bestEffort(
       "Recording agent skills preference",
       () => setAgentSkillsPreference(false),
-      warn
+      warn,
     );
   }
   const skipAgentSkills =
@@ -574,7 +574,7 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
     await bestEffort(
       "Agent skills",
       () => handleAgentSkills(homeDir, emit),
-      warn
+      warn,
     );
   }
 }
@@ -684,7 +684,7 @@ export const setupCommand = buildCommand({
     await bestEffort(
       "Legacy config migration",
       () => migrateLegacyConfig(homeDir, process.env, emit),
-      warn
+      warn,
     );
     await bestEffort(
       "Legacy binary migration",
@@ -692,7 +692,7 @@ export const setupCommand = buildCommand({
         const migratedBinary = await migrateLegacyBinary(
           homeDir,
           process.env,
-          emit
+          emit,
         );
         // Adopt the new location so PATH setup and recorded install info point
         // at the migrated binary rather than the deleted legacy path.
@@ -701,7 +701,7 @@ export const setupCommand = buildCommand({
           binaryDir = dirname(migratedBinary);
         }
       },
-      warn
+      warn,
     );
 
     // 1. Install binary from temp location (when --install is set)
@@ -710,7 +710,7 @@ export const setupCommand = buildCommand({
         process.execPath,
         homeDir,
         process.env,
-        emit
+        emit,
       );
       binaryPath = result.binaryPath;
       binaryDir = result.binaryDir;
@@ -732,12 +732,11 @@ export const setupCommand = buildCommand({
       await bestEffort(
         "Authorization",
         async () => {
-          const { ensureCurrentOAuthScopes } = await import(
-            "../../lib/scope-recovery.js"
-          );
+          const { ensureCurrentOAuthScopes } =
+            await import("../../lib/scope-recovery.js");
           await ensureCurrentOAuthScopes(runInteractiveLogin);
         },
-        warn
+        warn,
       );
     }
 
@@ -784,7 +783,7 @@ export const setupCommand = buildCommand({
           log.info("Run 'sentry auth login' to authenticate later.");
         }
       },
-      warn
+      warn,
     );
   },
 });

@@ -54,7 +54,7 @@ function buildContextError(skippedSelfHosted?: number): ContextError {
       "Organization and project",
       USAGE_HINT,
       undefined,
-      `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`
+      `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`,
     );
   }
 
@@ -75,7 +75,7 @@ async function handleWebView(resolvedTargets: ResolvedTarget[]): Promise<void> {
   const target = resolvedTargets[0];
   await openInBrowser(
     target ? buildProjectUrl(target.org, target.project) : undefined,
-    "project"
+    "project",
   );
 }
 
@@ -104,7 +104,7 @@ type ProjectWithDsn = {
  * (auto-detect) or surface (explicit/search) them.
  */
 async function fetchProjectAndDsn(
-  target: ResolvedTarget
+  target: ResolvedTarget,
 ): Promise<ProjectWithDsn> {
   const result = await withAuthGuard(async () => {
     const [project, dsn] = await Promise.all([
@@ -126,7 +126,7 @@ async function fetchProjectAndDsn(
  * `AuthError` still propagates for the auto-login middleware.
  */
 async function fetchProjectDetails(
-  target: ResolvedTarget
+  target: ResolvedTarget,
 ): Promise<ProjectWithDsn | null> {
   try {
     return await fetchProjectAndDsn(target);
@@ -146,7 +146,7 @@ async function fetchProjectDetails(
  * generic "Could not auto-detect" fallback (getsentry/cli#785 #8).
  */
 function fetchProjectDetailsOrThrow(
-  target: ResolvedTarget
+  target: ResolvedTarget,
 ): Promise<ProjectWithDsn> {
   return fetchProjectAndDsn(target);
 }
@@ -163,7 +163,7 @@ type FetchResult = {
  * out failures while preserving target association.
  */
 async function fetchAllProjectDetails(
-  targets: ResolvedTarget[]
+  targets: ResolvedTarget[],
 ): Promise<FetchResult> {
   const results = await Promise.all(targets.map(fetchProjectDetails));
 
@@ -215,7 +215,7 @@ function hydrateOrganizationName(entry: ProjectViewEntry): ProjectViewEntry {
  */
 function jsonTransformProjectView(
   entries: ProjectViewEntry[],
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const hydrated = entries.map((entry) => {
     const { detectedFrom: _detectedFrom, ...rest } =
@@ -322,7 +322,7 @@ export const viewCommand = buildCommand({
           parsed.projectSlug,
           USAGE_HINT,
           `sentry project view <org>/${parsed.projectSlug}`,
-          parsed.originalSlug
+          parsed.originalSlug,
         );
         resolvedTargets = [
           {
@@ -340,7 +340,7 @@ export const viewCommand = buildCommand({
         throw new ContextError(
           "Specific project",
           `sentry project view ${parsed.org}/<project>`,
-          ["Specify the full org/project target, not just the organization"]
+          ["Specify the full org/project target, not just the organization"],
         );
 
       case ProjectSpecificationType.AutoDetect: {

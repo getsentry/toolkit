@@ -39,9 +39,9 @@ const ESC_CANCEL_HINT_RE = /esc\s+cancel/;
 const COMPLETED_SELECTING_FEATURES_RE = /✔\s+Selecting features/;
 const ANSI_ESCAPE_PREFIX = "\u001B[";
 const CURSOR_TO_LINE_START = "\u001B[G";
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI escape sequences in captured Ink output
+// oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences in captured Ink output
 const ANSI_CSI_RE = /\u001B\[[0-9;?]*[ -/]*[@-~]/g;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI escape sequences in captured Ink output
+// oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences in captured Ink output
 const ANSI_OSC_RE = /\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g;
 const LINE_SPLIT_RE = /\r?\n/;
 const DOWN_ARROW = "\u001B[B";
@@ -110,7 +110,7 @@ function makeStdin(): Readable {
 async function renderApp(
   store: WizardStore,
   columns: number,
-  options: { rows?: number; input?: string[] } = {}
+  options: { rows?: number; input?: string[] } = {},
 ): Promise<CaptureStream> {
   const out = new CaptureStream(columns, options.rows ?? 40);
   const stdin = makeStdin();
@@ -215,7 +215,7 @@ function setWelcomePrompt(store: WizardStore): void {
 function makeReadFiles(count: number): string[] {
   return Array.from(
     { length: count },
-    (_value, index) => `src/file-${String(index + 1).padStart(2, "0")}.ts`
+    (_value, index) => `src/file-${String(index + 1).padStart(2, "0")}.ts`,
   );
 }
 
@@ -394,7 +394,7 @@ describe("Ink App snapshot", () => {
       .find((line) => line.includes("Sentry v") && line.includes("feedback"));
     expect(bannerLine).toBeDefined();
     expect(bannerLine?.indexOf("Sentry v0.32.0-test.0")).toBeLessThan(
-      bannerLine?.indexOf("$ sentry cli feedback") ?? 0
+      bannerLine?.indexOf("$ sentry cli feedback") ?? 0,
     );
   });
 
@@ -423,11 +423,11 @@ describe("Ink App snapshot", () => {
 
     const terminalColumns = 120;
     const frame = stripAnsi(
-      (await renderApp(store, terminalColumns)).allOutput()
+      (await renderApp(store, terminalColumns)).allOutput(),
     );
     const lines = frame.split(LINE_SPLIT_RE);
     const bannerOrigin = Math.floor(
-      (terminalColumns - bannerLinesWidth(FULL_BANNER_LINES)) / 2
+      (terminalColumns - bannerLinesWidth(FULL_BANNER_LINES)) / 2,
     );
 
     for (const { content } of FULL_BANNER_LINES) {
@@ -437,7 +437,7 @@ describe("Ink App snapshot", () => {
 
       expect(renderedRow).toBeDefined();
       expect(renderedRow?.indexOf(visibleContent)).toBe(
-        bannerOrigin + leadingSpaces
+        bannerOrigin + leadingSpaces,
       );
     }
   });
@@ -603,7 +603,7 @@ describe("Ink App snapshot", () => {
     expect(frame).toContain("available to set up.");
     expect(frame).toContain("Error Monitoring");
     expect(frame).toContain(
-      "Automatically capture exceptions and stack traces"
+      "Automatically capture exceptions and stack traces",
     );
     expect(frame).toContain("Session Replay");
     expect(frame).toContain("Watch real user sessions to see what went wrong");
@@ -612,7 +612,7 @@ describe("Ink App snapshot", () => {
     expect(frame).toContain("Source Maps");
     expect(plainFrame).toContain("4/5");
     expect(plainFrame).toContain(
-      "↑↓ move • space toggle • a all • enter continue"
+      "↑↓ move • space toggle • a all • enter continue",
     );
     expect(plainFrame).toMatch(SPACE_TOGGLE_HINT_RE);
     expect(plainFrame).toMatch(A_ALL_HINT_RE);
@@ -624,34 +624,34 @@ describe("Ink App snapshot", () => {
       .split(LINE_SPLIT_RE)
       .find((line) => line.includes("Error Monitoring"));
     expect(errorMonitoringRow).toContain(
-      `${ANSI_ESCAPE_PREFIX}38;2;131;218;144m◼ `
+      `${ANSI_ESCAPE_PREFIX}38;2;131;218;144m◼ `,
     );
     expect(frame).not.toContain("Recommended setup");
     expect(frame).not.toContain("Apply recommended setup");
     expect(plainFrame.indexOf("Error Monitoring")).toBeLessThan(
-      plainFrame.indexOf("Logging")
+      plainFrame.indexOf("Logging"),
     );
     expect(plainFrame.indexOf("Logging")).toBeLessThan(
-      plainFrame.indexOf("Session Replay")
+      plainFrame.indexOf("Session Replay"),
     );
     expect(plainFrame.indexOf("Session Replay")).toBeLessThan(
-      plainFrame.indexOf("Tracing")
+      plainFrame.indexOf("Tracing"),
     );
     expect(plainFrame.indexOf("Tracing")).toBeLessThan(
-      plainFrame.indexOf("Source Maps")
+      plainFrame.indexOf("Source Maps"),
     );
     const lines = plainFrame.split(LINE_SPLIT_RE);
     const shortcutLine = lines.findIndex((line) =>
-      line.includes("↑↓ move • space toggle • a all • enter continue")
+      line.includes("↑↓ move • space toggle • a all • enter continue"),
     );
     const contextLastLine = lines.findIndex((line) =>
-      line.includes("available to set up.")
+      line.includes("available to set up."),
     );
     const firstFeatureLine = lines.findIndex((line) =>
-      line.includes("Error Monitoring")
+      line.includes("Error Monitoring"),
     );
     const lastFeatureLine = lines.findIndex((line) =>
-      line.includes("Source Maps")
+      line.includes("Source Maps"),
     );
     expect(contextLastLine).toBeGreaterThan(0);
     expect(firstFeatureLine - contextLastLine).toBeGreaterThan(1);
@@ -659,7 +659,7 @@ describe("Ink App snapshot", () => {
     expect(lastFeatureLine).toBeGreaterThan(0);
     expect(shortcutLine - lastFeatureLine).toBeGreaterThan(2);
     expect(plainFrame.indexOf("Tracing")).toBeLessThan(
-      plainFrame.indexOf("↑↓ move • space toggle • a all • enter continue")
+      plainFrame.indexOf("↑↓ move • space toggle • a all • enter continue"),
     );
   });
 
@@ -845,20 +845,20 @@ describe("Ink App snapshot", () => {
     expect(frame).toContain("Back");
     expect(frame).not.toContain("Change features");
     expect(frame).toContain(
-      "We'll modify project files for this Sentry setup."
+      "We'll modify project files for this Sentry setup.",
     );
     expect(frame.indexOf("✓ Tracing")).toBeLessThan(
-      frame.indexOf("We'll modify project files for this Sentry setup.")
+      frame.indexOf("We'll modify project files for this Sentry setup."),
     );
     expect(
-      frame.indexOf("We'll modify project files for this Sentry setup.")
+      frame.indexOf("We'll modify project files for this Sentry setup."),
     ).toBeLessThan(frame.indexOf("Continue"));
     const reviewLines = frame
       .split(LINE_SPLIT_RE)
       .filter((line) => line.includes("✓ "));
     expect(reviewLines).toHaveLength(3);
     expect(
-      reviewLines.every((line) => (line.match(/✓/g) ?? []).length === 1)
+      reviewLines.every((line) => (line.match(/✓/g) ?? []).length === 1),
     ).toBe(true);
 
     await renderApp(store, 120, { input: [DOWN_ARROW, "\r"] });
@@ -890,10 +890,10 @@ describe("Ink App snapshot", () => {
     planStore.startSpinner("Planning Sentry changes");
 
     const reviewFrame = stripAnsi(
-      (await renderApp(reviewStore, 120)).latestFrame()
+      (await renderApp(reviewStore, 120)).latestFrame(),
     );
     const planFrame = stripAnsi(
-      (await renderApp(planStore, 120)).latestFrame()
+      (await renderApp(planStore, 120)).latestFrame(),
     );
     const reviewLine = reviewFrame
       .split(LINE_SPLIT_RE)
@@ -905,70 +905,71 @@ describe("Ink App snapshot", () => {
     expect(reviewLine).toBeDefined();
     expect(planLine).toBeDefined();
     expect(reviewLine?.indexOf("Review your Sentry setup")).toBe(
-      planLine?.indexOf("Planning Sentry changes")
+      planLine?.indexOf("Planning Sentry changes"),
     );
   });
 
-  test.each([
-    120, 60, 30,
-  ])("review prompts keep their warning and actions visible at %i columns", async (columns) => {
-    const store = new WizardStore({ bannerRows: [] });
-    store.appendLog("warn", "Review warning remains visible");
-    store.setPrompt({
-      kind: "select",
-      message: "Review your Sentry setup",
-      details: [
-        { text: "We'll add these features:" },
-        ...[
-          "Agent Tracing",
-          "Application Metrics",
-          "Crons",
-          "Error Monitoring",
-          "Logging",
-          "MCP Observability",
-          "Profiling",
-          "Session Replay",
-          "Source Maps",
-          "Tracing",
-        ].map((feature) => ({
-          text: `✓ ${feature}`,
-          tone: "success" as const,
-        })),
-      ],
-      footer: {
-        text: "We'll modify project files for this Sentry setup.",
-      },
-      options: [
-        { value: "continue", label: "Continue" },
-        { value: "back", label: "Back" },
-      ],
-      initialIndex: 0,
-      resolve: ignorePromptResolution,
-    });
+  test.each([120, 60, 30])(
+    "review prompts keep their warning and actions visible at %i columns",
+    async (columns) => {
+      const store = new WizardStore({ bannerRows: [] });
+      store.appendLog("warn", "Review warning remains visible");
+      store.setPrompt({
+        kind: "select",
+        message: "Review your Sentry setup",
+        details: [
+          { text: "We'll add these features:" },
+          ...[
+            "Agent Tracing",
+            "Application Metrics",
+            "Crons",
+            "Error Monitoring",
+            "Logging",
+            "MCP Observability",
+            "Profiling",
+            "Session Replay",
+            "Source Maps",
+            "Tracing",
+          ].map((feature) => ({
+            text: `✓ ${feature}`,
+            tone: "success" as const,
+          })),
+        ],
+        footer: {
+          text: "We'll modify project files for this Sentry setup.",
+        },
+        options: [
+          { value: "continue", label: "Continue" },
+          { value: "back", label: "Back" },
+        ],
+        initialIndex: 0,
+        resolve: ignorePromptResolution,
+      });
 
-    const rendered = await renderApp(store, columns, {
-      input: Array.from({ length: 12 }, () => PAGE_DOWN),
-      rows: 16,
-    });
-    const frame = stripFinalLineBreak(stripAnsi(rendered.latestFrame()));
-    const normalizedFrame = frame.replace(/\s+/g, " ");
-    expect(frame).toContain("Review your Sentry setup");
-    expect(frame).toContain("Review warning remains");
-    expect(frame).toContain("10-10/10 · pgup/pgdn");
-    expect(frame).toContain("Tracing");
-    expect(normalizedFrame).toContain(
-      "We'll modify project files for this Sentry setup."
-    );
-    expect(frame).toContain("Continue");
-    expect(frame).toContain("Back");
-    expect(frame).not.toContain("Change features");
-    expect(frame).toContain("Status");
-    expect(frame).toContain("Files");
-    expect(frame).toContain("↑↓ navigate");
-    expect(frame).toContain("enter confirm");
-    expect(frame).toContain("Sentry");
-    expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(16);
-  });
+      const rendered = await renderApp(store, columns, {
+        input: Array.from({ length: 12 }, () => PAGE_DOWN),
+        rows: 16,
+      });
+      const frame = stripFinalLineBreak(stripAnsi(rendered.latestFrame()));
+      const normalizedFrame = frame.replace(/\s+/g, " ");
+      expect(frame).toContain("Review your Sentry setup");
+      expect(frame).toContain("Review warning remains");
+      expect(frame).toContain("10-10/10 · pgup/pgdn");
+      expect(frame).toContain("Tracing");
+      expect(normalizedFrame).toContain(
+        "We'll modify project files for this Sentry setup.",
+      );
+      expect(frame).toContain("Continue");
+      expect(frame).toContain("Back");
+      expect(frame).not.toContain("Change features");
+      expect(frame).toContain("Status");
+      expect(frame).toContain("Files");
+      expect(frame).toContain("↑↓ navigate");
+      expect(frame).toContain("enter confirm");
+      expect(frame).toContain("Sentry");
+      expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(16);
+    },
+  );
 
   test("narrow review paging remains reversible when warnings accumulate", async () => {
     const store = new WizardStore({ bannerRows: [] });
@@ -996,7 +997,7 @@ describe("Ink App snapshot", () => {
     });
 
     const firstFrame = stripAnsi(
-      (await renderApp(store, 30, { rows: 16 })).latestFrame()
+      (await renderApp(store, 30, { rows: 16 })).latestFrame(),
     );
     expect(firstFrame).not.toContain("An older review warning");
     expect(firstFrame).toContain("latest review warning");
@@ -1006,7 +1007,7 @@ describe("Ink App snapshot", () => {
     const nextFrame = stripAnsi(
       (
         await renderApp(store, 30, { input: [PAGE_DOWN], rows: 16 })
-      ).latestFrame()
+      ).latestFrame(),
     );
     expect(nextFrame).toContain("✓ Feature 2");
     expect(nextFrame).toContain("2-2/10 · pgup/pgdn");
@@ -1017,7 +1018,7 @@ describe("Ink App snapshot", () => {
           input: [PAGE_DOWN, PAGE_UP],
           rows: 16,
         })
-      ).latestFrame()
+      ).latestFrame(),
     );
     expect(previousFrame).toContain("✓ Feature 1");
     expect(previousFrame).toContain("1-1/10 · pgup/pgdn");
@@ -1031,7 +1032,7 @@ describe("Ink App snapshot", () => {
     const store = new WizardStore({ bannerRows: [] });
     store.appendLog(
       "success",
-      'Using existing project "nextjs-sentry-test" in bete-dev'
+      'Using existing project "nextjs-sentry-test" in bete-dev',
     );
     store.appendLog("success", "Selecting features");
     store.appendLog("info", "Routine context loaded");
@@ -1113,7 +1114,7 @@ describe("Ink App snapshot", () => {
           input: Array.from({ length: 7 }, () => DOWN_ARROW),
           rows: 24,
         })
-      ).allOutput()
+      ).allOutput(),
     );
     expect(scrolledFrame).toContain("(8/20)");
     expect(scrolledFrame).toContain("Team 8");
@@ -1123,11 +1124,11 @@ describe("Ink App snapshot", () => {
     const store = new WizardStore({ bannerRows: [] });
     store.appendLog(
       "warn",
-      "A warning remains visible while choosing features"
+      "A warning remains visible while choosing features",
     );
     store.appendLog(
       "error",
-      "An error remains visible while choosing features"
+      "An error remains visible while choosing features",
     );
     store.appendLog("warn", "A second warning also remains visible");
     store.setPrompt({
@@ -1160,8 +1161,8 @@ describe("Ink App snapshot", () => {
             input: Array.from({ length: 19 }, () => DOWN_ARROW),
             rows: 16,
           })
-        ).latestFrame()
-      )
+        ).latestFrame(),
+      ),
     );
     expect(scrolledFrame).toContain("0/20 selected • 20/20");
     expect(scrolledFrame).toContain("Feature 20");
@@ -1214,7 +1215,7 @@ describe("Ink App snapshot", () => {
     });
 
     const frame = stripAnsi(
-      (await renderApp(store, 40, { rows: 24 })).allOutput()
+      (await renderApp(store, 40, { rows: 24 })).allOutput(),
     );
     expect(frame).toContain("A");
     expect(frame).not.toContain("UNIQUE_TAIL");
@@ -1339,7 +1340,7 @@ describe("completion screen", () => {
 
   test("guides the user to their first error when unverified", async () => {
     const text = stripAnsi(
-      (await renderApp(completionStore(false), 100)).allOutput()
+      (await renderApp(completionStore(false), 100)).allOutput(),
     );
     // Header flows into the per-feature project info via ", with:".
     expect(text).toContain("Sentry is set up in my-app");
@@ -1364,7 +1365,7 @@ describe("completion screen", () => {
 
   test("celebrates and deep-links the first event when verified", async () => {
     const text = stripAnsi(
-      (await renderApp(completionStore(true), 100)).allOutput()
+      (await renderApp(completionStore(true), 100)).allOutput(),
     );
     expect(text).toContain("Sentry is set up in my-app");
     expect(text).toContain("First event received");
@@ -1376,7 +1377,7 @@ describe("completion screen", () => {
     const text = stripAnsi(
       (
         await renderApp(completionStore(false), 100, { input: ["o"] })
-      ).allOutput()
+      ).allOutput(),
     );
     // The `o` handler fires and confirms via a note.
     expect(text).toContain("Opened Sentry in your browser.");

@@ -23,7 +23,7 @@
   },
   "scripts": {
     "docs:check": "node scripts/check-doc-links.mjs",
-    "test:ci-projects": "node --test scripts/ci-projects.test.mjs scripts/cli-nightly-version.test.mjs scripts/cloudflare-deployment.test.mjs scripts/deploy-workflow.test.mjs scripts/migrate-cloudflare-token.test.mjs scripts/oxc-config.test.mjs",
+    "test:ci-projects": "node --test scripts/ci-projects.test.mjs scripts/cli-nightly-version.test.mjs scripts/cloudflare-deployment.test.mjs scripts/deploy-workflow.test.mjs scripts/migrate-cloudflare-token.test.mjs scripts/oxc-config.test.mjs scripts/cli-lint-rules.test.mjs",
     "dev": "pnpm --filter '@sentry/mcp-cloudflare...' --if-present run build && dotenv -e .env -e .env.local -- pnpm --parallel --filter @sentry/mcp-cloudflare --filter @sentry/mcp-core --filter @sentry/mcp-server-mocks --if-present run dev",
     "dev:stdio": "pnpm --filter '@sentry/mcp-server...' --if-present run build && dotenv -e .env -e .env.local -- pnpm --parallel --filter @sentry/mcp-server --filter @sentry/mcp-core --filter @sentry/mcp-server-mocks --if-present run dev",
     "build": "dotenv -e .env -e .env.local -- pnpm -r --filter '!sentry' --filter '!sentry-cli-docs' --if-present run build",
@@ -33,7 +33,7 @@
     "eval": "pnpm --filter '@sentry/mcp-server-evals...' --if-present run build && dotenv -e .env -e .env.local -- pnpm --filter @sentry/mcp-server-evals run eval",
     "eval:ci": "pnpm --filter '@sentry/mcp-server-evals...' --if-present run build && CI=true dotenv -e .env -e .env.local -- pnpm --stream -r run eval:ci",
     "format": "oxfmt --write",
-    "lint": "oxlint . && pnpm run lint:ast-grep",
+    "lint": "oxlint --report-unused-disable-directives . && pnpm run lint:ast-grep",
     "lint:ast-grep": "ast-grep scan && ast-grep test --skip-snapshot-tests",
     "lint:fix": "oxlint --fix .",
     "pre-commit:generated": "node scripts/pre-commit-generated.mjs",
@@ -71,10 +71,6 @@
     "*": [
       "oxfmt --write --no-error-on-unmatched-pattern",
       "oxlint --fix --no-error-on-unmatched-pattern"
-    ],
-    "packages/cli/**/*": [
-      "pnpm --filter sentry exec biome format --write --no-errors-on-unmatched --files-ignore-unknown=true",
-      "pnpm --filter sentry exec biome lint --fix --no-errors-on-unmatched --files-ignore-unknown=true"
     ]
   },
   "devDependencies": {

@@ -35,7 +35,7 @@ export function levenshtein(a: string, b: string): number {
             Math.min(
               dp.get(key(i - 1, j - 1)) ?? 0,
               dp.get(key(i - 1, j)) ?? 0,
-              dp.get(key(i, j - 1)) ?? 0
+              dp.get(key(i, j - 1)) ?? 0,
             );
       dp.set(key(i, j), cost);
     }
@@ -79,7 +79,7 @@ export type FuzzyMatchOptions = {
 export function fuzzyMatch(
   partial: string,
   candidates: readonly string[],
-  opts?: FuzzyMatchOptions
+  opts?: FuzzyMatchOptions,
 ): string[] {
   if (partial === "") {
     const sorted = [...candidates].sort();
@@ -108,7 +108,7 @@ export function fuzzyMatch(
   }
 
   scored.sort(
-    (a, b) => a.score - b.score || a.candidate.localeCompare(b.candidate)
+    (a, b) => a.score - b.score || a.candidate.localeCompare(b.candidate),
   );
 
   const results = scored.map((s) => s.candidate);

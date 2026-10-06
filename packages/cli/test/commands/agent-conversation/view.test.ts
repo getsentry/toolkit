@@ -22,11 +22,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
@@ -36,11 +36,11 @@ vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
 
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
@@ -50,11 +50,11 @@ vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -64,12 +64,12 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
 import { ContextError } from "../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { AgentConversationSpan } from "../../../src/types/conversation.js";
 
@@ -102,13 +102,13 @@ function noop() {
 /** Passthrough mock for `withProgress` — bypasses spinner, calls fn directly */
 function mockWithProgress(
   _opts: unknown,
-  fn: (setMessage: () => void) => unknown
+  fn: (setMessage: () => void) => unknown,
 ) {
   return fn(noop);
 }
 
 function makeSpan(
-  overrides: Partial<AgentConversationSpan> = {}
+  overrides: Partial<AgentConversationSpan> = {},
 ): AgentConversationSpan {
   return {
     "gen_ai.conversation.id": CONVERSATION_ID,
@@ -204,7 +204,7 @@ describe("viewCommand.func", () => {
 
     // resolveOrg is called with the explicit org from the arg
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: ORG })
+      expect.objectContaining({ org: ORG }),
     );
     // Should call getConversationSpans with the resolved org and conversation ID
     expect(getConversationSpansSpy).toHaveBeenCalledWith(ORG, CONVERSATION_ID);
@@ -228,11 +228,11 @@ describe("viewCommand.func", () => {
     await func.call(context, JSON_FLAGS, CONVERSATION_ID);
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: undefined })
+      expect.objectContaining({ org: undefined }),
     );
     expect(getConversationSpansSpy).toHaveBeenCalledWith(
       "auto-org",
-      CONVERSATION_ID
+      CONVERSATION_ID,
     );
   });
 
@@ -241,7 +241,7 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, HUMAN_FLAGS, undefined as unknown as string)
+      func.call(context, HUMAN_FLAGS, undefined as unknown as string),
     ).rejects.toThrow(ContextError);
   });
 
@@ -265,7 +265,7 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, HUMAN_FLAGS, CONVERSATION_ID)
+      func.call(context, HUMAN_FLAGS, CONVERSATION_ID),
     ).rejects.toThrow(ContextError);
   });
 

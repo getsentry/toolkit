@@ -121,7 +121,7 @@ type UninstallResult = {
  * @internal Exported for testing
  */
 export async function removeSentryLinesFromConfig(
-  configFile: string
+  configFile: string,
 ): Promise<boolean> {
   try {
     const content = await readFile(configFile, "utf-8");
@@ -293,8 +293,8 @@ function gatherArtifacts(home: string): UninstallArtifact[] {
         remove: () =>
           Promise.reject(
             new Error(
-              `Cannot delete running binary on Windows. Please delete manually: ${binaryPath}`
-            )
+              `Cannot delete running binary on Windows. Please delete manually: ${binaryPath}`,
+            ),
           ),
       });
     } else {
@@ -352,7 +352,7 @@ function formatArtifactList(artifacts: UninstallArtifact[]): string[] {
  */
 async function executeRemovals(
   existing: UninstallArtifact[],
-  missing: UninstallArtifact[]
+  missing: UninstallArtifact[],
 ): Promise<UninstallResult> {
   const result: UninstallResult = {
     removed: [],
@@ -413,7 +413,7 @@ function formatUninstallHuman(result: UninstallResult): string {
     result.failed.length === 0
   ) {
     lines.push(
-      "\nSentry CLI has been uninstalled. Restart your shell to apply PATH changes."
+      "\nSentry CLI has been uninstalled. Restart your shell to apply PATH changes.",
     );
   }
 
@@ -449,7 +449,7 @@ export const uninstallCommand = buildDeleteCommand({
       readonly force?: boolean;
       readonly "dry-run"?: boolean;
       readonly "keep-config"?: boolean;
-    }
+    },
   ) {
     const home = homedir();
 
@@ -518,12 +518,12 @@ export const uninstallCommand = buildDeleteCommand({
     // Confirm unless --yes/--force
     if (!isConfirmationBypassed(flags)) {
       log.warn(
-        `This will remove ${existing.length} item(s):\n${existing.map((a) => `  - ${a.label} (${a.path})`).join("\n")}`
+        `This will remove ${existing.length} item(s):\n${existing.map((a) => `  - ${a.label} (${a.path})`).join("\n")}`,
       );
 
       const confirmed = await confirmByTyping(
         "uninstall",
-        "Type 'uninstall' to confirm removal:"
+        "Type 'uninstall' to confirm removal:",
       );
       if (!confirmed) {
         return { hint: "Uninstall cancelled." };

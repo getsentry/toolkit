@@ -97,13 +97,13 @@ const responseCredentialIdentities = new WeakMap<Response, string>();
 
 /** Provenance attached only after manually validated discovery requests. */
 export function getResponseRequestOrigin(
-  response: Response
+  response: Response,
 ): string | undefined {
   return responseRequestOrigins.get(response);
 }
 
 export function getResponseCredentialIdentity(
-  response: Response
+  response: Response,
 ): string | undefined {
   return responseCredentialIdentities.get(response);
 }
@@ -144,7 +144,7 @@ function isUserAbort(error: unknown, signal?: AbortSignal | null): boolean {
 function prepareHeaders(
   input: Request | string | URL,
   init: RequestInit | undefined,
-  credential: CredentialContext
+  credential: CredentialContext,
 ): Headers {
   // Host-scoping guard (defense in depth). Primary rejection happens at the
   // URL-arg / rc-shim entry points; this catches any code path that mutated
@@ -153,7 +153,7 @@ function prepareHeaders(
     throw new HostScopeError(
       "Credentials",
       normalizeOrigin(input) ?? "<unknown host>",
-      credential.host
+      credential.host,
     );
   }
 
@@ -170,7 +170,7 @@ function prepareHeaders(
     throw new HostScopeError(
       "Credentials",
       normalizeOrigin(input) ?? "<unknown host>",
-      claimUrl
+      claimUrl,
     );
   }
 
@@ -202,7 +202,7 @@ function prepareHeaders(
   applyCustomHeaders(
     headers,
     input,
-    isRequestOriginTrustedForContext(input, credential)
+    isRequestOriginTrustedForContext(input, credential),
   );
 
   return headers;
@@ -214,7 +214,7 @@ function prepareHeaders(
  */
 async function handleUnauthorized(
   headers: Headers,
-  credential: CredentialContext
+  credential: CredentialContext,
 ): Promise<boolean> {
   if (headers.get(RETRY_MARKER_HEADER)) {
     return false;
@@ -251,7 +251,7 @@ async function handleUnauthorized(
 /** Link an external abort signal to an AbortController */
 function linkAbortSignal(
   signal: AbortSignal | undefined | null,
-  controller: AbortController
+  controller: AbortController,
 ): void {
   if (!signal) {
     return;
@@ -355,7 +355,7 @@ async function handleResponse(
   response: Response,
   headers: Headers,
   credential: CredentialContext,
-  isLastAttempt: boolean
+  isLastAttempt: boolean,
 ): Promise<AttemptResult> {
   if (response.status === 401 && !isLastAttempt) {
     const refreshed = await handleUnauthorized(headers, credential);
@@ -383,7 +383,7 @@ async function handleResponse(
 function handleFetchError(
   error: unknown,
   signal: AbortSignal | undefined | null,
-  isLastAttempt: boolean
+  isLastAttempt: boolean,
 ): AttemptResult {
   if (error instanceof HostScopeError) {
     return { action: "throw", error };
@@ -399,7 +399,7 @@ function handleFetchError(
       error: new ApiError(
         "TLS certificate error",
         0,
-        buildTlsErrorDetail(error as Error)
+        buildTlsErrorDetail(error as Error),
       ),
     };
   }
@@ -412,7 +412,7 @@ function handleFetchError(
       action: "throw",
       error: new TimeoutError(
         `Request timed out after ${seconds}s.`,
-        "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io."
+        "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io.",
       ),
     };
   }
@@ -436,7 +436,7 @@ function extractFullUrl(input: Request | string | URL): string {
 /** Extract the URL pathname for span naming */
 function extractUrlPath(input: Request | string | URL): string {
   const raw = extractFullUrl(input);
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return new URL(raw).pathname;
   } catch {
@@ -455,7 +455,7 @@ async function tryCacheHit(
   method: string,
   fullUrl: string,
   requestHeaders: Record<string, string>,
-  identity: string
+  identity: string,
 ): Promise<Response | undefined> {
   if (method !== "GET") {
     return;
@@ -477,7 +477,7 @@ function cacheResponse(
     requestHeaders: Record<string, string>;
     identity: string;
   },
-  response: Response
+  response: Response,
 ): void {
   const { method, fullUrl, requestHeaders, identity } = request;
   if (method !== "GET" || !response.ok) {
@@ -490,7 +490,7 @@ function cacheResponse(
     fullUrl,
     requestHeaders,
     response.clone() as Response,
-    identity
+    identity,
   ).catch((error) => {
     log.debug("Response cache write failed", error);
   });
@@ -510,7 +510,7 @@ async function invalidateAfterMutation(
   method: string,
   fullUrl: string,
   response: Response,
-  identity: string
+  identity: string,
 ): Promise<void> {
   if (method === "GET" || !response.ok) {
     return;
@@ -519,8 +519,8 @@ async function invalidateAfterMutation(
     const prefixes = computeInvalidationPrefixes(fullUrl, getApiBaseUrl());
     await Promise.all(
       prefixes.map((prefix) =>
-        invalidateCachedResponsesMatching(prefix, identity)
-      )
+        invalidateCachedResponsesMatching(prefix, identity),
+      ),
     );
   } catch (error) {
     log.debug("Post-mutation cache invalidation failed", error);
@@ -554,7 +554,7 @@ type AttemptInputFactory = () => {
  */
 async function buildAttemptFactory(
   input: Request | string | URL,
-  init: RequestInit | undefined
+  init: RequestInit | undefined,
 ): Promise<AttemptInputFactory> {
   if (input instanceof Request) {
     // Cast: Bun's `Request` has extras (toJSON/count/getAll) that `.clone()`
@@ -601,12 +601,12 @@ async function fetchWithRetry({
       : undefined);
   const shouldRefresh = Boolean(
     credential.refreshable &&
-      credential.expiresAt &&
-      (Date.now() >= credential.expiresAt ||
-        (issuedAt &&
-          (credential.expiresAt - Date.now()) /
-            (credential.expiresAt - issuedAt) <=
-            REFRESH_THRESHOLD))
+    credential.expiresAt &&
+    (Date.now() >= credential.expiresAt ||
+      (issuedAt &&
+        (credential.expiresAt - Date.now()) /
+          (credential.expiresAt - issuedAt) <=
+          REFRESH_THRESHOLD)),
   );
   const refreshed = shouldRefresh
     ? await refreshToken({ expectedCredential: credential })
@@ -640,13 +640,13 @@ async function fetchWithRetry({
           requestHeaders: { authorization: headers.get("Authorization") ?? "" },
           identity: credential.identity,
         },
-        result.response
+        result.response,
       );
       await invalidateAfterMutation(
         method,
         fullUrl,
         result.response,
-        credential.identity
+        credential.identity,
       );
       return result.response;
     }
@@ -656,7 +656,7 @@ async function fetchWithRetry({
 
     const delay = backoffDelay(attempt);
     log.debug(
-      `${method} ${new URL(fullUrl).pathname} → retry ${attempt + 1}/${MAX_RETRIES} after ${delay}ms`
+      `${method} ${new URL(fullUrl).pathname} → retry ${attempt + 1}/${MAX_RETRIES} after ${delay}ms`,
     );
     await sleepMs(delay);
   }
@@ -690,11 +690,11 @@ type AuthenticatedFetchOptions = {
 };
 
 function createAuthenticatedFetch(
-  options: AuthenticatedFetchOptions = {}
+  options: AuthenticatedFetchOptions = {},
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
   return function authenticatedFetch(
     input: Request | string | URL,
-    init?: RequestInit
+    init?: RequestInit,
   ): Promise<Response> {
     // Reset cache-hit age so it reflects only this request's outcome.
     // Commands read it after their primary API call to show cache-age hints.
@@ -724,7 +724,7 @@ function createAuthenticatedFetch(
         if (!credential) {
           await refreshToken();
           throw new Error(
-            "Authentication state was not available after refresh"
+            "Authentication state was not available after refresh",
           );
         }
         // A synthetic HTTP cache response has no validated final-origin or
@@ -735,12 +735,12 @@ function createAuthenticatedFetch(
               method,
               fullUrl,
               authHeaders(credential.token),
-              credential.identity
+              credential.identity,
             );
         if (cached) {
           span.setAttribute("http.response.status_code", cached.status);
           log.debug(
-            `${method} ${urlPath} → ${cached.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`
+            `${method} ${urlPath} → ${cached.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`,
           );
           return cached;
         }
@@ -758,11 +758,11 @@ function createAuthenticatedFetch(
           span.setStatus({ code: 2, message: `${response.status}` });
         }
         log.debug(
-          `${method} ${urlPath} → ${response.status} (${(performance.now() - startTime).toFixed(0)}ms)`
+          `${method} ${urlPath} → ${response.status} (${(performance.now() - startTime).toFixed(0)}ms)`,
         );
         return response;
       },
-      { "http.request.method": method, "url.path": urlPath }
+      { "http.request.method": method, "url.path": urlPath },
     );
   };
 }
@@ -819,13 +819,13 @@ function redirectLoopKey(url: URL): string {
 async function rejectRedirect(
   response: Response,
   destination: string,
-  credential: CredentialContext
+  credential: CredentialContext,
 ): Promise<never> {
   await cancelResponseBody(response);
   throw new HostScopeError(
     "Redirect destination",
     destination,
-    credential.host
+    credential.host,
   );
 }
 
@@ -855,7 +855,7 @@ async function validatedRedirectTarget({
   } catch (error) {
     log.debug(
       "Rejected malformed redirect location",
-      error instanceof Error ? error.name : "unknown error"
+      error instanceof Error ? error.name : "unknown error",
     );
     return await rejectRedirect(response, "<invalid host>", credential);
   }
@@ -863,7 +863,7 @@ async function validatedRedirectTarget({
     return await rejectRedirect(
       response,
       normalizeOrigin(next) ?? "<unknown host>",
-      credential
+      credential,
     );
   }
   const key = redirectLoopKey(next);
@@ -878,7 +878,7 @@ async function buildRedirectRequest(
   request: Request,
   requestHeaders: Headers,
   next: URL,
-  status: number
+  status: number,
 ): Promise<{ request: Request; headers: Headers }> {
   const method = redirectedMethod(request.method.toUpperCase(), status);
   const headers = new Headers(requestHeaders);
@@ -911,13 +911,13 @@ async function fetchFollowingValidatedRedirects({
   async function follow(
     request: Request,
     requestHeaders: Headers,
-    hops: number
+    hops: number,
   ): Promise<Response> {
     if (!isRequestOriginTrustedForContext(request, credential)) {
       throw new HostScopeError(
         "Credentials",
         normalizeOrigin(request) ?? "<unknown host>",
-        credential.host
+        credential.host,
       );
     }
     const response = await fetchWithTimeout({
@@ -948,7 +948,7 @@ async function fetchFollowingValidatedRedirects({
         request,
         requestHeaders,
         next,
-        response.status
+        response.status,
       );
       await cancelResponseBody(response);
       return await follow(redirected.request, redirected.headers, hops + 1);
@@ -999,7 +999,7 @@ let cachedFetch: typeof fetch | null = null;
  * Cast to `typeof fetch` for compatibility with @sentry/api SDK options.
  */
 function getAuthenticatedFetch(
-  options: AuthenticatedFetchOptions = {}
+  options: AuthenticatedFetchOptions = {},
 ): typeof fetch {
   if (options.credential || options.validatedRedirects) {
     return createAuthenticatedFetch(options) as unknown as typeof fetch;
@@ -1048,7 +1048,7 @@ export function getControlSiloUrl(credential = getCredentialContext()): string {
  */
 export function getSdkConfig(
   regionUrl: string,
-  options: AuthenticatedFetchOptions = {}
+  options: AuthenticatedFetchOptions = {},
 ) {
   const normalizedBase = regionUrl.endsWith("/")
     ? regionUrl.slice(0, -1)
@@ -1098,7 +1098,7 @@ export function __resolveRequestTimeoutMsForTests(fullUrl: string): number {
  * disposer restores the original list.
  */
 export function __injectTimeoutOverrideForTests(
-  override: TimeoutOverride
+  override: TimeoutOverride,
 ): () => void {
   ENDPOINT_TIMEOUT_OVERRIDES.unshift(override);
   return () => {

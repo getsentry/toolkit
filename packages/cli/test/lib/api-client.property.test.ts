@@ -23,25 +23,25 @@ import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 const cursorArb = tuple(
   nat(2_000_000_000_000),
   nat(100),
-  constantFrom(0, 1)
+  constantFrom(0, 1),
 ).map(([ts, offset, isPrev]) => `${ts}:${offset}:${isPrev}`);
 
 /** Generate a valid "next" link part with results="true" and a cursor */
 const nextLinkWithResultsArb = cursorArb.map(
   (cursor) =>
-    `<https://sentry.io/api/0/organizations/sentry/projects/?cursor=${cursor}>; rel="next"; results="true"; cursor="${cursor}"`
+    `<https://sentry.io/api/0/organizations/sentry/projects/?cursor=${cursor}>; rel="next"; results="true"; cursor="${cursor}"`,
 );
 
 /** Generate a "next" link part with results="false" */
 const nextLinkNoResultsArb = cursorArb.map(
   (cursor) =>
-    `<https://sentry.io/api/0/organizations/sentry/projects/?cursor=${cursor}>; rel="next"; results="false"; cursor="${cursor}"`
+    `<https://sentry.io/api/0/organizations/sentry/projects/?cursor=${cursor}>; rel="next"; results="false"; cursor="${cursor}"`,
 );
 
 /** Generate a "previous" link part (should be ignored by parseLinkHeader) */
 const prevLinkArb = cursorArb.map(
   (cursor) =>
-    `<https://sentry.io/api/0/organizations/sentry/projects/?cursor=${cursor}>; rel="previous"; results="true"; cursor="${cursor}"`
+    `<https://sentry.io/api/0/organizations/sentry/projects/?cursor=${cursor}>; rel="previous"; results="true"; cursor="${cursor}"`,
 );
 
 /** Generate a rel value that is not "next" */
@@ -63,7 +63,7 @@ describe("property: parseLinkHeader", () => {
         expect(result.nextCursor).toBeDefined();
         expect(result.nextCursor).toMatch(/^\d+:\d+:\d+$/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -73,7 +73,7 @@ describe("property: parseLinkHeader", () => {
         const result = parseLinkHeader(header);
         expect(result.nextCursor).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -83,7 +83,7 @@ describe("property: parseLinkHeader", () => {
         const result = parseLinkHeader(header);
         expect(result.nextCursor).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -96,7 +96,7 @@ describe("property: parseLinkHeader", () => {
         expect(result.nextCursor).toBeDefined();
         expect(result.nextCursor).toMatch(/^\d+:\d+:\d+$/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -107,7 +107,7 @@ describe("property: parseLinkHeader", () => {
         const result = parseLinkHeader(header);
         expect(result.nextCursor).toBe(cursor);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -125,7 +125,7 @@ describe("property: parseLinkHeader", () => {
         const result = parseLinkHeader(header);
         expect(result.nextCursor).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -136,7 +136,7 @@ describe("property: parseLinkHeader", () => {
         const result = parseLinkHeader(header);
         expect(result.nextCursor).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -150,7 +150,7 @@ describe("property: parseLinkHeader", () => {
         const result = parseLinkHeader(header);
         expect(result.nextCursor).toBe(nextCursor);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -163,7 +163,7 @@ describe("property: parseLinkHeader", () => {
           expect(typeof result.nextCursor).toBe("string");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 

@@ -61,7 +61,7 @@ function deriveProjectName(output: WizardOutput): string {
 
 /** Derive a "start your app" command from the install command's package manager. */
 function deriveStartCommand(
-  commands: string[] | undefined
+  commands: string[] | undefined,
 ): string | undefined {
   const first = commands?.[0]?.trim();
   if (!first) {
@@ -78,7 +78,7 @@ function deriveStartCommand(
 function buildCompletion(
   output: WizardOutput,
   verify: VerifyResult | undefined,
-  featureBlurbs: { label: string; blurb: string }[]
+  featureBlurbs: { label: string; blurb: string }[],
 ): WizardCompletion {
   // The server may not hand the org slug back directly (older deploys), so
   // fall back to recovering it from the settings URL it did send. This keeps
@@ -126,7 +126,7 @@ function buildCompletion(
  */
 function buildSummary(
   output: WizardOutput,
-  verify: VerifyResult | undefined
+  verify: VerifyResult | undefined,
 ): WizardSummary | null {
   // Resolve blurbs first so the Features row can check the *resolved* length.
   // If the agent returns blurbs with wrong IDs they all drop out here, and
@@ -135,7 +135,7 @@ function buildSummary(
     (output.featureBlurbs ?? []).map(({ feature, blurb }) => [
       feature,
       stripAnsi(blurb),
-    ])
+    ]),
   );
   const featureBlurbs = sortFeatures(output.features ?? [])
     .map((feature) => {
@@ -203,7 +203,7 @@ function buildSummary(
  */
 function mergeSentryProjectIdentity(
   output: WizardOutput,
-  identity: SentryProjectIdentity | undefined
+  identity: SentryProjectIdentity | undefined,
 ): WizardOutput {
   if (!identity) {
     return output;
@@ -221,7 +221,7 @@ export function formatResult(
   result: WorkflowRunResult,
   ui: WizardUI,
   verify?: VerifyResult,
-  sentryProject?: SentryProjectIdentity
+  sentryProject?: SentryProjectIdentity,
 ): void {
   const output = mergeSentryProjectIdentity(result.result ?? {}, sentryProject);
   const summary = buildSummary(output, verify);
@@ -241,7 +241,7 @@ export function formatResult(
   ui.outro(
     output.message
       ? stripAnsi(output.message)
-      : "Sentry SDK installed successfully!"
+      : "Sentry SDK installed successfully!",
   );
   ui.feedback("success");
 }
@@ -256,18 +256,18 @@ export function formatError(result: WorkflowRunResult, ui: WizardUI): void {
 
   if (exitCode === EXIT_PLATFORM_NOT_DETECTED) {
     ui.log.warn(
-      "Hint: Could not detect your project's platform. Check that the directory contains a valid project."
+      "Hint: Could not detect your project's platform. Check that the directory contains a valid project.",
     );
   } else if (exitCode === EXIT_DEPENDENCY_INSTALL_FAILED) {
     const commands = inner?.commands;
     if (commands?.length) {
       ui.log.warn(
-        `You can install dependencies manually:\n${commands.map((cmd) => `  $ ${cmd}`).join("\n")}`
+        `You can install dependencies manually:\n${commands.map((cmd) => `  $ ${cmd}`).join("\n")}`,
       );
     }
   } else if (exitCode === EXIT_VERIFICATION_FAILED) {
     ui.log.warn(
-      "Hint: Fix the verification issues and run 'sentry init' again."
+      "Hint: Fix the verification issues and run 'sentry init' again.",
     );
   }
 

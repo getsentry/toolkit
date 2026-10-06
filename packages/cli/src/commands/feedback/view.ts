@@ -41,7 +41,7 @@ type ViewFlags = {
 
 async function tryGetLatestEvent(
   orgSlug: string,
-  feedbackId: string
+  feedbackId: string,
 ): Promise<SentryEvent | undefined> {
   try {
     return await getLatestEvent(orgSlug, feedbackId);
@@ -53,7 +53,7 @@ async function tryGetLatestEvent(
 
 async function tryListReplayIds(
   orgSlug: string,
-  feedbackId: string
+  feedbackId: string,
 ): Promise<string[]> {
   try {
     return await listReplayIdsForIssue(orgSlug, feedbackId);
@@ -66,7 +66,7 @@ async function tryListReplayIds(
 async function tryListAttachments(
   orgSlug: string,
   projectSlug: string | undefined,
-  event: SentryEvent | undefined
+  event: SentryEvent | undefined,
 ): Promise<EventAttachmentDetailsResponse[]> {
   if (!(projectSlug && event)) {
     return [];
@@ -81,7 +81,7 @@ async function tryListAttachments(
 
 function jsonTransformFeedbackView(
   data: FeedbackViewResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const result: Record<string, unknown> = {
     ...data.feedback,

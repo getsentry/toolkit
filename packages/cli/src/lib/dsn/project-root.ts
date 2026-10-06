@@ -196,7 +196,7 @@ const statLimit = pLimit(STAT_CONCURRENCY);
  * Check if a path exists (file or directory) using stat.
  */
 async function pathExists(filePath: string): Promise<boolean> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     await stat(filePath);
     return true;
@@ -233,13 +233,13 @@ function anyExists(dir: string, names: readonly string[]): Promise<boolean> {
  */
 async function anyGlobMatches(
   dir: string,
-  patterns: readonly string[]
+  patterns: readonly string[],
 ): Promise<boolean> {
   // Bun's opendir() may not throw on a missing directory — the error
   // surfaces when iterating. Wrap the full open+iterate in one try/catch.
   // No explicit handle.close() needed: for-await-of auto-closes the Dir
   // handle when the loop exits (including early return or break).
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     // Pre-compile matchers outside the loop to avoid recompiling per entry.
     const matchers = patterns.map((p) => picomatch(p, { dot: true }));
@@ -292,7 +292,7 @@ async function checkEditorConfigRoot(dir: string): Promise<boolean> {
 function getRepoRootType(
   hasVcs: boolean,
   hasCi: boolean,
-  hasEditorConfigRoot: boolean
+  hasEditorConfigRoot: boolean,
 ): "vcs" | "ci" | "editorconfig" | undefined {
   if (hasVcs) {
     return "vcs";
@@ -313,7 +313,7 @@ function getRepoRootType(
  * @returns Object with found status and marker type
  */
 export function hasRepoRootMarker(
-  dir: string
+  dir: string,
 ): Promise<{ found: boolean; type?: "vcs" | "ci" | "editorconfig" }> {
   return withFsSpan("hasRepoRootMarker", async () => {
     // Check all marker types in parallel
@@ -352,7 +352,7 @@ export function hasLanguageMarker(dir: string): Promise<boolean> {
  */
 export function hasBuildSystemMarker(dir: string): Promise<boolean> {
   return withFsSpan("hasBuildSystemMarker", async () =>
-    anyExists(dir, BUILD_SYSTEM_MARKERS)
+    anyExists(dir, BUILD_SYSTEM_MARKERS),
   );
 }
 
@@ -393,7 +393,7 @@ function checkEnvForDsn(dir: string): Promise<DetectedDsn | null> {
  * Returns home directory if it exists, otherwise filesystem root.
  */
 export function getStopBoundary(): string {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return homedir();
   } catch {
@@ -429,7 +429,7 @@ export function isHomeOrAncestor(dir: string): boolean {
 async function processDirectoryLevel(
   currentDir: string,
   languageMarkerAt: string | null,
-  buildSystemAt: string | null
+  buildSystemAt: string | null,
 ): Promise<{
   dsnResult: DetectedDsn | null;
   repoRootResult: { found: boolean; type?: "vcs" | "ci" | "editorconfig" };
@@ -453,7 +453,7 @@ async function processDirectoryLevel(
 function selectProjectRoot(
   languageMarkerAt: string | null,
   buildSystemAt: string | null,
-  fallback: string
+  fallback: string,
 ): { projectRoot: string; reason: ProjectRootReason } {
   if (languageMarkerAt) {
     return { projectRoot: languageMarkerAt, reason: "language" };
@@ -470,7 +470,7 @@ function selectProjectRoot(
 function createDsnFoundResult(
   currentDir: string,
   dsnResult: DetectedDsn,
-  levelsTraversed: number
+  levelsTraversed: number,
 ): ProjectRootResult {
   return {
     projectRoot: currentDir,
@@ -492,7 +492,7 @@ function createRepoRootResult(
   currentDir: string,
   markerType: "vcs" | "ci" | "editorconfig" | undefined,
   levelsTraversed: number,
-  languageMarkerAt: string | null
+  languageMarkerAt: string | null,
 ): ProjectRootResult {
   // Prefer closer language marker over repo root for monorepo support
   if (languageMarkerAt) {
@@ -515,7 +515,7 @@ function createRepoRootResult(
  */
 async function finalizeSentryCliRc(
   cwd: string,
-  config: SentryCliRcConfig
+  config: SentryCliRcConfig,
 ): Promise<void> {
   await applyGlobalFallbacks(config);
   setSentryCliRcCache(cwd, config);
@@ -535,7 +535,7 @@ async function finalizeSentryCliRc(
  */
 async function walkUpDirectories(
   resolvedStart: string,
-  stopBoundary: string
+  stopBoundary: string,
 ): Promise<ProjectRootResult> {
   let levelsTraversed = 0;
   let languageMarkerAt: string | null = null;
@@ -567,7 +567,7 @@ async function walkUpDirectories(
         currentDir,
         repoRootResult.type,
         levelsTraversed,
-        languageMarkerAt
+        languageMarkerAt,
       );
     }
 
@@ -594,7 +594,7 @@ async function walkUpDirectories(
   const selected = selectProjectRoot(
     languageMarkerAt,
     buildSystemAt,
-    resolvedStart
+    resolvedStart,
   );
 
   return {
@@ -633,6 +633,6 @@ export function findProjectRoot(startDir: string): Promise<ProjectRootResult> {
 
       return result;
     },
-    { "dsn.start_dir": startDir }
+    { "dsn.start_dir": startDir },
   );
 }

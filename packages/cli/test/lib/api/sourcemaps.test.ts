@@ -35,15 +35,14 @@ describe("resolveUploadWait", () => {
     });
   });
 
-  test.each([
-    Number.NaN,
-    0,
-    -5,
-  ])("rejects a non-positive --wait-for (%s)", (value) => {
-    expect(() => resolveUploadWait({ "wait-for": value })).toThrow(
-      /positive number of seconds/
-    );
-  });
+  test.each([Number.NaN, 0, -5])(
+    "rejects a non-positive --wait-for (%s)",
+    (value) => {
+      expect(() => resolveUploadWait({ "wait-for": value })).toThrow(
+        /positive number of seconds/,
+      );
+    },
+  );
 });
 
 describe("pickUploadEncoding", () => {
@@ -170,7 +169,7 @@ describe("buildArtifactBundle", () => {
 
   test("uses in-memory content and never reads disk for inline maps", async () => {
     const mapBytes = Buffer.from(
-      JSON.stringify({ version: 3, sources: [], mappings: "AAAA" })
+      JSON.stringify({ version: 3, sources: [], mappings: "AAAA" }),
     );
     const out = join(tmpDir, "bundle-inline.zip");
     // `path` points at a nonexistent file — must not be read because
@@ -186,7 +185,7 @@ describe("buildArtifactBundle", () => {
           url: "~/app.js.map",
         },
       ],
-      { org: "o", project: "p", compression: "stored" }
+      { org: "o", project: "p", compression: "stored" },
     );
 
     // Build succeeded (no ENOENT) and the STORED archive contains the bytes.

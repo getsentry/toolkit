@@ -11,12 +11,12 @@ export function formatIssueLinkResult(result: ExternalIssueLinkResult): string {
     return renderMarkdown(
       result.linked
         ? `Already linked: ${external}. (dry run)`
-        : `Would link ${external} to ${issue}. (dry run)`
+        : `Would link ${external} to ${issue}. (dry run)`,
     );
   }
   return renderMarkdown(
     result.changed
       ? `Linked ${external} to ${issue}.`
-      : `Already linked: ${external}.`
+      : `Already linked: ${external}.`,
   );
 }

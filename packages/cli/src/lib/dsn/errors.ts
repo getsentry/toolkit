@@ -52,7 +52,7 @@ export function formatConflictError(result: DsnDetectionResult): string {
  */
 export async function formatNoDsnError(
   cwd: string,
-  showProjects = true
+  showProjects = true,
 ): Promise<string> {
   const lines = [
     `No Sentry DSN detected in ${cwd}\n`,
@@ -65,7 +65,7 @@ export async function formatNoDsnError(
 
   // Try to fetch and show accessible projects
   if (showProjects) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       const projects = await getAccessibleProjects();
 
@@ -88,7 +88,7 @@ export async function formatNoDsnError(
   lines.push("");
   lines.push("2. Add SENTRY_DSN to a .env file:");
   lines.push(
-    "   echo 'SENTRY_DSN=https://key@o123.ingest.sentry.io/456' >> .env"
+    "   echo 'SENTRY_DSN=https://key@o123.ingest.sentry.io/456' >> .env",
   );
   lines.push("");
   lines.push("3. Specify project explicitly:");

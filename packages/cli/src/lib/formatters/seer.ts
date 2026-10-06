@@ -27,7 +27,7 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
  */
 export function getSpinnerFrame(tick: number): string {
   const index = tick % SPINNER_FRAMES.length;
-  // biome-ignore lint/style/noNonNullAssertion: index is always valid due to modulo
+  // oxlint-disable-next-line typescript/no-non-null-assertion -- index is always valid due to modulo
   return SPINNER_FRAMES[index]!;
 }
 
@@ -69,7 +69,7 @@ type BlockWithMessage = { message?: { content?: string | null } };
  * Returns undefined if no block message is available.
  */
 function getBlockProgressMessage(
-  blocks: BlockWithMessage[]
+  blocks: BlockWithMessage[],
 ): string | undefined {
   const lastBlock = blocks.at(-1);
   if (!lastBlock?.message?.content) {
@@ -154,7 +154,7 @@ function buildRootCauseMarkdown(cause: RootCause, index: number): string {
   const lines: string[] = [];
 
   lines.push(
-    `### Cause #${index}: ${escapeMarkdownInline(cause.description ?? "")}`
+    `### Cause #${index}: ${escapeMarkdownInline(cause.description ?? "")}`,
   );
   lines.push("");
 
@@ -224,7 +224,7 @@ export function formatIssueExplain(data: IssueExplainData): string {
 
   const sections = data.results.map(
     (result) =>
-      `# ${escapeMarkdownInline(result.issue)}\n\n${buildRootCauseListMarkdown(result.rootCauses)}`
+      `# ${escapeMarkdownInline(result.issue)}\n\n${buildRootCauseListMarkdown(result.rootCauses)}`,
   );
   return renderMarkdown(sections.join("\n\n---\n\n"));
 }
@@ -242,7 +242,7 @@ export function formatIssueExplain(data: IssueExplainData): string {
  */
 export function jsonTransformIssueExplain(
   data: IssueExplainData,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const filterRootCauses = (rootCauses: RootCause[]): unknown =>
     fields && fields.length > 0 ? filterFields(rootCauses, fields) : rootCauses;
@@ -272,7 +272,7 @@ export function jsonTransformIssueExplain(
 export function createSeerError(
   status: number,
   detail?: string,
-  orgSlug?: string
+  orgSlug?: string,
 ): SeerError | null {
   if (status === 402) {
     return new SeerError("no_budget", orgSlug);
@@ -307,7 +307,7 @@ export function createSeerError(
 export function handleSeerApiError(
   status: number,
   detail?: string,
-  orgSlug?: string
+  orgSlug?: string,
 ): Error {
   const seerError = createSeerError(status, detail, orgSlug);
   if (seerError) {
@@ -362,7 +362,7 @@ export function formatSolution(solution: SolutionArtifact): string {
   lines.push("");
 
   lines.push(
-    `**Summary:** ${escapeMarkdownInline(solution.data.one_line_summary ?? "")}`
+    `**Summary:** ${escapeMarkdownInline(solution.data.one_line_summary ?? "")}`,
   );
   lines.push("");
 

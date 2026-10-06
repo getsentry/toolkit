@@ -88,7 +88,7 @@ function parseSortFlag(value: string): ReleaseSortValue {
     return alias;
   }
   const allAccepted = [...VALID_SORT_VALUES, ...Object.keys(SORT_ALIASES)].join(
-    ", "
+    ", ",
   );
   throw new Error(`Invalid sort value. Must be one of: ${allAccepted}`);
 }
@@ -116,7 +116,7 @@ function extractSessionPoints(stats?: Record<string, unknown>): number[] {
     return [];
   }
   return buckets.map((b: unknown) =>
-    Array.isArray(b) && b.length >= 2 ? Number(b[1]) || 0 : 0
+    Array.isArray(b) && b.length >= 2 ? Number(b[1]) || 0 : 0,
   );
 }
 
@@ -165,7 +165,7 @@ function formatSessionSparkline(r: SentryRelease): string {
     return "";
   }
   const points = extractSessionPoints(
-    health.stats as Record<string, unknown> | undefined
+    health.stats as Record<string, unknown> | undefined,
   );
   if (points.length === 0) {
     return "";
@@ -228,7 +228,7 @@ function buildColumns(multiProject: boolean): Column<ReleaseWithOrg>[] {
       header: "NEW ISSUES",
       value: (r) => String(r.newGroups ?? 0),
       align: "right",
-    }
+    },
   );
   return cols;
 }
@@ -250,7 +250,7 @@ type ExtraApiOptions = Pick<
 >;
 
 function buildReleaseListConfig(
-  extra: ExtraApiOptions
+  extra: ExtraApiOptions,
 ): OrgListConfig<SentryRelease, ReleaseWithOrg> {
   return {
     paginationKey: PAGINATION_KEY,
@@ -353,7 +353,7 @@ function deduplicateTargets(targets: ResolvedTarget[]): ResolvedTarget[] {
  */
 async function resolveProjectIds(
   org: string,
-  project: string
+  project: string,
 ): Promise<number[]> {
   try {
     const { getProject } = await import("../../lib/api-client.js");
@@ -361,7 +361,7 @@ async function resolveProjectIds(
     const id = toNumericId(info.id);
     if (!id) {
       log.debug(
-        `Project ${org}/${project} returned non-numeric ID: ${info.id}`
+        `Project ${org}/${project} returned non-numeric ID: ${info.id}`,
       );
       return [];
     }
@@ -381,7 +381,7 @@ async function resolveProjectIds(
 async function fetchReleasesForTarget(
   t: ResolvedTarget,
   extra: ExtraApiOptions,
-  perPage: number
+  perPage: number,
 ): Promise<ReleaseWithOrg[]> {
   const ids = t.projectId
     ? [t.projectId]
@@ -406,7 +406,7 @@ async function fetchReleasesForTarget(
  * comparators sort descending (highest/newest first).
  */
 function buildMergeSorter(
-  sort: ReleaseSortValue
+  sort: ReleaseSortValue,
 ): (a: ReleaseWithOrg, b: ReleaseWithOrg) => number {
   return (a, b) => {
     const diff = getSortValue(b, sort) - getSortValue(a, sort);
@@ -447,7 +447,7 @@ function getSortValue(r: ReleaseWithOrg, sort: ReleaseSortValue): number {
 function trimWithProjectGuarantee(
   items: ReleaseWithOrg[],
   limit: number,
-  comparator: (a: ReleaseWithOrg, b: ReleaseWithOrg) => number
+  comparator: (a: ReleaseWithOrg, b: ReleaseWithOrg) => number,
 ): ReleaseWithOrg[] {
   if (items.length <= limit) {
     return items;
@@ -489,7 +489,7 @@ function trimWithProjectGuarantee(
  */
 async function handleAutoDetectWithProject(
   extra: ExtraApiOptions,
-  ctx: HandlerContext<"auto-detect">
+  ctx: HandlerContext<"auto-detect">,
 ): Promise<ListResult<ReleaseWithOrg>> {
   const { cwd, flags } = ctx;
   const resolved = await resolveAllTargets({ cwd });
@@ -509,13 +509,13 @@ async function handleAutoDetectWithProject(
   // Fetch from ALL targets in parallel, each scoped by project ID
   const perTarget = Math.min(Math.ceil(flags.limit / unique.length), 100);
   const results = await Promise.all(
-    unique.map((t) => fetchReleasesForTarget(t, effectiveExtra, perTarget))
+    unique.map((t) => fetchReleasesForTarget(t, effectiveExtra, perTarget)),
   );
   const merged = results.flat();
 
   // Client-side sort matching the --sort flag, then trim with project guarantee
   const comparator = buildMergeSorter(
-    (effectiveExtra.sort as ReleaseSortValue) ?? "date"
+    (effectiveExtra.sort as ReleaseSortValue) ?? "date",
   );
   merged.sort(comparator);
   const limited = isMultiProject
@@ -533,7 +533,7 @@ async function handleAutoDetectWithProject(
   // Only show env hint when it was auto-applied (not when user passed -e)
   if (effectiveExtra.environment && !extra.environment) {
     hintParts.push(
-      `Environment: ${effectiveExtra.environment.join(", ")} (use -e to change)`
+      `Environment: ${effectiveExtra.environment.join(", ")} (use -e to change)`,
     );
   }
 
@@ -546,7 +546,7 @@ async function handleAutoDetectWithProject(
 /** Apply smart production env default from a resolved target. */
 async function applySmartEnvDefault(
   extra: ExtraApiOptions,
-  primary?: ResolvedTarget
+  primary?: ResolvedTarget,
 ): Promise<ExtraApiOptions> {
   if (extra.environment || !primary) {
     return extra;
@@ -564,7 +564,7 @@ async function applySmartEnvDefault(
  */
 async function resolveEnvForParsedTarget(
   extra: ExtraApiOptions,
-  parsed: ParsedOrgProject
+  parsed: ParsedOrgProject,
 ): Promise<ExtraApiOptions> {
   if (extra.environment) {
     return extra;
@@ -595,7 +595,7 @@ const PRODUCTION_ENV_NAMES = ["production", "prod"];
  */
 async function resolveDefaultEnvironment(
   org: string,
-  project: string
+  project: string,
 ): Promise<string[] | undefined> {
   try {
     const envs = await listProjectEnvironments(org, project);

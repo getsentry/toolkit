@@ -222,7 +222,7 @@ function enforceTrustGate(plan: ImportPlan): void {
   throw new HostScopeError(
     `Token (from ${tokenSource}) and URL (from ${urlSource}) come from different files.\n` +
       "To confirm you trust this URL, pass it explicitly:\n" +
-      `  sentry cli import --url ${plan.effective.url ?? "<url>"}`
+      `  sentry cli import --url ${plan.effective.url ?? "<url>"}`,
   );
 }
 
@@ -321,7 +321,7 @@ export const importCommand = buildCommand({
     if (plan.newFields.length === 0) {
       markImportCompleted(plan);
       yield new CommandOutput(
-        emptyResult(["All settings from .sentryclirc are already configured."])
+        emptyResult(["All settings from .sentryclirc are already configured."]),
       );
       return;
     }
@@ -349,7 +349,7 @@ export const importCommand = buildCommand({
         yield new CommandOutput(
           emptyResult([
             "Import requires confirmation. Use --yes in non-interactive mode.",
-          ])
+          ]),
         );
         process.exitCode = 1;
         return;

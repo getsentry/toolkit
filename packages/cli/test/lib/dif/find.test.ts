@@ -30,12 +30,12 @@ describe("idHint", () => {
   test("classifies ids by shape", () => {
     expect(idHint("00000000-0000-6000-0000-000000000000-1")).toBe("likely PDB");
     expect(idHint("00000000-0000-5000-0000-000000000000")).toBe(
-      "likely Proguard"
+      "likely Proguard",
     );
     expect(idHint("00000000-0000-3000-0000-000000000000")).toBe("likely dSYM");
     expect(idHint("00000000-0000-4000-0000-000000000000")).toBe("unknown");
     expect(idHint("00000000-0000-0000-0000-000000000000")).toBe(
-      "likely ELF Debug"
+      "likely ELF Debug",
     );
   });
 });
@@ -112,7 +112,7 @@ describe("findDebugFiles", () => {
     // `a.sym` sorts before `z.txt`, so the breakpad is seen first.
     writeFileSync(
       join(dir, "a.sym"),
-      `MODULE Linux x86_64 ${hex}0 example\nFUNC 1000 10 0 main\n`
+      `MODULE Linux x86_64 ${hex}0 example\nFUNC 1000 10 0 main\n`,
     );
     writeFileSync(join(dir, "z.txt"), mapping);
 

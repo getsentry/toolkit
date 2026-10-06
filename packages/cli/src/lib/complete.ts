@@ -32,7 +32,7 @@ function getCompletionOrganizations() {
   return credential
     ? getCachedOrganizations(
         getConfiguredSentryUrl() ?? credential.host,
-        credential.identity
+        credential.identity,
       )
     : [];
 }
@@ -175,7 +175,7 @@ export const ORG_ONLY_COMMANDS = new Set([
  */
 export function getCompletions(
   precedingWords: string[],
-  partial: string
+  partial: string,
 ): Completion[] {
   // Build the command path from preceding words (e.g., "issue list")
   const cmdPath =
@@ -333,7 +333,7 @@ function completeOrgSlugsWithSlash(partial: string): Completion[] {
  */
 export function completeProjectSlugs(
   projectPartial: string,
-  orgSlug: string
+  orgSlug: string,
 ): Completion[] {
   const projects = getCachedProjectsForOrg(orgSlug);
 

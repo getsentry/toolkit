@@ -7,7 +7,7 @@
  * performance, while list tables are rendered via writeTable() → renderMarkdown().
  */
 
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import prettyMs from "pretty-ms";
 import type {
@@ -130,7 +130,7 @@ export function formatFixability(score: number | null | undefined): string {
  * @returns Formatted string like `"Med (50%)"`, or `""` when score is unavailable
  */
 export function formatFixabilityDetail(
-  score: number | null | undefined
+  score: number | null | undefined,
 ): string {
   if (score === null || score === undefined) {
     return "";
@@ -153,7 +153,7 @@ type EntryTypeMap = {
  */
 function extractEntry<T extends keyof EntryTypeMap>(
   event: SentryEvent,
-  type: T
+  type: T,
 ): EntryTypeMap[T] | null {
   if (!event.entries) {
     return null;
@@ -270,7 +270,7 @@ export type FormatShortIdOptions = {
  */
 function formatShortIdWithAlias(
   shortId: string,
-  projectAlias: string
+  projectAlias: string,
 ): string | null {
   // Extract the project part of the alias — cross-org collision aliases use
   // the format "o1/d" where only "d" should match against the short ID parts.
@@ -322,7 +322,7 @@ function formatShortIdWithAlias(
  */
 export function formatShortId(
   shortId: string,
-  options?: FormatShortIdOptions | string
+  options?: FormatShortIdOptions | string,
 ): string {
   const opts: FormatShortIdOptions =
     typeof options === "string" ? { projectSlug: options } : (options ?? {});
@@ -451,7 +451,7 @@ export function substatusLabel(substatus?: string | null): string {
  * @returns Subtitle string, or empty string if no relevant metadata
  */
 export function formatIssueSubtitle(
-  metadata?: SentryIssue["metadata"]
+  metadata?: SentryIssue["metadata"],
 ): string {
   if (!metadata) {
     return "";
@@ -502,7 +502,7 @@ export function extractStatsPoints(stats?: Record<string, unknown>): number[] {
     return [];
   }
   return buckets.map((b: unknown) =>
-    Array.isArray(b) && b.length >= 2 ? Number(b[1]) || 0 : 0
+    Array.isArray(b) && b.length >= 2 ? Number(b[1]) || 0 : 0,
   );
 }
 
@@ -528,7 +528,7 @@ export type IssueTableRow = {
 function formatIdCell(
   issue: SentryIssue,
   formatOptions: FormatShortIdOptions,
-  compact = false
+  compact = false,
 ): string {
   const formatted = formatShortId(issue.shortId, formatOptions);
   const linked = issue.permalink
@@ -536,7 +536,7 @@ function formatIdCell(
     : formatted;
   const alias = computeAliasShorthand(
     issue.shortId,
-    formatOptions.projectAlias
+    formatOptions.projectAlias,
   );
   if (alias) {
     const sep = compact ? " " : "\n";
@@ -579,7 +579,7 @@ function formatIssueCell(issue: SentryIssue, compact = false): string {
  */
 function formatTrendCell(issue: SentryIssue, compact = false): string {
   const points = extractStatsPoints(
-    issue.stats as Record<string, unknown> | undefined
+    issue.stats as Record<string, unknown> | undefined,
   );
   const graph = points.length > 0 ? colorTag("muted", sparkline(points)) : "";
   const status = substatusLabel(issue.substatus);
@@ -611,7 +611,7 @@ function formatTrendCell(issue: SentryIssue, compact = false): string {
 export function writeIssueTable(
   stdout: Writer,
   rows: IssueTableRow[],
-  options?: { compact?: boolean }
+  options?: { compact?: boolean },
 ): void {
   const compact = options?.compact ?? false;
   const showTrend = willShowTrend();
@@ -668,7 +668,7 @@ export function writeIssueTable(
       header: "TRIAGE",
       value: ({ issue }) =>
         formatTriageCell(issue.priority, issue.seerFixabilityScore),
-    }
+    },
   );
 
   // Row separators colored with the muted palette color (#898294 → RGB 137,130,148)
@@ -707,7 +707,7 @@ const IMPACT_RATIO = 0.6;
  */
 function computeTriageScore(
   priority?: string | null,
-  fixabilityScore?: number | null
+  fixabilityScore?: number | null,
 ): number | null {
   const hasPriority = Boolean(priority);
   const hasFix = fixabilityScore !== null && fixabilityScore !== undefined;
@@ -744,7 +744,7 @@ function computeTriageScore(
  */
 function formatTriageCell(
   priority?: string | null,
-  fixabilityScore?: number | null
+  fixabilityScore?: number | null,
 ): string {
   const hasFix = fixabilityScore !== null && fixabilityScore !== undefined;
   const label = formatPriorityLabel(priority);
@@ -799,7 +799,7 @@ function formatPriorityLabel(priority?: string | null): string {
  * @param issue - The Sentry issue to format
  * @returns Rendered terminal string
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: issue formatting logic
+// issue formatting logic
 export function formatIssueDetails(issue: SentryIssue): string {
   const lines: string[] = [];
 
@@ -895,7 +895,7 @@ export function formatIssueDetails(issue: SentryIssue): string {
     lines.push("**Message:**");
     lines.push("");
     lines.push(
-      `> ${escapeMarkdownInline(issue.metadata.value).replace(/\n/g, "\n> ")}`
+      `> ${escapeMarkdownInline(issue.metadata.value).replace(/\n/g, "\n> ")}`,
     );
   }
 
@@ -987,7 +987,7 @@ function buildStackTraceMarkdown(exceptionEntry: ExceptionEntry): string {
 /**
  * Build the breadcrumbs section as a markdown table.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: breadcrumb formatting logic
+// breadcrumb formatting logic
 function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
   const breadcrumbs = breadcrumbsEntry.data.values ?? [];
   if (breadcrumbs.length === 0) {
@@ -1164,7 +1164,7 @@ export function formatSimpleSpanTree(
   traceId: string,
   spans: TraceSpan[],
   maxDepth = Number.MAX_SAFE_INTEGER,
-  options: SpanTreeOptions = {}
+  options: SpanTreeOptions = {},
 ): string[] {
   return withSerializeSpan("formatSimpleSpanTree", () => {
     // maxDepth = 0 means disabled (caller should skip, but handle gracefully)
@@ -1210,7 +1210,7 @@ export function formatSimpleSpanTree(
     if (truncated) {
       const remaining = totalRootSpans - MAX_ROOT_SPANS;
       lines.push(
-        `└─ ${plainSafeMuted(`... ${remaining} more root span${remaining === 1 ? "" : "s"} (${totalRootSpans} total). Use --json to see all.`)}`
+        `└─ ${plainSafeMuted(`... ${remaining} more root span${remaining === 1 ? "" : "s"} (${totalRootSpans} total). Use --json to see all.`)}`,
       );
     }
 
@@ -1223,7 +1223,7 @@ export function formatSimpleSpanTree(
 /**
  * Build environment context section (browser, OS, device) as markdown.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: context formatting logic
+// context formatting logic
 function buildEnvironmentMarkdown(event: SentryEvent): string {
   const contexts = event.contexts;
   if (!contexts) {
@@ -1263,7 +1263,7 @@ function buildEnvironmentMarkdown(event: SentryEvent): string {
 /**
  * Build user information section as markdown.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: user formatting logic
+// user formatting logic
 function buildUserMarkdown(event: SentryEvent): string {
   const user = event.user;
   if (!user) {
@@ -1325,7 +1325,7 @@ function buildUserMarkdown(event: SentryEvent): string {
  */
 function buildReplayMarkdown(
   event: SentryEvent,
-  issuePermalink?: string
+  issuePermalink?: string,
 ): string {
   const replayId = getReplayIdFromEvent(event);
   if (!replayId) {
@@ -1360,9 +1360,9 @@ function buildReplayMarkdown(
 export function formatEventDetails(
   event: SentryEvent,
   header = "Latest Event",
-  issuePermalink?: string
+  issuePermalink?: string,
 ): string {
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Event formatting requires multiple conditional sections
+  // Event formatting requires multiple conditional sections
   return withSerializeSpan("formatEventDetails", () => {
     const sections: string[] = [];
 
@@ -1468,7 +1468,7 @@ export function formatEventDetails(
           mdRow([
             `\`${tag.key}\``,
             escapeMarkdownCell(String(tag.value)),
-          ]).trimEnd()
+          ]).trimEnd(),
         );
       }
     }
@@ -1489,7 +1489,7 @@ export function formatOrgDetails(org: SentryOrganization): string {
   const lines: string[] = [];
 
   lines.push(
-    `## ${escapeMarkdownInline(org.slug)}: ${escapeMarkdownInline(org.name || "(unnamed)")}`
+    `## ${escapeMarkdownInline(org.slug)}: ${escapeMarkdownInline(org.name || "(unnamed)")}`,
   );
   lines.push("");
 
@@ -1529,12 +1529,12 @@ export function formatOrgDetails(org: SentryOrganization): string {
  */
 export function formatProjectDetails(
   project: SentryProject,
-  dsn?: string | null
+  dsn?: string | null,
 ): string {
   const lines: string[] = [];
 
   lines.push(
-    `## ${escapeMarkdownInline(project.slug)}: ${escapeMarkdownInline(project.name || "(unnamed)")}`
+    `## ${escapeMarkdownInline(project.slug)}: ${escapeMarkdownInline(project.name || "(unnamed)")}`,
   );
   lines.push("");
 
@@ -1551,7 +1551,7 @@ export function formatProjectDetails(
   if (project.organization) {
     const orgName = resolveOrgDisplayName(
       project.organization.slug,
-      project.organization.name
+      project.organization.name,
     );
     kvRows.push([
       "Organization",
@@ -1674,7 +1674,7 @@ function durationPair(
   major: number,
   majorUnit: string,
   minor: number,
-  minorUnit: string
+  minorUnit: string,
 ): string {
   if (minor === 0) {
     return pluralUnit(major, majorUnit);
@@ -1716,7 +1716,7 @@ export function formatExpiration(expiresAt: number): string {
   }
 
   const secondsRemaining = Math.round(
-    (expiresDate.getTime() - now.getTime()) / 1000
+    (expiresDate.getTime() - now.getTime()) / 1000,
   );
   return `${expiresDate.toLocaleString()} (${formatDuration(secondsRemaining)} remaining)`;
 }
@@ -1735,11 +1735,11 @@ type FeedbackResult = import("../../commands/cli/feedback.js").FeedbackResult;
 export function formatFeedbackResult(data: FeedbackResult): string {
   if (data.sent) {
     return renderMarkdown(
-      `${colorTag("green", "✓")} Feedback submitted. Thank you!`
+      `${colorTag("green", "✓")} Feedback submitted. Thank you!`,
     );
   }
   return renderMarkdown(
-    `${colorTag("yellow", "⚠")} Feedback may not have been sent (network timeout).`
+    `${colorTag("yellow", "⚠")} Feedback may not have been sent (network timeout).`,
   );
 }
 
@@ -1834,7 +1834,7 @@ function buildAuthDetailRows(data: AuthStatusData): [string, string][] {
  * Returns empty string when no defaults are set.
  */
 function formatDefaultsSection(
-  defaults: NonNullable<AuthStatusData["defaults"]>
+  defaults: NonNullable<AuthStatusData["defaults"]>,
 ): string {
   const rows: [string, string][] = [];
   if (defaults.organization) {
@@ -1856,20 +1856,20 @@ const MAX_VERIFY_DISPLAY = 5;
  * Build the credential verification section markdown.
  */
 function formatVerificationSection(
-  verification: NonNullable<AuthStatusData["verification"]>
+  verification: NonNullable<AuthStatusData["verification"]>,
 ): string {
   const lines: string[] = [""];
 
   if (verification.success) {
     const orgs = verification.organizations ?? [];
     lines.push(
-      `### ${colorTag("green", "✓")} Access verified — ${orgs.length} organization(s)`
+      `### ${colorTag("green", "✓")} Access verified — ${orgs.length} organization(s)`,
     );
     if (orgs.length > 0) {
       lines.push("");
       for (const org of orgs.slice(0, MAX_VERIFY_DISPLAY)) {
         lines.push(
-          `- ${escapeMarkdownInline(org.name)} (${safeCodeSpan(org.slug)})`
+          `- ${escapeMarkdownInline(org.name)} (${safeCodeSpan(org.slug)})`,
         );
       }
       if (orgs.length > MAX_VERIFY_DISPLAY) {
@@ -1929,7 +1929,7 @@ export function formatAuthStatus(data: AuthStatusData): string {
  * have been marked insufficient.
  */
 function formatEnvTokenSection(
-  envToken: NonNullable<AuthStatusData["envToken"]>
+  envToken: NonNullable<AuthStatusData["envToken"]>,
 ): string {
   const status = envToken.active
     ? "active"
@@ -1993,7 +1993,7 @@ export function formatProjectCreated(result: ProjectCreatedResult): string {
   // Slug divergence note (never applies in dry-run — we can't predict server renames)
   if (result.slugDiverged) {
     lines.push(
-      `> **Note:** Slug \`${result.project.slug}\` was assigned because \`${result.expectedSlug}\` is already taken.`
+      `> **Note:** Slug \`${result.project.slug}\` was assigned because \`${result.expectedSlug}\` is already taken.`,
     );
     lines.push("");
   }
@@ -2003,14 +2003,14 @@ export function formatProjectCreated(result: ProjectCreatedResult): string {
     lines.push(
       dry
         ? `> **Note:** Would create team '${escapeMarkdownInline(result.teamSlug)}' (org has no teams).`
-        : `> **Note:** Created team '${escapeMarkdownInline(result.teamSlug)}' (org had no teams).`
+        : `> **Note:** Created team '${escapeMarkdownInline(result.teamSlug)}' (org had no teams).`,
     );
     lines.push("");
   } else if (result.teamSource === "auto-selected") {
     lines.push(
       dry
         ? `> **Note:** Would use team '${escapeMarkdownInline(result.teamSlug)}'. See all teams: \`sentry team list\``
-        : `> **Note:** Using team '${escapeMarkdownInline(result.teamSlug)}'. See all teams: \`sentry team list\``
+        : `> **Note:** Using team '${escapeMarkdownInline(result.teamSlug)}'. See all teams: \`sentry team list\``,
     );
     lines.push("");
   }
@@ -2035,7 +2035,7 @@ export function formatProjectCreated(result: ProjectCreatedResult): string {
   if (!dry) {
     lines.push("");
     lines.push(
-      `*Tip: Use \`sentry project view ${result.orgSlug}/${result.project.slug}\` for details*`
+      `*Tip: Use \`sentry project view ${result.orgSlug}/${result.project.slug}\` for details*`,
     );
   }
 
@@ -2085,12 +2085,12 @@ export function formatProjectDeleted(result: ProjectDeleteResult): string {
   if (result.dryRun) {
     return renderMarkdown(
       `Would delete project '${nameEsc}' (${safeCodeSpan(qualifiedSlug)}).\n\n` +
-        `URL: ${result.url}`
+        `URL: ${result.url}`,
     );
   }
 
   return renderMarkdown(
-    `Deleted project '${nameEsc}' (${safeCodeSpan(qualifiedSlug)}).`
+    `Deleted project '${nameEsc}' (${safeCodeSpan(qualifiedSlug)}).`,
   );
 }
 
@@ -2167,7 +2167,7 @@ export function formatFixResult(data: FixResult): string {
   // Category sections
   const ownershipIssues = data.issues.filter((i) => i.category === "ownership");
   const permissionIssues = data.issues.filter(
-    (i) => i.category === "permission"
+    (i) => i.category === "permission",
   );
   const schemaIssues = data.issues.filter((i) => i.category === "schema");
 
@@ -2200,7 +2200,7 @@ export function formatFixResult(data: FixResult): string {
   lines.push("");
   if (data.issues.length === 0 && !data.repairFailed) {
     lines.push(
-      `${colorTag("green", "✓")} No issues found. Database schema and permissions are correct.`
+      `${colorTag("green", "✓")} No issues found. Database schema and permissions are correct.`,
     );
   } else if (data.dryRun && data.issues.length > 0 && !data.repairFailed) {
     lines.push("Run `sentry cli fix` to apply fixes.");
@@ -2257,7 +2257,8 @@ function getMaxChangelogLines(): number {
   }
   return Math.max(
     MIN_CHANGELOG_LINES,
-    Math.floor(termHeight * CHANGELOG_HEIGHT_FACTOR) - CHANGELOG_HEADER_OVERHEAD
+    Math.floor(termHeight * CHANGELOG_HEIGHT_FACTOR) -
+      CHANGELOG_HEADER_OVERHEAD,
   );
 }
 
@@ -2287,7 +2288,7 @@ function formatChangelog(data: UpgradeResult): string {
   if (changelog.truncated) {
     const more = changelog.originalCount - changelog.totalItems;
     lines.push(
-      `<muted>...and ${more} more changes — https://github.com/getsentry/cli/releases</muted>`
+      `<muted>...and ${more} more changes — https://github.com/getsentry/cli/releases</muted>`,
     );
   }
 
@@ -2339,32 +2340,32 @@ export function formatUpgradeResult(data: UpgradeResult): string {
       const verb = ACTION_DESCRIPTIONS[data.action];
       if (data.offline) {
         lines.push(
-          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)}${escapeMarkdownInline(" (offline, from cache)")}`
+          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)}${escapeMarkdownInline(" (offline, from cache)")}`,
         );
       } else if (data.currentVersion !== data.targetVersion) {
         lines.push(
-          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)} ${escapeMarkdownInline(`(from ${data.currentVersion})`)}`
+          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)} ${escapeMarkdownInline(`(from ${data.currentVersion})`)}`,
         );
       } else {
         lines.push(
-          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)}`
+          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)}`,
         );
       }
       break;
     }
     case "up-to-date":
       lines.push(
-        `${colorTag("green", "✓")} Already up to date (${safeCodeSpan(data.currentVersion)})`
+        `${colorTag("green", "✓")} Already up to date (${safeCodeSpan(data.currentVersion)})`,
       );
       break;
     case "checked": {
       if (data.currentVersion === data.targetVersion) {
         lines.push(
-          `${colorTag("green", "✓")} You are already on the target version (${safeCodeSpan(data.currentVersion)})`
+          `${colorTag("green", "✓")} You are already on the target version (${safeCodeSpan(data.currentVersion)})`,
         );
       } else {
         lines.push(
-          `Latest: ${safeCodeSpan(data.targetVersion)} (current: ${safeCodeSpan(data.currentVersion)})`
+          `Latest: ${safeCodeSpan(data.targetVersion)} (current: ${safeCodeSpan(data.currentVersion)})`,
         );
       }
       break;
@@ -2373,7 +2374,7 @@ export function formatUpgradeResult(data: UpgradeResult): string {
       // Exhaustive check — all action types should be handled above
       const _: never = data.action;
       lines.push(
-        `${ACTION_DESCRIPTIONS[_ as UpgradeResult["action"]] ?? "Done"}`
+        `${ACTION_DESCRIPTIONS[_ as UpgradeResult["action"]] ?? "Done"}`,
       );
     }
   }
@@ -2521,7 +2522,7 @@ const DEFAULT_LABELS: Record<string, string> = {
  * Shows when an env var overrides the stored preference.
  */
 function telemetryOverrideNote(
-  effective: DefaultsResult["telemetryEffective"]
+  effective: DefaultsResult["telemetryEffective"],
 ): string {
   if (!effective?.source.startsWith("env:")) {
     return "";
@@ -2565,7 +2566,7 @@ export function formatDefaultsResult(data: DefaultsResult): string {
       const label =
         DEFAULT_LABELS[data.changed?.key ?? ""] ?? data.changed?.key;
       return renderMarkdown(
-        `${colorTag("green", "✓")} Default ${escapeMarkdownInline(label ?? "setting")} set to ${safeCodeSpan(String(data.changed?.newValue))}`
+        `${colorTag("green", "✓")} Default ${escapeMarkdownInline(label ?? "setting")} set to ${safeCodeSpan(String(data.changed?.newValue))}`,
       );
     }
 
@@ -2573,7 +2574,7 @@ export function formatDefaultsResult(data: DefaultsResult): string {
       const label =
         DEFAULT_LABELS[data.changed?.key ?? ""] ?? data.changed?.key;
       return renderMarkdown(
-        `${colorTag("green", "✓")} Default ${escapeMarkdownInline(label ?? "setting")} cleared`
+        `${colorTag("green", "✓")} Default ${escapeMarkdownInline(label ?? "setting")} cleared`,
       );
     }
 
@@ -2636,7 +2637,7 @@ export function formatSentryStatus(data: SentryStatus): string {
   const indicatorTag = STATUS_INDICATOR_TAGS[data.indicator] ?? "yellow";
   const icon = data.indicator === "none" ? "✓" : "●";
   lines.push(
-    `## ${colorTag(indicatorTag, icon)} ${escapeMarkdownInline(data.description)}`
+    `## ${colorTag(indicatorTag, icon)} ${escapeMarkdownInline(data.description)}`,
   );
   lines.push("");
 
@@ -2645,7 +2646,7 @@ export function formatSentryStatus(data: SentryStatus): string {
     lines.push("");
     for (const incident of data.incidents) {
       lines.push(
-        `- **${escapeMarkdownInline(incident.name)}** (${escapeMarkdownInline(incident.impact)} impact, ${escapeMarkdownInline(incident.status)})`
+        `- **${escapeMarkdownInline(incident.name)}** (${escapeMarkdownInline(incident.impact)} impact, ${escapeMarkdownInline(incident.status)})`,
       );
       lines.push(`  ${safeCodeSpan(incident.shortlink)}`);
     }

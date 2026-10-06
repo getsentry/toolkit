@@ -25,7 +25,7 @@ function tempDir(): string {
 /** Yield a buffer as an async stream, split into fixed-size chunks. */
 async function* streamOf(
   buffer: Uint8Array,
-  chunkSize = 8
+  chunkSize = 8,
 ): AsyncIterable<Uint8Array> {
   for (let offset = 0; offset < buffer.length; offset += chunkSize) {
     yield buffer.subarray(offset, offset + chunkSize);
@@ -136,7 +136,7 @@ describe("extractZipStream", () => {
     process.on("unhandledRejection", onUnhandled);
     try {
       await expect(extractZipStream(faulty(), out)).rejects.toThrow(
-        "network boom"
+        "network boom",
       );
       await new Promise((r) => setTimeout(r, 20));
       expect(unhandled).toEqual([]);

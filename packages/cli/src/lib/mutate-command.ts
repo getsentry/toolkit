@@ -165,7 +165,7 @@ export function guardNonInteractive(flags: {
   if (!isatty(0)) {
     throw new CliError(
       "Destructive operation refused in non-interactive mode. " +
-        "Use --yes or --force to confirm."
+        "Use --yes or --force to confirm.",
     );
   }
 }
@@ -199,7 +199,7 @@ export function guardNonInteractive(flags: {
 export async function confirmByTyping(
   expected: string,
   promptMessage: string,
-  opts?: { logger?: { prompt: typeof logger.prompt } }
+  opts?: { logger?: { prompt: typeof logger.prompt } },
 ): Promise<boolean> {
   const log = opts?.logger ?? logger;
 
@@ -231,7 +231,7 @@ export async function confirmByTyping(
 export function requireExplicitTarget(
   parsed: ParsedOrgProject,
   entityType: string,
-  usageHint: string
+  usageHint: string,
 ): void {
   if (parsed.type === "auto-detect") {
     throw new ContextError(entityType, usageHint, [
@@ -263,7 +263,7 @@ type DeleteCommandFunction<
   this: CONTEXT,
   flags: FLAGS,
   ...args: ARGS
-  // biome-ignore lint/suspicious/noConfusingVoidType: void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
+  // void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
 ) => AsyncGenerator<unknown, CommandReturn | void, undefined>;
 
 /**
@@ -337,11 +337,11 @@ export function buildDeleteCommand<
       readonly fullDescription?: string;
     };
     readonly func: DeleteCommandFunction<FLAGS, ARGS, CONTEXT>;
-    // biome-ignore lint/suspicious/noExplicitAny: OutputConfig is generic but type is erased at the builder level
+    // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig is generic but type is erased at the builder level
     readonly output?: import("./formatters/output.js").OutputConfig<any>;
     readonly auth?: boolean;
   },
-  options?: DeleteCommandOptions
+  options?: DeleteCommandOptions,
 ): Command<CONTEXT> {
   const originalFunc = builderArgs.func;
 
@@ -389,7 +389,7 @@ export function buildDeleteCommand<
     aliases: mergedAliases,
   };
 
-  // biome-ignore lint/suspicious/noExplicitAny: Stricli's CommandFunction type is complex
+  // oxlint-disable-next-line typescript/no-explicit-any -- Stricli's CommandFunction type is complex
   const wrappedFunc = function (this: CONTEXT, flags: FLAGS, ...args: any[]) {
     // Pre-hook: non-interactive safety guard
     if (!options?.noNonInteractiveGuard) {
@@ -398,7 +398,7 @@ export function buildDeleteCommand<
           yes?: boolean;
           force?: boolean;
           "dry-run"?: boolean;
-        }
+        },
       );
     }
 

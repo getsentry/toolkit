@@ -19,7 +19,7 @@ afterEach(() => {
 function summaryResponse(
   indicator: string,
   description: string,
-  pageUrl: string
+  pageUrl: string,
 ): Response {
   return Response.json({
     page: { url: pageUrl },
@@ -34,8 +34,8 @@ test("probes summary.json first and uses it when the target is Statuspage", asyn
     summaryResponse(
       "none",
       "All Systems Operational",
-      "https://status.sentry.io"
-    )
+      "https://status.sentry.io",
+    ),
   );
 
   const status = await fetchSentryStatus();
@@ -52,8 +52,8 @@ test("uses summary.json for an arbitrary host that responds like Statuspage", as
     summaryResponse(
       "minor",
       "Minor Service Outage",
-      "https://sentry.example.com"
-    )
+      "https://sentry.example.com",
+    ),
   );
 
   const status = await fetchSentryStatus("https://sentry.example.com");
@@ -97,7 +97,7 @@ test("falls back to /_health/ when summary.json returns non-Statuspage JSON", as
 test("falls back to /_health/ when summary.json is not JSON", async () => {
   customFetchMock
     .mockResolvedValueOnce(
-      new Response("<html>not json</html>", { status: 200 })
+      new Response("<html>not json</html>", { status: 200 }),
     )
     .mockResolvedValueOnce(new Response("", { status: 200, statusText: "OK" }));
 
@@ -111,7 +111,7 @@ test("reports major when the health fallback returns non-2xx", async () => {
   customFetchMock
     .mockResolvedValueOnce(new Response("Not Found", { status: 404 }))
     .mockResolvedValueOnce(
-      new Response("", { status: 503, statusText: "Service Unavailable" })
+      new Response("", { status: 503, statusText: "Service Unavailable" }),
     );
 
   const status = await fetchSentryStatus("https://self.sentry.local");

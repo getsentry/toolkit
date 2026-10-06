@@ -120,7 +120,7 @@ case "$url" in
 ${downloadedExecutable}SCRIPT
     ;;
 esac
-`
+`,
     );
     chmodSync(join(binDir, "curl"), 0o755);
     writeFileSync(join(binDir, "gunzip"), "#!/usr/bin/env bash\ncat\n");
@@ -137,25 +137,28 @@ esac
     JSON.stringify(
       { version: "0.45.0", description: "x".repeat(96 * 1024) },
       null,
-      2
+      2,
     ),
-  ])("installs the latest stable release when GitHub API access is blocked", (metadata) => {
-    env.SENTRY_TEST_REGISTRY_RESPONSE = metadata;
-    const result = spawnSync("bash", [installScript], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
+  ])(
+    "installs the latest stable release when GitHub API access is blocked",
+    (metadata) => {
+      env.SENTRY_TEST_REGISTRY_RESPONSE = metadata;
+      const result = spawnSync("bash", [installScript], {
+        env,
+        encoding: "utf8",
+        timeout: 10_000,
+      });
 
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("download-urls")).toEqual([
-      "https://release-registry.services.sentry.io/apps/sentry/latest",
-      expect.stringMatching(
-        /^https:\/\/github\.com\/getsentry\/cli\/releases\/download\/0\.45\.0\/sentry-.+\.gz$/
-      ),
-    ]);
-    expect(existsSync(join(installDir, "sentry"))).toBe(true);
-  });
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(recorded("download-urls")).toEqual([
+        "https://release-registry.services.sentry.io/apps/sentry/latest",
+        expect.stringMatching(
+          /^https:\/\/github\.com\/getsentry\/cli\/releases\/download\/0\.45\.0\/sentry-.+\.gz$/,
+        ),
+      ]);
+      expect(existsSync(join(installDir, "sentry"))).toBe(true);
+    },
+  );
 
   test.each([
     { name: "HTTP error", metadata: "", failure: "22" },
@@ -180,7 +183,7 @@ esac
       "https://release-registry.services.sentry.io/apps/sentry/latest",
       "https://api.github.com/repos/getsentry/cli/releases/latest",
       expect.stringMatching(
-        /^https:\/\/github\.com\/getsentry\/cli\/releases\/download\/0\.45\.0\/sentry-.+\.gz$/
+        /^https:\/\/github\.com\/getsentry\/cli\/releases\/download\/0\.45\.0\/sentry-.+\.gz$/,
       ),
     ]);
     expect(existsSync(join(installDir, "sentry"))).toBe(true);
@@ -193,7 +196,7 @@ esac
       metadata: JSON.stringify(
         { tag_name: "0.45.0", body: "x".repeat(96 * 1024) },
         null,
-        2
+        2,
       ),
     },
   ])("accepts a GitHub release with $name", ({ metadata }) => {
@@ -208,7 +211,7 @@ esac
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("download-urls").at(-1)).toMatch(
-      /^https:\/\/github\.com\/getsentry\/cli\/releases\/download\/0\.45\.0\/sentry-.+\.gz$/
+      /^https:\/\/github\.com\/getsentry\/cli\/releases\/download\/0\.45\.0\/sentry-.+\.gz$/,
     );
     expect(existsSync(join(installDir, "sentry"))).toBe(true);
   });
@@ -223,32 +226,32 @@ esac
       failure: "0",
     },
     { name: "nonstable tag", metadata: '{"tag_name":"nightly"}', failure: "0" },
-  ])("stops when the registry and GitHub fail: $name", ({
-    metadata,
-    failure,
-  }) => {
-    env.SENTRY_TEST_REGISTRY_FAIL = "22";
-    env.SENTRY_TEST_GITHUB_RESPONSE = metadata;
-    env.SENTRY_TEST_GITHUB_FAIL = failure;
-    const result = spawnSync("bash", [installScript], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
+  ])(
+    "stops when the registry and GitHub fail: $name",
+    ({ metadata, failure }) => {
+      env.SENTRY_TEST_REGISTRY_FAIL = "22";
+      env.SENTRY_TEST_GITHUB_RESPONSE = metadata;
+      env.SENTRY_TEST_GITHUB_FAIL = failure;
+      const result = spawnSync("bash", [installScript], {
+        env,
+        encoding: "utf8",
+        timeout: 10_000,
+      });
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      "Failed to fetch latest stable version from Sentry's release registry and GitHub"
-    );
-    expect(result.stderr).toContain("--version <version>");
-    expect(result.stderr).not.toContain("Unexpected failure at line");
-    expect(recorded("download-urls")).toEqual([
-      "https://release-registry.services.sentry.io/apps/sentry/latest",
-      "https://api.github.com/repos/getsentry/cli/releases/latest",
-    ]);
-    expect(recorded("setup-args")).toEqual([]);
-    expect(existsSync(join(installDir, "sentry"))).toBe(false);
-  });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "Failed to fetch latest stable version from Sentry's release registry and GitHub",
+      );
+      expect(result.stderr).toContain("--version <version>");
+      expect(result.stderr).not.toContain("Unexpected failure at line");
+      expect(recorded("download-urls")).toEqual([
+        "https://release-registry.services.sentry.io/apps/sentry/latest",
+        "https://api.github.com/repos/getsentry/cli/releases/latest",
+      ]);
+      expect(recorded("setup-args")).toEqual([]);
+      expect(existsSync(join(installDir, "sentry"))).toBe(false);
+    },
+  );
 
   function recorded(name: string): string[] {
     const path = join(testDir, name);
@@ -259,7 +262,7 @@ esac
 
   function installerTempFiles(): string[] {
     return readdirSync(testDir).filter((name) =>
-      name.startsWith("sentry-install-")
+      name.startsWith("sentry-install-"),
     );
   }
 
@@ -335,7 +338,7 @@ JSON
     exit 91
     ;;
 esac
-`
+`,
     );
     chmodSync(join(binDir, "curl"), 0o755);
     writeFileSync(
@@ -346,14 +349,14 @@ if [[ $# -gt 0 && "$1" != "-c" ]]; then
   exit 64
 fi
 exec /usr/bin/gunzip "$@"
-`
+`,
     );
     chmodSync(join(binDir, "gunzip"), 0o755);
   }
 
   /** Run curl-style piped installation in a real controlling terminal. */
   function runInTerminal(
-    options: { redirect?: string; detached?: boolean } = {}
+    options: { redirect?: string; detached?: boolean } = {},
   ) {
     const launcher = join(testDir, "piped-install.cjs");
     const command =
@@ -366,7 +369,7 @@ const result = spawnSync("bash", ["-c", ${JSON.stringify(command)}], {
   stdio: "inherit", detached: ${options.detached ?? false}
 });
 process.exitCode = result.status ?? 1;
-`
+`,
     );
     // script(1) has different argument syntax on BSD and util-linux. A
     // detached shell retains its PTY output but cannot open /dev/tty.
@@ -403,7 +406,7 @@ process.exitCode = result.status ?? 1;
         "--no-completions",
         "--no-agent-skills",
       ],
-      { env, encoding: "utf8", timeout: 10_000 }
+      { env, encoding: "utf8", timeout: 10_000 },
     );
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("setup-args")).toEqual([
@@ -428,7 +431,7 @@ process.exitCode = result.status ?? 1;
     expect(installerTempFiles()).toEqual([]);
     expect(recorded("download-urls")).toEqual([
       expect.stringMatching(
-        /^https:\/\/github\.com\/getsentry\/cli\/releases\/download\/0\.31\.0\/sentry-.+\.gz$/
+        /^https:\/\/github\.com\/getsentry\/cli\/releases\/download\/0\.31\.0\/sentry-.+\.gz$/,
       ),
     ]);
   });
@@ -441,7 +444,7 @@ process.exitCode = result.status ?? 1;
     const result = spawnSync(
       "bash",
       [installScript, "--version", "nightly", "--no-modify-path"],
-      { env, encoding: "utf8", timeout: 10_000 }
+      { env, encoding: "utf8", timeout: 10_000 },
     );
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -467,42 +470,47 @@ process.exitCode = result.status ?? 1;
   test.each([
     { failure: "token", flag: "SENTRY_TEST_NIGHTLY_TOKEN_FAIL" },
     { failure: "manifest", flag: "SENTRY_TEST_NIGHTLY_MANIFEST_FAIL" },
-  ])("does not fall back to legacy GHCR when Toolkit $failure fails", ({
-    flag,
-  }) => {
-    configureNightlyDownload(false);
-    env[flag] = "1";
-    const result = spawnSync("bash", [installScript, "--version", "nightly"], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
+  ])(
+    "does not fall back to legacy GHCR when Toolkit $failure fails",
+    ({ flag }) => {
+      configureNightlyDownload(false);
+      env[flag] = "1";
+      const result = spawnSync(
+        "bash",
+        [installScript, "--version", "nightly"],
+        {
+          env,
+          encoding: "utf8",
+          timeout: 10_000,
+        },
+      );
 
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain(
-      flag === "SENTRY_TEST_NIGHTLY_TOKEN_FAIL"
-        ? "Failed to get GHCR token"
-        : "Failed to fetch nightly manifest from GHCR"
-    );
-    expect(result.stderr).not.toContain("Unexpected failure at line");
-    expect(recorded("curl-urls")).toEqual(
-      flag === "SENTRY_TEST_NIGHTLY_TOKEN_FAIL"
-        ? ["https://ghcr.io/token?scope=repository:getsentry/toolkit:pull"]
-        : [
-            "https://ghcr.io/token?scope=repository:getsentry/toolkit:pull",
-            "https://ghcr.io/v2/getsentry/toolkit/manifests/nightly",
-          ]
-    );
-    expect(recorded("setup-args")).toEqual([]);
-    expect(existsSync(join(installDir, "sentry"))).toBe(false);
-  });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        flag === "SENTRY_TEST_NIGHTLY_TOKEN_FAIL"
+          ? "Failed to get GHCR token"
+          : "Failed to fetch nightly manifest from GHCR",
+      );
+      expect(result.stderr).not.toContain("Unexpected failure at line");
+      expect(recorded("curl-urls")).toEqual(
+        flag === "SENTRY_TEST_NIGHTLY_TOKEN_FAIL"
+          ? ["https://ghcr.io/token?scope=repository:getsentry/toolkit:pull"]
+          : [
+              "https://ghcr.io/token?scope=repository:getsentry/toolkit:pull",
+              "https://ghcr.io/v2/getsentry/toolkit/manifests/nightly",
+            ],
+      );
+      expect(recorded("setup-args")).toEqual([]);
+      expect(existsSync(join(installDir, "sentry"))).toBe(false);
+    },
+  );
 
   test("uses the legacy release only after a Toolkit tag returns HTTP 404", () => {
     env.SENTRY_TEST_TOOLKIT_STATUS = "404";
     const result = spawnSync(
       "bash",
       [installScript, "--version", "0.42.2", "--no-modify-path"],
-      { env, encoding: "utf8", timeout: 10_000 }
+      { env, encoding: "utf8", timeout: 10_000 },
     );
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -534,11 +542,11 @@ process.exitCode = result.status ?? 1;
     const secondPage = join(testDir, "releases-2.json");
     writeFileSync(
       firstPage,
-      '[\n  {\n    "tag_name": "mcp@1.0.0",\n    "prerelease": false\n  }\n]\n'
+      '[\n  {\n    "tag_name": "mcp@1.0.0",\n    "prerelease": false\n  }\n]\n',
     );
     writeFileSync(
       secondPage,
-      '[\n  {\n    "tag_name": "cli@0.46.0",\n    "prerelease": false\n  }\n]\n'
+      '[\n  {\n    "tag_name": "cli@0.46.0",\n    "prerelease": false\n  }\n]\n',
     );
     env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
     env.SENTRY_TEST_RELEASES_PAGE_2 = secondPage;
@@ -556,10 +564,10 @@ process.exitCode = result.status ?? 1;
       "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=2",
     ]);
     expect(recorded("curl-urls")[3]).toBe(
-      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.46.0"
+      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.46.0",
     );
     expect(recorded("curl-urls")[4]).toContain(
-      "/getsentry/toolkit/releases/download/cli@0.46.0/"
+      "/getsentry/toolkit/releases/download/cli@0.46.0/",
     );
   });
 
@@ -567,7 +575,7 @@ process.exitCode = result.status ?? 1;
     const firstPage = join(testDir, "releases-1.json");
     writeFileSync(
       firstPage,
-      '[\n  {\n    "tag_name": "cli@0.47.0-dev.1",\n    "prerelease": false\n  },\n  {\n    "tag_name": "cli@0.46.0",\n    "prerelease": false\n  }\n]\n'
+      '[\n  {\n    "tag_name": "cli@0.47.0-dev.1",\n    "prerelease": false\n  },\n  {\n    "tag_name": "cli@0.46.0",\n    "prerelease": false\n  }\n]\n',
     );
     env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
     env.SENTRY_TEST_TOOLKIT_STATUS = "200";
@@ -579,10 +587,10 @@ process.exitCode = result.status ?? 1;
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("curl-urls")[2]).toBe(
-      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.46.0"
+      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.46.0",
     );
     expect(recorded("curl-urls")[3]).toContain(
-      "/getsentry/toolkit/releases/download/cli@0.46.0/"
+      "/getsentry/toolkit/releases/download/cli@0.46.0/",
     );
     expect(recorded("setup-args")).toContain("stable");
   });
@@ -606,7 +614,7 @@ process.exitCode = result.status ?? 1;
           assets: [{ tag_name: "cli@99.0.0", prerelease: false }],
           tag_name: "cli@0.46.0",
         },
-      ])
+      ]),
     );
     env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
     env.SENTRY_TEST_TOOLKIT_STATUS = "200";
@@ -618,10 +626,10 @@ process.exitCode = result.status ?? 1;
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("curl-urls")[2]).toBe(
-      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.46.0"
+      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.46.0",
     );
     expect(recorded("curl-urls")[3]).toContain(
-      "/getsentry/toolkit/releases/download/cli@0.46.0/"
+      "/getsentry/toolkit/releases/download/cli@0.46.0/",
     );
   });
 
@@ -639,7 +647,7 @@ process.exitCode = result.status ?? 1;
     "prerelease": false,
     "body": "${"x".repeat(256 * 1024)}"
   }
-]`
+]`,
     );
     env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
     env.SENTRY_TEST_TOOLKIT_STATUS = "200";
@@ -651,7 +659,7 @@ process.exitCode = result.status ?? 1;
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("curl-urls")).toContain(
-      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.46.0"
+      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.46.0",
     );
     expect(existsSync(join(installDir, "sentry"))).toBe(true);
   });
@@ -662,7 +670,7 @@ process.exitCode = result.status ?? 1;
       "#!/bin/sh\nprintf 'musl libc (x86_64)\\n'\n",
       {
         mode: 0o700,
-      }
+      },
     );
     const result = spawnSync("bash", [installScript, "--no-modify-path"], {
       env,
@@ -692,7 +700,7 @@ process.exitCode = result.status ?? 1;
       "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.42.2",
     ]);
     expect(recorded("curl-urls")[4]).toBe(
-      "https://api.github.com/repos/getsentry/cli/releases/tags/0.42.2"
+      "https://api.github.com/repos/getsentry/cli/releases/tags/0.42.2",
     );
   });
 
@@ -771,15 +779,16 @@ process.exitCode = result.status ?? 1;
     expect(recorded("post-binary")).toEqual([join(currentDir, "sentry")]);
   });
 
-  test.each([
-    1, 130,
-  ])("preserves setup failure or interruption exit %i", (exitCode) => {
-    env.SENTRY_TEST_SETUP_EXIT = String(exitCode);
-    const result = runInTerminal();
-    expect(result.status, result.stdout + result.stderr).toBe(exitCode);
-    expect(recorded("post-args")).toEqual([]);
-    expect(existsSync(join(installDir, "sentry"))).toBe(true);
-  });
+  test.each([1, 130])(
+    "preserves setup failure or interruption exit %i",
+    (exitCode) => {
+      env.SENTRY_TEST_SETUP_EXIT = String(exitCode);
+      const result = runInTerminal();
+      expect(result.status, result.stdout + result.stderr).toBe(exitCode);
+      expect(recorded("post-args")).toEqual([]);
+      expect(existsSync(join(installDir, "sentry"))).toBe(true);
+    },
+  );
 
   test.each([1, 130])("preserves non-interactive setup exit %i", (exitCode) => {
     env.SENTRY_TEST_SETUP_EXIT = String(exitCode);

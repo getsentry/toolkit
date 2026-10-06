@@ -22,7 +22,7 @@ export async function closeGlobalDispatcher(): Promise<void> {
     GLOBAL_DISPATCHER
   ] as ClosableDispatcher | undefined;
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     await dispatcher?.destroy?.();
   } catch {

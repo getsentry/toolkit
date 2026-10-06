@@ -24,7 +24,7 @@ const USAGE_HINT = "sentry release finalize [<org>/]<version>";
 function formatReleaseFinalized(data: Record<string, unknown>): string {
   if (data.dryRun) {
     return renderMarkdown(
-      `Would finalize release ${safeCodeSpan(String(data.version))} (dry run)`
+      `Would finalize release ${safeCodeSpan(String(data.version))} (dry run)`,
     );
   }
   const release = data as unknown as SentryRelease;
@@ -90,14 +90,14 @@ export const finalizeCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string
+    target: string,
   ) {
     const { cwd } = this;
 
     const { version, org, detectedFrom } = await resolveReleaseTarget(
       target,
       USAGE_HINT,
-      cwd
+      cwd,
     );
 
     if (flags["dry-run"]) {

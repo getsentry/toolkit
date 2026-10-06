@@ -64,7 +64,7 @@ function createTestLog(overrides: Partial<SentryLog> = {}): SentryLog {
 
 // Strip ANSI color codes for easier testing
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ANSI stripping
+  // oxlint-disable-next-line no-control-regex -- intentional ANSI stripping
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -286,13 +286,13 @@ describe("formatLogsHeader (plain mode)", () => {
   test("includes extra columns when provided", () => {
     const result = formatLogsHeader(["email", "user_id"]);
     expect(result).toContain(
-      "| ID | Timestamp | Level | Message | email | user_id |"
+      "| ID | Timestamp | Level | Message | email | user_id |",
     );
   });
 });
 
 function createDetailedTestLog(
-  overrides: Partial<DetailedSentryLog> = {}
+  overrides: Partial<DetailedSentryLog> = {},
 ): DetailedSentryLog {
   return {
     "sentry.item_id": "test-log-id-123456789012345678901234",
@@ -478,7 +478,7 @@ describe("formatLogDetails", () => {
       ];
       const log = createDetailedTestLog();
       const result = stripAnsi(
-        formatLogDetails(log, "test-org", attrsWithRedundant)
+        formatLogDetails(log, "test-org", attrsWithRedundant),
       );
 
       expect(result).toContain("user.id");
@@ -489,7 +489,7 @@ describe("formatLogDetails", () => {
     test("extraFields limits which custom attributes are shown", () => {
       const log = createDetailedTestLog();
       const result = stripAnsi(
-        formatLogDetails(log, "test-org", customAttrs, ["user.id"])
+        formatLogDetails(log, "test-org", customAttrs, ["user.id"]),
       );
 
       expect(result).toContain("Custom Attributes");
@@ -501,7 +501,7 @@ describe("formatLogDetails", () => {
     test("shows no Custom Attributes section when all are filtered by extraFields", () => {
       const log = createDetailedTestLog();
       const result = stripAnsi(
-        formatLogDetails(log, "test-org", customAttrs, ["nonexistent.field"])
+        formatLogDetails(log, "test-org", customAttrs, ["nonexistent.field"]),
       );
 
       expect(result).not.toContain("Custom Attributes");
@@ -512,7 +512,7 @@ describe("formatLogDetails", () => {
         "user.id": "u_99",
       } as DetailedSentryLog);
       const result = stripAnsi(
-        formatLogDetails(log, "test-org", undefined, ["user.id"])
+        formatLogDetails(log, "test-org", undefined, ["user.id"]),
       );
 
       expect(result).toContain("Custom Attributes");
@@ -527,7 +527,7 @@ describe("formatLogDetails", () => {
       ];
       const log = createDetailedTestLog();
       const result = stripAnsi(
-        formatLogDetails(log, "test-org", attrsWithArray)
+        formatLogDetails(log, "test-org", attrsWithArray),
       );
 
       expect(result).toContain('["prod","web"]');
@@ -547,13 +547,13 @@ describe("formatLogDetails", () => {
 describe("getLogId", () => {
   test("returns sentry.item_id when present", () => {
     expect(getLogId({ "sentry.item_id": "abc123", timestamp: "" })).toBe(
-      "abc123"
+      "abc123",
     );
   });
 
   test("falls back to id when sentry.item_id is absent", () => {
     expect(getLogId({ id: "trace-log-id", timestamp: "" })).toBe(
-      "trace-log-id"
+      "trace-log-id",
     );
   });
 
@@ -615,14 +615,14 @@ describe("formatLogTable", () => {
 
   test("includes severity levels", () => {
     const result = stripAnsi(
-      formatLogTable([createTestLog({ severity: "error" })])
+      formatLogTable([createTestLog({ severity: "error" })]),
     );
     expect(result).toContain("ERROR");
   });
 
   test("includes trace IDs when present", () => {
     const result = stripAnsi(
-      formatLogTable([createTestLog({ trace: "abcdef1234567890" })])
+      formatLogTable([createTestLog({ trace: "abcdef1234567890" })]),
     );
     expect(result).toContain("abcdef12");
   });

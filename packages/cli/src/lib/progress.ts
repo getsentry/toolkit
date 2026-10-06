@@ -83,7 +83,7 @@ export function makeByteProgress(
   label: string,
   totalBytes: number | null,
   setMessage: SetMessage | undefined,
-  options: MakeByteProgressOptions = {}
+  options: MakeByteProgressOptions = {},
 ): ByteProgress {
   const { format = "bytes", nowMs = Date.now } = options;
   let written = 0;
@@ -106,7 +106,7 @@ export function makeByteProgress(
 
   const emit = (): void => {
     // Cosmetic only — a formatting or callback failure must never propagate.
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       setMessage?.(render());
     } catch {

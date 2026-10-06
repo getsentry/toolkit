@@ -20,8 +20,8 @@ describe("makeTracemetricsAggregate", () => {
         "sum",
         "llm.token_usage",
         "distribution",
-        "none"
-      )
+        "none",
+      ),
     ).toBe("sum(value,llm.token_usage,distribution,none)");
   });
 
@@ -31,14 +31,19 @@ describe("makeTracemetricsAggregate", () => {
         "avg",
         "http.response_time",
         "distribution",
-        "millisecond"
-      )
+        "millisecond",
+      ),
     ).toBe("avg(value,http.response_time,distribution,millisecond)");
   });
 
   test("works with p50 aggregation", () => {
     expect(
-      makeTracemetricsAggregate("p50", "cache.hit_rate", "distribution", "none")
+      makeTracemetricsAggregate(
+        "p50",
+        "cache.hit_rate",
+        "distribution",
+        "none",
+      ),
     ).toBe("p50(value,cache.hit_rate,distribution,none)");
   });
 });
@@ -46,25 +51,25 @@ describe("makeTracemetricsAggregate", () => {
 describe("resolveMetricField", () => {
   test("resolves known metric with default agg", () => {
     expect(resolveMetricField("llm.token_usage", "sum", SAMPLE_METRICS)).toBe(
-      "sum(value,llm.token_usage,distribution,none)"
+      "sum(value,llm.token_usage,distribution,none)",
     );
   });
 
   test("resolves with custom agg", () => {
     expect(resolveMetricField("cache.hit_rate", "avg", SAMPLE_METRICS)).toBe(
-      "avg(value,cache.hit_rate,distribution,none)"
+      "avg(value,cache.hit_rate,distribution,none)",
     );
   });
 
   test("preserves metric unit from metadata", () => {
     expect(
-      resolveMetricField("http.response_time", "p95", SAMPLE_METRICS)
+      resolveMetricField("http.response_time", "p95", SAMPLE_METRICS),
     ).toBe("p95(value,http.response_time,distribution,millisecond)");
   });
 
   test("throws ResolutionError for unknown metric", () => {
     expect(() =>
-      resolveMetricField("nonexistent.metric", "sum", SAMPLE_METRICS)
+      resolveMetricField("nonexistent.metric", "sum", SAMPLE_METRICS),
     ).toThrow(ResolutionError);
   });
 
@@ -99,13 +104,13 @@ describe("resolveMetricField", () => {
 
   test("throws ResolutionError for invalid aggregation", () => {
     expect(() =>
-      resolveMetricField("llm.token_usage", "invalid_agg", SAMPLE_METRICS)
+      resolveMetricField("llm.token_usage", "invalid_agg", SAMPLE_METRICS),
     ).toThrow(ResolutionError);
   });
 
   test("resolves counter-type metric", () => {
     expect(resolveMetricField("request.count", "sum", SAMPLE_METRICS)).toBe(
-      "sum(value,request.count,counter,none)"
+      "sum(value,request.count,counter,none)",
     );
   });
 });

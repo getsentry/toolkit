@@ -31,7 +31,7 @@ describe("parsePositionalArgs properties", () => {
         expect(result.rawLogIds).toEqual([input]);
         expect(result.targetArg).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -43,7 +43,7 @@ describe("parsePositionalArgs properties", () => {
         expect(result.targetArg).toBe(`${org}/${project}`);
         expect(result.rawLogIds).toEqual([logId]);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -51,10 +51,10 @@ describe("parsePositionalArgs properties", () => {
     await fcAssert(
       property(tuple(slugArb, slugArb), ([org, project]) => {
         expect(() => parsePositionalArgs([`${org}/${project}`])).toThrow(
-          ContextError
+          ContextError,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -65,7 +65,7 @@ describe("parsePositionalArgs properties", () => {
         expect(result.targetArg).toBe(slug);
         expect(result.rawLogIds).toEqual([logId]);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -78,7 +78,7 @@ describe("parsePositionalArgs properties", () => {
         expect(result.targetArg).toBe(target);
         expect(result.rawLogIds).toEqual([logId]);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -92,9 +92,9 @@ describe("parsePositionalArgs properties", () => {
 
           expect(result.targetArg).toBe(slug);
           expect(result.rawLogIds).toEqual(ids);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -108,9 +108,9 @@ describe("parsePositionalArgs properties", () => {
 
           expect(result.targetArg).toBe(slug);
           expect(result.rawLogIds).toEqual(ids);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -121,7 +121,7 @@ describe("parsePositionalArgs properties", () => {
         const result2 = parsePositionalArgs([slug, logId]);
         expect(result1).toEqual(result2);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -138,7 +138,7 @@ describe("parsePositionalArgs properties", () => {
           expect(typeof id).toBe("string");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -149,7 +149,7 @@ describe("parsePositionalArgs properties", () => {
         const result = parsePositionalArgs([input]);
         expect(result.targetArg).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
 
     // Two+ args case
@@ -159,7 +159,7 @@ describe("parsePositionalArgs properties", () => {
         expect(result.targetArg).toBeDefined();
         expect(typeof result.targetArg).toBe("string");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

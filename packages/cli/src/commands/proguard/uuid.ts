@@ -56,13 +56,13 @@ export const uuidCommand = buildCommand({
   async *func(
     this: SentryContext,
     _flags: Record<string, never>,
-    path: string
+    path: string,
   ) {
     if (!path?.trim()) {
       throw new ContextError(
         "Mapping file path",
         "sentry proguard uuid <path>",
-        []
+        [],
       );
     }
 
@@ -74,19 +74,19 @@ export const uuidCommand = buildCommand({
       if (code === "ENOENT") {
         throw new ValidationError(
           `ProGuard mapping file '${path}' does not exist.`,
-          "path"
+          "path",
         );
       }
       if (code === "EISDIR") {
         throw new ValidationError(
           `Path '${path}' is a directory, not a ProGuard mapping file.`,
-          "path"
+          "path",
         );
       }
       const msg = err instanceof Error ? err.message : String(err);
       throw new ValidationError(
         `Cannot read ProGuard mapping file '${path}': ${msg}`,
-        "path"
+        "path",
       );
     }
 

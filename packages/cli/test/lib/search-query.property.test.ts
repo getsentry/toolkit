@@ -24,7 +24,7 @@ const validInListKeyArb = constantFrom(
   "message",
   "platform",
   "os.name",
-  "transaction"
+  "transaction",
 );
 
 /** Keys that are NOT valid for in-list syntax. */
@@ -42,7 +42,7 @@ const simpleValueArb = constantFrom(
   "Chrome",
   "Firefox",
   "unresolved",
-  "resolved"
+  "resolved",
 );
 
 /** Free-text terms (no colon → not a qualifier). */
@@ -52,7 +52,7 @@ const freeTextArb = constantFrom(
   "sandbox",
   "order",
   "android",
-  "poolexhaustion"
+  "poolexhaustion",
 );
 
 /** Safe terms that contain neither OR nor AND as standalone tokens. */
@@ -65,7 +65,7 @@ const safeTermArb = constantFrom(
   "assigned:me",
   "sandbox",
   "order",
-  "android"
+  "android",
 );
 
 describe("property: sanitizeQuery", () => {
@@ -79,9 +79,9 @@ describe("property: sanitizeQuery", () => {
           const query = `${key}:${val1} OR ${key}:${val2}`;
           const result = sanitizeQuery(query);
           expect(result).toBe(`${key}:[${val1},${val2}]`);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -96,9 +96,9 @@ describe("property: sanitizeQuery", () => {
           const query = `${key}:${v1} OR ${key}:${v2} OR ${key}:${v3}`;
           const result = sanitizeQuery(query);
           expect(result).toBe(`${key}:[${v1},${v2},${v3}]`);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -108,9 +108,9 @@ describe("property: sanitizeQuery", () => {
         tuple(freeTextArb, freeTextArb).map(([a, b]) => `${a} OR ${b}`),
         (query) => {
           expect(() => sanitizeQuery(query)).toThrow(ValidationError);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -128,9 +128,9 @@ describe("property: sanitizeQuery", () => {
           }
           const query = `${key1}:${val1} OR ${key2}:${val2}`;
           expect(() => sanitizeQuery(query)).toThrow(ValidationError);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -143,9 +143,9 @@ describe("property: sanitizeQuery", () => {
         (key, val1, val2) => {
           const query = `${key}:${val1} OR ${key}:${val2}`;
           expect(() => sanitizeQuery(query)).toThrow(ValidationError);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -161,9 +161,9 @@ describe("property: sanitizeQuery", () => {
           }
           // AND must not be present as standalone token
           expect(result).not.toMatch(/\bAND\b/);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -172,7 +172,7 @@ describe("property: sanitizeQuery", () => {
       property(safeTermArb, (term) => {
         expect(sanitizeQuery(term)).toBe(term);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

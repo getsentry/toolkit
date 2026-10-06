@@ -81,7 +81,7 @@ export function isSaaS(): boolean {
  * @returns true if the hostname is sentry.io or a subdomain of sentry.io
  */
 export function isSentrySaasUrl(url: string): boolean {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const parsed = new URL(url);
     return (
@@ -112,7 +112,7 @@ export function isSentrySaasUrl(url: string): boolean {
  * @returns true only if the URL is a strictly-SaaS origin
  */
 export function isSaaSTrustOrigin(url: string): boolean {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const parsed = new URL(url);
     return (
@@ -130,7 +130,7 @@ export function isSaaSTrustOrigin(url: string): boolean {
  * for user-supplied strings that may be bare hostnames.
  */
 export function normalizeOrigin(
-  input: string | URL | Request | undefined | null
+  input: string | URL | Request | undefined | null,
 ): string | undefined {
   if (input === null || input === undefined) {
     return;
@@ -143,7 +143,7 @@ export function normalizeOrigin(
   } else {
     raw = input.url;
   }
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return new URL(raw).origin;
   } catch {
@@ -154,12 +154,12 @@ export function normalizeOrigin(
 /** Normalize only credential-free HTTP(S) origins; allow root-relative URLs with a base. */
 export function normalizeHttpOrigin(
   input: string | undefined | null,
-  base?: string
+  base?: string,
 ): string | undefined {
   if (!input) {
     return;
   }
-  // biome-ignore lint/plugin: malformed external URLs are rejected with undefined by design.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- malformed external URLs are rejected with undefined by design.
   try {
     const parsed = base ? new URL(input, base) : new URL(input);
     if (
@@ -179,12 +179,12 @@ export function normalizeHttpOrigin(
 /** Validate an API-provided region URL while retaining an installation path. */
 export function normalizeRegionBaseUrl(
   raw: string,
-  responseOrigin: string
+  responseOrigin: string,
 ): string | undefined {
   if (!(raw.startsWith("/") || HTTP_URL_RE.test(raw))) {
     return;
   }
-  // biome-ignore lint/plugin: reject malformed region metadata without making discovery fail.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- reject malformed region metadata without making discovery fail.
   try {
     const parsed = new URL(raw, responseOrigin);
     const origin = normalizeHttpOrigin(parsed.href);
@@ -206,7 +206,7 @@ export function normalizeRegionBaseUrl(
  * to parse after the prefix.
  */
 export function normalizeUserInputToOrigin(
-  input: string | undefined
+  input: string | undefined,
 ): string | undefined {
   const prefixed = normalizeUrl(input);
   return prefixed ? normalizeOrigin(prefixed) : undefined;
@@ -280,7 +280,7 @@ export function buildEventSearchUrl(orgSlug: string, eventId: string): string {
  */
 export function buildProjectIssuesUrl(
   orgSlug: string,
-  projectId?: string
+  projectId?: string,
 ): string {
   const filter = projectId ? `?project=${projectId}` : "";
   if (isSaaS()) {
@@ -302,7 +302,7 @@ export function parseOrgProjectFromSettingsUrl(url: string): {
   orgSlug?: string;
   projectSlug?: string;
 } {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const parsed = new URL(url);
     const segments = parsed.pathname.split("/").filter(Boolean);
@@ -423,7 +423,7 @@ export function buildDashboardsListUrl(orgSlug: string): string {
  */
 export function buildDashboardUrl(
   orgSlug: string,
-  dashboardId: string
+  dashboardId: string,
 ): string {
   if (isSaaS()) {
     return `${getOrgBaseUrl(orgSlug)}/dashboard/${dashboardId}/`;
@@ -456,7 +456,7 @@ export function buildTraceUrl(orgSlug: string, traceId: string): string {
  */
 export function buildIssueAlertsUrl(
   orgSlug: string,
-  projectSlug?: string
+  projectSlug?: string,
 ): string {
   const projectFilter = projectSlug ? `?project=${projectSlug}` : "";
   if (isSaaS()) {

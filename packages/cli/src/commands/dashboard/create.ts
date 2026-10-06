@@ -62,21 +62,21 @@ type ResolvedDashboardTarget = {
 
 /** Enrich targets that lack a projectId by calling the project API */
 async function enrichTargetProjectIds(
-  targets: { org: string; project: string; projectId?: number }[]
+  targets: { org: string; project: string; projectId?: number }[],
 ): Promise<number[]> {
   const enriched = await Promise.all(
     targets.map(async (t) => {
       if (t.projectId !== undefined) {
         return t.projectId;
       }
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         const info = await getProject(t.org, t.project);
         return toNumericId(info.id);
       } catch {
         return;
       }
-    })
+    }),
   );
   return enriched.filter((id): id is number => id !== undefined);
 }
@@ -84,7 +84,7 @@ async function enrichTargetProjectIds(
 /** Resolve org and project IDs from the parsed target argument */
 async function resolveDashboardTarget(
   parsed: ParsedOrgProject,
-  cwd: string
+  cwd: string,
 ): Promise<ResolvedDashboardTarget> {
   switch (parsed.type) {
     case "explicit": {
@@ -104,7 +104,7 @@ async function resolveDashboardTarget(
         parsed.projectSlug,
         "sentry dashboard create <org>/<project> <title>",
         undefined,
-        parsed.originalSlug
+        parsed.originalSlug,
       );
       const pid = toNumericId(found.projectData.id);
       return {
@@ -119,7 +119,7 @@ async function resolveDashboardTarget(
         if (!resolved) {
           throw new ContextError(
             "Organization",
-            "sentry dashboard create <org>/ <title>"
+            "sentry dashboard create <org>/ <title>",
           );
         }
         return { orgSlug: resolved.org, projectIds: [] };
@@ -131,7 +131,7 @@ async function resolveDashboardTarget(
     default: {
       const _exhaustive: never = parsed;
       throw new Error(
-        `Unexpected parsed type: ${(_exhaustive as { type: string }).type}`
+        `Unexpected parsed type: ${(_exhaustive as { type: string }).type}`,
       );
     }
   }
@@ -175,7 +175,7 @@ export const createCommand = buildCommand({
       widgets: [],
       projects: projectIds.length > 0 ? projectIds : undefined,
     }).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "create" })
+      enrichDashboardError(error, { orgSlug, operation: "create" }),
     );
     const url = buildDashboardUrl(orgSlug, dashboard.id);
 

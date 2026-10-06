@@ -78,10 +78,10 @@ describe("external issue associations", () => {
     });
     expect(resolveAppIssueLink).not.toHaveBeenCalled();
     expect(invalidateCachedResponsesMatching).toHaveBeenCalledWith(
-      "https://de.sentry.io/api/0/organizations/example/issues/123/"
+      "https://de.sentry.io/api/0/organizations/example/issues/123/",
     );
     expect(invalidateCachedResponsesMatching).toHaveBeenCalledWith(
-      "https://sentry.io/api/0/issues/123/"
+      "https://sentry.io/api/0/issues/123/",
     );
   });
 
@@ -107,25 +107,25 @@ describe("external issue associations", () => {
       expect.objectContaining({
         appSlug: "custom-tracker",
         url: nativeLink.url,
-      })
+      }),
     );
     expect(resolveNativeIssueLink).not.toHaveBeenCalled();
   });
 
-  test.each([
-    nativeLink.url,
-    appLink.webUrl,
-  ])("dry-run link submits no mutation: %s", async (url) => {
-    const result = await linkExternalIssue({ ...options, url, dryRun: true });
-    expect(result).toMatchObject({
-      linked: false,
-      changed: false,
-      dryRun: true,
-    });
-    expect(linkNativeIssue).not.toHaveBeenCalled();
-    expect(linkAppIssue).not.toHaveBeenCalled();
-    expect(invalidateCachedResponsesMatching).not.toHaveBeenCalled();
-  });
+  test.each([nativeLink.url, appLink.webUrl])(
+    "dry-run link submits no mutation: %s",
+    async (url) => {
+      const result = await linkExternalIssue({ ...options, url, dryRun: true });
+      expect(result).toMatchObject({
+        linked: false,
+        changed: false,
+        dryRun: true,
+      });
+      expect(linkNativeIssue).not.toHaveBeenCalled();
+      expect(linkAppIssue).not.toHaveBeenCalled();
+      expect(invalidateCachedResponsesMatching).not.toHaveBeenCalled();
+    },
+  );
 
   test("dry-run link describes an existing app association", async () => {
     vi.mocked(resolveAppIssueLink).mockResolvedValue({
@@ -186,7 +186,7 @@ describe("external issue associations", () => {
         ...options,
         appSlug: "linear",
         integrationId: "20",
-      })
+      }),
     ).rejects.toThrow("--integration");
     expect(resolveAppIssueLink).not.toHaveBeenCalled();
   });

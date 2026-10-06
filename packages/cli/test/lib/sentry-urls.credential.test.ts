@@ -35,10 +35,10 @@ describe("web URLs for active credential hosts", () => {
     expect(getSentryBaseUrl()).toBe("https://sentry.example.com");
     expect(isSaaS()).toBe(false);
     expect(buildOrgUrl("acme")).toBe(
-      "https://sentry.example.com/organizations/acme/"
+      "https://sentry.example.com/organizations/acme/",
     );
     expect(buildProjectUrl("acme", "site")).toBe(
-      "https://sentry.example.com/settings/acme/projects/site/"
+      "https://sentry.example.com/settings/acme/projects/site/",
     );
   });
 
@@ -61,7 +61,7 @@ describe("web URLs for active credential hosts", () => {
     });
     expect(getSentryBaseUrl()).toBe("https://configured.example.com/sentry");
     expect(buildOrgUrl("acme")).toBe(
-      "https://configured.example.com/sentry/organizations/acme/"
+      "https://configured.example.com/sentry/organizations/acme/",
     );
   });
 });

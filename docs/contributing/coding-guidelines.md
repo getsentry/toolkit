@@ -25,12 +25,11 @@ Essential patterns and standards for Sentry MCP development.
 - 2 spaces, double quotes, semicolons
 - Formatter width: 80 characters
 - Trailing commas in multiline
-- MCP and root files use Oxfmt and Oxlint; CLI files still use their own Biome rules.
-- CLI's custom Grit rules and inline suppressions remain active until their
-  equivalents are available in the new linter.
-- VS Code uses Oxc for root and MCP files. Oxfmt ignores `packages/cli/**`;
-  use `pnpm --filter sentry exec biome format --write <file>` to format a CLI
-  file and keep CLI's Biome checks in the pre-commit hook.
+- Root, MCP, and CLI files use Oxlint and Oxfmt. The CLI-specific rules live in
+  `packages/cli/lint-rules/cli-oxlint-plugin.js`, with inline Oxlint suppressions
+  for intentional exceptions.
+- VS Code uses the Oxc extension for formatting and linting. Run
+  `pnpm exec oxfmt --write <file>` to format a file.
 
 ### Naming Conventions
 
@@ -99,10 +98,10 @@ Key practices:
 Before committing:
 
 ```bash
-pnpm -w run lint        # Oxlint and ast-grep checks for MCP and root files
+pnpm -w run lint        # Oxlint and ast-grep checks for root, MCP, and CLI
 pnpm -w run lint:fix    # Fix issues
-pnpm -w run format      # Format MCP and root files with Oxfmt
-pnpm --filter sentry run lint  # CLI Biome rules
+pnpm -w run format      # Format with Oxfmt
+pnpm --filter sentry run lint  # CLI-specific lint and format checks
 pnpm tsc --noEmit       # Type check
 pnpm test               # Run tests
 pnpm -w run build       # Build all

@@ -80,31 +80,31 @@ type LinkPlan = {
 
 /** Validate the URL and return the Sentry App slug, or undefined for a native integration. */
 function selectSentryApp(
-  options: ExternalIssueLinkOptions
+  options: ExternalIssueLinkOptions,
 ): string | undefined {
   const url = parseHttpUrl(options.url);
   if (!url) {
     throw new ValidationError(
       "External issue must be an absolute HTTP(S) URL without credentials.",
-      "url"
+      "url",
     );
   }
   const appSlug =
     options.appSlug || (url.hostname === "linear.app" ? "linear" : undefined);
   if (appSlug && options.integrationId) {
     throw new ValidationError(
-      "--integration selects a native integration. Use --app for a Sentry App."
+      "--integration selects a native integration. Use --app for a Sentry App.",
     );
   }
   if (appSlug && options.appSlug === "") {
     throw new ValidationError(
       "Specify --app for this external issue URL",
-      "app"
+      "app",
     );
   }
   if (!appSlug && options.fields && Object.keys(options.fields).length > 0) {
     throw new ValidationError(
-      "--field requires a Sentry App selected with --app."
+      "--field requires a Sentry App selected with --app.",
     );
   }
   return appSlug;
@@ -130,7 +130,7 @@ function nativeRef(link: NativeIssueLink): ExternalIssueRef {
 
 async function planLink(
   options: ExternalIssueLinkOptions,
-  appSlug: string | undefined
+  appSlug: string | undefined,
 ): Promise<LinkPlan> {
   if (appSlug) {
     const prepared = await resolveAppIssueLink({ ...options, appSlug });
@@ -166,7 +166,10 @@ async function planLink(
 
 function toResult(
   options: ExternalIssueLinkOptions,
-  outcome: Pick<ExternalIssueLinkResult, "linked" | "changed" | "externalIssue">
+  outcome: Pick<
+    ExternalIssueLinkResult,
+    "linked" | "changed" | "externalIssue"
+  >,
 ): ExternalIssueLinkResult {
   return {
     org: options.orgSlug,
@@ -179,7 +182,7 @@ function toResult(
 
 /** App callbacks run on the control silo, so invalidate the issue's regional cache too. */
 async function invalidateIssueLinks(
-  options: ExternalIssueLinkOptions
+  options: ExternalIssueLinkOptions,
 ): Promise<void> {
   const regionUrl = await resolveOrgRegion(options.orgSlug);
   const base = getApiBaseUrl();
@@ -189,14 +192,14 @@ async function invalidateIssueLinks(
     invalidateCachedResponsesMatching(new URL(issuePath, base).href),
     invalidateCachedResponsesMatching(
       new URL(`/api/0/issues/${encodeURIComponent(options.issueId)}/`, base)
-        .href
+        .href,
     ),
   ]);
 }
 
 /** Associate an existing ticket; a dry run performs only discovery and validation. */
 export async function linkExternalIssue(
-  options: ExternalIssueLinkOptions
+  options: ExternalIssueLinkOptions,
 ): Promise<ExternalIssueLinkResult> {
   const plan = await planLink(options, selectSentryApp(options));
   if (options.dryRun) {

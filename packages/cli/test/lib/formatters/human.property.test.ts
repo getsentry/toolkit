@@ -26,7 +26,7 @@ import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
 // Helper to strip ANSI codes for content testing
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI codes use control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -45,7 +45,7 @@ const suffixArb = stringMatching(/^[a-zA-Z0-9]{1,10}$/);
 
 /** Full short ID like "PROJECT-A3" */
 const shortIdArb = tuple(projectSlugArb, suffixArb).map(
-  ([project, suffix]) => `${project}-${suffix}`
+  ([project, suffix]) => `${project}-${suffix}`,
 );
 
 /** User name (non-empty string with letters and spaces) */
@@ -67,7 +67,7 @@ describe("formatShortId properties", () => {
         const result = formatShortId(shortId);
         expect(stripFormatting(result)).toBe(shortId.toUpperCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -77,7 +77,7 @@ describe("formatShortId properties", () => {
         const result = formatShortId(shortId);
         expect(stripFormatting(result).length).toBe(shortId.length);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -88,7 +88,7 @@ describe("formatShortId properties", () => {
         const result = formatShortId(shortId, { projectSlug: project });
         expect(stripFormatting(result)).toBe(shortId.toUpperCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -103,7 +103,7 @@ describe("formatShortId properties", () => {
         });
         expect(stripFormatting(result)).toBe(shortId.toUpperCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -113,7 +113,7 @@ describe("formatShortId properties", () => {
         const result = stripAnsi(formatShortId(shortId));
         expect(result).toBe(result.toUpperCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -124,7 +124,7 @@ describe("formatShortId properties", () => {
         const result2 = formatShortId(shortId);
         expect(result1).toBe(result2);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -143,7 +143,7 @@ describe("formatShortId properties", () => {
         expect(lowerResult).toBe(upperResult);
         expect(upperResult).toBe(mixedResult);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -155,7 +155,7 @@ describe("formatUserIdentity properties", () => {
         const result = formatUserIdentity({ id: "1", name, email });
         expect(result).toBe(`${name} <${email}>`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -165,7 +165,7 @@ describe("formatUserIdentity properties", () => {
         const result = formatUserIdentity({ id: "1", username, email });
         expect(result).toBe(`${username} <${email}>`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -177,9 +177,9 @@ describe("formatUserIdentity properties", () => {
           const result = formatUserIdentity({ id: "1", name, username, email });
           // If this passes, name is used (proving username is ignored when name exists)
           expect(result).toBe(`${name} <${email}>`);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -189,7 +189,7 @@ describe("formatUserIdentity properties", () => {
         const result = formatUserIdentity({ id: "1", name });
         expect(result).toBe(name);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -199,7 +199,7 @@ describe("formatUserIdentity properties", () => {
         const result = formatUserIdentity({ id: "1", username });
         expect(result).toBe(username);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -209,7 +209,7 @@ describe("formatUserIdentity properties", () => {
         const result = formatUserIdentity({ id: "1", email });
         expect(result).toBe(email);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -219,7 +219,7 @@ describe("formatUserIdentity properties", () => {
         const result = formatUserIdentity({ id });
         expect(result).toBe(`user ${id}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -229,7 +229,7 @@ describe("formatUserIdentity properties", () => {
         const result = formatUserIdentity({ userId });
         expect(result).toBe(`user ${userId}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -239,7 +239,7 @@ describe("formatUserIdentity properties", () => {
         const result = formatUserIdentity({ id, userId });
         expect(result).toBe(`user ${id}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -253,7 +253,7 @@ const scoreArb = double({ min: 0, max: 1, noNaN: true });
 const nullableScoreArb = oneof(
   scoreArb,
   constant(null as null),
-  constant(undefined as undefined)
+  constant(undefined as undefined),
 );
 
 describe("property: getSeerFixabilityLabel", () => {
@@ -263,7 +263,7 @@ describe("property: getSeerFixabilityLabel", () => {
         const label = getSeerFixabilityLabel(score);
         expect(["high", "med", "low"]).toContain(label);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -279,7 +279,7 @@ describe("property: getSeerFixabilityLabel", () => {
           expect(rankA).toBeLessThanOrEqual(rankB);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -291,7 +291,7 @@ describe("property: formatFixability", () => {
         const result = formatFixability(score);
         expect(result).toMatch(/^(high|med|low)\(\d+%\)$/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -300,7 +300,7 @@ describe("property: formatFixability", () => {
       property(scoreArb, (score) => {
         expect(formatFixability(score).length).toBeLessThanOrEqual(10);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -311,7 +311,7 @@ describe("property: formatFixability", () => {
           expect(formatFixability(score)).toBe("");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -323,7 +323,7 @@ describe("property: formatFixabilityDetail", () => {
         const result = formatFixabilityDetail(score);
         expect(result).toMatch(/^(High|Med|Low) \(\d+%\)$/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -334,7 +334,7 @@ describe("property: formatFixabilityDetail", () => {
           expect(formatFixabilityDetail(score)).toBe("");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

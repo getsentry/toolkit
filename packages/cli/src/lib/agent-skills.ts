@@ -44,7 +44,7 @@ export function detectClaudeCode(homeDir: string): boolean {
  */
 export function getSkillInstallPath(
   homeDir: string,
-  rootDir: ".agents" | ".claude" = ".claude"
+  rootDir: ".agents" | ".claude" = ".claude",
 ): string {
   return join(homeDir, rootDir, "skills", "sentry-cli", "SKILL.md");
 }
@@ -75,12 +75,12 @@ export function getSkillInstallPath(
  */
 async function atomicWriteFile(
   destPath: string,
-  content: string
+  content: string,
 ): Promise<void> {
   const dir = dirname(destPath);
   const tempPath = join(
     dir,
-    `.${basename(destPath)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
+    `.${basename(destPath)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`,
   );
   try {
     await writeFile(tempPath, content, "utf-8");
@@ -103,7 +103,7 @@ async function atomicWriteFile(
  * this helper. Returns null on any filesystem failure.
  */
 async function writeSkillFiles(
-  skillPath: string
+  skillPath: string,
 ): Promise<AgentSkillLocation | null> {
   try {
     const skillDir = dirname(skillPath);
@@ -150,7 +150,7 @@ async function writeSkillFiles(
  * @returns Location info if installed to at least one detected target, null otherwise
  */
 export async function installAgentSkills(
-  homeDir: string
+  homeDir: string,
 ): Promise<AgentSkillLocation | null> {
   const installTargets = [
     {
@@ -181,7 +181,7 @@ export async function installAgentSkills(
     }
 
     const location = await writeSkillFiles(
-      getSkillInstallPath(homeDir, target.rootDir)
+      getSkillInstallPath(homeDir, target.rootDir),
     );
     if (location) {
       results.push(location);
