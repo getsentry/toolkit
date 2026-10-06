@@ -963,10 +963,25 @@ export function formatTimeSeriesResults(params: {
     url,
   } = params;
 
-  const points = series.data.map(([ts, values]) => ({
-    time: new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " "),
-    value: Number(values[0]?.count ?? 0),
-  }));
+  const points = series.data.map(([ts, values]) => {
+    const raw = values[0]?.count ?? 0;
+    // Number() coerces the whole string (unlike parseFloat which stops at the
+    // first non-numeric char), so ISO datetime strings like "2026-07-13T00:00:00"
+    // correctly yield NaN rather than silently truncating to the year.
+    const numeric = typeof raw === "number" ? raw : Number(raw);
+    // Use 0 as a fallback when the value can't be coerced (e.g. ISO datetime
+    // string returned by aggregates like max(timestamp)). The original raw
+    // string is preserved for display so we never render "NaN" to the user.
+    const value = isNaN(numeric) ? 0 : numeric;
+    const display = isNaN(numeric)
+      ? String(raw)
+      : numeric.toLocaleString();
+    return {
+      time: new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " "),
+      value,
+      display,
+    };
+  });
 
   // Total is only meaningful for additive aggregates; summing count_unique /
   // avg / percentile buckets would be wrong, so omit it for those.
@@ -1000,7 +1015,7 @@ export function formatTimeSeriesResults(params: {
     lines.push(`- **Total**: ${total.toLocaleString()}`);
   }
   if (peak) {
-    lines.push(`- **Peak**: ${peak.value.toLocaleString()} at ${peak.time}`);
+    lines.push(`- **Peak**: ${peak.display} at ${peak.time}`);
   }
 
   if (shown.length > 0) {
@@ -1012,7 +1027,7 @@ export function formatTimeSeriesResults(params: {
       "| --- | --- |",
     );
     for (const p of shown) {
-      lines.push(`| ${p.time} | ${p.value.toLocaleString()} |`);
+      lines.push(`| ${p.time} | ${p.display} |`);
     }
   } else {
     lines.push("", "No data points in this range.");
