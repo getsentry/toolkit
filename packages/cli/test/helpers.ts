@@ -9,7 +9,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach } from "vitest";
 import {
-  resetAuthRowCache,
   resetAuthTokenCache,
   resetHasStoredCredsCache,
   resetIdentityFingerprintCache,
@@ -113,7 +112,6 @@ export function useTestConfigDir(
     closeDatabase();
     // Fresh DB — drop module-scoped auth caches from the previous test.
     resetAuthTokenCache();
-    resetAuthRowCache();
     resetHasStoredCredsCache();
     resetIdentityFingerprintCache();
     dir = await createTestConfigDir(prefix, options);
@@ -123,7 +121,6 @@ export function useTestConfigDir(
   afterEach(async () => {
     closeDatabase();
     resetAuthTokenCache();
-    resetAuthRowCache();
     resetHasStoredCredsCache();
     resetIdentityFingerprintCache();
     // Always restore the previous value — never delete.

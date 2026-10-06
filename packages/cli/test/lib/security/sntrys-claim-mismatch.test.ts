@@ -31,11 +31,9 @@ describe("CVE defense-in-depth: sntrys_ claim vs request mismatch", () => {
 
   beforeEach(async () => {
     await resetHostScopingState();
-    const {
-      resetAuthTokenCache,
-      resetAuthRowCache,
-      resetIdentityFingerprintCache,
-    } = await import("../../../src/lib/db/auth.js");
+    const { resetAuthTokenCache, resetIdentityFingerprintCache } = await import(
+      "../../../src/lib/db/auth.js"
+    );
     // Clear the GET response cache between tests so a cached 200 from
     // a prior test's identical URL doesn't short-circuit the fetch
     // wrapper (which would leave `fetchCalls` empty).
@@ -43,7 +41,6 @@ describe("CVE defense-in-depth: sntrys_ claim vs request mismatch", () => {
       "../../../src/lib/response-cache.js"
     );
     resetAuthTokenCache();
-    resetAuthRowCache();
     resetIdentityFingerprintCache();
     await clearResponseCache();
 

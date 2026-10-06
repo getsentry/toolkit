@@ -38,7 +38,6 @@ import {
   getIdentityFingerprint,
   isAuthenticated,
   isEnvTokenActive,
-  resetAuthRowCache,
   resetAuthTokenCache,
   resetIdentityFingerprintCache,
   setAuthToken,
@@ -306,7 +305,6 @@ class SetEnvAuthTokenCommand implements AsyncCommand<DbModel, RealDb> {
     process.env.SENTRY_AUTH_TOKEN = this.token;
     // Env mutation bypasses setAuthToken's invalidation.
     resetAuthTokenCache();
-    resetAuthRowCache();
     resetIdentityFingerprintCache();
     // Model stores trimmed value — matches real getEnvToken() which trims
     const trimmed = this.token.trim();
@@ -322,7 +320,6 @@ class ClearEnvAuthTokenCommand implements AsyncCommand<DbModel, RealDb> {
   async run(model: DbModel, _real: RealDb): Promise<void> {
     delete process.env.SENTRY_AUTH_TOKEN;
     resetAuthTokenCache();
-    resetAuthRowCache();
     resetIdentityFingerprintCache();
     model.envAuthToken = null;
   }
@@ -342,7 +339,6 @@ class SetEnvSentryTokenCommand implements AsyncCommand<DbModel, RealDb> {
   async run(model: DbModel, _real: RealDb): Promise<void> {
     process.env.SENTRY_TOKEN = this.token;
     resetAuthTokenCache();
-    resetAuthRowCache();
     resetIdentityFingerprintCache();
     // Model stores trimmed value — matches real getEnvToken() which trims
     const trimmed = this.token.trim();
@@ -358,7 +354,6 @@ class ClearEnvSentryTokenCommand implements AsyncCommand<DbModel, RealDb> {
   async run(model: DbModel, _real: RealDb): Promise<void> {
     delete process.env.SENTRY_TOKEN;
     resetAuthTokenCache();
-    resetAuthRowCache();
     resetIdentityFingerprintCache();
     model.envSentryToken = null;
   }
@@ -803,7 +798,6 @@ describe("model-based: database layer", () => {
         delete process.env.SENTRY_AUTH_TOKEN;
         delete process.env.SENTRY_TOKEN;
         resetAuthTokenCache();
-        resetAuthRowCache();
         resetIdentityFingerprintCache();
         try {
           const setup = () => ({
@@ -940,7 +934,6 @@ describe("model-based: database layer", () => {
         const savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
         delete process.env.SENTRY_AUTH_TOKEN;
         resetAuthTokenCache();
-        resetAuthRowCache();
         try {
           // Set token that expires immediately (negative expiresIn)
           setAuthToken(token, -1);

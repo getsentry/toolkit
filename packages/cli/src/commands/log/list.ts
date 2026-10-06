@@ -382,11 +382,15 @@ async function* generateFollowLogs<T extends LogLike>(
   process.once("SIGINT", stop);
 
   // Library mode: honor external abort signal (e.g., consumer break)
-  if (config.abortSignal) {
-    config.abortSignal.addEventListener("abort", stop, { once: true });
+  if (config.abortSignal?.aborted) {
+    stop();
   }
+  config.abortSignal?.addEventListener("abort", stop, { once: true });
 
   try {
+    if (controller.signal.aborted) {
+      return;
+    }
     // Initial fetch
     const initialLogs = await config.fetch("1m");
     if (initialLogs.length > 0) {
@@ -410,6 +414,7 @@ async function* generateFollowLogs<T extends LogLike>(
     }
   } finally {
     process.removeListener("SIGINT", stop);
+    config.abortSignal?.removeEventListener("abort", stop);
   }
 }
 

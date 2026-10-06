@@ -27,6 +27,7 @@ import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 /** Generate valid HTTP methods */
 const methodArb = constantFrom("GET", "POST", "PUT", "DELETE", "PATCH");
+const TEST_IDENTITY = "identity-a";
 
 /** Generate simple path segments */
 const pathSegmentArb = string({ minLength: 1, maxLength: 20 }).filter((s) =>
@@ -69,7 +70,9 @@ describe("property: buildCacheKey", () => {
   test("produces a 64-char hex string (SHA-256)", () => {
     fcAssert(
       property(methodArb, sentryUrlArb, (method, url) => {
-        expect(buildCacheKey(method, url)).toMatch(/^[0-9a-f]{64}$/);
+        expect(buildCacheKey(method, url, TEST_IDENTITY)).toMatch(
+          /^[0-9a-f]{64}$/
+        );
       }),
       { numRuns: DEFAULT_NUM_RUNS }
     );
@@ -78,7 +81,9 @@ describe("property: buildCacheKey", () => {
   test("is deterministic — same inputs produce same key", () => {
     fcAssert(
       property(methodArb, sentryUrlArb, (method, url) => {
-        expect(buildCacheKey(method, url)).toBe(buildCacheKey(method, url));
+        expect(buildCacheKey(method, url, TEST_IDENTITY)).toBe(
+          buildCacheKey(method, url, TEST_IDENTITY)
+        );
       }),
       { numRuns: DEFAULT_NUM_RUNS }
     );
@@ -87,7 +92,9 @@ describe("property: buildCacheKey", () => {
   test("different methods produce different keys for same URL", () => {
     fcAssert(
       property(sentryUrlArb, (url) => {
-        expect(buildCacheKey("GET", url)).not.toBe(buildCacheKey("POST", url));
+        expect(buildCacheKey("GET", url, TEST_IDENTITY)).not.toBe(
+          buildCacheKey("POST", url, TEST_IDENTITY)
+        );
       }),
       { numRuns: DEFAULT_NUM_RUNS }
     );
@@ -101,7 +108,9 @@ describe("property: buildCacheKey", () => {
         (base, path) => {
           const url1 = `${base}/api/0/${path}?a=1&b=2&c=3`;
           const url2 = `${base}/api/0/${path}?c=3&a=1&b=2`;
-          expect(buildCacheKey("GET", url1)).toBe(buildCacheKey("GET", url2));
+          expect(buildCacheKey("GET", url1, TEST_IDENTITY)).toBe(
+            buildCacheKey("GET", url2, TEST_IDENTITY)
+          );
         }
       ),
       { numRuns: DEFAULT_NUM_RUNS }
@@ -111,7 +120,9 @@ describe("property: buildCacheKey", () => {
   test("method comparison is case-insensitive", () => {
     fcAssert(
       property(sentryUrlArb, (url) => {
-        expect(buildCacheKey("get", url)).toBe(buildCacheKey("GET", url));
+        expect(buildCacheKey("get", url, TEST_IDENTITY)).toBe(
+          buildCacheKey("GET", url, TEST_IDENTITY)
+        );
       }),
       { numRuns: DEFAULT_NUM_RUNS }
     );

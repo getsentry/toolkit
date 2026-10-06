@@ -29,9 +29,8 @@ import { join } from "node:path";
 import CachePolicy from "http-cache-semantics";
 import pLimit from "p-limit";
 
-import { getIdentityFingerprint } from "./db/auth.js";
 import { getConfigDir } from "./db/index.js";
-import { getEnv } from "./env.js";
+import { createInvocationState, getEnv } from "./env.js";
 import { logger } from "./logger.js";
 import { recordCacheHit, withCacheSpan } from "./telemetry.js";
 
@@ -111,7 +110,7 @@ export function classifyUrl(url: string): TtlTier {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a deterministic cache key from the active identity + method + URL.
+ * Build a deterministic cache key from the supplied identity + method + URL.
  *
  * Query params are sorted alphabetically so `?a=1&b=2` and `?b=2&a=1`
  * produce the same key. The identity fingerprint scopes entries per
@@ -122,7 +121,7 @@ export function classifyUrl(url: string): TtlTier {
 export function buildCacheKey(
   method: string,
   url: string,
-  identity = getIdentityFingerprint()
+  identity: string
 ): string {
   const normalized = normalizeUrl(method, url);
   return createHmac("sha256", identity).update(normalized).digest("hex");
@@ -319,7 +318,7 @@ function buildResponseHeaders(
 }
 
 // ---------------------------------------------------------------------------
-// Last cache-hit age — process-global signal for cache-age hints
+// Last cache-hit age — invocation-local signal for cache-age hints
 // ---------------------------------------------------------------------------
 
 /**
@@ -329,16 +328,19 @@ function buildResponseHeaders(
  * `authenticatedFetch` call in `sentry-client.ts`. Commands read it via
  * {@link getLastCacheHitAge} to show "cached · 3m ago · use -f to refresh".
  *
- * Safe because the CLI is single-process, single-command — no races.
+ * Scoped to the command so late requests cannot affect the next SDK call.
  */
-let lastCacheHitAgeMs: number | undefined;
+const getCacheState = createInvocationState<{
+  lastCacheHitAgeMs?: number;
+  cacheReadBypassed: boolean;
+}>(() => ({ cacheReadBypassed: false }));
 
 /**
  * Get the age (in ms) of the most recent cache hit, or `undefined` if the
  * last request was not served from cache.
  */
 export function getLastCacheHitAge(): number | undefined {
-  return lastCacheHitAgeMs;
+  return getCacheState().lastCacheHitAgeMs;
 }
 
 /**
@@ -346,7 +348,7 @@ export function getLastCacheHitAge(): number | undefined {
  * call so the signal reflects only the current request.
  */
 export function clearLastCacheHitAge(): void {
-  lastCacheHitAgeMs = undefined;
+  getCacheState().lastCacheHitAgeMs = undefined;
 }
 
 /**
@@ -356,23 +358,21 @@ export function clearLastCacheHitAge(): void {
  * @internal Exported for testing
  */
 export function setLastCacheHitAgeForTesting(ageMs: number): void {
-  lastCacheHitAgeMs = ageMs;
+  getCacheState().lastCacheHitAgeMs = ageMs;
 }
 
 // ---------------------------------------------------------------------------
 // Cache bypass control
 // ---------------------------------------------------------------------------
 
-let cacheReadBypassed = false;
-
 /**
- * Bypass cache reads for the current process.
+ * Bypass cache reads for the current invocation.
  *
  * Called when `--fresh` flag is passed to a command. Fresh API responses are
  * still written to cache so subsequent invocations serve updated data.
  */
 export function disableResponseCache(): void {
-  cacheReadBypassed = true;
+  getCacheState().cacheReadBypassed = true;
 }
 
 /**
@@ -385,7 +385,7 @@ export function disableResponseCache(): void {
  * @internal Exported for testing
  */
 export function resetCacheState(): void {
-  cacheReadBypassed = false;
+  getCacheState().cacheReadBypassed = false;
 }
 
 /**
@@ -395,7 +395,7 @@ export function resetCacheState(): void {
  * - `SENTRY_NO_CACHE=1` environment variable is set
  */
 export function isCacheDisabled(): boolean {
-  return cacheReadBypassed || getEnv().SENTRY_NO_CACHE === "1";
+  return getCacheState().cacheReadBypassed || getEnv().SENTRY_NO_CACHE === "1";
 }
 
 /**
@@ -413,6 +413,13 @@ function isCacheWriteDisabled(): boolean {
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Request metadata captured when credentials are selected, before async work. */
+export type CacheRequest = {
+  headers: Record<string, string>;
+  /** Opaque owner selected by the caller; the cache never resolves credentials. */
+  identity: string;
+};
+
 /**
  * Attempt to serve a cached response for a GET request.
  *
@@ -422,14 +429,13 @@ function isCacheWriteDisabled(): boolean {
  *
  * @param method - HTTP method (only "GET" is cached)
  * @param url - Full request URL
- * @param requestHeaders - Headers from the new request
+ * @param request - Headers and identity of the new request
  * @returns A synthetic Response if cache hit, or undefined on miss/expired
  */
 export async function getCachedResponse(
   method: string,
   url: string,
-  requestHeaders: Record<string, string>,
-  identity = getIdentityFingerprint()
+  { headers: requestHeaders, identity }: CacheRequest
 ): Promise<Response | undefined> {
   if (
     method !== "GET" ||
@@ -474,7 +480,7 @@ export async function getCachedResponse(
         span.setAttribute("cache.item_size", body.length);
 
         // Surface cache age for command-level hints (getsentry/cli#785 #1)
-        lastCacheHitAgeMs = Date.now() - entry.createdAt;
+        getCacheState().lastCacheHitAgeMs = Date.now() - entry.createdAt;
 
         const responseHeaders = buildResponseHeaders(policy, entry);
         return new Response(body, {
@@ -539,16 +545,14 @@ async function readCacheEntry(key: string): Promise<CacheEntry | undefined> {
  *
  * @param method - HTTP method
  * @param url - Full request URL
- * @param requestHeaders - Request headers
+ * @param request - Headers and identity used for the request
  * @param response - The fetch Response to cache (must be cloned before passing)
  */
-// biome-ignore lint/nursery/useMaxParams: preserve the public cache API; the final identity pins an in-flight request.
 export async function storeCachedResponse(
   method: string,
   url: string,
-  requestHeaders: Record<string, string>,
-  response: Response,
-  identity = getIdentityFingerprint()
+  { headers: requestHeaders, identity }: CacheRequest,
+  response: Response
 ): Promise<void> {
   if (
     method !== "GET" ||
@@ -694,7 +698,7 @@ async function writeResponseToCache(req: WriteRequest): Promise<number> {
 
 /**
  * Invalidate every cached GET whose URL starts with `prefix` and
- * belongs to the current identity. Best-effort; never throws.
+ * belongs to the supplied identity. Best-effort; never throws.
  *
  * Cache filenames already scope entries by identity (see
  * {@link buildCacheKey}), but a prefix sweep has to read every file
@@ -705,7 +709,7 @@ async function writeResponseToCache(req: WriteRequest): Promise<number> {
  */
 export async function invalidateCachedResponsesMatching(
   prefix: string,
-  identity = getIdentityFingerprint()
+  identity: string
 ): Promise<void> {
   // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {

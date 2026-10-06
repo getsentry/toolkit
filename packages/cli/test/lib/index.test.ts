@@ -54,6 +54,18 @@ describe("createSentrySDK() library API", () => {
     expect(result as string).toMatch(/\d+\.\d+\.\d+/);
   });
 
+  test("bootstrap failures are SentryError and release the invocation", async () => {
+    const invalid = createSentrySDK({ url: "ftp://invalid.example" });
+
+    await expect(
+      invalid.api({ endpoint: "/organizations/" })
+    ).rejects.toBeInstanceOf(SentryError);
+    expect(authorizationHeaders).toHaveLength(0);
+
+    const valid = createSentrySDK();
+    await expect(valid.run("--version")).resolves.toMatch(/\d+\.\d+\.\d+/);
+  });
+
   test("sdk.run returns parsed object for help command in JSON mode", async () => {
     const sdk = createSentrySDK();
     const result = await sdk.run("help");
@@ -150,22 +162,25 @@ describe("createSentrySDK() library API", () => {
     expect(authorizationHeaders).not.toContain("Bearer stored-oauth-token");
   });
 
-  test("sdk.run returns AsyncIterable for streaming flag --follow", () => {
+  test("sdk.run returns AsyncIterable for streaming flag --follow", async () => {
     const sdk = createSentrySDK();
     const result = sdk.run("log", "list", "--follow");
     // Streaming flags return an AsyncIterable, not a Promise
     expect(Symbol.asyncIterator in (result as object)).toBe(true);
+    await (result as AsyncIterable<unknown>)[Symbol.asyncIterator]().return?.();
   });
 
-  test("sdk.run returns AsyncIterable for streaming flag --refresh", () => {
+  test("sdk.run returns AsyncIterable for streaming flag --refresh", async () => {
     const sdk = createSentrySDK();
     const result = sdk.run("issue", "list", "--refresh");
     expect(Symbol.asyncIterator in (result as object)).toBe(true);
+    await (result as AsyncIterable<unknown>)[Symbol.asyncIterator]().return?.();
   });
 
-  test("sdk.run returns AsyncIterable for streaming short flag -f", () => {
+  test("sdk.run returns AsyncIterable for streaming short flag -f", async () => {
     const sdk = createSentrySDK();
     const result = sdk.run("log", "list", "-f");
     expect(Symbol.asyncIterator in (result as object)).toBe(true);
+    await (result as AsyncIterable<unknown>)[Symbol.asyncIterator]().return?.();
   });
 });

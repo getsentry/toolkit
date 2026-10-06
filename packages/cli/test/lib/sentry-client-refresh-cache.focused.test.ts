@@ -73,12 +73,10 @@ test("401 refresh caches GET under the bearer actually sent on retry", async () 
   expect(await response.json()).toEqual({ id: "refresh-cache-focused" });
   expect(requests).toEqual(["Bearer old-access", "Bearer new-access"]);
   await vi.waitFor(async () => {
-    const cached = await getCachedResponse(
-      "GET",
-      url,
-      { authorization: "Bearer new-access" },
-      getIdentityFingerprint()
-    );
+    const cached = await getCachedResponse("GET", url, {
+      headers: { authorization: "Bearer new-access" },
+      identity: getIdentityFingerprint(),
+    });
     expect(cached).toBeDefined();
   });
 });

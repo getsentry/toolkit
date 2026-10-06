@@ -9,6 +9,7 @@ import { getOrganization } from "@sentry/api";
 import { type CredentialContext, getCredentialContext } from "./db/auth.js";
 import { getOrgByNumericId, getOrgRegion, setOrgRegion } from "./db/regions.js";
 import { stripDsnOrgPrefix } from "./dsn/index.js";
+import { createInvocationState } from "./env.js";
 import { AuthError, withAuthGuard } from "./errors.js";
 import { logger } from "./logger.js";
 import {
@@ -24,7 +25,7 @@ import {
 } from "./sentry-urls.js";
 
 /**
- * Promise cache for org region resolution, keyed by orgSlug.
+ * Invocation-local promise cache, keyed by identity, base URL, and orgSlug.
  *
  * When multiple DSNs share an orgId, concurrent calls to resolveOrgRegion
  * deduplicate into a single HTTP request. A resolved promise returns
@@ -34,7 +35,9 @@ import {
  * retries after re-authentication can succeed without restarting the CLI.
  */
 type RegionResolution = { cacheable: boolean; url: string };
-const regionCache = new Map<string, Promise<RegionResolution>>();
+const getRegionCache = createInvocationState(
+  () => new Map<string, Promise<RegionResolution>>()
+);
 
 /**
  * Resolve the region URL for an organization.
@@ -61,6 +64,7 @@ export function resolveOrgRegion(orgSlug: string): Promise<string> {
   }
   const baseUrl = getApiBaseUrl(credential);
   const key = `${credential.identity}\0${baseUrl}\0${orgSlug}`;
+  const regionCache = getRegionCache();
   const existing = regionCache.get(key);
   if (existing) {
     return existing.then((resolution) => resolution.url);
@@ -112,7 +116,7 @@ function getResolvedRegionUrl(
 
 /**
  * Resolve org region from SQLite cache or API.
- * Called at most once per orgSlug per process lifetime.
+ * Successful resolutions are reused within the current invocation and identity.
  */
 async function resolveOrgRegionUncached(
   orgSlug: string,

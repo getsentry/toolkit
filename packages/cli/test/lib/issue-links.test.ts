@@ -25,6 +25,9 @@ import { invalidateCachedResponsesMatching } from "../../src/lib/response-cache.
 vi.mock("../../src/lib/api/issue-app-links.js");
 vi.mock("../../src/lib/api/issue-integrations.js");
 vi.mock("../../src/lib/response-cache.js");
+vi.mock("../../src/lib/db/auth.js", () => ({
+  getIdentityFingerprint: () => "test-identity",
+}));
 vi.mock("../../src/lib/region.js", () => ({
   resolveOrgRegion: vi.fn().mockResolvedValue("https://de.sentry.io"),
 }));
@@ -91,10 +94,12 @@ describe("external issue associations", () => {
     });
     expect(resolveAppIssueLink).not.toHaveBeenCalled();
     expect(invalidateCachedResponsesMatching).toHaveBeenCalledWith(
-      "https://de.sentry.io/api/0/organizations/example/issues/123/"
+      "https://de.sentry.io/api/0/organizations/example/issues/123/",
+      "test-identity"
     );
     expect(invalidateCachedResponsesMatching).toHaveBeenCalledWith(
-      "https://sentry.io/api/0/issues/123/"
+      "https://sentry.io/api/0/issues/123/",
+      "test-identity"
     );
   });
 

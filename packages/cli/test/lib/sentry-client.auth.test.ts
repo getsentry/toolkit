@@ -2,7 +2,11 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { shouldAutoAuth } from "../../src/lib/auto-auth.js";
-import { getAuthConfig, setAuthToken } from "../../src/lib/db/auth.js";
+import {
+  getAuthConfig,
+  getIdentityFingerprint,
+  setAuthToken,
+} from "../../src/lib/db/auth.js";
 import { getDatabase } from "../../src/lib/db/index.js";
 import { setEnv } from "../../src/lib/env.js";
 import {
@@ -208,7 +212,10 @@ describe("authenticated fetch bearer validation", () => {
     await storeCachedResponse(
       "GET",
       RESOURCE_URL,
-      { authorization: "Bearer synthetic-token" },
+      {
+        identity: getIdentityFingerprint(),
+        headers: { authorization: "Bearer synthetic-token" },
+      },
       Response.json(
         { source: "cache" },
         {
@@ -244,7 +251,10 @@ describe("authenticated fetch bearer validation", () => {
     await expect
       .poll(async () => {
         const cached = await getCachedResponse("GET", RESOURCE_URL, {
-          authorization: "Bearer synthetic-token",
+          identity: getIdentityFingerprint(),
+          headers: {
+            authorization: "Bearer synthetic-token",
+          },
         });
         return cached?.json();
       })
