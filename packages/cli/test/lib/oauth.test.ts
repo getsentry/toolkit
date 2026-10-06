@@ -50,13 +50,13 @@ describe("performDeviceFlow polling", () => {
           verification_uri: "https://sentry.example/oauth/device/",
           interval: 1,
           expires_in: 30,
-        })
+        }),
       )
       .mockResolvedValueOnce(
-        Response.json({ error: "authorization_pending" }, { status: 400 })
+        Response.json({ error: "authorization_pending" }, { status: 400 }),
       )
       .mockResolvedValueOnce(
-        Response.json({ error: "slow_down" }, { status: 400 })
+        Response.json({ error: "slow_down" }, { status: 400 }),
       )
       .mockResolvedValueOnce(Response.json(token));
     vi.stubGlobal("fetch", fetchMock);
