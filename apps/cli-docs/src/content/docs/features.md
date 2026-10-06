@@ -7,7 +7,7 @@ The Sentry CLI includes several features designed to streamline your workflow, e
 
 ## DSN Auto-Detection
 
-The CLI automatically detects your Sentry project from your codebase, eliminating the need to specify the target for every command. DSN detection is one part of the [resolution priority chain](./configuration/#resolution-priority) — it runs after checking for explicit arguments, environment variables, and `.sentryclirc` config files.
+The CLI automatically detects your Sentry project from your codebase, eliminating the need to specify the target for every command. DSN detection is one part of the [resolution priority chain](../configuration/#resolution-priority) — it runs after checking for explicit arguments, environment variables, and `.sentryclirc` config files.
 
 ### How It Works
 
@@ -20,7 +20,7 @@ DSN detection follows this priority order (highest first):
 When a DSN is found, the CLI resolves it to your organization and project, then caches the result for fast subsequent lookups.
 
 :::tip
-For monorepos or when DSN detection picks up the wrong project, use a [`.sentryclirc` config file](./configuration/#configuration-file-sentryclirc) to pin your org/project explicitly.
+For monorepos or when DSN detection picks up the wrong project, use a [`.sentryclirc` config file](../configuration/#configuration-file-sentryclirc) to pin your org/project explicitly.
 :::
 
 ### Supported Languages
@@ -40,7 +40,8 @@ The CLI scans source files for DSN URLs (the `https://…@….ingest.sentry.io/�
 | Rust | `.rs` |
 | Dart/Flutter | `.dart` |
 | Elixir/Erlang | `.ex`, `.exs`, `.erl` |
-| Config files | `.json`, `.yaml`, `.yml`, `.toml`, `.xml`, `.properties` |
+| Lua | `.lua` |
+| Config files | `.json`, `.yaml`, `.yml`, `.toml`, `.xml`, `.properties`, `.config` |
 
 ### Caching
 

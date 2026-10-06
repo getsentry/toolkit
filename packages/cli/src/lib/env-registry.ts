@@ -88,7 +88,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_DSN",
     description:
-      "Sentry DSN for project auto-detection. This is the same DSN you use in `Sentry.init()`. The CLI resolves it to determine your organization and project.\n\nThe CLI also detects DSNs from `.env` files and source code automatically — see [DSN Auto-Detection](./features/#dsn-auto-detection).",
+      "Sentry DSN for project auto-detection. This is the same DSN you use in `Sentry.init()`. The CLI resolves it to determine your organization and project.\n\nThe CLI also detects DSNs from `.env` files and source code automatically — see [DSN Auto-Detection](../features/#dsn-auto-detection).",
     example: "https://key@o123.ingest.us.sentry.io/456",
     topLevel: true,
     briefDescription: "DSN used to auto-detect org + project.",
@@ -107,7 +107,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_HOST",
     description:
-      "Base URL of your Sentry instance. **Only needed for [self-hosted Sentry](./self-hosted/).** SaaS users (sentry.io) should not set this.\n\nWhen set, all API requests (including OAuth login) are directed to this URL instead of `https://sentry.io`. The CLI also sets this automatically when you pass a self-hosted Sentry URL as a command argument.\n\n`SENTRY_HOST` takes precedence over `SENTRY_URL`. Both work identically — use whichever you prefer.",
+      "Base URL of your Sentry instance. **Only needed for [self-hosted Sentry](../self-hosted/).** SaaS users (sentry.io) should not set this.\n\nWhen set, all API requests (including OAuth login) are directed to this URL instead of `https://sentry.io`. `sentry auth login` still requires `--url` to confirm a self-hosted host. The CLI also sets this automatically when you pass a self-hosted Sentry URL as a command argument.\n\n`SENTRY_HOST` takes precedence over `SENTRY_URL`. Both work identically — use whichever you prefer.",
     example: "https://sentry.example.com",
     defaultValue: "https://sentry.io",
     topLevel: true,
@@ -126,7 +126,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_CLIENT_ID",
     description:
-      "Client ID of a public OAuth application on your Sentry instance. **Required for [self-hosted Sentry](./self-hosted/)** (26.1.0+) to use `sentry auth login` with the device flow. See the [Self-Hosted guide](./self-hosted/#1-create-a-public-oauth-application) for how to create one.",
+      "Client ID of a public OAuth application on your Sentry instance. **Required for [self-hosted Sentry](../self-hosted/)** (26.1.0+) to use `sentry auth login` with the device flow. See the [Self-Hosted guide](../self-hosted/#1-create-a-public-oauth-application) for how to create one.",
     example: "your-oauth-client-id",
     selfHosted: true,
     devGuide: "Sentry OAuth app client ID",
@@ -136,7 +136,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     name: "SENTRY_CUSTOM_HEADERS",
     description:
       "Custom HTTP headers to include in all requests to your Sentry instance. " +
-      "**Only applies to [self-hosted Sentry](./self-hosted/).** Ignored when targeting sentry.io.\n\n" +
+      "**Only applies to [self-hosted Sentry](../self-hosted/).** Ignored when targeting sentry.io.\n\n" +
       "Use semicolon-separated `Name: Value` pairs. Useful for environments behind " +
       "reverse proxies that require additional headers for authentication " +
       "(e.g., Google IAP, Cloudflare Access).\n\n" +
@@ -165,7 +165,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_VERSION",
     description:
-      "Pin a specific version for the [install script](./getting-started/#install-script). Accepts a version number (e.g., `0.40.0`) or `nightly`. The `--version` flag takes precedence if both are set.\n\nThis is useful in CI/CD pipelines and Dockerfiles where you want reproducible installations without inline flags.",
+      "Pin a specific version for the [install script](../getting-started/#install-script). Accepts a version number (e.g., `0.40.0`) or `nightly`. The `--version` flag takes precedence if both are set.\n\nThis is useful in CI/CD pipelines and Dockerfiles where you want reproducible installations without inline flags.",
     example: "nightly",
     installOnly: true,
   },
@@ -229,7 +229,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_OUTPUT_FORMAT",
     description:
-      "Force the output format for all commands. Currently only `json` is supported. This is primarily used by the [library API](./library-usage/) (`createSentrySDK()`) to get JSON output without passing `--json` flags.",
+      "Force the output format for all commands. Currently only `json` is supported. This is primarily used by the [library API](../library-usage/) (`createSentrySDK()`) to get JSON output without passing `--json` flags.",
     example: "json",
   },
   // -- Logging & telemetry --

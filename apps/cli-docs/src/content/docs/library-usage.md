@@ -112,7 +112,7 @@ pass raw CLI flags, use `sdk.run()`:
 ```typescript
 // Run any CLI command — returns parsed JSON by default
 const version = await sdk.run("--version");
-const issues = await sdk.run("issue", "list", "-l", "5");
+const issues = await sdk.run("issue", "list", "-n", "5");
 const help = await sdk.run("help", "issue");
 ```
 
@@ -153,7 +153,7 @@ const sdk = createSentrySDK({ token: "...", text: true, cwd: "/my/project" });
 | `project` | `string` | Auto-detected | Default project slug |
 | `text` | `boolean` | `false` | Return human-readable text instead of parsed JSON (`run()` only) |
 | `cwd` | `string` | `process.cwd()` | Working directory for DSN auto-detection |
-| `headers` | `Record<string, string>` | — | Extra HTTP headers for self-hosted instances behind a reverse proxy (same as [`SENTRY_CUSTOM_HEADERS`](./configuration/#sentry_custom_headers)); ignored for sentry.io |
+| `headers` | `Record<string, string>` | — | Extra HTTP headers for self-hosted instances behind a reverse proxy (same as [`SENTRY_CUSTOM_HEADERS`](../configuration/#sentry_custom_headers)); ignored for sentry.io |
 | `signal` | `AbortSignal` | — | Abort signal for cancelling streaming commands |
 
 ## Return Values
@@ -221,7 +221,7 @@ Calls should be sequential (awaited one at a time).
 - **Node.js >= 20**. On Node.js 22.15+ the built-in `node:sqlite` module is used; on Node.js 20–22.14 the CLI transparently falls back to a bundled WASM SQLite driver, so no native module or extra install step is required.
 
 :::caution
-The WASM SQLite fallback (Node.js 20–22.14) does not support [WAL mode](https://www.sqlite.org/wal.html), so concurrent access from multiple processes is slower and its local cache reads/writes are less efficient. For the best performance and reliability we **strongly recommend** the [standalone binary](/installation/) (which bundles a modern runtime) or running on **Node.js 22.15+** so the native `node:sqlite` driver is used.
+The WASM SQLite fallback (Node.js 20–22.14) does not support [WAL mode](https://www.sqlite.org/wal.html), so concurrent access from multiple processes is slower and its local cache reads/writes are less efficient. For the best performance and reliability we **strongly recommend** the [standalone binary](/getting-started/) (which bundles a modern runtime) or running on **Node.js 22.15+** so the native `node:sqlite` driver is used.
 :::
 
 ## Streaming Commands

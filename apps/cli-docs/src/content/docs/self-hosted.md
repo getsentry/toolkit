@@ -22,20 +22,14 @@ The OAuth device flow requires **Sentry 26.1.0 or later** and a public OAuth app
 1. In your Sentry instance, go to **Settings → Developer Settings → Applications → Create New Application** (or visit `https://sentry.example.com/settings/account/api/applications/`)
 2. Select **Public** as the application type
 3. Fill in the required fields (name, redirect URL — can be any placeholder URL)
-3. Save the application and copy the **Client ID**
+4. Save the application and copy the **Client ID**
 
 #### 2. Log In
 
-Use the `--url` flag to authenticate against your instance (recommended — this registers the host as trusted):
+Use the `--url` flag to authenticate against your instance (required — this registers the host as trusted):
 
 ```bash
 SENTRY_CLIENT_ID=your-client-id sentry auth login --url https://sentry.example.com
-```
-
-Or pass the instance URL via environment variable:
-
-```bash
-SENTRY_HOST=https://sentry.example.com SENTRY_CLIENT_ID=your-client-id sentry auth login --url https://sentry.example.com
 ```
 
 :::tip
@@ -48,7 +42,7 @@ export SENTRY_CLIENT_ID=your-client-id
 :::
 
 :::note
-The `--url` flag is the most secure way to authenticate with a new host — it is the only way to register a trust anchor for that host. Without it, the CLI refuses to log in to an instance URL that was picked up from an untrusted channel (e.g. a `.sentryclirc` file), protecting you from credential leaks and OAuth phishing.
+The `--url` flag is the only way to register a trust anchor for a new host. Without it, the CLI refuses to log in to a self-hosted URL that came from `SENTRY_HOST`, `SENTRY_URL`, or a `.sentryclirc` file, protecting you from credential leaks and OAuth phishing.
 :::
 
 ### With an API Token
@@ -112,4 +106,4 @@ sentry cli defaults headers "X-IAP: token"
 | `NODE_EXTRA_CA_CERTS` | Path to PEM file with additional CA certificates (for corporate proxies) |
 <!-- GENERATED:END self-hosted-env-vars -->
 
-See [Configuration](./configuration/) for the full environment variable reference.
+See [Configuration](../configuration/) for the full environment variable reference.

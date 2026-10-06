@@ -6,9 +6,10 @@ Agent skills for using the Sentry CLI, following the [Agent Skills](https://gith
 
 ### Automatic (recommended)
 
-When you install the CLI via the install script, Homebrew, or a package manager,
+When you install the CLI via the install script or Homebrew,
 `sentry cli setup` automatically installs skills into detected agent directories
-(`~/.claude`, `~/.agents`). Skills are also refreshed on `sentry cli upgrade`.
+(`~/.claude`, `~/.agents`). After a package-manager install, run
+`sentry cli setup` yourself. Skills are also refreshed on `sentry cli upgrade`.
 
 ### dotagents
 
@@ -48,7 +49,7 @@ The skill will guide the assistant to provide accurate CLI commands.
 ## Repository Structure
 
 ```
-cli/                              # Repository root
+packages/cli/                     # CLI package root
 ├── .claude-plugin/
 │   └── marketplace.json          # Marketplace manifest
 ├── .cursor/

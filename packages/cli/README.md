@@ -94,14 +94,17 @@ const sdk = createSentrySDK({ token: "sntrys_..." });
 // Typed methods for every CLI command
 const orgs = await sdk.org.list();
 const issues = await sdk.issue.list({ orgProject: "acme/frontend", limit: 5 });
-const issue = await sdk.issue.view({ issue: "ACME-123" });
+const issue = await sdk.issue.view({}, "ACME-123");
 
 // Nested commands
-await sdk.dashboard.widget.add({ display: "line", query: "count" }, "my-org/my-dashboard");
+await sdk.dashboard.widget.add(
+  { display: "line", query: ["count"] },
+  "acme/", "my-dashboard", "Errors over time"
+);
 
 // Escape hatch for any CLI command
 const version = await sdk.run("--version");
-const text = await sdk.run("issue", "list", "-l", "5");
+const text = await sdk.run("issue", "list", "-n", "5");
 ```
 
 Options (all optional):
