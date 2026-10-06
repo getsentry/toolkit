@@ -1,6 +1,6 @@
 /** A valid bearer credential contains only visible ASCII bytes. */
 const INVALID_TOKEN_CHARACTER_PATTERN = /[^\x21-\x7e]/;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: copied ASCII controls are removable edge padding.
+// oxlint-disable-next-line no-control-regex -- copied ASCII controls are removable edge padding.
 const TOKEN_PADDING_PATTERN = /[\s\x00-\x1f\x7f]/;
 
 /** Strip padding at the edges without changing bytes within the token. */
