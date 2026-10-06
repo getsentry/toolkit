@@ -28,6 +28,9 @@ Essential patterns and standards for Sentry MCP development.
 - MCP and root files use Oxfmt and Oxlint; CLI files still use their own Biome rules.
 - CLI's custom Grit rules and inline suppressions remain active until their
   equivalents are available in the new linter.
+- VS Code uses Oxc for root and MCP files. Oxfmt ignores `packages/cli/**`;
+  use `pnpm --filter sentry exec biome format --write <file>` to format a CLI
+  file and keep CLI's Biome checks in the pre-commit hook.
 
 ### Naming Conventions
 

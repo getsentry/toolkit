@@ -23,7 +23,7 @@
   },
   "scripts": {
     "docs:check": "node scripts/check-doc-links.mjs",
-    "test:ci-projects": "node --test scripts/ci-projects.test.mjs scripts/cli-nightly-version.test.mjs scripts/cloudflare-deployment.test.mjs scripts/deploy-workflow.test.mjs scripts/migrate-cloudflare-token.test.mjs",
+    "test:ci-projects": "node --test scripts/ci-projects.test.mjs scripts/cli-nightly-version.test.mjs scripts/cloudflare-deployment.test.mjs scripts/deploy-workflow.test.mjs scripts/migrate-cloudflare-token.test.mjs scripts/oxc-config.test.mjs",
     "dev": "pnpm --filter '@sentry/mcp-cloudflare...' --if-present run build && dotenv -e .env -e .env.local -- pnpm --parallel --filter @sentry/mcp-cloudflare --filter @sentry/mcp-core --filter @sentry/mcp-server-mocks --if-present run dev",
     "dev:stdio": "pnpm --filter '@sentry/mcp-server...' --if-present run build && dotenv -e .env -e .env.local -- pnpm --parallel --filter @sentry/mcp-server --filter @sentry/mcp-core --filter @sentry/mcp-server-mocks --if-present run dev",
     "build": "dotenv -e .env -e .env.local -- pnpm -r --filter '!sentry' --filter '!sentry-cli-docs' --if-present run build",
