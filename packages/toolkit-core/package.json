@@ -18,6 +18,10 @@
     "./oauth-poll": {
       "types": "./src/oauth-poll.ts",
       "default": "./src/oauth-poll.ts"
+    },
+    "./sentry-host": {
+      "types": "./src/sentry-host.ts",
+      "default": "./src/sentry-host.ts"
     }
   },
   "scripts": {
