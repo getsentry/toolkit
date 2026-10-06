@@ -1402,9 +1402,7 @@ describe("snake waiting game", () => {
     expect(frame).not.toContain("Bugs squashed");
   });
 
-  test("a new warning pauses the game and shows the activity log", async () => {
-    const store = new WizardStore({ snakeEnabled: true });
-    store.startSpinner("Verifying setup...");
+  function renderLive(store: WizardStore) {
     const out = new CaptureStream(110, 32);
     const stdin = makeStdin();
     const instance = render(createElement(App, { store }), {
@@ -1413,19 +1411,46 @@ describe("snake waiting game", () => {
       stdin: stdin as unknown as NodeJS.ReadStream,
       patchConsole: false,
       exitOnCtrlC: false,
+      // Ink writes no intermediate frames in CI unless forced interactive.
+      interactive: true,
     });
+    return { instance, out, stdin };
+  }
 
+  async function startGame(): Promise<
+    ReturnType<typeof renderLive> & {
+      store: WizardStore;
+    }
+  > {
+    const store = new WizardStore({ snakeEnabled: true });
+    store.startSpinner("Verifying setup...");
+    const live = renderLive(store);
+    expect(await settledFrame(live.out)).toContain("to play Snake");
+    live.stdin.push("g");
+    await sleep(20);
+    live.stdin.push("\u001B[A");
+    expect(await settledFrame(live.out)).toContain("Bugs squashed");
+    return { ...live, store };
+  }
+
+  test("a new warning pauses the game and shows the activity log", async () => {
+    const { instance, out, store } = await startGame();
     try {
-      expect(await settledFrame(out)).toContain("to play Snake");
-
-      stdin.push("g");
-      await sleep(20);
-      stdin.push("\u001B[A");
-      expect(await settledFrame(out)).toContain("Bugs squashed");
-
       store.appendLog("warn", "Could not verify setup: app failed to start");
       const frame = await settledFrame(out);
       expect(frame).toContain("Could not verify setup");
+      expect(frame).not.toContain("Bugs squashed");
+      expect(frame).toContain("to resume Snake");
+    } finally {
+      instance.unmount();
+    }
+  });
+
+  test("esc pauses the game and offers to resume it", async () => {
+    const { instance, out, stdin } = await startGame();
+    try {
+      stdin.push("\u001B");
+      const frame = await settledFrame(out);
       expect(frame).not.toContain("Bugs squashed");
       expect(frame).toContain("to resume Snake");
     } finally {
