@@ -62,12 +62,7 @@ import {
   ShortcutHintProvider,
   useInkShortcuts,
 } from "./ink-shortcuts.js";
-import {
-  createSnakeSession,
-  SnakeGame,
-  SnakeInvite,
-  snakeBoardSize,
-} from "./ink-snake.js";
+import { createSnakeSession, SnakeGame, SnakeInvite } from "./ink-snake.js";
 import { BLOCK_LINE_COUNT, LEARN_SEQUENCE } from "./learn-content.js";
 import { SENTRY_TIPS, type SentryTip } from "./sentry-tips.js";
 import type {
@@ -105,8 +100,6 @@ const COLOR_SUCCESS = "#83da90";
 
 /** Below this height the invite and board crowd out the activity log. */
 const MIN_SNAKE_ROWS = 20;
-/** Tab bar, shortcut hints, and feedback banner under the panes. */
-const SNAKE_FOOTER_ROWS = 3;
 
 const ACTIVE_TASK_PULSE_INTERVAL_MS = 600;
 
@@ -219,6 +212,7 @@ function AppBody({ store }: AppProps): React.ReactNode {
   const isWide = width >= 80;
 
   const canPlaySnake =
+    snapshot.snakeEnabled &&
     snapshot.layout === "workflow" &&
     snapshot.prompt === null &&
     snapshot.outroState === null &&
@@ -240,12 +234,6 @@ function AppBody({ store }: AppProps): React.ReactNode {
   const closeSnake = useCallback(() => setSnakeAlertBaseline(null), []);
   const requestCancel = snapshot.requestCancel;
   const cancelFromSnake = useCallback(() => requestCancel?.(), [requestCancel]);
-  // Mirrors the frame layout: sidebar is 40% plus a 1-col gap; the spinner
-  // row (2) is always reserved so the board keeps its size between steps.
-  const snakeBoard = snakeBoardSize(
-    isWide ? width - Math.round(width * 0.4) - 1 : width,
-    contentHeight - SNAKE_FOOTER_ROWS - 2,
-  );
 
   const tabs = useMemo<FrameTab[]>(
     () => [
@@ -369,16 +357,15 @@ function AppBody({ store }: AppProps): React.ReactNode {
                   {snapshot.spinner.active ? (
                     <SpinnerRow state={snapshot.spinner} />
                   ) : (
+                    // Holds the spinner rows so the board keeps its size between steps.
                     <Box height={2} />
                   )}
                   <SnakeGame
                     accent={ACCENT}
-                    height={snakeBoard.height}
                     muted={MUTED_DIM}
                     onCancel={cancelFromSnake}
                     onExit={closeSnake}
                     session={snakeSession}
-                    width={snakeBoard.width}
                   />
                 </Box>
               ) : activeTab === 0 ? (

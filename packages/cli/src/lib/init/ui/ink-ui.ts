@@ -57,6 +57,8 @@ import { addBreadcrumb, setTag } from "@sentry/node-core/light";
 import { FULL_BANNER_LINES } from "../../banner.js";
 import { openBrowser } from "../../browser.js";
 import { CLI_VERSION } from "../../constants.js";
+import { detectAgent } from "../../detect-agent.js";
+import { getEnv } from "../../env.js";
 import { stripAnsi } from "../../formatters/plain-detect.js";
 import {
   createWizardPromptTelemetry,
@@ -326,6 +328,7 @@ export async function createInkUI(
     // Seed with the full banner; IntroScreen re-fits it to the live terminal
     // width on every render (shrinking or growing) so it never wraps.
     bannerRows: FULL_BANNER_LINES,
+    snakeEnabled: isSnakeEnabled(),
   });
   const initialWelcome = opts.initialWelcome
     ? createPendingWelcome()
@@ -376,6 +379,11 @@ export async function createInkUI(
     process.stdout.write("\x1b[?1049l");
     throw error;
   }
+}
+
+/** Exported for the test suite. */
+export function isSnakeEnabled(): boolean {
+  return getEnv().SENTRY_INIT_GAME !== "0" && !detectAgent();
 }
 
 /**

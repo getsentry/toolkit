@@ -147,6 +147,51 @@ export function stepSnake(
   return food ? { ...grown, food } : { ...grown, food, status: "over" };
 }
 
+/**
+ * Fit a run to a new board size. The snake keeps its shape and moves only
+ * as far as it must to stay on the board. A playing run pauses so the new
+ * walls do not end it by surprise. A snake too long for the board starts over.
+ */
+export function resizeSnake(
+  state: SnakeState,
+  width: number,
+  height: number,
+  random: RandomSource = Math.random,
+): SnakeState {
+  if (state.width === width && state.height === height) {
+    return state;
+  }
+  const xs = state.body.map((part) => part.x);
+  const ys = state.body.map((part) => part.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const maxX = Math.max(...xs);
+  const maxY = Math.max(...ys);
+  if (maxX - minX >= width || maxY - minY >= height) {
+    return createSnake(width, height, random);
+  }
+  const dx = Math.min(0, width - 1 - maxX);
+  const dy = Math.min(0, height - 1 - maxY);
+  const shift = (point: SnakePoint): SnakePoint => ({
+    x: point.x + dx,
+    y: point.y + dy,
+  });
+  const resized: SnakeState = {
+    ...pauseSnake(state),
+    width,
+    height,
+    body: state.body.map(shift),
+  };
+  const food = state.food ? shift(state.food) : null;
+  if (food && food.x >= 0 && food.y >= 0 && food.x < width && food.y < height) {
+    return { ...resized, food };
+  }
+  const placed = placeFood(resized, random);
+  return placed
+    ? { ...resized, food: placed }
+    : { ...resized, food: null, status: "over" };
+}
+
 function placeFood(state: SnakeState, random: RandomSource): SnakePoint | null {
   const occupied = new Set(state.body.map((part) => pointKey(part)));
   const free = state.width * state.height - occupied.size;

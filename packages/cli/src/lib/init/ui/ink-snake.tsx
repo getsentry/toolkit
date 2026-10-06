@@ -1,10 +1,11 @@
-import { Box, Text } from "ink";
-import { useCallback, useEffect, useMemo, useReducer } from "react";
+import { Box, type DOMElement, Text, useBoxMetrics } from "ink";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { type ShortcutBinding, useInkShortcuts } from "./ink-shortcuts.js";
 import {
   createSnake,
   pauseSnake,
   renderSnake,
+  resizeSnake,
   type SnakeDirection,
   type SnakeState,
   type SnakeStatus,
@@ -32,7 +33,7 @@ const MAX_BOARD_TERMINAL_ROWS = 14;
 const BOARD_CHROME_ROWS = 3;
 
 /** Board size in cells for a pane of `cols` × `rows` terminal cells. */
-export function snakeBoardSize(
+function snakeBoardSize(
   cols: number,
   rows: number,
 ): { width: number; height: number } {
@@ -67,7 +68,38 @@ const STATUS_HINT: Record<SnakeStatus, string> = {
   over: "Game over · r to retry",
 };
 
-export function SnakeGame({
+type SnakeGameProps = {
+  accent: string;
+  muted: string;
+  onCancel: () => void;
+  onExit: () => void;
+  session: SnakeSession;
+};
+
+/** Fills the space it is given and sizes the board from the measured box. */
+export function SnakeGame(props: SnakeGameProps): React.ReactNode {
+  const ref = useRef<DOMElement>(null);
+  const pane = useBoxMetrics(ref);
+  const board = pane.hasMeasured
+    ? snakeBoardSize(pane.width, pane.height)
+    : null;
+  return (
+    <Box
+      flexDirection="column"
+      flexGrow={1}
+      flexShrink={1}
+      minHeight={0}
+      overflow="hidden"
+      ref={ref}
+    >
+      {board ? (
+        <SnakeBoard {...props} height={board.height} width={board.width} />
+      ) : null}
+    </Box>
+  );
+}
+
+function SnakeBoard({
   accent,
   height,
   muted,
@@ -75,23 +107,11 @@ export function SnakeGame({
   onExit,
   session,
   width,
-}: {
-  accent: string;
-  height: number;
-  muted: string;
-  onCancel: () => void;
-  onExit: () => void;
-  session: SnakeSession;
-  width: number;
-}): React.ReactNode {
+}: SnakeGameProps & { height: number; width: number }): React.ReactNode {
   const [, redraw] = useReducer((frame: number) => frame + 1, 0);
-  if (
-    !session.state ||
-    session.state.width !== width ||
-    session.state.height !== height
-  ) {
-    session.state = createSnake(width, height);
-  }
+  session.state = session.state
+    ? resizeSnake(session.state, width, height)
+    : createSnake(width, height);
   const state = session.state;
 
   const apply = useCallback(
@@ -175,12 +195,12 @@ export function SnakeGame({
   );
   useInkShortcuts("snake-game", bindings);
 
-  const board = useMemo(() => renderSnake(state).join("\n"), [state]);
+  const frame = useMemo(() => renderSnake(state).join("\n"), [state]);
 
   return (
     <Box flexDirection="column" flexShrink={0}>
       <Box borderColor={muted} borderStyle="round" width={width + 2}>
-        <Text>{board}</Text>
+        <Text>{frame}</Text>
       </Box>
       <Box gap={2} paddingX={1}>
         <Text color={accent}>Bugs squashed {state.score}</Text>

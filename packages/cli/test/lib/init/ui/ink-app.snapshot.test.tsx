@@ -1392,9 +1392,18 @@ describe("snake waiting game", () => {
     return stripAnsi(out.latestFrame());
   }
 
-  test("a new warning pauses the game and shows the activity log", async () => {
+  test("stays hidden when the game is disabled", async () => {
     const store = new WizardStore();
-    store.setLayout("workflow");
+    store.startSpinner("Verifying setup...");
+    const out = await renderApp(store, 110, { rows: 32, input: ["g"] });
+    const frame = stripAnsi(out.latestFrame());
+    expect(frame).toContain("Verifying setup...");
+    expect(frame).not.toContain("Snake");
+    expect(frame).not.toContain("Bugs squashed");
+  });
+
+  test("a new warning pauses the game and shows the activity log", async () => {
+    const store = new WizardStore({ snakeEnabled: true });
     store.startSpinner("Verifying setup...");
     const out = new CaptureStream(110, 32);
     const stdin = makeStdin();
