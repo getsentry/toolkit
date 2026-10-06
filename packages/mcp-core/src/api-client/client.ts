@@ -61,7 +61,7 @@ import {
   ErrorsSearchResponseSchema,
   EventAttachmentListSchema,
   EventSchema,
-  EventsStatsResponseSchema,
+  EventsTimeSeriesResponseSchema,
   ExternalIssueListSchema,
   ExternalIssueSchema,
   FlamegraphSchema,
@@ -423,12 +423,10 @@ const EventsValidationIssueSchema = z
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(
-    ({ valid, error }): EventsValidationIssue => ({
-      valid,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ valid, error }): EventsValidationIssue => ({
+    valid,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsNamedValidationIssueSchema = z
   .object({
@@ -436,13 +434,11 @@ const EventsNamedValidationIssueSchema = z
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(
-    ({ name, valid, error }): EventsNamedValidationIssue => ({
-      name,
-      valid,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ name, valid, error }): EventsNamedValidationIssue => ({
+    name,
+    valid,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsAttributeValidationSchema = z
   .object({
@@ -473,13 +469,11 @@ const EventsQueryValidationSchema = z
     error: ValidationErrorSchema,
     fields: EventsAttributeValidationListSchema,
   })
-  .transform(
-    ({ valid, error, fields }): EventsQueryValidation => ({
-      valid,
-      fields,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ valid, error, fields }): EventsQueryValidation => ({
+    valid,
+    fields,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsValidationResponseSchema = z
   .object({
@@ -1330,9 +1324,9 @@ export class SentryApiService {
   private isAggregateExplorerQuery(params: ExplorerAggregateParams): boolean {
     return Boolean(
       params.aggregateFunctions?.length ||
-        params.fields?.some(
-          (field) => field.includes("(") && field.includes(")"),
-        ),
+      params.fields?.some(
+        (field) => field.includes("(") && field.includes(")"),
+      ),
     );
   }
 
@@ -5159,7 +5153,9 @@ export class SentryApiService {
   }
 
   /**
-   * Fetch a timeseries (events-stats) for a single yAxis, bucketed over time.
+   * Fetch a timeseries (events-timeseries) for a single yAxis, bucketed over
+   * time. Buckets that may still receive data are flagged `incomplete`, and
+   * `meta.ingestion` reports the measured ingestion delay when available.
    *
    * `interval` is optional: omit it to let Sentry pick a sensible bucket size
    * for the range (mirrors get_interval_from_range in the Sentry source).
@@ -5201,15 +5197,13 @@ export class SentryApiService {
     if (projectId) {
       queryParams.set("project", projectId);
     }
-    // partial=1 keeps the current (in-progress) bucket, matching Sentry's charts.
-    queryParams.set("partial", "1");
     queryParams.set("referrer", SENTRY_MCP_SEARCH_EVENTS_REFERRER);
 
     const apiUrl =
-      apiPath`/organizations/${organizationSlug}/events-stats/` +
+      apiPath`/organizations/${organizationSlug}/events-timeseries/` +
       `?${queryParams.toString()}`;
     const body = await this.requestJSON(apiUrl, undefined, opts);
-    return EventsStatsResponseSchema.parse(body);
+    return EventsTimeSeriesResponseSchema.parse(body);
   }
 
   // POST https://us.sentry.io/api/0/issues/5485083130/autofix/

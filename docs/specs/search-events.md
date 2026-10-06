@@ -133,11 +133,12 @@ absent. Existing final validation and unknown-environment notices remain in plac
 
 ### Time Series
 
-Requests for a metric over time ("per hour", "per day", "trend", "over time") return a bucketed series via the `events-stats` endpoint instead of failing.
+Requests for a metric over time ("per hour", "per day", "trend", "over time") return a bucketed series via the `events-timeseries` endpoint instead of failing.
 
 - The embedded agent sets `timeSeries: { yAxis, interval }` on its output. `yAxis` is the aggregate to plot (e.g. `count()`); the query, environment, and time range are reused from the normal translation.
 - **Interval is agent-decided, never a required input.** It is set only when the user names a granularity ("per hour" → `1h`); otherwise it is left `null` so Sentry picks a sensible bucket for the range (mirrors `get_interval_from_range`). Sentry rejects an interval that would produce too many buckets.
 - The handler routes `timeSeries` to `SentryApiService.getEventsTimeSeries` and renders the buckets (with total and peak) via `formatTimeSeriesResults`.
+- Buckets Sentry flags as `incomplete` (still receiving data) are marked with `*` in the table and excluded from the peak; the total is labelled "so far". When the response carries `meta.ingestion`, an **Ingestion** line reports the measured delay and the time data is complete through.
 
 ### Key Technical Constraints
 
