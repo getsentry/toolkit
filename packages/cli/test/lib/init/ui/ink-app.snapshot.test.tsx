@@ -130,6 +130,7 @@ async function renderApp(
   instance.unmount();
   // waitUntilExit() hangs in CI — race with a short unref'd timeout.
   await Promise.race([
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     instance.waitUntilExit().catch(() => {
       // Ink may reject on unmount — ignore.
     }),
@@ -1381,5 +1382,45 @@ describe("completion screen", () => {
     );
     // The `o` handler fires and confirms via a note.
     expect(text).toContain("Opened Sentry in your browser.");
+  });
+});
+
+describe("snake waiting game", () => {
+  async function settledFrame(out: CaptureStream): Promise<string> {
+    await sleep(FRAME_SETTLE_MS);
+    out.settledOutput = out.allOutput();
+    return stripAnsi(out.latestFrame());
+  }
+
+  test("a new warning pauses the game and shows the activity log", async () => {
+    const store = new WizardStore();
+    store.setLayout("workflow");
+    store.startSpinner("Verifying setup...");
+    const out = new CaptureStream(110, 32);
+    const stdin = makeStdin();
+    const instance = render(createElement(App, { store }), {
+      stdout: out as unknown as NodeJS.WriteStream,
+      stderr: out as unknown as NodeJS.WriteStream,
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      patchConsole: false,
+      exitOnCtrlC: false,
+    });
+
+    try {
+      expect(await settledFrame(out)).toContain("to play Snake");
+
+      stdin.push("g");
+      await sleep(20);
+      stdin.push("\u001B[A");
+      expect(await settledFrame(out)).toContain("Bugs squashed");
+
+      store.appendLog("warn", "Could not verify setup: app failed to start");
+      const frame = await settledFrame(out);
+      expect(frame).toContain("Could not verify setup");
+      expect(frame).not.toContain("Bugs squashed");
+      expect(frame).toContain("to resume Snake");
+    } finally {
+      instance.unmount();
+    }
   });
 });

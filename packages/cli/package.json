@@ -57,6 +57,7 @@
   "scripts": {
     "tsx": "tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs",
     "cli": "tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs src/bin.ts",
+    "proto:snake": "tsx --import ./script/require-shim.mjs script/prototype-init-snake.ts",
     "dev": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && tsx --import ./script/require-shim.mjs src/bin.ts",
     "build": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts --single",
     "build:all": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts",
