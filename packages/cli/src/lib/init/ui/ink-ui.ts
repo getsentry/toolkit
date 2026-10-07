@@ -241,7 +241,7 @@ import inkAppPath from "./ink-app.tsx" with { type: "file" };
  * to `process.stdin` in that case, which works on Node but is
  * broken in Bun-compiled binaries (see module docstring).
  */
-function openFreshTtyForInk(): ReadStream | null {
+export function openFreshTtyForInk(): ReadStream | null {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const fd = openSync("/dev/tty", "r");
@@ -252,14 +252,10 @@ function openFreshTtyForInk(): ReadStream | null {
 }
 
 /**
- * Async factory for `InkUI`. Imports `ink`, `react`, and the local
- * `App` component lazily, mounts the React tree, and returns the
- * bridge instance. Throws if Ink can't be loaded (e.g. missing peer
- * deps).
+ * Load the Ink sidecar bundle for the current runtime context. Both the init
+ * wizard and `sentry games` mount their UI through it.
  */
-export async function createInkUI(
-  opts: CreateInkUIOptions = {},
-): Promise<InkUI> {
+export async function loadInkSidecar(): Promise<typeof import("./ink-app.js")> {
   // Import the Ink App sidecar. Three runtime contexts:
   //
   // 1. Node SEA binary: the sidecar is embedded as a SEA asset.
@@ -322,6 +318,19 @@ export async function createInkUI(
       // best-effort cleanup
     }
   }
+
+  return app;
+}
+
+/**
+ * Async factory for `InkUI`. Loads the Ink sidecar, mounts the React tree,
+ * and returns the bridge instance. Throws if Ink can't be loaded (e.g.
+ * missing peer deps).
+ */
+export async function createInkUI(
+  opts: CreateInkUIOptions = {},
+): Promise<InkUI> {
+  const app = await loadInkSidecar();
 
   const store = new WizardStore({
     cliVersion: CLI_VERSION,

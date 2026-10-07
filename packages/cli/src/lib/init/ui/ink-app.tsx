@@ -24,7 +24,7 @@
  * Tab 2 (Files): Scrollable file read tree
  */
 
-import { Box, render as inkRender, Text } from "ink";
+import { Box, render as inkRender, Text, useApp } from "ink";
 import Spinner from "ink-spinner";
 import {
   createElement,
@@ -3090,6 +3090,19 @@ function MultiSelectPromptOptionRow({
   );
 }
 
+type MountOptions = {
+  exitOnCtrlC: boolean;
+  patchConsole: boolean;
+  stdin?: import("node:tty").ReadStream;
+};
+
+type InkInstance = {
+  unmount: () => void;
+  waitUntilExit: () => Promise<unknown>;
+  rerender: (node: React.ReactNode) => void;
+  clear: () => void;
+};
+
 /**
  * Mount the wizard App component via Ink and return the Ink instance.
  *
@@ -3102,16 +3115,49 @@ function MultiSelectPromptOptionRow({
  */
 export function mountApp(
   store: WizardStore,
-  options: {
-    exitOnCtrlC: boolean;
-    patchConsole: boolean;
-    stdin?: import("node:tty").ReadStream;
-  },
-): {
-  unmount: () => void;
-  waitUntilExit: () => Promise<unknown>;
-  rerender: (node: React.ReactNode) => void;
-  clear: () => void;
-} {
+  options: MountOptions,
+): InkInstance {
   return inkRender(createElement(App, { store }), options);
+}
+
+/** Full-screen Snake for `sentry games snake`; esc, q, and ctrl+c exit the app. */
+export function SnakeGameApp(): React.ReactNode {
+  return (
+    <ShortcutHintProvider>
+      <SnakeGameScreen />
+    </ShortcutHintProvider>
+  );
+}
+
+function SnakeGameScreen(): React.ReactNode {
+  const { exit } = useApp();
+  const { columns, rows } = useInkFrameSize();
+  const [session] = useState(createSnakeSession);
+  const close = useCallback(() => exit(), [exit]);
+  const width = getInkFrameWidth(columns);
+
+  return (
+    <Box
+      flexDirection="column"
+      height={rows}
+      marginLeft={getInkFrameMargin(columns, width)}
+      width={width}
+    >
+      <Box flexDirection="column" flexGrow={1} paddingTop={1}>
+        <SnakeGame
+          accent={ACCENT}
+          muted={MUTED_DIM}
+          onCancel={close}
+          onExit={close}
+          session={session}
+        />
+      </Box>
+      <ShortcutFooter color={MUTED_DIM} />
+    </Box>
+  );
+}
+
+/** Mount the standalone Snake game; same sidecar rules as `mountApp`. */
+export function mountSnakeGame(options: MountOptions): InkInstance {
+  return inkRender(createElement(SnakeGameApp), options);
 }
