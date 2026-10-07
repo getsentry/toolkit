@@ -45,6 +45,7 @@ export default new Hono()
 ```
 
 **Features:**
+
 - OAuth 2.0 flow with Sentry
 - Token storage in Cloudflare KV
 - Automatic token refresh
@@ -59,12 +60,13 @@ React-based chat UI with real-time streaming:
 export function Chat() {
   const { messages, handleSubmit } = useChat({
     api: "/api/chat",
-    headers: { Authorization: `Bearer ${authToken}` }
+    headers: { Authorization: `Bearer ${authToken}` },
   });
 }
 ```
 
 **Features:**
+
 - Message streaming with Vercel AI SDK
 - Tool call visualization
 - Slash commands (/help, /prompts, /clear)
@@ -82,12 +84,13 @@ const mcpClient = await experimental_createMCPClient({
   transport: {
     type: "sse",
     url: sseUrl,
-    headers: { Authorization: `Bearer ${accessToken}` }
-  }
+    headers: { Authorization: `Bearer ${accessToken}` },
+  },
 });
 ```
 
 **Features:**
+
 - Server-sent events (SSE) for MCP communication
 - Automatic tool discovery
 - Prompt metadata endpoint
@@ -102,11 +105,12 @@ const result = streamText({
   model: openai("gpt-4o"),
   messages: processedMessages,
   tools: mcpTools,
-  system: "You are an AI assistant for testing Sentry MCP..."
+  system: "You are an AI assistant for testing Sentry MCP...",
 });
 ```
 
 **Features:**
+
 - Streaming responses
 - Tool execution
 - Prompt template processing
@@ -115,11 +119,13 @@ const result = streamText({
 ## Data Flow
 
 1. **User Authentication**:
+
    ```
    User → OAuth Login → Sentry → OAuth Callback → KV Storage
    ```
 
 2. **Chat Message Flow**:
+
    ```
    User Input → Chat API → Process Prompts → AI Model → Stream Response
                          ↓
@@ -151,13 +157,21 @@ COOKIE_SECRET = "..."      # For session encryption
 OPENAI_API_KEY = "..."     # For GPT-4 access
 SENTRY_CLIENT_ID = "..."   # OAuth app ID
 SENTRY_CLIENT_SECRET = "..." # OAuth app secret
+SENTRY_GAMES_READ_TOKEN = "..." # Optional: Snake leaderboard (set with `wrangler secret put`)
 ```
+
+`SENTRY_GAMES_READ_TOKEN` is the Sentry token used by
+`GET /api/games/snake/leaderboard`. The token must belong to a bot account that
+has only `org:read` and is a member only of the team that owns the CLI project.
+Enable "Prevent storing IP addresses" on that project.
+Without the token, the leaderboard route returns 503.
 
 ### API Routes
 
 - `/api/auth/*` - Authentication endpoints
 - `/api/chat` - Main chat endpoint
 - `/api/metadata` - MCP metadata endpoint
+- `/api/games/snake/leaderboard` - Public Snake leaderboard (rate limited by IP, cached in `MCP_CACHE` for 300 seconds)
 - `/sse` - Server-sent events for MCP
 
 ## Security Considerations

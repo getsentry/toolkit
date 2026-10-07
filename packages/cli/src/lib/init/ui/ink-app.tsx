@@ -183,17 +183,18 @@ export function formatFeedbackBanner(
 
 export type AppProps = {
   store: WizardStore;
+  onGameOver?: (score: number) => void;
 };
 
-export function App({ store }: AppProps): React.ReactNode {
+export function App({ store, onGameOver }: AppProps): React.ReactNode {
   return (
     <ShortcutHintProvider>
-      <AppBody store={store} />
+      <AppBody onGameOver={onGameOver} store={store} />
     </ShortcutHintProvider>
   );
 }
 
-function AppBody({ store }: AppProps): React.ReactNode {
+function AppBody({ store, onGameOver }: AppProps): React.ReactNode {
   const snapshot = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -366,6 +367,7 @@ function AppBody({ store }: AppProps): React.ReactNode {
                     muted={MUTED_DIM}
                     onCancel={cancelFromSnake}
                     onExit={closeSnake}
+                    onGameOver={onGameOver}
                     session={snakeSession}
                   />
                 </Box>
@@ -3116,20 +3118,29 @@ type InkInstance = {
 export function mountApp(
   store: WizardStore,
   options: MountOptions,
+  onGameOver?: (score: number) => void,
 ): InkInstance {
-  return inkRender(createElement(App, { store }), options);
+  return inkRender(createElement(App, { store, onGameOver }), options);
 }
 
 /** Full-screen Snake for `sentry games snake`; esc, q, and ctrl+c exit the app. */
-export function SnakeGameApp(): React.ReactNode {
+export function SnakeGameApp({
+  onGameOver,
+}: {
+  onGameOver?: (score: number) => void;
+}): React.ReactNode {
   return (
     <ShortcutHintProvider>
-      <SnakeGameScreen />
+      <SnakeGameScreen onGameOver={onGameOver} />
     </ShortcutHintProvider>
   );
 }
 
-function SnakeGameScreen(): React.ReactNode {
+function SnakeGameScreen({
+  onGameOver,
+}: {
+  onGameOver?: (score: number) => void;
+}): React.ReactNode {
   const { exit } = useApp();
   const { columns, rows } = useInkFrameSize();
   const [session] = useState(createSnakeSession);
@@ -3150,6 +3161,7 @@ function SnakeGameScreen(): React.ReactNode {
           muted={MUTED_DIM}
           onCancel={close}
           onExit={close}
+          onGameOver={onGameOver}
           session={session}
         />
       </Box>
@@ -3159,6 +3171,9 @@ function SnakeGameScreen(): React.ReactNode {
 }
 
 /** Mount the standalone Snake game; same sidecar rules as `mountApp`. */
-export function mountSnakeGame(options: MountOptions): InkInstance {
-  return inkRender(createElement(SnakeGameApp), options);
+export function mountSnakeGame(
+  options: MountOptions,
+  onGameOver?: (score: number) => void,
+): InkInstance {
+  return inkRender(createElement(SnakeGameApp, { onGameOver }), options);
 }

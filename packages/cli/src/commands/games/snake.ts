@@ -9,6 +9,7 @@ import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { detectAgent } from "../../lib/detect-agent.js";
 import { ValidationError } from "../../lib/errors.js";
+import { reportSnakeScore } from "../../lib/games/score.js";
 
 const ENTER_ALT_SCREEN = "\x1b[?1049h\x1b[2J\x1b[H";
 const LEAVE_ALT_SCREEN = "\x1b[?1049l";
@@ -49,12 +50,15 @@ export const snakeCommand = buildCommand({
     const quit = () => instance?.unmount();
     process.on("SIGINT", quit);
     try {
-      instance = app.mountSnakeGame({
-        // Ctrl+C is routed through the game's own shortcut so it exits cleanly.
-        exitOnCtrlC: false,
-        patchConsole: false,
-        ...(freshStdin ? { stdin: freshStdin } : {}),
-      });
+      instance = app.mountSnakeGame(
+        {
+          // Ctrl+C is routed through the game's own shortcut so it exits cleanly.
+          exitOnCtrlC: false,
+          patchConsole: false,
+          ...(freshStdin ? { stdin: freshStdin } : {}),
+        },
+        reportSnakeScore,
+      );
       await instance.waitUntilExit();
     } finally {
       process.removeListener("SIGINT", quit);

@@ -42,17 +42,20 @@ function makeStdin(): Readable {
   });
 }
 
-function mount() {
+function mount(onGameOver?: (score: number) => void) {
   const out = new CaptureStream();
   const stdin = makeStdin();
-  const instance = mountSnakeGame({
-    exitOnCtrlC: false,
-    patchConsole: false,
-    stdin: stdin as unknown as import("node:tty").ReadStream,
-    stdout: out,
-    // Ink writes no live frames in CI unless forced interactive.
-    interactive: true,
-  } as Parameters<typeof mountSnakeGame>[0]);
+  const instance = mountSnakeGame(
+    {
+      exitOnCtrlC: false,
+      patchConsole: false,
+      stdin: stdin as unknown as import("node:tty").ReadStream,
+      stdout: out,
+      // Ink writes no live frames in CI unless forced interactive.
+      interactive: true,
+    } as Parameters<typeof mountSnakeGame>[0],
+    onGameOver,
+  );
   return { instance, out, stdin };
 }
 
@@ -112,4 +115,23 @@ describe("mountSnakeGame", () => {
       stdin.destroy();
     }
   });
+
+  test("reports the score once when the snake hits a wall", async () => {
+    const scores: number[] = [];
+    const { instance, stdin } = mount((score) => scores.push(score));
+    try {
+      await sleep(SETTLE_MS);
+      // The snake starts heading right; steering up then left runs it into a wall.
+      stdin.push("\u001B[A");
+      await sleep(SETTLE_MS);
+      for (let i = 0; i < 40 && scores.length === 0; i++) {
+        await sleep(100);
+      }
+      await sleep(500);
+      expect(scores).toHaveLength(1);
+      expect(scores[0]).toBeGreaterThanOrEqual(0);
+    } finally {
+      instance.unmount();
+    }
+  }, 15_000);
 });

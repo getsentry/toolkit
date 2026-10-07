@@ -8,6 +8,7 @@ and docs when `SENTRY_CLIENT_ID` is available.
 ## Workflows
 
 ### test.yml
+
 Runs on pushes to `main`, pull requests, and merge queue entries. Discovery
 reads pnpm workspace projects and their package scripts. Pull requests check
 changed projects, their workspace consumers, and semantic dependencies (the CLI
@@ -19,6 +20,7 @@ Package-specific exceptions live in `package.json#sentryCi`; the standalone
 smoke-test suite remains in its own workflow.
 
 ### deploy.yml
+
 Runs after a successful `Test` push run on `main`. Checks out the tested commit
 and requires that it is still the tip of `main`. Builds once, records the active
 production version, and uploads one new version of `sentry-mcp` from Vite's
@@ -32,6 +34,7 @@ it restores the exact captured prior version only if the live deployments still
 belong to this run.
 
 ### recover-cloudflare-deployment.yml
+
 Manual `workflow_dispatch` recovery accepts a deployment run ID and attempt.
 It runs trusted current-`main` code in the protected `production` environment,
 checks the completed source run, and derives the prior version from contiguous
@@ -45,15 +48,18 @@ only its 404 response. When the route exists, the smoke test compares its
 version ID with the restored version.
 
 ### migrate-cloudflare-token.yml
+
 Moves the Cloudflare API token from a repository secret into the protected
 `production` environment. Only `main` in the Toolkit repository can run it.
 Copy and removal are separate dispatches so a normal production deployment can
 prove that the environment copy works before the repository copy is deleted.
 
 ### eval.yml
+
 Runs evaluation tests against the MCP server.
 
 ### pr-risk-jev.yml
+
 Classifies PR risk with Jev and publishes one `risk: low`, `risk: medium`, or
 `risk: high` label. Runs when a non-draft PR is opened, updated with a push,
 reopened, marked ready for review, or edited. Manual dispatch accepts a PR number
@@ -67,6 +73,7 @@ are cleared and the PR stays unclassified. Results are retained as workflow
 artifacts for 30 days.
 
 ### pr-risk-labels-test.yml
+
 Runs the label publisher's regression tests when its workflow or tests change.
 Covers label replacement, stale revisions, failed classifications, and concurrent
 label creation.
@@ -89,23 +96,26 @@ Other configuration:
 - **`SENTRY_CLIENT_SECRET`** - Sentry OAuth client secret
 - **`COOKIE_SECRET`** - Session cookie encryption secret
 - **`OPENAI_API_KEY`** - For AI-powered search features
+- **`SENTRY_GAMES_READ_TOKEN`** - Not a GitHub secret. The deploy workflow does not pass Worker secrets; set it with `wrangler secret put SENTRY_GAMES_READ_TOKEN`. The token must belong to a bot account with only `org:read` and membership only in the team that owns the CLI project. Enable "Prevent storing IP addresses" on that project.
 - **`AI_GATEWAY_API_KEY`** - Vercel AI Gateway key for Jev PR risk classification
 
 ## Deployment Architecture
 
 ### Workers
+
 - **`sentry-mcp`** - Production worker at `https://mcp.sentry.dev`
 - The candidate is tested on the production Worker at 0% traffic before promotion.
 
 ### Resource Isolation
+
 The existing canary Worker has separate resources; exact-version rollout does
 not deploy it. The production candidate uses the production bindings:
 
-| Resource | Production | Canary |
-|----------|------------|---------|
-| KV Namespace | `8dd5e9bafe1945298e2d5ca3b408a553` | `a3fe0d23b2d34416930e284362a88a3b` |
-| Rate Limiter IDs | `1001`, `1002`, `1003`, `1004` | `2001`, `2002`, `2003`, `2004` |
-| Wrangler Config | `wrangler.jsonc` | `wrangler.canary.jsonc` |
+| Resource         | Production                         | Canary                             |
+| ---------------- | ---------------------------------- | ---------------------------------- |
+| KV Namespace     | `8dd5e9bafe1945298e2d5ca3b408a553` | `a3fe0d23b2d34416930e284362a88a3b` |
+| Rate Limiter IDs | `1001`, `1002`, `1003`, `1004`     | `2001`, `2002`, `2003`, `2004`     |
+| Wrangler Config  | `wrangler.jsonc`                   | `wrangler.canary.jsonc`            |
 
 ### Deployment Flow
 

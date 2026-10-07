@@ -10,7 +10,7 @@
   "compatibility_flags": [
     "nodejs_compat",
     "nodejs_compat_populate_process_env",
-    "global_fetch_strictly_public"
+    "global_fetch_strictly_public",
   ],
   // we ask people to configure environment variables in prod
   // Available environment variables:
@@ -19,10 +19,10 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
   },
   "version_metadata": {
-    "binding": "CF_VERSION_METADATA"
+    "binding": "CF_VERSION_METADATA",
   },
   "vars": {},
   "unsafe": {
@@ -33,8 +33,8 @@
         "namespace_id": "1001",
         "simple": {
           "limit": 10,
-          "period": 60
-        }
+          "period": 60,
+        },
       },
       {
         "name": "SEARCH_RATE_LIMITER",
@@ -42,8 +42,17 @@
         "namespace_id": "1002",
         "simple": {
           "limit": 20,
-          "period": 60
-        }
+          "period": 60,
+        },
+      },
+      {
+        "name": "GAMES_RATE_LIMITER",
+        "type": "ratelimit",
+        "namespace_id": "1005",
+        "simple": {
+          "limit": 30,
+          "period": 60,
+        },
       },
       {
         "name": "MCP_IP_RATE_LIMITER",
@@ -51,8 +60,8 @@
         "namespace_id": "1003",
         "simple": {
           "limit": 300,
-          "period": 60
-        }
+          "period": 60,
+        },
       },
       {
         "name": "MCP_USER_RATE_LIMITER",
@@ -60,41 +69,41 @@
         "namespace_id": "1004",
         "simple": {
           "limit": 60,
-          "period": 60
-        }
-      }
-    ]
+          "period": 60,
+        },
+      },
+    ],
   },
   "kv_namespaces": [
     {
       "binding": "OAUTH_KV",
-      "id": "8dd5e9bafe1945298e2d5ca3b408a553"
+      "id": "8dd5e9bafe1945298e2d5ca3b408a553",
     },
     {
       "binding": "MCP_CACHE",
-      "id": "01b5b45e9f3c4edaa9ef357b4f9949db"
-    }
+      "id": "01b5b45e9f3c4edaa9ef357b4f9949db",
+    },
   ],
   "ai": {
-    "binding": "AI"
+    "binding": "AI",
   },
   "migrations": [
     {
-      "tag": "v1"
+      "tag": "v1",
     },
     {
-      "tag": "v2"
-    }
+      "tag": "v2",
+    },
   ],
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "head_sampling_rate": 1,
   },
   "tail_consumers": [
     // super noisy - disable until it can be improve
     // { "service": "sentry-mcp-tail" }
   ],
   "dev": {
-    "port": 8788
-  }
+    "port": 8788,
+  },
 }
