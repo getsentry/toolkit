@@ -1,15 +1,10 @@
-import { isSentryHost as isSharedSentryHost } from "@sentry/toolkit-core/sentry-host";
+import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import type { SentryProtocol } from "../types";
 import {
   type EventsDataset,
   isMetricsDataset,
   isProfilesDataset,
 } from "./events-datasets";
-
-/** Keep the MCP utility export for its existing consumers. */
-export function isSentryHost(host: string): boolean {
-  return isSharedSentryHost(host);
-}
 
 /** Hosts that use the public SaaS control host and organization web subdomains. */
 export function isPublicSentryHost(host: string): boolean {
