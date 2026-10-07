@@ -63,6 +63,7 @@ export interface Env {
   /** @deprecated Prefer OPENROUTER_API_KEY for hosted MCP AI features. */
   OPENAI_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
+  SENTRY_GAMES_READ_TOKEN?: string;
   OPENROUTER_MODEL?: string;
   OPENROUTER_REASONING_EFFORT?: string;
   EMBEDDED_AGENT_PROVIDER?: string;
@@ -72,6 +73,7 @@ export interface Env {
   CF_VERSION_METADATA?: WorkerVersionMetadata;
   CHAT_RATE_LIMITER?: RateLimit;
   SEARCH_RATE_LIMITER?: RateLimit;
+  GAMES_RATE_LIMITER?: RateLimit;
   MCP_IP_RATE_LIMITER?: RateLimit;
   MCP_USER_RATE_LIMITER?: RateLimit;
   // Backward-compatible fallback while deployments roll out dedicated MCP limiters.

@@ -189,6 +189,12 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
       "Control the optional Snake game that `sentry init` offers while it waits for setup to finish. Set to `0` to hide it. The game is always hidden when an AI agent runs the CLI.",
     example: "0",
   },
+  {
+    name: "SENTRY_GAMES_API_URL",
+    description:
+      "Base URL of the service that serves the `sentry games leaderboard` scores. Defaults to `https://mcp.sentry.dev`. Mainly useful for testing.",
+    example: "http://localhost:8787",
+  },
   // -- TLS / Certificates --
   {
     name: "NODE_EXTRA_CA_CERTS",
