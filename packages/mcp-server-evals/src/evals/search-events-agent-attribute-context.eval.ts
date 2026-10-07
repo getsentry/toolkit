@@ -38,6 +38,7 @@ describeEval("search-events-agent-attributes-without-context", {
             name: "datasetAttributes",
             arguments: {
               dataset: "spans",
+              substringMatch: "http.method",
             },
           },
         ],
@@ -99,7 +100,7 @@ describeEval("search-events-agent-attributes-with-context", {
   data: async () => {
     return [
       {
-        // EVENTUALLY Context marks http.method as deprecated in favor of http.request.method
+        // Context marks http.method as deprecated in favor of http.request.method
         input: "Count spans grouped by HTTP method over the last 7 days",
         expectedTools: [
           {
@@ -113,12 +114,12 @@ describeEval("search-events-agent-attributes-with-context", {
           dataset: "spans",
           fields: (value: unknown) =>
             Array.isArray(value) &&
-            !value.includes("http.request.method") &&
-            value.includes("http.method"),
+            value.includes("http.request.method") &&
+            !value.includes("http.method"),
         },
       },
       {
-        // EVENTUALLY Context marks http.status_code as deprecated in favor of
+        // Context marks http.status_code as deprecated in favor of
         // http.response.status_code
         input: "Show me spans with HTTP status code 503 in the last 24 hours",
         expectedTools: [
@@ -133,8 +134,8 @@ describeEval("search-events-agent-attributes-with-context", {
           dataset: "spans",
           query: (value: unknown) =>
             typeof value === "string" &&
-            !value.includes("http.response.status_code:503") &&
-            value.includes("http.status_code"),
+            value.includes("http.response.status_code:503") &&
+            !value.includes("http.status_code"),
         },
       },
     ];

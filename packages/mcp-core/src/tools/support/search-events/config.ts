@@ -43,6 +43,7 @@ TOOL USAGE GUIDELINES:
 7. Use datasetAttributes substringMatch, query, and attributeTypes for targeted lookup when broad field discovery is truncated
 8. For non-replay datasets, call validateSearch after constructing the candidate request. If invalid, fix and validate again in this same pass
 9. NEVER replace a structured field:value filter with message/log.body/full-text matching. If an explicit field is unavailable on the dataset, keep it and let validation fail instead of inventing a weaker query
+10. If datasetAttributes lists a field under Deprecated Fields, use its replacement instead, even when the deprecated name appears in the guidance or examples in this prompt
 
 CRITICAL - TOOL RESPONSE HANDLING:
 All tools return responses in this format: {error?: string, result?: data}

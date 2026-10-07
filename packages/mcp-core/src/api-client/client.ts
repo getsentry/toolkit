@@ -349,12 +349,22 @@ export type TraceItemAttributeSource = {
   is_transformed_alias?: boolean;
 };
 
+export type TraceItemAttributeContext = {
+  isConvention?: boolean;
+  brief?: string;
+  isDeprecated?: boolean;
+  details?: string[];
+  examples?: Array<string | boolean | number>;
+  replacementAttribute?: string;
+};
+
 export type TraceItemAttribute = {
   key: string;
   name: string;
   type: TraceItemAttributeType;
   attributeSource: TraceItemAttributeSource;
   secondaryAliases?: string[];
+  context?: TraceItemAttributeContext;
 };
 
 export type TraceItemAttributeValidationResult = {
@@ -474,6 +484,15 @@ const EventsValidationResponseSchema = z
   })
   .transform((result): EventsValidationResult => result);
 
+const TraceItemAttributeContextSchema = z.object({
+  isConvention: z.boolean().optional(),
+  brief: z.string().optional(),
+  isDeprecated: z.boolean().optional(),
+  examples: z.array(z.union([z.string(), z.boolean(), z.number()])).optional(),
+  replacementAttribute: z.string().optional(),
+  details: z.array(z.string()).optional(),
+});
+
 const TraceItemAttributeSchema = z
   .object({
     key: z.string(),
@@ -481,14 +500,23 @@ const TraceItemAttributeSchema = z
     attributeType: TraceItemAttributeTypeSchema,
     attributeSource: TraceItemAttributeSourceSchema,
     secondaryAliases: z.array(z.string()).optional(),
+    context: TraceItemAttributeContextSchema.optional(),
   })
   .transform(
-    ({ key, name, attributeType, attributeSource, secondaryAliases }) => ({
+    ({
+      key,
+      name,
+      attributeType,
+      attributeSource,
+      secondaryAliases,
+      context,
+    }) => ({
       key,
       name,
       type: attributeType,
       attributeSource,
       ...(secondaryAliases ? { secondaryAliases } : {}),
+      context,
     }),
   );
 
