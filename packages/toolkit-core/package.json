@@ -7,9 +7,9 @@
     "node": ">=22.13"
   },
   "exports": {
-    "./sentry-origin": {
-      "types": "./src/sentry-origin.ts",
-      "default": "./src/sentry-origin.ts"
+    "./api-request": {
+      "types": "./src/api-request.ts",
+      "default": "./src/api-request.ts"
     },
     "./api-path-segment": {
       "types": "./src/api-path-segment.ts",
@@ -30,6 +30,10 @@
     "./sentry-host": {
       "types": "./src/sentry-host.ts",
       "default": "./src/sentry-host.ts"
+    },
+    "./sentry-origin": {
+      "types": "./src/sentry-origin.ts",
+      "default": "./src/sentry-origin.ts"
     }
   },
   "scripts": {
