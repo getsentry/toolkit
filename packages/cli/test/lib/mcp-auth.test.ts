@@ -124,6 +124,14 @@ describe("prepareMcpServerArgs", () => {
     ]);
   });
 
+  test("translates a secure SENTRY_HOST origin into a host flag", () => {
+    process.env.SENTRY_HOST = "https://sentry.example.com";
+
+    // A documented `SENTRY_HOST=https://…` export must not reach the MCP
+    // parser raw (it rejects origins); it becomes a plain --host instead.
+    expect(prepareMcpServerArgs([])).toEqual(["--host=sentry.example.com"]);
+  });
+
   test("preserves an explicit MCP target over the CLI URL", () => {
     expect(
       prepareMcpServerArgs(
@@ -131,5 +139,16 @@ describe("prepareMcpServerArgs", () => {
         "http://localhost:9000"
       )
     ).toEqual(["--host=sentry.example.com"]);
+  });
+
+  test("keeps an explicit --host --insecure-http over the CLI URL", () => {
+    // The CLI http URL must not sneak in an extra --host that MCP would
+    // prefer over the user's explicit insecure target.
+    expect(
+      prepareMcpServerArgs(
+        ["--host=localhost:9000", "--insecure-http"],
+        "http://sentry.example.com"
+      )
+    ).toEqual(["--host=localhost:9000", "--insecure-http"]);
   });
 });

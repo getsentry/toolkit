@@ -276,7 +276,7 @@ export function getMcpArgs(cliArgs: readonly string[]): string[] | undefined {
 }
 
 /** Run MCP and return whether the current invocation was handled by it. */
-async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
+export async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
   const mcpArgs = getMcpArgs(cliArgs);
   if (!mcpArgs) {
     return false;
