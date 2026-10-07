@@ -1575,6 +1575,74 @@
     "surface": "catalog"
   },
   {
+    "name": "delete_monitor_environment",
+    "description": "Delete one environment from a Sentry cron monitor.\n\nUse find_monitors or get_monitor_details to identify the monitor and exact environment name.\n\nDeletion is irreversible and completes in the background. The monitor and its other environments are preserved. An already absent environment is treated as success.\n\n<examples>\ndelete_monitor_environment(organizationSlug='my-organization', projectSlug='backend', monitorSlug='nightly-import', environment='production')\n</examples>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "monitorSlug": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Monitor slug or GUID."
+        },
+        "environment": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact environment name to delete. Preserve whitespace and casing."
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "projectSlug",
+        "monitorSlug",
+        "environment"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "monitorSlug": {
+          "type": "string"
+        },
+        "projectSlug": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        }
+      },
+      "required": ["success", "monitorSlug", "projectSlug", "environment"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["project:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
     "name": "delete_uptime_monitor",
     "description": "Delete a Sentry HTTP uptime monitor.\n\nUse this tool when you need to permanently remove an uptime monitor.\n\nBe careful when using this tool! Deletion cannot be undone.\n\n<examples>\ndelete_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\n</examples>",
     "inputSchema": {

@@ -3095,6 +3095,31 @@ export class SentryApiService {
     return MonitorSchema.parse(body);
   }
 
+  /**
+   * Schedule deletion of a cron monitor environment. Returns 202 with no body.
+   * Source: src/sentry/monitors/endpoints/project_monitor_environment_details.py
+   */
+  async deleteMonitorEnvironment(
+    {
+      organizationSlug,
+      projectSlug,
+      monitorSlug,
+      environment,
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+      monitorSlug: string;
+      environment: string;
+    },
+    opts?: RequestOptions,
+  ): Promise<void> {
+    await this.request(
+      apiPath`/projects/${organizationSlug}/${projectSlug}/monitors/${monitorSlug}/environments/${environment}/`,
+      { method: "DELETE" },
+      { ...opts, allowStatuses: [404] },
+    );
+  }
+
   async listMonitorCheckIns(
     {
       organizationSlug,

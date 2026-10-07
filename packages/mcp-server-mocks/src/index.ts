@@ -1096,6 +1096,11 @@ export const restHandlers = buildHandlers([
     fetch: () => new HttpResponse(null, { status: 202 }),
   },
   {
+    method: "delete",
+    path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/monitors/nightly-import/environments/production/",
+    fetch: () => new HttpResponse(null, { status: 202 }),
+  },
+  {
     method: "get",
     path: "/api/0/organizations/sentry-mcp-evals/monitors/",
     fetch: () => HttpResponse.json([monitorFixture]),
