@@ -354,9 +354,19 @@ describe("search_events", () => {
               {
                 yAxis: "count()",
                 values: [
-                  { timestamp: 1757548800000, value: 5, incomplete: false },
+                  {
+                    timestamp: 1757548800000,
+                    value: 10,
+                    incomplete: true,
+                    incompleteReason: "OUTSIDE_RETENTION",
+                  },
                   { timestamp: 1757552400000, value: 8, incomplete: false },
-                  { timestamp: 1757556000000, value: 9, incomplete: true },
+                  {
+                    timestamp: 1757556000000,
+                    value: 9,
+                    incomplete: true,
+                    incompleteReason: "NOT_ELAPSED",
+                  },
                 ],
                 meta: {
                   interval: 3600000,
@@ -402,11 +412,16 @@ describe("search_events", () => {
       },
     );
 
-    // The incomplete bucket is larger, but it is still filling so it is not the peak.
-    expect(result).toContain("**Peak**: 8");
-    expect(result).toContain("**Total**: 22 (so far)");
+    // The still-filling bucket can't be the peak yet. The retention-partial
+    // bucket is final, so it still counts and wins here.
+    expect(result).toContain("**Peak**: 10 at 2025-09-11 00:00");
+    expect(result).toContain("**Total**: 27 (so far)");
+    expect(result).toContain("| 2025-09-11 00:00 | 10 † |");
     expect(result).toContain("| 2025-09-11 02:00 | 9 * |");
-    expect(result).toContain("Incomplete bucket");
+    expect(result).toContain("Incomplete bucket: data is still arriving");
+    expect(result).toContain(
+      "Partial bucket: it starts before the retention window",
+    );
     expect(result).toContain(
       "**Ingestion**: healthy (~1m 35s behind, data complete through 2025-09-11 02:10 UTC)",
     );

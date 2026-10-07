@@ -972,8 +972,9 @@ function formatIngestionStatus(ingestion: IngestionMeta): string {
 /**
  * Format an events-timeseries result: a metric bucketed over time.
  * `interval` is null when Sentry chose the bucket size for the range.
- * Buckets flagged `incomplete` by Sentry may still receive data, so they are
- * marked in the table and excluded from the peak.
+ * Buckets flagged `incomplete` by Sentry are marked in the table. Those still
+ * receiving data are also excluded from the peak; those that start before the
+ * retention window are permanently partial and will not change.
  */
 export function formatTimeSeriesResults(params: {
   series: EventsTimeSeriesResponse;
@@ -996,12 +997,20 @@ export function formatTimeSeriesResults(params: {
     url,
   } = params;
 
-  const points = (series.timeSeries[0]?.values ?? []).map((bucket) => ({
-    time: formatBucketTime(bucket.timestamp),
-    value: bucket.value ?? 0,
-    incomplete: bucket.incomplete,
-  }));
-  const hasIncomplete = points.some((p) => p.incomplete);
+  const points = (series.timeSeries[0]?.values ?? []).map((bucket) => {
+    // OUTSIDE_RETENTION buckets start before the retention window: their data
+    // is permanently partial. Every other reason means data is still arriving.
+    const outsideRetention =
+      bucket.incomplete && bucket.incompleteReason === "OUTSIDE_RETENTION";
+    return {
+      time: formatBucketTime(bucket.timestamp),
+      value: bucket.value ?? 0,
+      filling: bucket.incomplete && !outsideRetention,
+      outsideRetention,
+    };
+  });
+  const hasFilling = points.some((p) => p.filling);
+  const hasOutsideRetention = points.some((p) => p.outsideRetention);
   const ingestion = series.meta?.ingestion;
 
   // Total is only meaningful for additive aggregates; summing count_unique /
@@ -1009,9 +1018,10 @@ export function formatTimeSeriesResults(params: {
   const total = isAdditiveAggregate(yAxis)
     ? points.reduce((sum, p) => sum + p.value, 0)
     : null;
-  // Incomplete buckets are still filling, so they can't be the peak yet.
+  // Buckets still filling can't be the peak yet. Partial retention buckets are
+  // final, so if one still tops the rest it is a real peak.
   const peak = points
-    .filter((p) => !p.incomplete)
+    .filter((p) => !p.filling)
     .reduce<(typeof points)[number] | undefined>(
       (max, p) => (max === undefined || p.value > max.value ? p : max),
       undefined,
@@ -1037,7 +1047,7 @@ export function formatTimeSeriesResults(params: {
   lines.push(`- **Time range**: ${formatExecutedTimeRange(timeRange)}`);
   if (total !== null) {
     lines.push(
-      `- **Total**: ${total.toLocaleString()}${hasIncomplete ? " (so far)" : ""}`,
+      `- **Total**: ${total.toLocaleString()}${hasFilling ? " (so far)" : ""}`,
     );
   }
   if (peak) {
@@ -1056,14 +1066,20 @@ export function formatTimeSeriesResults(params: {
       "| --- | --- |",
     );
     for (const p of shown) {
+      const marker = p.filling ? " *" : p.outsideRetention ? " †" : "";
+      lines.push(`| ${p.time} | ${p.value.toLocaleString()}${marker} |`);
+    }
+    if (hasFilling || hasOutsideRetention) {
+      lines.push("");
+    }
+    if (hasFilling) {
       lines.push(
-        `| ${p.time} | ${p.value.toLocaleString()}${p.incomplete ? " *" : ""} |`,
+        "\\* Incomplete bucket: data is still arriving, so the value may rise.",
       );
     }
-    if (hasIncomplete) {
+    if (hasOutsideRetention) {
       lines.push(
-        "",
-        "\\* Incomplete bucket: data is still arriving, so the value may rise.",
+        "† Partial bucket: it starts before the retention window, so older data is missing and the value will not change.",
       );
     }
   } else {
