@@ -518,6 +518,12 @@ describe("sanitizeQuery: regex filters", () => {
     ).toBe('(level:x)message://[a,]// "foo"message://[b,]//');
   });
 
+  test("passes through a regex right after an in-list", () => {
+    expect(sanitizeQuery("level:[x,y]message://[a,]//")).toBe(
+      "level:[x,y]message://[a,]//",
+    );
+  });
+
   test("throws for OR between regex filters", () => {
     expect(() => sanitizeQuery("message://a// OR message://b//")).toThrow(
       ValidationError,
