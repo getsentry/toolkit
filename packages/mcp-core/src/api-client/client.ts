@@ -423,10 +423,12 @@ const EventsValidationIssueSchema = z
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(({ valid, error }): EventsValidationIssue => ({
-    valid,
-    ...(error ? { error } : {}),
-  }));
+  .transform(
+    ({ valid, error }): EventsValidationIssue => ({
+      valid,
+      ...(error ? { error } : {}),
+    }),
+  );
 
 const EventsNamedValidationIssueSchema = z
   .object({
@@ -434,11 +436,13 @@ const EventsNamedValidationIssueSchema = z
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(({ name, valid, error }): EventsNamedValidationIssue => ({
-    name,
-    valid,
-    ...(error ? { error } : {}),
-  }));
+  .transform(
+    ({ name, valid, error }): EventsNamedValidationIssue => ({
+      name,
+      valid,
+      ...(error ? { error } : {}),
+    }),
+  );
 
 const EventsAttributeValidationSchema = z
   .object({
@@ -469,11 +473,13 @@ const EventsQueryValidationSchema = z
     error: ValidationErrorSchema,
     fields: EventsAttributeValidationListSchema,
   })
-  .transform(({ valid, error, fields }): EventsQueryValidation => ({
-    valid,
-    fields,
-    ...(error ? { error } : {}),
-  }));
+  .transform(
+    ({ valid, error, fields }): EventsQueryValidation => ({
+      valid,
+      fields,
+      ...(error ? { error } : {}),
+    }),
+  );
 
 const EventsValidationResponseSchema = z
   .object({
@@ -1324,9 +1330,9 @@ export class SentryApiService {
   private isAggregateExplorerQuery(params: ExplorerAggregateParams): boolean {
     return Boolean(
       params.aggregateFunctions?.length ||
-      params.fields?.some(
-        (field) => field.includes("(") && field.includes(")"),
-      ),
+        params.fields?.some(
+          (field) => field.includes("(") && field.includes(")"),
+        ),
     );
   }
 
