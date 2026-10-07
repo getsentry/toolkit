@@ -317,13 +317,14 @@ describe("search query helpers", () => {
       "errors from https://example.com/a// in checkout",
       "requests to (http://example.com//)",
       "uploads to s3://bucket and https://example.com//",
+      "errors from HTTP://example.com/a// in checkout",
     ];
 
     const results = queries.map((query) =>
       looksLikeSentrySearchSyntax(query, "logs"),
     );
 
-    expect(results).toEqual([false, false, false]);
+    expect(results).toEqual([false, false, false, false]);
   });
 
   it("allows rewriting natural language log queries that contain URLs", () => {
