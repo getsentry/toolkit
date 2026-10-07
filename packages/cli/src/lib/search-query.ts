@@ -573,7 +573,7 @@ const PROJECT_NUMERIC_LIST_RE = /(^|\s)(!?)project:\[(\d+(?:\s*,\s*\d+)*)\]/gi;
 const REGEX_FILTER_KEY_SOURCE = String.raw`(?:(?:tags|flags)\[[\w.:-]+(?: *, *(?:string|number|boolean|array))?\]|"[\w.:-]+"|[\w.[\]-]+)(?:\[\*\])?`;
 const PRESERVED_SEGMENT_RE = new RegExp(
   String.raw`"(?:[^"\\]|\\.)*"|(?<=(?:^|[\s()"])!?${REGEX_FILTER_KEY_SOURCE}:)\/\/(?:(?!\/\/(?:[\t\n )]|$))[^\n])+\/\/(?=[\t\n )]|$)`,
-  "g"
+  "g",
 );
 
 /**
