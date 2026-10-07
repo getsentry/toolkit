@@ -1,3 +1,4 @@
+import { normalizeAuthToken } from "./auth-header.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { refreshToken } from "./db/auth.js";
 import { getEnv } from "./env.js";
@@ -53,12 +54,16 @@ export function prepareMcpServerArgs(
 /**
  * Resolve a credential for the local MCP server from the CLI's authenticated
  * session, preserving the CLI's host-scoping protections.
+ *
+ * Pass `force` to bypass the refresh threshold — used after an upstream 401 so
+ * a long-running server picks up a fresh token without being restarted.
  */
 export async function resolveCliMcpAccessToken(
-  config: McpServerConfig
+  config: McpServerConfig,
+  options: { force?: boolean } = {}
 ): Promise<string> {
   const targetUrl = `${config.sentryProtocol}://${config.sentryHost}`;
-  const { token } = await refreshToken();
+  const { token } = await refreshToken({ force: options.force });
   const tokenHost = getActiveTokenHost();
 
   if (!(tokenHost && isHostTrusted(targetUrl, tokenHost))) {
@@ -69,7 +74,54 @@ export async function resolveCliMcpAccessToken(
     );
   }
 
-  return token;
+  // Env tokens and stored rows bypass the refresh path's normalization, so a
+  // credential with pasted newlines or padding could reach the MCP server. Trim
+  // and validate here before it becomes an Authorization header.
+  return normalizeAuthToken(token);
+}
+
+/**
+ * Resolve the MCP credential, falling back to the interactive login flow when
+ * the CLI has no usable session and the terminal is interactive.
+ *
+ * Mirrors how the rest of the CLI recovers from `not_authenticated`/`expired`
+ * errors: in a TTY it launches the OAuth device flow (browser), then retries.
+ * In a non-interactive context (e.g. an IDE launching `sentry mcp` over pipes)
+ * it rethrows the original {@link AuthError} so the client sees a clear
+ * "run `sentry auth login`" message instead of a hung browser prompt.
+ */
+async function resolveMcpAccessTokenWithLogin(
+  config: McpServerConfig
+): Promise<string> {
+  try {
+    return await resolveCliMcpAccessToken(config);
+  } catch (error) {
+    const { isatty } = await import("node:tty");
+    const { shouldAutoAuth, assertAutoLoginHostTrusted } = await import(
+      "./auto-auth.js"
+    );
+    const isInteractive = () => isatty(0);
+    if (!shouldAutoAuth(error, isInteractive)) {
+      throw error;
+    }
+
+    // Never start an OAuth device flow against an unconfirmed self-hosted host.
+    assertAutoLoginHostTrusted();
+
+    process.stderr.write(
+      error.reason === "expired"
+        ? "Authentication expired. Starting login flow...\n\n"
+        : "Authentication required. Starting login flow...\n\n"
+    );
+
+    const { runInteractiveLogin } = await import("./interactive-login.js");
+    const loginResult = await runInteractiveLogin();
+    if (!loginResult) {
+      throw error;
+    }
+
+    return resolveCliMcpAccessToken(config);
+  }
 }
 
 /** Start the local stdio server without introducing a second auth flow. */
@@ -86,10 +138,29 @@ export async function startMcpServer(args: string[]): Promise<void> {
     SENTRY_URL: _sentryUrl,
     ...mcpEnv
   } = getEnv();
+
+  // Remember the resolved target so the 401 handler can refresh against the
+  // same host without re-parsing args.
+  let resolvedConfig: McpServerConfig | undefined;
+
   await runMcpServer(prepareMcpServerArgs(args), {
     environment: mcpEnv,
     packageName: "sentry mcp",
-    resolveAccessToken: resolveCliMcpAccessToken,
+    resolveAccessToken: (config) => {
+      resolvedConfig = config;
+      return resolveMcpAccessTokenWithLogin(config);
+    },
+    onUpstreamUnauthorized: async (setAccessToken) => {
+      if (!resolvedConfig) {
+        return;
+      }
+      // Force a refresh past the usual threshold: the upstream already rejected
+      // the current token, so mirror `--follow`'s refresh-on-401 behavior.
+      const token = await resolveCliMcpAccessToken(resolvedConfig, {
+        force: true,
+      });
+      setAccessToken(token);
+    },
     throwOnError: true,
   });
 }

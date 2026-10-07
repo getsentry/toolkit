@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { clearAuth, setAuthToken } from "../../src/lib/db/auth.js";
-import { AuthError, HostScopeError } from "../../src/lib/errors.js";
+import {
+  AuthError,
+  HostScopeError,
+  MalformedAuthTokenError,
+} from "../../src/lib/errors.js";
 import {
   prepareMcpServerArgs,
   resolveCliMcpAccessToken,
@@ -65,6 +69,34 @@ describe("resolveCliMcpAccessToken", () => {
         sentryProtocol: "https",
       })
     ).rejects.toThrow(new AuthError("not_authenticated"));
+  });
+
+  test("normalizes a malformed env token instead of forwarding it", async () => {
+    await clearAuth();
+    // Env tokens skip the stored-row normalization, so a pasted newline would
+    // otherwise reach the MCP server as a broken Authorization header.
+    process.env.SENTRY_AUTH_TOKEN = "env-token\n";
+    process.env.SENTRY_HOST = "https://sentry.io";
+
+    await expect(
+      resolveCliMcpAccessToken({
+        sentryHost: "sentry.io",
+        sentryProtocol: "https",
+      })
+    ).resolves.toBe("env-token");
+  });
+
+  test("rejects an env token with embedded invalid characters", async () => {
+    await clearAuth();
+    process.env.SENTRY_AUTH_TOKEN = "env token with space";
+    process.env.SENTRY_HOST = "https://sentry.io";
+
+    await expect(
+      resolveCliMcpAccessToken({
+        sentryHost: "sentry.io",
+        sentryProtocol: "https",
+      })
+    ).rejects.toBeInstanceOf(MalformedAuthTokenError);
   });
 
   test("does not expose a second MCP authentication flow", async () => {

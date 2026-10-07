@@ -53,6 +53,14 @@ export type McpServerOptions = {
    * device-code and cache flow.
    */
   resolveAccessToken?: (config: PartiallyResolvedConfig) => Promise<string>;
+  /**
+   * Invoked when a tool call surfaces an upstream 401. The host application can
+   * refresh its credential and call `setAccessToken` so later tool calls use
+   * the new token without restarting the server.
+   */
+  onUpstreamUnauthorized?: (
+    setAccessToken: (token: string) => void,
+  ) => void | Promise<void>;
   /** Command name used in usage output. */
   packageName?: string;
   /** Environment used for server configuration. */
@@ -418,6 +426,15 @@ export async function runMcpServer(
     openaiBaseUrl: cfg.openaiBaseUrl,
     experimentalMode: cli.experimental,
     transport: "stdio" as const,
+    // Let the host refresh its credential on an upstream 401 and write it back
+    // so subsequent tool calls use the new token. Tool handlers read
+    // `context.accessToken` fresh per call, so mutating it here is enough.
+    onUpstreamUnauthorized: options.onUpstreamUnauthorized
+      ? () =>
+          options.onUpstreamUnauthorized?.((token) => {
+            context.accessToken = token;
+          })
+      : undefined,
   };
 
   // Build server with context to filter tools based on granted skills
