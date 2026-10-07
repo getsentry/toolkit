@@ -7,6 +7,10 @@
     "node": ">=22.13"
   },
   "exports": {
+    "./api-request": {
+      "types": "./src/api-request.ts",
+      "default": "./src/api-request.ts"
+    },
     "./api-path-segment": {
       "types": "./src/api-path-segment.ts",
       "default": "./src/api-path-segment.ts"

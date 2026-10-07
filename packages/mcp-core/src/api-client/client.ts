@@ -1,5 +1,6 @@
 import { parseSentryLinkHeader } from "@sentry/api";
-import { normalizeAuthToken } from "@sentry/toolkit-core/auth-token";
+import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
+import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
@@ -768,20 +769,21 @@ export class SentryApiService {
     options: RequestInit = {},
     { host, allowStatuses }: { host?: string; allowStatuses?: number[] } = {},
   ): Promise<Response> {
-    const url = host
-      ? `${this.protocol}://${host}/api/0${path}`
-      : `${this.apiPrefix}${path}`;
+    const url = buildSentryApiUrl(
+      `${this.protocol}://${host ?? this.host}`,
+      path,
+    );
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "User-Agent": USER_AGENT,
     };
     if (this.accessToken !== null) {
-      const token = normalizeAuthToken(this.accessToken);
-      if (token === null) {
+      const authorization = sentryBearerHeader(this.accessToken);
+      if (authorization === null) {
         throw new ConfigurationError("Malformed authentication token");
       }
-      headers.Authorization = `Bearer ${token}`;
+      headers.Authorization = authorization;
     }
     if (this.clientId) {
       headers["X-Sentry-MCP-Client-Id"] = this.clientId;

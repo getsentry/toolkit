@@ -9,6 +9,7 @@
 import { promisify } from "node:util";
 import { zstdCompress as zstdCompressCb } from "node:zlib";
 import { parseSentryLinkHeader } from "@sentry/api";
+import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import { type GenericSchema, safeParse } from "valibot";
@@ -592,12 +593,8 @@ export async function apiRequestToRegion<T>(
   } = options;
   const config = getSdkConfig(regionUrl, { credential, validatedRedirects });
 
-  const normalizedEndpoint = endpoint.startsWith("/")
-    ? endpoint.slice(1)
-    : endpoint;
-  const endpointWithParams = appendSearchParams(normalizedEndpoint, params);
-  // getSdkConfig.baseUrl is the plain region URL; add /api/0/ for raw requests
-  const url = `${config.baseUrl}/api/0/${endpointWithParams}`;
+  const endpointWithParams = appendSearchParams(endpoint, params);
+  const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
 
   const fetchFn = config.fetch;
   const headers: Record<string, string> = {
@@ -749,11 +746,8 @@ export async function apiRequestToRegionNoContent(
   const config = getSdkConfig(regionUrl);
 
   const searchParams = buildSearchParams(params);
-  const normalizedEndpoint = endpoint.startsWith("/")
-    ? endpoint.slice(1)
-    : endpoint;
   const queryString = searchParams ? `?${searchParams.toString()}` : "";
-  const url = `${config.baseUrl}/api/0/${normalizedEndpoint}${queryString}`;
+  const url = buildSentryApiUrl(config.baseUrl, `${endpoint}${queryString}`);
 
   const fetchFn = config.fetch;
   const headers: Record<string, string> = {
@@ -878,12 +872,8 @@ export async function rawApiRequest(
   // enforces isRequestOriginTrusted() before attaching Authorization.
   const config = baseUrl ? getSdkConfig(baseUrl) : getDefaultSdkConfig();
 
-  const normalizedEndpoint = endpoint.startsWith("/")
-    ? endpoint.slice(1)
-    : endpoint;
-  const endpointWithParams = appendSearchParams(normalizedEndpoint, params);
-  // getSdkConfig.baseUrl is the plain region URL; add /api/0/ for raw requests
-  const url = `${config.baseUrl}/api/0/${endpointWithParams}`;
+  const endpointWithParams = appendSearchParams(endpoint, params);
+  const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
 
   // Build request headers and body.
   // String bodies: no Content-Type unless the caller explicitly provides one.
