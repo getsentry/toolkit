@@ -90,7 +90,7 @@ describe("workspace CI selection", () => {
     );
   });
 
-  it("does not run CLI projects for MCP docs and core changes", () => {
+  it("checks shared docs without selecting products, while MCP code selects MCP consumers", () => {
     const projects = buildProjects([
       entry("@sentry/mcp-core", "packages/mcp-core", {
         scripts: { test: "vitest run" },
@@ -111,6 +111,12 @@ describe("workspace CI selection", () => {
         selectAffectedProjects(projects, files, "pull_request"),
       ).include.map(({ name }) => name);
     assert.deepEqual(names(["docs/contributing/tool-responses.md"]), []);
+    assert.deepEqual(names(["docs/cli/README.md"]), []);
+    assert.deepEqual(names(["docs/mcp/README.md"]), []);
+    assert.deepEqual(
+      names(["apps/cli-docs/src/content/docs/contributing.md"]),
+      ["sentry-cli-docs"],
+    );
     assert.deepEqual(
       names([
         "docs/contributing/tool-responses.md",
