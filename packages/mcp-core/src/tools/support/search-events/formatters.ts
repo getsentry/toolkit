@@ -1010,7 +1010,6 @@ export function formatTimeSeriesResults(params: {
     };
   });
   const hasFilling = points.some((p) => p.filling);
-  const hasOutsideRetention = points.some((p) => p.outsideRetention);
   const ingestion = series.meta?.ingestion;
 
   // Total is only meaningful for additive aggregates; summing count_unique /
@@ -1069,15 +1068,19 @@ export function formatTimeSeriesResults(params: {
       const marker = p.filling ? " *" : p.outsideRetention ? " †" : "";
       lines.push(`| ${p.time} | ${p.value.toLocaleString()}${marker} |`);
     }
-    if (hasFilling || hasOutsideRetention) {
+    // Footnotes describe markers in the visible rows only; older retention
+    // buckets may have been cut by MAX_ROWS.
+    const shownFilling = shown.some((p) => p.filling);
+    const shownOutsideRetention = shown.some((p) => p.outsideRetention);
+    if (shownFilling || shownOutsideRetention) {
       lines.push("");
     }
-    if (hasFilling) {
+    if (shownFilling) {
       lines.push(
         "\\* Incomplete bucket: data is still arriving, so the value may rise.",
       );
     }
-    if (hasOutsideRetention) {
+    if (shownOutsideRetention) {
       lines.push(
         "† Partial bucket: it starts before the retention window, so older data is missing and the value will not change.",
       );

@@ -427,6 +427,72 @@ describe("search_events", () => {
     );
   });
 
+  it("omits the retention footnote when its buckets are cut from the table", async () => {
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "count()", interval: "1d" },
+      timeRange: { statsPeriod: "100d" },
+      explanation: "",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    // 60 daily buckets: the first is outside retention, but only the latest
+    // 48 rows are rendered, so no † row is visible.
+    const day = 86400000;
+    const values = Array.from({ length: 60 }, (_, i) => ({
+      timestamp: 1752364800000 + i * day,
+      value: i + 1,
+      incomplete: i === 0,
+      ...(i === 0 ? { incompleteReason: "OUTSIDE_RETENTION" } : {}),
+    }));
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+        () =>
+          HttpResponse.json({
+            timeSeries: [{ yAxis: "count()", values, meta: { interval: day } }],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "errors per day",
+        fields: null,
+        sort: null,
+        period: "100d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("## Buckets (most recent 48 of 60)");
+    expect(result).not.toContain("†");
+    expect(result).not.toContain("so far");
+  });
+
   it("should handle spans dataset queries", async () => {
     // Mock AI response for spans dataset
     mockGenerateText.mockResolvedValueOnce(
