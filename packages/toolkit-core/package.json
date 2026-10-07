@@ -7,6 +7,10 @@
     "node": ">=22.13"
   },
   "exports": {
+    "./api-path-segment": {
+      "types": "./src/api-path-segment.ts",
+      "default": "./src/api-path-segment.ts"
+    },
     "./auth-token": {
       "types": "./src/auth-token.ts",
       "default": "./src/auth-token.ts"
