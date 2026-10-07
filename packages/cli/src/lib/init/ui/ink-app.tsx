@@ -348,7 +348,8 @@ function AppBody({ store }: AppProps): React.ReactNode {
             flexDirection="row"
             flexGrow={1}
             flexShrink={1}
-            gap={isWide ? 1 : 0}
+            // Two columns read as wide as the one-row gap between sidebar panels.
+            gap={isWide ? 2 : 0}
             overflow="hidden"
           >
             <Box flexDirection="column" flexGrow={1} overflow="hidden">
