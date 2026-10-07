@@ -1,3 +1,4 @@
+import { parseSentryLinkHeader } from "@sentry/api";
 import { normalizeAuthToken } from "@sentry/toolkit-core/auth-token";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
@@ -260,22 +261,7 @@ function parseStatsPeriod(statsPeriod: string): {
 }
 
 function getNextCursor(linkHeader: string | null): string | null {
-  if (!linkHeader) {
-    return null;
-  }
-
-  for (const link of linkHeader.split(",")) {
-    if (!link.includes('rel="next"') || !link.includes('results="true"')) {
-      continue;
-    }
-
-    const cursorMatch = link.match(/cursor="([^"]+)"/);
-    if (cursorMatch?.[1]) {
-      return cursorMatch[1];
-    }
-  }
-
-  return null;
+  return parseSentryLinkHeader(linkHeader).nextCursor ?? null;
 }
 
 /**
@@ -424,12 +410,10 @@ const EventsValidationIssueSchema = z
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(
-    ({ valid, error }): EventsValidationIssue => ({
-      valid,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ valid, error }): EventsValidationIssue => ({
+    valid,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsNamedValidationIssueSchema = z
   .object({
@@ -437,13 +421,11 @@ const EventsNamedValidationIssueSchema = z
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(
-    ({ name, valid, error }): EventsNamedValidationIssue => ({
-      name,
-      valid,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ name, valid, error }): EventsNamedValidationIssue => ({
+    name,
+    valid,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsAttributeValidationSchema = z
   .object({
@@ -474,13 +456,11 @@ const EventsQueryValidationSchema = z
     error: ValidationErrorSchema,
     fields: EventsAttributeValidationListSchema,
   })
-  .transform(
-    ({ valid, error, fields }): EventsQueryValidation => ({
-      valid,
-      fields,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ valid, error, fields }): EventsQueryValidation => ({
+    valid,
+    fields,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsValidationResponseSchema = z
   .object({
@@ -1331,9 +1311,9 @@ export class SentryApiService {
   private isAggregateExplorerQuery(params: ExplorerAggregateParams): boolean {
     return Boolean(
       params.aggregateFunctions?.length ||
-        params.fields?.some(
-          (field) => field.includes("(") && field.includes(")"),
-        ),
+      params.fields?.some(
+        (field) => field.includes("(") && field.includes(")"),
+      ),
     );
   }
 
