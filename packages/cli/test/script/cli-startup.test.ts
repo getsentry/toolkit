@@ -26,11 +26,12 @@ test.each(["cli.ts", "index.ts"])(
                 if (args.kind === "dynamic-import") {
                   return { path: args.path, external: true };
                 }
-                // The hostname predicate is pure and has no startup side effects.
-                // Keep traversing its source to reject any future SDK imports.
+                // Hostname and origin predicates are pure and have no startup
+                // side effects. Traverse their source to catch future SDK imports.
                 if (
                   args.path.startsWith("@sentry/") &&
-                  args.path !== "@sentry/toolkit-core/sentry-host"
+                  args.path !== "@sentry/toolkit-core/sentry-host" &&
+                  args.path !== "@sentry/toolkit-core/sentry-origin"
                 ) {
                   return {
                     errors: [

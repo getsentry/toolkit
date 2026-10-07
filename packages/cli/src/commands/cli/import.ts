@@ -11,6 +11,7 @@
  */
 
 import { isatty } from "node:tty";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { getDefaultUrl } from "../../lib/db/defaults.js";
@@ -20,10 +21,7 @@ import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import {
-  isSaaSTrustOrigin,
-  normalizeUserInputToOrigin,
-} from "../../lib/sentry-urls.js";
+import { normalizeUserInputToOrigin } from "../../lib/sentry-urls.js";
 import type {
   DiscoveredRcFile,
   ImportPlan,

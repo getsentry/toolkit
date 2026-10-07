@@ -1475,9 +1475,7 @@ describe("get_issue_details", () => {
           userId: "1",
         },
       ),
-    ).rejects.toThrow(
-      "Invalid regionUrl provided: https. Must be a valid URL.",
-    );
+    ).rejects.toThrow("Invalid regionUrl provided. Must be a valid URL.");
   });
 
   it("enhances 404 error with parameter context for non-existent issue", async () => {

@@ -7,6 +7,10 @@
     "node": ">=22.13"
   },
   "exports": {
+    "./sentry-origin": {
+      "types": "./src/sentry-origin.ts",
+      "default": "./src/sentry-origin.ts"
+    },
     "./api-path-segment": {
       "types": "./src/api-path-segment.ts",
       "default": "./src/api-path-segment.ts"

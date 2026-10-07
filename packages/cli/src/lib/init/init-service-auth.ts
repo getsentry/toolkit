@@ -1,7 +1,8 @@
 import { MastraClientError } from "@mastra/client-js";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { enrich401Detail } from "../api/infrastructure.js";
 import { ApiError, HostScopeError } from "../errors.js";
-import { isSaaSTrustOrigin, normalizeOrigin } from "../sentry-urls.js";
+import { normalizeOrigin } from "../sentry-urls.js";
 import { getActiveTokenHost } from "../token-host.js";
 import {
   DEFAULT_MASTRA_API_URL,

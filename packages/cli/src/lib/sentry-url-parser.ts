@@ -8,12 +8,12 @@
  * so that subsequent API calls reach the correct instance.
  */
 
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { DEFAULT_SENTRY_HOST } from "./constants.js";
 import { getEnv } from "./env.js";
 import { HostScopeError } from "./errors.js";
 import { tryNormalizeHexId } from "./hex-id.js";
 import { logger } from "./logger.js";
-import { isSaaSTrustOrigin } from "./sentry-urls.js";
 import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
 
 const log = logger.withTag("url-parser");

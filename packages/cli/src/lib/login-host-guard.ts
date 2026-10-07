@@ -14,14 +14,12 @@
  * unconfirmed self-hosted login that `sentry auth login` would have refused.
  */
 
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { DEFAULT_SENTRY_URL } from "./constants.js";
 import { getStoredAuthHost } from "./db/auth.js";
 import { getDefaultUrl } from "./db/defaults.js";
 import { getEnv } from "./env.js";
-import {
-  isSaaSTrustOrigin,
-  normalizeUserInputToOrigin,
-} from "./sentry-urls.js";
+import { normalizeUserInputToOrigin } from "./sentry-urls.js";
 import { isHostTrusted, isLoginTrustAnchorFor } from "./token-host.js";
 
 /**
