@@ -5154,8 +5154,7 @@ export class SentryApiService {
 
   /**
    * Fetch a timeseries (events-timeseries) for a single yAxis, bucketed over
-   * time. Buckets that may still receive data are flagged `incomplete`, and
-   * `meta.ingestion` reports the measured ingestion delay when available.
+   * time.
    *
    * `interval` is optional: omit it to let Sentry pick a sensible bucket size
    * for the range (mirrors get_interval_from_range in the Sentry source).
