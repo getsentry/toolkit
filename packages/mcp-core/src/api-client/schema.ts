@@ -2438,14 +2438,31 @@ export const AgenticOnboardingRunSchema = z.object({
 });
 
 /**
+ * Measured ingestion delay for the queried dataset. Only present for EAP
+ * datasets (spans, logs, trace metrics) on orgs with the feature enabled.
+ * `completeThrough` is the time (ms) up to which data is considered complete.
+ */
+export const IngestionMetaSchema = z
+  .object({
+    status: z.enum(["healthy", "stalled", "idle", "unknown"]),
+    delaySeconds: z.number().optional(),
+    completeThrough: z.number().optional(),
+  })
+  .passthrough();
+
+export type IngestionMeta = z.infer<typeof IngestionMetaSchema>;
+
+/**
  * One bucket of an events-timeseries series. `timestamp` is in milliseconds.
- * `incomplete` marks buckets that may still receive data.
+ * `incomplete` marks buckets that may still receive data (the current bucket,
+ * or anything after `meta.ingestion.completeThrough`).
  */
 export const EventsTimeSeriesValueSchema = z
   .object({
     timestamp: z.number(),
     value: z.number().nullish(),
     incomplete: z.boolean(),
+    incompleteReason: z.string().optional(),
   })
   .passthrough();
 
@@ -2464,11 +2481,21 @@ export const EventsTimeSeriesResponseSchema = z
             .object({
               // Bucket width in milliseconds
               interval: z.number(),
+              valueType: z.string().optional(),
+              valueUnit: z.string().nullish(),
             })
             .passthrough(),
         })
         .passthrough(),
     ),
+    meta: z
+      .object({
+        start: z.number().optional(),
+        end: z.number().optional(),
+        ingestion: IngestionMetaSchema.optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
