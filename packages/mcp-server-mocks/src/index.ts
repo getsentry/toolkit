@@ -129,6 +129,12 @@ import traceItemsAttributesSpansNumberFixture from "./fixtures/trace-items-attri
 import traceItemsAttributesSpansStringFixture from "./fixtures/trace-items-attributes-spans-string.json" with {
   type: "json",
 };
+import traceItemsAttributesSpansNumberWithContextFixture from "./fixtures/trace-items-attributes-spans-number-with-context.json" with {
+  type: "json",
+};
+import traceItemsAttributesSpansStringWithContextFixture from "./fixtures/trace-items-attributes-spans-string-with-context.json" with {
+  type: "json",
+};
 import traceItemsAttributesTraceMetricsNumberFixture from "./fixtures/trace-items-attributes-tracemetrics-number.json" with {
   type: "json",
 };
@@ -1201,6 +1207,7 @@ export const restHandlers = buildHandlers([
       const url = new URL(request.url);
       const itemType = url.searchParams.get("itemType");
       const attributeType = url.searchParams.get("attributeType");
+      const useContext = url.searchParams.get("expand") === "context";
 
       // Validate required parameters
       if (!itemType) {
@@ -1223,6 +1230,18 @@ export const restHandlers = buildHandlers([
 
       if (!attributeType) {
         if (normalizedItemType === "span") {
+          if (useContext) {
+            return HttpResponse.json([
+              ...withTraceItemAttributeMetadata(
+                traceItemsAttributesSpansStringWithContextFixture,
+                "string",
+              ),
+              ...withTraceItemAttributeMetadata(
+                traceItemsAttributesSpansNumberWithContextFixture,
+                "number",
+              ),
+            ]);
+          }
           return HttpResponse.json([
             ...withTraceItemAttributeMetadata(
               traceItemsAttributesSpansStringFixture,

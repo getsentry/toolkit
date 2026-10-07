@@ -31,7 +31,7 @@ describe("property: normalizePath", () => {
         const twice = normalizePath(once);
         expect(twice).toBe(once);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -45,7 +45,7 @@ describe("property: normalizePath", () => {
       property(string(), (input) => {
         expect(normalizePath(input).includes("\\")).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -57,14 +57,14 @@ describe("property: normalizePath", () => {
       property(string(), (input) => {
         expect(normalizePath(input)).toBe(input);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
 
 describe("property: isMonorepoPackageDir", () => {
   const segmentArb = string({ minLength: 1, maxLength: 15 }).filter(
-    (s) => !s.includes("/") && s.length > 0
+    (s) => !s.includes("/") && s.length > 0,
   );
 
   test("any 2-segment path with MONOREPO_ROOTS first is a package dir", () => {
@@ -73,7 +73,7 @@ describe("property: isMonorepoPackageDir", () => {
         const rel = `${root}/${pkg}`;
         expect(isMonorepoPackageDir(rel)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -82,7 +82,7 @@ describe("property: isMonorepoPackageDir", () => {
       property(segmentArb, (seg) => {
         expect(isMonorepoPackageDir(seg)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -93,9 +93,9 @@ describe("property: isMonorepoPackageDir", () => {
         tuple(segmentArb, segmentArb),
         (root, [b, c]) => {
           expect(isMonorepoPackageDir(`${root}/${b}/${c}`)).toBe(false);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -109,7 +109,7 @@ describe("property: isMonorepoPackageDir", () => {
         }
         expect(isMonorepoPackageDir(`${first}/${second}`)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -120,9 +120,8 @@ describe("DEFAULT_SKIP_DIRS vs DSN_ADDITIONAL_SKIP_DIRS", () => {
     // DEFAULT_SKIP_DIRS (and DSN_ADDITIONAL_SKIP_DIRS drops them) or
     // they're DSN-specific (and shouldn't be in both).
     const fn = async () => {
-      const { DEFAULT_SKIP_DIRS, DSN_ADDITIONAL_SKIP_DIRS } = await import(
-        "../../../src/lib/scan/constants.js"
-      );
+      const { DEFAULT_SKIP_DIRS, DSN_ADDITIONAL_SKIP_DIRS } =
+        await import("../../../src/lib/scan/constants.js");
       const base = new Set(DEFAULT_SKIP_DIRS);
       for (const extra of DSN_ADDITIONAL_SKIP_DIRS) {
         expect(base.has(extra)).toBe(false);

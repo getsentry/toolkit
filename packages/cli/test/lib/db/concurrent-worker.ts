@@ -20,7 +20,7 @@ const operation = process.argv[4];
 
 if (!(configDir && workerId && operation)) {
   console.error(
-    "Usage: tsx concurrent-worker.ts <config-dir> <worker-id> <operation>"
+    "Usage: tsx concurrent-worker.ts <config-dir> <worker-id> <operation>",
   );
   process.exit(1);
 }
@@ -32,12 +32,10 @@ mkdirSync(configDir, { recursive: true });
 process.env.SENTRY_CONFIG_DIR = configDir;
 
 // Now import db modules (they'll use the env var)
-const { setCachedDsn, getCachedDsn } = await import(
-  "../../../src/lib/db/dsn-cache.js"
-);
-const { setCachedProject, getCachedProject } = await import(
-  "../../../src/lib/db/project-cache.js"
-);
+const { setCachedDsn, getCachedDsn } =
+  await import("../../../src/lib/db/dsn-cache.js");
+const { setCachedProject, getCachedProject } =
+  await import("../../../src/lib/db/project-cache.js");
 const { closeDatabase } = await import("../../../src/lib/db/index.js");
 
 type WorkerResult = {

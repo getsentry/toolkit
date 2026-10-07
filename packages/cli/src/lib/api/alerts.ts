@@ -162,7 +162,7 @@ function pickDetectorOwner(owner: MetricDetector["owner"]): string | null {
  * nested `snubaQuery`) doesn't flatten everything to empty.
  */
 function resolveThresholdSource(
-  source: Record<string, unknown>
+  source: Record<string, unknown>,
 ): Record<string, unknown> {
   const asRecord = (value: unknown): Record<string, unknown> | undefined =>
     value && typeof value === "object" && !Array.isArray(value)
@@ -187,7 +187,7 @@ function resolveThresholdSource(
 }
 
 function mapDetectorToMetricAlertRule(
-  detector: MetricDetector
+  detector: MetricDetector,
 ): MetricAlertRule {
   const source = detector.dataSources?.[0] ?? {};
   const nested = resolveThresholdSource(source);
@@ -232,7 +232,7 @@ function mapDetectorToMetricAlertRule(
  * with no `detectorIds`. Mirrors the sentry-mcp filter of the same name.
  */
 function filterAttachedIssueAlertRules(
-  rules: IssueAlertRule[]
+  rules: IssueAlertRule[],
 ): IssueAlertRule[] {
   return rules.filter((rule) => (rule.detectorIds ?? []).length > 0);
 }
@@ -248,7 +248,7 @@ function filterAttachedIssueAlertRules(
 export async function listIssueAlertsPaginated(
   orgSlug: string,
   projectSlug: string,
-  options: { perPage?: number; cursor?: string } = {}
+  options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<IssueAlertRule[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const { data, headers } = await apiRequestToRegion<IssueAlertRule[]>(
@@ -261,7 +261,7 @@ export async function listIssueAlertsPaginated(
         per_page: options.perPage,
         cursor: options.cursor,
       },
-    }
+    },
   );
   const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
   return { data: filterAttachedIssueAlertRules(data), nextCursor };
@@ -274,7 +274,7 @@ export async function listIssueAlertsPaginated(
  */
 export async function getIssueAlertWorkflowDocument(
   orgSlug: string,
-  workflowId: string
+  workflowId: string,
 ): Promise<Record<string, unknown>> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await getOrganizationWorkflow({
@@ -286,7 +286,7 @@ export async function getIssueAlertWorkflowDocument(
   });
   return unwrapResult<Record<string, unknown>>(
     result,
-    "Failed to fetch issue alert rule"
+    "Failed to fetch issue alert rule",
   );
 }
 
@@ -299,7 +299,7 @@ export async function getIssueAlertWorkflowDocument(
  */
 export async function resolveErrorDetectorId(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<number> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await listOrganizationDetectors({
@@ -309,7 +309,7 @@ export async function resolveErrorDetectorId(
   });
   const detectors = unwrapResult<Array<{ id: string | number }>>(
     result,
-    "Failed to resolve error detector"
+    "Failed to resolve error detector",
   );
   const detector = detectors[0];
   if (!detector) {
@@ -317,7 +317,7 @@ export async function resolveErrorDetectorId(
       `No error detector found for project '${projectSlug}'`,
       404,
       undefined,
-      `/organizations/${orgSlug}/detectors/`
+      `/organizations/${orgSlug}/detectors/`,
     );
   }
   return Number(detector.id);
@@ -337,13 +337,13 @@ export async function resolveErrorDetectorId(
 export async function getIssueAlertRule(
   orgSlug: string,
   projectSlug: string,
-  ruleId: string
+  ruleId: string,
 ): Promise<IssueAlertRule> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const { data } = await apiRequestToRegion<IssueAlertRule[]>(
     regionUrl,
     `/organizations/${orgSlug}/workflows/`,
-    { params: { projectSlug, id: ruleId, per_page: 1 } }
+    { params: { projectSlug, id: ruleId, per_page: 1 } },
   );
   const rule = filterAttachedIssueAlertRules(data)[0];
   if (!rule) {
@@ -351,7 +351,7 @@ export async function getIssueAlertRule(
       `Issue alert rule '${ruleId}' not found`,
       404,
       undefined,
-      `/organizations/${orgSlug}/workflows/`
+      `/organizations/${orgSlug}/workflows/`,
     );
   }
   return rule;
@@ -384,7 +384,7 @@ const METRIC_DETECTOR_QUERY = "type:metric_issue";
  */
 export async function listMetricAlertsPaginated(
   orgSlug: string,
-  options: { perPage?: number; cursor?: string } = {}
+  options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<MetricAlertRule[]>> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await listOrganizationDetectors({
@@ -404,7 +404,7 @@ export async function listMetricAlertsPaginated(
   });
   const { data, nextCursor } = unwrapPaginatedResult<MetricDetector[]>(
     result,
-    "Failed to list metric alert rules"
+    "Failed to list metric alert rules",
   );
   return { data: data.map(mapDetectorToMetricAlertRule), nextCursor };
 }
@@ -426,7 +426,7 @@ export async function listMetricAlertsPaginated(
  */
 export async function getMetricAlertRule(
   orgSlug: string,
-  ruleId: string
+  ruleId: string,
 ): Promise<MetricAlertRule> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await getOrganizationDetector({
@@ -443,14 +443,14 @@ export async function getMetricAlertRule(
   });
   const data = unwrapResult<MetricDetector>(
     result,
-    `Failed to get metric alert rule '${ruleId}'`
+    `Failed to get metric alert rule '${ruleId}'`,
   );
   if (data.type !== undefined && data.type !== "metric_issue") {
     throw new ApiError(
       `Metric alert rule '${ruleId}' not found`,
       404,
       `Detector '${ruleId}' is of type '${data.type}', not a metric alert.`,
-      `/organizations/${orgSlug}/detectors/${encodeURIComponent(ruleId)}/`
+      `/organizations/${orgSlug}/detectors/${encodeURIComponent(ruleId)}/`,
     );
   }
   return mapDetectorToMetricAlertRule(data);
@@ -469,13 +469,13 @@ export async function getMetricAlertRule(
  */
 export async function deleteIssueAlertRule(
   orgSlug: string,
-  ruleId: string
+  ruleId: string,
 ): Promise<void> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   await apiRequestToRegionNoContent(
     regionUrl,
     `/organizations/${orgSlug}/workflows/${encodeURIComponent(ruleId)}/`,
-    { method: "DELETE" }
+    { method: "DELETE" },
   );
 }
 
@@ -488,7 +488,7 @@ export async function deleteIssueAlertRule(
 export async function updateIssueAlertRule(
   orgSlug: string,
   workflowId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await updateOrganizationWorkflow({
@@ -505,7 +505,7 @@ export async function updateIssueAlertRule(
   });
   return unwrapResult<Record<string, unknown>>(
     result,
-    "Failed to update issue alert rule"
+    "Failed to update issue alert rule",
   );
 }
 
@@ -518,7 +518,7 @@ export async function updateIssueAlertRule(
  */
 export async function createIssueAlertRule(
   orgSlug: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await createOrganizationWorkflow({
@@ -532,7 +532,7 @@ export async function createIssueAlertRule(
   });
   return unwrapResult<Record<string, unknown>>(
     result,
-    "Failed to create issue alert rule"
+    "Failed to create issue alert rule",
   );
 }
 
@@ -578,7 +578,7 @@ function datasetEventTypes(dataset: string): string[] {
  * conversion in `mapDetectorToMetricAlertRule`.
  */
 function buildDetectorDataSource(
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Record<string, unknown> {
   const dataset = typeof body.dataset === "string" ? body.dataset : "";
   const timeWindowMinutes =
@@ -607,7 +607,7 @@ function buildDetectorDataSource(
  * (0 active / 1 disabled) maps onto the detector's `enabled` boolean.
  */
 function buildDetectorBody(
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Record<string, unknown> {
   const detectorBody: Record<string, unknown> = {
     name: typeof body.name === "string" ? body.name : "",
@@ -646,12 +646,13 @@ function buildDetectorBody(
 function resolveDetectorProject(body: Record<string, unknown>): string {
   const projects = Array.isArray(body.projects) ? body.projects : [];
   const project = projects.find(
-    (value): value is string => typeof value === "string" && value.trim() !== ""
+    (value): value is string =>
+      typeof value === "string" && value.trim() !== "",
   );
   if (!project) {
     throw new ValidationError(
       "A project is required to create a metric alert rule (pass --project).",
-      "project"
+      "project",
     );
   }
   return project;
@@ -665,7 +666,7 @@ function resolveDetectorProject(body: Record<string, unknown>): string {
  */
 export async function deleteMetricAlertRule(
   orgSlug: string,
-  ruleId: string
+  ruleId: string,
 ): Promise<void> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await deleteOrganizationDetector({
@@ -693,7 +694,7 @@ export async function deleteMetricAlertRule(
  */
 export async function getMetricAlertRuleDocument(
   orgSlug: string,
-  ruleId: string
+  ruleId: string,
 ): Promise<Record<string, unknown>> {
   const rule = await getMetricAlertRule(orgSlug, ruleId);
   return { ...rule };
@@ -708,7 +709,7 @@ export async function getMetricAlertRuleDocument(
 export async function putMetricAlertRule(
   orgSlug: string,
   ruleId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await updateOrganizationDetector({
@@ -729,7 +730,7 @@ export async function putMetricAlertRule(
   });
   return unwrapResult<Record<string, unknown>>(
     result,
-    `Failed to update metric alert rule '${ruleId}'`
+    `Failed to update metric alert rule '${ruleId}'`,
   );
 }
 
@@ -741,7 +742,7 @@ export async function putMetricAlertRule(
  */
 export async function createMetricAlertRule(
   orgSlug: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const projectSlug = resolveDetectorProject(body);
   const config = await getOrgSdkConfig(orgSlug);
@@ -757,6 +758,6 @@ export async function createMetricAlertRule(
   });
   return unwrapResult<Record<string, unknown>>(
     result,
-    "Failed to create metric alert rule"
+    "Failed to create metric alert rule",
   );
 }

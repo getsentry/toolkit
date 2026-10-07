@@ -1,5 +1,5 @@
 import { MastraClient } from "@mastra/client-js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as Sentry from "@sentry/node-core/light";
 import {
   afterEach,
@@ -10,7 +10,7 @@ import {
   test,
   vi,
 } from "vitest";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as banner from "../../../src/lib/banner.js";
 import { clearAuth, setAuthToken } from "../../../src/lib/db/auth.js";
 import { ENV_VAR_AGENTS } from "../../../src/lib/detect-agent.js";
@@ -26,17 +26,17 @@ import {
   CHECKLIST_VISIBLE_STEPS,
   WizardCancelledError,
 } from "../../../src/lib/init/clack-utils.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as fmt from "../../../src/lib/init/formatters.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as git from "../../../src/lib/init/git.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as inter from "../../../src/lib/init/interactive.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as preflight from "../../../src/lib/init/preflight.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as readiness from "../../../src/lib/init/readiness.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as registry from "../../../src/lib/init/tools/registry.js";
 import type {
   ResolvedInitContext,
@@ -45,7 +45,7 @@ import type {
   WizardOptions,
   WorkflowRunResult,
 } from "../../../src/lib/init/types.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as uiFactory from "../../../src/lib/init/ui/factory.js";
 import {
   CANCELLED,
@@ -53,7 +53,7 @@ import {
   type WizardUI,
 } from "../../../src/lib/init/ui/types.js";
 import { runWizard } from "../../../src/lib/init/wizard-runner.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as workflowInputs from "../../../src/lib/init/workflow-inputs.js";
 import { createMockUI, type MockCall } from "./ui/mock-ui.js";
 
@@ -88,7 +88,7 @@ function makeOptions(overrides?: Partial<WizardOptions>): WizardOptions {
 }
 
 function makeContext(
-  overrides?: Partial<ResolvedInitContext>
+  overrides?: Partial<ResolvedInitContext>,
 ): ResolvedInitContext {
   return {
     directory: "/tmp/test",
@@ -174,7 +174,7 @@ function withV1SuspendEnvelopes(result: WorkflowRunResult): WorkflowRunResult {
                 ...step,
                 suspendPayload: withV1SuspendEnvelope(step.suspendPayload),
               },
-        ])
+        ]),
       )
     : undefined;
   return {
@@ -189,7 +189,7 @@ function withV1SuspendEnvelopes(result: WorkflowRunResult): WorkflowRunResult {
 function forceStdinTty<T>(action: () => Promise<T>): Promise<T> {
   const originalDescriptor = Object.getOwnPropertyDescriptor(
     process.stdin,
-    "isTTY"
+    "isTTY",
   );
   Object.defineProperty(process.stdin, "isTTY", {
     value: true,
@@ -286,12 +286,12 @@ beforeEach(() => {
     .mockImplementation(() => true as any);
 
   startAsyncMock = vi.fn(() =>
-    Promise.resolve(withV1SuspendEnvelopes(mockStartResult))
+    Promise.resolve(withV1SuspendEnvelopes(mockStartResult)),
   );
   runByIdMock = vi.fn(() =>
     mockRunByIdResult instanceof Error
       ? Promise.reject(mockRunByIdResult)
-      : Promise.resolve(withV1SuspendEnvelopes(mockRunByIdResult))
+      : Promise.resolve(withV1SuspendEnvelopes(mockRunByIdResult)),
   );
   sharedResumeAsyncMock = vi.fn(() => {
     const result = mockResumeResults[resumeCallCount] ?? {
@@ -321,7 +321,7 @@ beforeEach(() => {
           this as unknown as {
             options: { abortSignal?: AbortSignal; retries?: number };
           }
-        ).options
+        ).options,
       );
       return workflow as any;
     });
@@ -399,7 +399,7 @@ function lastError(): string | undefined {
 
 function initService401Error(): Error {
   return new Error(
-    'HTTP error! status: 401 - {"error":"Unauthorized: invalid token"}'
+    'HTTP error! status: 401 - {"error":"Unauthorized: invalid token"}',
   );
 }
 
@@ -435,11 +435,11 @@ function hasExpectedInitServiceAuthPolicy(err: unknown): boolean {
 describe("runWizard", () => {
   test("rejects a malformed bearer before constructing the service client", async () => {
     resolveInitContextSpy.mockResolvedValue(
-      makeContext({ authToken: "synthetic-prefix\nsynthetic-secret-tail" })
+      makeContext({ authToken: "synthetic-prefix\nsynthetic-secret-tail" }),
     );
 
     const error = await runWizard(makeOptions()).catch(
-      (caught: unknown) => caught
+      (caught: unknown) => caught,
     );
     expect(error).toMatchObject({
       reason: "invalid",
@@ -461,7 +461,7 @@ describe("runWizard", () => {
   test("throws when stdin is not a TTY without --yes", async () => {
     const originalDescriptor = Object.getOwnPropertyDescriptor(
       process.stdin,
-      "isTTY"
+      "isTTY",
     );
     Object.defineProperty(process.stdin, "isTTY", {
       value: false,
@@ -471,7 +471,7 @@ describe("runWizard", () => {
 
     try {
       await expect(runWizard(makeOptions({ yes: false }))).rejects.toThrow(
-        WizardError
+        WizardError,
       );
     } finally {
       if (originalDescriptor) {
@@ -487,7 +487,7 @@ describe("runWizard", () => {
 
     expect(resolveInitContextSpy).toHaveBeenCalledWith(
       expect.objectContaining({ dryRun: true, yes: true }),
-      expect.anything()
+      expect.anything(),
     );
     expect(lastWarn()).toContain("Dry-run");
   });
@@ -504,8 +504,8 @@ describe("runWizard", () => {
           features: ["errorMonitoring", "performanceMonitoring"],
           org: "bete-dev",
           project: "nextjs",
-        })
-      )
+        }),
+      ),
     );
 
     const welcome = calls.find((call) => call.kind === "welcome");
@@ -515,7 +515,7 @@ describe("runWizard", () => {
     }
     expect(welcome.options.title).toBe("Sentry Init");
     expect(welcome.options.body).toContain(
-      "We'll use AI to inspect this project and configure Sentry."
+      "We'll use AI to inspect this project and configure Sentry.",
     );
     expect(welcome.options.punchline).toContain("use AI for setup");
     expect(getUISpy.mock.calls[0]?.[0]).toEqual(
@@ -523,16 +523,16 @@ describe("runWizard", () => {
         initialWelcome: expect.objectContaining({
           title: "Sentry Init",
         }),
-      })
+      }),
     );
     expect(
-      calls.some((call) => call.kind === "select" || call.kind === "confirm")
+      calls.some((call) => call.kind === "select" || call.kind === "confirm"),
     ).toBe(false);
     const introOn = calls.findIndex(
-      (call) => call.kind === "setIntroMode" && call.enabled
+      (call) => call.kind === "setIntroMode" && call.enabled,
     );
     const introOff = calls.findIndex(
-      (call) => call.kind === "setIntroMode" && !call.enabled
+      (call) => call.kind === "setIntroMode" && !call.enabled,
     );
     expect(introOn).toBeGreaterThanOrEqual(0);
     expect(introOff).toBeGreaterThanOrEqual(0);
@@ -554,18 +554,18 @@ describe("runWizard", () => {
           features: ["errorMonitoring"],
           org: "bete-dev",
           project: "nextjs",
-        })
-      )
+        }),
+      ),
     );
 
     const infoMessages = calls
       .filter((call) => call.kind === "log.info")
       .map((call) => call.message);
     expect(
-      infoMessages.some((message) => message.includes("This wizard uses AI"))
+      infoMessages.some((message) => message.includes("This wizard uses AI")),
     ).toBe(false);
     expect(
-      infoMessages.some((message) => message.includes("For manual setup"))
+      infoMessages.some((message) => message.includes("For manual setup")),
     ).toBe(false);
   });
 
@@ -646,7 +646,7 @@ describe("runWizard", () => {
 
     expect(formatBannerSpy).not.toHaveBeenCalled();
     expect(stderrSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("BANNER")
+      expect.stringContaining("BANNER"),
     );
   });
 
@@ -662,7 +662,7 @@ describe("runWizard", () => {
       ...ENV_VAR_AGENTS.keys(),
     ]);
     const cleanEnv = Object.fromEntries(
-      Object.entries(process.env).filter(([k]) => !agentKeys.has(k))
+      Object.entries(process.env).filter(([k]) => !agentKeys.has(k)),
     );
     setEnv(cleanEnv as NodeJS.ProcessEnv);
     try {
@@ -730,7 +730,7 @@ describe("runWizard", () => {
           protocolVersion: 1,
           requestId,
         }),
-      })
+      }),
     );
   });
 
@@ -762,7 +762,7 @@ describe("runWizard", () => {
         prompt: "Continue?",
       },
       makeContext(),
-      expect.anything()
+      expect.anything(),
     );
     expect(sharedResumeAsyncMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -770,7 +770,7 @@ describe("runWizard", () => {
           protocolVersion: 1,
           requestId,
         }),
-      })
+      }),
     );
   });
 
@@ -826,7 +826,7 @@ describe("runWizard", () => {
           protocolVersion: 1,
           requestId,
         }),
-      })
+      }),
     );
   });
 
@@ -872,7 +872,7 @@ describe("runWizard", () => {
     });
 
     await expect(runWizard(makeOptions())).rejects.toThrow(
-      "Invalid init protocol envelope"
+      "Invalid init protocol envelope",
     );
     expect(executeToolSpy).not.toHaveBeenCalled();
   });
@@ -933,7 +933,7 @@ describe("runWizard", () => {
 
     expect(spinnerMock.stop).toHaveBeenCalledWith(
       "Sentry API request denied",
-      1
+      1,
     );
     expect(lastCancelMessage()).toBe("Sentry API request denied");
   });
@@ -987,7 +987,7 @@ describe("runWizard", () => {
       },
     };
     executeToolSpy.mockRejectedValue(
-      new WizardError("tool rejected by server")
+      new WizardError("tool rejected by server"),
     );
 
     await expect(runWizard(makeOptions())).rejects.toThrow(WizardError);
@@ -1020,7 +1020,7 @@ describe("runWizard", () => {
     await runWizard(makeOptions());
 
     const messages = spinnerMock.message.mock.calls.map(
-      (call: string[]) => call[0]
+      (call: string[]) => call[0],
     );
     expect(messages).toContain("Reading 2 files...");
     expect(messages).toContain("Analyzing 2 files...");
@@ -1132,14 +1132,13 @@ describe("runWizard", () => {
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      identity
+      identity,
     );
   });
 
   test("shows --yes hint when LoggingUI prompt fails", async () => {
-    const { LoggingUIPromptError } = await import(
-      "../../../src/lib/init/ui/logging-ui.js"
-    );
+    const { LoggingUIPromptError } =
+      await import("../../../src/lib/init/ui/logging-ui.js");
     const { ui } = createMockUI();
     const failingUI: WizardUI = {
       ...ui,
@@ -1148,14 +1147,14 @@ describe("runWizard", () => {
         Promise.reject(
           new LoggingUIPromptError(
             "select",
-            "This is experimental and will modify files"
-          )
+            "This is experimental and will modify files",
+          ),
         ),
     };
     getUISpy.mockResolvedValue(failingUI);
 
     await expect(
-      forceStdinTty(() => runWizard(makeOptions({ yes: false })))
+      forceStdinTty(() => runWizard(makeOptions({ yes: false }))),
     ).rejects.toThrow("Run with --yes for non-interactive mode.");
   });
 });
@@ -1241,9 +1240,9 @@ describe("runWizard — MastraClient lifecycle", () => {
           Promise.resolve({
             startAsync: startAsyncMock,
             resumeAsync: vi.fn(() =>
-              Promise.resolve({ status: "success", result: { exitCode: 0 } })
+              Promise.resolve({ status: "success", result: { exitCode: 0 } }),
             ),
-          })
+          }),
         ),
       } as any;
     });
@@ -1279,17 +1278,20 @@ describe("runWizard — workflow exit codes", () => {
     [50, EXIT.WIZARD_VERIFY],
     // 999 is an unknown code; also exercises the default branch of mapWorkflowExitCode
     [999, EXIT.WIZARD],
-  ])("maps workflow exit code %s to the expected EXIT constant", async (workflowCode, expectedExitCode) => {
-    mockStartResult = {
-      status: "success",
-      result: { exitCode: workflowCode },
-    };
+  ])(
+    "maps workflow exit code %s to the expected EXIT constant",
+    async (workflowCode, expectedExitCode) => {
+      mockStartResult = {
+        status: "success",
+        result: { exitCode: workflowCode },
+      };
 
-    const err = await runWizard(makeOptions()).catch((e) => e);
+      const err = await runWizard(makeOptions()).catch((e) => e);
 
-    expect(err).toBeInstanceOf(WizardError);
-    expect((err as WizardError).exitCode).toBe(expectedExitCode);
-  });
+      expect(err).toBeInstanceOf(WizardError);
+      expect((err as WizardError).exitCode).toBe(expectedExitCode);
+    },
+  );
 });
 
 describe("runWizard — resumeWithRetry stale-step recovery", () => {
@@ -1302,8 +1304,8 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
 
   function makeStaleStepRun(
     resumeAsyncImpl: (
-      args: Record<string, unknown>
-    ) => Promise<WorkflowRunResult>
+      args: Record<string, unknown>,
+    ) => Promise<WorkflowRunResult>,
   ) {
     let runByIdRef: ReturnType<typeof mock>;
     getWorkflowSpy.mockImplementation(function (this: MastraClient) {
@@ -1312,7 +1314,7 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
           this as unknown as {
             options: { abortSignal?: AbortSignal; retries?: number };
           }
-        ).options
+        ).options,
       );
       runByIdRef = runByIdMock;
       return {
@@ -1321,9 +1323,9 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
             runId: "test-run-id",
             startAsync: startAsyncMock,
             resumeAsync: vi.fn(async (args) =>
-              withV1SuspendEnvelopes(await resumeAsyncImpl(args))
+              withV1SuspendEnvelopes(await resumeAsyncImpl(args)),
             ),
-          })
+          }),
         ),
         runById: runByIdRef,
       } as any;
@@ -1332,11 +1334,11 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
 
   function httpError(
     status: number,
-    body: unknown
+    body: unknown,
   ): Error & { body: unknown; status: number } {
     return Object.assign(
       new Error(`HTTP error! status: ${status} - ${JSON.stringify(body)}`),
-      { body, status }
+      { body, status },
     );
   }
 
@@ -1365,7 +1367,7 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
 
   function selectWorkflowFields(
     result: WorkflowRunResult,
-    fields: string[] | undefined
+    fields: string[] | undefined,
   ): Record<string, unknown> {
     const source = result as unknown as Record<string, unknown>;
     const selected: Record<string, unknown> = {};
@@ -1433,7 +1435,7 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
 
     expect(executeToolSpy).toHaveBeenCalledWith(
       expect.objectContaining({ operation: "agent-checkpoint" }),
-      expect.anything()
+      expect.anything(),
     );
     expect(capturedResume).toMatchObject({
       data: { acknowledged: true },
@@ -1492,7 +1494,7 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
     };
     runByIdMock.mockImplementation(
       (_runId: string, opts?: { fields?: string[] }) =>
-        Promise.resolve(selectWorkflowFields(currentRunState, opts?.fields))
+        Promise.resolve(selectWorkflowFields(currentRunState, opts?.fields)),
     );
 
     let resumeCount = 0;
@@ -1515,7 +1517,7 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
           "suspended",
           "activeStepsPath",
         ]),
-      })
+      }),
     );
     // Recovery succeeded on the first attempt — resumeAsync was not called again.
     expect(resumeCount).toBe(1);
@@ -1629,7 +1631,7 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
     expect(executeToolSpy).toHaveBeenCalledWith(activePayload, makeContext());
     expect(executeToolSpy).not.toHaveBeenCalledWith(
       stalePayload,
-      makeContext()
+      makeContext(),
     );
     expect(resumeCount).toBe(2);
   });
@@ -1671,7 +1673,7 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
       const err = await runWizard(makeOptions()).catch((error) => error);
 
       expect(err).toMatchObject(
-        initServiceApiErrorShape("/api/workflows/sentry-wizard/resume-async")
+        initServiceApiErrorShape("/api/workflows/sentry-wizard/resume-async"),
       );
       expect(hasExpectedInitServiceAuthPolicy(err)).toBe(true);
       expect(err).not.toBeInstanceOf(WizardError);
@@ -1807,7 +1809,7 @@ describe("runWizard — resumeWithRetry stale-step recovery", () => {
       },
     ]);
     expect(JSON.stringify(secondResumeData?._prevPhases)).not.toContain(
-      largeContent
+      largeContent,
     );
   });
 });
@@ -1831,7 +1833,7 @@ describe("runWizard — additional coverage", () => {
       const err = await runWizard(makeOptions()).catch((error) => error);
 
       expect(err).toMatchObject(
-        initServiceApiErrorShape("/api/workflows/sentry-wizard/start-async")
+        initServiceApiErrorShape("/api/workflows/sentry-wizard/start-async"),
       );
       expect(hasExpectedInitServiceAuthPolicy(err)).toBe(true);
       expect(err.format()).toContain("sentry auth login");
@@ -1854,7 +1856,7 @@ describe("runWizard — additional coverage", () => {
           this as unknown as {
             options: { abortSignal?: AbortSignal; retries?: number };
           }
-        ).options
+        ).options,
       );
       return {
         createRun: createRunMock,
@@ -1866,7 +1868,7 @@ describe("runWizard — additional coverage", () => {
       const err = await runWizard(makeOptions()).catch((error) => error);
 
       expect(err).toMatchObject(
-        initServiceApiErrorShape("/api/workflows/sentry-wizard/create-run")
+        initServiceApiErrorShape("/api/workflows/sentry-wizard/create-run"),
       );
       expect(hasExpectedInitServiceAuthPolicy(err)).toBe(true);
       expect(createRunMock).toHaveBeenCalledTimes(1);
@@ -1890,7 +1892,7 @@ describe("runWizard — additional coverage", () => {
     delete env.SENTRY_TOKEN;
     setEnv(env);
     resolveInitContextSpy.mockResolvedValue(
-      makeContext({ authToken: "env-token" })
+      makeContext({ authToken: "env-token" }),
     );
     startAsyncMock.mockRejectedValue(initService401Error());
 
@@ -1898,7 +1900,7 @@ describe("runWizard — additional coverage", () => {
       const err = await runWizard(makeOptions()).catch((error) => error);
 
       expect(err).toMatchObject(
-        initServiceApiErrorShape("/api/workflows/sentry-wizard/start-async")
+        initServiceApiErrorShape("/api/workflows/sentry-wizard/start-async"),
       );
       expect(hasExpectedInitServiceAuthPolicy(err)).toBe(true);
       expect(err.format()).toContain("SENTRY_AUTH_TOKEN");
@@ -1917,7 +1919,7 @@ describe("runWizard — additional coverage", () => {
       host: "https://sentry.internal.example.com",
     });
     resolveInitContextSpy.mockResolvedValue(
-      makeContext({ authToken: "self-hosted-token" })
+      makeContext({ authToken: "self-hosted-token" }),
     );
 
     try {
@@ -1929,7 +1931,7 @@ describe("runWizard — additional coverage", () => {
       expect(capturedClientOptions).toHaveLength(0);
       expect(err.format()).toContain("sentry.internal.example.com");
       expect(err.format()).toContain(
-        "sentry auth login --url https://sentry.io"
+        "sentry auth login --url https://sentry.io",
       );
     } finally {
       await clearAuth();
@@ -1940,7 +1942,7 @@ describe("runWizard — additional coverage", () => {
     startAsyncMock.mockResolvedValue({ status: "bailed" });
 
     await expect(runWizard(makeOptions())).rejects.toThrow(
-      /Unexpected workflow status/
+      /Unexpected workflow status/,
     );
   });
 
@@ -2054,13 +2056,13 @@ describe("runWizard — additional coverage", () => {
       (c) =>
         c.kind === "setStep" &&
         c.stepId === "discover-context" &&
-        c.status === "in_progress"
+        c.status === "in_progress",
     );
     const completedIdx = stepCalls.findIndex(
       (c) =>
         c.kind === "setStep" &&
         c.stepId === "discover-context" &&
-        c.status === "completed"
+        c.status === "completed",
     );
     expect(inProgressIdx).toBeLessThan(completedIdx);
   });
@@ -2109,20 +2111,20 @@ describe("runWizard — additional coverage", () => {
       });
     }
     expect(stepCalls).not.toContainEqual(
-      expect.objectContaining({ stepId: "install-deps" })
+      expect.objectContaining({ stepId: "install-deps" }),
     );
 
     const discoverCompletedIndex = stepCalls.findIndex(
       (call) =>
         call.kind === "setStep" &&
         call.stepId === "discover-context" &&
-        call.status === "completed"
+        call.status === "completed",
     );
     const detectStartedIndex = stepCalls.findIndex(
       (call) =>
         call.kind === "setStep" &&
         call.stepId === "detect-platform" &&
-        call.status === "in_progress"
+        call.status === "in_progress",
     );
     expect(discoverCompletedIndex).toBeLessThan(detectStartedIndex);
   });
@@ -2138,7 +2140,7 @@ describe("runWizard — additional coverage", () => {
     };
 
     await expect(runWizard(makeOptions())).rejects.toThrow(
-      "Framework detection failed"
+      "Framework detection failed",
     );
 
     expect(mockUICalls).toContainEqual({
@@ -2155,7 +2157,7 @@ describe("runWizard — additional coverage", () => {
 
   test("uses existing platform name in detect-platform spinner label", async () => {
     resolveInitContextSpy.mockResolvedValue(
-      makeContext({ existingProject: { platform: "javascript-nextjs" } })
+      makeContext({ existingProject: { platform: "javascript-nextjs" } }),
     );
     mockStartResult = {
       status: "suspended",
@@ -2176,7 +2178,7 @@ describe("runWizard — additional coverage", () => {
     await runWizard(makeOptions());
 
     const messages = spinnerMock.message.mock.calls.map(
-      (c: unknown[]) => c[0] as string
+      (c: unknown[]) => c[0] as string,
     );
     expect(messages.some((m) => m.includes("javascript-nextjs"))).toBe(true);
   });
@@ -2209,7 +2211,7 @@ describe("runWizard — progress rotation for long-running steps", () => {
           this as unknown as {
             options: { abortSignal?: AbortSignal; retries?: number };
           }
-        ).options
+        ).options,
       );
       return {
         createRun: vi.fn(() =>
@@ -2217,7 +2219,7 @@ describe("runWizard — progress rotation for long-running steps", () => {
             runId: "test-run-id",
             startAsync: startAsyncMock,
             resumeAsync: resumeAsyncMock,
-          })
+          }),
         ),
         runById: runByIdMock,
       } as any;
@@ -2233,24 +2235,24 @@ describe("runWizard — progress rotation for long-running steps", () => {
 
     // Check that the spinner received a rotating message
     const messagesAfterFirstRotation = spinnerMock.message.mock.calls.map(
-      (c: unknown[]) => c[0] as string
+      (c: unknown[]) => c[0] as string,
     );
     expect(
       messagesAfterFirstRotation.some((m) =>
-        m.includes("Fetching SDK documentation")
-      )
+        m.includes("Fetching SDK documentation"),
+      ),
     ).toBe(true);
 
     // Advance past another rotation interval
     await vi.advanceTimersByTimeAsync(12_000);
 
     const messagesAfterSecondRotation = spinnerMock.message.mock.calls.map(
-      (c: unknown[]) => c[0] as string
+      (c: unknown[]) => c[0] as string,
     );
     expect(
       messagesAfterSecondRotation.some((m) =>
-        m.includes("Analyzing integration requirements")
-      )
+        m.includes("Analyzing integration requirements"),
+      ),
     ).toBe(true);
 
     // Resolve the resume and let the wizard finish
@@ -2284,7 +2286,7 @@ describe("runWizard — progress rotation for long-running steps", () => {
           this as unknown as {
             options: { abortSignal?: AbortSignal; retries?: number };
           }
-        ).options
+        ).options,
       );
       return {
         createRun: vi.fn(() =>
@@ -2292,7 +2294,7 @@ describe("runWizard — progress rotation for long-running steps", () => {
             runId: "test-run-id",
             startAsync: startAsyncMock,
             resumeAsync: resumeAsyncMock,
-          })
+          }),
         ),
         runById: runByIdMock,
       } as any;
@@ -2306,7 +2308,7 @@ describe("runWizard — progress rotation for long-running steps", () => {
     await vi.advanceTimersByTimeAsync(72_000);
 
     const messages = spinnerMock.message.mock.calls.map(
-      (c: unknown[]) => c[0] as string
+      (c: unknown[]) => c[0] as string,
     );
     // After exhausting messages, should show elapsed time
     expect(messages.some((m) => /\(\d+s\)/.test(m))).toBe(true);
@@ -2341,7 +2343,7 @@ describe("runWizard — progress rotation for long-running steps", () => {
           this as unknown as {
             options: { abortSignal?: AbortSignal; retries?: number };
           }
-        ).options
+        ).options,
       );
       return {
         createRun: vi.fn(() =>
@@ -2349,7 +2351,7 @@ describe("runWizard — progress rotation for long-running steps", () => {
             runId: "test-run-id",
             startAsync: startAsyncMock,
             resumeAsync: resumeAsyncMock,
-          })
+          }),
         ),
         runById: runByIdMock,
       } as any;

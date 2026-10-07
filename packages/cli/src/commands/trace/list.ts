@@ -93,7 +93,7 @@ const DEFAULT_PERIOD = "7d";
 /** Append active non-default flags to a base command string. */
 function appendTraceFlags(
   base: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   const parts: string[] = [];
   if (flags.sort !== "date") {
@@ -110,7 +110,7 @@ function appendTraceFlags(
 function nextPageHint(
   org: string,
   project: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendTraceFlags(`sentry trace list ${org}/${project} -c next`, flags);
 }
@@ -119,7 +119,7 @@ function nextPageHint(
 function prevPageHint(
   org: string,
   project: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendTraceFlags(`sentry trace list ${org}/${project} -c prev`, flags);
 }
@@ -140,7 +140,7 @@ function parseLimit(value: string): number {
 export function parseSort(value: string): SortValue {
   if (!VALID_SORT_VALUES.includes(value as SortValue)) {
     throw new Error(
-      `Invalid sort value. Must be one of: ${VALID_SORT_VALUES.join(", ")}`
+      `Invalid sort value. Must be one of: ${VALID_SORT_VALUES.join(", ")}`,
     );
   }
   return value as SortValue;
@@ -173,7 +173,7 @@ function formatTraceListHuman(result: TraceListResult): string {
  */
 function jsonTransformTraceList(
   result: TraceListResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const items =
     fields && fields.length > 0
@@ -267,7 +267,7 @@ export const listCommand = buildListCommand("trace", {
     const { org, project } = await resolveProjectBoundFromArg(
       target,
       cwd,
-      COMMAND_NAME
+      COMMAND_NAME,
     );
     // Resolve slug → numeric ID so the Events query scopes via the `project`
     // param. `project:<slug>` only matches actively-selected projects and can
@@ -282,7 +282,7 @@ export const listCommand = buildListCommand("trace", {
     const { cursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const { data: traces, nextCursor } = await withProgress(
@@ -301,7 +301,7 @@ export const listCommand = buildListCommand("trace", {
         }).catch((error: unknown): never => {
           // An unparseable user --query is a user input mistake, not a CLI bug.
           throw toSearchQueryError(error, flags.query);
-        })
+        }),
     );
 
     // Update pagination state (handles both advance and truncation)

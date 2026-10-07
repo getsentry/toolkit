@@ -48,7 +48,7 @@ export function parseKeyValue(pair: string): [string, string] {
   if (idx <= 0) {
     throw new ValidationError(
       `Expected KEY:VALUE format, got: ${JSON.stringify(pair)}`,
-      "tag/extra"
+      "tag/extra",
     );
   }
   return [pair.slice(0, idx), pair.slice(idx + 1)];
@@ -58,7 +58,7 @@ export function parseKeyValue(pair: string): [string, string] {
  * Parse an array of KEY:VALUE strings into a plain object.
  */
 function parseKeyValuePairs(
-  pairs: string[] | undefined
+  pairs: string[] | undefined,
 ): Record<string, string> {
   if (!pairs?.length) {
     return {};
@@ -109,7 +109,7 @@ function parseTimestamp(ts: string | undefined): number | undefined {
   }
   throw new ValidationError(
     `Invalid --timestamp value: '${ts}'. Use a Unix epoch number, ISO 8601, or RFC 2822 date.`,
-    "timestamp"
+    "timestamp",
   );
 }
 
@@ -129,7 +129,7 @@ const CATEGORY_RE = /^([^:]+):\s*(.*)$/;
  */
 export async function parseBreadcrumbsFromLogfile(
   logfilePath: string,
-  withCategories: boolean
+  withCategories: boolean,
 ): Promise<Breadcrumb[]> {
   let content: string;
   let mtimeSeconds: number;
@@ -144,7 +144,7 @@ export async function parseBreadcrumbsFromLogfile(
     }
     throw new ValidationError(
       `Cannot read logfile ${logfilePath}: ${(err as Error).message}`,
-      "logfile"
+      "logfile",
     );
   }
 
@@ -181,7 +181,7 @@ export async function parseBreadcrumbsFromLogfile(
  * serialized for posting to the ingest endpoint.
  */
 export async function buildEventFromFlags(
-  flags: SendEventFlags
+  flags: SendEventFlags,
 ): Promise<Event> {
   const tags = parseKeyValuePairs(flags.tag);
   // environ goes first so explicit --extra environ:val overrides it
@@ -214,7 +214,7 @@ export async function buildEventFromFlags(
     breadcrumbs: flags.logfile
       ? await parseBreadcrumbsFromLogfile(
           flags.logfile,
-          flags["with-categories"] ?? false
+          flags["with-categories"] ?? false,
         )
       : undefined,
   };

@@ -59,7 +59,7 @@ describe("SentryMonitorSchema", () => {
       expect(result.output.config?.schedule).toBe("0 0 * * *");
       // unknown fields are preserved via passthrough
       expect((result.output as Record<string, unknown>).isUpserting).toBe(
-        false
+        false,
       );
     }
   });

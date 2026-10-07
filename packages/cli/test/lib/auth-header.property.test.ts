@@ -24,10 +24,10 @@ const paddingCharacter = constantFrom(
   ...Array.from({ length: 33 }, (_, code) => String.fromCharCode(code)),
   "\x7f",
   "\u00a0",
-  "\ufeff"
+  "\ufeff",
 );
 const padding = array(paddingCharacter, { maxLength: 20 }).map((chars) =>
-  chars.join("")
+  chars.join(""),
 );
 
 describe("auth token normalization", () => {
@@ -40,7 +40,7 @@ describe("auth token normalization", () => {
         expect(normalizeAuthToken(normalizeAuthToken(input))).toBe(token);
         expect(formatAuthHeader(input)).toBe(`Bearer ${token}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -54,11 +54,11 @@ describe("auth token normalization", () => {
           const input = before + char + after;
           expect(trimAuthToken(input)).toBe(input);
           expect(() => normalizeAuthToken(input)).toThrow(
-            MalformedAuthTokenError
+            MalformedAuthTokenError,
           );
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -66,25 +66,22 @@ describe("auth token normalization", () => {
     fcAssert(
       property(padding, (input) => {
         expect(() => normalizeAuthToken(input)).toThrow(
-          MalformedAuthTokenError
+          MalformedAuthTokenError,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
-  test.each([
-    "\x80",
-    "\x85",
-    "\u200b",
-    "é",
-    "💥",
-  ])("does not silently remove other Unicode characters %#", (char) => {
-    expect(() => normalizeAuthToken(`${char}token`)).toThrow(
-      MalformedAuthTokenError
-    );
-    expect(() => normalizeAuthToken(`token${char}`)).toThrow(
-      MalformedAuthTokenError
-    );
-  });
+  test.each(["\x80", "\x85", "\u200b", "é", "💥"])(
+    "does not silently remove other Unicode characters %#",
+    (char) => {
+      expect(() => normalizeAuthToken(`${char}token`)).toThrow(
+        MalformedAuthTokenError,
+      );
+      expect(() => normalizeAuthToken(`token${char}`)).toThrow(
+        MalformedAuthTokenError,
+      );
+    },
+  );
 });

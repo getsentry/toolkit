@@ -35,7 +35,7 @@ type ServeFunc = (
     format: "human" | "json";
     attributes: boolean;
     open: boolean;
-  }
+  },
 ) => Promise<void>;
 
 function interceptShutdownSignal() {
@@ -44,7 +44,7 @@ function interceptShutdownSignal() {
   const originalOnce = process.once.bind(process);
   const onSpy = vi.spyOn(process, "on").mockImplementation(((
     event: string,
-    listener: () => void
+    listener: () => void,
   ) => {
     if (event === "SIGINT") {
       handler = listener;
@@ -54,7 +54,7 @@ function interceptShutdownSignal() {
   }) as typeof process.on);
   const onceSpy = vi.spyOn(process, "once").mockImplementation(((
     event: string,
-    listener: () => void
+    listener: () => void,
   ) => {
     if (event === "SIGINT") {
       handler = listener;
@@ -128,8 +128,8 @@ describe("sentry local serve --open", () => {
 
     expect(openBrowserMock).toHaveBeenCalledWith(
       expect.stringMatching(
-        /^http:\/\/localhost:5173\/#stream=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fstream$/
-      )
+        /^http:\/\/localhost:5173\/#stream=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fstream$/,
+      ),
     );
   });
 
@@ -147,7 +147,7 @@ describe("sentry local serve --open", () => {
     const { server, port } = await tryListen(
       buildApp(createSpotlightBuffer(10)),
       0,
-      "127.0.0.1"
+      "127.0.0.1",
     );
     const func = (await serverCommand.loader()) as unknown as ServeFunc;
 
@@ -163,7 +163,7 @@ describe("sentry local serve --open", () => {
     }
 
     expect(openBrowserMock).toHaveBeenCalledWith(
-      `http://localhost:5173/#stream=http%3A%2F%2F127.0.0.1%3A${port}%2Fstream`
+      `http://localhost:5173/#stream=http%3A%2F%2F127.0.0.1%3A${port}%2Fstream`,
     );
   });
 });
@@ -179,7 +179,7 @@ describe("feedSSELine", () => {
     feedSSELine(
       "event: application/x-sentry-envelope",
       state,
-      (type, data, id) => events.push({ type, data, id })
+      (type, data, id) => events.push({ type, data, id }),
     );
     expect(state.eventType).toBe("application/x-sentry-envelope");
     expect(events).toHaveLength(0);
@@ -189,7 +189,7 @@ describe("feedSSELine", () => {
     const state = makeState();
     const events: Array<{ type: string; data: string; id: string }> = [];
     feedSSELine("data: hello", state, (type, data, id) =>
-      events.push({ type, data, id })
+      events.push({ type, data, id }),
     );
     expect(state.dataLines).toEqual(["hello"]);
     expect(events).toHaveLength(0);
@@ -199,7 +199,7 @@ describe("feedSSELine", () => {
     const state = makeState();
     const events: Array<{ type: string; data: string; id: string }> = [];
     feedSSELine("id: abc-123", state, (type, data, id) =>
-      events.push({ type, data, id })
+      events.push({ type, data, id }),
     );
     expect(state.id).toBe("abc-123");
   });
@@ -412,7 +412,7 @@ describe("buildApp", () => {
       headers: { Origin: "http://localhost:3000" },
     });
     expect(res.headers.get("access-control-allow-origin")).toBe(
-      "http://localhost:3000"
+      "http://localhost:3000",
     );
   });
 
@@ -424,7 +424,7 @@ describe("buildApp", () => {
       headers: { Origin: "https://local.sentry.dev" },
     });
     expect(res.headers.get("access-control-allow-origin")).toBe(
-      "https://local.sentry.dev"
+      "https://local.sentry.dev",
     );
     if (res.body) {
       await res.body.cancel();
@@ -489,13 +489,13 @@ describe("buildApp", () => {
       },
     });
     expect(res.headers.get("access-control-allow-headers")).toContain(
-      "Last-Event-ID"
+      "Last-Event-ID",
     );
     expect(res.headers.get("access-control-allow-private-network")).toBe(
-      "true"
+      "true",
     );
     expect(res.headers.get("vary")).toContain(
-      "Access-Control-Request-Private-Network"
+      "Access-Control-Request-Private-Network",
     );
   });
 
@@ -530,7 +530,7 @@ describe("buildApp", () => {
 
     expect((await app.request("/capabilities")).status).toBe(403);
     expect((await app.request("/clear", { method: "DELETE" })).status).toBe(
-      403
+      403,
     );
   });
 
@@ -658,7 +658,7 @@ describe("isServerRunning", () => {
 
     try {
       await expect(isServerRunning(`http://127.0.0.1:${port}`)).resolves.toBe(
-        true
+        true,
       );
     } finally {
       globalThis.fetch = savedFetch;

@@ -11,7 +11,7 @@
  * with other telemetry tests.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {

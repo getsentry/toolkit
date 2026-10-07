@@ -9,11 +9,11 @@ const PATH_SEGMENT_RE = /[/\\]/u;
  * Check whether a batch of paths exists inside the sandbox.
  */
 export async function fileExistsBatch(
-  payload: FileExistsBatchPayload
+  payload: FileExistsBatchPayload,
 ): Promise<ToolResult> {
   const results = await Promise.all(
     payload.params.paths.map(async (filePath) => {
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         const absPath = safePath(payload.cwd, filePath);
         await fs.promises.access(absPath);
@@ -21,7 +21,7 @@ export async function fileExistsBatch(
       } catch {
         return [filePath, false] as const;
       }
-    })
+    }),
   );
 
   const exists: Record<string, boolean> = {};

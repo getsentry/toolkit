@@ -3,6 +3,48 @@
 Entries through 0.45.0 come from the [original CLI changelog at its 0.45.0 tag](https://github.com/getsentry/cli/blob/0.45.0/CHANGELOG.md).
 
 <!-- Craft generates notes for each CLI release. -->
+## 0.47.0
+
+### New Features ✨
+
+#### Cli
+
+- Add replay download command by @gggritso in [#1392](https://github.com/getsentry/toolkit/pull/1392)
+- Add dsn list command by @betegon in [#1365](https://github.com/getsentry/toolkit/pull/1365)
+- Add feedback spam command by @betegon in [#1372](https://github.com/getsentry/toolkit/pull/1372)
+- Add feedback unresolve command by @betegon in [#1369](https://github.com/getsentry/toolkit/pull/1369)
+- Add feedback resolve command by @betegon in [#1366](https://github.com/getsentry/toolkit/pull/1366)
+
+#### Other
+
+- (search) Split search_events into dataset-specific tools by @sentry-junior in [#1374](https://github.com/getsentry/toolkit/pull/1374)
+
+### Bug Fixes 🐛
+
+#### Cli
+
+- Validate repository list responses by @betegon in [#1364](https://github.com/getsentry/toolkit/pull/1364)
+- Preserve a 401 on the final request attempt by @betegon in [#1370](https://github.com/getsentry/toolkit/pull/1370)
+
+#### Other
+
+- (api) Accept null legacy event context by @betegon in [#1353](https://github.com/getsentry/toolkit/pull/1353)
+- (cloudflare) Upload built Worker and SPA assets by @BYK in [#1400](https://github.com/getsentry/toolkit/pull/1400)
+
+### Internal Changes 🔧
+
+- Update SDK to v11.1.0 and migrate tags to attributes by @JPeer264 in [#1347](https://github.com/getsentry/toolkit/pull/1347)
+
+### Other
+
+- Install CLI nightlies from Toolkit GHCR by @BYK in [#1403](https://github.com/getsentry/toolkit/pull/1403)
+- Test the exact production Worker version before promotion by @BYK in [#1399](https://github.com/getsentry/toolkit/pull/1399)
+- Move Cloudflare token to protected production environment by @BYK in [#1394](https://github.com/getsentry/toolkit/pull/1394)
+- Publish Toolkit CLI nightlies to GHCR by @BYK in [#1393](https://github.com/getsentry/toolkit/pull/1393)
+- Restore CLI changelog with automatic workspace notes by @BYK in [#1362](https://github.com/getsentry/toolkit/pull/1362)
+- Restore guarded MCP production deployment by @BYK in [#1359](https://github.com/getsentry/toolkit/pull/1359)
+- Regenerate CLI skill files for 0.47.0 by @BYK in [#1360](https://github.com/getsentry/toolkit/pull/1360)
+
 ## 0.46.0
 
 ### New Features ✨

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { listCommand } from "../../../../src/commands/alert/issues/list.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../../src/lib/browser.js";
 import { DEFAULT_SENTRY_URL } from "../../../../src/lib/constants.js";
 import { setAuthToken } from "../../../../src/lib/db/auth.js";
@@ -30,7 +30,7 @@ type ListFlags = {
 type ListFunc = (
   this: unknown,
   flags: ListFlags,
-  target?: string
+  target?: string,
 ) => Promise<void>;
 
 function createContext() {
@@ -111,7 +111,7 @@ describe("alert issues list pagination", () => {
               "Content-Type": "application/json",
               Link: '<https://sentry.io/api/0/>; rel="next"; results="false"; cursor="0:0:0"',
             },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -159,7 +159,7 @@ describe("alert issues list pagination", () => {
               "Content-Type": "application/json",
               Link: '<https://sentry.io/api/0/>; rel="next"; results="true"; cursor="next:0:0"',
             },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -195,16 +195,16 @@ describe("alert issues list pagination", () => {
         limit: 30,
         json: false,
       },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-org"),
-      "issue alert rules"
+      "issue alert rules",
     );
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-project"),
-      "issue alert rules"
+      "issue alert rules",
     );
   });
 
@@ -239,12 +239,12 @@ describe("alert issues list pagination", () => {
         limit: 30,
         json: false,
       },
-      "acme-corp"
+      "acme-corp",
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("acme-corp"),
-      "issue alert rules"
+      "issue alert rules",
     );
     const openedUrl = String(openInBrowserSpy.mock.calls[0]?.[0]);
     expect(openedUrl).not.toContain("?project=");
@@ -283,16 +283,16 @@ describe("alert issues list pagination", () => {
         limit: 30,
         json: false,
       },
-      "myproj"
+      "myproj",
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("org-one"),
-      "issue alert rules"
+      "issue alert rules",
     );
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("myproj"),
-      "issue alert rules"
+      "issue alert rules",
     );
   });
 
@@ -310,7 +310,7 @@ describe("alert issues list pagination", () => {
         ]);
       }
       const projectMatch = url.pathname.match(
-        /\/api\/0\/projects\/([^/]+)\/myproj\//
+        /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
         const org = projectMatch[1] as string;
@@ -338,8 +338,8 @@ describe("alert issues list pagination", () => {
           limit: 30,
           json: false,
         },
-        "myproj"
-      )
+        "myproj",
+      ),
     ).rejects.toThrow("multiple organizations");
 
     expect(openInBrowserSpy).not.toHaveBeenCalled();
@@ -393,7 +393,7 @@ describe("alert issues list pagination", () => {
         limit: 10,
         json: false,
       },
-      "issues"
+      "issues",
     );
 
     expect(stdout.output).toContain("issues-rule");
@@ -406,15 +406,15 @@ describe("alert issues list pagination", () => {
       func.call(
         context,
         { web: false, fresh: false, limit: 0, json: true },
-        "test-org/test-project"
-      )
+        "test-org/test-project",
+      ),
     ).rejects.toThrow("--limit must be at least 1");
     await expect(
       func.call(
         context,
         { web: false, fresh: false, limit: 1001, json: true },
-        "test-org/test-project"
-      )
+        "test-org/test-project",
+      ),
     ).rejects.toThrow("--limit cannot exceed 1000");
   });
 
@@ -441,7 +441,7 @@ describe("alert issues list pagination", () => {
       const req = new Request(input, init);
       const url = new URL(req.url);
       const ruleMatch = url.pathname.match(
-        /\/api\/0\/organizations\/([^/]+)\/workflows\//
+        /\/api\/0\/organizations\/([^/]+)\/workflows\//,
       );
       if (ruleMatch) {
         return Response.json([rule(ruleMatch[1] as string)]);
@@ -453,7 +453,7 @@ describe("alert issues list pagination", () => {
         ]);
       }
       const projectMatch = url.pathname.match(
-        /\/api\/0\/projects\/([^/]+)\/myproj\//
+        /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
         const org = projectMatch[1] as string;
@@ -477,7 +477,7 @@ describe("alert issues list pagination", () => {
         limit: 10,
         json: false,
       },
-      "myproj"
+      "myproj",
     );
 
     expect(stdout.output).toContain("Issue alert rules from 2 projects:");
@@ -497,7 +497,7 @@ describe("alert issues list pagination", () => {
       const req = new Request(input, init);
       const url = new URL(req.url);
       const ruleMatch = url.pathname.match(
-        /\/api\/0\/organizations\/([^/]+)\/workflows\//
+        /\/api\/0\/organizations\/([^/]+)\/workflows\//,
       );
       if (ruleMatch) {
         const org = ruleMatch[1] as string;
@@ -530,7 +530,7 @@ describe("alert issues list pagination", () => {
         ]);
       }
       const projectMatch = url.pathname.match(
-        /\/api\/0\/projects\/([^/]+)\/myproj\//
+        /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
         const org = projectMatch[1] as string;
@@ -554,7 +554,7 @@ describe("alert issues list pagination", () => {
         limit: 10,
         json: true,
       },
-      "myproj"
+      "myproj",
     );
 
     const parsed = JSON.parse(stdout.output);
@@ -568,7 +568,9 @@ describe("alert issues list pagination", () => {
       }),
     ]);
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to fetch alert rules from org-two/myproj")
+      expect.stringContaining(
+        "Failed to fetch alert rules from org-two/myproj",
+      ),
     );
   });
 
@@ -603,8 +605,8 @@ describe("alert issues list pagination", () => {
           limit: 10,
           json: true,
         },
-        "test-org/test-project"
-      )
+        "test-org/test-project",
+      ),
     ).rejects.toMatchObject({
       name: "ApiError",
       status: 403,
@@ -637,7 +639,7 @@ describe("alert issues list pagination", () => {
       const req = new Request(input, init);
       const url = new URL(req.url);
       const ruleMatch = url.pathname.match(
-        /\/api\/0\/organizations\/([^/]+)\/workflows\//
+        /\/api\/0\/organizations\/([^/]+)\/workflows\//,
       );
       if (ruleMatch) {
         const org = ruleMatch[1] as string;
@@ -645,7 +647,7 @@ describe("alert issues list pagination", () => {
         perPageByOrg.set(org, perPage);
         return new Response(
           JSON.stringify(
-            Array.from({ length: perPage }, (_, i) => rule(org, i + 1))
+            Array.from({ length: perPage }, (_, i) => rule(org, i + 1)),
           ),
           {
             status: 200,
@@ -653,7 +655,7 @@ describe("alert issues list pagination", () => {
               "Content-Type": "application/json",
               Link: `<https://sentry.io/api/0/>; rel="next"; results="true"; cursor="${org}-next:0:0"`,
             },
-          }
+          },
         );
       }
 
@@ -666,7 +668,7 @@ describe("alert issues list pagination", () => {
       }
 
       const projectMatch = url.pathname.match(
-        /\/api\/0\/projects\/([^/]+)\/myproj\//
+        /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
         const org = projectMatch[1] as string;
@@ -691,7 +693,7 @@ describe("alert issues list pagination", () => {
         limit: 10,
         json: true,
       },
-      "myproj"
+      "myproj",
     );
 
     const parsed = JSON.parse(stdout.output);

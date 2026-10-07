@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-release
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Work with Sentry releases
 requires:
   bins: ["sentry"]
@@ -11,7 +11,7 @@ requires:
 
 Work with Sentry releases
 
-### `sentry release list <org/project>`
+### `sentry release list [<org/project>]`
 
 List releases with adoption and health metrics
 
@@ -74,7 +74,7 @@ Restore an archived release
 **Flags:**
 - `-n, --dry-run - Show what would happen without making changes`
 
-### `sentry release deploy <org/version> <environment> <name>`
+### `sentry release deploy <org/version> <environment> [<name>]`
 
 Create a deploy for a release
 

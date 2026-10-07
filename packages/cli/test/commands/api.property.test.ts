@@ -53,7 +53,7 @@ const validMethodArb = constantFrom(
   "delete",
   "patch",
   "Get",
-  "pOsT"
+  "pOsT",
 );
 
 /** Invalid HTTP methods */
@@ -65,7 +65,7 @@ const invalidMethodArb = constantFrom(
   "INVALID",
   "",
   "GETS",
-  "POSTING"
+  "POSTING",
 );
 
 /** Path segments (alphanumeric with hyphens, no slashes) */
@@ -73,18 +73,18 @@ const pathSegmentArb = stringMatching(/^[a-z0-9][a-z0-9-]{0,20}[a-z0-9]$/);
 
 /** Simple endpoint paths without query strings */
 const simplePathArb = array(pathSegmentArb, { minLength: 1, maxLength: 5 }).map(
-  (segments) => segments.join("/")
+  (segments) => segments.join("/"),
 );
 
 /** Query string (starts with ?, contains valid chars) */
 const queryStringArb = stringMatching(/^\?[a-zA-Z0-9_=&%-]{1,50}$/).map((q) =>
-  q.length > 1 ? q : "?q=1"
+  q.length > 1 ? q : "?q=1",
 );
 
 /** Endpoint with optional query string */
 const endpointArb = tuple(
   simplePathArb,
-  oneof(constantFrom(""), queryStringArb)
+  oneof(constantFrom(""), queryStringArb),
 ).map(([path, query]) => path + query);
 
 /** Valid field key base (alphanumeric with underscores) */
@@ -93,13 +93,13 @@ const fieldKeyBaseArb = stringMatching(/^[a-zA-Z_][a-zA-Z0-9_]{0,15}$/);
 /** Bracket segment (alphanumeric key or empty for array push) */
 const bracketSegmentArb = oneof(
   fieldKeyBaseArb.map((k) => `[${k}]`),
-  constantFrom("[]") // array push
+  constantFrom("[]"), // array push
 );
 
 /** Valid nested field key like "user[name]" or "tags[]" */
 const nestedFieldKeyArb = tuple(
   fieldKeyBaseArb,
-  array(bracketSegmentArb, { minLength: 0, maxLength: 3 })
+  array(bracketSegmentArb, { minLength: 0, maxLength: 3 }),
 ).map(([base, brackets]) => {
   // Ensure empty brackets only at end
   const emptyIdx = brackets.indexOf("[]");
@@ -121,8 +121,8 @@ const jsonValueArb = oneof(
     "3.14",
     '"hello"',
     "[1,2,3]",
-    '{"a":1}'
-  )
+    '{"a":1}',
+  ),
 );
 
 /**
@@ -138,7 +138,7 @@ const plainStringArb = stringMatching(/^[a-zA-Z][a-zA-Z0-9 ]{0,20}$/).filter(
     !/^\d+(\.\d+)?$/.test(s) &&
     !s.startsWith('"') &&
     !s.startsWith("[") &&
-    !s.startsWith("{")
+    !s.startsWith("{"),
 );
 
 describe("normalizeEndpoint properties", () => {
@@ -151,7 +151,7 @@ describe("normalizeEndpoint properties", () => {
           expect(result.startsWith("/")).toBe(false);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -169,7 +169,7 @@ describe("normalizeEndpoint properties", () => {
           expect(result[queryIdx - 1]).toBe("/");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -182,7 +182,7 @@ describe("normalizeEndpoint properties", () => {
         // Query string should be preserved exactly
         expect(result.endsWith(query)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -193,7 +193,7 @@ describe("normalizeEndpoint properties", () => {
         const twice = normalizeEndpoint(once);
         expect(twice).toBe(once);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -208,7 +208,7 @@ describe("normalizeEndpoint properties", () => {
 
         expect(resultWith).toBe(resultWithout);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -223,7 +223,7 @@ describe("normalizeEndpoint properties", () => {
 
         expect(resultWith).toBe(resultWithout);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -233,7 +233,7 @@ describe("normalizeEndpoint properties", () => {
         const result = normalizeEndpoint(endpoint);
         expect(result.startsWith("api/0/")).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -245,10 +245,10 @@ describe("parseMethod properties", () => {
         const result = parseMethod(method);
         expect(result).toBe(method.toUpperCase() as typeof result);
         expect(["GET", "POST", "PUT", "DELETE", "PATCH"]).toContain(
-          result as string
+          result as string,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -257,7 +257,7 @@ describe("parseMethod properties", () => {
       property(invalidMethodArb, (method) => {
         expect(() => parseMethod(method)).toThrow(/Invalid method/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -267,7 +267,7 @@ describe("parseMethod properties", () => {
         const result = parseMethod(method);
         expect(result).toBe((result as string).toUpperCase() as typeof result);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -281,7 +281,7 @@ describe("parseFieldKey properties", () => {
         const expectedBase = key.split("[")[0];
         expect(segments[0]).toBe(expectedBase);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -293,10 +293,10 @@ describe("parseFieldKey properties", () => {
     await fcAssert(
       property(fieldKeyBaseArb, (key) => {
         expect(() => parseFieldKey(`[${key}]`)).toThrow(
-          /Invalid field key format/
+          /Invalid field key format/,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -307,7 +307,7 @@ describe("parseFieldKey properties", () => {
         const bracketCount = (key.match(/\[/g) || []).length;
         expect(segments.length).toBe(bracketCount + 1);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -320,20 +320,20 @@ describe("setNestedValue security properties", () => {
 
         // __proto__ as base key
         expect(() => setNestedValue(obj, "__proto__", "value")).toThrow(
-          /"__proto__" is not allowed/
+          /"__proto__" is not allowed/,
         );
 
         // __proto__ in brackets
         expect(() => setNestedValue(obj, `${key}[__proto__]`, "value")).toThrow(
-          /"__proto__" is not allowed/
+          /"__proto__" is not allowed/,
         );
 
         // __proto__ deeply nested
         expect(() =>
-          setNestedValue(obj, `${key}[nested][__proto__]`, "value")
+          setNestedValue(obj, `${key}[nested][__proto__]`, "value"),
         ).toThrow(/"__proto__" is not allowed/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -343,14 +343,14 @@ describe("setNestedValue security properties", () => {
         const obj: Record<string, unknown> = {};
 
         expect(() => setNestedValue(obj, "constructor", "value")).toThrow(
-          /"constructor" is not allowed/
+          /"constructor" is not allowed/,
         );
 
         expect(() =>
-          setNestedValue(obj, `${key}[constructor]`, "value")
+          setNestedValue(obj, `${key}[constructor]`, "value"),
         ).toThrow(/"constructor" is not allowed/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -360,14 +360,14 @@ describe("setNestedValue security properties", () => {
         const obj: Record<string, unknown> = {};
 
         expect(() => setNestedValue(obj, "prototype", "value")).toThrow(
-          /"prototype" is not allowed/
+          /"prototype" is not allowed/,
         );
 
         expect(() => setNestedValue(obj, `${key}[prototype]`, "value")).toThrow(
-          /"prototype" is not allowed/
+          /"prototype" is not allowed/,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -401,7 +401,7 @@ describe("setNestedValue behavior properties", () => {
         setNestedValue(obj, key, value);
         expect(obj[key]).toBe(value);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -416,9 +416,9 @@ describe("setNestedValue behavior properties", () => {
           expect(obj[base]).toBeDefined();
           expect(typeof obj[base]).toBe("object");
           expect((obj[base] as Record<string, unknown>)[nested]).toBe(value);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -431,7 +431,7 @@ describe("setNestedValue behavior properties", () => {
         expect(Array.isArray(obj[key])).toBe(true);
         expect((obj[key] as unknown[])[0]).toBe(value);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -449,9 +449,9 @@ describe("setNestedValue behavior properties", () => {
           expect(arr.length).toBe(2);
           expect(arr[0]).toBe(value1);
           expect(arr[1]).toBe(value2);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -460,10 +460,10 @@ describe("setNestedValue behavior properties", () => {
       property(tuple(fieldKeyBaseArb, fieldKeyBaseArb), ([base, end]) => {
         const obj: Record<string, unknown> = {};
         expect(() => setNestedValue(obj, `${base}[][${end}]`, "value")).toThrow(
-          /empty brackets \[\] can only appear at the end/
+          /empty brackets \[\] can only appear at the end/,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -476,7 +476,7 @@ describe("parseFieldValue properties", () => {
         const expected = JSON.parse(jsonStr);
         expect(result).toEqual(expected);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -486,7 +486,7 @@ describe("parseFieldValue properties", () => {
         const result = parseFieldValue(str);
         expect(result).toBe(str);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -509,7 +509,7 @@ describe("parseFieldValue properties", () => {
 
 /** Arbitrary JSON object with string values (for request bodies) */
 const jsonObjectArb = dictionary(fieldKeyBaseArb, plainStringArb).filter(
-  (d) => Object.keys(d).length > 0
+  (d) => Object.keys(d).length > 0,
 );
 
 /** JSON objects stringified */
@@ -523,12 +523,12 @@ const jsonArrayStringArb = array(jsonValue(), {
 
 /** Valid key=value field string */
 const keyValueFieldArb = tuple(fieldKeyBaseArb, plainStringArb).map(
-  ([k, v]) => `${k}=${v}`
+  ([k, v]) => `${k}=${v}`,
 );
 
 /** Non-JSON, non-key=value field string (has no '=' and doesn't start with {/[) */
 const bareFieldArb = stringMatching(/^[a-zA-Z][a-zA-Z0-9]{1,15}$/).filter(
-  (s) => !(s.includes("=") || s.startsWith("{") || s.startsWith("["))
+  (s) => !(s.includes("=") || s.startsWith("{") || s.startsWith("[")),
 );
 
 /**
@@ -561,7 +561,7 @@ describe("property: normalizeFields JSON guard", () => {
         });
         expect(output).toBe("");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -574,7 +574,7 @@ describe("property: normalizeFields JSON guard", () => {
         });
         expect(output).toBe("");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -586,7 +586,7 @@ describe("property: parseDataBody", () => {
         const result = parseDataBody(JSON.stringify(obj));
         expect(result).toEqual(obj);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -596,7 +596,7 @@ describe("property: parseDataBody", () => {
         const result = parseDataBody(s);
         expect(result).toBe(s);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -613,9 +613,9 @@ describe("property: extractJsonBody", () => {
             expect(result.remaining).toEqual(fields);
           });
           expect(output).toBe("");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -629,7 +629,7 @@ describe("property: extractJsonBody", () => {
         });
         expect(output).toContain("request body");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -638,7 +638,7 @@ describe("property: extractJsonBody", () => {
       property(
         tuple(
           oneof(jsonObjectStringArb, keyValueFieldArb, bareFieldArb),
-          array(keyValueFieldArb, { minLength: 0, maxLength: 3 })
+          array(keyValueFieldArb, { minLength: 0, maxLength: 3 }),
         ),
         ([first, rest]) => {
           const fields = [first, ...rest];
@@ -648,9 +648,9 @@ describe("property: extractJsonBody", () => {
             const bodyCount = result.body !== undefined ? 1 : 0;
             expect(remainingCount + bodyCount).toBe(fields.length);
           });
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -659,7 +659,7 @@ describe("property: extractJsonBody", () => {
       property(jsonObjectStringArb, jsonObjectStringArb, (a, b) => {
         expect(() => extractJsonBody([a, b])).toThrow(ValidationError);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -671,13 +671,13 @@ describe("property: buildFromFields", () => {
         const output = captureStderr(() => {
           // GET with a JSON field: should NOT extract body (throws instead)
           expect(() => buildFromFields("GET", { "raw-field": [json] })).toThrow(
-            ValidationError
+            ValidationError,
           );
         });
         // No hint emitted (extraction skipped for GET)
         expect(output).toBe("");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -690,7 +690,7 @@ describe("property: buildFromFields", () => {
           expect(result.params).toBeUndefined();
         });
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -727,9 +727,9 @@ describe("property: buildFromFields", () => {
               expect(body).toHaveProperty(k);
             }
           });
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -748,12 +748,12 @@ describe("property: buildFromFields", () => {
               buildFromFields("PUT", {
                 "raw-field": [jsonStr],
                 field: [`${key}=${fieldVal}`],
-              })
+              }),
             ).toThrow(ValidationError);
           });
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -768,9 +768,9 @@ describe("property: buildFromFields", () => {
           });
           // No JSON hint — only colon-correction warnings might appear
           expect(output).not.toContain("request body");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -783,12 +783,12 @@ describe("property: resolveBody", () => {
       asyncProperty(jsonObjectStringArb, async (json) => {
         const result = await resolveBody(
           { method: "PUT", data: json },
-          MOCK_STDIN
+          MOCK_STDIN,
         );
         expect(result.body).toBeDefined();
         expect(result.params).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -798,11 +798,11 @@ describe("property: resolveBody", () => {
         await expect(
           resolveBody(
             { method: "PUT", data: json, input: "file.json" },
-            MOCK_STDIN
-          )
+            MOCK_STDIN,
+          ),
         ).rejects.toThrow(ValidationError);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -815,12 +815,12 @@ describe("property: resolveBody", () => {
           await expect(
             resolveBody(
               { method: "PUT", data: json, field: [field] },
-              MOCK_STDIN
-            )
+              MOCK_STDIN,
+            ),
           ).rejects.toThrow(ValidationError);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -831,21 +831,21 @@ describe("property: resolveBody", () => {
 
 /** Arbitrary for clean API endpoint paths (no query string, for dry-run tests) */
 const dryRunEndpointArb = stringMatching(
-  /^[a-z][a-z0-9-]*\/[a-z0-9-]*\/$/
+  /^[a-z][a-z0-9-]*\/[a-z0-9-]*\/$/,
 ).filter((s) => s.length > 3 && s.length < 80);
 
 /** Arbitrary for query param values */
 const paramValueArb = stringMatching(/^[a-zA-Z0-9_-]+$/).filter(
-  (s) => s.length > 0 && s.length < 40
+  (s) => s.length > 0 && s.length < 40,
 );
 
 /** Arbitrary for query param maps */
 const paramsArb = dictionary(
   stringMatching(/^[a-zA-Z][a-zA-Z0-9_]*$/).filter(
-    (s) => s.length > 0 && s.length < 20
+    (s) => s.length > 0 && s.length < 20,
   ),
   paramValueArb,
-  { minKeys: 0, maxKeys: 3 }
+  { minKeys: 0, maxKeys: 3 },
 );
 
 describe("property: resolveRequestUrl", () => {
@@ -855,7 +855,7 @@ describe("property: resolveRequestUrl", () => {
         const url = resolveRequestUrl(endpoint);
         expect(url).toContain("/api/0/");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -868,7 +868,7 @@ describe("property: resolveRequestUrl", () => {
           : endpoint;
         expect(url).toContain(normalized);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -883,7 +883,7 @@ describe("property: resolveRequestUrl", () => {
           }
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -905,7 +905,7 @@ describe("property: resolveEffectiveHeaders", () => {
           expect(result[key]).toBe(value);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -919,7 +919,7 @@ describe("property: resolveEffectiveHeaders", () => {
         const result = resolveEffectiveHeaders(custom, body);
         expect(result["Content-Type"]).toBe("application/json");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -932,7 +932,7 @@ describe("property: resolveEffectiveHeaders", () => {
           expect(result["Content-Type"]).toBeUndefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -940,14 +940,14 @@ describe("property: resolveEffectiveHeaders", () => {
     const contentTypeArb = constantFrom(
       "text/plain",
       "text/xml",
-      "application/x-www-form-urlencoded"
+      "application/x-www-form-urlencoded",
     );
     fcAssert(
       property(contentTypeArb, jsonValue(), (ct, body) => {
         const result = resolveEffectiveHeaders({ "Content-Type": ct }, body);
         expect(result["Content-Type"]).toBe(ct);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

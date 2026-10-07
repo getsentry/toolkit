@@ -30,7 +30,7 @@ const SKILL_CONTENT_STUB =
   "export const SKILL_FILES: [string, string][] = [];\n";
 const skillContentExists = await access(SKILL_CONTENT_PATH).then(
   () => true,
-  () => false
+  () => false,
 );
 if (!skillContentExists) {
   mkdirSync("src/generated", { recursive: true });
@@ -62,7 +62,7 @@ type MarkerStyle = "html" | "mdx";
 
 function markerTags(
   sectionName: string,
-  style: MarkerStyle
+  style: MarkerStyle,
 ): { startTag: string; endTag: string } {
   if (style === "mdx") {
     return {
@@ -91,7 +91,7 @@ function replaceMarkerSection(
   content: string,
   sectionName: string,
   generated: string,
-  style: MarkerStyle = "html"
+  style: MarkerStyle = "html",
 ): string {
   const { startTag, endTag } = markerTags(sectionName, style);
 
@@ -101,7 +101,7 @@ function replaceMarkerSection(
   if (startIdx === -1 || endIdx === -1) {
     throw new Error(
       `Missing markers for section "${sectionName}": ` +
-        `start=${startIdx !== -1}, end=${endIdx !== -1}`
+        `start=${startIdx !== -1}, end=${endIdx !== -1}`,
     );
   }
   if (startIdx > endIdx) {
@@ -189,7 +189,7 @@ function generateProjectStructure(allRoutes: RouteInfo[]): string {
   for (const route of groups) {
     const subcmds = getSubcommandLabel(route);
     lines.push(
-      `│       │   │   ├── ${`${route.name}/`.padEnd(13)}# ${subcmds}`
+      `│       │   │   ├── ${`${route.name}/`.padEnd(13)}# ${subcmds}`,
     );
   }
 
@@ -207,22 +207,22 @@ function generateProjectStructure(allRoutes: RouteInfo[]): string {
     const isLast = i === allStandaloneEntries.length - 1;
     const prefix = isLast ? "└──" : "├──";
     lines.push(
-      `│       │   │   ${prefix} ${`${entry.name}.ts`.padEnd(13)}# ${entry.brief}`
+      `│       │   │   ${prefix} ${`${entry.name}.ts`.padEnd(13)}# ${entry.brief}`,
     );
   }
 
   lines.push("│       │   ├── lib/            # Shared utilities");
   lines.push(
-    "│       │   └── types/          # TypeScript types and Valibot schemas"
+    "│       │   └── types/          # TypeScript types and Valibot schemas",
   );
   lines.push(
-    "│       ├── test/               # Test files (mirrors src/ structure)"
+    "│       ├── test/               # Test files (mirrors src/ structure)",
   );
   lines.push("│       ├── script/             # Build and utility scripts");
   lines.push("│       └── plugins/            # Agent skill files");
   lines.push("└── apps/");
   lines.push(
-    "    └── cli-docs/             # Documentation site (Astro + Starlight)"
+    "    └── cli-docs/             # Documentation site (Astro + Starlight)",
   );
   lines.push("```");
 
@@ -238,7 +238,7 @@ function generateProjectStructure(allRoutes: RouteInfo[]): string {
  * Returns groups in insertion order.
  */
 function groupScopesByResource(
-  scopes: readonly string[]
+  scopes: readonly string[],
 ): Map<string, string[]> {
   const groups = new Map<string, string[]>();
   for (const scope of scopes) {
@@ -294,7 +294,7 @@ function extractPnpmVersion(): string {
   if (!match) {
     throw new Error(
       `Cannot extract pnpm version from packageManager: "${pm}". ` +
-        "Expected format: pnpm@X.Y.Z"
+        "Expected format: pnpm@X.Y.Z",
     );
   }
   return match[1];
@@ -315,7 +315,7 @@ function extractNodeVersion(): string {
   if (!match) {
     throw new Error(
       `Cannot extract Node.js version from engines.node: "${constraint}". ` +
-        "Expected a semver-like version (e.g., >=22.15)"
+        "Expected a semver-like version (e.g., >=22.15)",
     );
   }
   return match[1];
@@ -332,7 +332,6 @@ function extractNodeVersion(): string {
  */
 function extractDevNodeVersion(): string {
   const constraint: string | undefined =
-    // biome-ignore lint/suspicious/noExplicitAny: devEngines is not in the pkg type
     (pkg as any).devEngines?.runtime?.version ?? pkg.engines?.node;
   if (!constraint) {
     throw new Error("Missing devEngines.runtime.version and engines.node");
@@ -341,7 +340,7 @@ function extractDevNodeVersion(): string {
   if (!match) {
     throw new Error(
       `Cannot extract dev Node.js version from "${constraint}". ` +
-        "Expected a semver-like version (e.g., >=22.15)"
+        "Expected a semver-like version (e.g., >=22.15)",
     );
   }
   return match[1];
@@ -436,7 +435,7 @@ function generateDevScripts(): string {
  */
 function generateDevEnvVarsTable(): string {
   const entries = ENV_VAR_REGISTRY.filter(
-    (e: EnvVarEntry) => e.devGuide !== undefined
+    (e: EnvVarEntry) => e.devGuide !== undefined,
   );
   const lines: string[] = [
     "| Variable | Description | Default |",
@@ -487,22 +486,22 @@ const SELF_HOSTED_TABLE_ENTRIES: readonly [string, string][] = [
 function generateSelfHostedEnvVarsTable(): string {
   const selfHostedNames = new Set(
     ENV_VAR_REGISTRY.filter((e: EnvVarEntry) => e.selfHosted === true).map(
-      (e: EnvVarEntry) => e.name
-    )
+      (e: EnvVarEntry) => e.name,
+    ),
   );
   for (const [name] of SELF_HOSTED_TABLE_ENTRIES) {
     if (!selfHostedNames.has(name)) {
       throw new Error(
-        `Self-hosted table entry "${name}" is not tagged selfHosted in env-registry.ts`
+        `Self-hosted table entry "${name}" is not tagged selfHosted in env-registry.ts`,
       );
     }
   }
   if (selfHostedNames.size !== SELF_HOSTED_TABLE_ENTRIES.length) {
     const missing = [...selfHostedNames].filter(
-      (n) => !SELF_HOSTED_TABLE_ENTRIES.some(([name]) => name === n)
+      (n) => !SELF_HOSTED_TABLE_ENTRIES.some(([name]) => name === n),
     );
     throw new Error(
-      `Registry entries tagged selfHosted but missing from self-hosted table: ${missing.join(", ")}`
+      `Registry entries tagged selfHosted but missing from self-hosted table: ${missing.join(", ")}`,
     );
   }
 
@@ -659,7 +658,7 @@ for (const section of sections) {
     original,
     section.sectionName,
     generated,
-    section.markerStyle ?? "html"
+    section.markerStyle ?? "html",
   );
 
   if (updated !== original) {
@@ -677,7 +676,7 @@ for (const section of sections) {
 
 if (isCheck && staleCount > 0) {
   console.error(
-    `\n${staleCount} section(s) are stale. Run: pnpm run generate:docs`
+    `\n${staleCount} section(s) are stale. Run: pnpm run generate:docs`,
   );
   process.exit(1);
 }

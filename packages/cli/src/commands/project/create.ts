@@ -88,7 +88,7 @@ function normalizePlatform(platform: string): string {
   }
   const corrected = platform.replace(/\./g, "-");
   log.warn(
-    `Platform '${platform}' uses '.' instead of '-' — interpreting as '${corrected}'`
+    `Platform '${platform}' uses '.' instead of '-' — interpreting as '${corrected}'`,
   );
   return corrected;
 }
@@ -165,7 +165,7 @@ async function handleCreateProject404(opts: {
       throw new CliError(
         `Failed to create project '${name}' in ${orgSlug}.\n\n` +
           `Team '${teamSlug}' exists but the request was rejected. ` +
-          "You may lack permission to create projects in this team."
+          "You may lack permission to create projects in this team.",
       );
     }
 
@@ -174,12 +174,12 @@ async function handleCreateProject404(opts: {
         `Team '${teamSlug}'`,
         `not found in ${orgSlug}`,
         `sentry project create ${orgSlug}/${name}:${platform} --team <team-slug>`,
-        [`Available teams: ${teams.map((t) => t.slug).join(", ")}`]
+        [`Available teams: ${teams.map((t) => t.slug).join(", ")}`],
       );
     }
     throw new CliError(
       `No teams found in ${orgSlug}.\n\n` +
-        "Create a team first, then try again."
+        "Create a team first, then try again.",
     );
   }
 
@@ -197,7 +197,7 @@ async function handleCreateProject404(opts: {
     [
       "The organization or team may not exist, or you may lack access",
       `List teams: sentry team list ${orgSlug}/`,
-    ]
+    ],
   );
 }
 
@@ -214,7 +214,7 @@ async function resolveDryRunTeam(
     team?: string;
     detectedFrom?: string;
     autoCreateSlug: string;
-  }
+  },
 ): Promise<ResolvedConcreteTeam> {
   try {
     return await resolveOrCreateTeam(orgSlug, {
@@ -231,7 +231,7 @@ async function resolveDryRunTeam(
       throw error;
     }
     log.debug(
-      "403 on listTeams in dry-run — previewing org-scoped fallback outcome"
+      "403 on listTeams in dry-run — previewing org-scoped fallback outcome",
     );
     return { slug: "team-<username>", source: "auto-created" };
   }
@@ -264,7 +264,7 @@ type CreateProjectOpts = CreateProjectBaseOpts & {
  * member project creation entirely.
  */
 async function createProjectWithAutoTeamFallback(
-  opts: CreateProjectBaseOpts
+  opts: CreateProjectBaseOpts,
 ): Promise<
   CreatedProjectDetails & {
     teamSlug: string;
@@ -290,7 +290,7 @@ async function createProjectWithAutoTeamFallback(
           "or ask them to create the project and add you to it.",
         403,
         error.detail,
-        error.endpoint
+        error.endpoint,
       );
     }
     return handleCreateApiError(error, opts);
@@ -313,7 +313,7 @@ function projectExistsError(orgSlug: string, name: string): CliError {
   const slug = slugify(name);
   return new CliError(
     `A project named '${name}' already exists in ${orgSlug}.\n\n` +
-      `View it: sentry project view ${orgSlug}/${slug}`
+      `View it: sentry project view ${orgSlug}/${slug}`,
   );
 }
 
@@ -323,7 +323,7 @@ function projectExistsError(orgSlug: string, name: string): CliError {
  */
 function handleCreateApiError(
   error: ApiError,
-  opts: CreateProjectBaseOpts
+  opts: CreateProjectBaseOpts,
 ): never {
   const { orgSlug, name, platform } = opts;
   if (error.status === 409) {
@@ -340,7 +340,7 @@ function handleCreateApiError(
     `Failed to create project '${name}' in ${orgSlug} (HTTP ${error.status}).`,
     error.status,
     error.detail,
-    error.endpoint
+    error.endpoint,
   );
 }
 
@@ -349,7 +349,7 @@ function handleCreateApiError(
  * Wraps API errors with actionable messages instead of raw HTTP status codes.
  */
 async function createProjectWithErrors(
-  opts: CreateProjectOpts
+  opts: CreateProjectOpts,
 ): Promise<CreatedProjectDetails> {
   const { orgSlug, teamSlug, name, platform } = opts;
   try {
@@ -381,7 +381,7 @@ type ParsedProjectSpec = {
  */
 function parseProjectName(
   rawName: string,
-  platform: string
+  platform: string,
 ): ParsedProjectSpec {
   if (rawName.trim() === "") {
     throw new ValidationError("Project name cannot be empty.", "name");
@@ -389,7 +389,7 @@ function parseProjectName(
   if (WHITESPACE_RE.test(rawName)) {
     throw new ValidationError(
       `Project name '${rawName}' cannot contain whitespace.`,
-      "name"
+      "name",
     );
   }
 
@@ -428,7 +428,7 @@ function parseProjectPlatform(rawName: string, rawPlatform: string): string {
   if (!isValidPlatform(platform)) {
     throw new ValidationError(
       buildPlatformError(rawName, platform),
-      "platform"
+      "platform",
     );
   }
   return platform;
@@ -445,14 +445,14 @@ function parsePairedProjectSpec(rawSpec: string): ParsedProjectSpec {
   if (separatorIndex === -1) {
     throw new ValidationError(
       `Project '${rawSpec}' must use <name>:<platform> syntax.`,
-      "project"
+      "project",
     );
   }
 
   const rawName = rawSpec.slice(0, separatorIndex);
   const platform = parseProjectPlatform(
     rawName,
-    rawSpec.slice(separatorIndex + 1)
+    rawSpec.slice(separatorIndex + 1),
   );
   return parseProjectName(rawName, platform);
 }
@@ -473,19 +473,19 @@ function parseProjectSpecs(rawSpecs: readonly string[]): {
   if (rawSpecs.length === 1 && !rawSpecs[0]?.includes(":")) {
     throw new ValidationError(
       buildPlatformError(rawSpecs[0] ?? ""),
-      "platform"
+      "platform",
     );
   }
   const parsed = rawSpecs.map(parsePairedProjectSpec);
 
   const orgs = new Set(
-    parsed.map((p) => p.org).filter((o): o is string => Boolean(o))
+    parsed.map((p) => p.org).filter((o): o is string => Boolean(o)),
   );
   if (orgs.size > 1) {
     throw new ValidationError(
       `Cannot create projects across multiple organizations (${[...orgs].join(", ")}).\n\n` +
         "All names must belong to the same org.",
-      "organization"
+      "organization",
     );
   }
   const [explicitOrg] = orgs;
@@ -498,7 +498,7 @@ function parseProjectSpecs(rawSpecs: readonly string[]): {
  */
 function buildProjectCreateOutput(
   results: ProjectCreatedResult[],
-  requestedCount: number
+  requestedCount: number,
 ): ProjectCreateOutput {
   const [singleResult] = results;
   return requestedCount === 1 && singleResult ? singleResult : results;
@@ -690,13 +690,13 @@ export const createCommand = buildCommand({
             flags,
             detectedFrom: resolved.detectedFrom,
             teamAutoCreateSlug,
-          })
+          }),
         );
       }
     } catch (error) {
       if (results.length > 0) {
         yield new CommandOutput(
-          buildProjectCreateOutput(results, parsed.length)
+          buildProjectCreateOutput(results, parsed.length),
         );
       }
       throw error;

@@ -10,7 +10,7 @@ import path from "node:path";
 
 /** Return a stable device/inode identity for an existing path when available. */
 export async function resolvePathIdentity(
-  absolutePath: string
+  absolutePath: string,
 ): Promise<string | undefined> {
   try {
     const stats = await lstat(absolutePath, { bigint: true });
@@ -35,7 +35,7 @@ export function resolveCanonicalRoot(root: string): Promise<string> {
  * missing suffix without mutating disk.
  */
 export async function resolveCanonicalDestination(
-  absolutePath: string
+  absolutePath: string,
 ): Promise<string> {
   let existingPath = absolutePath;
   const missingSegments: string[] = [];

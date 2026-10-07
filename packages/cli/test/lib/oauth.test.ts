@@ -14,13 +14,105 @@ import {
   property,
   uniqueArray,
 } from "fast-check";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { SENTRY_SCOPES } from "../../src/lib/api-scope.js";
 import { ValidationError } from "../../src/lib/errors.js";
-import { OAUTH_SCOPES, resolveOAuthScopeString } from "../../src/lib/oauth.js";
+import {
+  OAUTH_SCOPES,
+  performDeviceFlow,
+  resolveOAuthScopeString,
+} from "../../src/lib/oauth.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 const knownScopeArb = constantFrom(...SENTRY_SCOPES);
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe("performDeviceFlow polling", () => {
+  test("keeps the interval for pending responses and adds five seconds after slow_down", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+
+    const token = {
+      access_token: "test-token",
+      token_type: "Bearer",
+      expires_in: 3600,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          device_code: "test-code",
+          user_code: "ABCD",
+          verification_uri: "https://sentry.example/oauth/device/",
+          interval: 1,
+          expires_in: 30,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ error: "authorization_pending" }, { status: 400 }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ error: "slow_down" }, { status: 400 }),
+      )
+      .mockResolvedValueOnce(Response.json(token));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = performDeviceFlow({ onUserCode: vi.fn() });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(5999);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toEqual(token);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  test.each([
+    ["access_denied", "Authorization was denied. Please try again."],
+    [
+      "expired_token",
+      "Device code expired. Please run 'sentry auth login' again.",
+    ],
+    ["invalid_grant", "Token was rejected"],
+  ])("reports %s with the CLI's error message", async (code, message) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          device_code: "test-code",
+          user_code: "ABCD",
+          verification_uri: "https://sentry.example/oauth/device/",
+          interval: 1,
+          expires_in: 30,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: code, error_description: "Token was rejected" },
+          { status: 400 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = performDeviceFlow({ onUserCode: vi.fn() });
+    const rejection = expect(result).rejects.toMatchObject({
+      name: "DeviceFlowError",
+      code: "authorization_failed",
+      message,
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await rejection;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe("resolveOAuthScopeString", () => {
   test("default scopes include Team Admin for project creation", () => {
@@ -52,13 +144,13 @@ describe("resolveOAuthScopeString", () => {
   test("readOnly is ignored when explicit scopes are provided", () => {
     // `scopes` takes precedence over `readOnly`.
     expect(
-      resolveOAuthScopeString({ readOnly: true, scopes: ["project:write"] })
+      resolveOAuthScopeString({ readOnly: true, scopes: ["project:write"] }),
     ).toBe("project:write");
   });
 
   test("explicit scopes preserve first-seen order and lowercase", () => {
     expect(
-      resolveOAuthScopeString({ scopes: ["ORG:READ", "project:read"] })
+      resolveOAuthScopeString({ scopes: ["ORG:READ", "project:read"] }),
     ).toBe("org:read project:read");
   });
 
@@ -66,13 +158,13 @@ describe("resolveOAuthScopeString", () => {
     expect(
       resolveOAuthScopeString({
         scopes: ["org:read", "project:read", "org:read"],
-      })
+      }),
     ).toBe("org:read project:read");
   });
 
   test("blank entries are skipped", () => {
     expect(resolveOAuthScopeString({ scopes: ["  ", "org:read", ""] })).toBe(
-      "org:read"
+      "org:read",
     );
   });
 
@@ -89,10 +181,10 @@ describe("resolveOAuthScopeString", () => {
 
   test("throws ValidationError when scopes resolve to empty", () => {
     expect(() => resolveOAuthScopeString({ scopes: [] })).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() => resolveOAuthScopeString({ scopes: ["", "   "] })).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 });
@@ -105,7 +197,7 @@ describe("property: resolveOAuthScopeString", () => {
         // Order preserved, lowercase, space-joined.
         expect(result).toBe(scopes.map((s) => s.toLowerCase()).join(" "));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -114,7 +206,7 @@ describe("property: resolveOAuthScopeString", () => {
       property(knownScopeArb, (scope) => {
         expect(resolveOAuthScopeString({ scopes: [scope] })).toBe(scope);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

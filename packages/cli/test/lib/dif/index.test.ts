@@ -69,7 +69,7 @@ describe("parseDebugFile", () => {
   test("normalizes the debug id to lowercase UUID form", () => {
     const archive = parseDebugFile(toBytes(BREAKPAD_FIXTURE));
     expect(archive.objects[0]?.debugId).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
   });
 
@@ -90,10 +90,10 @@ describe("parseDebugFile", () => {
   test("renders a nil debug id as the hyphenated nil UUID", () => {
     // Guards the check command's nil-id sentinel against format drift.
     const archive = parseDebugFile(
-      toBytes("MODULE Linux x86_64 000000000000000000000000000000000 x")
+      toBytes("MODULE Linux x86_64 000000000000000000000000000000000 x"),
     );
     expect(archive.objects[0]?.debugId).toBe(
-      "00000000-0000-0000-0000-000000000000"
+      "00000000-0000-0000-0000-000000000000",
     );
   });
 });
@@ -107,7 +107,7 @@ describe("createSourceBundle", () => {
       (path) => {
         requested.push(path);
         return toBytes(`// ${path}`);
-      }
+      },
     );
 
     expect(requested).toContain("/src/example.c");
@@ -121,7 +121,7 @@ describe("createSourceBundle", () => {
     const result = createSourceBundle(
       toBytes(BREAKPAD_WITH_SOURCE),
       "example",
-      () => null
+      () => null,
     );
     expect(result.fileCount).toBe(0);
     expect(result.bundle).toBeNull();
@@ -131,7 +131,7 @@ describe("createSourceBundle", () => {
     const result = createSourceBundle(
       toBytes(BREAKPAD_FIXTURE),
       "example",
-      () => toBytes("unused")
+      () => toBytes("unused"),
     );
     expect(result.fileCount).toBe(0);
     expect(result.bundle).toBeNull();
@@ -143,13 +143,13 @@ describe("createSourceBundle", () => {
     expect(() =>
       createSourceBundle(toBytes(BREAKPAD_WITH_SOURCE), "example", () => {
         throw new Error("read failed");
-      })
+      }),
     ).toThrow();
   });
 
   test("throws on unrecognized data", () => {
     expect(() =>
-      createSourceBundle(toBytes("not an object file"), "x", () => null)
+      createSourceBundle(toBytes("not an object file"), "x", () => null),
     ).toThrow();
   });
 });

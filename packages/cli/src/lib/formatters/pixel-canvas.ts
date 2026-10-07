@@ -78,7 +78,7 @@ export type PixelTextOptions = {
 
 /** Create an RGBA pixel canvas, optionally initialized to an opaque color. */
 export function createPixelCanvas(
-  options: CreatePixelCanvasOptions
+  options: CreatePixelCanvasOptions,
 ): DecodedImage {
   const width = Math.max(1, Math.floor(options.width));
   const height = Math.max(1, Math.floor(options.height));
@@ -98,7 +98,7 @@ export function createPixelCanvas(
 /** Draw a filled rectangle, clipping it to the canvas bounds. */
 export function drawPixelRect(
   image: DecodedImage,
-  options: PixelRectOptions
+  options: PixelRectOptions,
 ): void {
   const x0 = Math.max(0, Math.floor(options.x));
   const y0 = Math.max(0, Math.floor(options.y));
@@ -122,7 +122,7 @@ export function blitPixelImage(
   destination: DecodedImage,
   source: DecodedImage,
   x: number,
-  y: number
+  y: number,
 ): void {
   const destX = Math.floor(x);
   const destY = Math.floor(y);
@@ -142,7 +142,7 @@ export function blitPixelImage(
         {
           x: targetX,
           y: targetY,
-        }
+        },
       );
     }
   }
@@ -156,7 +156,7 @@ function copyOpaquePixel(
   destination: DecodedImage,
   source: DecodedImage,
   sourcePoint: PixelPoint,
-  targetPoint: PixelPoint
+  targetPoint: PixelPoint,
 ): void {
   const { x: sourceX, y: sourceY } = sourcePoint;
   const { x: targetX, y: targetY } = targetPoint;
@@ -175,7 +175,7 @@ function copyOpaquePixel(
 export function drawPixelText(
   image: DecodedImage,
   text: string,
-  options: PixelTextOptions
+  options: PixelTextOptions,
 ): void {
   const cellWidth = Math.max(1, Math.floor(options.cellWidth));
   const cellHeight = Math.max(1, Math.floor(options.cellHeight));
@@ -236,7 +236,7 @@ type SpleenGlyphOptions = {
 function drawSpleenGlyph(
   image: DecodedImage,
   glyph: Uint8Array,
-  options: SpleenGlyphOptions
+  options: SpleenGlyphOptions,
 ): void {
   for (let row = 0; row < SPLEEN_CELL_HEIGHT; row += 1) {
     const pattern = glyph[row] ?? 0;
@@ -261,7 +261,7 @@ type SpleenPixelOptions = SpleenGlyphOptions & {
 
 function drawSpleenPixel(
   image: DecodedImage,
-  options: SpleenPixelOptions
+  options: SpleenPixelOptions,
 ): void {
   const x =
     options.x +
@@ -288,7 +288,7 @@ function drawSpleenPixel(
 function scaleCoordinate(
   coordinate: number,
   cellSize: number,
-  glyphSize: number
+  glyphSize: number,
 ): number {
   return Math.floor((coordinate * cellSize) / glyphSize);
 }

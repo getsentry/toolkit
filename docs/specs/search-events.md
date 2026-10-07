@@ -4,14 +4,14 @@
 
 Natural-language event search is exposed as one tool per dataset:
 
-| Tool | Dataset | Seer strategy |
-| --- | --- | --- |
-| `search_errors` | `errors` | `Errors` |
-| `search_logs` | `logs` | `Logs` |
-| `search_traces` | `spans` | `Traces` |
-| `search_metrics` | `metrics` | `Metrics` |
-| `search_profiles` | `profiles` | — |
-| `search_replays` | `replays` | — |
+| Tool              | Dataset    | Seer strategy |
+| ----------------- | ---------- | ------------- |
+| `search_errors`   | `errors`   | `Errors`      |
+| `search_logs`     | `logs`     | `Logs`        |
+| `search_traces`   | `spans`    | `Traces`      |
+| `search_metrics`  | `metrics`  | `Metrics`     |
+| `search_profiles` | `profiles` | —             |
+| `search_replays`  | `replays`  | —             |
 
 All six share one handler (`tools/support/search-events/search.ts`). Each tool
 fixes its dataset, so the caller never chooses a `dataset` parameter and the
@@ -39,12 +39,12 @@ direct MCP surface and is excluded from skill definitions.
 // search_errors / search_logs / search_traces / search_metrics / search_profiles
 interface DatasetSearchParams {
   organizationSlug: string;
-  query?: string;                // Natural language (preferred) or Sentry search syntax
+  query?: string; // Natural language (preferred) or Sentry search syntax
   projectSlug?: string;
   fields?: string[];
   sort?: string;
-  period?: string;               // e.g. "24h", "7d"
-  limit?: number;                // Default: 10, Max: 100
+  period?: string; // e.g. "24h", "7d"
+  limit?: number; // Default: 10, Max: 100
   includeExplanation?: boolean;
   regionUrl?: string;
 }
@@ -57,24 +57,24 @@ interface DatasetSearchParams {
 ```typescript
 search_errors({
   organizationSlug: "my-org",
-  query: "database timeouts in checkout flow from last hour"
-})
+  query: "database timeouts in checkout flow from last hour",
+});
 
 search_traces({
   organizationSlug: "my-org",
   query: "API calls taking over 5 seconds",
-  projectSlug: "backend"
-})
+  projectSlug: "backend",
+});
 
 search_logs({
   organizationSlug: "my-org",
-  query: "warning logs about memory usage"
-})
+  query: "warning logs about memory usage",
+});
 
 search_metrics({
   organizationSlug: "my-org",
-  query: "p95 request duration by transaction this week"
-})
+  query: "p95 request duration by transaction this week",
+});
 ```
 
 ## Architecture
@@ -112,7 +112,7 @@ search_metrics({
 The AI produces different query patterns based on the selected dataset:
 
 - **Spans dataset**: Focus on `span.op`, `span.description`, `span.duration`, `transaction`, supports timestamp filters
-- **Errors dataset**: Focus on `message`, `level`, `error.type`, `error.handled`, supports timestamp filters  
+- **Errors dataset**: Focus on `message`, `level`, `error.type`, `error.handled`, supports timestamp filters
 - **Logs dataset**: Focus on `message`, `severity`, `severity_number`, **NO timestamp filters** (uses statsPeriod instead)
 - **Tracemetrics dataset**: Focus on `metric.name`, `metric.type`, `metric.unit`, `value`, and metric-aware aggregates like `p95(value,http.request.duration,distribution,millisecond)`
 
@@ -143,7 +143,7 @@ Requests for a metric over time ("per hour", "per day", "trend", "over time") re
 
 - **Logs timestamp handling**: Logs don't support query-based timestamp filters like `timestamp:-1h`. Instead, use `statsPeriod=24h` parameter
 - **Project ID mapping**: API requires numeric project IDs, not slugs. Tool automatically converts project slugs to IDs
-- **Seer opt-in**: Seer translation runs only in experimental sessions (`--experimental` for stdio or `/mcp?experimental=1` for HTTP), when the organization has the required Seer features. Default sessions use the configured embedded agent for natural-language translation; if Seer is unavailable in an experimental session, the tool falls back to that agent.
+- **Seer translation**: Seer translates natural-language queries when the organization has the required Seer features and AI features are enabled. If Seer is unavailable or cannot translate the query, the tool falls back to the configured embedded agent.
 - **Seer cross-event filters**: Time series results do not apply cross-event filters. When Seer returns those filters for a time series, the response always begins with a warning identifying the omitted filters and the broader results, even when `includeExplanation` is false.
 - **Seer project scope**: For a successful Seer translation without `projectSlug`, search and Explorer links use `project=-1` to match the all-accessible-project scope sent to Seer. Other unscoped searches retain their existing default scope.
 - **Parallel attribute fetching**: For spans/logs/metrics, fetches both string and number attribute types in parallel for better performance
@@ -167,21 +167,21 @@ Requests for a metric over time ("per hour", "per day", "trend", "over time") re
 find_errors({
   organizationSlug: "sentry",
   filename: "checkout.js",
-  query: "is:unresolved"
-})
+  query: "is:unresolved",
+});
 
 // After
 search_errors({
   organizationSlug: "sentry",
-  query: "unresolved errors in checkout.js"
-})
+  query: "unresolved errors in checkout.js",
+});
 ```
 
 ## Implementation Status
 
 ### Completed Features
 
-1. **Custom attributes API integration**: 
+1. **Custom attributes API integration**:
    - ✅ `/organizations/{org}/trace-items/attributes/` for spans/logs/metrics with parallel string/number fetching
    - ✅ `/organizations/{org}/tags/` for errors (legacy API)
 

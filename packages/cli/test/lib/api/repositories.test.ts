@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { listRepositoriesCached } from "../../../src/lib/api/repositories.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as repoCache from "../../../src/lib/db/repo-cache.js";
 import type { SentryRepository } from "../../../src/types/sentry.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
@@ -74,7 +74,7 @@ describe("listRepositoriesCached", () => {
       /* succeed silently */
     });
     globalThis.fetch = mockFetch(async () =>
-      repoApiResponse([{ name: "owner/fresh" }])
+      repoApiResponse([{ name: "owner/fresh" }]),
     );
 
     const result = await listRepositoriesCached("my-org");
@@ -82,7 +82,9 @@ describe("listRepositoriesCached", () => {
     expect(result[0]?.name).toBe("owner/fresh");
     expect(setSpy).toHaveBeenCalledWith(
       "my-org",
-      expect.arrayContaining([expect.objectContaining({ name: "owner/fresh" })])
+      expect.arrayContaining([
+        expect.objectContaining({ name: "owner/fresh" }),
+      ]),
     );
   });
 
@@ -93,7 +95,7 @@ describe("listRepositoriesCached", () => {
       throw new Error("attempt to write a readonly database");
     });
     globalThis.fetch = mockFetch(async () =>
-      repoApiResponse([{ name: "owner/primary-succeeded" }])
+      repoApiResponse([{ name: "owner/primary-succeeded" }]),
     );
 
     // The API fetch succeeded, so the command should still receive the

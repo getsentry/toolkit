@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-cli
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: CLI-related commands
 requires:
   bins: ["sentry"]
@@ -11,7 +11,7 @@ requires:
 
 CLI-related commands
 
-### `sentry cli completion <shell>`
+### `sentry cli completion [<shell>]`
 
 Print the shell completion script
 
@@ -172,7 +172,7 @@ sentry cli uninstall --yes --keep-config
 sentry cli uninstall
 ```
 
-### `sentry cli upgrade <version>`
+### `sentry cli upgrade [<version>]`
 
 Update the Sentry CLI to the latest version
 

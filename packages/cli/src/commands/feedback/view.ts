@@ -41,7 +41,7 @@ type ViewFlags = {
 
 async function tryGetLatestEvent(
   orgSlug: string,
-  feedbackId: string
+  feedbackId: string,
 ): Promise<SentryEvent | undefined> {
   try {
     return await getLatestEvent(orgSlug, feedbackId);
@@ -53,7 +53,7 @@ async function tryGetLatestEvent(
 
 async function tryListReplayIds(
   orgSlug: string,
-  feedbackId: string
+  feedbackId: string,
 ): Promise<string[]> {
   try {
     return await listReplayIdsForIssue(orgSlug, feedbackId);
@@ -66,7 +66,7 @@ async function tryListReplayIds(
 async function tryListAttachments(
   orgSlug: string,
   projectSlug: string | undefined,
-  event: SentryEvent | undefined
+  event: SentryEvent | undefined,
 ): Promise<EventAttachmentDetailsResponse[]> {
   if (!(projectSlug && event)) {
     return [];
@@ -81,7 +81,7 @@ async function tryListAttachments(
 
 function jsonTransformFeedbackView(
   data: FeedbackViewResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const result: Record<string, unknown> = {
     ...data.feedback,
@@ -101,10 +101,12 @@ export const viewCommand = buildCommand({
       "Feedback formats:\n" +
       "  @latest                     Most recent unresolved Feedback\n" +
       "  <org>/@latest               Most recent unresolved Feedback in an organization\n" +
-      "  <short-id>                  Search accessible organizations\n" +
+      "  <short-id>                  Use configured org or discover the organization\n" +
       "  <numeric-id>                Resolve by numeric issue ID\n" +
       "  <org>/<short-id>            Explicit organization\n" +
       "  <org>/<project>/<suffix>    Explicit organization and project\n\n" +
+      "Full short IDs use SENTRY_ORG, .sentryclirc, or 'sentry cli defaults' for the org.\n" +
+      "Without a configured org, the CLI uses a matching DSN or searches accessible orgs.\n\n" +
       "The resolved issue must have issue.category:feedback. Use 'sentry issue view' for other issue categories.",
   },
   output: {

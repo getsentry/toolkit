@@ -43,7 +43,7 @@ describe("resolveCliMcpAccessToken", () => {
       resolveCliMcpAccessToken({
         sentryHost: "sentry.io",
         sentryProtocol: "https",
-      })
+      }),
     ).resolves.toBe("cli-session-token");
   });
 
@@ -56,7 +56,7 @@ describe("resolveCliMcpAccessToken", () => {
       resolveCliMcpAccessToken({
         sentryHost: "sentry.io",
         sentryProtocol: "https",
-      })
+      }),
     ).rejects.toBeInstanceOf(HostScopeError);
   });
 
@@ -67,7 +67,7 @@ describe("resolveCliMcpAccessToken", () => {
       resolveCliMcpAccessToken({
         sentryHost: "sentry.io",
         sentryProtocol: "https",
-      })
+      }),
     ).rejects.toThrow(new AuthError("not_authenticated"));
   });
 
@@ -82,7 +82,7 @@ describe("resolveCliMcpAccessToken", () => {
       resolveCliMcpAccessToken({
         sentryHost: "sentry.io",
         sentryProtocol: "https",
-      })
+      }),
     ).resolves.toBe("env-token");
   });
 
@@ -95,13 +95,13 @@ describe("resolveCliMcpAccessToken", () => {
       resolveCliMcpAccessToken({
         sentryHost: "sentry.io",
         sentryProtocol: "https",
-      })
+      }),
     ).rejects.toBeInstanceOf(MalformedAuthTokenError);
   });
 
   test("does not expose a second MCP authentication flow", async () => {
     await expect(startMcpServer(["auth", "login"])).rejects.toThrow(
-      "Use `sentry auth` to manage credentials for `sentry mcp`."
+      "Use `sentry auth` to manage credentials for `sentry mcp`.",
     );
   });
 });
@@ -136,8 +136,8 @@ describe("prepareMcpServerArgs", () => {
     expect(
       prepareMcpServerArgs(
         ["--host=sentry.example.com"],
-        "http://localhost:9000"
-      )
+        "http://localhost:9000",
+      ),
     ).toEqual(["--host=sentry.example.com"]);
   });
 
@@ -147,8 +147,8 @@ describe("prepareMcpServerArgs", () => {
     expect(
       prepareMcpServerArgs(
         ["--host=localhost:9000", "--insecure-http"],
-        "http://sentry.example.com"
-      )
+        "http://sentry.example.com",
+      ),
     ).toEqual(["--host=localhost:9000", "--insecure-http"]);
   });
 });

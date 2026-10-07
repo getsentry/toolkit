@@ -85,7 +85,7 @@ const FIELD_MAP: ReadonlyArray<{
 function applyConfig(
   result: SentryCliRcConfig,
   iniData: ReturnType<typeof parseIni>,
-  filePath: string
+  filePath: string,
 ): void {
   for (const { section, key, field } of FIELD_MAP) {
     if (result[field] !== undefined) {
@@ -148,7 +148,7 @@ function isNarrowAbsenceError(error: unknown): boolean {
  * for this committed config load.
  */
 export async function tryReadSentryCliRc(
-  filePath: string
+  filePath: string,
 ): Promise<string | null> {
   let statResult: Awaited<ReturnType<typeof stat>>;
   try {
@@ -181,12 +181,12 @@ export async function tryReadSentryCliRc(
 async function tryApplyFile(
   result: SentryCliRcConfig,
   filePath: string,
-  isGlobal: boolean
+  isGlobal: boolean,
 ): Promise<void> {
   const content = await tryReadSentryCliRc(filePath);
   if (content !== null) {
     log.debug(
-      `Found ${isGlobal ? "global" : "local"} ${CONFIG_FILENAME} at ${filePath}`
+      `Found ${isGlobal ? "global" : "local"} ${CONFIG_FILENAME} at ${filePath}`,
     );
     applyConfig(result, parseIni(content), filePath);
   }
@@ -219,7 +219,7 @@ export function getGlobalPaths(): Set<string> {
  * so that global values are included in the cached config.
  */
 export async function applyGlobalFallbacks(
-  result: SentryCliRcConfig
+  result: SentryCliRcConfig,
 ): Promise<void> {
   for (const globalPath of getGlobalPaths()) {
     if (isComplete(result)) {
@@ -240,7 +240,7 @@ export async function applyGlobalFallbacks(
  */
 export async function applySentryCliRcDir(
   result: SentryCliRcConfig,
-  dir: string
+  dir: string,
 ): Promise<boolean> {
   if (isComplete(result)) {
     return true;
@@ -262,7 +262,7 @@ export async function applySentryCliRcDir(
  */
 export function setSentryCliRcCache(
   cwd: string,
-  config: SentryCliRcConfig
+  config: SentryCliRcConfig,
 ): void {
   cache.set(cwd, Promise.resolve(config));
 }
@@ -365,7 +365,7 @@ export async function applySentryCliRcEnvShim(cwd: string): Promise<void> {
     !env.SENTRY_TOKEN?.trim()
   ) {
     log.debug(
-      `Setting SENTRY_AUTH_TOKEN from ${CONFIG_FILENAME} (${config.sources.token})`
+      `Setting SENTRY_AUTH_TOKEN from ${CONFIG_FILENAME} (${config.sources.token})`,
     );
     env.SENTRY_AUTH_TOKEN = config.token;
     rcInjectedTokenSource = config.sources.token;
@@ -374,7 +374,7 @@ export async function applySentryCliRcEnvShim(cwd: string): Promise<void> {
   const normalizedRcUrl = config.url ? normalizeUrl(config.url) : undefined;
   if (normalizedRcUrl && !env.SENTRY_HOST?.trim() && !env.SENTRY_URL?.trim()) {
     log.debug(
-      `Setting SENTRY_URL from ${CONFIG_FILENAME} (${config.sources.url})`
+      `Setting SENTRY_URL from ${CONFIG_FILENAME} (${config.sources.url})`,
     );
     env.SENTRY_URL = normalizedRcUrl;
   }

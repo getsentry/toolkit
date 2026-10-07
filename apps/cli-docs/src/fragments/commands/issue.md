@@ -108,6 +108,19 @@ sentry issue view FRONT-ABC
 sentry issue view FRONT-ABC BACK-2
 ```
 
+Full short IDs such as `FRONT-ABC` use your configured organization: `SENTRY_ORG`,
+then `.sentryclirc`, then the default set with `sentry cli defaults org`. The lookup
+stays within that organization. To select another organization, include it explicitly:
+
+```bash
+sentry issue view my-org/FRONT-ABC
+```
+
+Project aliases such as `f-abc` keep the organization associated with the alias.
+Without a configured organization, the CLI uses a matching detected project or
+searches your accessible organizations. If the short ID matches in multiple
+organizations, specify the organization explicitly.
+
 ```
 Issue: TypeError: Cannot read property 'foo' of undefined
 Short ID: FRONT-ABC
@@ -318,3 +331,87 @@ sentry issue ignore CLI-G5 --until auto
 | `10users/2hours` | 10 users within 2 hours |
 | *(omitted)* | Archive forever |
 :::
+
+### Link an external issue
+
+Link an existing tracker issue or GitHub pull request to a Sentry issue:
+
+```bash
+sentry issue link FRONT-123 https://github.com/example/app/issues/42
+sentry issue link FRONT-123 https://github.com/example/app/pull/43
+sentry issue link FRONT-123 https://example.atlassian.net/browse/APP-42
+sentry issue link FRONT-123 https://linear.app/example/issue/APP-42/fix-error
+```
+
+The matching integration must already be installed in the Sentry organization.
+Linking requires a Sentry version with native issue URL resolution and guarded
+Sentry App callbacks; older self-hosted versions may require an upgrade.
+Native integrations include GitHub, GitHub Enterprise, Jira, Jira Server,
+GitLab, Bitbucket, and Azure DevOps. Linear uses its installed Sentry App.
+Sentry resolves native issue URLs through the selected integration; the remote
+issue must be visible to that installation.
+Use `--integration <id>` if more than one native integration matches the URL.
+Other Sentry Apps require `--app <slug>` and must expose an issue-link form;
+additional required form values can be supplied with `--field name=value`.
+For other Apps, an issue select can be supplied by exact ID or label with
+`--field`, for example `--app custom --field task_id=123`. Sentry checks
+that the app's callback identifies the requested URL before saving the association.
+
+```bash
+sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --dry-run
+sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --json
+```
+
+`--dry-run` discovers the integration and prepares the link without submitting a
+write. The provider validates the remote issue when the link is submitted.
+An existing matching link succeeds with `changed: false`. A Sentry App that
+already links this issue to a different resource must be unlinked first.
+App callbacks must return the exact supplied URL; use the issue URL copied from
+the tracker, including its title suffix. A mismatch fails without saving the link.
+
+GitHub and GitHub Enterprise pull requests are stored as external references.
+Their `/pull/NUMBER` and `/issues/NUMBER` URLs identify the same resource for
+duplicate detection and unlinking. Linking a PR does not mark it as a fix or
+resolve the Sentry issue.
+
+This command does not create a tracker issue or link a commit. Existing
+integration status-sync settings continue to apply after linking.
+
+#### Link permissions
+
+Linking requires `event:write` and access to the Sentry project. Discovering
+Sentry Apps also requires `org:read`. Both scopes are included in the default
+OAuth login. If an older OAuth session lacks the
+requested scopes, the CLI offers reauthorization after a permission error.
+Use `sentry auth login` to request the current default scopes. Environment tokens must
+be updated separately.
+
+### Unlink an external issue
+
+Remove an association without deleting either issue:
+
+```bash
+sentry issue unlink FRONT-123 https://github.com/example/app/issues/42
+sentry issue unlink FRONT-123 https://github.com/example/app/pull/43 --yes
+sentry issue unlink my-org/FRONT-123 https://example.atlassian.net/browse/APP-42 --yes
+sentry issue unlink FRONT-123 https://linear.app/example/issue/APP-42/fix-error --dry-run
+```
+
+Use `--yes` for non-interactive execution. `--dry-run` shows whether the link
+exists without removing it. If the association is already absent, the command
+succeeds with `changed: false`.
+
+Unlink matches the URL against stored associations and sends Sentry's internal
+link ID to the existing DELETE endpoint. It does not require fetching the ticket
+from the remote tracker, so a deleted remote ticket can still be unlinked.
+For a custom Sentry App, select it with `--app <slug>`; unlink does not require
+the app to expose a link form. Use `--integration <id>` to disambiguate native
+integration links.
+
+#### Unlink permissions
+
+Unlink requires **`event:write` and access to the Sentry project**; `event:admin`
+is also accepted. The organization's “Let Members Delete Events” setting does
+not restrict unlinking on updated Sentry versions.
+
+Granting a token more scopes does not override project-access policy.

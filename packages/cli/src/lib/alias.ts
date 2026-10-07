@@ -78,7 +78,7 @@ export function findCommonWordPrefix(strings: string[]): string {
  * // Map { "frontend" => "fr", "functions" => "fu", "backend" => "b" }
  */
 export function findShortestUniquePrefixes(
-  strings: string[]
+  strings: string[],
 ): Map<string, string> {
   const result = new Map<string, string>();
 
@@ -171,7 +171,7 @@ function groupByProjectSlug(pairs: OrgProjectPair[]): {
  */
 function applyPrefixRelationships(
   slugs: string[],
-  slugToRemainder: Map<string, string>
+  slugToRemainder: Map<string, string>,
 ): void {
   // Collect all existing remainders to detect potential collisions
   const existingRemainders = new Set(slugToRemainder.values());
@@ -203,7 +203,7 @@ function applyPrefixRelationships(
 function processUniqueSlugs(
   pairs: OrgProjectPair[],
   uniqueSlugs: Set<string>,
-  aliasMap: Map<string, string>
+  aliasMap: Map<string, string>,
 ): void {
   const uniqueProjects = pairs.filter((p) => uniqueSlugs.has(p.project));
   const uniqueProjectSlugs = [...new Set(uniqueProjects.map((p) => p.project))];
@@ -242,7 +242,7 @@ function processUniqueSlugs(
 function processCollidingSlugs(
   projectToOrgs: Map<string, Set<string>>,
   collidingSlugs: Set<string>,
-  aliasMap: Map<string, string>
+  aliasMap: Map<string, string>,
 ): void {
   // Get all orgs involved in collisions
   const collidingOrgs = new Set<string>();
@@ -306,7 +306,7 @@ function processCollidingSlugs(
  * // { aliasMap: Map { "org1/dashboard" => "o1/d", "org2/dashboard" => "o2/d" } }
  */
 export function buildOrgAwareAliases(
-  pairs: OrgProjectPair[]
+  pairs: OrgProjectPair[],
 ): OrgAwareAliasResult {
   const aliasMap = new Map<string, string>();
 
@@ -353,7 +353,7 @@ export type AliasMapResult = {
  * @returns Alias map and DB entries
  */
 export function buildProjectAliasMap<T extends { target: ResolvedTarget }>(
-  results: T[]
+  results: T[],
 ): AliasMapResult {
   const entries: Record<string, ProjectAliasEntry> = {};
   const pairs = results.map((r) => ({

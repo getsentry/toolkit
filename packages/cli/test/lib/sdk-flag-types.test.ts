@@ -13,7 +13,7 @@ import { describe, expect, test } from "vitest";
 
 const declarations = readFileSync(
   fileURLToPath(new URL("../../src/sdk.generated.d.cts", import.meta.url)),
-  "utf-8"
+  "utf-8",
 );
 
 function paramsType(name: string): string {

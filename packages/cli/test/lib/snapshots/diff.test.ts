@@ -20,7 +20,7 @@ import {
 function png(
   width: number,
   height: number,
-  rgb: [number, number, number]
+  rgb: [number, number, number],
 ): Buffer {
   const image = new PNG({ width, height });
   for (let i = 0; i < width * height * 4; i += 4) {
@@ -36,7 +36,7 @@ function png(
 function jpeg(
   width: number,
   height: number,
-  rgb: [number, number, number]
+  rgb: [number, number, number],
 ): Buffer {
   const data = Buffer.alloc(width * height * 4);
   for (let i = 0; i < data.length; i += 4) {
@@ -56,7 +56,7 @@ describe("compareImages", () => {
       png(4, 4, [10, 20, 30]),
       png(4, 4, [10, 20, 30]),
       "a.png",
-      OPTS
+      OPTS,
     );
     expect(result.kind).toBe("match");
   });
@@ -66,7 +66,7 @@ describe("compareImages", () => {
       png(4, 4, [255, 0, 0]),
       png(4, 4, [0, 255, 0]),
       "a.png",
-      OPTS
+      OPTS,
     );
     expect(result.kind).toBe("changed");
     if (result.kind === "changed") {
@@ -82,7 +82,7 @@ describe("compareImages", () => {
       png(4, 4, [0, 0, 0]),
       png(8, 8, [0, 0, 0]),
       "a.png",
-      OPTS
+      OPTS,
     );
     expect(result.kind).toBe("layout");
   });
@@ -92,7 +92,7 @@ describe("compareImages", () => {
       jpeg(4, 4, [20, 40, 60]),
       jpeg(4, 4, [20, 40, 60]),
       "a.jpg",
-      OPTS
+      OPTS,
     );
     expect(result.kind).toBe("match");
   });
@@ -103,8 +103,8 @@ describe("compareImages", () => {
         Buffer.from("not a real png"),
         png(4, 4, [0, 0, 0]),
         "a.png",
-        OPTS
-      )
+        OPTS,
+      ),
     ).toThrow();
   });
 });

@@ -68,7 +68,7 @@ function isRetryableError(error: Error): boolean {
  */
 function buildSignal(
   timeout: number,
-  externalSignal?: AbortSignal
+  externalSignal?: AbortSignal,
 ): AbortSignal {
   const timeoutSignal = AbortSignal.timeout(timeout);
   return externalSignal
@@ -78,7 +78,7 @@ function buildSignal(
 
 function rethrowExternalAbort(
   _error: unknown,
-  externalSignal?: AbortSignal
+  externalSignal?: AbortSignal,
 ): void {
   if (externalSignal?.aborted) {
     throw externalSignal?.reason;
@@ -108,7 +108,7 @@ async function fetchWithRetry(
   url: string,
   init: RequestInit,
   context: string,
-  options?: RetryOptions
+  options?: RetryOptions,
 ): Promise<Response> {
   const timeout = options?.timeout ?? GHCR_REQUEST_TIMEOUT;
   const externalSignal = options?.signal;
@@ -135,7 +135,7 @@ async function fetchWithRetry(
   }
 
   throw new UpgradeTransportError(
-    `${context}: ${lastError?.message ?? "unknown error"}`
+    `${context}: ${lastError?.message ?? "unknown error"}`,
   );
 }
 
@@ -159,7 +159,7 @@ export class GhcrManifestHttpError extends UpgradeError {
   constructor(tag: string, status: number) {
     super(
       "network_error",
-      `Failed to fetch manifest for tag "${tag}": HTTP ${status}`
+      `Failed to fetch manifest for tag "${tag}": HTTP ${status}`,
     );
     this.name = "GhcrManifestHttpError";
     this.status = status;
@@ -257,7 +257,7 @@ function isOciManifest(value: unknown): value is OciManifest {
  */
 export async function getAnonymousToken(
   sourceOrSignal: UpgradeSource | AbortSignal = PRIMARY_UPGRADE_SOURCE,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<string> {
   const source =
     "ghcrRepo" in sourceOrSignal ? sourceOrSignal : PRIMARY_UPGRADE_SOURCE;
@@ -267,20 +267,20 @@ export async function getAnonymousToken(
     url,
     { headers: { "User-Agent": getUserAgent() } },
     "Failed to connect to GHCR",
-    { signal: externalSignal }
+    { signal: externalSignal },
   );
 
   if (!response.ok) {
     throw new UpgradeError(
       "network_error",
-      `GHCR token exchange failed: HTTP ${response.status}`
+      `GHCR token exchange failed: HTTP ${response.status}`,
     );
   }
 
   const data = await parseUpgradeJson(
     response,
     externalSignal,
-    "GHCR token exchange returned invalid metadata"
+    "GHCR token exchange returned invalid metadata",
   );
   if (
     typeof data !== "object" ||
@@ -292,7 +292,7 @@ export async function getAnonymousToken(
   ) {
     throw new UpgradeError(
       "network_error",
-      "GHCR token exchange returned no token"
+      "GHCR token exchange returned no token",
     );
   }
 
@@ -311,7 +311,7 @@ export async function fetchManifest(
   token: string,
   tag: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<OciManifest> {
   const url = `${GHCR_REGISTRY}/v2/${source.ghcrRepo}/manifests/${tag}`;
   const response = await fetchWithRetry(
@@ -324,7 +324,7 @@ export async function fetchManifest(
       },
     },
     `Failed to fetch manifest for tag "${tag}"`,
-    { signal }
+    { signal },
   );
 
   if (!response.ok) {
@@ -334,12 +334,12 @@ export async function fetchManifest(
   const data = await parseUpgradeJson(
     response,
     signal,
-    `Manifest for tag "${tag}" returned invalid metadata`
+    `Manifest for tag "${tag}" returned invalid metadata`,
   );
   if (!isOciManifest(data)) {
     throw new UpgradeError(
       "network_error",
-      `Manifest for tag "${tag}" returned invalid metadata`
+      `Manifest for tag "${tag}" returned invalid metadata`,
     );
   }
   return data;
@@ -357,7 +357,7 @@ export async function fetchManifest(
 export async function fetchNightlyManifest(
   token: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<OciManifest> {
   return await fetchManifest(token, GHCR_TAG, signal, source);
 }
@@ -376,13 +376,13 @@ export function getNightlyVersion(manifest: OciManifest): string {
   if (!version) {
     throw new UpgradeError(
       "network_error",
-      "Nightly manifest has no version annotation"
+      "Nightly manifest has no version annotation",
     );
   }
   if (semverValid(version) === null || !NIGHTLY_VERSION_REGEX.test(version)) {
     throw new UpgradeError(
       "network_error",
-      "Nightly manifest has invalid version annotation"
+      "Nightly manifest has invalid version annotation",
     );
   }
   return version;
@@ -401,15 +401,15 @@ export function getNightlyVersion(manifest: OciManifest): string {
  */
 export function findLayerByFilename(
   manifest: OciManifest,
-  filename: string
+  filename: string,
 ): OciLayer {
   const layer = manifest.layers.find(
-    (l) => l.annotations?.["org.opencontainers.image.title"] === filename
+    (l) => l.annotations?.["org.opencontainers.image.title"] === filename,
   );
   if (!layer) {
     throw new UpgradeError(
       "version_not_found",
-      `No nightly build found for ${filename}`
+      `No nightly build found for ${filename}`,
     );
   }
   return layer;
@@ -433,7 +433,7 @@ export async function downloadNightlyBlob(
   token: string,
   digest: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<Response> {
   const blobUrl = `${GHCR_REGISTRY}/v2/${source.ghcrRepo}/blobs/${digest}`;
 
@@ -454,7 +454,7 @@ export async function downloadNightlyBlob(
     const msg = error instanceof Error ? error.message : String(error);
     throw new UpgradeError(
       "network_error",
-      `Failed to connect to GHCR: ${msg}`
+      `Failed to connect to GHCR: ${msg}`,
     );
   }
 
@@ -473,7 +473,7 @@ export async function downloadNightlyBlob(
     if (!redirectUrl) {
       throw new UpgradeError(
         "network_error",
-        `GHCR blob redirect (${blobResponse.status}) had no Location header`
+        `GHCR blob redirect (${blobResponse.status}) had no Location header`,
       );
     }
 
@@ -496,14 +496,14 @@ export async function downloadNightlyBlob(
       const msg = error instanceof Error ? error.message : String(error);
       throw new UpgradeError(
         "network_error",
-        `Failed to download from blob storage: ${msg}`
+        `Failed to download from blob storage: ${msg}`,
       );
     }
 
     if (!redirectResponse.ok) {
       throw new UpgradeError(
         "network_error",
-        `Blob storage download failed: HTTP ${redirectResponse.status}`
+        `Blob storage download failed: HTTP ${redirectResponse.status}`,
       );
     }
 
@@ -512,7 +512,7 @@ export async function downloadNightlyBlob(
 
   throw new UpgradeError(
     "network_error",
-    `Unexpected GHCR blob response: HTTP ${blobResponse.status}`
+    `Unexpected GHCR blob response: HTTP ${blobResponse.status}`,
   );
 }
 
@@ -531,7 +531,7 @@ async function fetchTagPage(
   token: string,
   lastTag?: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<string[]> {
   let url = `${GHCR_REGISTRY}/v2/${source.ghcrRepo}/tags/list?n=${TAGS_PAGE_SIZE}`;
   if (lastTag) {
@@ -547,25 +547,25 @@ async function fetchTagPage(
       },
     },
     "Failed to list GHCR tags",
-    { signal }
+    { signal },
   );
 
   if (!response.ok) {
     throw new UpgradeError(
       "network_error",
-      `Failed to list GHCR tags: HTTP ${response.status}`
+      `Failed to list GHCR tags: HTTP ${response.status}`,
     );
   }
 
   const data = await parseUpgradeJson(
     response,
     signal,
-    "GHCR tag list returned invalid metadata"
+    "GHCR tag list returned invalid metadata",
   );
   if (typeof data !== "object" || data === null) {
     throw new UpgradeError(
       "network_error",
-      "GHCR tag list returned invalid metadata"
+      "GHCR tag list returned invalid metadata",
     );
   }
   if (!("tags" in data)) {
@@ -579,7 +579,7 @@ async function fetchTagPage(
   ) {
     throw new UpgradeError(
       "network_error",
-      "GHCR tag list returned invalid metadata"
+      "GHCR tag list returned invalid metadata",
     );
   }
   return data.tags;
@@ -600,7 +600,7 @@ export async function listTags(
   token: string,
   prefix?: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<string[]> {
   const allTags: string[] = [];
   const visitedCursors = new Set<string>();
@@ -626,7 +626,7 @@ export async function listTags(
     if (!nextTag || visitedCursors.has(nextTag)) {
       throw new UpgradeError(
         "network_error",
-        "GHCR tag pagination returned a repeated cursor"
+        "GHCR tag pagination returned a repeated cursor",
       );
     }
     visitedCursors.add(nextTag);
@@ -652,7 +652,7 @@ export async function downloadLayerBlob(
   token: string,
   digest: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<ArrayBuffer> {
   const response = await downloadNightlyBlob(token, digest, signal, source);
   return response.arrayBuffer();

@@ -307,7 +307,7 @@ export class WizardStore {
     // Only keys the caller actually set override the baseline (undefined values
     // are dropped so they don't clobber a default).
     const overrides = Object.fromEntries(
-      Object.entries(initial).filter(([, value]) => value !== undefined)
+      Object.entries(initial).filter(([, value]) => value !== undefined),
     ) as Partial<WizardSnapshot>;
     this.snapshot = { ...baseSnapshot(), ...overrides };
   }
@@ -426,7 +426,7 @@ export class WizardStore {
       return;
     }
     const byPath = new Map(
-      this.snapshot.filesRead.map((entry) => [entry.path, entry])
+      this.snapshot.filesRead.map((entry) => [entry.path, entry]),
     );
     for (const path of paths) {
       const existing = byPath.get(path);
@@ -489,7 +489,7 @@ export class WizardStore {
       return;
     }
     const byPath = new Map(
-      this.snapshot.filesRead.map((entry) => [entry.path, entry])
+      this.snapshot.filesRead.map((entry) => [entry.path, entry]),
     );
     for (const path of paths) {
       byPath.set(path, { path, status: "analyzed" });
@@ -542,7 +542,7 @@ export class WizardStore {
     }
     this.update({
       postExitActions: this.snapshot.postExitActions.filter(
-        (c) => c !== command
+        (c) => c !== command,
       ),
     });
   }
@@ -637,7 +637,7 @@ export class WizardStore {
  */
 function backfillSkippedSteps(
   steps: StepEntry[],
-  startedIndex: number
+  startedIndex: number,
 ): StepEntry[] {
   let changed = false;
   const candidate = steps.map((entry) => {
@@ -671,7 +671,7 @@ function backfillSkippedSteps(
 function applyStepStatus(
   steps: StepEntry[],
   id: string,
-  status: StepStatus
+  status: StepStatus,
 ): StepEntry[] {
   const targetIndex = steps.findIndex((entry) => entry.id === id);
   if (targetIndex === -1) {

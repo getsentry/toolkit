@@ -5,6 +5,11 @@
  * https://datatracker.ietf.org/doc/html/rfc8628
  */
 
+import {
+  deviceCodeRequestBody,
+  deviceTokenRequestBody,
+} from "@sentry/toolkit-core/oauth-device";
+import { advanceDevicePoll } from "@sentry/toolkit-core/oauth-poll";
 import { safeParse } from "valibot";
 import type { TokenResponse } from "../types/index.js";
 import {
@@ -31,9 +36,9 @@ import {
   ValidationError,
 } from "./errors.js";
 import { logger } from "./logger.js";
-import { normalizeOrigin } from "./sentry-urls.js";
+import { normalizeHttpOrigin } from "./sentry-urls.js";
 import { withHttpSpan } from "./telemetry.js";
-import { getActiveTokenHost, isRequestOriginTrusted } from "./token-host.js";
+import { getActiveTokenHost } from "./token-host.js";
 
 /**
  * Get the Sentry instance URL for OAuth endpoints.
@@ -107,7 +112,7 @@ const SCOPES = OAUTH_SCOPES.join(" ");
  * `OAUTH_SCOPES` (e.g. `org:integrations`), update this filter explicitly.
  */
 const OAUTH_SCOPES_READ_ONLY: readonly string[] = OAUTH_SCOPES.filter((scope) =>
-  scope.endsWith(":read")
+  scope.endsWith(":read"),
 );
 
 /** Lookup set of all canonical Sentry scopes for `--scope` validation. */
@@ -137,7 +142,7 @@ export type OAuthScopeSelection = {
  *   contains a value that is not a known Sentry scope.
  */
 export function resolveOAuthScopeString(
-  selection: OAuthScopeSelection = {}
+  selection: OAuthScopeSelection = {},
 ): string {
   if (selection.scopes !== undefined) {
     return normalizeExplicitScopes(selection.scopes);
@@ -163,7 +168,7 @@ function normalizeExplicitScopes(scopes: readonly string[]): string {
     if (!KNOWN_SCOPE_SET.has(scope)) {
       throw new ValidationError(
         `Invalid scope "${raw}". Must be one of: ${SENTRY_SCOPES.join(", ")}`,
-        "scope"
+        "scope",
       );
     }
     if (!seen.has(scope)) {
@@ -181,7 +186,7 @@ type DeviceFlowCallbacks = {
   onUserCode: (
     userCode: string,
     verificationUri: string,
-    verificationUriComplete: string
+    verificationUriComplete: string,
   ) => void | Promise<void>;
 };
 
@@ -195,12 +200,13 @@ function sleep(ms: number): Promise<void> {
  */
 async function fetchWithConnectionError(
   url: string,
-  init: RequestInit
+  init: RequestInit,
+  customHeadersTrusted?: boolean,
 ): Promise<Response> {
   // Inject custom headers for self-hosted proxies (IAP, mTLS, etc.) —
   // URL-scoped so they don't leak to untrusted hosts.
   const merged = new Headers(init.headers);
-  applyCustomHeaders(merged, url);
+  applyCustomHeaders(merged, url, customHeadersTrusted);
   const effectiveInit: RequestInit = { ...init, headers: merged };
 
   try {
@@ -214,13 +220,14 @@ async function fetchWithConnectionError(
     if (!(error instanceof Error)) {
       throw error;
     }
+    const targetOrigin = new URL(url).origin;
 
     // TLS certificate errors — give actionable guidance
     if (isTlsCertError(error)) {
       throw new ApiError(
-        `TLS certificate error connecting to ${getSentryUrl()}`,
+        `TLS certificate error connecting to ${targetOrigin}`,
         0,
-        buildTlsErrorDetail(error)
+        buildTlsErrorDetail(error),
       );
     }
 
@@ -231,9 +238,9 @@ async function fetchWithConnectionError(
 
     if (isConnectionError) {
       throw new ApiError(
-        `Cannot connect to Sentry at ${getSentryUrl()}`,
+        `Cannot connect to Sentry at ${targetOrigin}`,
         0,
-        "Check your network connection and SENTRY_URL configuration"
+        "Check your network connection and SENTRY_URL configuration",
       );
     }
     throw error;
@@ -245,15 +252,16 @@ async function fetchWithConnectionError(
  * token's scope. Defense-in-depth for the rare case where SENTRY_HOST/URL
  * was mutated without going through the URL-arg / rc-shim guards.
  */
-function assertRefreshHostTrusted(): void {
-  const refreshUrl = getSentryUrl();
-  if (!isRequestOriginTrusted(refreshUrl)) {
+function assertRefreshHostTrusted(refreshUrl: string): string {
+  const origin = normalizeHttpOrigin(refreshUrl);
+  if (!origin) {
     throw new HostScopeError(
       "OAuth refresh token",
-      normalizeOrigin(refreshUrl) ?? "<unknown host>",
-      getActiveTokenHost()
+      "<unknown host>",
+      getActiveTokenHost(),
     );
   }
+  return origin;
 }
 
 /**
@@ -270,11 +278,8 @@ function requestDeviceCode(scope: string = SCOPES) {
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: clientId,
-          scope,
-        }),
-      }
+        body: deviceCodeRequestBody(clientId, scope),
+      },
     );
 
     if (!response.ok) {
@@ -283,7 +288,7 @@ function requestDeviceCode(scope: string = SCOPES) {
         "Failed to initiate device flow",
         response.status,
         errorText,
-        "/oauth/device/code/"
+        "/oauth/device/code/",
       );
     }
 
@@ -296,7 +301,7 @@ function requestDeviceCode(scope: string = SCOPES) {
         "Invalid response from device authorization endpoint",
         response.status,
         "The server returned a non-JSON response body.",
-        "/oauth/device/code/"
+        "/oauth/device/code/",
       );
     }
 
@@ -306,7 +311,7 @@ function requestDeviceCode(scope: string = SCOPES) {
         "Invalid response from device authorization endpoint",
         response.status,
         result.issues.map((i) => i.message).join(", "),
-        "/oauth/device/code/"
+        "/oauth/device/code/",
       );
     }
 
@@ -324,12 +329,8 @@ function pollForToken(deviceCode: string): Promise<TokenResponse> {
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: getClientId(),
-          device_code: deviceCode,
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        }),
-      }
+        body: deviceTokenRequestBody(getClientId(), deviceCode),
+      },
     );
 
     let data: unknown;
@@ -341,7 +342,7 @@ function pollForToken(deviceCode: string): Promise<TokenResponse> {
         "Unexpected response from token endpoint",
         response.status,
         "The server returned a non-JSON response body (possible proxy or CDN issue).",
-        "/oauth/token/"
+        "/oauth/token/",
       );
     }
 
@@ -356,7 +357,7 @@ function pollForToken(deviceCode: string): Promise<TokenResponse> {
     if (errorResult.success) {
       throw new DeviceFlowError(
         errorResult.output.error,
-        errorResult.output.error_description
+        errorResult.output.error_description,
       );
     }
 
@@ -365,21 +366,23 @@ function pollForToken(deviceCode: string): Promise<TokenResponse> {
       "Unexpected response from token endpoint",
       response.status,
       JSON.stringify(data),
-      "/oauth/token/"
+      "/oauth/token/",
     );
   });
 }
 
 type PollResult =
   | { status: "success"; token: TokenResponse }
-  | { status: "pending" }
-  | { status: "slow_down" }
+  | { status: "retry"; intervalSeconds: number }
   | { status: "error"; message: string };
 
 /**
  * Handle a single poll attempt, returning a result object
  */
-async function attemptPoll(deviceCode: string): Promise<PollResult> {
+async function attemptPoll(
+  deviceCode: string,
+  intervalSeconds: number,
+): Promise<PollResult> {
   try {
     const token = await pollForToken(deviceCode);
     return { status: "success", token };
@@ -388,22 +391,21 @@ async function attemptPoll(deviceCode: string): Promise<PollResult> {
       throw error;
     }
 
-    switch (error.code) {
-      case "authorization_pending":
-        return { status: "pending" };
-      case "slow_down":
-        return { status: "slow_down" };
-      case "expired_token":
+    const outcome = advanceDevicePoll(intervalSeconds, error.code);
+    switch (outcome.status) {
+      case "retry":
+        return outcome;
+      case "expired":
         return {
           status: "error",
           message: "Device code expired. Please run 'sentry auth login' again.",
         };
-      case "access_denied":
+      case "denied":
         return {
           status: "error",
           message: "Authorization was denied. Please try again.",
         };
-      default:
+      case "unexpected":
         return { status: "error", message: error.message };
     }
   }
@@ -426,7 +428,7 @@ async function attemptPoll(deviceCode: string): Promise<PollResult> {
 export async function performDeviceFlow(
   callbacks: DeviceFlowCallbacks,
   timeout = 600_000, // 10 minutes default (matches Sentry's expires_in)
-  scope: string = SCOPES
+  scope: string = SCOPES,
 ): Promise<TokenResponse> {
   // Step 1: Request device code
   const {
@@ -442,7 +444,7 @@ export async function performDeviceFlow(
   await callbacks.onUserCode(
     user_code,
     verification_uri,
-    verification_uri_complete ?? `${verification_uri}?user_code=${user_code}`
+    verification_uri_complete ?? `${verification_uri}?user_code=${user_code}`,
   );
 
   // Calculate absolute timeout
@@ -455,15 +457,13 @@ export async function performDeviceFlow(
   while (Date.now() < timeoutAt) {
     await sleep(pollInterval * 1000);
 
-    const result = await attemptPoll(device_code);
+    const result = await attemptPoll(device_code, pollInterval);
 
     switch (result.status) {
       case "success":
         return result.token;
-      case "pending":
-        continue;
-      case "slow_down":
-        pollInterval += 5;
+      case "retry":
+        pollInterval = result.intervalSeconds;
         continue;
       case "error":
         throw new DeviceFlowError("authorization_failed", result.message);
@@ -474,7 +474,7 @@ export async function performDeviceFlow(
 
   throw new DeviceFlowError(
     "expired_token",
-    "Authentication timed out. Please try again."
+    "Authentication timed out. Please try again.",
   );
 }
 
@@ -486,13 +486,13 @@ export async function performDeviceFlow(
  * @param tokenResponse - The token response from performDeviceFlow
  */
 export async function completeOAuthFlow(
-  tokenResponse: TokenResponse
+  tokenResponse: TokenResponse,
 ): Promise<void> {
   await setAuthToken(
     tokenResponse.access_token,
     tokenResponse.expires_in,
     tokenResponse.refresh_token,
-    { host: getSentryUrl() }
+    { host: getSentryUrl() },
   );
 }
 
@@ -509,42 +509,52 @@ export async function setApiToken(token: string): Promise<void> {
 
 /** Refresh an access token using a refresh token. */
 export function refreshAccessToken(
-  refreshToken: string
+  refreshToken: string,
+  options: { credentialHost: string },
 ): Promise<TokenResponse> {
   const clientId = getClientId();
-  assertRefreshHostTrusted();
+  const credentialHost = assertRefreshHostTrusted(options.credentialHost);
 
   return withHttpSpan("POST", "/oauth/token/", async () => {
     const response = await fetchWithConnectionError(
-      `${getSentryUrl()}/oauth/token/`,
+      `${credentialHost}/oauth/token/`,
       {
         method: "POST",
+        // Never replay a refresh credential to a server-selected destination.
+        redirect: "error",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           client_id: clientId,
           grant_type: "refresh_token",
           refresh_token: refreshToken,
         }),
-      }
+      },
+      true,
     );
 
     if (!response.ok) {
-      let errorDetail = "Token refresh failed";
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      let rejected = false;
       try {
-        const errorData = await response.json();
-        const errorResult = safeParse(TokenErrorResponseSchema, errorData);
-        if (errorResult.success) {
-          errorDetail =
-            errorResult.output.error_description ?? errorResult.output.error;
-        }
-      } catch {
-        // Ignore JSON parse errors
+        const errorResult = safeParse(
+          TokenErrorResponseSchema,
+          await response.json(),
+        );
+        rejected =
+          errorResult.success && errorResult.output.error === "invalid_grant";
+      } catch (error) {
+        logger.debug("Failed to parse token refresh error response", error);
       }
-
-      throw new AuthError(
-        "expired",
-        `Session expired: ${errorDetail}. Run 'sentry auth login' to re-authenticate.`
+      if (rejected) {
+        throw new AuthError(
+          "expired",
+          "Session expired because the refresh credential was rejected. Run 'sentry auth login' to re-authenticate.",
+        );
+      }
+      throw new ApiError(
+        "Token refresh failed",
+        response.status,
+        "The refresh endpoint returned an unexpected failure.",
+        "/oauth/token/",
       );
     }
 
@@ -557,7 +567,7 @@ export function refreshAccessToken(
         "Unexpected response from token refresh endpoint",
         response.status,
         "The server returned a non-JSON response body (possible proxy or CDN issue).",
-        "/oauth/token/"
+        "/oauth/token/",
       );
     }
 
@@ -568,7 +578,7 @@ export function refreshAccessToken(
         "Invalid response from token refresh endpoint",
         response.status,
         result.issues.map((i) => i.message).join(", "),
-        "/oauth/token/"
+        "/oauth/token/",
       );
     }
 

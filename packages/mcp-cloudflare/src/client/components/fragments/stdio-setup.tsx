@@ -190,6 +190,7 @@ import { CursorInstructions } from "./instructions/cursor";
 import { FxInstructions } from "./instructions/fx";
 import { GeminiInstructions } from "./instructions/gemini";
 import { OpenCodeInstructions } from "./instructions/opencode";
+import { PiInstructions } from "./instructions/pi";
 import { VSCodeInstructions } from "./instructions/vscode";
 import { WarpInstructions } from "./instructions/warp";
 import { ZedInstructions } from "./instructions/zed";
@@ -232,6 +233,10 @@ export function StdioSetupTabs({
 
       <Tab id="opencode" title="OpenCode">
         <OpenCodeInstructions transport="stdio" />
+      </Tab>
+
+      <Tab id="pi" title="Pi">
+        <PiInstructions transport="stdio" />
       </Tab>
 
       <Tab id="vscode" title="VSCode">

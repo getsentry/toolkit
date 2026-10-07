@@ -22,6 +22,28 @@ export function isAllDigits(str: string): boolean {
 }
 
 /**
+ * Parse an absolute HTTP(S) URL without embedded credentials.
+ *
+ * @param value - Untrusted URL string
+ * @returns The parsed URL, or undefined for malformed or relative input,
+ *   other schemes, and URLs with a username or password
+ */
+export function parseHttpUrl(value: string): URL | undefined {
+  if (!URL.canParse(value)) {
+    return;
+  }
+  const url = new URL(value);
+  if (
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password
+  ) {
+    return;
+  }
+  return url;
+}
+
+/**
  * Quote a value for safe use as one POSIX shell argument.
  *
  * @param value - Untrusted value to quote
@@ -69,7 +91,7 @@ export function slugify(name: string): string {
 export function getRealUsername(): string {
   // userInfo() can throw on systems with missing or corrupted passwd entries.
   let osUsername = "";
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     osUsername = userInfo().username;
   } catch {

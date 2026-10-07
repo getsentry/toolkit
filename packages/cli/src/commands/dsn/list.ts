@@ -65,7 +65,7 @@ const listConfig: ListCommandMeta = {
 /** List an organization's keys directly, preserving its cursor history. */
 async function listForOrganization(
   org: string,
-  flags: BaseListFlags
+  flags: BaseListFlags,
 ): Promise<ListResult<DsnListItem>> {
   const target = `${org}/`;
   const contextKey = buildPaginationContextKey("org", target, {
@@ -74,11 +74,11 @@ async function listForOrganization(
   const { cursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
   const response = await withProgress(
     { message: "Fetching DSNs...", json: flags.json },
-    () => listOrganizationDsns(org, { limit: flags.limit, cursor })
+    () => listOrganizationDsns(org, { limit: flags.limit, cursor }),
   );
   const { data, nextCursor } = response;
   advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);
@@ -115,7 +115,7 @@ type DsnProjectPage = {
 /** Fetch a bounded project page, allowing callers to report partial failures. */
 async function fetchProjectPage(
   target: ResolvedTarget,
-  options: GroupFetchOptions
+  options: GroupFetchOptions,
 ): Promise<FetchResult<DsnProjectPage>> {
   const result = await withAuthGuard(async () => {
     const page = await listProjectDsns(target.org, target.project, {
@@ -151,7 +151,7 @@ const targetKey = (target: Pick<ResolvedTarget, "org" | "project">) =>
 /** Collect successful pages, reporting partial failures and throwing if all fail. */
 function collectProjectResults(
   results: FetchResult<DsnProjectPage>[],
-  targets: ResolvedTarget[]
+  targets: ResolvedTarget[],
 ) {
   const pages = new Map<string, DsnProjectPage>();
   const failures: { project: string; error: Error }[] = [];
@@ -170,7 +170,7 @@ function collectProjectResults(
   }
   if (failures.length > 0) {
     logger.warn(
-      `Failed to fetch DSNs from ${failures.map((failure) => failure.project).join(", ")}. Showing results from ${pages.size} project(s).`
+      `Failed to fetch DSNs from ${failures.map((failure) => failure.project).join(", ")}. Showing results from ${pages.size} project(s).`,
     );
   }
   return { pages, failures };
@@ -192,7 +192,7 @@ async function listForResolvedProjects<
       undefined,
       resolution.skippedSelfHosted
         ? `Found ${resolution.skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`
-        : undefined
+        : undefined,
     );
   }
 
@@ -200,8 +200,8 @@ async function listForResolvedProjects<
   // Canonical slugs keep both output and cursor identity stable as caches warm.
   const targets = await Promise.all(
     resolution.targets.map((target) =>
-      limitRequests(() => resolveTargetSlugs(target))
-    )
+      limitRequests(() => resolveTargetSlugs(target)),
+    ),
   );
   const { flags } = ctx;
   const firstTarget = targets[0];
@@ -210,18 +210,18 @@ async function listForResolvedProjects<
       ? buildPaginationContextKey(
           "project",
           `${firstTarget.org}/${firstTarget.project}`,
-          { limit: String(flags.limit) }
+          { limit: String(flags.limit) },
         )
       : buildMultiTargetContextKey(targets, { limit: flags.limit });
   const { cursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
   const sortedKeys = targets.map(targetKey).sort();
   const { startCursors, exhausted } = decodeTargetCursors(cursor, sortedKeys);
   const activeTargets = targets.filter(
-    (target) => !exhausted.has(targetKey(target))
+    (target) => !exhausted.has(targetKey(target)),
   );
   const { results, hasMore } = await withProgress(
     { message: "Fetching DSNs...", json: flags.json },
@@ -235,9 +235,9 @@ async function listForResolvedProjects<
           limitRequests(() => fetchProjectPage(target, options)),
         onProgress: (count) =>
           setMessage(
-            `Fetching DSNs, ${count} and counting (up to ${flags.limit})...`
+            `Fetching DSNs, ${count} and counting (up to ${flags.limit})...`,
           ),
-      })
+      }),
   );
   const { pages, failures } = collectProjectResults(results, activeTargets);
   const allItems = [...pages.values()].flatMap((page) => page.items);

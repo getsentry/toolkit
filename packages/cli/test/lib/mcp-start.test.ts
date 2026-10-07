@@ -9,7 +9,7 @@ import {
 type CapturedOptions = {
   resolveAccessToken?: (config: unknown) => Promise<string>;
   onUpstreamUnauthorized?: (
-    setAccessToken: (token: string) => void
+    setAccessToken: (token: string) => void,
   ) => void | Promise<void>;
 };
 
@@ -51,7 +51,7 @@ describe("startMcpServer credential wiring", () => {
     const resolve = captured.options?.resolveAccessToken;
     expect(resolve).toBeDefined();
     await expect(
-      resolve?.({ sentryHost: "sentry.io", sentryProtocol: "https" })
+      resolve?.({ sentryHost: "sentry.io", sentryProtocol: "https" }),
     ).resolves.toBe("cli-session-token");
   });
 

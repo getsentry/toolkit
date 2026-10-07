@@ -154,7 +154,7 @@ function encodeSixel(png: PNG): string {
     bandForRow: (y) =>
       Math.min(
         COLOR_BANDS - 1,
-        Math.floor((y / Math.max(1, height - 1)) * COLOR_BANDS)
+        Math.floor((y / Math.max(1, height - 1)) * COLOR_BANDS),
       ),
   };
 
@@ -208,7 +208,7 @@ export const BANNER_SIXEL = {
 
   await writeFile(OUT_PATH, module, "utf8");
   process.stdout.write(
-    `Wrote ${OUT_PATH} (${png.width}x${png.height}, sixel ${sixel.length} bytes)\n`
+    `Wrote ${OUT_PATH} (${png.width}x${png.height}, sixel ${sixel.length} bytes)\n`,
   );
 }
 

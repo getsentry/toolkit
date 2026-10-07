@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-monitor
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Work with Sentry cron monitors
 requires:
   bins: ["sentry"]
@@ -25,7 +25,7 @@ Wrap a command with cron monitor check-ins
 - `--failure-issue-threshold <value> - Consecutive failures before an issue is created (requires --schedule)`
 - `--recovery-threshold <value> - Consecutive successes before an issue is resolved (requires --schedule)`
 
-### `sentry monitor list <org/project>`
+### `sentry monitor list [<org/project>]`
 
 List cron monitors
 

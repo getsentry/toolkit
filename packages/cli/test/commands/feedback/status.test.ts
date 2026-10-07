@@ -116,7 +116,7 @@ describe.each([
     const func = await command.loader();
 
     await expect(
-      func.call(context, { json: false }, "TEST-PROJECT-1A")
+      func.call(context, { json: false }, "TEST-PROJECT-1A"),
     ).rejects.toMatchObject({
       name: "ResolutionError",
       hint: "sentry issue view test-org/TEST-PROJECT-1A",
@@ -132,7 +132,7 @@ describe.each([
     const func = await command.loader();
 
     await expect(
-      func.call(context, { json: false }, "TEST-PROJECT-1A")
+      func.call(context, { json: false }, "TEST-PROJECT-1A"),
     ).rejects.toBe(error);
     expect(output()).toBe("");
   });
@@ -152,7 +152,7 @@ test("feedback unresolve restores Feedback marked as spam", async () => {
   expect(updateIssueStatus).toHaveBeenCalledExactlyOnceWith(
     "123",
     "unresolved",
-    { orgSlug: "test-org" }
+    { orgSlug: "test-org" },
   );
   expect(JSON.parse(output())).toEqual(feedback());
 });

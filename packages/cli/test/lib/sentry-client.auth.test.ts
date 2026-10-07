@@ -39,10 +39,10 @@ const ORG_TOKEN = mintSntrysToken({
 });
 const MALFORMED_TOKEN = ORG_TOKEN.replace(
   "test-secret-tail",
-  "te\nst-secret-tail"
+  "te\nst-secret-tail",
 );
 const EDGE_CONTROLS = `${Array.from({ length: 32 }, (_, code) =>
-  String.fromCharCode(code)
+  String.fromCharCode(code),
 ).join("")}\x7f`;
 
 describe("authenticated fetch bearer validation", () => {
@@ -60,7 +60,7 @@ describe("authenticated fetch bearer validation", () => {
 
   /** Mock responses while recording the actual request URL and Authorization. */
   function mockResponses(
-    respond: (url: string, authorization: string | null) => Response
+    respond: (url: string, authorization: string | null) => Response,
   ): typeof fetch {
     return mockFetch((input, init) => {
       const url = extractFetchUrl(input);
@@ -95,32 +95,32 @@ describe("authenticated fetch bearer validation", () => {
     getDatabase().query("UPDATE auth SET token = ? WHERE id = 1").run(token);
   }
 
-  test.each([
-    ...ENV_TOKEN_KEYS,
-    "stored",
-  ])("rejects an internal LF from %s before any request or auth fallback", async (source) => {
-    if (source === "stored") {
-      storeLegacyToken(MALFORMED_TOKEN);
-    } else {
-      process.env[source] = MALFORMED_TOKEN;
-    }
+  test.each([...ENV_TOKEN_KEYS, "stored"])(
+    "rejects an internal LF from %s before any request or auth fallback",
+    async (source) => {
+      if (source === "stored") {
+        storeLegacyToken(MALFORMED_TOKEN);
+      } else {
+        process.env[source] = MALFORMED_TOKEN;
+      }
 
-    const error = await withAuthGuard(request).catch(
-      (caught: unknown) => caught
-    );
-    expect(error).toBeInstanceOf(AuthError);
-    expect(error).toBeInstanceOf(MalformedAuthTokenError);
-    const authError = error as AuthError;
-    expect(authError.reason).toBe("invalid");
-    expect(authError.exitCode).toBe(EXIT.AUTH_INVALID);
-    expect(authError.message).toContain("single line");
-    expect(authError.cause).toBeUndefined();
-    expect(`${authError.message}\n${authError.stack}`).not.toContain(
-      MALFORMED_TOKEN
-    );
-    expect(shouldAutoAuth(authError, () => true)).toBe(false);
-    expect(requests).toEqual([]);
-  });
+      const error = await withAuthGuard(request).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(AuthError);
+      expect(error).toBeInstanceOf(MalformedAuthTokenError);
+      const authError = error as AuthError;
+      expect(authError.reason).toBe("invalid");
+      expect(authError.exitCode).toBe(EXIT.AUTH_INVALID);
+      expect(authError.message).toContain("single line");
+      expect(authError.cause).toBeUndefined();
+      expect(`${authError.message}\n${authError.stack}`).not.toContain(
+        MALFORMED_TOKEN,
+      );
+      expect(shouldAutoAuth(authError, () => true)).toBe(false);
+      expect(requests).toEqual([]);
+    },
+  );
 
   test.each([
     ["CR", "\r"],
@@ -165,33 +165,37 @@ describe("authenticated fetch bearer validation", () => {
     expect(requests[0]?.authorization).toBe("Bearer synthetic-token");
   });
 
-  test.each(
-    ENV_TOKEN_KEYS
-  )("trims surrounding C0, DEL and whitespace from SDK %s", async (key) => {
-    // An isolated SDK environment preserves NULs that process.env cannot.
-    setEnv({
-      ...process.env,
-      [key]: `${EDGE_CONTROLS}\u00a0synthetic-token\ufeff${EDGE_CONTROLS}`,
-    });
+  test.each(ENV_TOKEN_KEYS)(
+    "trims surrounding C0, DEL and whitespace from SDK %s",
+    async (key) => {
+      // An isolated SDK environment preserves NULs that process.env cannot.
+      setEnv({
+        ...process.env,
+        [key]: `${EDGE_CONTROLS}\u00a0synthetic-token\ufeff${EDGE_CONTROLS}`,
+      });
 
-    await request();
+      await request();
 
-    expect(requests).toEqual([
-      { url: RESOURCE_URL, authorization: "Bearer synthetic-token" },
-    ]);
-  });
+      expect(requests).toEqual([
+        { url: RESOURCE_URL, authorization: "Bearer synthetic-token" },
+      ]);
+    },
+  );
 
   test.each([
     " stored-token ",
     "\t\n\u00a0stored-token\r\n",
     "\x1f\u00a0stored-token\ufeff\x7f",
-  ])("trims surrounding controls and whitespace from legacy credentials %#", async (token) => {
-    storeLegacyToken(token);
-    await request();
-    expect(requests).toEqual([
-      { url: RESOURCE_URL, authorization: "Bearer stored-token" },
-    ]);
-  });
+  ])(
+    "trims surrounding controls and whitespace from legacy credentials %#",
+    async (token) => {
+      storeLegacyToken(token);
+      await request();
+      expect(requests).toEqual([
+        { url: RESOURCE_URL, authorization: "Bearer stored-token" },
+      ]);
+    },
+  );
 
   test("rejects a whitespace-only stored credential", async () => {
     storeLegacyToken(" \t\r\n ");
@@ -216,8 +220,8 @@ describe("authenticated fetch bearer validation", () => {
             "Cache-Control": "private, max-age=300",
             Vary: "Authorization",
           },
-        }
-      )
+        },
+      ),
     );
 
     expect(await (await request()).json()).toEqual({ source: "cache" });
@@ -234,8 +238,8 @@ describe("authenticated fetch bearer validation", () => {
             "Cache-Control": "private, max-age=300",
             Vary: "Authorization",
           },
-        }
-      )
+        },
+      ),
     );
 
     await request();
@@ -265,14 +269,15 @@ describe("authenticated fetch bearer validation", () => {
     expect(requests).toEqual([]);
   });
 
-  test.each(
-    ENV_TOKEN_KEYS
-  )("ignores a malformed %s when stored OAuth takes precedence", async (key) => {
-    process.env[key] = MALFORMED_TOKEN;
-    setAuthToken("stored-token");
-    await request();
-    expect(requests[0]?.authorization).toBe("Bearer stored-token");
-  });
+  test.each(ENV_TOKEN_KEYS)(
+    "ignores a malformed %s when stored OAuth takes precedence",
+    async (key) => {
+      process.env[key] = MALFORMED_TOKEN;
+      setAuthToken("stored-token");
+      await request();
+      expect(requests[0]?.authorization).toBe("Bearer stored-token");
+    },
+  );
 
   test("rejects forced malformed env credentials instead of using stored OAuth", async () => {
     process.env.SENTRY_AUTH_TOKEN = MALFORMED_TOKEN;
@@ -289,28 +294,28 @@ describe("authenticated fetch bearer validation", () => {
     { key: "SENTRY_AUTH_TOKEN", forceEnv: false },
     { key: "SENTRY_AUTH_TOKEN", forceEnv: true },
     { key: "SENTRY_TOKEN", forceEnv: true },
-  ])("rejects control-only $key without fallback (force-env=$forceEnv)", async ({
-    key,
-    forceEnv,
-  }) => {
-    if (forceEnv) {
-      setAuthToken("stored-token");
-    }
-    setEnv({
-      ...process.env,
-      SENTRY_AUTH_TOKEN: undefined,
-      SENTRY_TOKEN: "alias-token",
-      SENTRY_FORCE_ENV_TOKEN: forceEnv ? "1" : undefined,
-      [key]: "\0\x01\x7f",
-    });
+  ])(
+    "rejects control-only $key without fallback (force-env=$forceEnv)",
+    async ({ key, forceEnv }) => {
+      if (forceEnv) {
+        setAuthToken("stored-token");
+      }
+      setEnv({
+        ...process.env,
+        SENTRY_AUTH_TOKEN: undefined,
+        SENTRY_TOKEN: "alias-token",
+        SENTRY_FORCE_ENV_TOKEN: forceEnv ? "1" : undefined,
+        [key]: "\0\x01\x7f",
+      });
 
-    await expect(request()).rejects.toMatchObject({
-      name: "MalformedAuthTokenError",
-      reason: "invalid",
-      exitCode: EXIT.AUTH_INVALID,
-    });
-    expect(requests).toEqual([]);
-  });
+      await expect(request()).rejects.toMatchObject({
+        name: "MalformedAuthTokenError",
+        reason: "invalid",
+        exitCode: EXIT.AUTH_INVALID,
+      });
+      expect(requests).toEqual([]);
+    },
+  );
 
   test.each([
     "refreshed-token",
@@ -347,74 +352,77 @@ describe("authenticated fetch bearer validation", () => {
     " \t\n ",
     "opaque-\0-token",
     "opaque-\u0100-token",
-  ])("rejects malformed refreshed credentials without retrying the request %#", async (token) => {
-    process.env.SENTRY_CLIENT_ID = "synthetic-client-id";
-    setAuthToken("stored-token", 3600, "synthetic-refresh-token");
-    globalThis.fetch = mockResponses((url) => {
-      if (url.endsWith("/oauth/token/")) {
-        return Response.json({
-          access_token: token,
-          token_type: "bearer",
-          expires_in: 3600,
-          refresh_token: "synthetic-refresh-token",
-        });
-      }
-      return new Response("{}", { status: 401 });
-    });
-
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const error = await request().catch((caught: unknown) => caught);
-      expect(error).toBeInstanceOf(MalformedAuthTokenError);
-      expect(error).toMatchObject({
-        reason: "invalid",
-        exitCode: EXIT.AUTH_INVALID,
-      });
-      expect((error as Error).cause).toBeUndefined();
-      if (token) {
-        expect(String(error)).not.toContain(token);
-      }
-      expect(getAuthConfig()).toMatchObject({
-        token: "stored-token",
-        refreshToken: "synthetic-refresh-token",
-      });
-    }
-    const refreshAttempt = [
-      { url: RESOURCE_URL, authorization: "Bearer stored-token" },
-      { url: "https://sentry.io/oauth/token/", authorization: null },
-    ];
-    expect(requests).toEqual([...refreshAttempt, ...refreshAttempt]);
-  });
-
-  test.each([
-    "none",
-    ...ENV_TOKEN_KEYS,
-  ])("normalizes a proactive refresh with malformed env source %s", async (source) => {
-    process.env.SENTRY_CLIENT_ID = "synthetic-client-id";
-    if (source !== "none") {
-      process.env[source] = MALFORMED_TOKEN;
-    }
-    setAuthToken("expired-token", -1, "synthetic-refresh-token");
-    globalThis.fetch = mockResponses((url) =>
-      url.endsWith("/oauth/token/")
-        ? Response.json({
-            access_token: "\x1f \nrefreshed-token\r\t\x7f",
+  ])(
+    "rejects malformed refreshed credentials without retrying the request %#",
+    async (token) => {
+      process.env.SENTRY_CLIENT_ID = "synthetic-client-id";
+      setAuthToken("stored-token", 3600, "synthetic-refresh-token");
+      globalThis.fetch = mockResponses((url) => {
+        if (url.endsWith("/oauth/token/")) {
+          return Response.json({
+            access_token: token,
             token_type: "bearer",
             expires_in: 3600,
-            refresh_token: "replacement-refresh-token",
-          })
-        : Response.json({})
-    );
+            refresh_token: "synthetic-refresh-token",
+          });
+        }
+        return new Response("{}", { status: 401 });
+      });
 
-    expect((await request()).status).toBe(200);
-    expect(getAuthConfig()).toMatchObject({
-      token: "refreshed-token",
-      refreshToken: "replacement-refresh-token",
-    });
-    expect(requests).toEqual([
-      { url: "https://sentry.io/oauth/token/", authorization: null },
-      { url: RESOURCE_URL, authorization: "Bearer refreshed-token" },
-    ]);
-  });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const error = await request().catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(MalformedAuthTokenError);
+        expect(error).toMatchObject({
+          reason: "invalid",
+          exitCode: EXIT.AUTH_INVALID,
+        });
+        expect((error as Error).cause).toBeUndefined();
+        if (token) {
+          expect(String(error)).not.toContain(token);
+        }
+        expect(getAuthConfig()).toMatchObject({
+          token: "stored-token",
+          refreshToken: "synthetic-refresh-token",
+        });
+      }
+      const refreshAttempt = [
+        { url: RESOURCE_URL, authorization: "Bearer stored-token" },
+        { url: "https://sentry.io/oauth/token/", authorization: null },
+      ];
+      expect(requests).toEqual([...refreshAttempt, ...refreshAttempt]);
+    },
+  );
+
+  test.each(["none", ...ENV_TOKEN_KEYS])(
+    "normalizes a proactive refresh with malformed env source %s",
+    async (source) => {
+      process.env.SENTRY_CLIENT_ID = "synthetic-client-id";
+      if (source !== "none") {
+        process.env[source] = MALFORMED_TOKEN;
+      }
+      setAuthToken("expired-token", -1, "synthetic-refresh-token");
+      globalThis.fetch = mockResponses((url) =>
+        url.endsWith("/oauth/token/")
+          ? Response.json({
+              access_token: "\x1f \nrefreshed-token\r\t\x7f",
+              token_type: "bearer",
+              expires_in: 3600,
+              refresh_token: "replacement-refresh-token",
+            })
+          : Response.json({}),
+      );
+
+      expect((await request()).status).toBe(200);
+      expect(getAuthConfig()).toMatchObject({
+        token: "refreshed-token",
+        refreshToken: "replacement-refresh-token",
+      });
+      expect(requests).toEqual([
+        { url: "https://sentry.io/oauth/token/", authorization: null },
+        { url: RESOURCE_URL, authorization: "Bearer refreshed-token" },
+      ]);
+    },
+  );
 
   test("rejects malformed proactive refresh before storing or using the token", async () => {
     process.env.SENTRY_CLIENT_ID = "synthetic-client-id";
@@ -425,7 +433,7 @@ describe("authenticated fetch bearer validation", () => {
         token_type: "bearer",
         expires_in: 3600,
         refresh_token: "replacement-refresh-token",
-      })
+      }),
     );
 
     await expect(request()).rejects.toMatchObject({

@@ -24,7 +24,7 @@ const cliDir = join(import.meta.dirname, "../..");
 /** Spawn a CLI process and measure wall-clock duration. */
 async function measureCommand(
   args: string[],
-  env?: Record<string, string | undefined>
+  env?: Record<string, string | undefined>,
 ): Promise<{
   duration: number;
   exitCode: number;
@@ -50,7 +50,7 @@ async function measureCommand(
   });
 
   const exitCode = await new Promise<number>((resolve) =>
-    proc.on("close", (code) => resolve(code ?? 1))
+    proc.on("close", (code) => resolve(code ?? 1)),
   );
 
   return {

@@ -82,7 +82,7 @@ type SectionKind = {
 
 /** {@link SECTION_ORDER} keyed by section id. */
 const SECTION_KINDS = new Map<number, SectionKind>(
-  SECTION_ORDER.map(([id, name], rank) => [id, { name, rank }])
+  SECTION_ORDER.map(([id, name], rank) => [id, { name, rank }]),
 );
 
 /** Magic bytes and version that open every WebAssembly module. */
@@ -148,7 +148,7 @@ export type VarUint32 = {
   size: number;
 };
 
-// biome-ignore-start lint/suspicious/noBitwiseOperators: LEB128 is defined in terms of bit groups
+// oxlint-disable no-bitwise -- LEB128 is defined in terms of bit groups
 /**
  * Read an unsigned LEB128 32-bit integer.
  *
@@ -165,7 +165,7 @@ export function readVarUint32(bytes: Uint8Array, offset: number): VarUint32 {
     const byte = bytes[offset + size];
     if (byte === undefined) {
       throw new WasmParseError(
-        `truncated LEB128 integer at offset ${offset + size}`
+        `truncated LEB128 integer at offset ${offset + size}`,
       );
     }
     // Arithmetic rather than `<<`: a 5th group shifted by 28 would overflow
@@ -174,7 +174,7 @@ export function readVarUint32(bytes: Uint8Array, offset: number): VarUint32 {
     if ((byte & CONTINUATION_BIT) === 0) {
       if (value > MAX_UINT32) {
         throw new WasmParseError(
-          `LEB128 integer at offset ${offset} exceeds 32 bits`
+          `LEB128 integer at offset ${offset} exceeds 32 bits`,
         );
       }
       return { value, size: size + 1 };
@@ -182,7 +182,7 @@ export function readVarUint32(bytes: Uint8Array, offset: number): VarUint32 {
     scale *= GROUP_SIZE;
   }
   throw new WasmParseError(
-    `LEB128 integer at offset ${offset} is longer than ${MAX_VARUINT32_BYTES} bytes`
+    `LEB128 integer at offset ${offset} is longer than ${MAX_VARUINT32_BYTES} bytes`,
   );
 }
 
@@ -202,7 +202,7 @@ export function writeVarUint32(value: number): Uint8Array {
   } while (remaining !== 0);
   return Uint8Array.from(bytes);
 }
-// biome-ignore-end lint/suspicious/noBitwiseOperators: LEB128 is defined in terms of bit groups
+// oxlint-enable no-bitwise
 
 /**
  * Split a module into its sections, in file order.
@@ -233,7 +233,7 @@ export function parseSections(bytes: Uint8Array): WasmSection[] {
     const payloadEnd = offset + payloadLength;
     if (payloadEnd > bytes.length) {
       throw new WasmParseError(
-        `section at offset ${start} claims ${payloadLength} bytes but only ${bytes.length - offset} remain`
+        `section at offset ${start} claims ${payloadLength} bytes but only ${bytes.length - offset} remain`,
       );
     }
     lastRank = checkSectionOrder(kind, lastRank, start);
@@ -307,7 +307,7 @@ export function makeBuildIdSection(buildId: Uint8Array): WasmSection {
 export function makeExternalDebugInfoSection(url: string): WasmSection {
   return makeCustomSection(
     EXTERNAL_DEBUG_INFO_SECTION,
-    encodeByteVector(new TextEncoder().encode(url))
+    encodeByteVector(new TextEncoder().encode(url)),
   );
 }
 
@@ -339,13 +339,13 @@ export function isNameSection(section: WasmSection): boolean {
 function assertWasmHeader(bytes: Uint8Array): void {
   if (bytes.length < WASM_HEADER_LENGTH) {
     throw new WasmParseError(
-      `too short to be a WebAssembly module (${bytes.length} bytes)`
+      `too short to be a WebAssembly module (${bytes.length} bytes)`,
     );
   }
   for (let index = 0; index < WASM_HEADER_LENGTH; index++) {
     if (bytes[index] !== WASM_HEADER[index]) {
       throw new WasmParseError(
-        "not a WebAssembly module: bad magic or unsupported version"
+        "not a WebAssembly module: bad magic or unsupported version",
       );
     }
   }
@@ -367,7 +367,7 @@ function sectionKind(id: number, offset: number): SectionKind | null {
   const kind = SECTION_KINDS.get(id);
   if (kind === undefined) {
     throw new WasmParseError(
-      `unknown section id ${id} at offset ${offset}: not a section any released WebAssembly version defines`
+      `unknown section id ${id} at offset ${offset}: not a section any released WebAssembly version defines`,
     );
   }
   return kind;
@@ -386,14 +386,14 @@ function sectionKind(id: number, offset: number): SectionKind | null {
 function checkSectionOrder(
   kind: SectionKind | null,
   lastRank: number,
-  offset: number
+  offset: number,
 ): number {
   if (kind === null) {
     return lastRank;
   }
   if (kind.rank <= lastRank) {
     throw new WasmParseError(
-      `${kind.name} section at offset ${offset} is out of order or repeated`
+      `${kind.name} section at offset ${offset} is out of order or repeated`,
     );
   }
   return kind.rank;
@@ -413,7 +413,7 @@ function checkSectionOrder(
  */
 function readCustomHeader(
   id: number,
-  payload: Uint8Array
+  payload: Uint8Array,
 ): { name?: string; contents?: Uint8Array } {
   if (id !== CUSTOM_SECTION_ID) {
     return {};
@@ -427,7 +427,7 @@ function readCustomHeader(
     }
     return {
       name: new TextDecoder("utf-8", { fatal: true }).decode(
-        payload.subarray(size, nameEnd)
+        payload.subarray(size, nameEnd),
       ),
       contents: payload.subarray(nameEnd),
     };
@@ -460,13 +460,13 @@ function encodeByteVector(bytes: Uint8Array): Uint8Array {
  */
 function decodeByteVector(
   contents: Uint8Array,
-  sectionName: string
+  sectionName: string,
 ): Uint8Array | null {
   try {
     const { value: length, size } = readVarUint32(contents, 0);
     if (size + length !== contents.length) {
       log.debug(
-        `${sectionName} declares ${length} bytes but holds ${contents.length - size}`
+        `${sectionName} declares ${length} bytes but holds ${contents.length - size}`,
       );
       return null;
     }

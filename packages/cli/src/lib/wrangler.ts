@@ -89,7 +89,7 @@ function hasSpotlightVar(args: readonly string[]): boolean {
  * inside quotes or command substitutions do not. The returned offset is where
  * Wrangler's `--var` must be inserted.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: this is a single-pass shell lexer; splitting its quote/escape/substitution state would obscure the transitions
+// this is a single-pass shell lexer; splitting its quote/escape/substitution state would obscure the transitions
 function findShellCommandEnd(script: string, start: number): number {
   let quote: "'" | '"' | "`" | undefined;
   let escaped = false;
@@ -150,10 +150,10 @@ function findShellCommandEnd(script: string, start: number): number {
  * Returns undefined when the position is inside a quote or command
  * substitution, which means a textual `wrangler dev` is not executable code.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: same single-pass shell lexer as findShellCommandEnd, walking in the opposite direction conceptually
+// same single-pass shell lexer as findShellCommandEnd, walking in the opposite direction conceptually
 function findShellSegmentStart(
   script: string,
-  position: number
+  position: number,
 ): number | undefined {
   let quote: "'" | '"' | "`" | undefined;
   let escaped = false;
@@ -218,7 +218,7 @@ type ShellWranglerCommand = {
 
 /** Find an executable Wrangler command, excluding quoted text and arguments. */
 function findShellWranglerCommand(
-  script: string
+  script: string,
 ): ShellWranglerCommand | undefined {
   for (const match of script.matchAll(WRANGLER_DEV_SHELL_GLOBAL_RE)) {
     const matchIndex = match.index;
@@ -241,7 +241,7 @@ function findShellWranglerCommand(
 function injectIntoShellCommand(
   script: string,
   binding: string,
-  windows = false
+  windows = false,
 ): string | undefined {
   const command = findShellWranglerCommand(script);
   if (!command) {
@@ -264,17 +264,17 @@ function directWranglerIndex(args: readonly string[]): number {
   const executable = executableName(args[0] ?? "");
   if (executable === "npx" || executable === "bunx") {
     return args.findIndex(
-      (arg, index) => index > 0 && executableName(arg) === "wrangler"
+      (arg, index) => index > 0 && executableName(arg) === "wrangler",
     );
   }
   if (PACKAGE_MANAGERS.has(executable)) {
     const wrapperIndex = args.findIndex((arg) =>
-      ["dlx", "exec", "x"].includes(arg)
+      ["dlx", "exec", "x"].includes(arg),
     );
     if (wrapperIndex !== -1) {
       return args.findIndex(
         (arg, index) =>
-          index > wrapperIndex && executableName(arg) === "wrangler"
+          index > wrapperIndex && executableName(arg) === "wrangler",
       );
     }
   }
@@ -304,14 +304,14 @@ type PackageScriptInvocation = {
 /** Return the first non-option token at or after `start`. */
 function firstNonOption(
   args: readonly string[],
-  start: number
+  start: number,
 ): string | undefined {
   return args.slice(start).find((arg) => !arg.startsWith("-"));
 }
 
 /** Extract package-script metadata from standard and shorthand invocations. */
 function packageScriptInvocation(
-  args: readonly string[]
+  args: readonly string[],
 ): PackageScriptInvocation | undefined {
   const manager = executableName(args[0] ?? "");
   if (!PACKAGE_MANAGERS.has(manager)) {
@@ -340,7 +340,7 @@ function packageScriptInvocation(
 /** Read a package script without failing command startup on malformed files. */
 async function readPackageScript(
   cwd: string,
-  name: string
+  name: string,
 ): Promise<string | undefined> {
   try {
     const raw = await readFile(join(cwd, "package.json"), "utf8");
@@ -356,21 +356,21 @@ async function readPackageScript(
 /** Whether the project has a Wrangler config or the command names one. */
 async function hasWranglerConfig(
   cwd: string,
-  args: readonly string[]
+  args: readonly string[],
 ): Promise<boolean> {
   if (
     args.some(
-      (arg, index) => arg === "--config" && typeof args[index + 1] === "string"
+      (arg, index) => arg === "--config" && typeof args[index + 1] === "string",
     ) ||
     args.some(
-      (arg) => arg.startsWith("--config=") || WRANGLER_CONFIG_RE.test(arg)
+      (arg) => arg.startsWith("--config=") || WRANGLER_CONFIG_RE.test(arg),
     )
   ) {
     return true;
   }
 
   for (const filename of WRANGLER_CONFIG_FILES) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       await access(join(cwd, filename));
       return true;
@@ -384,7 +384,7 @@ async function hasWranglerConfig(
 /** Try to inject into a shell string carried by `sh -c` or `cmd /c`. */
 function injectIntoShellArgs(
   args: readonly string[],
-  binding: string
+  binding: string,
 ): WranglerCommandAugmentation | undefined {
   for (let index = 1; index < args.length; index += 1) {
     const shellSwitch = args[index - 1]?.toLowerCase();
@@ -395,7 +395,7 @@ function injectIntoShellArgs(
     const injected = injectIntoShellCommand(
       args[index] ?? "",
       binding,
-      shellExecutable === "cmd" || shellExecutable === "cmd.exe"
+      shellExecutable === "cmd" || shellExecutable === "cmd.exe",
     );
     if (injected) {
       const augmented = [...args];
@@ -411,7 +411,7 @@ function injectIntoPackageScript(
   args: readonly string[],
   binding: string,
   invocation: PackageScriptInvocation,
-  script: string
+  script: string,
 ): WranglerCommandAugmentation {
   const unchanged = { args: [...args], injected: false };
   const packageWrangler = findShellWranglerCommand(script);
@@ -420,7 +420,7 @@ function injectIntoPackageScript(
   }
   if (script.slice(packageWrangler.end).trim()) {
     logger.warn(
-      `Could not inject SENTRY_SPOTLIGHT into compound package script "${invocation.name}"; run sentry local run without an explicit command to use auto-detection`
+      `Could not inject SENTRY_SPOTLIGHT into compound package script "${invocation.name}"; run sentry local run without an explicit command to use auto-detection`,
     );
     return unchanged;
   }
@@ -463,7 +463,7 @@ function injectIntoPackageScript(
 export async function injectWranglerSpotlightBinding(
   args: readonly string[],
   spotlightUrl: string,
-  cwd: string
+  cwd: string,
 ): Promise<WranglerCommandAugmentation> {
   const unchanged = { args: [...args], injected: false };
   const packageInvocation = packageScriptInvocation(args);
@@ -493,6 +493,6 @@ export async function injectWranglerSpotlightBinding(
     args,
     binding,
     packageInvocation,
-    packageScript
+    packageScript,
   );
 }

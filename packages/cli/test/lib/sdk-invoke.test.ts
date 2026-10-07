@@ -141,7 +141,7 @@ describe("applyFlagDefaults: undefined stripping", () => {
     const flagDefs: Record<string, FlagDef> = {};
     const result = applyFlagDefaults(
       { a: undefined, b: null, c: 0, d: "", e: false },
-      flagDefs
+      flagDefs,
     );
     expect("a" in result).toBe(false);
     expect(result.b).toBeNull();

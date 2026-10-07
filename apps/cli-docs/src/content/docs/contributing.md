@@ -68,7 +68,7 @@ toolkit/
 │       │   │   ├── dsn/         # list
 │       │   │   ├── event/       # list, send, view
 │       │   │   ├── feedback/    # list, resolve, spam, unresolve, view
-│       │   │   ├── issue/       # archive, events, explain, list, merge, plan, resolve, unresolve, view
+│       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, unlink, unresolve, view
 │       │   │   ├── local/       # run, serve
 │       │   │   ├── log/         # list, view
 │       │   │   ├── monitor/     # list, run
@@ -138,7 +138,7 @@ pnpm run test -- --coverage
 
 ## Code Style
 
-The project uses [Ultracite](https://github.com/getsentry/ultracite) for linting and formatting:
+The project uses Oxlint and Oxfmt for linting and formatting:
 
 ```bash
 # Check for issues

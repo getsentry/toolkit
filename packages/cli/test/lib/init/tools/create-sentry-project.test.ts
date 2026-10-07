@@ -7,7 +7,7 @@ vi.mock("../../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
@@ -15,7 +15,7 @@ vi.mock("../../../../src/lib/scope-recovery.js", () => ({
   captureOAuthScopeRecoveryGate: vi.fn(),
 }));
 
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as apiClient from "../../../../src/lib/api-client.js";
 import { ApiError } from "../../../../src/lib/errors.js";
 import {
@@ -27,7 +27,7 @@ import type {
   CreateSentryProjectPayload,
   EnsureSentryProjectPayload,
 } from "../../../../src/lib/init/types.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as scopeRecovery from "../../../../src/lib/scope-recovery.js";
 
 vi.mock("../../../../src/lib/resolve-team.js", async (importOriginal) => {
@@ -39,16 +39,16 @@ vi.mock("../../../../src/lib/resolve-team.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as resolveTeam from "../../../../src/lib/resolve-team.js";
 
 function makePayload(
   overrides?: Partial<CreateSentryProjectPayload["params"]>,
-  operation: CreateSentryProjectPayload["operation"] = "create-sentry-project"
+  operation: CreateSentryProjectPayload["operation"] = "create-sentry-project",
 ): CreateSentryProjectPayload {
   return {
     type: "tool",
@@ -63,7 +63,7 @@ function makePayload(
 }
 
 function makeEnsurePayload(
-  overrides?: Partial<EnsureSentryProjectPayload["params"]>
+  overrides?: Partial<EnsureSentryProjectPayload["params"]>,
 ): EnsureSentryProjectPayload {
   return {
     ...makePayload(overrides),
@@ -215,7 +215,7 @@ describe("createSentryProject", () => {
       expect.objectContaining({
         name: "my-app",
         platform: "javascript-react",
-      })
+      }),
     );
   });
 
@@ -266,7 +266,7 @@ describe("createSentryProject", () => {
       expect.objectContaining({
         orgSlug: "acme",
         projectId: "(dry-run)",
-      })
+      }),
     );
     expect(createProjectWithDsnSpy).not.toHaveBeenCalled();
   });
@@ -299,8 +299,8 @@ describe("createSentryProject", () => {
         403,
         "Your organization has disabled this feature for members.",
         undefined,
-        true
-      )
+        true,
+      ),
     );
 
     const result = await createSentryProject(makePayload(), {
@@ -320,7 +320,7 @@ describe("createSentryProject", () => {
   test("tool describe uses payload.detail when provided", () => {
     const payload = { ...makePayload(), detail: "Setting up my-app..." };
     expect(createSentryProjectTool.describe(payload)).toBe(
-      "Setting up my-app..."
+      "Setting up my-app...",
     );
   });
 
@@ -331,7 +331,7 @@ describe("createSentryProject", () => {
   test("falls back to org-scoped endpoint on 403 from team-based creation", async () => {
     getProjectSpy.mockRejectedValueOnce(new ApiError("Not found", 404));
     createProjectWithDsnSpy.mockRejectedValueOnce(
-      new ApiError("Forbidden", 403, "No project:write access")
+      new ApiError("Forbidden", 403, "No project:write access"),
     );
 
     const result = await createSentryProject(makePayload(), {
@@ -352,7 +352,7 @@ describe("createSentryProject", () => {
   test("suppresses fallback when team was set via --team (isExplicitTeam)", async () => {
     getProjectSpy.mockRejectedValueOnce(new ApiError("Not found", 404));
     createProjectWithDsnSpy.mockRejectedValueOnce(
-      new ApiError("Forbidden", 403, "No project:write access")
+      new ApiError("Forbidden", 403, "No project:write access"),
     );
 
     const result = await createSentryProject(makePayload(), {
@@ -372,7 +372,7 @@ describe("createSentryProject", () => {
     shouldDelegateScopeRecovery.mockResolvedValueOnce(true);
     getProjectSpy.mockRejectedValueOnce(new ApiError("Not found", 404));
     createProjectWithAutoTeamSpy.mockRejectedValueOnce(
-      new ApiError("Forbidden", 403, "No project:write access")
+      new ApiError("Forbidden", 403, "No project:write access"),
     );
 
     const error = await executeTool(makePayload(), {
@@ -389,14 +389,14 @@ describe("createSentryProject", () => {
       expect.any(ApiError),
       {
         unattended: false,
-      }
+      },
     );
   });
 
   test("keeps the tool fallback when OAuth recovery is unattended", async () => {
     getProjectSpy.mockRejectedValueOnce(new ApiError("Not found", 404));
     createProjectWithAutoTeamSpy.mockRejectedValueOnce(
-      new ApiError("Forbidden", 403, "No project:write access")
+      new ApiError("Forbidden", 403, "No project:write access"),
     );
 
     const result = await createSentryProject(makePayload(), {
@@ -412,7 +412,7 @@ describe("createSentryProject", () => {
       expect.any(ApiError),
       {
         unattended: true,
-      }
+      },
     );
   });
 
@@ -423,8 +423,8 @@ describe("createSentryProject", () => {
       new ApiError(
         "Forbidden",
         403,
-        "Your organization has disabled this feature for members."
-      )
+        "Your organization has disabled this feature for members.",
+      ),
     );
 
     const result = await createSentryProject(makePayload(), {
@@ -446,8 +446,8 @@ describe("createSentryProject", () => {
       new ApiError(
         "Forbidden",
         403,
-        "Your organization has disabled this feature for members."
-      )
+        "Your organization has disabled this feature for members.",
+      ),
     );
 
     const result = await createSentryProject(makePayload(), {
@@ -465,7 +465,7 @@ describe("createSentryProject", () => {
 
   test("surfaces friendly 409 error when fallback project already exists", async () => {
     createProjectWithAutoTeamSpy.mockRejectedValueOnce(
-      new ApiError("Conflict", 409, "Slug already in use")
+      new ApiError("Conflict", 409, "Slug already in use"),
     );
     getProjectSpy.mockRejectedValueOnce(new ApiError("Not found", 404));
 

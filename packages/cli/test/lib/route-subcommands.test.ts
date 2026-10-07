@@ -22,7 +22,7 @@ describe("interceptSubcommand", () => {
   // Stricli route map, which fails under vitest because Node's CJS require
   // can't resolve .js→.ts for transitive ESM imports. The try-catch in
   // getSubcommandsForRoute gracefully degrades to empty sets in test.
-  // biome-ignore lint/suspicious/noSkippedTests: require("../app.js") fails in vitest — CJS can't resolve .js→.ts
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- require("../app.js") fails in vitest — CJS can't resolve .js→.ts
   test.skip("returns undefined and writes hint for known subcommand", () => {
     const stderr = makeStderr();
     const result = interceptSubcommand("list", stderr, "project");
@@ -55,7 +55,7 @@ describe("interceptSubcommand", () => {
   });
 
   // Skip: same reason as above — require("../app.js") fails in vitest
-  // biome-ignore lint/suspicious/noSkippedTests: require("../app.js") fails in vitest — CJS can't resolve .js→.ts
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- require("../app.js") fails in vitest — CJS can't resolve .js→.ts
   test.skip("hint includes the route name and subcommand", () => {
     const stderr = makeStderr();
     interceptSubcommand("view", stderr, "issue");
@@ -63,7 +63,7 @@ describe("interceptSubcommand", () => {
   });
 
   // Skip: same reason as above — require("../app.js") fails in vitest
-  // biome-ignore lint/suspicious/noSkippedTests: require("../app.js") fails in vitest — CJS can't resolve .js→.ts
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- require("../app.js") fails in vitest — CJS can't resolve .js→.ts
   test.skip("handles 'explain' and 'plan' subcommands for issue route", () => {
     const stderr1 = makeStderr();
     expect(interceptSubcommand("explain", stderr1, "issue")).toBeUndefined();

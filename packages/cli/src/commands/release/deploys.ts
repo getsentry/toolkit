@@ -59,14 +59,14 @@ export const deploysCommand = buildCommand({
   async *func(
     this: SentryContext,
     _flags: { readonly json: boolean; readonly fields?: string[] },
-    target: string
+    target: string,
   ) {
     const { cwd } = this;
 
     const { version, org } = await resolveReleaseTarget(
       target,
       USAGE_HINT,
-      cwd
+      cwd,
     );
 
     const deploys = await listReleaseDeploys(org, version);

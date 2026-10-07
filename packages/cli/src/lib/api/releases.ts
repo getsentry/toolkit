@@ -62,7 +62,7 @@ export type ListReleasesOptions = {
 
 export async function listReleasesPaginated(
   orgSlug: string,
-  options: ListReleasesOptions = {}
+  options: ListReleasesOptions = {},
 ): Promise<PaginatedResponse<SentryRelease[]>> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -95,7 +95,7 @@ export async function listReleasesPaginated(
 
   return unwrapPaginatedResult<SentryRelease[]>(
     result,
-    "Failed to list releases"
+    "Failed to list releases",
   );
 }
 
@@ -108,14 +108,14 @@ export async function listReleasesPaginated(
 export async function listReleasesForProject(
   orgSlug: string,
   projectSlug: string,
-  options: Omit<ListReleasesOptions, "project"> = {}
+  options: Omit<ListReleasesOptions, "project"> = {},
 ): Promise<SentryRelease[]> {
   // Resolve slug → numeric ID (the API requires numeric project IDs)
   const info = await getProject(orgSlug, projectSlug);
   const n = Number(info.id);
   if (!Number.isInteger(n) || n <= 0) {
     throw new ValidationError(
-      `Project "${projectSlug}" has an invalid numeric ID: ${info.id}`
+      `Project "${projectSlug}" has an invalid numeric ID: ${info.id}`,
     );
   }
   const { data } = await listReleasesPaginated(orgSlug, {
@@ -157,7 +157,7 @@ export async function getRelease(
     adoptionStages?: boolean;
     /** Period for health stats: "24h", "7d", "14d", etc. Defaults to "24h". */
     healthStatsPeriod?: string;
-  }
+  },
 ): Promise<SentryRelease> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -186,7 +186,7 @@ export async function getRelease(
 
   return unwrapResult<SentryRelease>(
     result,
-    `Failed to get release '${version}'`
+    `Failed to get release '${version}'`,
   );
 }
 
@@ -213,7 +213,7 @@ export async function createRelease(
       author_email?: string;
       timestamp?: string;
     }>;
-  }
+  },
 ): Promise<SentryRelease> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -259,7 +259,7 @@ export async function updateRelease(
       author_email?: string;
       timestamp?: string;
     }>;
-  }
+  },
 ): Promise<SentryRelease> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -276,7 +276,7 @@ export async function updateRelease(
 
   return unwrapResult<SentryRelease>(
     result,
-    `Failed to update release '${version}'`
+    `Failed to update release '${version}'`,
   );
 }
 
@@ -288,7 +288,7 @@ export async function updateRelease(
  */
 export async function deleteRelease(
   orgSlug: string,
-  version: string
+  version: string,
 ): Promise<void> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -312,7 +312,7 @@ export async function deleteRelease(
  */
 export async function listReleaseDeploys(
   orgSlug: string,
-  version: string
+  version: string,
 ): Promise<SentryDeploy[]> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -326,7 +326,7 @@ export async function listReleaseDeploys(
 
   return unwrapResult<SentryDeploy[]>(
     result,
-    `Failed to list deploys for release '${version}'`
+    `Failed to list deploys for release '${version}'`,
   );
 }
 
@@ -347,7 +347,7 @@ export async function createReleaseDeploy(
     url?: string;
     dateStarted?: string;
     dateFinished?: string;
-  }
+  },
 ): Promise<SentryDeploy> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -379,9 +379,9 @@ export async function createReleaseDeploy(
  */
 async function getPreviousReleaseCommit(
   orgSlug: string,
-  version: string
+  version: string,
 ): Promise<string | undefined> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const regionUrl = await resolveOrgRegion(orgSlug);
     const encodedVersion = encodeURIComponent(version);
@@ -390,7 +390,7 @@ async function getPreviousReleaseCommit(
     }>(
       regionUrl,
       `organizations/${orgSlug}/releases/${encodedVersion}/previous-with-commits/`,
-      { method: "GET" }
+      { method: "GET" },
     );
     return data?.lastCommit?.id;
   } catch {
@@ -434,7 +434,7 @@ export const NO_REPO_INTEGRATIONS_MESSAGE =
 export async function setCommitsAuto(
   orgSlug: string,
   version: string,
-  cwd?: string
+  cwd?: string,
 ): Promise<SentryRelease> {
   const localRepo = getRepositoryName(cwd);
   if (!localRepo) {
@@ -445,7 +445,7 @@ export async function setCommitsAuto(
         "sentry release set-commits <version> --local",
         "sentry release set-commits <version> --commit owner/repo@abc123",
       ],
-      "repository"
+      "repository",
     );
   }
 
@@ -466,7 +466,7 @@ export async function setCommitsAuto(
     }
 
     const match = result.data.find(
-      (r) => r.name.toLowerCase() === localRepoLower
+      (r) => r.name.toLowerCase() === localRepoLower,
     );
     if (match) {
       const headCommit = getHeadCommit(cwd);
@@ -495,7 +495,7 @@ export async function setCommitsAuto(
 
   throw new ValidationError(
     `No Sentry repository matching '${localRepo}'.`,
-    "repository"
+    "repository",
   );
 }
 
@@ -517,7 +517,7 @@ export async function setCommitsWithRefs(
     repository: string;
     commit: string;
     previousCommit?: string;
-  }>
+  }>,
 ): Promise<SentryRelease> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const encodedVersion = encodeURIComponent(version);
@@ -527,7 +527,7 @@ export async function setCommitsWithRefs(
     {
       method: "PUT",
       body: { refs },
-    }
+    },
   );
   return data;
 }
@@ -550,7 +550,7 @@ export function setCommitsLocal(
     author_name?: string;
     author_email?: string;
     timestamp?: string;
-  }>
+  }>,
 ): Promise<SentryRelease> {
   return updateRelease(orgSlug, version, { commits });
 }
@@ -574,7 +574,7 @@ export type ProjectEnvironment = {
  */
 export async function listProjectEnvironments(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<ProjectEnvironment[]> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await sdkListProjectEnvironments({
@@ -587,6 +587,6 @@ export async function listProjectEnvironments(
   });
   return unwrapResult<ProjectEnvironment[]>(
     result,
-    "Failed to list environments"
+    "Failed to list environments",
   );
 }

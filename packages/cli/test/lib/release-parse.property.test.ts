@@ -14,11 +14,11 @@ vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../src/lib/resolve-target.js";
 
 const slugChars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -37,7 +37,7 @@ const slugWithHyphensArb = array(constantFrom(...`${slugChars}-`.split("")), {
 
 const versionArb = array(
   constantFrom(..."0123456789.abcdefghijklmnopqrstuvwxyz-+@".split("")),
-  { minLength: 1, maxLength: 20 }
+  { minLength: 1, maxLength: 20 },
 ).map((chars) => chars.join(""));
 
 describe("property: parseReleaseArg", () => {
@@ -52,7 +52,7 @@ describe("property: parseReleaseArg", () => {
           expect(result.version).toBe(input);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -66,9 +66,9 @@ describe("property: parseReleaseArg", () => {
           // so the whole string should be the version
           expect(result.version).toBe(version);
           expect(result.orgSlug).toBeUndefined();
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -82,9 +82,9 @@ describe("property: parseReleaseArg", () => {
           const result = parseReleaseArg(input, "test");
           expect(result.orgSlug).toBe(slug);
           expect(result.version).toBe(version);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -96,9 +96,9 @@ describe("property: parseReleaseArg", () => {
           const result = parseReleaseArg(version, "test");
           expect(result.orgSlug).toBeUndefined();
           expect(result.version).toBe(version);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -161,20 +161,20 @@ describe("unit: resolveReleaseTarget", () => {
 
   test("throws ContextError when target is undefined", async () => {
     await expect(
-      resolveReleaseTarget(undefined, USAGE, "/tmp")
+      resolveReleaseTarget(undefined, USAGE, "/tmp"),
     ).rejects.toThrow(ContextError);
   });
 
   test("throws ContextError when target is whitespace", async () => {
     await expect(resolveReleaseTarget("   ", USAGE, "/tmp")).rejects.toThrow(
-      "Release version"
+      "Release version",
     );
   });
 
   test("throws ContextError when org cannot be resolved", async () => {
     resolveOrgSpy.mockResolvedValue(null);
     await expect(resolveReleaseTarget("1.0.0", USAGE, "/tmp")).rejects.toThrow(
-      ContextError
+      ContextError,
     );
   });
 });

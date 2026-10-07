@@ -60,7 +60,7 @@ export function formatCompactCount(value: number): string {
  */
 export function appendUnitSuffix(
   formatted: string,
-  unit?: string | null
+  unit?: string | null,
 ): string {
   if (!unit || unit === "none" || unit === "null") {
     return formatted;
@@ -94,7 +94,7 @@ export function formatWithUnit(value: number, unit?: string | null): string {
  */
 export function formatCompactWithUnit(
   value: number,
-  unit?: string | null
+  unit?: string | null,
 ): string {
   return appendUnitSuffix(compactFormatter.format(Math.round(value)), unit);
 }

@@ -131,7 +131,7 @@ describe("sentry api", () => {
 
     expect(result.exitCode).toBe(EXIT.OUTPUT_ERROR);
     expect(result.stdout).toContain(
-      "HTTP 404 Not Found — GET /api/0/empty-error/"
+      "HTTP 404 Not Found — GET /api/0/empty-error/",
     );
   });
 
@@ -157,7 +157,7 @@ describe("sentry api", () => {
       const result = await ctx.run(["api", "nonexistent-endpoint-12345/"]);
 
       expect(result.exitCode).toBe(EXIT.OUTPUT_ERROR);
-    }
+    },
   );
 
   test("--silent flag suppresses output", { timeout: 15_000 }, async () => {
@@ -183,7 +183,7 @@ describe("sentry api", () => {
 
       expect(result.exitCode).toBe(EXIT.OUTPUT_ERROR);
       expect(result.stdout).toBe("");
-    }
+    },
   );
 
   test("supports custom HTTP method", { timeout: 15_000 }, async () => {
@@ -268,7 +268,7 @@ describe("sentry api", () => {
       // stdout should still contain the response body
       const data = JSON.parse(result.stdout);
       expect(Array.isArray(data)).toBe(true);
-    }
+    },
   );
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ describe("sentry api", () => {
 
       expect(result.exitCode).toBe(EXIT.VALIDATION);
       expect(result.stderr + result.stdout).toMatch(/file not found/i);
-    }
+    },
   );
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -338,7 +338,7 @@ describe("sentry api", () => {
       expect(result.exitCode).toBe(0);
       const data = JSON.parse(result.stdout);
       expect(Array.isArray(data)).toBe(true);
-    }
+    },
   );
 
   test(
@@ -363,7 +363,7 @@ describe("sentry api", () => {
       expect(result.exitCode).toBe(EXIT.OUTPUT_ERROR);
       // The error should be from the API, not a TypeError about body
       expect(result.stdout + result.stderr).not.toMatch(/cannot have body/i);
-    }
+    },
   );
 
   test(
@@ -385,9 +385,9 @@ describe("sentry api", () => {
 
       expect(result.exitCode).toBe(EXIT.VALIDATION);
       expect(result.stderr + result.stdout).toMatch(
-        /--data.*--input|--input.*--data/i
+        /--data.*--input|--input.*--data/i,
       );
-    }
+    },
   );
 
   test(
@@ -409,9 +409,9 @@ describe("sentry api", () => {
 
       expect(result.exitCode).toBe(EXIT.VALIDATION);
       expect(result.stderr + result.stdout).toMatch(
-        /--data.*--field|--field.*--data/i
+        /--data.*--field|--field.*--data/i,
       );
-    }
+    },
   );
 
   test(
@@ -433,8 +433,8 @@ describe("sentry api", () => {
 
       expect(result.exitCode).toBe(EXIT.VALIDATION);
       expect(result.stderr + result.stdout).toMatch(
-        /--data.*--field|--field.*--data/i
+        /--data.*--field|--field.*--data/i,
       );
-    }
+    },
   );
 });

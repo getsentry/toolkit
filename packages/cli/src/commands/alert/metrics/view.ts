@@ -4,7 +4,7 @@ import { openInBrowser } from "../../../lib/browser.js";
 import { buildCommand } from "../../../lib/command.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
-import { buildMetricAlertsUrl } from "../../../lib/sentry-urls.js";
+import { buildMetricAlertsUrl } from "../../../lib/sentry-web-urls.js";
 import {
   type MetricRuleResolution,
   parseMetricRuleArg,
@@ -86,7 +86,7 @@ export const viewCommand = buildCommand({
     if (flags.web && parsed.type === "org-all") {
       await openInBrowser(
         buildMetricAlertsUrl(parsed.org),
-        "metric alert rules"
+        "metric alert rules",
       );
       return;
     }
@@ -94,7 +94,7 @@ export const viewCommand = buildCommand({
     const org = await resolveOrgOnlyFromArg(
       targetArg,
       cwd,
-      "alert metrics view"
+      "alert metrics view",
     );
 
     if (flags.web) {

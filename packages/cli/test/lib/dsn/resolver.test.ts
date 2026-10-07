@@ -12,7 +12,7 @@ const {
   mockListProjects: vi.fn(() => Promise.resolve([])),
   mockFindProjectByDsnKey: vi.fn(() => Promise.resolve(null)),
   mockResolveOrgDisplayName: vi.fn(
-    (slug: string, name?: string) => name ?? slug
+    (slug: string, name?: string) => name ?? slug,
   ),
 }));
 
@@ -120,7 +120,7 @@ describe("resolveProject", () => {
     mockFindProjectByDsnKey.mockResolvedValue(null);
 
     await expect(resolveProject("/test/path", dsn)).rejects.toThrow(
-      /Cannot resolve project.*DSN could not be matched/
+      /Cannot resolve project.*DSN could not be matched/,
     );
   });
 
@@ -142,7 +142,7 @@ describe("resolveProject", () => {
     });
 
     await expect(resolveProject("/test/path", dsn)).rejects.toThrow(
-      /Cannot resolve project/
+      /Cannot resolve project/,
     );
   });
 
@@ -194,7 +194,7 @@ describe("resolveProject", () => {
     ]);
 
     await expect(resolveProject("/test/path", dsn)).rejects.toThrow(
-      /Could not find organization with ID 999/
+      /Could not find organization with ID 999/,
     );
   });
 
@@ -218,7 +218,7 @@ describe("resolveProject", () => {
     ]);
 
     await expect(resolveProject("/test/path", dsn)).rejects.toThrow(
-      /Could not find project with ID 999 in organization my-org/
+      /Could not find project with ID 999 in organization my-org/,
     );
   });
 

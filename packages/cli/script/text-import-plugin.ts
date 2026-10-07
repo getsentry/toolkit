@@ -133,7 +133,7 @@ export const textImportPlugin: Plugin = {
           throw new Error(
             `text-import-plugin: failed to process ${sourcePath} → ${outPath}: ${
               err instanceof Error ? err.message : String(err)
-            }`
+            }`,
           );
         }
 

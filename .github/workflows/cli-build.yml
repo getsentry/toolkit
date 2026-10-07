@@ -119,20 +119,27 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm --filter sentry run build -- --target ${{ matrix.target }}
       - name: Smoke test
-        if: matrix.target == 'linux-x64'
+        if: matrix.target == 'linux-x64' || matrix.target == 'darwin-arm64'
         env:
           SENTRY_AUTH_TOKEN: ""
           SENTRY_TOKEN: ""
           SENTRY_CONFIG_DIR: ${{ runner.temp }}/.sentry-smoke
           NIGHTLY_VERSION: ${{ needs.nightly-version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        shell: bash
         run: |
-          packages/cli/dist-bin/sentry-linux-x64 --help
+          binary="packages/cli/dist-bin/sentry-${TARGET}"
+          "$binary" --help
           if [[ "$GITHUB_REF" == 'refs/heads/main' ]]; then
-            test "$(packages/cli/dist-bin/sentry-linux-x64 --version)" = "$NIGHTLY_VERSION"
+            test "$("$binary" --version)" = "$NIGHTLY_VERSION"
           fi
-          output=$(packages/cli/dist-bin/sentry-linux-x64 auth status 2>&1) && status=$? || status=$?
+          output=$("$binary" auth status 2>&1) && status=$? || status=$?
           test "$status" -eq 10
           printf '%s\n' "$output" | grep -qi 'not authenticated'
+      - name: Verify code signature (darwin)
+        if: matrix.target == 'darwin-arm64' && github.event_name == 'push'
+        shell: bash
+        run: rcodesign verify packages/cli/dist-bin/sentry-darwin-arm64
       - name: Upload binary artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

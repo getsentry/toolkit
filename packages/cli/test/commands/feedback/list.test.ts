@@ -15,11 +15,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
@@ -29,11 +29,11 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -43,15 +43,15 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 function sampleFeedback(
-  overrides: Partial<SentryFeedback> = {}
+  overrides: Partial<SentryFeedback> = {},
 ): SentryFeedback {
   return {
     id: "5146636313",
@@ -140,7 +140,7 @@ describe("feedback list", () => {
         json: true,
         fresh: false,
       },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     expect(listFeedbackSpy).toHaveBeenCalledWith("test-org", "test-project", {
@@ -184,7 +184,7 @@ describe("feedback list", () => {
         json: false,
         fresh: false,
       },
-      "test-org/"
+      "test-org/",
     );
 
     expect(listFeedbackSpy).toHaveBeenCalledWith("test-org", "", {
@@ -199,16 +199,16 @@ describe("feedback list", () => {
       "feedback-list",
       expect.any(String),
       "prev",
-      "next"
+      "next",
     );
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
     expect(output).toContain("Spam");
     expect(output).toContain("Read");
     expect(output).toContain(
-      'sentry feedback list test-org/ -c prev --status spam --limit 250 -q "browser:Chrome" --period 30d'
+      'sentry feedback list test-org/ -c prev --status spam --limit 250 -q "browser:Chrome" --period 30d',
     );
     expect(output).toContain(
-      'sentry feedback list test-org/ -c next --status spam --limit 250 -q "browser:Chrome" --period 30d'
+      'sentry feedback list test-org/ -c next --status spam --limit 250 -q "browser:Chrome" --period 30d',
     );
   });
 
@@ -232,7 +232,7 @@ describe("feedback list", () => {
     expect(resolveTargetSpy).toHaveBeenCalledWith(
       undefined,
       "/tmp",
-      "feedback list"
+      "feedback list",
     );
   });
 
@@ -255,18 +255,18 @@ describe("feedback list", () => {
         json: true,
         fresh: false,
       },
-      "test-project"
+      "test-project",
     );
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
       "test-project",
       "/tmp",
-      "feedback list"
+      "feedback list",
     );
     expect(listFeedbackSpy).toHaveBeenCalledWith(
       "test-org",
       "test-project",
-      expect.objectContaining({ projectId: 42 })
+      expect.objectContaining({ projectId: 42 }),
     );
     expect(getProjectSpy).not.toHaveBeenCalled();
   });
@@ -293,7 +293,7 @@ describe("feedback list", () => {
   test("converts user query 400 responses to ValidationError", async () => {
     resolveTargetSpy.mockResolvedValue({ org: "test-org" });
     listFeedbackSpy.mockRejectedValue(
-      new ApiError("bad query", 400, "Error parsing search query")
+      new ApiError("bad query", 400, "Error parsing search query"),
     );
 
     const { context } = createMockContext();
@@ -306,7 +306,7 @@ describe("feedback list", () => {
         period: parsePeriod("14d"),
         json: true,
         fresh: false,
-      })
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 });

@@ -15,7 +15,7 @@ import type { TraceSpan } from "../../../src/types/index.js";
  * Allows tests to verify text content without color interference.
  */
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI codes use control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -32,7 +32,7 @@ function makeTraceSpan(
   op: string,
   description: string,
   children: TraceSpan[] = [],
-  overrides?: Partial<TraceSpan>
+  overrides?: Partial<TraceSpan>,
 ): TraceSpan {
   return {
     span_id: `span-${op}`,
@@ -241,7 +241,7 @@ describe("formatSimpleSpanTree", () => {
               timestamp: 1000.05,
             }),
           ],
-          { start_timestamp: 1000.0, timestamp: 1000.5 }
+          { start_timestamp: 1000.0, timestamp: 1000.5 },
         ),
       ];
       const result = formatSimpleSpanTree("trace-123", spans);
@@ -307,7 +307,7 @@ describe("formatSimpleSpanTree", () => {
       const result = formatSimpleSpanTree(
         "trace-123",
         spans,
-        Number.POSITIVE_INFINITY
+        Number.POSITIVE_INFINITY,
       );
       const output = stripAnsi(result.join("\n"));
 

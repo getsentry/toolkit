@@ -21,7 +21,7 @@ function noop(): void {
 async function spawnCollect(
   cmd: string,
   args: string[],
-  opts?: { cwd?: string; env?: NodeJS.ProcessEnv }
+  opts?: { cwd?: string; env?: NodeJS.ProcessEnv },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = spawn(cmd, args, {
     cwd: opts?.cwd,
@@ -40,7 +40,7 @@ async function spawnCollect(
   });
 
   const exitCode = await new Promise<number>((resolve) =>
-    proc.on("close", (code) => resolve(code ?? 1))
+    proc.on("close", (code) => resolve(code ?? 1)),
   );
   return { stdout, stderr, exitCode };
 }
@@ -75,7 +75,7 @@ describe("npm bundle", () => {
       [BUNDLE_BIN_PATH, "--version"],
       {
         cwd: ROOT_DIR,
-      }
+      },
     );
 
     // Should not have shell syntax errors (the original bug)
@@ -96,7 +96,7 @@ describe("npm bundle", () => {
       [BUNDLE_BIN_PATH, "--version"],
       {
         cwd: ROOT_DIR,
-      }
+      },
     );
 
     // Should not have any Node.js warnings
@@ -121,7 +121,7 @@ describe("npm bundle", () => {
       ["--version"],
       {
         cwd: ROOT_DIR,
-      }
+      },
     );
 
     // This is the exact error from the bug report - shell interpreting JS as bash
@@ -147,7 +147,7 @@ describe("npm bundle", () => {
           SENTRY_AUTH_TOKEN: "",
           SENTRY_TOKEN: "",
         },
-      }
+      },
     );
 
     const output = stdout + stderr;
@@ -175,7 +175,7 @@ describe("npm bundle", () => {
           SENTRY_AUTH_TOKEN: "",
           SENTRY_TOKEN: "",
         },
-      }
+      },
     );
 
     const output = stdout + stderr;
@@ -212,7 +212,7 @@ describe("npm bundle", () => {
     if (exitCode !== 0) {
       const output = stdout + stderr;
       throw new Error(
-        `Ink sidecar import failed (exit ${exitCode}): ${output}`
+        `Ink sidecar import failed (exit ${exitCode}): ${output}`,
       );
     }
     expect(exitCode).toBe(0);

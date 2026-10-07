@@ -245,11 +245,11 @@ describe("injectDirectory — inline sourcemaps", () => {
 
     // The rewritten inline directive carries the injected map.
     const m = js.match(
-      /sourceMappingURL=data:application\/json;base64,([A-Za-z0-9+/=]+)/
+      /sourceMappingURL=data:application\/json;base64,([A-Za-z0-9+/=]+)/,
     );
     expect(m).not.toBeNull();
     const rewritten = JSON.parse(
-      Buffer.from(m?.[1] ?? "", "base64").toString("utf-8")
+      Buffer.from(m?.[1] ?? "", "base64").toString("utf-8"),
     );
     expect(rewritten.debug_id).toBe(debugId);
     expect(rewritten.debugId).toBe(debugId);
@@ -257,7 +257,7 @@ describe("injectDirectory — inline sourcemaps", () => {
 
     // injectedMapContent matches the rewritten inline map.
     expect(
-      JSON.parse((injectedMapContent ?? Buffer.alloc(0)).toString())
+      JSON.parse((injectedMapContent ?? Buffer.alloc(0)).toString()),
     ).toEqual(rewritten);
   });
 
@@ -289,7 +289,7 @@ describe("injectDirectory — inline sourcemaps", () => {
     const jsPath = join(dir, "banner.js");
     writeFileSync(
       jsPath,
-      `console.log(1)\n//# sourceMappingURL=${toDataUrl(SAMPLE_MAP)}\n/*! some-lib v1.2.3 | MIT */\n`
+      `console.log(1)\n//# sourceMappingURL=${toDataUrl(SAMPLE_MAP)}\n/*! some-lib v1.2.3 | MIT */\n`,
     );
     const results = await injectDirectory(dir, { dryRun: true });
     expect(results).toHaveLength(1);
@@ -300,14 +300,14 @@ describe("injectDirectory — inline sourcemaps", () => {
     const jsPath = writeInline(
       "cli.js",
       SAMPLE_MAP,
-      "#!/usr/bin/env node\nconsole.log(1)\n"
+      "#!/usr/bin/env node\nconsole.log(1)\n",
     );
     await injectDirectory(dir);
     const js = readFileSync(jsPath, "utf-8");
     expect(js.startsWith("#!/usr/bin/env node\n")).toBe(true);
     // Snippet must follow the hashbang, not precede it.
     expect(js.indexOf("sentry-dbid-")).toBeGreaterThan(
-      js.indexOf("#!/usr/bin/env node")
+      js.indexOf("#!/usr/bin/env node"),
     );
   });
 
@@ -318,7 +318,7 @@ describe("injectDirectory — inline sourcemaps", () => {
     const jsPath = writeInline(
       "twin.js",
       SAMPLE_MAP,
-      `const s = "//# sourceMappingURL=${fake}";\nconsole.log(s)\n`
+      `const s = "//# sourceMappingURL=${fake}";\nconsole.log(s)\n`,
     );
     const results = await injectDirectory(dir);
     expect(results[0]?.injected).toBe(true);
@@ -331,7 +331,7 @@ describe("injectDirectory — inline sourcemaps", () => {
       .find((l) => l.startsWith("//# sourceMappingURL=data:"));
     const realB64 = realLine?.match(/base64,([A-Za-z0-9+/=]+)/)?.[1] ?? "";
     const realMap = JSON.parse(
-      Buffer.from(realB64, "base64").toString("utf-8")
+      Buffer.from(realB64, "base64").toString("utf-8"),
     );
     expect(realMap.debug_id).toBe(results[0]?.debugId);
     expect(realMap.version).toBe(3); // the real SAMPLE_MAP, not the fake
@@ -344,7 +344,7 @@ describe("injectDirectory — inline sourcemaps", () => {
     const bad = join(dir, "bad.js");
     writeFileSync(
       bad,
-      "console.log(2)\n//# sourceMappingURL=data:application/json;base64,@@@nope@@@\n"
+      "console.log(2)\n//# sourceMappingURL=data:application/json;base64,@@@nope@@@\n",
     );
 
     const results = await injectDirectory(dir, { dryRun: true });
@@ -375,10 +375,10 @@ describe("injectDirectory — debug ID uniqueness (regression #3350)", () => {
 
   /** Map results back to a `basename → debugId` object. */
   function debugIdsByName(
-    results: Awaited<ReturnType<typeof injectDirectory>>
+    results: Awaited<ReturnType<typeof injectDirectory>>,
   ): Record<string, string> {
     return Object.fromEntries(
-      results.map((r) => [r.jsPath.slice(dir.length + 1), r.debugId])
+      results.map((r) => [r.jsPath.slice(dir.length + 1), r.debugId]),
     );
   }
 
@@ -401,11 +401,11 @@ describe("injectDirectory — debug ID uniqueness (regression #3350)", () => {
     const emptyInline = JSON.parse(EMPTY_MAP);
     writeFileSync(
       join(dir, "a.js"),
-      `console.log(1)\n//# sourceMappingURL=${toDataUrl(emptyInline)}\n`
+      `console.log(1)\n//# sourceMappingURL=${toDataUrl(emptyInline)}\n`,
     );
     writeFileSync(
       join(dir, "b.js"),
-      `console.log(22)\n//# sourceMappingURL=${toDataUrl(emptyInline)}\n`
+      `console.log(22)\n//# sourceMappingURL=${toDataUrl(emptyInline)}\n`,
     );
 
     const ids = debugIdsByName(await injectDirectory(dir));
@@ -469,7 +469,7 @@ describe("injectDirectory — pre-existing sourcemap debug ID", () => {
    */
   function writePluginPair(
     name: string,
-    mapExtra: Record<string, unknown>
+    mapExtra: Record<string, unknown>,
   ): { jsPath: string; mapPath: string; js: string; map: string } {
     const jsPath = join(dir, name);
     const mapPath = `${jsPath}.map`;
@@ -524,7 +524,7 @@ describe("injectDirectory — pre-existing sourcemap debug ID", () => {
     expect(readFileSync(jsPath, "utf-8")).toBe(js);
     // The map is uploaded exactly as decoded — no snippet, so no line offset.
     const uploaded = JSON.parse(
-      (results[0]?.injectedMapContent ?? Buffer.alloc(0)).toString()
+      (results[0]?.injectedMapContent ?? Buffer.alloc(0)).toString(),
     );
     expect(uploaded.debug_id).toBe(PLUGIN_ID);
     expect(uploaded.mappings).toBe(BASE_MAP.mappings);
@@ -535,11 +535,11 @@ describe("injectDirectory — pre-existing sourcemap debug ID", () => {
     const jsId = "99999999-8888-7777-6666-555555555555";
     writeFileSync(
       jsPath,
-      `console.log(1)\n//# sourceMappingURL=bundle.js.map\n//# debugId=${jsId}\n`
+      `console.log(1)\n//# sourceMappingURL=bundle.js.map\n//# debugId=${jsId}\n`,
     );
     writeFileSync(
       `${jsPath}.map`,
-      JSON.stringify({ ...BASE_MAP, debug_id: PLUGIN_ID })
+      JSON.stringify({ ...BASE_MAP, debug_id: PLUGIN_ID }),
     );
 
     const results = await injectDirectory(dir);
@@ -564,7 +564,7 @@ describe("injectDirectory — pre-existing sourcemap debug ID", () => {
     const js = readFileSync(pair.jsPath, "utf-8");
     expect(js).toContain(`//# debugId=${results[0]?.debugId}`);
     expect(JSON.parse(readFileSync(pair.mapPath, "utf-8")).debug_id).toBe(
-      results[0]?.debugId
+      results[0]?.debugId,
     );
   });
 
@@ -613,144 +613,144 @@ describe("injectDirectory — pre-existing sourcemap debug ID", () => {
   });
 });
 
-describe.each([
-  "external",
-  "inline",
-] as const)("injectDirectory — %s map runtime registration", (kind) => {
-  let dir: string;
-  const debugId = "11111111-2222-5333-9444-555555555555";
+describe.each(["external", "inline"] as const)(
+  "injectDirectory — %s map runtime registration",
+  (kind) => {
+    let dir: string;
+    const debugId = "11111111-2222-5333-9444-555555555555";
 
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "sentry-inject-runtime-"));
-  });
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), "sentry-inject-runtime-"));
+    });
 
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
-  });
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
 
-  test.each([
-    "legacy",
-    "formatted",
-  ])("preserves an existing %s registration without an identifier marker", async (format) => {
-    const jsPath = join(dir, "main.js");
-    // Legacy CLI snippets have no _sentryDebugIdIdentifier marker.
-    const snippet =
-      format === "legacy"
-        ? `!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof globalThis?globalThis:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="${debugId}")}catch(e){}}();`
-        : `(() => {
+    test.each(["legacy", "formatted"])(
+      "preserves an existing %s registration without an identifier marker",
+      async (format) => {
+        const jsPath = join(dir, "main.js");
+        // Legacy CLI snippets have no _sentryDebugIdIdentifier marker.
+        const snippet =
+          format === "legacy"
+            ? `!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof globalThis?globalThis:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="${debugId}")}catch(e){}}();`
+            : `(() => {
   var root = globalThis;
   var stack = new root.Error().stack;
   root['_sentryDebugIds'] = root['_sentryDebugIds'] || {};
   root['_sentryDebugIds'][stack] = '${debugId}';
 })();`;
-    const mapContent = JSON.stringify({
-      version: 3,
-      sources: ["main.ts"],
-      names: [],
-      mappings: ";AAAA",
-      debugId,
-    });
-    const mapUrl =
-      kind === "inline"
-        ? `data:application/json;base64,${Buffer.from(mapContent).toString("base64")}`
-        : "main.js.map";
-    const js = `${snippet}\n//# debugId=${debugId}\n//# sourceMappingURL=${mapUrl}\n`;
-    writeFileSync(jsPath, js);
-    if (kind === "external") {
-      writeFileSync(`${jsPath}.map`, mapContent);
-    }
+        const mapContent = JSON.stringify({
+          version: 3,
+          sources: ["main.ts"],
+          names: [],
+          mappings: ";AAAA",
+          debugId,
+        });
+        const mapUrl =
+          kind === "inline"
+            ? `data:application/json;base64,${Buffer.from(mapContent).toString("base64")}`
+            : "main.js.map";
+        const js = `${snippet}\n//# debugId=${debugId}\n//# sourceMappingURL=${mapUrl}\n`;
+        writeFileSync(jsPath, js);
+        if (kind === "external") {
+          writeFileSync(`${jsPath}.map`, mapContent);
+        }
 
-    for (const options of [{ dryRun: true }, {}]) {
-      expect((await injectDirectory(dir, options))[0]).toMatchObject({
-        debugId,
-        injected: false,
-      });
-      expect(readFileSync(jsPath, "utf-8")).toBe(js);
-      if (kind === "external") {
-        expect(readFileSync(`${jsPath}.map`, "utf-8")).toBe(mapContent);
-      }
-    }
-    const sandbox: { _sentryDebugIds?: Record<string, string> } = {};
-    runInNewContext(js, sandbox, { filename: "main.js" });
-    expect(Object.values(sandbox._sentryDebugIds ?? {})).toEqual([debugId]);
-  });
+        for (const options of [{ dryRun: true }, {}]) {
+          expect((await injectDirectory(dir, options))[0]).toMatchObject({
+            debugId,
+            injected: false,
+          });
+          expect(readFileSync(jsPath, "utf-8")).toBe(js);
+          if (kind === "external") {
+            expect(readFileSync(`${jsPath}.map`, "utf-8")).toBe(mapContent);
+          }
+        }
+        const sandbox: { _sentryDebugIds?: Record<string, string> } = {};
+        runInNewContext(js, sandbox, { filename: "main.js" });
+        expect(Object.values(sandbox._sentryDebugIds ?? {})).toEqual([debugId]);
+      },
+    );
 
-  test.each([
-    "comment",
-    "debugId",
-    "debug_id",
-    "comment and map",
-  ])("registers an ID from %s exactly once", async (source) => {
-    const jsPath = join(dir, "main.js");
-    const hasComment = source.startsWith("comment");
-    const mapContent = JSON.stringify({
-      version: 3,
-      sources: ["main.ts"],
-      sourcesContent: ["globalThis.answer = 42;"],
-      names: [],
-      mappings: "AAAA",
-      ...(source === "comment"
-        ? {}
-        : { [source === "debug_id" ? "debug_id" : "debugId"]: debugId }),
-    });
-    const mapUrl =
-      kind === "inline"
-        ? `data:application/json;base64,${Buffer.from(mapContent).toString("base64")}`
-        : "main.js.map";
-    // SDK readers mention the registry without registering a bundle ID.
-    const js =
-      "globalThis.answer = 42; globalThis.readIds = () => globalThis._sentryDebugIds;\n" +
-      (hasComment ? `//# debugId=${debugId}\n` : "") +
-      `//# sourceMappingURL=${mapUrl}\n`;
-    writeFileSync(jsPath, js);
-    if (kind === "external") {
-      writeFileSync(`${jsPath}.map`, mapContent);
-    }
+    test.each(["comment", "debugId", "debug_id", "comment and map"])(
+      "registers an ID from %s exactly once",
+      async (source) => {
+        const jsPath = join(dir, "main.js");
+        const hasComment = source.startsWith("comment");
+        const mapContent = JSON.stringify({
+          version: 3,
+          sources: ["main.ts"],
+          sourcesContent: ["globalThis.answer = 42;"],
+          names: [],
+          mappings: "AAAA",
+          ...(source === "comment"
+            ? {}
+            : { [source === "debug_id" ? "debug_id" : "debugId"]: debugId }),
+        });
+        const mapUrl =
+          kind === "inline"
+            ? `data:application/json;base64,${Buffer.from(mapContent).toString("base64")}`
+            : "main.js.map";
+        // SDK readers mention the registry without registering a bundle ID.
+        const js =
+          "globalThis.answer = 42; globalThis.readIds = () => globalThis._sentryDebugIds;\n" +
+          (hasComment ? `//# debugId=${debugId}\n` : "") +
+          `//# sourceMappingURL=${mapUrl}\n`;
+        writeFileSync(jsPath, js);
+        if (kind === "external") {
+          writeFileSync(`${jsPath}.map`, mapContent);
+        }
 
-    const preview = await injectDirectory(dir, { dryRun: true });
-    expect(preview[0]).toMatchObject({ debugId, injected: true });
-    expect(readFileSync(jsPath, "utf-8")).toBe(js);
-    if (kind === "external") {
-      expect(readFileSync(`${jsPath}.map`, "utf-8")).toBe(mapContent);
-    }
+        const preview = await injectDirectory(dir, { dryRun: true });
+        expect(preview[0]).toMatchObject({ debugId, injected: true });
+        expect(readFileSync(jsPath, "utf-8")).toBe(js);
+        if (kind === "external") {
+          expect(readFileSync(`${jsPath}.map`, "utf-8")).toBe(mapContent);
+        }
 
-    const results = await injectDirectory(dir);
-    expect(results[0]).toMatchObject({ debugId, injected: true });
-    const output = readFileSync(jsPath, "utf-8");
-    const sandbox: {
-      answer?: number;
-      _sentryDebugIds?: Record<string, string>;
-    } = {};
-    runInNewContext(output, sandbox, { filename: "main.js" });
-    expect(sandbox.answer).toBe(42);
-    expect(Object.values(sandbox._sentryDebugIds ?? {})).toEqual([debugId]);
-    expect(output.match(/\/\/# debugId=/g)).toHaveLength(1);
+        const results = await injectDirectory(dir);
+        expect(results[0]).toMatchObject({ debugId, injected: true });
+        const output = readFileSync(jsPath, "utf-8");
+        const sandbox: {
+          answer?: number;
+          _sentryDebugIds?: Record<string, string>;
+        } = {};
+        runInNewContext(output, sandbox, { filename: "main.js" });
+        expect(sandbox.answer).toBe(42);
+        expect(Object.values(sandbox._sentryDebugIds ?? {})).toEqual([debugId]);
+        expect(output.match(/\/\/# debugId=/g)).toHaveLength(1);
 
-    const outputMap =
-      kind === "external"
-        ? readFileSync(`${jsPath}.map`, "utf-8")
-        : results[0]?.injectedMapContent?.toString("utf-8");
-    expect(JSON.parse(outputMap ?? "{}")).toMatchObject({
-      debugId,
-      debug_id: debugId,
-      mappings: ";AAAA",
-    });
-    if (kind === "inline") {
-      const url = output.match(/\/\/# sourceMappingURL=(\S+)/)?.[1];
-      expect(tryDecodeInlineSourcemap(url ?? "")?.json).toBe(outputMap);
-    }
+        const outputMap =
+          kind === "external"
+            ? readFileSync(`${jsPath}.map`, "utf-8")
+            : results[0]?.injectedMapContent?.toString("utf-8");
+        expect(JSON.parse(outputMap ?? "{}")).toMatchObject({
+          debugId,
+          debug_id: debugId,
+          mappings: ";AAAA",
+        });
+        if (kind === "inline") {
+          const url = output.match(/\/\/# sourceMappingURL=(\S+)/)?.[1];
+          expect(tryDecodeInlineSourcemap(url ?? "")?.json).toBe(outputMap);
+        }
 
-    const second = await injectDirectory(dir);
-    expect(second[0]).toMatchObject({ debugId, injected: false });
-    expect(readFileSync(jsPath, "utf-8")).toBe(output);
-    expect(
-      kind === "external"
-        ? readFileSync(`${jsPath}.map`, "utf-8")
-        : second[0]?.injectedMapContent?.toString("utf-8")
-    ).toBe(outputMap);
-    expect((await injectDirectory(dir, { dryRun: true }))[0]).toMatchObject({
-      debugId,
-      injected: false,
-    });
-  });
-});
+        const second = await injectDirectory(dir);
+        expect(second[0]).toMatchObject({ debugId, injected: false });
+        expect(readFileSync(jsPath, "utf-8")).toBe(output);
+        expect(
+          kind === "external"
+            ? readFileSync(`${jsPath}.map`, "utf-8")
+            : second[0]?.injectedMapContent?.toString("utf-8"),
+        ).toBe(outputMap);
+        expect((await injectDirectory(dir, { dryRun: true }))[0]).toMatchObject(
+          {
+            debugId,
+            injected: false,
+          },
+        );
+      },
+    );
+  },
+);

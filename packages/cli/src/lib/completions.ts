@@ -66,7 +66,7 @@ export type CommandTree = {
  * metadata needed for completion.
  */
 function extractFlagEntries(
-  flags: Record<string, FlagDef> | undefined
+  flags: Record<string, FlagDef> | undefined,
 ): FlagEntry[] {
   if (!flags) {
     return [];
@@ -184,7 +184,7 @@ type BashFlagVars = {
 function collectCommandFlagVars(
   prefix: string,
   cmd: CommandEntry,
-  out: BashFlagVars
+  out: BashFlagVars,
 ): void {
   if (cmd.flags.length > 0) {
     const flagNames = cmd.flags.map((f) => `--${f.name}`).join(" ");
@@ -194,7 +194,7 @@ function collectCommandFlagVars(
     if (flag.enumValues && flag.enumValues.length > 0) {
       const varName = `${prefix}_${shellVarName(flag.name)}_values`;
       out.enumVarLines.push(
-        `  local ${varName}="${flag.enumValues.join(" ")}"`
+        `  local ${varName}="${flag.enumValues.join(" ")}"`,
       );
       out.enumFlagNames.push(`--${flag.name}`);
     }
@@ -257,7 +257,7 @@ export function generateBashCompletion(binaryName: string): string {
   const caseBranches = groups
     .map(
       (g) =>
-        `        ${g.name})\n          COMPREPLY=($(compgen -W "\${${shellVarName(g.name)}_commands}" -- "\${cur}"))\n          ;;`
+        `        ${g.name})\n          COMPREPLY=($(compgen -W "\${${shellVarName(g.name)}_commands}" -- "\${cur}"))\n          ;;`,
     )
     .join("\n");
 
@@ -390,7 +390,7 @@ export function generateZshCompletion(binaryName: string): string {
   const caseBranches = groups
     .map(
       (g) =>
-        `        ${g.name})\n          _describe -t commands '${g.name} command' ${shellVarName(g.name)}_commands\n          ;;`
+        `        ${g.name})\n          _describe -t commands '${g.name} command' ${shellVarName(g.name)}_commands\n          ;;`,
     )
     .join("\n");
 
@@ -468,11 +468,11 @@ export function generateFishCompletion(binaryName: string): string {
   const topLevelLines = [
     ...groups.map(
       (g) =>
-        `complete -c ${binaryName} -n "__fish_use_subcommand" -a "${g.name}" -d "${escapeDblQuote(g.brief)}"`
+        `complete -c ${binaryName} -n "__fish_use_subcommand" -a "${g.name}" -d "${escapeDblQuote(g.brief)}"`,
     ),
     ...standalone.map(
       (s) =>
-        `complete -c ${binaryName} -n "__fish_use_subcommand" -a "${s.name}" -d "${escapeDblQuote(s.brief)}"`
+        `complete -c ${binaryName} -n "__fish_use_subcommand" -a "${s.name}" -d "${escapeDblQuote(s.brief)}"`,
     ),
   ].join("\n");
 
@@ -482,7 +482,7 @@ export function generateFishCompletion(binaryName: string): string {
       const cmdLines = g.subcommands
         .map(
           (s) =>
-            `complete -c ${binaryName} -n "__fish_seen_subcommand_from ${g.name}" -a "${s.name}" -d "${escapeDblQuote(s.brief)}"`
+            `complete -c ${binaryName} -n "__fish_seen_subcommand_from ${g.name}" -a "${s.name}" -d "${escapeDblQuote(s.brief)}"`,
         )
         .join("\n");
 
@@ -491,8 +491,8 @@ export function generateFishCompletion(binaryName: string): string {
         .flatMap((s) =>
           s.flags.map(
             (f) =>
-              `complete -c ${binaryName} -n "__fish_seen_subcommand_from ${g.name}; and __fish_seen_subcommand_from ${s.name}" -l "${f.name}" -d "${escapeDblQuote(f.brief)}"`
-          )
+              `complete -c ${binaryName} -n "__fish_seen_subcommand_from ${g.name}; and __fish_seen_subcommand_from ${s.name}" -l "${f.name}" -d "${escapeDblQuote(f.brief)}"`,
+          ),
         )
         .join("\n");
 
@@ -507,7 +507,7 @@ export function generateFishCompletion(binaryName: string): string {
       const flags = cmd.flags
         .map(
           (f) =>
-            `complete -c ${binaryName} -n "__fish_seen_subcommand_from ${cmd.name}" -l "${f.name}" -d "${escapeDblQuote(f.brief)}"`
+            `complete -c ${binaryName} -n "__fish_seen_subcommand_from ${cmd.name}" -l "${f.name}" -d "${escapeDblQuote(f.brief)}"`,
         )
         .join("\n");
       return `\n# ${cmd.name} flags\n${flags}`;
@@ -569,7 +569,7 @@ function escapeDblQuote(s: string): string {
  */
 export function getCompletionScript(
   shellType: ShellType,
-  binaryName = "sentry"
+  binaryName = "sentry",
 ): string | null {
   switch (shellType) {
     case "bash":
@@ -593,7 +593,7 @@ export function getCompletionScript(
 export function getCompletionPath(
   shellType: ShellType,
   homeDir: string,
-  xdgDataHome?: string
+  xdgDataHome?: string,
 ): string | null {
   const dataHome = xdgDataHome || join(homeDir, ".local", "share");
 
@@ -632,7 +632,7 @@ export function getCompletionPath(
 export async function installCompletions(
   shellType: ShellType,
   homeDir: string,
-  xdgDataHome?: string
+  xdgDataHome?: string,
 ): Promise<CompletionLocation | null> {
   const script = getCompletionScript(shellType);
   if (!script) {

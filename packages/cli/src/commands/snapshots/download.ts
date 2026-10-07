@@ -64,7 +64,7 @@ function formatDownloadResult(data: SnapshotDownloadResult): string {
       ["Snapshot ID", data.snapshotId],
       ["Images", String(data.imageCount)],
       ["Saved to", data.output],
-    ])
+    ]),
   );
 }
 
@@ -82,13 +82,13 @@ function validateSnapshotFlags(flags: DownloadFlags): void {
   if (appId && snapshotId) {
     throw new ValidationError(
       "Provide only one of --app-id or --snapshot-id",
-      "app-id"
+      "app-id",
     );
   }
   if (flags.branch && !appId) {
     throw new ValidationError(
       "--branch can only be used with --app-id",
-      "branch"
+      "branch",
     );
   }
   if (!(appId || snapshotId)) {
@@ -117,7 +117,7 @@ function resolveOptionalProject(env: NodeJS.ProcessEnv): string | undefined {
 async function resolveSnapshotId(
   org: string,
   flags: DownloadFlags,
-  project: string | undefined
+  project: string | undefined,
 ): Promise<string> {
   const snapshotId = flags["snapshot-id"];
   if (snapshotId) {
@@ -136,11 +136,11 @@ async function resolveSnapshotId(
       `Baseline snapshot for app '${appId}'${branchMsg}`,
       "not found",
       USAGE_HINT,
-      ["No baseline snapshot exists for this app yet."]
+      ["No baseline snapshot exists for this app yet."],
     );
   }
   log.info(
-    `Found snapshot ${latest.headArtifactId} (${latest.imageCount} images)`
+    `Found snapshot ${latest.headArtifactId} (${latest.imageCount} images)`,
   );
   return latest.headArtifactId;
 }
@@ -209,7 +209,7 @@ export const downloadCommand = buildCommand({
     const snapshotId = await resolveSnapshotId(org, flags, project);
 
     await waitForSnapshotArchive(org, snapshotId, () =>
-      log.info("Building snapshot archive...")
+      log.info("Building snapshot archive..."),
     );
 
     log.info(`Downloading snapshot ${snapshotId}...`);
@@ -219,18 +219,18 @@ export const downloadCommand = buildCommand({
         "Snapshot archive response had no body",
         response.status,
         "Empty response body",
-        `snapshots/${snapshotId}/archive/`
+        `snapshots/${snapshotId}/archive/`,
       );
     }
 
     const output = resolve(this.cwd, flags.output ?? DEFAULT_OUTPUT);
     const imageCount = await extractZipStream(
       response.body as unknown as AsyncIterable<Uint8Array>,
-      output
+      output,
     );
     if (imageCount === 0) {
       log.warn(
-        `No images were extracted from snapshot ${snapshotId} — the archive may be empty or corrupt.`
+        `No images were extracted from snapshot ${snapshotId} — the archive may be empty or corrupt.`,
       );
     }
 

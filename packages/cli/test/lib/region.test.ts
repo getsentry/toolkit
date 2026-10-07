@@ -147,7 +147,7 @@ describe("resolveOrgRegion", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -185,7 +185,7 @@ describe("resolveOrgRegion", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -222,7 +222,7 @@ describe("resolveOrgRegion", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -258,7 +258,7 @@ describe("resolveOrgRegion", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -362,7 +362,7 @@ describe("resolveOrgRegion", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {

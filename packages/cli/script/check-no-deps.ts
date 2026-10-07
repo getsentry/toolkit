@@ -18,7 +18,7 @@
 import { readFile } from "node:fs/promises";
 
 const pkg: { dependencies?: Record<string, string> } = JSON.parse(
-  await readFile("package.json", "utf-8")
+  await readFile("package.json", "utf-8"),
 );
 
 const deps = Object.keys(pkg.dependencies ?? {});
@@ -35,10 +35,10 @@ for (const dep of deps) {
 }
 console.error("");
 console.error(
-  "All packages must be in devDependencies and bundled at build time."
+  "All packages must be in devDependencies and bundled at build time.",
 );
 console.error(
-  "Move these to devDependencies: pnpm remove <pkg> && pnpm add -D <pkg>"
+  "Move these to devDependencies: pnpm remove <pkg> && pnpm add -D <pkg>",
 );
 
 process.exit(1);

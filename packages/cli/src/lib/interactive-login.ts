@@ -5,7 +5,7 @@
  * Used by both the `auth login` command and auto-auth in bin.ts.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import { openBrowser } from "./browser.js";
 import { setupCopyKeyListener } from "./clipboard.js";
@@ -46,7 +46,7 @@ export function toLoginUser(user: {
   username?: string | null;
 }): NonNullable<LoginResult["user"]> {
   return Object.fromEntries(
-    Object.entries(user).filter(([k, v]) => k === "id" || Boolean(v))
+    Object.entries(user).filter(([k, v]) => k === "id" || Boolean(v)),
   ) as NonNullable<LoginResult["user"]>;
 }
 
@@ -80,7 +80,7 @@ export function buildDeviceFlowDisplay(
   userCode: string,
   verificationUriComplete: string,
   browserOpened: boolean,
-  isTTY: boolean
+  isTTY: boolean,
 ): string[] {
   const lines: string[] = [];
 
@@ -117,7 +117,7 @@ export function buildDeviceFlowDisplay(
  * @returns Structured login result on success, or null on failure/cancellation
  */
 export async function runInteractiveLogin(
-  options?: InteractiveLoginOptions
+  options?: InteractiveLoginOptions,
 ): Promise<LoginResult | null> {
   const timeout = options?.timeout ?? 900_000; // 15 minutes default
   const scope = options?.scope;
@@ -134,7 +134,7 @@ export async function runInteractiveLogin(
         onUserCode: async (
           userCode,
           _verificationUri,
-          verificationUriComplete
+          verificationUriComplete,
         ) => {
           urlToCopy = verificationUriComplete;
 
@@ -155,7 +155,7 @@ export async function runInteractiveLogin(
             userCode,
             verificationUriComplete,
             browserOpened,
-            process.stdin.isTTY ?? false
+            process.stdin.isTTY ?? false,
           );
           for (const line of displayLines) {
             log.log(line);
@@ -168,13 +168,13 @@ export async function runInteractiveLogin(
           if (process.stdin.isTTY) {
             keyListener.cleanup = setupCopyKeyListener(
               process.stdin as NodeJS.ReadStream & { fd: 0 },
-              () => urlToCopy
+              () => urlToCopy,
             );
           }
         },
       },
       timeout,
-      scope
+      scope,
     );
 
     // Stop the spinner

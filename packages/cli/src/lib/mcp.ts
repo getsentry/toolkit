@@ -16,7 +16,7 @@ function hasSentryTargetArg(args: readonly string[]): boolean {
       arg === "--host" ||
       arg.startsWith("--host=") ||
       arg === "--url" ||
-      arg.startsWith("--url=")
+      arg.startsWith("--url="),
   );
 }
 
@@ -29,13 +29,13 @@ function hasSentryTargetArg(args: readonly string[]): boolean {
  */
 export function prepareMcpServerArgs(
   args: readonly string[],
-  sentryUrl = getConfiguredSentryUrl()
+  sentryUrl = getConfiguredSentryUrl(),
 ): string[] {
   if (!sentryUrl || hasSentryTargetArg(args)) {
     return [...args];
   }
 
-  // biome-ignore lint/plugin: invalid URLs are passed through to the MCP parser for its normal validation error.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- invalid URLs are passed through to the MCP parser for its normal validation error.
   try {
     const url = new URL(sentryUrl);
     if (url.protocol !== "http:" && url.protocol !== "https:") {
@@ -60,7 +60,7 @@ export function prepareMcpServerArgs(
  */
 export async function resolveCliMcpAccessToken(
   config: McpServerConfig,
-  options: { force?: boolean } = {}
+  options: { force?: boolean } = {},
 ): Promise<string> {
   const targetUrl = `${config.sentryProtocol}://${config.sentryHost}`;
   const { token } = await refreshToken({ force: options.force });
@@ -70,7 +70,7 @@ export async function resolveCliMcpAccessToken(
     throw new HostScopeError(
       "Cannot start MCP server with the active CLI credentials",
       targetUrl,
-      tokenHost
+      tokenHost,
     );
   }
 
@@ -91,15 +91,14 @@ export async function resolveCliMcpAccessToken(
  * "run `sentry auth login`" message instead of a hung browser prompt.
  */
 async function resolveMcpAccessTokenWithLogin(
-  config: McpServerConfig
+  config: McpServerConfig,
 ): Promise<string> {
   try {
     return await resolveCliMcpAccessToken(config);
   } catch (error) {
     const { isatty } = await import("node:tty");
-    const { shouldAutoAuth, assertAutoLoginHostTrusted } = await import(
-      "./auto-auth.js"
-    );
+    const { shouldAutoAuth, assertAutoLoginHostTrusted } =
+      await import("./auto-auth.js");
     const isInteractive = () => isatty(0);
     if (!shouldAutoAuth(error, isInteractive)) {
       throw error;
@@ -111,7 +110,7 @@ async function resolveMcpAccessTokenWithLogin(
     process.stderr.write(
       error.reason === "expired"
         ? "Authentication expired. Starting login flow...\n\n"
-        : "Authentication required. Starting login flow...\n\n"
+        : "Authentication required. Starting login flow...\n\n",
     );
 
     const { runInteractiveLogin } = await import("./interactive-login.js");
@@ -128,7 +127,7 @@ async function resolveMcpAccessTokenWithLogin(
 export async function startMcpServer(args: string[]): Promise<void> {
   if (args[0] === "auth") {
     throw new ValidationError(
-      "Use `sentry auth` to manage credentials for `sentry mcp`."
+      "Use `sentry auth` to manage credentials for `sentry mcp`.",
     );
   }
 

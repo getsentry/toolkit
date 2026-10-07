@@ -132,7 +132,7 @@ const SUGGESTIONS: ReadonlyMap<string, CommandSuggestion> = new Map([
  */
 export function getCommandSuggestion(
   routeContext: string,
-  unknownToken: string
+  unknownToken: string,
 ): CommandSuggestion | undefined {
   const key = routeContext
     ? `${routeContext}/${unknownToken.toLowerCase()}`

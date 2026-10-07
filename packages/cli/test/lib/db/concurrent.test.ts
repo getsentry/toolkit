@@ -40,11 +40,11 @@ type WorkerResult = {
 async function spawnWorker(
   configDir: string,
   workerId: string,
-  operation: string
+  operation: string,
 ): Promise<WorkerResult> {
   const requireShim = join(
     import.meta.dirname,
-    "../../../script/require-shim.mjs"
+    "../../../script/require-shim.mjs",
   );
   const proc = spawn(
     process.execPath,
@@ -58,7 +58,7 @@ async function spawnWorker(
       workerId,
       operation,
     ],
-    { stdio: ["pipe", "pipe", "pipe"] }
+    { stdio: ["pipe", "pipe", "pipe"] },
   );
   proc.on("error", noop);
 
@@ -72,7 +72,7 @@ async function spawnWorker(
   });
 
   const exitCode = await new Promise<number>((done) =>
-    proc.on("close", (code) => done(code ?? 1))
+    proc.on("close", (code) => done(code ?? 1)),
   );
 
   if (exitCode !== 0) {
@@ -102,7 +102,7 @@ async function spawnWorker(
 async function spawnWorkersConcurrently(
   configDir: string,
   workerCount: number,
-  operation: string
+  operation: string,
 ): Promise<WorkerResult[]> {
   const promises: Promise<WorkerResult>[] = [];
 
@@ -130,7 +130,7 @@ describe("concurrent database access", () => {
     const results = await spawnWorkersConcurrently(
       getConfigDir(),
       workerCount,
-      "write-dsn"
+      "write-dsn",
     );
 
     // All workers should succeed
@@ -153,7 +153,7 @@ describe("concurrent database access", () => {
     const results = await spawnWorkersConcurrently(
       getConfigDir(),
       workerCount,
-      "write-project"
+      "write-project",
     );
 
     // All workers should succeed
@@ -175,7 +175,7 @@ describe("concurrent database access", () => {
     const results = await spawnWorkersConcurrently(
       getConfigDir(),
       workerCount,
-      "read-write"
+      "read-write",
     );
 
     // All workers should succeed
@@ -201,12 +201,12 @@ describe("concurrent database access", () => {
     const results = await spawnWorkersConcurrently(
       getConfigDir(),
       workerCount,
-      "write-dsn"
+      "write-dsn",
     );
 
     // Check for SQLITE_BUSY errors specifically
     const busyErrors = results.filter(
-      (r) => !r.success && r.error?.includes("SQLITE_BUSY")
+      (r) => !r.success && r.error?.includes("SQLITE_BUSY"),
     );
     expect(busyErrors).toHaveLength(0);
 

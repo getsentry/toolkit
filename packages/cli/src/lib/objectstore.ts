@@ -58,7 +58,7 @@ function scopeSegment(scopes: [string, string][]): string {
 export function buildObjectUrl(config: ObjectstoreConfig, key: string): string {
   const base = config.url.replace(TRAILING_SLASHES, "");
   return `${base}/v1/objects/${config.usecase}/${scopeSegment(
-    config.scopes
+    config.scopes,
   )}/${key}`;
 }
 
@@ -77,7 +77,7 @@ function authHeaders(config: ObjectstoreConfig): Record<string, string> {
  */
 export async function objectExists(
   config: ObjectstoreConfig,
-  key: string
+  key: string,
 ): Promise<boolean> {
   const url = buildObjectUrl(config, key);
   const response = await customFetch(url, {
@@ -93,7 +93,7 @@ export async function objectExists(
       "Objectstore HEAD failed",
       response.status,
       response.statusText || "HEAD failed",
-      url
+      url,
     );
   }
   return true;
@@ -111,7 +111,7 @@ export async function objectExists(
 export async function putObject(
   config: ObjectstoreConfig,
   key: string,
-  body: Uint8Array
+  body: Uint8Array,
 ): Promise<void> {
   const url = buildObjectUrl(config, key);
   const response = await customFetch(url, {
@@ -128,7 +128,7 @@ export async function putObject(
       "Objectstore upload failed",
       response.status,
       response.statusText || "PUT failed",
-      url
+      url,
     );
   }
 }

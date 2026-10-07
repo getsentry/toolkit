@@ -1133,7 +1133,8 @@ const BaseEventSchema = z.object({
     .optional(),
   // "context" (singular) is the legacy "extra" field for arbitrary user-defined data
   // This is different from "contexts" (plural) which are structured contexts
-  context: z.record(z.string(), z.unknown()).optional(),
+  // Sentry preserves null when the event's extra data is explicitly null.
+  context: z.record(z.string(), z.unknown()).nullable().optional(),
   sdk: z
     .object({
       name: z.string().nullable().optional(),

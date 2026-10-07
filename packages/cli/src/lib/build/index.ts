@@ -138,7 +138,7 @@ export function detectBuildFormat(content: Uint8Array): BuildFormat | null {
  * @param filePath - Path to the build file.
  */
 export async function detectBuildFormatFromFile(
-  filePath: string
+  filePath: string,
 ): Promise<BuildFormat | null> {
   const src = await open(filePath, "r");
   try {
@@ -170,7 +170,7 @@ export async function detectBuildFormatFromFile(
       position += read.bytesRead;
       unzip.push(
         Uint8Array.prototype.slice.call(buf, 0, read.bytesRead),
-        position >= size
+        position >= size,
       );
     }
     return classifyBuildFormat(names);
@@ -194,7 +194,7 @@ export type PipelinePlugin = { name: string; version: string };
  * @param pipeline - The `SENTRY_PIPELINE` value, if set.
  */
 export function parsePluginFromPipeline(
-  pipeline: string | undefined
+  pipeline: string | undefined,
 ): PipelinePlugin | null {
   if (!pipeline) {
     return null;
@@ -240,7 +240,7 @@ function buildMetadataFile(plugin: PipelinePlugin | null): string {
 export async function normalizeBuildFile(
   filePath: string,
   outPath: string,
-  plugin: PipelinePlugin | null
+  plugin: PipelinePlugin | null,
 ): Promise<void> {
   const zip = await DeterministicZipWriter.create(outPath);
   try {
@@ -292,28 +292,28 @@ export function validateXcarchiveDirectory(dirPath: string): void {
   if (!existsSync(join(root, "Info.plist"))) {
     throw new ValidationError(
       "Invalid XCArchive: missing Info.plist at the archive root",
-      "path"
+      "path",
     );
   }
   const products = join(root, "Products");
   if (!(existsSync(products) && statSync(products).isDirectory())) {
     throw new ValidationError(
       "Invalid XCArchive: missing Products/ directory",
-      "path"
+      "path",
     );
   }
   const apps = findAppBundles(products);
   if (apps.length === 0) {
     throw new ValidationError(
       "Invalid XCArchive: no .app bundles found under Products/",
-      "path"
+      "path",
     );
   }
   for (const app of apps) {
     if (!existsSync(join(app, "Info.plist"))) {
       throw new ValidationError(
         `Invalid XCArchive: missing Info.plist in .app bundle: ${basename(app)}`,
-        "path"
+        "path",
       );
     }
   }
@@ -377,7 +377,9 @@ async function collectArchiveEntries(root: string): Promise<ArchiveEntry[]> {
   };
 
   await walk(root, "");
-  entries.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
+  entries.sort((a, b) =>
+    a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0,
+  );
   return entries;
 }
 
@@ -406,7 +408,7 @@ async function collectArchiveEntries(root: string): Promise<ArchiveEntry[]> {
 export async function normalizeBuildDirectory(
   dirPath: string,
   outPath: string,
-  plugin: PipelinePlugin | null
+  plugin: PipelinePlugin | null,
 ): Promise<void> {
   const root = resolve(dirPath);
   const dirName = basename(root);
@@ -484,7 +486,7 @@ type StagedIpaEntry = { name: string; stagePath: string };
  */
 async function stageIpaPayload(
   ipaPath: string,
-  stageDir: string
+  stageDir: string,
 ): Promise<StagedIpaEntry[]> {
   const staged: StagedIpaEntry[] = [];
   let index = 0;
@@ -533,7 +535,7 @@ async function stageIpaPayload(
       position += bytesRead;
       unzip.push(
         Uint8Array.prototype.slice.call(buf, 0, bytesRead),
-        position >= size
+        position >= size,
       );
     }
   } finally {
@@ -563,7 +565,7 @@ async function stageIpaPayload(
 export async function normalizeIpa(
   ipaPath: string,
   outPath: string,
-  plugin: PipelinePlugin | null
+  plugin: PipelinePlugin | null,
 ): Promise<void> {
   const stageDir = await mkdtemp(join(tmpdir(), "sentry-ipa-"));
   try {

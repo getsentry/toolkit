@@ -73,8 +73,8 @@ function formatCheckResult(data: DebugFilesCheckResult): string {
     out += `\n${renderMarkdown(
       colorTag(
         "warning",
-        "This file is not usable for symbolication (missing debug id or features)."
-      )
+        "This file is not usable for symbolication (missing debug id or features).",
+      ),
     )}`;
   }
   return out;
@@ -145,7 +145,7 @@ export const checkCommand = buildCommand({
   async *func(
     this: SentryContext,
     _flags: Record<string, never>,
-    path: string
+    path: string,
   ) {
     const content = await readDebugFile(path);
 
@@ -156,7 +156,7 @@ export const checkCommand = buildCommand({
       const msg = err instanceof Error ? err.message : String(err);
       throw new ValidationError(
         `'${path}' is not a recognized debug information file: ${msg}`,
-        "path"
+        "path",
       );
     }
 

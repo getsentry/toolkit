@@ -83,7 +83,7 @@ describe("e2e: legacy ~/.sentry migration", () => {
       const xdgDb = join(home, ".config", "sentry", "cli.db");
       expect(existsSync(xdgDb)).toBe(true);
       expect(existsSync(join(legacyDir, "cli.db"))).toBe(false);
-    }
+    },
   );
 
   test(
@@ -111,6 +111,6 @@ describe("e2e: legacy ~/.sentry migration", () => {
       expect(existsSync(movedBin)).toBe(true);
       expect(await readFile(movedBin, "utf8")).toBe("#!/bin/sh\necho legacy\n");
       expect(existsSync(legacyBin)).toBe(false);
-    }
+    },
   );
 });

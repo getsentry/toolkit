@@ -59,8 +59,8 @@ export function formatLoginResult(result: LoginResult): string {
   const lines: string[] = [];
   lines.push(
     success(
-      `✔ ${result.method === "token" ? "Authenticated with API token" : "Authentication successful!"}`
-    )
+      `✔ ${result.method === "token" ? "Authenticated with API token" : "Authentication successful!"}`,
+    ),
   );
   if (result.user) {
     lines.push(`  Logged in as: ${formatUserIdentity(result.user)}`);
@@ -72,7 +72,7 @@ export function formatLoginResult(result: LoginResult): string {
       lines.push("  Automatic refresh: unavailable");
       if (result.expiresIn !== undefined) {
         lines.push(
-          `  Access token expires in: ${formatDuration(result.expiresIn)}`
+          `  Access token expires in: ${formatDuration(result.expiresIn)}`,
         );
       }
     }
@@ -120,14 +120,14 @@ function resolveLoginScope(flags: LoginFlags): string | undefined {
         "",
         "Or create a scoped User Auth Token in Sentry (Account → Auth Tokens) and pass it without --read-only/--scope.",
       ].join("\n"),
-      readOnly ? "read-only" : "scope"
+      readOnly ? "read-only" : "scope",
     );
   }
 
   if (readOnly && hasScope) {
     throw new ValidationError(
       "--read-only and --scope cannot be used together. Use --read-only for the read-only subset, or --scope to list exact scopes.",
-      "scope"
+      "scope",
     );
   }
 
@@ -190,7 +190,7 @@ export function parseLoginUrl(raw: string): string {
 function refuseLoginToUntrustedHost(
   flags: LoginFlags,
   effectiveHost: string,
-  rcSource?: string
+  rcSource?: string,
 ): void {
   if (flags.url || isLoginHostTrusted(effectiveHost)) {
     return;
@@ -199,7 +199,7 @@ function refuseLoginToUntrustedHost(
     buildHostRefusalMessage(effectiveHost, {
       tokenFlag: !!flags.token,
       rcSource,
-    })
+    }),
   );
 }
 
@@ -210,7 +210,7 @@ function refuseLoginToUntrustedHost(
 async function resolveRcContext(
   flagUrl: string | undefined,
   cwd: string,
-  effectiveHost: string
+  effectiveHost: string,
 ): Promise<{
   rcConfig: SentryCliRcConfig;
   urlFromRc: string | undefined;
@@ -240,7 +240,7 @@ async function resolveRcContext(
 /** @internal exported for testing */
 export function rcTokenHint(
   rcConfig: SentryCliRcConfig,
-  effectiveHost: string
+  effectiveHost: string,
 ): string | undefined {
   if (!rcConfig.token) {
     return;
@@ -276,7 +276,7 @@ export function rcTokenHint(
  */
 function persistLoginUrlAsDefault(
   flagUrl: string | undefined,
-  effectiveHost: string
+  effectiveHost: string,
 ): void {
   if (!flagUrl || isSaaSTrustOrigin(effectiveHost)) {
     return;
@@ -285,7 +285,7 @@ function persistLoginUrlAsDefault(
     setDefaultUrl(effectiveHost);
   } catch {
     log.debug(
-      `Could not persist default URL to DB; host is recorded on the stored token. Set SENTRY_HOST or run 'sentry cli defaults url ${effectiveHost}' if subsequent commands route incorrectly.`
+      `Could not persist default URL to DB; host is recorded on the stored token. Set SENTRY_HOST or run 'sentry cli defaults url ${effectiveHost}' if subsequent commands route incorrectly.`,
     );
   }
 }
@@ -330,7 +330,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     const envVar = getActiveEnvVarName();
     log.warn(
       `${envVar} is set in your environment (likely from build tooling).\n` +
-        "  OAuth credentials will be stored separately and used for CLI commands."
+        "  OAuth credentials will be stored separately and used for CLI commands.",
     );
     // If no stored credential exists, proceed directly to login
     if (!hasStoredAuthCredentials()) {
@@ -343,7 +343,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     // Non-interactive (piped, CI): print message and block
     if (!isatty(0)) {
       log.info(
-        "You are already authenticated. Use '--force' or 'sentry auth logout' first to re-authenticate."
+        "You are already authenticated. Use '--force' or 'sentry auth logout' first to re-authenticate.",
       );
       return false;
     }
@@ -353,7 +353,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     const identity = userInfo ? formatUserIdentity(userInfo) : "current user";
     const confirmed = await log.prompt(
       `Already authenticated as ${identity}. Re-authenticate?`,
-      { type: "confirm", initial: false }
+      { type: "confirm", initial: false },
     );
 
     // Symbol(clack:cancel) is truthy — strict equality check
@@ -387,7 +387,7 @@ async function handleTokenValidationError(error: unknown): Promise<never> {
     await clearAuth();
     throw new AuthError(
       "invalid",
-      "Invalid API token. Please check your token and try again."
+      "Invalid API token. Please check your token and try again.",
     );
   }
   throw error;
@@ -475,7 +475,7 @@ export const loginCommand = buildCommand({
     const { rcConfig, urlFromRc } = await resolveRcContext(
       flags.url,
       this.cwd,
-      effectiveHost
+      effectiveHost,
     );
 
     refuseLoginToUntrustedHost(flags, effectiveHost, urlFromRc);
@@ -488,7 +488,7 @@ export const loginCommand = buildCommand({
       }
     }
 
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       await clearResponseCache();
     } catch {
@@ -515,7 +515,7 @@ export const loginCommand = buildCommand({
         method: "token",
         configPath: getDbPath(),
       };
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         const user = await getCurrentUser();
         setUserInfo({
@@ -563,7 +563,7 @@ export const loginCommand = buildCommand({
  * on the next command that needs it.
  */
 function warmOrgCache(): void {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   listOrganizationsUncached().catch(() => {
     // Best-effort: cache warming failure doesn't affect the login result
   });

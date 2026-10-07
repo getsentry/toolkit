@@ -24,7 +24,7 @@ describe("parseSourceMappingDirective", () => {
 
   test("classifies an inline data URL", () => {
     const result = parse(
-      "//# sourceMappingURL=data:application/json;base64,e30="
+      "//# sourceMappingURL=data:application/json;base64,e30=",
     );
     expect(result?.kind).toBe("inline");
     expect(result?.value).toBe("data:application/json;base64,e30=");
@@ -32,7 +32,7 @@ describe("parseSourceMappingDirective", () => {
 
   test("classifies a remote URL", () => {
     expect(
-      parse("//# sourceMappingURL=https://cdn.example.com/app.js.map")?.kind
+      parse("//# sourceMappingURL=https://cdn.example.com/app.js.map")?.kind,
     ).toBe("remote");
   });
 
@@ -42,7 +42,7 @@ describe("parseSourceMappingDirective", () => {
 
   test("tolerates a trailing CR (CRLF line)", () => {
     expect(parse("//# sourceMappingURL=app.js.map\r")?.value).toBe(
-      "app.js.map"
+      "app.js.map",
     );
   });
 
