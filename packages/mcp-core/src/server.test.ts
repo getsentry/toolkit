@@ -119,6 +119,7 @@ async function callRegisteredTool(
 const DEFAULT_DIRECT_TOOL_NAMES = [
   "analyze_issue_with_seer",
   "execute_sentry_tool",
+  "find_dropped_events",
   "find_organizations",
   "find_projects",
   "get_sentry_resource",
@@ -1152,7 +1153,7 @@ describe("buildServer", () => {
 
       const result = await callRegisteredTool(server, "search_sentry_tools", {
         query: "event stacktrace",
-        limit: 5,
+        limit: 8,
       });
       const payload = getStructuredContent<{
         results: Array<{ name: string }>;

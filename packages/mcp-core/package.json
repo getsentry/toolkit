@@ -173,6 +173,7 @@
     "@logtape/sentry": "^1.1.1",
     "@modelcontextprotocol/sdk": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
+    "@sentry/api": "0.337.0",
     "@sentry/core": "catalog:",
     "@sentry/toolkit-core": "workspace:*",
     "ai": "catalog:",

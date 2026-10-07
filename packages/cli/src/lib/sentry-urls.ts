@@ -6,6 +6,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import {
   DEFAULT_SENTRY_HOST,
   DEFAULT_SENTRY_URL,
@@ -84,10 +85,7 @@ export function isSentrySaasUrl(url: string): boolean {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const parsed = new URL(url);
-    return (
-      parsed.hostname === DEFAULT_SENTRY_HOST ||
-      parsed.hostname.endsWith(`.${DEFAULT_SENTRY_HOST}`)
-    );
+    return isSentryHost(parsed.hostname);
   } catch {
     return false;
   }

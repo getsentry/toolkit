@@ -5,7 +5,7 @@
     "description": "Read-only access to core Sentry data: issues, events, traces, replays, releases, cron monitors, uptime monitors, metric monitors, profiles, documentation, and project metadata",
     "defaultEnabled": true,
     "order": 1,
-    "toolCount": 46,
+    "toolCount": 47,
     "tools": [
       {
         "name": "find_alert_rules",
@@ -16,6 +16,11 @@
         "name": "find_dashboards",
         "description": "Find Sentry dashboards in an organization.\n\nUse this tool when you need to:\n- List dashboards in an organization\n- Find a dashboard ID before calling get_dashboard_details\n- Search dashboards by title\n\n<examples>\nfind_dashboards(organizationSlug='my-organization')\nfind_dashboards(organizationSlug='my-organization', titleQuery='errors')\n</examples>\n\n<hints>\n- Dashboard IDs are organization-scoped.\n- Use `get_dashboard_details` after finding the correct dashboard ID.\n</hints>",
         "requiredScopes": ["org:read"]
+      },
+      {
+        "name": "find_dropped_events",
+        "description": "Find events dropped before they were stored in Sentry — ground-truth data-fidelity information about what was and wasn't captured.\n\nEvents can be dropped client-side in the SDK (sample_rate, before_send) or\nserver-side at ingest (rate limited, over quota, filtered, invalid, abuse/spike\nprotection, cardinality limited). Accepted-only views (searches, aggregates,\ncharts) can't show this, so the data may be incomplete in ways they don't reveal\n— for example, a flat or spiky chart caused entirely by drops.\n\nUse this tool when you need to:\n- Explain why a chart is flat, lower than expected, or doesn't match what the user is sending\n- Confirm the data you need is actually in Sentry (not dropped) before trusting a query, aggregate, or dashboard\n- Attribute a volume anomaly to a specific drop reason (quota, spike protection, sampling, filters)\n- Tell the user why their data is missing and what to do about it (raise quota, fix sampling, etc.)\n\nReturns dropped event volume bucketed over time, with the drop `outcome` and `reason`\nfor each bucket, plus the accepted volume per bucket so you can compute the dropped share.\n\n<examples>\nfind_dropped_events(organizationSlug='my-org', dataset='spans', projectSlug='my-project')\nfind_dropped_events(organizationSlug='my-org', dataset='logs', statsPeriod='30d')\nfind_dropped_events(organizationSlug='my-org', dataset='errors', outcome='rate_limited')\n</examples>\n\n<hints>\n- This is independent of any search query — it reports drops for the whole project/time range.\n- `outcome` is the drop kind (e.g. rate_limited, filtered); `reason` is the sub-cause (e.g. key_quota, sample_rate).\n- Pass `outcome` and/or `reason` to scope the dropped side to one classification; the accepted volume is always returned in full.\n- An empty `droppedEvents` list means no drops in the window — the data can be trusted.\n</hints>",
+        "requiredScopes": ["event:read"]
       },
       {
         "name": "find_metric_monitors",

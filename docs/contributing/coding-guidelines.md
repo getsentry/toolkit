@@ -1,6 +1,8 @@
 # Coding Guidelines
 
-Essential patterns and standards for Sentry MCP development.
+Repository-wide TypeScript and style guidance for Toolkit. See the
+[CLI guide](../cli/README.md) and [MCP guide](../mcp/README.md) for
+product-specific implementation patterns.
 
 ## TypeScript Configuration
 
@@ -51,7 +53,7 @@ import { mockData } from "@sentry-mcp/mocks";
 import { UserInputError } from "./errors.js";
 ```
 
-## Tool Implementation
+## MCP Tool Implementation
 
 ```typescript
 export const toolName = {

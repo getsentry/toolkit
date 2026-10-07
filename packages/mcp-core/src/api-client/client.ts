@@ -1,3 +1,4 @@
+import { parseSentryLinkHeader } from "@sentry/api";
 import { normalizeAuthToken } from "@sentry/toolkit-core/auth-token";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
@@ -58,6 +59,7 @@ import {
   DashboardSchema,
   DeployListSchema,
   DetectorSchema,
+  DroppedEventsResponseSchema,
   ErrorsSearchResponseSchema,
   EventAttachmentListSchema,
   EventSchema,
@@ -259,22 +261,7 @@ function parseStatsPeriod(statsPeriod: string): {
 }
 
 function getNextCursor(linkHeader: string | null): string | null {
-  if (!linkHeader) {
-    return null;
-  }
-
-  for (const link of linkHeader.split(",")) {
-    if (!link.includes('rel="next"') || !link.includes('results="true"')) {
-      continue;
-    }
-
-    const cursorMatch = link.match(/cursor="([^"]+)"/);
-    if (cursorMatch?.[1]) {
-      return cursorMatch[1];
-    }
-  }
-
-  return null;
+  return parseSentryLinkHeader(linkHeader).nextCursor ?? null;
 }
 
 /**
@@ -423,12 +410,10 @@ const EventsValidationIssueSchema = z
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(
-    ({ valid, error }): EventsValidationIssue => ({
-      valid,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ valid, error }): EventsValidationIssue => ({
+    valid,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsNamedValidationIssueSchema = z
   .object({
@@ -436,13 +421,11 @@ const EventsNamedValidationIssueSchema = z
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(
-    ({ name, valid, error }): EventsNamedValidationIssue => ({
-      name,
-      valid,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ name, valid, error }): EventsNamedValidationIssue => ({
+    name,
+    valid,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsAttributeValidationSchema = z
   .object({
@@ -473,13 +456,11 @@ const EventsQueryValidationSchema = z
     error: ValidationErrorSchema,
     fields: EventsAttributeValidationListSchema,
   })
-  .transform(
-    ({ valid, error, fields }): EventsQueryValidation => ({
-      valid,
-      fields,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ valid, error, fields }): EventsQueryValidation => ({
+    valid,
+    fields,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsValidationResponseSchema = z
   .object({
@@ -1330,9 +1311,9 @@ export class SentryApiService {
   private isAggregateExplorerQuery(params: ExplorerAggregateParams): boolean {
     return Boolean(
       params.aggregateFunctions?.length ||
-        params.fields?.some(
-          (field) => field.includes("(") && field.includes(")"),
-        ),
+      params.fields?.some(
+        (field) => field.includes("(") && field.includes(")"),
+      ),
     );
   }
 
@@ -5209,6 +5190,54 @@ export class SentryApiService {
       `?${queryParams.toString()}`;
     const body = await this.requestJSON(apiUrl, undefined, opts);
     return EventsTimeSeriesResponseSchema.parse(body);
+  }
+
+  async getDroppedEvents(
+    {
+      organizationSlug,
+      interval,
+      projectId,
+      dataset = "spans",
+      statsPeriod,
+      start,
+      end,
+      outcome,
+      reason,
+    }: {
+      organizationSlug: string;
+      interval?: string;
+      projectId?: string;
+      dataset?: EventsDataset;
+      statsPeriod?: string;
+      start?: string;
+      end?: string;
+      outcome?: string;
+      reason?: string;
+    },
+    opts?: RequestOptions,
+  ) {
+    const queryParams = new URLSearchParams();
+    queryParams.set("dataset", normalizeEventsDataset(dataset));
+    if (interval) {
+      queryParams.set("interval", interval);
+    }
+    this.applyTimeParams(queryParams, statsPeriod, start, end);
+    if (projectId) {
+      queryParams.set("project", projectId);
+    }
+    if (outcome) {
+      queryParams.set("outcome", outcome);
+    }
+    if (reason) {
+      queryParams.set("reason", reason);
+    }
+    queryParams.set("referrer", SENTRY_MCP_SEARCH_EVENTS_REFERRER);
+
+    const apiUrl =
+      apiPath`/organizations/${organizationSlug}/events-dropped/` +
+      `?${queryParams.toString()}`;
+    const body = await this.requestJSON(apiUrl, undefined, opts);
+    return DroppedEventsResponseSchema.parse(body);
   }
 
   // POST https://us.sentry.io/api/0/issues/5485083130/autofix/

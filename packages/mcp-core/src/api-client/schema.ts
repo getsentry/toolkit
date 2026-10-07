@@ -2475,3 +2475,30 @@ export const EventsTimeSeriesResponseSchema = z
 export type EventsTimeSeriesResponse = z.infer<
   typeof EventsTimeSeriesResponseSchema
 >;
+
+export const DroppedEventsBucketSchema = z
+  .object({
+    type: z.string(),
+    category: z.string(),
+    outcome: z.string(),
+    reason: z.string(),
+    start: z.number(),
+    end: z.number(),
+    count: z.number(),
+  })
+  .passthrough();
+
+export const DroppedEventsResponseSchema = z
+  .object({
+    meta: z
+      .object({
+        dataset: z.string(),
+        start: z.number(),
+        end: z.number(),
+        interval: z.number(),
+      })
+      .passthrough(),
+    droppedEvents: z.array(DroppedEventsBucketSchema),
+    acceptedEvents: z.array(DroppedEventsBucketSchema),
+  })
+  .passthrough();

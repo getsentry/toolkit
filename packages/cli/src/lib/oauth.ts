@@ -9,7 +9,7 @@ import {
   deviceCodeRequestBody,
   deviceTokenRequestBody,
 } from "@sentry/toolkit-core/oauth-device";
-import { nextDevicePollInterval } from "@sentry/toolkit-core/oauth-poll";
+import { advanceDevicePoll } from "@sentry/toolkit-core/oauth-poll";
 import { safeParse } from "valibot";
 import type { TokenResponse } from "../types/index.js";
 import {
@@ -373,14 +373,16 @@ function pollForToken(deviceCode: string): Promise<TokenResponse> {
 
 type PollResult =
   | { status: "success"; token: TokenResponse }
-  | { status: "authorization_pending" }
-  | { status: "slow_down" }
+  | { status: "retry"; intervalSeconds: number }
   | { status: "error"; message: string };
 
 /**
  * Handle a single poll attempt, returning a result object
  */
-async function attemptPoll(deviceCode: string): Promise<PollResult> {
+async function attemptPoll(
+  deviceCode: string,
+  intervalSeconds: number,
+): Promise<PollResult> {
   try {
     const token = await pollForToken(deviceCode);
     return { status: "success", token };
@@ -389,22 +391,21 @@ async function attemptPoll(deviceCode: string): Promise<PollResult> {
       throw error;
     }
 
-    switch (error.code) {
-      case "authorization_pending":
-        return { status: "authorization_pending" };
-      case "slow_down":
-        return { status: "slow_down" };
-      case "expired_token":
+    const outcome = advanceDevicePoll(intervalSeconds, error.code);
+    switch (outcome.status) {
+      case "retry":
+        return outcome;
+      case "expired":
         return {
           status: "error",
           message: "Device code expired. Please run 'sentry auth login' again.",
         };
-      case "access_denied":
+      case "denied":
         return {
           status: "error",
           message: "Authorization was denied. Please try again.",
         };
-      default:
+      case "unexpected":
         return { status: "error", message: error.message };
     }
   }
@@ -456,14 +457,13 @@ export async function performDeviceFlow(
   while (Date.now() < timeoutAt) {
     await sleep(pollInterval * 1000);
 
-    const result = await attemptPoll(device_code);
+    const result = await attemptPoll(device_code, pollInterval);
 
     switch (result.status) {
       case "success":
         return result.token;
-      case "authorization_pending":
-      case "slow_down":
-        pollInterval = nextDevicePollInterval(pollInterval, result.status);
+      case "retry":
+        pollInterval = result.intervalSeconds;
         continue;
       case "error":
         throw new DeviceFlowError("authorization_failed", result.message);

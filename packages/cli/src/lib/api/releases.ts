@@ -15,6 +15,7 @@ import {
   listProjectEnvironments as sdkListProjectEnvironments,
   updateOrganizationRelease,
 } from "@sentry/api";
+import { encodeApiPathSegment } from "@sentry/toolkit-core/api-path-segment";
 import type { SentryDeploy, SentryRelease } from "../../types/index.js";
 import { ApiError, ValidationError, validationError } from "../errors.js";
 import { getHeadCommit, getRepositoryName } from "../git.js";
@@ -519,11 +520,18 @@ export async function setCommitsWithRefs(
     previousCommit?: string;
   }>,
 ): Promise<SentryRelease> {
+  const encodedOrg = encodeApiPathSegment(orgSlug);
+  if (encodedOrg === null) {
+    throw new ValidationError("Invalid organization slug", "organization");
+  }
+  const encodedVersion = encodeApiPathSegment(version);
+  if (encodedVersion === null) {
+    throw new ValidationError("Invalid release version", "version");
+  }
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const encodedVersion = encodeURIComponent(version);
   const { data } = await apiRequestToRegion<SentryRelease>(
     regionUrl,
-    `organizations/${orgSlug}/releases/${encodedVersion}/`,
+    `organizations/${encodedOrg}/releases/${encodedVersion}/`,
     {
       method: "PUT",
       body: { refs },

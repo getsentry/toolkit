@@ -608,6 +608,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.0.0
+      '@sentry/api':
+        specifier: 0.337.0
+        version: 0.337.0(valibot@1.4.2(typescript@5.9.3))(zod@4.4.3)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.1.0
@@ -10971,6 +10974,11 @@ snapshots:
     optional: true
 
   '@sec-ant/readable-stream@0.4.1': {}
+
+  '@sentry/api@0.337.0(valibot@1.4.2(typescript@5.9.3))(zod@4.4.3)':
+    optionalDependencies:
+      valibot: 1.4.2(typescript@5.9.3)
+      zod: 4.4.3
 
   '@sentry/api@0.337.0(valibot@1.4.2(typescript@5.9.3))(zod@4.6.5)':
     optionalDependencies:
