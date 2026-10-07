@@ -30,7 +30,10 @@ const DEFAULT_MAX_ARRAY_ITEMS = 20;
 const REGEX_FILTER_VALUE_SOURCE = String.raw`\/\/(?!\/\/(?:[\t\n )]|$))[^\n]{1,1024}?\/\/(?=[\t\n )]|$)`;
 const REGEX_FILTER_VALUE_PATTERN = new RegExp(`^${REGEX_FILTER_VALUE_SOURCE}`);
 const SEARCH_FILTER_KEY_SOURCE = String.raw`(^|\s)!?(?<key>[A-Za-z_][A-Za-z0-9_.[\],-]*):`;
-const REGEX_FILTER_KEY_SOURCE = String.raw`(^|[\s()"])!?(?<regexKey>(?:tags|flags)\[[\w.:-]+(?: *, *(?:string|number|boolean|array))?\](?:\[\*\])?|"[\w.:-]+"(?:\[\*\])?|[A-Za-z_][A-Za-z0-9_.[\],-]*(?:\[\*\])?):`;
+// Sentry would parse `https://host/path// ` as a regex filter too, but no
+// attribute is named after a URL scheme, so treat those as plain text.
+const URL_SCHEME_KEY_SOURCE = String.raw`(?:https?|wss?|s?ftp|file|s3|gs):`;
+const REGEX_FILTER_KEY_SOURCE = String.raw`(^|[\s()"])!?(?<regexKey>(?:tags|flags)\[[\w.:-]+(?: *, *(?:string|number|boolean|array))?\](?:\[\*\])?|"[\w.:-]+"(?:\[\*\])?|(?!${URL_SCHEME_KEY_SOURCE})[A-Za-z_][A-Za-z0-9_.[\],-]*(?:\[\*\])?):`;
 const REGEX_FILTER_KEY_BEFORE_PATTERN = new RegExp(
   `${REGEX_FILTER_KEY_SOURCE}$`,
 );
