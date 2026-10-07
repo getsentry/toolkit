@@ -63,7 +63,7 @@ import {
   ErrorsSearchResponseSchema,
   EventAttachmentListSchema,
   EventSchema,
-  EventsStatsResponseSchema,
+  EventsTimeSeriesResponseSchema,
   ExternalIssueListSchema,
   ExternalIssueSchema,
   FlamegraphSchema,
@@ -3095,6 +3095,31 @@ export class SentryApiService {
     return MonitorSchema.parse(body);
   }
 
+  /**
+   * Schedule deletion of a cron monitor environment. Returns 202 with no body.
+   * Source: src/sentry/monitors/endpoints/project_monitor_environment_details.py
+   */
+  async deleteMonitorEnvironment(
+    {
+      organizationSlug,
+      projectSlug,
+      monitorSlug,
+      environment,
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+      monitorSlug: string;
+      environment: string;
+    },
+    opts?: RequestOptions,
+  ): Promise<void> {
+    await this.request(
+      apiPath`/projects/${organizationSlug}/${projectSlug}/monitors/${monitorSlug}/environments/${environment}/`,
+      { method: "DELETE" },
+      { ...opts, allowStatuses: [404] },
+    );
+  }
+
   async listMonitorCheckIns(
     {
       organizationSlug,
@@ -5140,7 +5165,8 @@ export class SentryApiService {
   }
 
   /**
-   * Fetch a timeseries (events-stats) for a single yAxis, bucketed over time.
+   * Fetch a timeseries (events-timeseries) for a single yAxis, bucketed over
+   * time.
    *
    * `interval` is optional: omit it to let Sentry pick a sensible bucket size
    * for the range (mirrors get_interval_from_range in the Sentry source).
@@ -5182,15 +5208,13 @@ export class SentryApiService {
     if (projectId) {
       queryParams.set("project", projectId);
     }
-    // partial=1 keeps the current (in-progress) bucket, matching Sentry's charts.
-    queryParams.set("partial", "1");
     queryParams.set("referrer", SENTRY_MCP_SEARCH_EVENTS_REFERRER);
 
     const apiUrl =
-      apiPath`/organizations/${organizationSlug}/events-stats/` +
+      apiPath`/organizations/${organizationSlug}/events-timeseries/` +
       `?${queryParams.toString()}`;
     const body = await this.requestJSON(apiUrl, undefined, opts);
-    return EventsStatsResponseSchema.parse(body);
+    return EventsTimeSeriesResponseSchema.parse(body);
   }
 
   async getDroppedEvents(

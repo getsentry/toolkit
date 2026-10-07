@@ -1,4 +1,5 @@
 import type { SentryApiService } from "../../../api-client";
+import type { EventsTimeSeriesResponse } from "../../../api-client/schema";
 import { formatToolCallInstruction } from "../../../internal/tool-helpers/tool-call-formatting";
 import { formatUserGeoSummary } from "../../../internal/user-formatting";
 import { logInfo } from "../../../telem/logging";
@@ -939,11 +940,11 @@ function isAdditiveAggregate(yAxis: string): boolean {
 }
 
 /**
- * Format an events-stats (timeseries) result: a metric bucketed over time.
+ * Format an events-timeseries result: a metric bucketed over time.
  * `interval` is null when Sentry chose the bucket size for the range.
  */
 export function formatTimeSeriesResults(params: {
-  series: { data: Array<[number, Array<{ count?: number | null }>]> };
+  series: EventsTimeSeriesResponse;
   yAxis: string;
   interval: string | null;
   inputQuery: string;
@@ -963,9 +964,12 @@ export function formatTimeSeriesResults(params: {
     url,
   } = params;
 
-  const points = series.data.map(([ts, values]) => ({
-    time: new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " "),
-    value: values[0]?.count ?? 0,
+  const points = (series.timeSeries[0]?.values ?? []).map((bucket) => ({
+    time: new Date(bucket.timestamp)
+      .toISOString()
+      .slice(0, 16)
+      .replace("T", " "),
+    value: bucket.value ?? 0,
   }));
 
   // Total is only meaningful for additive aggregates; summing count_unique /
