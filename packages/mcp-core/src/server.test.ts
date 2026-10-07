@@ -1880,6 +1880,51 @@ describe("buildServer", () => {
       expect(writes).toEqual(["POST", "PUT", "DELETE"]);
     });
 
+    it("discovers and dispatches monitor environment deletion with injected constraints", async () => {
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          grantedSkills: new Set(["project-management"]),
+          constraints: {
+            organizationSlug: "sentry-mcp-evals",
+            projectSlug: "cloudflare-mcp",
+          },
+        },
+      });
+      expect(getRegisteredToolNames(server)).not.toContain(
+        "delete_monitor_environment",
+      );
+      const discovered = await callRegisteredTool(
+        server,
+        "search_sentry_tools",
+        { query: "delete_monitor_environment", limit: 1 },
+      );
+      expect(getStructuredContent(discovered)).toMatchObject({
+        results: [
+          {
+            name: "delete_monitor_environment",
+            inputSchema: { required: ["monitorSlug", "environment"] },
+          },
+        ],
+      });
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "delete_monitor_environment",
+        arguments: {
+          organizationSlug: "other-org",
+          projectSlug: "other-project",
+          monitorSlug: "nightly-import",
+          environment: "production",
+        },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(getStructuredContent(result)).toEqual({
+        success: true,
+        projectSlug: "cloudflare-mcp",
+        monitorSlug: "nightly-import",
+        environment: "production",
+      });
+    });
+
     it("execute_sentry_tool dispatches a catalog-only alert update with constrained organization", async () => {
       const server = buildServer({
         context: {

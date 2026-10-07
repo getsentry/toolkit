@@ -198,17 +198,27 @@ describe("search_events", () => {
 
     mswServer.use(
       http.get(
-        "https://sentry.io/api/0/organizations/test-org/events-stats/",
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
         ({ request }) => {
           const url = new URL(request.url);
           expect(url.searchParams.get("yAxis")).toBe("count()");
           expect(url.searchParams.get("interval")).toBe("1h");
           expect(url.searchParams.get("dataset")).toBe("errors");
           return HttpResponse.json({
-            data: [
-              [1757548800, [{ count: 5 }]],
-              [1757552400, [{ count: 8 }]],
-              [1757556000, [{ count: 3 }]],
+            timeSeries: [
+              {
+                yAxis: "count()",
+                values: [
+                  { timestamp: 1757548800000, value: 5, incomplete: false },
+                  { timestamp: 1757552400000, value: 8, incomplete: false },
+                  { timestamp: 1757556000000, value: 3, incomplete: false },
+                ],
+                meta: {
+                  interval: 3600000,
+                  valueType: "integer",
+                  valueUnit: null,
+                },
+              },
             ],
           });
         },
@@ -266,12 +276,22 @@ describe("search_events", () => {
 
     mswServer.use(
       http.get(
-        "https://sentry.io/api/0/organizations/test-org/events-stats/",
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
         () =>
           HttpResponse.json({
-            data: [
-              [1757548800, [{ count: 5 }]],
-              [1757552400, [{ count: 8 }]],
+            timeSeries: [
+              {
+                yAxis: "count_unique(user)",
+                values: [
+                  { timestamp: 1757548800000, value: 5, incomplete: false },
+                  { timestamp: 1757552400000, value: 8, incomplete: false },
+                ],
+                meta: {
+                  interval: 3600000,
+                  valueType: "integer",
+                  valueUnit: null,
+                },
+              },
             ],
           }),
       ),
@@ -3531,7 +3551,7 @@ describe("search_events", () => {
           },
         }),
         http.get(
-          "https://sentry.io/api/0/organizations/test-org/events-stats/",
+          "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
           ({ request }) => {
             const url = new URL(request.url);
             expect(url.searchParams.get("yAxis")).toBe("count()");
@@ -3539,9 +3559,15 @@ describe("search_events", () => {
             expect(url.searchParams.get("dataset")).toBe("spans");
             expect(url.searchParams.get("statsPeriod")).toBe("7d");
             return HttpResponse.json({
-              data: [
-                [1757548800, [{ count: 5 }]],
-                [1757635200, [{ count: 8 }]],
+              timeSeries: [
+                {
+                  yAxis: "count()",
+                  values: [
+                    { timestamp: 1757548800000, value: 5, incomplete: false },
+                    { timestamp: 1757635200000, value: 8, incomplete: false },
+                  ],
+                  meta: { interval: 86400000 },
+                },
               ],
             });
           },
@@ -3618,14 +3644,26 @@ describe("search_events", () => {
             },
           }),
           http.get(
-            "https://sentry.io/api/0/organizations/test-org/events-stats/",
+            "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
             ({ request }) => {
               const url = new URL(request.url);
               expect(url.searchParams.has("spanQuery")).toBe(false);
               expect(url.searchParams.has("logQuery")).toBe(false);
               expect(url.searchParams.has("metricQuery")).toBe(false);
               return HttpResponse.json({
-                data: [[1757548800, [{ count: 100 }]]],
+                timeSeries: [
+                  {
+                    yAxis: "count()",
+                    values: [
+                      {
+                        timestamp: 1757548800000,
+                        value: 100,
+                        incomplete: false,
+                      },
+                    ],
+                    meta: { interval: 3600000 },
+                  },
+                ],
               });
             },
           ),
@@ -3885,10 +3923,10 @@ describe("search_events", () => {
           },
         }),
         http.get(
-          "https://sentry.io/api/0/organizations/test-org/events-stats/",
+          "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
           ({ request }) => {
             expect(new URL(request.url).searchParams.get("project")).toBe("-1");
-            return HttpResponse.json({ data: [] });
+            return HttpResponse.json({ timeSeries: [] });
           },
           { once: true },
         ),

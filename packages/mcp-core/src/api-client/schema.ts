@@ -2438,22 +2438,43 @@ export const AgenticOnboardingRunSchema = z.object({
 });
 
 /**
- * Response from the events-stats (timeseries) endpoint for a single yAxis:
- * a series of `[unixTimestampSeconds, [{ count }]]` buckets. `count` holds the
- * yAxis value for that bucket regardless of the aggregate function.
+ * One bucket of an events-timeseries series. `timestamp` is in milliseconds.
+ * `incomplete` marks buckets that may still receive data.
  */
-export const EventsStatsResponseSchema = z
+export const EventsTimeSeriesValueSchema = z
   .object({
-    data: z.array(
-      z.tuple([
-        z.number(),
-        z.array(z.object({ count: z.number().nullish() }).passthrough()),
-      ]),
-    ),
-    start: z.number().optional(),
-    end: z.number().optional(),
+    timestamp: z.number(),
+    value: z.number().nullish(),
+    incomplete: z.boolean(),
   })
   .passthrough();
+
+/**
+ * Response from the events-timeseries endpoint. The MCP always requests a
+ * single yAxis without topEvents, so `timeSeries` holds exactly one series.
+ */
+export const EventsTimeSeriesResponseSchema = z
+  .object({
+    timeSeries: z.array(
+      z
+        .object({
+          yAxis: z.string(),
+          values: z.array(EventsTimeSeriesValueSchema),
+          meta: z
+            .object({
+              // Bucket width in milliseconds
+              interval: z.number(),
+            })
+            .passthrough(),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
+export type EventsTimeSeriesResponse = z.infer<
+  typeof EventsTimeSeriesResponseSchema
+>;
 
 export const DroppedEventsBucketSchema = z
   .object({
