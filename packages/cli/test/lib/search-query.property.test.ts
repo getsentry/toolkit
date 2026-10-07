@@ -77,7 +77,7 @@ const regexFilterArb = constantFrom(
   "!message://^GET \\d+ms//",
   "message://(ConnectionReset|ReadTimeout)Error//",
   "message://codes [401,403,)//",
-  "url://https://x//"
+  "url://https://x//",
 );
 
 describe("property: sanitizeQuery", () => {
@@ -184,7 +184,7 @@ describe("property: sanitizeQuery", () => {
       property(safeTermArb, regexFilterArb, (term, regex) => {
         expect(sanitizeQuery(`${term} AND ${regex}`)).toBe(`${term} ${regex}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
