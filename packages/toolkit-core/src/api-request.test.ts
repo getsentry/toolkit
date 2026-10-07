@@ -18,6 +18,11 @@ describe("buildSentryApiUrl", () => {
       "/organizations/org/",
       "https://self-hosted.example/sentry/api/0/organizations/org/",
     ],
+    [
+      "https://self-hosted.example/sentry////",
+      "organizations/org/",
+      "https://self-hosted.example/sentry/api/0/organizations/org/",
+    ],
   ])("assembles %s with %s", (baseUrl, endpoint, expected) => {
     expect(buildSentryApiUrl(baseUrl, endpoint)).toBe(expected);
   });
