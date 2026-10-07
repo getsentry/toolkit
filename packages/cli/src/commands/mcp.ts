@@ -16,7 +16,7 @@ export const mcpCommand = buildCommand({
   // biome-ignore lint/suspicious/useAwait: async generator required by buildCommand
   async *func(this: SentryContext) {
     yield new CommandOutput(
-      "The local MCP server is started by running `sentry mcp` from an MCP client configuration."
+      "The local MCP server is started by running `sentry mcp` from an MCP client configuration.",
     );
   },
 });

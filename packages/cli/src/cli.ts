@@ -237,7 +237,7 @@ type ErrorMiddleware = (
  */
 function skipLeadingGlobalFlag(
   cliArgs: readonly string[],
-  index: number
+  index: number,
 ): number | undefined {
   const { booleanFlags, valueFlags } = buildTopLevelFlags();
   const token = cliArgs[index] ?? "";
@@ -255,7 +255,7 @@ function skipLeadingGlobalFlag(
 }
 
 export function getMcpArgs(cliArgs: readonly string[]): string[] | undefined {
-  for (let index = 0; index < cliArgs.length; ) {
+  for (let index = 0; index < cliArgs.length;) {
     const token = cliArgs[index] ?? "";
     if (token === "--") {
       return;
