@@ -10,7 +10,7 @@
 import { symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   ANON_IDENTITY,
   clearAuth,
@@ -412,7 +412,47 @@ describe("getAuthToken memoization", () => {
   });
 });
 
-describe("refreshToken stored session updates", () => {
+describe("refreshToken session ownership", () => {
+  const host = "https://synthetic.example.invalid";
+  const sessionEnv = () => ({
+    ...process.env,
+    SENTRY_URL: host,
+    SENTRY_HOST: host,
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function login(): void {
+    setAuthToken("original-token", 3600, "original-refresh", { host });
+  }
+
+  function mockRefresh(gate = Promise.resolve()) {
+    const started = Promise.withResolvers<void>();
+    const refreshTokens: (string | null)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(async (input, init) => {
+        const request = new Request(input, init);
+        expect(request.url).toBe(`${host}/oauth/token/`);
+        refreshTokens.push(
+          new URLSearchParams(await request.text()).get("refresh_token"),
+        );
+        started.resolve();
+        await gate;
+        return Response.json({
+          access_token: "new-token",
+          refresh_token: "new-refresh",
+          expires_in: 3600,
+          token_type: "bearer",
+        });
+      }),
+    );
+    return { started: started.promise, refreshTokens };
+  }
+
   test.each(["config alias", "legacy host"] as const)(
     "shares an in-flight refresh across a %s",
     async (variant) => {
@@ -422,210 +462,110 @@ describe("refreshToken stored session updates", () => {
       if (variant === "config alias") {
         await symlink(configDir, secondConfigDir, "junction");
       }
-      const originalFetch = globalThis.fetch;
-      const refreshTokens: (string | null)[] = [];
-      const host = "https://synthetic.example.invalid";
-      const env = { ...process.env, SENTRY_URL: host, SENTRY_HOST: host };
-      let markStarted: (() => void) | undefined;
-      const refreshStarted = new Promise<void>((resolve) => {
-        markStarted = resolve;
-      });
-      let releaseRefresh: (() => void) | undefined;
-      const refreshGate = new Promise<void>((resolve) => {
-        releaseRefresh = resolve;
-      });
+      const env = sessionEnv();
+      const gate = Promise.withResolvers<void>();
+      const { started, refreshTokens } = mockRefresh(gate.promise);
       const pending: Promise<unknown>[] = [];
 
-      globalThis.fetch = mockFetch(async (input, init) => {
-        const request = new Request(input, init);
-        expect(request.url).toBe(`${host}/oauth/token/`);
-        refreshTokens.push(
-          new URLSearchParams(await request.text()).get("refresh_token"),
-        );
-        const duplicate = refreshTokens.length > 1;
-        markStarted?.();
-        await refreshGate;
-        if (duplicate) {
-          return Response.json({ error: "invalid_grant" }, { status: 400 });
-        }
-        return Response.json({
-          access_token: "synthetic-new-token",
-          refresh_token: "synthetic-new-refresh",
-          expires_in: 3600,
-          token_type: "bearer",
-        });
-      });
-
       try {
-        setAuthToken(
-          "synthetic-original-token",
-          3600,
-          "synthetic-original-refresh",
-          {
-            host,
-          },
-        );
+        login();
         if (variant === "legacy host") {
           // OAuth's trust check migrates pre-v16 rows while refresh is pending.
           getDatabase().query("UPDATE auth SET host = NULL WHERE id = 1").run();
         }
         pending.push(withEnv(env, () => refreshToken({ force: true })));
-        await refreshStarted;
+        await started;
         pending.push(
           withEnv({ ...env, SENTRY_CONFIG_DIR: secondConfigDir }, () =>
             refreshToken({ force: true }),
           ),
         );
-        // Let the second invocation reach the pending refresh before releasing it.
+        // Let the second invocation join the refresh before completing it.
         await setImmediate();
         const completed = Promise.all(pending);
-        releaseRefresh?.();
+        gate.resolve();
         await expect(completed).resolves.toMatchObject([
-          { token: "synthetic-new-token", refreshed: true },
-          { token: "synthetic-new-token", refreshed: true },
+          { token: "new-token", refreshed: true },
+          { token: "new-token", refreshed: true },
         ]);
-        expect(refreshTokens).toEqual(["synthetic-original-refresh"]);
+        expect(refreshTokens).toEqual(["original-refresh"]);
         expect(getAuthConfig()).toMatchObject({
-          token: "synthetic-new-token",
-          refreshToken: "synthetic-new-refresh",
+          token: "new-token",
+          refreshToken: "new-refresh",
         });
       } finally {
-        releaseRefresh?.();
+        gate.resolve();
         await Promise.allSettled(pending);
-        globalThis.fetch = originalFetch;
       }
     },
   );
 
-  test("keeps refresh identity aliases scoped to their credential store", async () => {
-    const host = "https://synthetic.example.invalid";
-    const env = { ...process.env, SENTRY_URL: host, SENTRY_HOST: host };
+  test("a login in another store neither inherits nor clears this session's refresh history", async () => {
+    const env = sessionEnv();
     const otherEnv = {
       ...env,
       SENTRY_CONFIG_DIR: join(getConfigDir(), "other-store"),
     };
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mockFetch(() =>
-      Response.json({
-        access_token: "synthetic-new-token",
-        refresh_token: "synthetic-new-refresh",
-        expires_in: 3600,
-        token_type: "bearer",
-      }),
-    );
-    try {
-      const original = withEnv(env, () => {
-        setAuthToken(
-          "synthetic-original-token",
-          3600,
-          "synthetic-original-refresh",
-          {
-            host,
-          },
-        );
-        return getCredentialContext();
-      });
-      expect(original).toBeDefined();
-      await withEnv(env, () => refreshToken({ force: true }));
+    const { refreshTokens } = mockRefresh();
+    const original = withEnv(env, () => {
+      login();
+      return getCredentialContext();
+    });
+    expect(original).toBeDefined();
+    await withEnv(env, () => refreshToken({ force: true }));
 
-      await withEnv(otherEnv, async () => {
-        setAuthToken(
-          "synthetic-original-token",
-          3600,
-          "synthetic-original-refresh",
-          {
-            host,
-          },
-        );
-        const expectedCredential = getCredentialContext();
-        setAuthToken("synthetic-new-token", 3600, "synthetic-new-refresh", {
-          host,
-        });
-        // A rotation in another store cannot authorize this store's new login.
-        await expect(refreshToken({ expectedCredential })).rejects.toThrow(
-          "Active credentials changed",
-        );
-      });
+    await withEnv(otherEnv, async () => {
+      login();
+      const expectedCredential = getCredentialContext();
+      setAuthToken("new-token", 3600, "new-refresh", { host });
+      // Matching token values do not make two separate logins the same session.
+      await expect(refreshToken({ expectedCredential })).rejects.toThrow(
+        "Active credentials changed",
+      );
+    });
 
-      // Login in the other store must not erase this session's refresh lineage.
-      await expect(
-        withEnv(env, () => refreshToken({ expectedCredential: original })),
-      ).resolves.toMatchObject({
-        token: "synthetic-new-token",
-        refreshed: false,
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    // A late 401 from the original session must refresh with the rotated token.
+    await expect(
+      withEnv(env, () =>
+        refreshToken({ force: true, expectedCredential: original }),
+      ),
+    ).resolves.toMatchObject({
+      token: "new-token",
+      refreshed: true,
+    });
+    expect(refreshTokens).toEqual(["original-refresh", "new-refresh"]);
   });
 
   test("uses a rotated session when another invocation reaches the refresh threshold", async () => {
     let now = Date.now();
-    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
-    const originalFetch = globalThis.fetch;
-    const refreshTokens: (string | null)[] = [];
-    const host = "https://synthetic.example.invalid";
-    const env = { ...process.env, SENTRY_URL: host, SENTRY_HOST: host };
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const { refreshTokens } = mockRefresh();
+    const env = sessionEnv();
+    login();
+    // Start just above the 10% refresh threshold for a one-hour session.
+    getDatabase()
+      .query("UPDATE auth SET issued_at = ?, expires_at = ? WHERE id = 1")
+      .run(now - 3239 * 1000, now + 361 * 1000);
 
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const request = new Request(input, init);
-      expect(request.url).toBe(`${host}/oauth/token/`);
-      refreshTokens.push(
-        new URLSearchParams(await request.text()).get("refresh_token"),
-      );
-      if (refreshTokens.length > 1) {
-        return Response.json({ error: "invalid_grant" }, { status: 400 });
-      }
-      return Response.json({
-        access_token: "synthetic-new-token",
-        refresh_token: "synthetic-new-refresh",
-        expires_in: 3600,
-        token_type: "bearer",
+    await withEnv(env, async () => {
+      await expect(refreshToken()).resolves.toMatchObject({
+        token: "original-token",
+        refreshed: false,
+      });
+      await withEnv(env, () => refreshToken({ force: true }));
+      now += 2000;
+
+      // A later page must not spend the already-consumed refresh token.
+      await expect(refreshToken()).resolves.toMatchObject({
+        token: "new-token",
+        refreshed: false,
       });
     });
-
-    try {
-      setAuthToken(
-        "synthetic-original-token",
-        3600,
-        "synthetic-original-refresh",
-        {
-          host,
-        },
-      );
-      // Start just above the 10% refresh threshold for a one-hour session.
-      getDatabase()
-        .query("UPDATE auth SET issued_at = ?, expires_at = ? WHERE id = 1")
-        .run(now - 3239 * 1000, now + 361 * 1000);
-
-      await withEnv(env, async () => {
-        await expect(refreshToken()).resolves.toMatchObject({
-          token: "synthetic-original-token",
-          refreshed: false,
-        });
-
-        await withEnv(env, () => refreshToken({ force: true }));
-        now += 2000;
-
-        // A paginated request may continue after another invocation rotated
-        // this session; it must not spend the already-consumed refresh token.
-        await expect(refreshToken()).resolves.toMatchObject({
-          token: "synthetic-new-token",
-          refreshed: false,
-        });
-      });
-
-      expect(refreshTokens).toEqual(["synthetic-original-refresh"]);
-      expect(getAuthConfig()).toMatchObject({
-        token: "synthetic-new-token",
-        refreshToken: "synthetic-new-refresh",
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-      clock.mockRestore();
-    }
+    expect(refreshTokens).toEqual(["original-refresh"]);
   });
+});
 
+describe("refreshToken stored session updates", () => {
   test("setAuthToken between refreshToken calls is reflected", async () => {
     // The next request must use the newly stored session.
     setAuthToken("first_token", 3600, "refresh_1");

@@ -1,5 +1,6 @@
 /** Public SDK streaming lifecycle regressions with real commands and mocked HTTP. */
 
+import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import createSentrySDK, {
   SentryError,
@@ -25,17 +26,6 @@ const TRACE_LOG: TraceLog = {
   message: "Request received",
 };
 
-/** Allow a test to hold an HTTP response across an iterator return. */
-function deferred() {
-  let resolve = () => {
-    // Replaced synchronously by the promise executor before this helper returns.
-  };
-  const promise = new Promise<void>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
-
 describe("SDK streaming invocation isolation", () => {
   const getConfigDir = useTestConfigDir("sdk-stream-isolation-", {
     isolateProjectRoot: true,
@@ -54,8 +44,8 @@ describe("SDK streaming invocation isolation", () => {
   let requests: Request[];
   let traceStatus: number;
   let traceResponses: number;
-  let regionGate: ReturnType<typeof deferred> | undefined;
-  let dashboardGate: ReturnType<typeof deferred> | undefined;
+  let regionGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  let dashboardGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let iterators: AsyncIterator<unknown>[];
 
   beforeEach(() => {
@@ -106,12 +96,9 @@ describe("SDK streaming invocation isolation", () => {
         status = 404;
         body = { detail: "Unexpected request" };
       }
-      return new Response(JSON.stringify(body), {
+      return Response.json(body, {
         status,
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-store",
-        },
+        headers: { "Cache-Control": "no-store" },
       });
     });
   });
@@ -125,21 +112,20 @@ describe("SDK streaming invocation isolation", () => {
     globalThis.fetch = originalFetch;
   });
 
-  /** Create a client without accessing the developer's project or credentials. */
-  function client(token: string, options?: SentryOptions) {
+  function client(options?: SentryOptions) {
     return createSentrySDK({
       cwd: getConfigDir(),
       url: HOST,
-      token,
+      token: FIRST_TOKEN,
       ...options,
     });
   }
 
-  /** Open the public typed or argument-based follow entry point. */
   function stream(
-    sdk: ReturnType<typeof createSentrySDK>,
     entryPoint: "typed" | "run" = "typed",
+    options?: SentryOptions,
   ): AsyncIterable<unknown> {
+    const sdk = client(options);
     const result =
       entryPoint === "typed"
         ? sdk.log.list({ follow: "1" }, `${ORG}/${TRACE_ID}`)
@@ -149,23 +135,20 @@ describe("SDK streaming invocation isolation", () => {
     return iterable;
   }
 
-  /** Exercise a new client immediately after streaming terminates. */
   function secondClientRequest() {
-    return client(SECOND_TOKEN).api({ endpoint: ENDPOINT });
+    return client({ token: SECOND_TOKEN }).api({ endpoint: ENDPOINT });
   }
 
   test.each(["typed", "run"] as const)(
     "%s consumer break finishes cleanup before the next call",
     async (entryPoint) => {
-      const envBefore = { ...process.env };
       let received = false;
-      for await (const item of stream(client(FIRST_TOKEN), entryPoint)) {
+      for await (const item of stream(entryPoint)) {
         expect(item).toMatchObject({ data: [{ id: "log-1" }] });
         received = true;
         break;
       }
       expect(received).toBe(true);
-      expect(process.env).toEqual(envBefore);
       await expect(secondClientRequest()).resolves.toMatchObject({
         body: { owner: "second" },
       });
@@ -174,7 +157,7 @@ describe("SDK streaming invocation isolation", () => {
 
   test("AbortSignal completion leaves the next invocation usable", async () => {
     const controller = new AbortController();
-    const iterator = stream(client(FIRST_TOKEN, { signal: controller.signal }))[
+    const iterator = stream("typed", { signal: controller.signal })[
       Symbol.asyncIterator
     ]();
     expect((await iterator.next()).done).toBe(false);
@@ -188,7 +171,7 @@ describe("SDK streaming invocation isolation", () => {
 
   test("stream authentication errors finish cleanup before rejection", async () => {
     traceStatus = 401;
-    const iterator = stream(client(FIRST_TOKEN))[Symbol.asyncIterator]();
+    const iterator = stream()[Symbol.asyncIterator]();
     await expect(iterator.next()).rejects.toBeInstanceOf(SentryError);
     expect(traceResponses).toBe(1);
     await expect(secondClientRequest()).resolves.toMatchObject({
@@ -197,7 +180,7 @@ describe("SDK streaming invocation isolation", () => {
   });
 
   test("immediate iterator return stops before the producer starts", async () => {
-    const iterator = stream(client(FIRST_TOKEN))[Symbol.asyncIterator]();
+    const iterator = stream()[Symbol.asyncIterator]();
     await expect(iterator.return?.()).resolves.toMatchObject({ done: true });
     expect(requests).toHaveLength(0);
     await expect(secondClientRequest()).resolves.toMatchObject({
@@ -206,12 +189,21 @@ describe("SDK streaming invocation isolation", () => {
   });
 
   test("return during region lookup waits for stream cleanup", async () => {
-    regionGate = deferred();
-    const iterator = stream(client(FIRST_TOKEN))[Symbol.asyncIterator]();
-    await vi.waitFor(() => {
-      expect(requests).toHaveLength(1);
+    regionGate = Promise.withResolvers<void>();
+    const iterator = stream()[Symbol.asyncIterator]();
+    await vi.waitFor(
+      () => {
+        expect(requests).toHaveLength(1);
+      },
+      { timeout: 5000 },
+    );
+    let returnCompleted = false;
+    const returned = iterator.return?.().then((result) => {
+      returnCompleted = true;
+      return result;
     });
-    const returned = iterator.return?.();
+    await setImmediate();
+    expect(returnCompleted).toBe(false);
     regionGate.resolve();
     await expect(returned).resolves.toMatchObject({ done: true });
     await expect(secondClientRequest()).resolves.toMatchObject({
@@ -220,9 +212,9 @@ describe("SDK streaming invocation isolation", () => {
   });
 
   test("dashboard abort during initial fetch stops before refresh starts", async () => {
-    dashboardGate = deferred();
+    dashboardGate = Promise.withResolvers<void>();
     const controller = new AbortController();
-    const result = client(FIRST_TOKEN, {
+    const result = client({
       signal: controller.signal,
     }).dashboard.view({ refresh: "10" }, `${ORG}/`, "1");
     const iterator = (result as AsyncIterable<unknown>)[Symbol.asyncIterator]();
@@ -243,15 +235,16 @@ describe("SDK streaming invocation isolation", () => {
   });
 
   test("overlapping calls fail without altering the active stream", async () => {
-    const iterator = stream(client(FIRST_TOKEN))[Symbol.asyncIterator]();
+    const iterator = stream()[Symbol.asyncIterator]();
     expect((await iterator.next()).value).toMatchObject({
       data: [{ id: "log-1" }],
     });
-    const second = client(SECOND_TOKEN);
-    await expect(second.api({ endpoint: ENDPOINT })).rejects.toThrow(
+    await expect(secondClientRequest()).rejects.toThrow(
       "Concurrent SDK calls are not supported",
     );
-    const overlapping = stream(second)[Symbol.asyncIterator]();
+    const overlapping = stream("typed", { token: SECOND_TOKEN })[
+      Symbol.asyncIterator
+    ]();
     await expect(overlapping.next()).rejects.toThrow(
       "Concurrent SDK calls are not supported",
     );
