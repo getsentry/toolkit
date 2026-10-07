@@ -5,7 +5,7 @@ import {
   deviceCodeRequestBody,
   deviceTokenRequestBody,
 } from "@sentry/toolkit-core/oauth-device";
-import { nextDevicePollInterval } from "@sentry/toolkit-core/oauth-poll";
+import { advanceDevicePoll } from "@sentry/toolkit-core/oauth-poll";
 import {
   DEVICE_CODE_ENDPOINT,
   DEVICE_CODE_SCOPES,
@@ -100,22 +100,22 @@ export async function pollForToken({
     const parsed = DeviceCodeErrorSchema.safeParse(errorBody);
     const errorCode = parsed.success ? parsed.data.error : undefined;
 
-    switch (errorCode) {
-      case "authorization_pending":
-      case "slow_down":
-        pollInterval = nextDevicePollInterval(pollInterval, errorCode);
+    const outcome = advanceDevicePoll(pollInterval, errorCode);
+    switch (outcome.status) {
+      case "retry":
+        pollInterval = outcome.intervalSeconds;
         continue;
-      case "access_denied":
+      case "denied":
         throw new DeviceCodeError(
           "Authorization was denied. Please try again or provide --access-token.",
           errorCode,
         );
-      case "expired_token":
+      case "expired":
         throw new DeviceCodeError(
           "Device code expired before authorization was completed.",
           errorCode,
         );
-      default:
+      case "unexpected":
         throw new DeviceCodeError(
           `Unexpected error during device code polling: ${errorCode ?? resp.statusText}`,
           errorCode,
