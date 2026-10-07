@@ -56,9 +56,27 @@ function mount() {
   return { instance, out, stdin };
 }
 
+/** Settles when the app exits, or rejects after `ms` without leaving a timer behind. */
+async function exitsWithin(
+  instance: ReturnType<typeof mount>["instance"],
+  ms: number,
+): Promise<void> {
+  const timer = new AbortController();
+  try {
+    await Promise.race([
+      instance.waitUntilExit(),
+      sleep(ms, undefined, { signal: timer.signal }).then(() => {
+        throw new Error("Snake did not exit on esc");
+      }),
+    ]);
+  } finally {
+    timer.abort();
+  }
+}
+
 describe("mountSnakeGame", () => {
   test("renders the board and the steer hint", async () => {
-    const { instance, out } = mount();
+    const { instance, out, stdin } = mount();
     try {
       await sleep(SETTLE_MS);
       const frame = out.text();
@@ -66,20 +84,32 @@ describe("mountSnakeGame", () => {
       expect(frame).toContain("Press an arrow key to start");
     } finally {
       instance.unmount();
+      stdin.destroy();
+    }
+  });
+
+  test("labels the esc shortcut as quit, not back to setup", async () => {
+    const { instance, out, stdin } = mount();
+    try {
+      await sleep(SETTLE_MS);
+      const frame = out.text();
+      expect(frame).toContain("quit");
+      expect(frame).not.toContain("back to setup");
+    } finally {
+      instance.unmount();
+      stdin.destroy();
     }
   });
 
   test("esc exits the app", async () => {
     const { instance, stdin } = mount();
-    await sleep(SETTLE_MS);
-    stdin.push(ESCAPE);
-    await Promise.race([
-      instance.waitUntilExit(),
-      sleep(2000).then(() => {
-        throw new Error("Snake did not exit on esc");
-      }),
-    ]);
-    instance.unmount();
-    expect(true).toBe(true);
+    try {
+      await sleep(SETTLE_MS);
+      stdin.push(ESCAPE);
+      await exitsWithin(instance, 2000);
+    } finally {
+      instance.unmount();
+      stdin.destroy();
+    }
   });
 });

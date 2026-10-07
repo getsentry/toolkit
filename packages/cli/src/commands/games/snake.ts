@@ -44,6 +44,10 @@ export const snakeCommand = buildCommand({
     const freshStdin = openFreshTtyForInk();
     this.stdout.write(ENTER_ALT_SCREEN);
     let instance: ReturnType<typeof app.mountSnakeGame> | undefined;
+    // Node delivers SIGINT instead of ctrl+c input while raw mode is off; the
+    // default handler would exit before `finally` restores the screen.
+    const quit = () => instance?.unmount();
+    process.on("SIGINT", quit);
     try {
       instance = app.mountSnakeGame({
         // Ctrl+C is routed through the game's own shortcut so it exits cleanly.
@@ -53,6 +57,7 @@ export const snakeCommand = buildCommand({
       });
       await instance.waitUntilExit();
     } finally {
+      process.removeListener("SIGINT", quit);
       instance?.unmount();
       this.stdout.write(LEAVE_ALT_SCREEN);
       if (freshStdin) {

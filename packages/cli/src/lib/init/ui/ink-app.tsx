@@ -3146,6 +3146,7 @@ function SnakeGameScreen(): React.ReactNode {
       <Box flexDirection="column" flexGrow={1} paddingTop={1}>
         <SnakeGame
           accent={ACCENT}
+          exitAction="quit"
           muted={MUTED_DIM}
           onCancel={close}
           onExit={close}
