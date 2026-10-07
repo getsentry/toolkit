@@ -27,7 +27,6 @@ export function createSnakeSession(): SnakeSession {
   return { state: null, best: 0 };
 }
 
-const MAX_BOARD_COLS = 60;
 const MAX_BOARD_TERMINAL_ROWS = 14;
 /** Border (2) plus the score line under the board. */
 const BOARD_CHROME_ROWS = 3;
@@ -37,7 +36,7 @@ function snakeBoardSize(
   cols: number,
   rows: number,
 ): { width: number; height: number } {
-  const width = Math.max(10, Math.min(MAX_BOARD_COLS, cols - 2));
+  const width = Math.max(10, cols - 2);
   const terminalRows = Math.max(
     3,
     Math.min(MAX_BOARD_TERMINAL_ROWS, rows - BOARD_CHROME_ROWS),
@@ -226,7 +225,6 @@ export function SnakeInvite({
   const paused = session.state?.status === "paused";
   return (
     <Box
-      alignSelf="flex-start"
       borderColor={muted}
       borderStyle="round"
       flexDirection="column"
