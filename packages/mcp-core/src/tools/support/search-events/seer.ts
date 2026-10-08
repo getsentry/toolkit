@@ -17,9 +17,6 @@ export const SEER_SEARCH_AGENT_TIMEOUT = 60 * 1000; // 1 minute
 // Sentry's sentinel for all projects the user can access.
 const ALL_ACCESSIBLE_PROJECTS = -1;
 
-// The search agent endpoints require this feature. `hideAiFeatures` is checked separately.
-const SEARCH_AGENT_FEATURE = "gen-ai-search-agent-translate";
-
 const SEER_STRATEGIES = {
   errors: "Errors",
   logs: "Logs",
@@ -53,16 +50,12 @@ async function hasSeerSearchAgentAccess(
   apiService: SentryApiService,
   organizationSlug: string,
 ): Promise<boolean> {
-  // Sentry omits `features` unless explicitly requested.
+  // The search agent endpoints are no longer behind a feature flag, so only
+  // the org's AI opt-out applies. Other access failures fall back to the agent.
   const organization = await apiService.getOrganization(organizationSlug, {
-    includeFeatureFlags: true,
     detailed: false,
   });
-  if (organization.hideAiFeatures) {
-    return false;
-  }
-  const features = organization.features ?? [];
-  return features.includes(SEARCH_AGENT_FEATURE);
+  return !organization.hideAiFeatures;
 }
 
 function toSearchTranslation(
