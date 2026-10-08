@@ -48,7 +48,7 @@ describe("parseIssueArg properties", () => {
           expect(result.id).toBe(input);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -61,7 +61,7 @@ describe("parseIssueArg properties", () => {
           expect(result.suffix).toBe(suffix.toUpperCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -79,9 +79,9 @@ describe("parseIssueArg properties", () => {
             expect(result.project).toBe(project);
             expect(result.suffix).toBe(suffix.toUpperCase());
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -97,7 +97,7 @@ describe("parseIssueArg properties", () => {
           expect(result.numericId).toBe(numericId);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -116,7 +116,7 @@ describe("parseIssueArg properties", () => {
           expect(result.suffix).toBe(suffix.toUpperCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -132,14 +132,14 @@ describe("parseIssueArg properties", () => {
           expect(result.suffix).toBe(suffix.toUpperCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("alphanumeric input without dash/slash that isn't numeric returns 'suffix-only'", async () => {
     // Generate alphanumeric strings that contain at least one letter (not pure numeric)
     const alphanumericWithLetterArb = stringMatching(
-      /^[a-zA-Z][a-zA-Z0-9]{0,9}$/
+      /^[a-zA-Z][a-zA-Z0-9]{0,9}$/,
     );
 
     await fcAssert(
@@ -151,7 +151,7 @@ describe("parseIssueArg properties", () => {
           expect(result.suffix).toBe(input.toUpperCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -170,12 +170,12 @@ describe("parseIssueArg properties", () => {
     const validInputArb = oneof(
       numericIdArb,
       tuple(orgSlugArb, projectSlugArb, suffixArb).map(
-        ([o, p, s]) => `${o}/${p}-${s}`
+        ([o, p, s]) => `${o}/${p}-${s}`,
       ),
       tuple(orgSlugArb, numericIdArb).map(([o, n]) => `${o}/${n}`),
       tuple(orgSlugArb, suffixArb).map(([o, s]) => `${o}/${s}`),
       tuple(projectSlugArb, suffixArb).map(([p, s]) => `${p}-${s}`),
-      suffixArb
+      suffixArb,
     );
 
     await fcAssert(
@@ -187,7 +187,7 @@ describe("parseIssueArg properties", () => {
           // Some generated inputs may throw - that's expected for invalid formats
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -195,9 +195,9 @@ describe("parseIssueArg properties", () => {
     const inputArb = oneof(
       numericIdArb,
       tuple(orgSlugArb, projectSlugArb, suffixArb).map(
-        ([o, p, s]) => `${o}/${p}-${s}`
+        ([o, p, s]) => `${o}/${p}-${s}`,
       ),
-      suffixArb
+      suffixArb,
     );
 
     await fcAssert(
@@ -211,7 +211,7 @@ describe("parseIssueArg properties", () => {
         // String is immutable in JS, but this verifies no weird side effects
         expect(input).toBe(originalInput);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -229,9 +229,9 @@ describe("parseIssueArg: GitHub-style # separator properties (CLI-1G1)", () => {
           const hashForm = parseIssueArg(`${org}/${project}#${shortId}`);
           const slashForm = parseIssueArg(`${org}/${project}/${shortId}`);
           expect(hashForm).toEqual(slashForm);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -245,7 +245,7 @@ describe("parseIssueArg: GitHub-style # separator properties (CLI-1G1)", () => {
           suffix: suffix.toUpperCase(),
         });
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -255,9 +255,9 @@ describe("parseIssueArg: GitHub-style # separator properties (CLI-1G1)", () => {
         tuple(projectSlugArb, suffixArb, forbiddenCharArb),
         ([project, suffix, bad]) => {
           expect(() => parseIssueArg(`${project}#${suffix}${bad}x`)).toThrow();
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -271,7 +271,7 @@ describe("parseOrgProjectArg properties", () => {
         const result = parseOrgProjectArg(input);
         expect(result.type).toBe("auto-detect");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -288,7 +288,7 @@ describe("parseOrgProjectArg properties", () => {
           expect(result.projects).toBeUndefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -303,9 +303,9 @@ describe("parseOrgProjectArg properties", () => {
             expect(result.project).toBe(`${first},${second}`);
             expect(result.projects).toBeUndefined();
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -325,9 +325,9 @@ describe("parseOrgProjectArg properties", () => {
             expect(result.project).toBe(first);
             expect(result.projects).toEqual([first, second]);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -342,7 +342,7 @@ describe("parseOrgProjectArg properties", () => {
           expect(result.org).toBe(org);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -356,7 +356,7 @@ describe("parseOrgProjectArg properties", () => {
           expect(result.projectSlug).toBe(project);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -371,7 +371,7 @@ describe("parseOrgProjectArg properties", () => {
           expect(result.projectSlug).toBe(project);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -383,7 +383,7 @@ describe("parseOrgProjectArg properties", () => {
       tuple(orgSlugArb, projectSlugArb).map(([o, p]) => `${o}/${p}`),
       orgSlugArb.map((o) => `${o}/`),
       projectSlugArb,
-      projectSlugArb.map((p) => `/${p}`)
+      projectSlugArb.map((p) => `/${p}`),
     );
 
     await fcAssert(
@@ -395,7 +395,7 @@ describe("parseOrgProjectArg properties", () => {
           // Some inputs may throw - that's expected
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -412,9 +412,9 @@ describe("parseOrgProjectArg properties", () => {
             expect(result.org).toBe(org);
             expect(result.project).toBe(project);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -445,16 +445,16 @@ describe("parseIssueArg and parseOrgProjectArg consistency", () => {
             expect(issueResult.org).toBe(orgProjectResult.org);
             expect(issueResult.project).toBe(orgProjectResult.project);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
 
 /** Generates all-lowercase slug-like strings with at least one dash */
 const lowercaseSlugWithDashArb = stringMatching(
-  /^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)+$/
+  /^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)+$/,
 );
 
 /** Generates alphanumeric strings without dashes */
@@ -476,7 +476,7 @@ describe("normalizeSlug properties (no-op)", () => {
         const result = normalizeSlug(input);
         expect(result.slug).toBe(input);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -486,7 +486,7 @@ describe("normalizeSlug properties (no-op)", () => {
         const result = normalizeSlug(input);
         expect(result.normalized).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -498,7 +498,7 @@ describe("normalizeSlug properties (no-op)", () => {
         expect(second.slug).toBe(first.slug);
         expect(second.normalized).toBe(first.normalized);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -509,7 +509,7 @@ describe("looksLikeIssueShortId properties", () => {
       property(lowercaseSlugWithDashArb, (input) => {
         expect(looksLikeIssueShortId(input)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -518,7 +518,7 @@ describe("looksLikeIssueShortId properties", () => {
       property(noDashAlphanumArb, (input) => {
         expect(looksLikeIssueShortId(input)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -527,7 +527,7 @@ describe("looksLikeIssueShortId properties", () => {
       property(withSlashArb, (input) => {
         expect(looksLikeIssueShortId(input)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -536,11 +536,11 @@ describe("looksLikeIssueShortId properties", () => {
       property(lowercaseSlugWithDashArb, (input) => {
         if (input.split("-").length === 2) {
           expect(looksLikeIssueShortId(input, { ignoreCase: true })).toBe(
-            false
+            false,
           );
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -553,11 +553,11 @@ describe("looksLikeIssueShortId properties", () => {
         const hasLetter = /[a-z]/.test(lastPart);
         if (parts.length >= 3 && !(hasDigit && hasLetter)) {
           expect(looksLikeIssueShortId(input, { ignoreCase: true })).toBe(
-            false
+            false,
           );
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -574,7 +574,7 @@ describe("looksLikeIssueShortId properties", () => {
           expect(looksLikeIssueShortId(input, { ignoreCase: true })).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -589,7 +589,7 @@ describe("parseSelector properties", () => {
     "@Most_Frequent",
     "@MOST_FREQUENT",
     "@mostfrequent",
-    "@most-frequent"
+    "@most-frequent",
   );
 
   test("recognized selectors always return a canonical value", async () => {
@@ -599,7 +599,7 @@ describe("parseSelector properties", () => {
         expect(result).toBeDefined();
         expect(["@latest", "@most_frequent"]).toContain(result!);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -608,7 +608,7 @@ describe("parseSelector properties", () => {
       property(orgSlugArb, (input) => {
         expect(parseSelector(input)).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -622,7 +622,7 @@ describe("parseSelector properties", () => {
           expect(result.org).toBeUndefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -637,7 +637,7 @@ describe("parseSelector properties", () => {
           expect(result.org).toBe(org);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -648,7 +648,7 @@ describe("parseSelector properties", () => {
         const lower = parseSelector(input.toLowerCase());
         expect(direct).toBe(lower);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -662,7 +662,7 @@ describe("detectSwappedViewArgs properties", () => {
         // withSlash first, noSlash second → correct → null
         expect(detectSwappedViewArgs(withSlash, noSlash)).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -671,7 +671,7 @@ describe("detectSwappedViewArgs properties", () => {
       property(tuple(noSlashArb, noSlashArb), ([a, b]) => {
         expect(detectSwappedViewArgs(a, b)).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -680,7 +680,7 @@ describe("detectSwappedViewArgs properties", () => {
       property(tuple(withSlashArb, withSlashArb), ([a, b]) => {
         expect(detectSwappedViewArgs(a, b)).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

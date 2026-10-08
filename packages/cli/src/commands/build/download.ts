@@ -44,7 +44,7 @@ function formatDownloadResult(data: BuildDownloadResult): string {
       ["Build ID", data.buildId],
       ["Format", data.format],
       ["Saved to", data.output],
-    ])
+    ]),
   );
 }
 
@@ -90,7 +90,7 @@ export const downloadCommand = buildCommand({
   async *func(
     this: SentryContext,
     flags: { output?: string },
-    buildId: string
+    buildId: string,
   ) {
     const resolved = await resolveOrg({ cwd: this.cwd });
     if (!resolved) {
@@ -106,7 +106,7 @@ export const downloadCommand = buildCommand({
         USAGE_HINT,
         [
           "The build may still be processing, or it has no downloadable artifact.",
-        ]
+        ],
       );
     }
 
@@ -114,7 +114,7 @@ export const downloadCommand = buildCommand({
     const format = buildFormatFromUrl(url);
     const output = resolve(
       this.cwd,
-      flags.output ?? `preprod_artifact_${buildId}.${format}`
+      flags.output ?? `preprod_artifact_${buildId}.${format}`,
     );
 
     const regionUrl = await resolveOrgRegion(org);

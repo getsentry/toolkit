@@ -54,7 +54,7 @@ const projectKeysFixture = [
 
 function feedbackLimitContextResponse(
   url: URL,
-  serverUrl: string
+  serverUrl: string,
 ): MockResponse | undefined {
   const query = url.searchParams.get("query") ?? "";
   if (!query.includes("e2e-limit-context")) {
@@ -73,7 +73,7 @@ function feedbackLimitContextResponse(
   return {
     body: Array.from(
       { length: Number.parseInt(limit, 10) },
-      () => feedbacksFixture[0]
+      () => feedbacksFixture[0],
     ),
     headers: {
       Link: `<${serverUrl}/next>; rel="next"; results="true"; cursor="${expectedCursor}"`,
@@ -102,7 +102,7 @@ function feedbackLatestValidationResponse(url: URL): MockResponse | undefined {
 function feedbackIssueIndexResponse(
   url: URL,
   orgSlug: string,
-  serverUrl: string
+  serverUrl: string,
 ): MockResponse {
   if (orgSlug === TEST_FEEDBACK_LATEST_ORG) {
     const latestValidationResponse = feedbackLatestValidationResponse(url);
@@ -134,7 +134,7 @@ function feedbackIssueIndexResponse(
 function issueIndexResponse(
   req: Request,
   params: Record<string, string>,
-  serverUrl: string
+  serverUrl: string,
 ): MockResponse {
   const supportedOrgs = [TEST_ORG, TEST_FEEDBACK_LATEST_ORG];
   if (!supportedOrgs.includes(params.orgSlug)) {
@@ -341,6 +341,31 @@ export const apiRoutes: MockRoute[] = [
         return { body: { group: issueFixture } };
       }
       return { status: 404, body: notFoundFixture };
+    },
+  },
+  {
+    method: "PUT",
+    path: "/api/0/organizations/:orgSlug/issues/:issueId/",
+    response: async (req, params) => {
+      if (
+        ![TEST_ORG, TEST_FEEDBACK_LATEST_ORG].includes(params.orgSlug) ||
+        params.issueId !== TEST_FEEDBACK_ID
+      ) {
+        return { status: 404, body: notFoundFixture };
+      }
+      const body = await req.json();
+      if (
+        !["resolved", "unresolved", "ignored"].includes(body.status) ||
+        Object.keys(body).length !== 1
+      ) {
+        return {
+          status: 400,
+          body: {
+            detail: "Expected only a resolved, unresolved, or ignored status",
+          },
+        };
+      }
+      return { body: { ...feedbackFixture, status: body.status } };
     },
   },
   {

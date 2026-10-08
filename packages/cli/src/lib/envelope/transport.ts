@@ -78,7 +78,7 @@ export function resolveDsn(flags: DsnFlags): string | undefined {
  */
 export async function resolveIngestDsn(
   flags: DsnFlags,
-  cwd: string
+  cwd: string,
 ): Promise<string | undefined> {
   const explicit = resolveDsn(flags);
   if (explicit) {
@@ -107,7 +107,7 @@ export async function resolveIngestDsn(
  */
 export function requireDsn(
   flags: DsnFlags,
-  usageHint = "sentry bash-hook --dsn <your-dsn>"
+  usageHint = "sentry bash-hook --dsn <your-dsn>",
 ): string {
   const dsn = resolveDsn(flags);
   if (dsn) {
@@ -115,7 +115,7 @@ export function requireDsn(
   }
   throw new ConfigError(
     "No DSN found. Provide one via --dsn <dsn> or set the SENTRY_DSN environment variable.",
-    usageHint
+    usageHint,
   );
 }
 
@@ -136,7 +136,7 @@ export async function readFileBytes(file: string): Promise<Uint8Array> {
     }
     throw new ValidationError(
       `Cannot read file ${file}: ${(err as Error).message}`,
-      "path"
+      "path",
     );
   }
 }
@@ -149,7 +149,7 @@ export async function readFileBytes(file: string): Promise<Uint8Array> {
  */
 export async function sendEnvelopeRequest(
   dsn: string,
-  body: string | Uint8Array
+  body: string | Uint8Array,
 ): Promise<void> {
   const url = buildEnvelopeUrl(dsn);
 
@@ -158,7 +158,7 @@ export async function sendEnvelopeRequest(
       method: "POST",
       headers: { "Content-Type": "application/x-sentry-envelope" },
       body,
-    })
+    }),
   );
 
   if (!response.ok) {

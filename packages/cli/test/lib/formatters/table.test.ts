@@ -19,7 +19,7 @@ const columns: Column<Row>[] = [
 
 /** Strip ANSI escape codes */
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -134,7 +134,7 @@ describe("writeTable (TTY mode)", () => {
       writeTable(
         { write },
         [{ name: "alice", count: 42, status: "active" }],
-        columns
+        columns,
       );
       const output = stripAnsi(write.mock.calls.map((c) => c[0]).join(""));
       expect(output).toContain("NAME");
@@ -155,7 +155,7 @@ describe("writeTable (TTY mode)", () => {
           { name: "c", count: 3, status: "z" },
         ],
         columns,
-        { rowSeparator: true }
+        { rowSeparator: true },
       );
       const raw = write.mock.calls.map((c) => c[0]).join("");
       const output = stripAnsi(raw);
@@ -177,7 +177,7 @@ describe("writeTable (TTY mode)", () => {
           { name: "b", count: 2, status: "y" },
         ],
         columns,
-        { rowSeparator: color }
+        { rowSeparator: color },
       );
       const raw = write.mock.calls.map((c) => c[0]).join("");
       // The color escape should appear in the output
@@ -248,7 +248,7 @@ describe("writeTable (plain mode)", () => {
       writeTable(
         { write },
         [{ name: "alice", count: 1, status: "ok" }],
-        columns
+        columns,
       );
       const output = write.mock.calls.map((c) => c[0]).join("");
       // Box-drawing table format (not raw markdown pipes)

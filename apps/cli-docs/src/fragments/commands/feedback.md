@@ -60,3 +60,72 @@ sentry feedback view my-org/FRONTEND-2SDJ --web
 The detail view includes the complete message and, when available, its latest
 event, linked error, Session Replays, and attachment metadata. If the supplied
 ID belongs to another issue category, use `sentry issue view` instead.
+
+### Resolve User Feedback
+
+```bash
+# Resolve a Feedback item immediately
+sentry feedback resolve my-org/FRONTEND-2SDJ
+
+# Resolve the most recently active unresolved Feedback
+sentry feedback resolve my-org/@latest
+
+# Return the updated Feedback, or select specific fields
+sentry feedback resolve my-org/FRONTEND-2SDJ --json --fields id,shortId,status
+```
+
+`resolve` accepts the same IDs and URLs as `view` and reads the current state
+before selecting a Feedback item. It rejects other issue categories before
+making changes. JSON output contains the updated Feedback issue from Sentry.
+
+### Reopen User Feedback
+
+```bash
+# Find resolved Feedback
+sentry feedback list --status resolved
+
+# Reopen a Feedback item using its short ID or numeric ID
+sentry feedback unresolve FRONTEND-2SDJ
+sentry feedback unresolve 5146636313
+
+# `reopen` is an alias for `unresolve`
+sentry feedback reopen FRONTEND-2SDJ
+
+# Specify an organization explicitly when needed
+sentry feedback unresolve my-org/FRONTEND-2SDJ
+
+# Return selected fields from the updated Feedback
+sentry feedback unresolve FRONTEND-2SDJ --json --fields id,shortId,status
+```
+
+`unresolve` marks Feedback as `unresolved`, reopening resolved Feedback or
+returning spam to the inbox. It uses the same identifier resolution and category
+check as `resolve`. Other issue categories are rejected before making changes.
+JSON output contains the updated Feedback issue from Sentry.
+
+### Mark User Feedback as spam
+
+```bash
+# Move a Feedback item to the spam mailbox
+sentry feedback spam FRONTEND-2SDJ
+sentry feedback spam 5146636313
+
+# Specify an organization explicitly when needed
+sentry feedback spam my-org/FRONTEND-2SDJ
+
+# Return selected fields from the updated Feedback
+sentry feedback spam FRONTEND-2SDJ --json --fields id,shortId,status
+```
+
+To return spam to the unresolved inbox:
+
+```bash
+# Find spam and return a Feedback item to the unresolved inbox
+sentry feedback list --status spam
+sentry feedback unresolve FRONTEND-2SDJ
+```
+
+`spam` checks that the target is Feedback before updating it. Sentry stores spam
+with status `ignored`, which is also the value returned in JSON output. Use
+`unresolve` to return it to the inbox; this sets the status to `unresolved`
+regardless of its status before being marked as spam.

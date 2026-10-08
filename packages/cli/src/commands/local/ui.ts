@@ -20,7 +20,7 @@ export function assertLoopbackHostForUi(host: string): void {
   if (!isLoopbackHost(host)) {
     throw new ValidationError(
       "--open requires a loopback --host (localhost, 127.0.0.1, or ::1).",
-      "host"
+      "host",
     );
   }
 }
@@ -41,7 +41,7 @@ export function formatLocalServerUrl(host: string, port: number): string {
 
 /** Pick the independently served local UI URL for this CLI build. */
 export function getLocalUiBaseUrl(
-  environment: string = getCliEnvironment()
+  environment: string = getCliEnvironment(),
 ): string {
   return environment === "development" ? DEVELOPMENT_UI_URL : PRODUCTION_UI_URL;
 }
@@ -76,7 +76,7 @@ export async function openLocalUi(receiverUrl: string): Promise<void> {
 /** Launch the UI only when the caller explicitly requested it. */
 export async function openLocalUiIfRequested(
   requested: boolean,
-  receiverUrl: string
+  receiverUrl: string,
 ): Promise<void> {
   if (requested) {
     await openLocalUi(receiverUrl);

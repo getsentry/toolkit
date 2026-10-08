@@ -66,7 +66,7 @@ function splitProjectSelector(rawProject: string): [string, ...string[]] {
   if (first === undefined) {
     throw new ValidationError(
       "Invalid project slug: comma-separated list is empty.",
-      "project"
+      "project",
     );
   }
   return [first, ...rest];
@@ -82,7 +82,7 @@ function splitProjectSelector(rawProject: string): [string, ...string[]] {
  * @returns A non-empty list containing the selected project slugs
  */
 export function explicitProjectSlugs(
-  parsed: Extract<ParsedOrgProject, { type: "explicit" }>
+  parsed: Extract<ParsedOrgProject, { type: "explicit" }>,
 ): [string, ...string[]] {
   return parsed.projects ?? [parsed.project];
 }
@@ -99,7 +99,7 @@ export function explicitProjectSlugs(
  */
 export function formatProjectTarget(
   org: string,
-  projects?: readonly string[]
+  projects?: readonly string[],
 ): string {
   return projects && projects.length > 0
     ? `${org}/${projects.join(",")}`
@@ -184,7 +184,7 @@ const WHITESPACE_SPLIT_PATTERN = /\s+/;
  */
 export function looksLikeIssueShortId(
   str: string,
-  opts?: { ignoreCase?: boolean }
+  opts?: { ignoreCase?: boolean },
 ): boolean {
   if (opts?.ignoreCase) {
     return matchesIssueShortIdIgnoreCase(str);
@@ -224,7 +224,7 @@ export function isIssueCommandToken(slug: string): boolean {
 function rejectIssueCommandTokenWithNumericSuffix(
   arg: string,
   projectSlug: string,
-  suffix: string
+  suffix: string,
 ): void {
   if (!(isIssueCommandToken(projectSlug) && NUMERIC_SUFFIX_RE.test(suffix))) {
     return;
@@ -239,7 +239,7 @@ function rejectIssueCommandTokenWithNumericSuffix(
       "sentry issue explain 123456789",
       "sentry issue explain my-org/project/PROJECT-G",
     ],
-    "issue"
+    "issue",
   );
 }
 
@@ -403,7 +403,7 @@ export function looksLikePath(arg: string): boolean {
  */
 export function detectSwappedViewArgs(
   first: string,
-  second: string
+  second: string,
 ): string | null {
   if (second.includes("/") && !first.includes("/")) {
     return `Arguments appear reversed. Interpreting as: ${second} ${first}`;
@@ -434,7 +434,7 @@ export function detectSwappedViewArgs(
 export function detectSwappedTrialArgs(
   first: string,
   second: string,
-  isKnownName: (value: string) => boolean
+  isKnownName: (value: string) => boolean,
 ): { name: string; org: string; warning: string } | null {
   // If first is already a known name, order is correct
   if (isKnownName(first)) {
@@ -479,7 +479,7 @@ export function validateLimit(value: string, min = 1, max = 1000): number {
   if (Number.isNaN(num) || num < min || num > max) {
     throw new ValidationError(
       `--limit must be between ${min} and ${max}`,
-      "limit"
+      "limit",
     );
   }
   return num;
@@ -502,7 +502,7 @@ export function parseLogSort(value: string): LogSortDirection {
   if (!VALID_LOG_SORT_DIRECTIONS.includes(value as LogSortDirection)) {
     throw new ValidationError(
       `Invalid sort value. Must be one of: ${VALID_LOG_SORT_DIRECTIONS.join(", ")}`,
-      "sort"
+      "sort",
     );
   }
   return value as LogSortDirection;
@@ -728,14 +728,14 @@ function rejectAtSelector(value: string, label: string): void {
     throw new ValidationError(
       `'${value}' is an issue selector, not ${article} ${label}.\n` +
         `  Use: sentry issue view ${value}`,
-      label
+      label,
     );
   }
 
   throw new ValidationError(
     `Invalid ${label}: '${value}' starts with '@'.\n` +
       "  Slugs contain only letters, numbers, hyphens, and underscores.",
-    label
+    label,
   );
 }
 
@@ -746,7 +746,7 @@ function rejectAtSelector(value: string, label: string): void {
  */
 function parseSlashOrgProject(
   input: string,
-  allowProjectList: boolean
+  allowProjectList: boolean,
 ): ParsedOrgProject {
   const slashIndex = input.indexOf("/");
   const rawOrg = input.slice(0, slashIndex);
@@ -756,7 +756,7 @@ function parseSlashOrgProject(
     // "/cli" → search for project across all orgs
     if (!rawProject) {
       throw new ValidationError(
-        'Invalid format: "/" requires a project slug (e.g., "/cli")'
+        'Invalid format: "/" requires a project slug (e.g., "/cli")',
       );
     }
     rejectAtSelector(rawProject, "project slug");
@@ -842,13 +842,13 @@ function validateProjectSlugToken(token: string): {
  */
 function parseExplicitProjectList(
   org: { slug: string; normalized: boolean },
-  rawProject: string
+  rawProject: string,
 ): ParsedOrgProject {
   const [firstToken, ...restTokens] = splitProjectSelector(rawProject);
   if ([firstToken, ...restTokens].some(looksLikeDisplayName)) {
     throw new ValidationError(
       "Comma-separated project targets must be slugs, not display names.",
-      "project"
+      "project",
     );
   }
 
@@ -901,7 +901,7 @@ function parseExplicitProjectList(
  */
 export function parseOrgProjectArg(
   arg: string | undefined,
-  options: { allowProjectList?: boolean } = {}
+  options: { allowProjectList?: boolean } = {},
 ): ParsedOrgProject {
   if (!arg || arg.trim() === "") {
     return { type: "auto-detect" };
@@ -1040,7 +1040,7 @@ export type ParsedIssueArg =
 function parseMultiSlashIssueArg(
   arg: string,
   org: string,
-  rest: string
+  rest: string,
 ): ParsedIssueArg {
   const slashIdx = rest.indexOf("/");
   const project = rest.slice(0, slashIdx);
@@ -1049,7 +1049,7 @@ function parseMultiSlashIssueArg(
   if (!(project && remainder)) {
     throw new ValidationError(
       `Invalid issue format: "${arg}". Missing project or issue ID segment.`,
-      "issue"
+      "issue",
     );
   }
 
@@ -1105,7 +1105,7 @@ function parseMultiSlashIssueArg(
 function parseAfterSlash(
   arg: string,
   org: string,
-  rest: string
+  rest: string,
 ): ParsedIssueArg {
   if (isAllDigits(rest)) {
     // "my-org/123456789" → explicit org + numeric ID
@@ -1126,14 +1126,14 @@ function parseAfterSlash(
     if (!project) {
       throw new ValidationError(
         `Invalid issue format: "${arg}". Cannot use trailing slash before suffix.`,
-        "issue"
+        "issue",
       );
     }
 
     if (!suffix) {
       throw new ValidationError(
         `Invalid issue format: "${arg}". Missing suffix after dash.`,
-        "issue"
+        "issue",
       );
     }
 
@@ -1159,7 +1159,7 @@ function parseWithSlash(arg: string): ParsedIssueArg {
   if (!rest) {
     throw new ValidationError(
       `Invalid issue format: "${arg}". Missing issue ID after slash.`,
-      "issue"
+      "issue",
     );
   }
 
@@ -1271,14 +1271,14 @@ function parseWithHash(arg: string): ParsedIssueArg {
       `Invalid issue identifier: "${arg}".\n` +
         "  Use a single '#' separating the project from the short ID, e.g. `org/project#PROJ-123`.\n" +
         "  Or use a slash: `org/project/PROJ-123`.",
-      "issue identifier"
+      "issue identifier",
     );
   }
   if (fragment.includes(":")) {
     throw new ValidationError(
       `Invalid issue identifier: "${arg}". Do not mix '#' and ':' separators.\n` +
         "  Use `org/project#PROJ-123` or `project:PROJ-123`.",
-      "issue identifier"
+      "issue identifier",
     );
   }
   // Validate the fragment on its own — it must not contain forbidden characters
@@ -1316,14 +1316,14 @@ function parseWithDash(arg: string): ParsedIssueArg {
   if (!projectSlug) {
     throw new ValidationError(
       `Invalid issue format: "${arg}". Missing project before suffix.`,
-      "issue"
+      "issue",
     );
   }
 
   if (!suffix) {
     throw new ValidationError(
       `Invalid issue format: "${arg}". Missing suffix after dash.`,
-      "issue"
+      "issue",
     );
   }
 
@@ -1360,7 +1360,7 @@ function parseWithDash(arg: string): ParsedIssueArg {
 export function parseSlashSeparatedArg(
   arg: string,
   idLabel: string,
-  usageHint: string
+  usageHint: string,
 ): { id: string; targetArg: string | undefined } {
   // Trim whitespace — agents may pass trailing newlines
   const trimmed = arg.trim();
@@ -1424,7 +1424,7 @@ export function parseIssueArg(arg: string): ParsedIssueArg {
   if (!input) {
     throw new ValidationError(
       "Issue identifier is empty after trimming whitespace.",
-      "issue identifier"
+      "issue identifier",
     );
   }
 
@@ -1439,7 +1439,7 @@ export function parseIssueArg(arg: string): ParsedIssueArg {
     // URL recognized but no issue ID (e.g., trace or project settings URL)
     throw new ValidationError(
       "This Sentry URL does not contain an issue ID. Use an issue URL like:\n" +
-        "  https://sentry.io/organizations/{org}/issues/{id}/"
+        "  https://sentry.io/organizations/{org}/issues/{id}/",
     );
   }
 
@@ -1541,7 +1541,7 @@ function parseBareIssueIdentifier(input: string): ParsedIssueArg {
  */
 export function buildProjectQuery(
   query: string | undefined,
-  projectFilter: string | undefined
+  projectFilter: string | undefined,
 ): string | undefined {
   if (!projectFilter) {
     return query;

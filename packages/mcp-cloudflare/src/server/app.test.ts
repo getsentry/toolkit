@@ -62,6 +62,22 @@ describe("app", () => {
     });
   });
 
+  describe("GET /_health/version", () => {
+    it("exposes the version actually serving the request", async () => {
+      const res = await app.request(
+        "/_health/version",
+        { headers: TEST_HEADERS },
+        {
+          CF_VERSION_METADATA: { id: "11111111-1111-4111-8111-111111111111" },
+        },
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        id: "11111111-1111-4111-8111-111111111111",
+      });
+    });
+  });
+
   describe("GET /llms.txt", () => {
     it("should return comprehensive llms.txt content", async () => {
       const res = await app.request("https://mcp.sentry.dev/llms.txt", {

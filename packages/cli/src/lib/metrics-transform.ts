@@ -30,7 +30,7 @@ export function makeTracemetricsAggregate(
   agg: string,
   name: string,
   type: string,
-  unit: string
+  unit: string,
 ): string {
   return `${agg}(value,${name},${type},${unit})`;
 }
@@ -44,20 +44,20 @@ export function makeTracemetricsAggregate(
 export function resolveMetricField(
   metricName: string,
   agg: string,
-  metrics: MetricMeta[]
+  metrics: MetricMeta[],
 ): string {
   if (!VALID_AGGS.has(agg)) {
     throw new ResolutionError(
       `Aggregation '${agg}'`,
       `not recognized. Valid aggregations: ${[...VALID_AGGS].join(", ")}`,
-      `sentry explore my-org/ -m ${metricName} --agg sum --dataset metrics`
+      `sentry explore my-org/ -m ${metricName} --agg sum --dataset metrics`,
     );
   }
 
   const match = metrics.find((m) => m.name === metricName);
   if (!match) {
     const candidateNames = Array.from(
-      new Set(metrics.map((m) => m.name).filter((n) => n.length > 0))
+      new Set(metrics.map((m) => m.name).filter((n) => n.length > 0)),
     );
     const suggestions = fuzzyMatch(metricName, candidateNames, {
       maxResults: 5,
@@ -69,7 +69,7 @@ export function resolveMetricField(
       `sentry explore my-org/ -m ${metricName} --dataset metrics --period 7d`,
       suggestions.length > 0
         ? [`Similar metrics: ${suggestions.join(", ")}`]
-        : ["Use a wider --period to search for older metrics"]
+        : ["Use a wider --period to search for older metrics"],
     );
   }
 

@@ -7,6 +7,9 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   formatFeedbackList,
   formatFeedbackView,
+  formatReopenedFeedback,
+  formatResolvedFeedback,
+  formatSpamFeedback,
 } from "../../../src/lib/formatters/feedback.js";
 import type { SentryFeedback } from "../../../src/types/index.js";
 
@@ -38,6 +41,23 @@ afterAll(() => {
   } else {
     process.env.SENTRY_PLAIN_OUTPUT = originalPlainOutput;
   }
+});
+
+describe.each([
+  { format: formatResolvedFeedback, action: "Resolved" },
+  { format: formatReopenedFeedback, action: "Reopened" },
+  { format: formatSpamFeedback, action: "Marked" },
+])("$action feedback", ({ format, action }) => {
+  test("renders a terminal-safe confirmation", () => {
+    const output = format(
+      feedback({ shortId: "\x1b[31mWEB-1\x1b[0m\n\u202e" }),
+    );
+
+    expect(output).toContain(`${action} feedback`);
+    expect(output).toContain("WEB-1");
+    expect(output).not.toContain("\x1b");
+    expect(output).not.toContain("\u202e");
+  });
 });
 
 describe("formatFeedbackList", () => {
@@ -162,7 +182,7 @@ describe("formatFeedbackView", () => {
 
       expect(listOutput).toContain("…");
       expect(
-        Math.max(...listOutput.split("\n").map((line) => stringWidth(line)))
+        Math.max(...listOutput.split("\n").map((line) => stringWidth(line))),
       ).toBeLessThanOrEqual(60);
       expect(viewOutput).toContain("TAIL **marker**");
     } finally {

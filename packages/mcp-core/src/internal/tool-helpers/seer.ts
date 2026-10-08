@@ -42,7 +42,7 @@ export function getSeerUnsupportedIssueMessage(
     "**Suggested alternatives:**",
     "- Use `get_issue_details` or `get_sentry_resource` to inspect the metric alert rule and threshold details",
     "- Use `search_issues` to find related error issues that may explain the metric spike",
-    "- Use `search_events` to query the underlying metric data",
+    "- Use `search_metrics` (or `search_traces` for span-based alerts) to query the underlying data",
   ].join("\n");
 }
 

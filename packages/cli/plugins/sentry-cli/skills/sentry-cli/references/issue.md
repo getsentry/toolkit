@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-issue
-version: 0.46.0-dev.0
+version: 0.48.0-dev.0
 description: Manage Sentry issues
 requires:
   bins: ["sentry"]
@@ -11,7 +11,7 @@ requires:
 
 Manage Sentry issues
 
-### `sentry issue list <org/project>`
+### `sentry issue list [<org/project>]`
 
 List issues in a project
 
@@ -19,7 +19,7 @@ List issues in a project
 - `-q, --query <value> - Search query (Sentry syntax, implicit AND, no OR operator)`
 - `-n, --limit <value> - Maximum number of issues to list - (default: "25")`
 - `-s, --sort <value> - Sort by: recommended, date, new, freq, user (default: recommended on sentry.io, else date)`
-- `-t, --period <value> - Time range: "7d", "2026-08-01..2026-09-01", ">=2026-08-01" - (default: "90d")`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "90d")`
 - `-c, --cursor <value> - Pagination cursor (use "next" for next page, "prev" for previous)`
 - `--compact - Single-line rows for compact output (auto-detects if omitted)`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -95,7 +95,7 @@ List events for a specific issue
 - `-n, --limit <value> - Number of events (1-1000) - (default: "25")`
 - `-q, --query <value> - Search query (Sentry search syntax)`
 - `--full - Include full event body (stacktraces)`
-- `-t, --period <value> - Time range: "7d", "2026-08-01..2026-09-01", ">=2026-08-01" - (default: "7d")`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
@@ -235,6 +235,8 @@ sentry issue view FRONT-ABC
 # Multiple issues in one invocation (space-separated, not commas)
 sentry issue view FRONT-ABC BACK-2
 
+sentry issue view my-org/FRONT-ABC
+
 # Open one or more issues in the browser (up to 5 tabs by default)
 sentry issue view FRONT-ABC BACK-2 -w
 
@@ -371,6 +373,48 @@ sentry issue merge cli-k9 cli-15h --into cli-k9    # alias form
 
 # Cross-org merges are rejected — all issues must share an organization
 # Non-error issue types (performance, info, etc.) cannot be merged
+```
+
+### `sentry issue link <issue> <url>`
+
+Link an existing external issue
+
+**Flags:**
+- `--integration <value> - Native integration ID, when multiple installations match`
+- `--app <value> - Sentry App slug (automatically detected for Linear URLs)`
+- `-n, --dry-run - Show what would happen without making changes`
+- `--field <value>... - Additional Sentry App link form field (name=value, repeatable)`
+
+**Examples:**
+
+```bash
+sentry issue link FRONT-123 https://github.com/example/app/issues/42
+sentry issue link FRONT-123 https://github.com/example/app/pull/43
+sentry issue link FRONT-123 https://example.atlassian.net/browse/APP-42
+sentry issue link FRONT-123 https://linear.app/example/issue/APP-42/fix-error
+
+sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --dry-run
+sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --json
+```
+
+### `sentry issue unlink <issue> <url>`
+
+Unlink an external issue
+
+**Flags:**
+- `--integration <value> - Native integration ID, when multiple installations match`
+- `--app <value> - Sentry App slug (automatically detected for Linear URLs)`
+- `-y, --yes - Skip confirmation prompt`
+- `-f, --force - Force the operation without confirmation`
+- `-n, --dry-run - Show what would happen without making changes`
+
+**Examples:**
+
+```bash
+sentry issue unlink FRONT-123 https://github.com/example/app/issues/42
+sentry issue unlink FRONT-123 https://github.com/example/app/pull/43 --yes
+sentry issue unlink my-org/FRONT-123 https://example.atlassian.net/browse/APP-42 --yes
+sentry issue unlink FRONT-123 https://linear.app/example/issue/APP-42/fix-error --dry-run
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

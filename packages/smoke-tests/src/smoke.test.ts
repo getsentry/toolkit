@@ -2,6 +2,26 @@ import { beforeAll, describe, expect, it } from "vitest";
 import pkg from "../package.json";
 
 const PREVIEW_URL = process.env.PREVIEW_URL;
+const EXPECTED_VERSION_ID = process.env.EXPECTED_VERSION_ID;
+const ALLOW_LEGACY_VERSION_ENDPOINT =
+  process.env.ALLOW_LEGACY_VERSION_ENDPOINT === "1";
+const CLOUDFLARE_VERSION_OVERRIDE = process.env.CLOUDFLARE_VERSION_OVERRIDE;
+const CLOUDFLARE_WORKER_NAME = process.env.CLOUDFLARE_WORKER_NAME;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+if (
+  (CLOUDFLARE_VERSION_OVERRIDE &&
+    !UUID_PATTERN.test(CLOUDFLARE_VERSION_OVERRIDE)) ||
+  (EXPECTED_VERSION_ID && !UUID_PATTERN.test(EXPECTED_VERSION_ID)) ||
+  (CLOUDFLARE_VERSION_OVERRIDE && CLOUDFLARE_WORKER_NAME !== "sentry-mcp")
+) {
+  throw new Error("Invalid Cloudflare smoke-test version override");
+}
+const VERSION_HEADER = CLOUDFLARE_VERSION_OVERRIDE
+  ? {
+      "Cloudflare-Workers-Version-Overrides": `${CLOUDFLARE_WORKER_NAME}="${CLOUDFLARE_VERSION_OVERRIDE}"`,
+    }
+  : {};
 // Leave enough headroom for transient Cloudflare edge latency. Response-time
 // expectations are enforced separately by the performance smoke test below.
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -59,6 +79,7 @@ async function safeFetch(
       headers: {
         "User-Agent": SMOKE_TEST_USER_AGENT,
         ...fetchOptions.headers,
+        ...VERSION_HEADER,
       },
       signal,
     });
@@ -105,6 +126,23 @@ describeIfPreviewUrl(
     it("should respond on root endpoint", async () => {
       const { response } = await safeFetch(PREVIEW_URL);
       expect(response.status).toBe(200);
+    });
+
+    it("should run the expected Cloudflare Worker version", async () => {
+      const { response, data } = await safeFetch(
+        `${PREVIEW_URL}/_health/version`,
+      );
+      // The first rollout may restore a Worker built before this route existed.
+      // Manual recovery has already verified its version in Cloudflare's live
+      // deployment state; still run the remaining functional smoke tests.
+      if (ALLOW_LEGACY_VERSION_ENDPOINT && response.status === 404) return;
+      expect(response.status).toBe(200);
+      if (IS_LOCAL_DEV && data?.id === null && !EXPECTED_VERSION_ID) {
+        expect(data).toEqual({ id: null });
+      } else {
+        expect(data.id).toMatch(UUID_PATTERN);
+        if (EXPECTED_VERSION_ID) expect(data.id).toBe(EXPECTED_VERSION_ID);
+      }
     });
 
     it("should have MCP endpoint that returns server info (with auth error)", async () => {

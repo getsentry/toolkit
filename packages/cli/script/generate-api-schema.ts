@@ -154,7 +154,7 @@ function extractPathParams(url: string): string[] {
   const params: string[] = [];
   const pattern = new RegExp(
     PATH_PARAM_PATTERN.source,
-    PATH_PARAM_PATTERN.flags
+    PATH_PARAM_PATTERN.flags,
   );
   let match = pattern.exec(url);
   while (match !== null) {
@@ -173,7 +173,7 @@ console.log(`Fetching OpenAPI spec from ${openApiUrl}...`);
 const response = await fetch(openApiUrl);
 if (!response.ok) {
   throw new Error(
-    `Failed to fetch OpenAPI spec: ${response.status} ${response.statusText}`
+    `Failed to fetch OpenAPI spec: ${response.status} ${response.statusText}`,
   );
 }
 const spec = (await response.json()) as OpenApiSpec;
@@ -229,5 +229,5 @@ await mkdir(dirname(OUTPUT_PATH), { recursive: true });
 await writeFile(OUTPUT_PATH, JSON.stringify(endpoints, null, 2));
 
 console.log(
-  `Generated ${OUTPUT_PATH} (${endpoints.length} endpoints, ${Math.round(JSON.stringify(endpoints).length / 1024)}KB)`
+  `Generated ${OUTPUT_PATH} (${endpoints.length} endpoints, ${Math.round(JSON.stringify(endpoints).length / 1024)}KB)`,
 );

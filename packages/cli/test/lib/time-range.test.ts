@@ -7,7 +7,7 @@
  * normalization behavior.
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   parseDate,
   parsePeriod,
@@ -15,6 +15,24 @@ import {
   timeRangeToApiParams,
   timeRangeToSeconds,
 } from "../../src/lib/time-range.js";
+
+test("keeps generated period help stable across month boundaries", async () => {
+  try {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-30T23:59:59Z"));
+    vi.resetModules();
+    const before = (await import("../../src/lib/time-range.js")).PERIOD_BRIEF;
+
+    vi.setSystemTime(new Date("2026-10-01T00:00:01Z"));
+    vi.resetModules();
+    const after = (await import("../../src/lib/time-range.js")).PERIOD_BRIEF;
+
+    expect(after).toBe(before);
+  } finally {
+    vi.useRealTimers();
+    vi.resetModules();
+  }
+});
 
 // ---------------------------------------------------------------------------
 // parsePeriod — relative durations (backward compatibility)
@@ -100,7 +118,7 @@ describe("parsePeriod: range syntax", () => {
 
   test("rejects end before start", () => {
     expect(() => parsePeriod("2024-06-01..2024-01-01")).toThrow(
-      "is after end date"
+      "is after end date",
     );
   });
 
@@ -161,7 +179,7 @@ describe("parsePeriod: comparison operators", () => {
     if (exclusive.type === "absolute" && inclusive.type === "absolute") {
       // Exclusive start should be strictly later than inclusive start
       expect(new Date(exclusive.start!).getTime()).toBeGreaterThan(
-        new Date(inclusive.start!).getTime()
+        new Date(inclusive.start!).getTime(),
       );
     }
   });
@@ -172,7 +190,7 @@ describe("parsePeriod: comparison operators", () => {
     if (exclusive.type === "absolute" && inclusive.type === "absolute") {
       // Exclusive end should be strictly earlier than inclusive end
       expect(new Date(exclusive.end!).getTime()).toBeLessThan(
-        new Date(inclusive.end!).getTime()
+        new Date(inclusive.end!).getTime(),
       );
     }
   });
@@ -309,7 +327,7 @@ describe("timeRangeToApiParams", () => {
 describe("serializeTimeRange", () => {
   test("relative → 'rel:7d'", () => {
     expect(serializeTimeRange({ type: "relative", period: "7d" })).toBe(
-      "rel:7d"
+      "rel:7d",
     );
   });
 
@@ -355,19 +373,19 @@ describe("serializeTimeRange", () => {
 describe("timeRangeToSeconds", () => {
   test("relative 7d → 604800", () => {
     expect(timeRangeToSeconds({ type: "relative", period: "7d" })).toBe(
-      604_800
+      604_800,
     );
   });
 
   test("relative 24h → 86400", () => {
     expect(timeRangeToSeconds({ type: "relative", period: "24h" })).toBe(
-      86_400
+      86_400,
     );
   });
 
   test("relative 1w → 604800", () => {
     expect(timeRangeToSeconds({ type: "relative", period: "1w" })).toBe(
-      604_800
+      604_800,
     );
   });
 
@@ -385,13 +403,13 @@ describe("timeRangeToSeconds", () => {
       timeRangeToSeconds({
         type: "absolute",
         start: "2024-01-01T00:00:00Z",
-      })
+      }),
     ).toBeUndefined();
     expect(
       timeRangeToSeconds({
         type: "absolute",
         end: "2024-02-01T00:00:00Z",
-      })
+      }),
     ).toBeUndefined();
   });
 });

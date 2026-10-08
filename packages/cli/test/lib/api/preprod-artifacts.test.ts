@@ -78,13 +78,13 @@ import {
 describe("toBinaryDownloadUrl", () => {
   test("rewrites a plist manifest URL to fetch the ipa binary", () => {
     expect(
-      toBinaryDownloadUrl("https://us.sentry.io/dl/?response_format=plist")
+      toBinaryDownloadUrl("https://us.sentry.io/dl/?response_format=plist"),
     ).toBe("https://us.sentry.io/dl/?response_format=ipa");
   });
 
   test("leaves non-plist URLs unchanged", () => {
     expect(
-      toBinaryDownloadUrl("https://us.sentry.io/dl/?response_format=apk")
+      toBinaryDownloadUrl("https://us.sentry.io/dl/?response_format=apk"),
     ).toBe("https://us.sentry.io/dl/?response_format=apk");
   });
 });
@@ -98,7 +98,7 @@ describe("buildFormatFromUrl", () => {
   });
   test("throws on an unrecognized format", () => {
     expect(() => buildFormatFromUrl("https://x/?response_format=zip")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 });
@@ -121,7 +121,7 @@ describe("getBuildInstallDetails", () => {
     expect(lastCall?.[0]).toBe("https://us.sentry.io");
     // Build id is URL-encoded into the path.
     expect(lastCall?.[1]).toBe(
-      "organizations/my-org/preprodartifacts/build%201/install-details/"
+      "organizations/my-org/preprodartifacts/build%201/install-details/",
     );
     expect(lastCall?.[2]?.schema).toBeDefined();
   });
@@ -142,14 +142,14 @@ describe("downloadBuildArtifact", () => {
 
   test("streams the body to disk and attaches auth for a same-origin URL", async () => {
     customFetchMock.mockResolvedValue(
-      new Response("FAKE-BINARY", { status: 200 })
+      new Response("FAKE-BINARY", { status: 200 }),
     );
     const dest = join(tmpDir, "out.ipa");
 
     await downloadBuildArtifact(
       "https://us.sentry.io",
       "https://us.sentry.io/dl/?response_format=ipa",
-      dest
+      dest,
     );
 
     expect(await readFile(dest, "utf8")).toBe("FAKE-BINARY");
@@ -166,7 +166,7 @@ describe("downloadBuildArtifact", () => {
         downloadBuildArtifact(
           "https://us.sentry.io",
           "https://us.sentry.io/dl/?response_format=ipa",
-          join(tmpDir, "out.ipa")
+          join(tmpDir, "out.ipa"),
         ),
       () => openSnapshotArchive("my-org", "snap-1"),
     ]) {
@@ -186,7 +186,7 @@ describe("downloadBuildArtifact", () => {
     await downloadBuildArtifact(
       "https://us.sentry.io",
       "https://cdn.example.com/blob?response_format=ipa",
-      join(tmpDir, "o2.ipa")
+      join(tmpDir, "o2.ipa"),
     );
 
     const init = customFetchMock.mock.calls.at(-1)?.[1] as {
@@ -202,7 +202,7 @@ describe("downloadBuildArtifact", () => {
     await downloadBuildArtifact(
       "https://us.sentry.io",
       "https://us.sentry.io/dl/?response_format=ipa",
-      join(tmpDir, "o3.ipa")
+      join(tmpDir, "o3.ipa"),
     );
 
     const init = customFetchMock.mock.calls.at(-1)?.[1] as {
@@ -213,15 +213,15 @@ describe("downloadBuildArtifact", () => {
 
   test("throws ApiError on a non-2xx response", async () => {
     customFetchMock.mockResolvedValue(
-      new Response("nope", { status: 404, statusText: "Not Found" })
+      new Response("nope", { status: 404, statusText: "Not Found" }),
     );
 
     await expect(
       downloadBuildArtifact(
         "https://us.sentry.io",
         "https://us.sentry.io/dl/?response_format=ipa",
-        join(tmpDir, "o4.ipa")
-      )
+        join(tmpDir, "o4.ipa"),
+      ),
     ).rejects.toThrow(ApiError);
   });
 });
@@ -262,7 +262,7 @@ describe("uploadBuild", () => {
     expect(url).toBe("https://sentry.io/artifact/1");
     const call = apiRequestToRegionMock.mock.calls.at(-1);
     expect(call?.[1]).toBe(
-      "projects/my-org/my-project/files/preprodartifacts/assemble/"
+      "projects/my-org/my-project/files/preprodartifacts/assemble/",
     );
     const body = call?.[2]?.body as Record<string, unknown>;
     expect(body.checksum).toEqual(expect.any(String));
@@ -294,7 +294,7 @@ describe("uploadBuild", () => {
         project: "my-project",
         contentPath,
         metadata: {},
-      })
+      }),
     ).resolves.toBe("https://sentry.io/artifact/2");
     expect(uploadMissingChunksMock).toHaveBeenCalledTimes(1);
   });
@@ -355,7 +355,7 @@ describe("uploadBuild", () => {
         project: "my-project",
         contentPath,
         metadata: {},
-      })
+      }),
     ).rejects.toThrow(ApiError);
   });
 
@@ -371,7 +371,7 @@ describe("uploadBuild", () => {
         project: "my-project",
         contentPath,
         metadata: {},
-      })
+      }),
     ).rejects.toThrow(/no artifact URL/i);
   });
 });
@@ -390,13 +390,13 @@ describe("snapshots", () => {
       safeParse(LatestBaseSnapshotSchema, {
         head_artifact_id: "art-1",
         image_count: 5,
-      }).success
+      }).success,
     ).toBe(true);
     expect(
       safeParse(LatestBaseSnapshotSchema, {
         headArtifactId: "art-1",
         imageCount: 5,
-      }).success
+      }).success,
     ).toBe(false);
   });
 
@@ -404,34 +404,34 @@ describe("snapshots", () => {
     { usecase: "preprod_snapshots", expectedUsecase: "preprod_snapshots" },
     { usecase: "preprod", expectedUsecase: "preprod" },
     { usecase: undefined, expectedUsecase: "preprod" },
-  ])("fetchSnapshotsUploadOptions negotiates auto and parses $usecase as $expectedUsecase", async ({
-    usecase,
-    expectedUsecase,
-  }) => {
-    apiRequestToRegionMock.mockImplementation(
-      async (_region, _path, { schema }) => ({
-        data: parse(schema, {
-          objectstore: {
-            url: "https://os.example.com",
-            usecase,
-            scopes: [["org", "1"]],
-            authToken: "tok",
-            expirationPolicy: "ttl:30d",
-          },
+  ])(
+    "fetchSnapshotsUploadOptions negotiates auto and parses $usecase as $expectedUsecase",
+    async ({ usecase, expectedUsecase }) => {
+      apiRequestToRegionMock.mockImplementation(
+        async (_region, _path, { schema }) => ({
+          data: parse(schema, {
+            objectstore: {
+              url: "https://os.example.com",
+              usecase,
+              scopes: [["org", "1"]],
+              authToken: "tok",
+              expirationPolicy: "ttl:30d",
+            },
+          }),
         }),
-      })
-    );
-    const opts = await fetchSnapshotsUploadOptions("my-org", "my-project");
-    expect(opts.objectstore.url).toBe("https://os.example.com");
-    expect(opts.objectstore.usecase).toBe(expectedUsecase);
-    const [region, endpoint, options] =
-      apiRequestToRegionMock.mock.calls.at(-1) ?? [];
-    expect(region).toBe("https://us.sentry.io");
-    expect(endpoint).toBe(
-      "projects/my-org/my-project/preprodartifacts/snapshots/upload-options/"
-    );
-    expect(options.params).toEqual({ usecase: "auto" });
-  });
+      );
+      const opts = await fetchSnapshotsUploadOptions("my-org", "my-project");
+      expect(opts.objectstore.url).toBe("https://os.example.com");
+      expect(opts.objectstore.usecase).toBe(expectedUsecase);
+      const [region, endpoint, options] =
+        apiRequestToRegionMock.mock.calls.at(-1) ?? [];
+      expect(region).toBe("https://us.sentry.io");
+      expect(endpoint).toBe(
+        "projects/my-org/my-project/preprodartifacts/snapshots/upload-options/",
+      );
+      expect(options.params).toEqual({ usecase: "auto" });
+    },
+  );
 
   test("createPreprodSnapshot POSTs the manifest and parses the response", async () => {
     apiRequestToRegionMock.mockResolvedValue({
@@ -444,7 +444,7 @@ describe("snapshots", () => {
     const [, endpoint, options] =
       apiRequestToRegionMock.mock.calls.at(-1) ?? [];
     expect(endpoint).toBe(
-      "projects/my-org/my-project/preprodartifacts/snapshots/"
+      "projects/my-org/my-project/preprodartifacts/snapshots/",
     );
     expect(options.method).toBe("POST");
     expect(options.body).toBe(manifest);
@@ -461,7 +461,7 @@ describe("snapshots", () => {
       getLatestBaseSnapshot("my-org", "my-app", {
         branch: "main",
         project: "proj-1",
-      })
+      }),
     ).resolves.toEqual({ headArtifactId: "art-1", imageCount: 5 });
     // app_id + optional branch/project go through as query params.
     const params = apiRequestToRegionMock.mock.calls.at(-1)?.[2]?.params;
@@ -474,10 +474,10 @@ describe("snapshots", () => {
 
   test("getLatestBaseSnapshot returns null on 404", async () => {
     apiRequestToRegionMock.mockRejectedValue(
-      new ApiError("not found", 404, "", "endpoint")
+      new ApiError("not found", 404, "", "endpoint"),
     );
     await expect(
-      getLatestBaseSnapshot("my-org", "missing")
+      getLatestBaseSnapshot("my-org", "missing"),
     ).resolves.toBeNull();
   });
 
@@ -511,12 +511,12 @@ describe("snapshots", () => {
     customFetchMock.mockResolvedValue(response);
 
     await expect(openSnapshotArchive("my-org", "snap-1")).resolves.toBe(
-      response
+      response,
     );
     // Auth token attached; URL targets the region archive endpoint.
     const [url, init] = customFetchMock.mock.calls.at(-1) ?? [];
     expect(url).toContain(
-      "/preprodartifacts/snapshots/snap-1/archive/?download"
+      "/preprodartifacts/snapshots/snap-1/archive/?download",
     );
     expect(init?.headers?.Authorization).toBe("Bearer secret-token");
   });
@@ -528,7 +528,7 @@ describe("snapshots", () => {
       statusText: "Server Error",
     });
     await expect(openSnapshotArchive("my-org", "snap-1")).rejects.toThrow(
-      ApiError
+      ApiError,
     );
   });
 });

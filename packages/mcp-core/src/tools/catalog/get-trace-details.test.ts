@@ -218,9 +218,9 @@ describe("get_trace_details", () => {
 
       ## Next Steps
 
-      - **Search spans**: Use the Sentry tool \`search_events\`
-      - **Search errors**: Use the Sentry tool \`search_events\`
-      - **Search logs**: Use the Sentry tool \`search_events\`"
+      - **Search spans**: Use the Sentry tool \`search_traces\`
+      - **Search errors**: Use the Sentry tool \`search_errors\`
+      - **Search logs**: Use the Sentry tool \`search_logs\`"
     `);
   });
 
@@ -244,11 +244,11 @@ describe("get_trace_details", () => {
     );
     expect(result).toContain("**Total Spans**: 112");
     expect(result).toContain(
-      "**Search spans**: Use the Sentry tool `search_events`",
+      "**Search spans**: Use the Sentry tool `search_traces`",
     );
   });
 
-  it("falls back to direct search_events guidance when agent search is unavailable", async () => {
+  it("falls back to direct search_traces guidance when agent search is unavailable", async () => {
     Reflect.deleteProperty(process.env, "OPENAI_API_KEY");
     Reflect.deleteProperty(process.env, "ANTHROPIC_API_KEY");
     Reflect.deleteProperty(process.env, "OPENROUTER_API_KEY");
@@ -270,11 +270,11 @@ describe("get_trace_details", () => {
     );
 
     expect(result).toContain(
-      "**Search spans**: Use the Sentry tool `search_events`",
+      "**Search spans**: Use the Sentry tool `search_traces`",
     );
   });
 
-  it("does not show trace next-step tool calls when search_events is unavailable", async () => {
+  it("does not show trace next-step tool calls when search tools are unavailable", async () => {
     Reflect.deleteProperty(process.env, "OPENAI_API_KEY");
     Reflect.deleteProperty(process.env, "ANTHROPIC_API_KEY");
     Reflect.deleteProperty(process.env, "OPENROUTER_API_KEY");
@@ -303,6 +303,7 @@ describe("get_trace_details", () => {
       "**Search errors**: Error search is not available",
     );
     expect(result).toContain("**Search logs**: Log search is not available");
+    expect(result).not.toContain("search_traces(");
     expect(result).not.toContain("search_events(");
   });
 
@@ -646,9 +647,9 @@ describe("get_trace_details", () => {
 
       ## Next Steps
 
-      - **Search spans**: Use the Sentry tool \`search_events\`
-      - **Search errors**: Use the Sentry tool \`search_events\`
-      - **Search logs**: Use the Sentry tool \`search_events\`"
+      - **Search spans**: Use the Sentry tool \`search_traces\`
+      - **Search errors**: Use the Sentry tool \`search_errors\`
+      - **Search logs**: Use the Sentry tool \`search_logs\`"
     `);
   });
 
@@ -738,9 +739,9 @@ describe("get_trace_details", () => {
 
       ## Next Steps
 
-      - **Search spans**: Use the Sentry tool \`search_events\`
-      - **Search errors**: Use the Sentry tool \`search_events\`
-      - **Search logs**: Use the Sentry tool \`search_events\`"
+      - **Search spans**: Use the Sentry tool \`search_traces\`
+      - **Search errors**: Use the Sentry tool \`search_errors\`
+      - **Search logs**: Use the Sentry tool \`search_logs\`"
     `);
   });
 
@@ -1469,9 +1470,9 @@ describe("get_trace_details", () => {
 
       ## Next Steps
 
-      - **Search spans**: Use the Sentry tool \`search_events\`
-      - **Search errors**: Use the Sentry tool \`search_events\`
-      - **Search logs**: Use the Sentry tool \`search_events\`"
+      - **Search spans**: Use the Sentry tool \`search_traces\`
+      - **Search errors**: Use the Sentry tool \`search_errors\`
+      - **Search logs**: Use the Sentry tool \`search_logs\`"
     `);
   });
 });

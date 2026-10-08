@@ -86,7 +86,7 @@ function validateFileChangePath(filePath: string): string | undefined {
   const invalidSegment = filePath
     .split("/")
     .some(
-      (segment) => segment.length === 0 || segment === "." || segment === ".."
+      (segment) => segment.length === 0 || segment === "." || segment === "..",
     );
   return invalidSegment
     ? `Invalid file change path "${filePath}": path segments must not be empty, "." or ".."`
@@ -105,7 +105,7 @@ function convertLineEndings(content: string, lineEnding: "\n" | "\r\n") {
 function replaceUnique(
   content: string,
   oldString: string,
-  newString: string
+  newString: string,
 ): MatchResult {
   const first = content.indexOf(oldString);
   if (first === -1) {
@@ -126,7 +126,7 @@ function replaceUnique(
 function applyEdits(
   initialContent: string,
   filePath: string,
-  edits: Extract<FileChange, { action: "modify" }>["edits"]
+  edits: Extract<FileChange, { action: "modify" }>["edits"],
 ): ApplyEditsResult {
   const hasBom = initialContent.startsWith("\uFEFF");
   let content = hasBom ? initialContent.slice(1) : initialContent;
@@ -159,7 +159,7 @@ function applyEdits(
 
 function resolveCreateContent(
   change: Extract<FileChange, { action: "create" }>,
-  authToken?: string
+  authToken?: string,
 ): string {
   let content = change.path.endsWith(".json")
     ? prettyPrintJson(change.content)
@@ -171,14 +171,14 @@ function resolveCreateContent(
   ) {
     content = content.replace(
       EMPTY_AUTH_TOKEN_RE,
-      (_, prefix) => `${prefix}${authToken}`
+      (_, prefix) => `${prefix}${authToken}`,
     );
   }
   return content;
 }
 
 function prettyPrintJson(content: string): string {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return `${JSON.stringify(JSON.parse(content), null, 2)}\n`;
   } catch {
@@ -192,7 +192,7 @@ function isEnvFile(filePath: string): boolean {
 }
 
 async function readDeleteSnapshot(
-  absolutePath: string
+  absolutePath: string,
 ): Promise<DeleteSnapshot | undefined> {
   try {
     const stats = await lstat(absolutePath);
@@ -215,7 +215,7 @@ async function prepareFileChange(
   cwd: string,
   rootRealPath: string,
   change: FileChange,
-  authToken?: string
+  authToken?: string,
 ): Promise<PrepareFileChangesResult> {
   const pathError = validateFileChangePath(change.path);
   if (pathError) {
@@ -247,7 +247,7 @@ async function prepareFileChange(
 
   let canonicalPath: string;
   let pathIdentity: string | undefined;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     canonicalPath = await resolveCanonicalDestination(absolutePath);
     if (!isCanonicalChild(rootRealPath, canonicalPath)) {
@@ -287,7 +287,7 @@ async function prepareFileChange(
 async function prepareCreate(
   preparedPath: PreparedPath,
   change: Extract<FileChange, { action: "create" }>,
-  authToken?: string
+  authToken?: string,
 ): Promise<PrepareFileChangesResult> {
   try {
     await lstat(preparedPath.absolutePath);
@@ -327,9 +327,9 @@ async function prepareCreate(
 
 async function prepareDelete(
   preparedPath: PreparedPath,
-  change: Extract<FileChange, { action: "delete" }>
+  change: Extract<FileChange, { action: "delete" }>,
 ): Promise<PrepareFileChangesResult> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const expected = await readDeleteSnapshot(preparedPath.absolutePath);
     if (!expected) {
@@ -368,7 +368,7 @@ async function prepareDelete(
 
 async function prepareModify(
   preparedPath: PreparedPath,
-  change: Extract<FileChange, { action: "modify" }>
+  change: Extract<FileChange, { action: "modify" }>,
 ): Promise<PrepareFileChangesResult> {
   let initialContent: string;
   try {
@@ -386,7 +386,7 @@ async function prepareModify(
     }
     const content = await safeReadFile(
       preparedPath.absolutePath,
-      "apply-file-changes.prepare"
+      "apply-file-changes.prepare",
     );
     if (content === null) {
       return {
@@ -433,7 +433,7 @@ async function prepareModify(
 }
 
 function normalizeFileChanges(
-  changes: FileChange[]
+  changes: FileChange[],
 ): NormalizeFileChangesResult {
   const normalized: FileChange[] = [];
   const targetIndexes = new Map<string, number>();
@@ -466,7 +466,7 @@ function normalizeFileChanges(
       (candidate) =>
         candidate.path !== change.path &&
         (candidate.path.startsWith(`${change.path}/`) ||
-          change.path.startsWith(`${candidate.path}/`))
+          change.path.startsWith(`${candidate.path}/`)),
     );
     if (conflict) {
       return {
@@ -491,7 +491,7 @@ function comparableCanonicalPath(filePath: string): string {
 
 function canonicalTargetsOverlap(
   first: PreparedFileChange,
-  second: PreparedFileChange
+  second: PreparedFileChange,
 ): boolean {
   const firstPath = comparableCanonicalPath(first.canonicalPath);
   const secondPath = comparableCanonicalPath(second.canonicalPath);
@@ -510,7 +510,7 @@ function canonicalTargetsOverlap(
 export async function prepareFileChanges(
   cwd: string,
   changes: FileChange[],
-  authToken?: string
+  authToken?: string,
 ): Promise<PrepareFileChangesResult> {
   const prepared: PreparedFileChange[] = [];
   const [firstChange] = changes;
@@ -518,7 +518,7 @@ export async function prepareFileChanges(
     return { changes: prepared, ok: true };
   }
   let rootRealPath: string;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     rootRealPath = await resolveCanonicalRoot(cwd);
   } catch {
@@ -542,7 +542,7 @@ export async function prepareFileChanges(
       cwd,
       rootRealPath,
       change,
-      authToken
+      authToken,
     );
     if (!result.ok) {
       return result;
@@ -570,7 +570,7 @@ export async function prepareFileChanges(
 /** Compare a prepared delete snapshot with the target's current state. */
 export async function deleteSnapshotMatches(
   absolutePath: string,
-  expected: DeleteSnapshot
+  expected: DeleteSnapshot,
 ): Promise<boolean> {
   const current = await readDeleteSnapshot(absolutePath);
   if (!current || current.kind !== expected.kind) {

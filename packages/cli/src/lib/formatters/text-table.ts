@@ -12,7 +12,7 @@
 import stringWidth from "string-width";
 
 /** Matches one or more trailing ANSI SGR escape sequences at end of string. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape detection requires matching \x1b
+// oxlint-disable-next-line no-control-regex -- ANSI escape detection requires matching \x1b
 const TRAILING_ANSI_RE = /(?:\x1b\[[0-9;]*m)+$/;
 
 /**
@@ -94,7 +94,7 @@ export type TextTableOptions = {
 export function renderTextTable(
   headers: string[],
   rows: string[][],
-  options: TextTableOptions = {}
+  options: TextTableOptions = {},
 ): string {
   const {
     borderStyle = "rounded",
@@ -170,7 +170,7 @@ function measureIntrinsicWidths(
   headers: string[],
   rows: string[][],
   colCount: number,
-  ctx: { cellPadding: number; minWidths: number[] }
+  ctx: { cellPadding: number; minWidths: number[] },
 ): number[] {
   const { cellPadding, minWidths } = ctx;
   const pad = cellPadding * 2;
@@ -210,7 +210,7 @@ function fitColumns(
     fitter: "proportional" | "balanced";
     minWidths: number[];
     shrinkable: boolean[];
-  }
+  },
 ): number[] {
   const { cellPadding, fitter, minWidths, shrinkable: shrinkFlags } = ctx;
   const totalIntrinsic = intrinsicWidths.reduce((s, w) => s + w, 0);
@@ -224,7 +224,7 @@ function fitColumns(
   const isFixed = intrinsicWidths.map((_, i) => shrinkFlags[i] === false);
   const fixedTotal = intrinsicWidths.reduce(
     (s, w, i) => s + (isFixed[i] ? w : 0),
-    0
+    0,
   );
   const elasticTarget = maxContentWidth - fixedTotal;
   const elasticWidths = intrinsicWidths.filter((_, i) => !isFixed[i]);
@@ -261,14 +261,14 @@ function fitProportional(
   widths: number[],
   target: number,
   cellPadding: number,
-  minWidths: number[] = []
+  minWidths: number[] = [],
 ): number[] {
   const globalMin = 1 + cellPadding * 2;
   const colMins = widths.map((_, i) =>
-    Math.max(globalMin, (minWidths[i] ?? 0) + cellPadding * 2)
+    Math.max(globalMin, (minWidths[i] ?? 0) + cellPadding * 2),
   );
   const baseWidths = widths.map((w, i) =>
-    Math.max(colMins[i] ?? globalMin, Math.floor(w))
+    Math.max(colMins[i] ?? globalMin, Math.floor(w)),
   );
   const totalBase = baseWidths.reduce((s, w) => s + w, 0);
 
@@ -277,7 +277,7 @@ function fitProportional(
   }
 
   const floorWidths = baseWidths.map((w, i) =>
-    Math.min(w, (colMins[i] ?? globalMin) + 1)
+    Math.min(w, (colMins[i] ?? globalMin) + 1),
   );
   const floorTotal = floorWidths.reduce((s, w) => s + w, 0);
   const clampedTarget = Math.max(floorTotal, target);
@@ -311,14 +311,14 @@ function fitBalanced(
   widths: number[],
   target: number,
   cellPadding: number,
-  minWidths: number[] = []
+  minWidths: number[] = [],
 ): number[] {
   const globalMin = 1 + cellPadding * 2;
   const colMins = widths.map((_, i) =>
-    Math.max(globalMin, (minWidths[i] ?? 0) + cellPadding * 2)
+    Math.max(globalMin, (minWidths[i] ?? 0) + cellPadding * 2),
   );
   const baseWidths = widths.map((w, i) =>
-    Math.max(colMins[i] ?? globalMin, Math.floor(w))
+    Math.max(colMins[i] ?? globalMin, Math.floor(w)),
   );
   const totalBase = baseWidths.reduce((s, w) => s + w, 0);
 
@@ -328,7 +328,7 @@ function fitBalanced(
 
   const evenShare = Math.max(globalMin, Math.floor(target / baseWidths.length));
   const floorWidths = baseWidths.map((w, i) =>
-    Math.min(w, Math.max(evenShare, colMins[i] ?? globalMin))
+    Math.min(w, Math.max(evenShare, colMins[i] ?? globalMin)),
   );
   const floorTotal = floorWidths.reduce((s, w) => s + w, 0);
   const clampedTarget = Math.max(floorTotal, target);
@@ -367,7 +367,7 @@ type ShrinkParams = {
  *
  * Ported from OpenTUI's allocateShrinkByWeight.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: ported algorithm
+// ported algorithm
 function allocateShrink(params: ShrinkParams): number[] {
   const { baseWidths, floorWidths, shrinkable, targetShrink, mode } = params;
   const computeWeight = (v: number) => {
@@ -383,7 +383,9 @@ function allocateShrink(params: ShrinkParams): number[] {
     return [...floorWidths];
   }
 
+  // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
   const shrink = new Array<number>(baseWidths.length).fill(0);
+  // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
   const fractions = new Array<number>(baseWidths.length).fill(0);
   let usedShrink = 0;
 
@@ -429,7 +431,7 @@ function allocateShrink(params: ShrinkParams): number[] {
   }
 
   return baseWidths.map((w, i) =>
-    Math.max(floorWidths[i] ?? 0, w - (shrink[i] ?? 0))
+    Math.max(floorWidths[i] ?? 0, w - (shrink[i] ?? 0)),
   );
 }
 
@@ -461,7 +463,7 @@ function wrapRow(
   cells: string[],
   columnWidths: number[],
   cellPadding: number,
-  truncate: boolean
+  truncate: boolean,
 ): string[][] {
   const wrappedCells: string[][] = [];
   for (let c = 0; c < columnWidths.length; c++) {
@@ -502,7 +504,7 @@ function padCell(
   text: string,
   width: number,
   align: Alignment,
-  padding: number
+  padding: number,
 ): string {
   const contentWidth = width - padding * 2;
   const textWidth = stringWidth(text);
@@ -552,7 +554,7 @@ type RowRenderContext = {
  */
 function renderRowLines(
   wrappedCells: string[][],
-  ctx: RowRenderContext
+  ctx: RowRenderContext,
 ): string[] {
   const { columnWidths, alignments, cellPadding, vert } = ctx;
   const rowHeight = Math.max(1, ...wrappedCells.map((c) => c.length));
@@ -613,8 +615,8 @@ function renderGrid(params: GridParams): string {
         junction: border.topT,
         right: border.topRight,
         horizontal: hz,
-      })
-    )
+      }),
+    ),
   );
 
   // Colored vertical border for row rendering
@@ -655,8 +657,8 @@ function renderGrid(params: GridParams): string {
         junction: border.bottomT,
         right: border.bottomRight,
         horizontal: hz,
-      })
-    )
+      }),
+    ),
   );
 
   return `${lines.join("\n")}\n`;
@@ -665,7 +667,7 @@ function renderGrid(params: GridParams): string {
 /** Build a horizontal border line from column widths and junction characters. */
 function horizontalLine(
   columnWidths: number[],
-  chars: { left: string; junction: string; right: string; horizontal: string }
+  chars: { left: string; junction: string; right: string; horizontal: string },
 ): string {
   const segments = columnWidths.map((w) => chars.horizontal.repeat(w));
   return `${chars.left}${segments.join(chars.junction)}${chars.right}`;
@@ -742,7 +744,7 @@ export class StreamingTable {
       headers,
       hintRows,
       colCount,
-      { cellPadding, minWidths }
+      { cellPadding, minWidths },
     );
 
     const borderOverhead = 2 + (colCount - 1);
@@ -780,7 +782,7 @@ export class StreamingTable {
         junction: border.topT,
         right: border.topRight,
         horizontal: hz,
-      })
+      }),
     );
 
     // Header cells
@@ -796,7 +798,7 @@ export class StreamingTable {
         cellTexts.push(padCell(text, colW, align, cellPadding));
       }
       lines.push(
-        `${border.vertical}${cellTexts.join(border.vertical)}${border.vertical}`
+        `${border.vertical}${cellTexts.join(border.vertical)}${border.vertical}`,
       );
     }
 
@@ -807,7 +809,7 @@ export class StreamingTable {
         junction: border.cross,
         right: border.rightT,
         horizontal: hz,
-      })
+      }),
     );
 
     return `${lines.join("\n")}\n`;
@@ -833,7 +835,7 @@ export class StreamingTable {
         cellTexts.push(padCell(text, colW, align, cellPadding));
       }
       lines.push(
-        `${border.vertical}${cellTexts.join(border.vertical)}${border.vertical}`
+        `${border.vertical}${cellTexts.join(border.vertical)}${border.vertical}`,
       );
     }
 

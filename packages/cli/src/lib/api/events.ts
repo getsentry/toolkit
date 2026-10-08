@@ -39,7 +39,7 @@ import { listOrganizations } from "./organizations.js";
  */
 export async function getLatestEvent(
   orgSlug: string,
-  issueId: string
+  issueId: string,
 ): Promise<SentryEvent> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -62,7 +62,7 @@ export async function getLatestEvent(
 export async function getEvent(
   orgSlug: string,
   projectSlug: string,
-  eventId: string
+  eventId: string,
 ): Promise<SentryEvent> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -87,7 +87,7 @@ export async function getEvent(
 export async function listEventAttachments(
   orgSlug: string,
   projectSlug: string,
-  eventId: string
+  eventId: string,
 ): Promise<EventAttachmentDetailsResponse[]> {
   const config = await getOrgSdkConfig(orgSlug);
   const { data } = await autoPaginate(
@@ -110,10 +110,10 @@ export async function listEventAttachments(
       });
       return unwrapPaginatedResult<EventAttachmentDetailsResponse[]>(
         result,
-        "Failed to list event attachments"
+        "Failed to list event attachments",
       );
     },
-    API_MAX_PER_PAGE * MAX_PAGINATION_PAGES + 1
+    API_MAX_PER_PAGE * MAX_PAGINATION_PAGES + 1,
   );
   return data;
 }
@@ -137,7 +137,7 @@ export type ResolvedEvent = {
  */
 export async function resolveEventInOrg(
   orgSlug: string,
-  eventId: string
+  eventId: string,
 ): Promise<ResolvedEvent | null> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -183,7 +183,7 @@ export type FindEventAcrossOrgsOptions = {
  */
 export async function findEventAcrossOrgs(
   eventId: string,
-  options?: FindEventAcrossOrgsOptions
+  options?: FindEventAcrossOrgsOptions,
 ): Promise<ResolvedEvent | null> {
   const excludeSet = options?.excludeOrgs
     ? new Set(options.excludeOrgs)
@@ -195,7 +195,7 @@ export async function findEventAcrossOrgs(
 
   const limit = pLimit(ORG_FANOUT_CONCURRENCY);
   const results = await Promise.allSettled(
-    orgs.map((org) => limit(() => resolveEventInOrg(org.slug, eventId)))
+    orgs.map((org) => limit(() => resolveEventInOrg(org.slug, eventId))),
   );
 
   // First pass: return the first successful match
@@ -266,7 +266,7 @@ export type ListIssueEventsOptions = {
 export async function listIssueEvents(
   orgSlug: string,
   issueId: string,
-  options: ListIssueEventsOptions = {}
+  options: ListIssueEventsOptions = {},
 ): Promise<PaginatedResponse<IssueEvent[]>> {
   const { limit = 25, query, full, cursor, statsPeriod, start, end } = options;
 
@@ -299,7 +299,7 @@ export async function listIssueEvents(
 
     const paginated = unwrapPaginatedResult(
       result,
-      "Failed to list issue events"
+      "Failed to list issue events",
     );
 
     allEvents.push(...(paginated.data as IssueEvent[]));

@@ -169,7 +169,7 @@ function formatCommonFlags(): string {
   }
   const padding = 4;
   const labels = COMMON_FLAGS.map((f) =>
-    f.short ? `${f.short}, ${f.long}` : `    ${f.long}`
+    f.short ? `${f.short}, ${f.long}` : `    ${f.long}`,
   );
   const maxLabelLength = Math.max(...labels.map((l) => l.length));
   return COMMON_FLAGS.map((f, i) => {
@@ -190,7 +190,7 @@ function formatEnvVars(): string {
   }
   const padding = 4;
   const maxNameLength = Math.max(
-    ...TOP_LEVEL_ENV_VARS.map((v) => v.name.length)
+    ...TOP_LEVEL_ENV_VARS.map((v) => v.name.length),
   );
   return TOP_LEVEL_ENV_VARS.map((v) => {
     const namePadded = v.name.padEnd(maxNameLength + padding);
@@ -363,7 +363,7 @@ export function introspectAllCommands(): {
  * with optional fuzzy suggestions if the path doesn't resolve.
  */
 export function introspectCommand(
-  commandPath: string[]
+  commandPath: string[],
 ): CommandInfo | RouteInfo | { error: string; suggestions?: string[] } {
   const routeMap = routes as unknown as RouteMap;
   const resolved = resolveCommandPath(routeMap, commandPath);
@@ -405,7 +405,7 @@ export function introspectCommand(
  */
 export function renderJsonHelp(
   prefix: readonly string[],
-  unprocessedInputs: readonly string[]
+  unprocessedInputs: readonly string[],
 ): string | undefined {
   const { hasJson, fields, extraPath } = parseHelpJsonFlags(unprocessedInputs);
   if (!hasJson) {
@@ -498,7 +498,7 @@ export function isRecoverableUnknownCommand(argv: readonly string[]): boolean {
  *   request
  */
 export function rewriteHelpJsonToHelpCommand(
-  argv: readonly string[]
+  argv: readonly string[],
 ): string[] | undefined {
   let hasHelp = false;
   const { hasJson, fields, extraPath } = parseHelpJsonFlags(argv);
@@ -591,12 +591,12 @@ function consumeValueFlag(inputs: readonly string[], index: number): number {
  */
 const VALUE_FLAG_TOKENS: ReadonlySet<string> = new Set(
   GLOBAL_FLAGS.filter(
-    (flag) => flag.kind === "value" && flag.name !== "fields"
+    (flag) => flag.kind === "value" && flag.name !== "fields",
   ).flatMap((flag) =>
     flag.short === null
       ? [`--${flag.name}`]
-      : [`--${flag.name}`, `-${flag.short}`]
-  )
+      : [`--${flag.name}`, `-${flag.short}`],
+  ),
 );
 
 /**
@@ -616,7 +616,7 @@ function isValueFlagToken(token: string): boolean {
 function consumeFieldsFlag(
   inputs: readonly string[],
   index: number,
-  assign: (fields: string[]) => void
+  assign: (fields: string[]) => void,
 ): number {
   const token = inputs[index] ?? "";
   if (token.startsWith("--fields=")) {
@@ -666,7 +666,7 @@ function formatSuggestionList(items: string[]): string {
  */
 function formatFlagHuman(
   flag: import("./introspect.js").FlagInfo,
-  aliases: Record<string, string>
+  aliases: Record<string, string>,
 ): string {
   const alias = Object.entries(aliases).find(([, v]) => v === flag.name)?.[0];
   let syntax = `--${flag.name}`;

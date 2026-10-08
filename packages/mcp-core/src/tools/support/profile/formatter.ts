@@ -566,9 +566,7 @@ export function formatTransactionProfileAnalysis(
       "- Open the related trace URL to inspect the end-to-end request",
     );
   }
-  sections.push(
-    "- Use `search_events` with the profiles dataset to find similar profiles",
-  );
+  sections.push("- Use `search_profiles` to find similar profiles");
 
   return sections.join("\n");
 }

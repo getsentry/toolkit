@@ -90,7 +90,7 @@ jobs:
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
 
       - name: Prepare release
-        uses: getsentry/craft@25028d0646040cc0a669ae3314cbf884f4c4347a # v2
+        uses: getsentry/craft@v2
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:

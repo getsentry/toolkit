@@ -77,7 +77,7 @@ export function setCachedIssueOrg(numericId: string, orgSlug: string): void {
       org_slug: orgSlug,
       cached_at: Date.now(),
     },
-    ["issue_id"]
+    ["issue_id"],
   );
 }
 

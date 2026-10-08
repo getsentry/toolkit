@@ -54,6 +54,8 @@ import type {
   AssignedToSchema,
   AutofixRunSchema,
   AutofixRunStateSchema,
+  SearchAgentStartSchema,
+  SearchAgentStateSchema,
   ClientKeyListSchema,
   ClientKeySchema,
   CommitListSchema,
@@ -239,6 +241,8 @@ export type EventAttachment = z.infer<typeof EventAttachmentSchema>;
 export type Tag = z.infer<typeof TagSchema>;
 export type AutofixRun = z.infer<typeof AutofixRunSchema>;
 export type AutofixRunState = z.infer<typeof AutofixRunStateSchema>;
+export type SearchAgentStart = z.infer<typeof SearchAgentStartSchema>;
+export type SearchAgentState = z.infer<typeof SearchAgentStateSchema>;
 export type AssignedTo = z.infer<typeof AssignedToSchema>;
 export type ReplayDetails = z.infer<typeof ReplayDetailsSchema>;
 export type ReplayList = z.infer<typeof ReplayListResponseSchema>["data"];

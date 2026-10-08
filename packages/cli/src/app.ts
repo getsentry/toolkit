@@ -20,6 +20,8 @@ import { dashboardRoute } from "./commands/dashboard/index.js";
 import { listCommand as dashboardListCommand } from "./commands/dashboard/list.js";
 import { debugFilesRoute } from "./commands/debug-files/index.js";
 import { docsRoute } from "./commands/docs/index.js";
+import { dsnRoute } from "./commands/dsn/index.js";
+import { listCommand as dsnListCommand } from "./commands/dsn/list.js";
 import { eventRoute } from "./commands/event/index.js";
 import { listCommand as eventListCommand } from "./commands/event/list.js";
 import { exploreCommand } from "./commands/explore.js";
@@ -32,6 +34,7 @@ import { listCommand as issueListCommand } from "./commands/issue/list.js";
 import { localRoute } from "./commands/local/index.js";
 import { logRoute } from "./commands/log/index.js";
 import { listCommand as logListCommand } from "./commands/log/list.js";
+import { mcpCommand } from "./commands/mcp.js";
 import { monitorRoute } from "./commands/monitor/index.js";
 import { listCommand as monitorListCommand } from "./commands/monitor/list.js";
 import { orgRoute } from "./commands/org/index.js";
@@ -92,6 +95,7 @@ import { buildRouteMap } from "./lib/route-map.js";
 const PLURAL_TO_SINGULAR: Record<string, string> = {
   "agent-conversations": "agent-conversation",
   dashboards: "dashboard",
+  dsns: "dsn",
   events: "event",
   issues: "issue",
   orgs: "org",
@@ -123,6 +127,7 @@ export const routes = buildRouteMap({
     "debug-files": debugFilesRoute,
     dashboard: dashboardRoute,
     docs: docsRoute,
+    dsn: dsnRoute,
     org: orgRoute,
     platform: platformRoute,
     project: projectRoute,
@@ -138,6 +143,7 @@ export const routes = buildRouteMap({
     explore: exploreCommand,
     feedback: feedbackRoute,
     log: logRoute,
+    mcp: mcpCommand,
     monitor: monitorRoute,
     snapshots: snapshotsRoute,
     sourcemap: sourcemapRoute,
@@ -158,6 +164,7 @@ export const routes = buildRouteMap({
     "bash-hook": bashHookCommand,
     "agent-conversations": conversationListCommand,
     dashboards: dashboardListCommand,
+    dsns: dsnListCommand,
     issues: issueListCommand,
     orgs: orgListCommand,
     platforms: platformListCommand,
@@ -180,6 +187,7 @@ export const routes = buildRouteMap({
       "sentry is a command-line interface for interacting with Sentry. " +
       "It provides commands for authentication, viewing issues, and making API calls.",
     hideRoute: {
+      dsns: true,
       "agent-conversations": true,
       dashboards: true,
       events: true,
@@ -218,9 +226,9 @@ const routesWithDefaultCommand: ReadonlySet<string> = new Set(
     .filter(
       (e) =>
         isRouteMap(e.target as unknown) &&
-        (e.target as unknown as RouteMap).getDefaultCommand?.()
+        (e.target as unknown as RouteMap).getDefaultCommand?.(),
     )
-    .map((e) => e.name.original)
+    .map((e) => e.name.original),
 );
 
 /**
@@ -272,7 +280,7 @@ function detectPluralAliasMisuse(ansiColor: boolean): string | undefined {
  */
 function formatSynonymError(
   exc: unknown,
-  ansiColor: boolean
+  ansiColor: boolean,
 ): string | undefined {
   if (!(exc instanceof CliError)) {
     return;
@@ -309,7 +317,7 @@ const customText: ApplicationText = {
   ...text_en,
   exceptionWhileParsingArguments: (
     exc: unknown,
-    ansiColor: boolean
+    ansiColor: boolean,
   ): string => {
     // Case A: bare route group with no subcommand (e.g., `sentry issue`)
     if (exc instanceof UnsatisfiedPositionalError) {

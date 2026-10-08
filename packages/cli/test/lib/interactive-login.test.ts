@@ -18,21 +18,21 @@ import {
   test,
   vi,
 } from "vitest";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../src/lib/browser.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as clipboard from "../../src/lib/clipboard.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbInstance from "../../src/lib/db/index.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbUser from "../../src/lib/db/user.js";
 import {
   buildDeviceFlowDisplay,
   runInteractiveLogin,
 } from "../../src/lib/interactive-login.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as oauth from "../../src/lib/oauth.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as qrcode from "../../src/lib/qrcode.js";
 import type { TokenResponse } from "../../src/types/index.js";
 
@@ -68,7 +68,7 @@ describe("buildDeviceFlowDisplay", () => {
       "AB_CD",
       urlWithUnderscores,
       true,
-      false
+      false,
     );
     const joined = lines.join("\n");
     // URL must not be escaped — underscores stay as-is for copy-paste
@@ -169,7 +169,7 @@ describe("runInteractiveLogin", () => {
         await callbacks.onUserCode(
           "ABCD",
           "https://sentry.io/auth/device/",
-          "https://sentry.io/auth/device/?user_code=ABCD"
+          "https://sentry.io/auth/device/?user_code=ABCD",
         );
         return makeTokenResponse({
           id: "48168",
@@ -201,7 +201,7 @@ describe("runInteractiveLogin", () => {
         await callbacks.onUserCode(
           "EFGH",
           "https://sentry.io/auth/device/",
-          "https://sentry.io/auth/device/?user_code=EFGH"
+          "https://sentry.io/auth/device/?user_code=EFGH",
         );
         return makeTokenResponse({
           id: "123",
@@ -231,7 +231,7 @@ describe("runInteractiveLogin", () => {
         await callbacks.onUserCode(
           "WXYZ",
           "https://sentry.io/auth/device/",
-          "https://sentry.io/auth/device/?user_code=WXYZ"
+          "https://sentry.io/auth/device/?user_code=WXYZ",
         );
         return makeTokenResponse(); // no user
       });
@@ -250,7 +250,7 @@ describe("runInteractiveLogin", () => {
         await callbacks.onUserCode(
           "SCOP",
           "https://sentry.io/auth/device/",
-          "https://sentry.io/auth/device/?user_code=SCOP"
+          "https://sentry.io/auth/device/?user_code=SCOP",
         );
         return makeTokenResponse();
       });
@@ -263,7 +263,7 @@ describe("runInteractiveLogin", () => {
     expect(performDeviceFlowSpy).toHaveBeenCalledWith(
       expect.any(Object),
       1000,
-      "project:read org:read"
+      "project:read org:read",
     );
   });
 
@@ -274,7 +274,7 @@ describe("runInteractiveLogin", () => {
         await callbacks.onUserCode(
           "NONE",
           "https://sentry.io/auth/device/",
-          "https://sentry.io/auth/device/?user_code=NONE"
+          "https://sentry.io/auth/device/?user_code=NONE",
         );
         return makeTokenResponse();
       });
@@ -284,7 +284,7 @@ describe("runInteractiveLogin", () => {
     expect(performDeviceFlowSpy).toHaveBeenCalledWith(
       expect.any(Object),
       1000,
-      undefined
+      undefined,
     );
   });
 });

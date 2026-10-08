@@ -78,9 +78,9 @@ describe("parseSixelCaps", () => {
         (attrs) => {
           const reply = `${ESC}[?${attrs.join(";")}c`;
           expect(parseSixelCaps(reply).supported).toBe(attrs.includes(4));
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -124,7 +124,7 @@ describe("sixelFits", () => {
 
   test("declines when unsupported", () => {
     expect(sixelFits({ supported: false, cellWidth: 10 }, 200, 640)).toBe(
-      false
+      false,
     );
   });
 });
@@ -159,7 +159,7 @@ describe("selectGraphicsFormat", () => {
       selectGraphicsFormatFromAvailability("sixel", {
         kitty: true,
         sixel: false,
-      })
+      }),
     ).toBe("kitty");
   });
 });

@@ -51,13 +51,13 @@ describe("restoreDashboardRevision", () => {
     apiRequestToRegionMock.mockResolvedValue({ data: dashboard });
 
     await expect(
-      restoreDashboardRevision("test-org", "123", "42")
+      restoreDashboardRevision("test-org", "123", "42"),
     ).resolves.toBe(dashboard);
 
     expect(apiRequestToRegionMock).toHaveBeenCalledWith(
       "https://us.sentry.io",
       "/organizations/test-org/dashboards/123/revisions/42/restore/",
-      expect.objectContaining({ method: "POST" })
+      expect.objectContaining({ method: "POST" }),
     );
   });
 });

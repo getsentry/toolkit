@@ -125,15 +125,16 @@ Errors are thrown as `SentryError` with `.exitCode` and `.stderr`.
 ### Prerequisites
 
 <!-- GENERATED:START dev-prereq -->
-- [Node.js](https://nodejs.org) v22.15+ and [pnpm](https://pnpm.io) v10.11+
+- [Node.js](https://nodejs.org) v22.15+ and [pnpm](https://pnpm.io) v11.8+
 <!-- GENERATED:END dev-prereq -->
 
 ### Setup
 
 ```bash
-git clone https://github.com/getsentry/cli.git
-cd cli
+git clone https://github.com/getsentry/toolkit.git
+cd toolkit
 pnpm install
+cd packages/cli
 ```
 
 ### Running Locally

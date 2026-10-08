@@ -57,7 +57,7 @@ export type FeedbackPage = {
  */
 export function buildFeedbackQuery(
   status: FeedbackStatus,
-  query?: string
+  query?: string,
 ): string {
   const statusFilter = status === "all" ? undefined : STATUS_FILTERS[status];
   const userQuery = query?.trim() || undefined;
@@ -76,7 +76,7 @@ export function buildFeedbackQuery(
 export async function listFeedback(
   orgSlug: string,
   projectSlug: string,
-  options: ListFeedbackOptions
+  options: ListFeedbackOptions,
 ): Promise<FeedbackPage> {
   const { issues, nextCursor } = await listIssuesAllPages(
     orgSlug,
@@ -92,7 +92,7 @@ export async function listFeedback(
       projects:
         options.projectId === undefined ? undefined : [options.projectId],
       collapse: buildIssueListCollapse({ shouldCollapseStats: false }),
-    }
+    },
   );
 
   return {

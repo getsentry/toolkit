@@ -82,7 +82,7 @@ function formatPlanOutput(data: PlanData): string {
     lines.push(`No solution found: ${ctx.reason}`);
   } else {
     lines.push(
-      "No solution found. Seer completed analysis but could not identify a code fix."
+      "No solution found. Seer completed analysis but could not identify a code fix.",
     );
     if (ctx?.root_cause) {
       lines.push("");
@@ -107,7 +107,7 @@ function formatPlanOutput(data: PlanData): string {
  * Returns undefined when there's nothing useful to report.
  */
 function buildNoSolutionContext(
-  state: AutofixState
+  state: AutofixState,
 ): NoSolutionContext | undefined {
   const reason = extractNoSolutionReason(state);
   const cause = extractRootCauses(state)[0];
@@ -170,7 +170,7 @@ function buildPlanData(state: AutofixState): PlanData {
  */
 async function confirmRootCauseAndContinue(
   state: AutofixState,
-  json: boolean
+  json: boolean,
 ): Promise<void> {
   const causes = json ? [] : extractRootCauses(state);
   const primaryCause = causes[0];
@@ -193,7 +193,7 @@ async function confirmRootCauseAndContinue(
 
   throw new CliError(
     "Root cause analysis requires your input before a plan can be generated.\n" +
-      "Open the issue in Sentry to select a root cause, then re-run this command."
+      "Open the issue in Sentry to select a root cause, then re-run this command.",
   );
 }
 
@@ -211,9 +211,11 @@ export const planCommand = buildCommand({
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7, sentry/cli-G\n" +
       "  <org>/@selector  - Selector with org: my-org/@latest\n" +
       "  <project>-suffix - Project + suffix: cli-G, spotlight-electron-4Y\n" +
-      "  ID               - Short ID: CLI-G (searches across orgs)\n" +
+      "  ID               - Short ID: CLI-G (uses configured org when set)\n" +
       "  suffix           - Suffix only: G (requires DSN context)\n" +
       "  numeric          - Numeric ID: 123456789\n\n" +
+      "Full short IDs use SENTRY_ORG, .sentryclirc, or 'sentry cli defaults' for the org.\n" +
+      "Without a configured org, the CLI uses a matching DSN or searches accessible orgs.\n\n" +
       "Prerequisites:\n" +
       "  - GitHub integration configured for your organization\n" +
       "  - Code mappings set up for your project\n\n" +
@@ -303,7 +305,7 @@ export const planCommand = buildCommand({
 
       if (finalState.status === "ERROR") {
         throw new Error(
-          "Plan creation failed. Check the Sentry web UI for details."
+          "Plan creation failed. Check the Sentry web UI for details.",
         );
       }
 
@@ -314,7 +316,7 @@ export const planCommand = buildCommand({
       if (finalState.status === "WAITING_FOR_USER_RESPONSE") {
         throw new CliError(
           "Plan creation requires your input in the Sentry UI.\n" +
-            "Open the issue in Sentry to provide the requested information, then re-run this command."
+            "Open the issue in Sentry to provide the requested information, then re-run this command.",
         );
       }
 

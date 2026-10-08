@@ -21,17 +21,14 @@ import {
   formatStatusLabel,
   maskToken,
 } from "../../../src/lib/formatters/human.js";
+import { stripColorTags } from "../../../src/lib/formatters/markdown.js";
+import { stripAnsi as stripTerminalCodes } from "../../../src/lib/formatters/plain-detect.js";
 import { formatRelativeTime } from "../../../src/lib/formatters/time-utils.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
-// Helper to strip ANSI codes and markdown color tags for content testing.
-// Strips color tags first to avoid incomplete multi-character sanitization
-// (ANSI removal could otherwise join fragments into tag-like sequences).
+// Normalize styling for text assertions; this is not HTML sanitization.
 function stripAnsi(str: string): string {
-  let result = str.replace(/<\/?[a-z]+>/g, "");
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
-  result = result.replace(/\x1b\[[0-9;]*m/g, "");
-  return result;
+  return stripTerminalCodes(stripColorTags(str));
 }
 
 // Status Formatting
@@ -110,7 +107,7 @@ describe("formatRelativeTime", () => {
 
   test("formats hours ago for times within 24 hours", () => {
     const threeHoursAgo = new Date(
-      Date.now() - 3 * 60 * 60 * 1000
+      Date.now() - 3 * 60 * 60 * 1000,
     ).toISOString();
     const result = stripAnsi(formatRelativeTime(threeHoursAgo));
     expect(result.trim()).toMatch(/^\d+h ago$/);
@@ -118,7 +115,7 @@ describe("formatRelativeTime", () => {
 
   test("formats days ago for times within 3 days", () => {
     const twoDaysAgo = new Date(
-      Date.now() - 2 * 24 * 60 * 60 * 1000
+      Date.now() - 2 * 24 * 60 * 60 * 1000,
     ).toISOString();
     const result = stripAnsi(formatRelativeTime(twoDaysAgo));
     expect(result.trim()).toMatch(/^\d+d ago$/);
@@ -126,7 +123,7 @@ describe("formatRelativeTime", () => {
 
   test("formats short date for times older than 3 days", () => {
     const tenDaysAgo = new Date(
-      Date.now() - 10 * 24 * 60 * 60 * 1000
+      Date.now() - 10 * 24 * 60 * 60 * 1000,
     ).toISOString();
     const result = stripAnsi(formatRelativeTime(tenDaysAgo));
     // Should be like "Jan 18" or "Dec 5"
@@ -172,10 +169,10 @@ describe("maskToken", () => {
         const masked = maskToken(token);
         // Should show first 8, then ..., then last 4
         expect(masked).toBe(
-          `${token.substring(0, 8)}...${token.substring(token.length - 4)}`
+          `${token.substring(0, 8)}...${token.substring(token.length - 4)}`,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -186,7 +183,7 @@ describe("maskToken", () => {
       property(shortTokenArb, (token) => {
         expect(maskToken(token)).toBe("****");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -269,7 +266,7 @@ describe("formatDuration", () => {
         const result = formatDuration(seconds);
         expect(result).toMatch(/minute|hour|day|week/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -305,7 +302,7 @@ describe("formatExpiration", () => {
         const pastTime = Date.now() - msAgo;
         expect(formatExpiration(pastTime)).toBe("Expired");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -316,7 +313,7 @@ describe("formatExpiration", () => {
         const result = formatExpiration(futureTime);
         expect(result).toContain("remaining");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

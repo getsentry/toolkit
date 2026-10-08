@@ -105,7 +105,7 @@ function parseTimeout(value: string): number {
   if (!Number.isFinite(n) || n < 0) {
     throw new ValidationError(
       `Invalid timeout: ${value}. Must be a non-negative number.`,
-      "timeout"
+      "timeout",
     );
   }
   return n;
@@ -164,7 +164,7 @@ function attachToExistingServer(
   url: string,
   activeFilters: ReadonlySet<FilterValue>,
   useJson: boolean,
-  showAttributes: boolean
+  showAttributes: boolean,
 ): EventTail {
   const ac = new AbortController();
   const tail = consumeSSE({
@@ -176,7 +176,7 @@ function attachToExistingServer(
   }).catch((err: unknown) => {
     if (!ac.signal.aborted) {
       logger.debug(
-        `Event tail stopped: ${err instanceof Error ? err.message : String(err)}`
+        `Event tail stopped: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   });
@@ -220,7 +220,7 @@ async function startBackgroundServer({
       }
     } catch (err) {
       logger.debug(
-        `Failed to format envelope: ${err instanceof Error ? err.message : String(err)}`
+        `Failed to format envelope: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   });
@@ -280,7 +280,7 @@ async function openEventTail({
 /** Augment PATH with `./node_modules/.bin` for Node project scripts. */
 function augmentPathForNode(
   env: Record<string, string | undefined>,
-  cwd: string
+  cwd: string,
 ): Record<string, string | undefined> {
   const binDir = resolve(cwd, "node_modules", ".bin");
   const sep = process.platform === "win32" ? ";" : ":";
@@ -306,13 +306,13 @@ const AUTO_DETECT_ERROR_MESSAGE = [
 function buildChildEnv(
   spotlightUrl: string,
   commandSource: string,
-  cwd: string
+  cwd: string,
 ): Record<string, string | undefined> {
   const clientSpotlightVars = Object.fromEntries(
     CLIENT_SPOTLIGHT_PREFIXES.map((prefix) => [
       `${prefix}SENTRY_SPOTLIGHT`,
       spotlightUrl,
-    ])
+    ]),
   );
   let env: Record<string, string | undefined> = {
     ...process.env,
@@ -330,7 +330,7 @@ function buildChildEnv(
 /** Resolve args and source — auto-detect from filesystem when no args provided. */
 async function resolveArgs(
   stripped: string[],
-  cwd: string
+  cwd: string,
 ): Promise<{ args: string[]; commandSource: string }> {
   if (stripped.length > 0) {
     return { args: stripped, commandSource: "" };
@@ -464,7 +464,7 @@ export const runCommand = buildCommand({
     const wrangler = await injectWranglerSpotlightBinding(
       args,
       spotlightUrl,
-      this.cwd
+      this.cwd,
     );
     if (wrangler.injected) {
       logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
@@ -487,7 +487,7 @@ export const runCommand = buildCommand({
       await tail.cleanup();
       throw new CliError(
         `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
-        EXIT.GENERAL
+        EXIT.GENERAL,
       );
     }
 
@@ -582,18 +582,19 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
  * for the first envelope, and race between envelope arrival, timeout,
  * and child exit.
  */
+// oxlint-disable-next-line require-yield -- The command contract requires an async generator even when it yields no output.
 async function* runWithVerify(
   args: string[],
   flags: RunFlags,
   cwd: string,
-  commandSource: string
+  commandSource: string,
 ): AsyncGenerator<never, void, unknown> {
   const buffer = createSpotlightBuffer(BUFFER_SIZE);
   const app = buildApp(buffer, { uiActions: isLoopbackHost(flags.host) });
   const { server, port: boundPort } = await tryListen(
     app,
     flags.port,
-    flags.host
+    flags.host,
   );
   const url = formatLocalServerUrl(flags.host, boundPort);
   logger.info(`Verify server listening on ${bold(url)}`);
@@ -611,7 +612,7 @@ async function* runWithVerify(
   const wrangler = await injectWranglerSpotlightBinding(
     args,
     spotlightUrl,
-    cwd
+    cwd,
   );
   if (wrangler.injected) {
     logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
@@ -631,7 +632,7 @@ async function* runWithVerify(
     await shutdownServer(server);
     throw new CliError(
       `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
-      EXIT.GENERAL
+      EXIT.GENERAL,
     );
   }
 
@@ -649,7 +650,7 @@ async function* runWithVerify(
 
   const childExited = new Promise<{ kind: "exited"; code: number }>((r) => {
     child.on("close", (code) =>
-      r({ kind: "exited" as const, code: code ?? 1 })
+      r({ kind: "exited" as const, code: code ?? 1 }),
     );
   });
 
@@ -671,9 +672,9 @@ async function* runWithVerify(
       new Promise<{ kind: "timeout" }>((r) => {
         timeoutHandle = setTimeout(
           () => r({ kind: "timeout" as const }),
-          verifyTimeout * 1000
+          verifyTimeout * 1000,
         );
-      })
+      }),
     );
   }
 
@@ -715,11 +716,11 @@ async function* runWithVerify(
     }
     case "timeout": {
       logger.warn(
-        `Verification timed out after ${verifyTimeout}s — no events received from the SDK`
+        `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,
       );
       throw new CliError(
         `Verification timed out after ${verifyTimeout}s`,
-        EXIT.WIZARD_VERIFY
+        EXIT.WIZARD_VERIFY,
       );
     }
     case "exited": {
@@ -727,13 +728,13 @@ async function* runWithVerify(
         logger.warn("Process exited before sending any events");
         throw new CliError(
           "Process exited before sending any events",
-          EXIT.WIZARD_VERIFY
+          EXIT.WIZARD_VERIFY,
         );
       }
       logger.warn(`Process crashed with code ${outcome.code}`);
       throw new CliError(
         `Process crashed with code ${outcome.code}`,
-        outcome.code
+        outcome.code,
       );
     }
     default: {

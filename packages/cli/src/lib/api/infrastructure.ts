@@ -9,12 +9,17 @@
 import { promisify } from "node:util";
 import { zstdCompress as zstdCompressCb } from "node:zlib";
 import { parseSentryLinkHeader } from "@sentry/api";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import { type GenericSchema, safeParse } from "valibot";
 
 import { extractRequiredScopes } from "../api-scope.js";
-import { getActiveEnvVarName, isEnvTokenActive } from "../db/auth.js";
+import {
+  type CredentialContext,
+  getActiveEnvVarName,
+  isEnvTokenActive,
+} from "../db/auth.js";
 import { getEnv } from "../env.js";
 import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
@@ -59,26 +64,26 @@ function enrich403Detail(rawDetail: string | undefined): string {
   if (isEnvTokenActive()) {
     if (scopes.length > 0) {
       lines.push(
-        `Your ${getActiveEnvVarName()} token is missing the required scope(s) '${scopes.join("', '")}'.`
+        `Your ${getActiveEnvVarName()} token is missing the required scope(s) '${scopes.join("', '")}'.`,
       );
     } else {
       lines.push(
-        `Your ${getActiveEnvVarName()} token may lack the required scope for this operation.`
+        `Your ${getActiveEnvVarName()} token may lack the required scope for this operation.`,
       );
     }
     lines.push(
-      "Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/"
+      "Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/",
     );
   } else if (scopes.length > 0) {
     const scopeArgs = scopes.map((s) => `--scope ${s}`).join(" ");
     lines.push(
       `Your token is missing the required scope(s) '${scopes.join("', '")}'.`,
-      `Re-authenticate with: sentry auth refresh ${scopeArgs}`
+      `Re-authenticate with: sentry auth refresh ${scopeArgs}`,
     );
   } else {
     lines.push(
       "You may not have access to this resource.",
-      "Re-authenticate with: sentry auth login"
+      "Re-authenticate with: sentry auth login",
     );
   }
   return lines.join("\n  ");
@@ -124,12 +129,12 @@ export function enrich401Detail(rawDetail: string | undefined): string {
     const expired = rawDetail?.toLowerCase().includes("expired");
     lines.push(
       `Your ${getActiveEnvVarName()} token ${expired ? "has expired" : "is not recognized or has been revoked"}.`,
-      "Create a new token at: https://sentry.io/settings/account/api/auth-tokens/"
+      "Create a new token at: https://sentry.io/settings/account/api/auth-tokens/",
     );
   } else {
     lines.push(
       "Not authenticated or your session has expired.",
-      "Re-authenticate with: sentry auth login"
+      "Re-authenticate with: sentry auth login",
     );
   }
   return lines.join("\n  ");
@@ -149,7 +154,7 @@ export function enrich401Detail(rawDetail: string | undefined): string {
 function enrichDetail(
   status: number,
   detail: string | undefined,
-  hasUsableDetail: boolean
+  hasUsableDetail: boolean,
 ): string | undefined {
   if (status === 403) {
     return enrich403Detail(hasUsableDetail ? detail : undefined);
@@ -191,6 +196,10 @@ export type ApiRequestOptions<T = unknown> = {
   params?: Record<string, string | number | boolean | string[] | undefined>;
   /** Optional valibot schema for runtime validation of response data */
   schema?: GenericSchema<unknown, T>;
+  /** Internal immutable credential for a multi-request operation. */
+  credential?: CredentialContext;
+  /** Manually validate each redirect before forwarding credentials. */
+  validatedRedirects?: boolean;
 };
 
 /**
@@ -203,7 +212,7 @@ export type ApiRequestOptions<T = unknown> = {
 export function throwApiError(
   error: unknown,
   response: Response | undefined,
-  context: string
+  context: string,
 ): never {
   // Network-level failure: no HTTP response received (DNS, timeout, ECONNREFUSED, etc.)
   if (!response) {
@@ -212,7 +221,7 @@ export function throwApiError(
     throw new ApiError(
       `${context}: Network error`,
       0,
-      `Unable to reach Sentry API. Cause: ${cause}\n\n  Check your internet connection and try again.`
+      `Unable to reach Sentry API. Cause: ${cause}\n\n  Check your internet connection and try again.`,
     );
   }
 
@@ -235,7 +244,7 @@ export function throwApiError(
     status,
     enrichDetail(status, detail, hasUsableDetail),
     undefined,
-    is403
+    is403,
   );
 }
 
@@ -255,7 +264,7 @@ export function unwrapResult<T>(
   result:
     | { data: unknown; error: undefined }
     | { data: undefined; error: unknown },
-  context: string
+  context: string,
 ): T {
   const { data, error } = result as {
     data: unknown;
@@ -294,14 +303,17 @@ export function unwrapPaginatedResult<T>(
   result:
     | { data: unknown; error: undefined }
     | { data: undefined; error: unknown },
-  context: string
+  context: string,
 ): PaginatedResponse<T> {
   const response = (result as { response?: Response }).response;
   const data = unwrapResult<T>(result, context);
   const { nextCursor, prevCursor } = parseLinkHeader(
-    response?.headers.get("link") ?? null
+    response?.headers.get("link") ?? null,
   );
   const out: PaginatedResponse<T> = { data };
+  if (response) {
+    out.response = response;
+  }
   if (nextCursor !== undefined) {
     out.nextCursor = nextCursor;
   }
@@ -320,7 +332,7 @@ export function unwrapPaginatedResult<T>(
  * @internal Exported for testing
  */
 export function buildSearchParams(
-  params?: Record<string, string | number | boolean | string[] | undefined>
+  params?: Record<string, string | number | boolean | string[] | undefined>,
 ): URLSearchParams | undefined {
   if (!params) {
     return;
@@ -352,7 +364,7 @@ export function buildSearchParams(
  */
 export function appendSearchParams(
   endpoint: string,
-  params?: ApiRequestOptions["params"]
+  params?: ApiRequestOptions["params"],
 ): string {
   const searchParams = buildSearchParams(params);
   if (!searchParams) {
@@ -384,7 +396,7 @@ export async function getOrgSdkConfig(orgSlug: string) {
  */
 export const MAX_PAGINATION_PAGES = Math.max(
   1,
-  Number(getEnv().SENTRY_MAX_PAGINATION_PAGES) || 50
+  Number(getEnv().SENTRY_MAX_PAGINATION_PAGES) || 50,
 );
 
 /**
@@ -415,6 +427,8 @@ export type PaginatedResponse<T> = {
   nextCursor?: string;
   /** Cursor for the previous page (undefined on the first page) */
   prevCursor?: string;
+  /** Exact validated response, for provenance-sensitive callers. */
+  response?: Response;
 };
 
 /**
@@ -435,7 +449,7 @@ export type PaginatedResponse<T> = {
 export async function autoPaginate<T>(
   fetchPage: (cursor: string | undefined) => Promise<PaginatedResponse<T[]>>,
   limit: number,
-  initialCursor?: string
+  initialCursor?: string,
 ): Promise<PaginatedResponse<T[]>> {
   // Fast path: single-page fetch when limit fits in one API page
   if (limit <= API_MAX_PER_PAGE) {
@@ -464,7 +478,7 @@ export async function autoPaginate<T>(
   // Safety limit reached — warn and return what we have, no nextCursor
   logger.warn(
     `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${allRows.length} items). ` +
-      "Results may be incomplete."
+      "Results may be incomplete.",
   );
   return { data: allRows.slice(0, limit) };
 }
@@ -489,9 +503,9 @@ export function paginate<T>(
   options: { limit?: number; cursor?: string },
   fetchPage: (
     perPage: number,
-    cursor: string | undefined
+    cursor: string | undefined,
   ) => Promise<PaginatedResponse<T[]>>,
-  defaultLimit = 10
+  defaultLimit = 10,
 ): Promise<PaginatedResponse<T[]>> {
   const limit = options.limit ?? defaultLimit;
   let remaining = limit;
@@ -499,13 +513,57 @@ export function paginate<T>(
     async (cursor) => {
       const result = await fetchPage(
         Math.min(remaining, API_MAX_PER_PAGE),
-        cursor
+        cursor,
       );
       remaining -= result.data.length;
       return result;
     },
     limit,
-    options.cursor
+    options.cursor,
+  );
+}
+
+/**
+ * Fetch and validate every page of a list endpoint, or fail.
+ *
+ * Unlike {@link autoPaginate}, a partial result is an error: use this when a
+ * missing page could hide the record a mutation depends on. Throws on an
+ * invalid page, a repeated cursor, or more than {@link MAX_PAGINATION_PAGES}.
+ *
+ * @param fetchPage - Fetches one page given a cursor
+ * @param schema - Validates each page's items
+ * @param context - Operation for error messages, e.g. "listing issue integrations"
+ * @returns All validated items, in page order
+ */
+export async function fetchAllPages<T>(
+  fetchPage: (
+    cursor: string | undefined,
+  ) => Promise<PaginatedResponse<unknown>>,
+  schema: GenericSchema<unknown, T[]>,
+  context: string,
+): Promise<T[]> {
+  const items: T[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
+    const { data, nextCursor } = await fetchPage(cursor);
+    const parsed = safeParse(schema, data);
+    if (!parsed.success) {
+      throw new ApiError(`Unexpected response format when ${context}`, 0);
+    }
+    items.push(...parsed.output);
+    if (!nextCursor) {
+      return items;
+    }
+    if (seen.has(nextCursor)) {
+      throw new ApiError(`Pagination repeated a cursor when ${context}`, 0);
+    }
+    seen.add(nextCursor);
+    cursor = nextCursor;
+  }
+  throw new ApiError(
+    `Pagination exceeded ${MAX_PAGINATION_PAGES} pages when ${context}`,
+    0,
   );
 }
 
@@ -522,17 +580,21 @@ export function paginate<T>(
 export async function apiRequestToRegion<T>(
   regionUrl: string,
   endpoint: string,
-  options: ApiRequestOptions<T> = {}
+  options: ApiRequestOptions<T> = {},
 ): Promise<{ data: T; headers: Headers }> {
-  const { method = "GET", body, bodyEncoding, params, schema } = options;
-  const config = getSdkConfig(regionUrl);
+  const {
+    method = "GET",
+    body,
+    bodyEncoding,
+    params,
+    schema,
+    credential,
+    validatedRedirects,
+  } = options;
+  const config = getSdkConfig(regionUrl, { credential, validatedRedirects });
 
-  const normalizedEndpoint = endpoint.startsWith("/")
-    ? endpoint.slice(1)
-    : endpoint;
-  const endpointWithParams = appendSearchParams(normalizedEndpoint, params);
-  // getSdkConfig.baseUrl is the plain region URL; add /api/0/ for raw requests
-  const url = `${config.baseUrl}/api/0/${endpointWithParams}`;
+  const endpointWithParams = appendSearchParams(endpoint, params);
+  const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
 
   const fetchFn = config.fetch;
   const headers: Record<string, string> = {
@@ -569,7 +631,7 @@ export async function apiRequestToRegion<T>(
       `API returned ${response.status} ${response.statusText} (no body)`,
       response.status,
       "The server returned no content — the request may have matched no records.",
-      endpoint
+      endpoint,
     );
   }
 
@@ -582,7 +644,7 @@ export async function apiRequestToRegion<T>(
       `Invalid JSON in API response from ${endpoint}`,
       response.status,
       "The server returned a non-JSON response body (possible proxy or CDN issue).",
-      endpoint
+      endpoint,
     );
   }
 
@@ -607,7 +669,7 @@ export async function apiRequestToRegion<T>(
       throw new ApiError(
         `Unexpected response format from ${endpoint}`,
         response.status,
-        result.issues.map((issue) => issue.message).join(", ")
+        result.issues.map((issue) => issue.message).join(", "),
       );
     }
     return { data: result.output, headers: response.headers };
@@ -625,7 +687,7 @@ export async function apiRequestToRegion<T>(
  */
 async function throwRawApiError(
   response: Response,
-  endpoint: string
+  endpoint: string,
 ): Promise<never> {
   let detail: string | undefined;
   try {
@@ -667,7 +729,7 @@ async function throwRawApiError(
     response.status,
     enrichDetail(response.status, detail, detail !== undefined),
     endpoint,
-    is403
+    is403,
   );
 }
 
@@ -678,17 +740,14 @@ async function throwRawApiError(
 export async function apiRequestToRegionNoContent(
   regionUrl: string,
   endpoint: string,
-  options: Omit<ApiRequestOptions, "schema"> = {}
+  options: Omit<ApiRequestOptions, "schema"> = {},
 ): Promise<void> {
   const { method = "GET", body, params } = options;
   const config = getSdkConfig(regionUrl);
 
   const searchParams = buildSearchParams(params);
-  const normalizedEndpoint = endpoint.startsWith("/")
-    ? endpoint.slice(1)
-    : endpoint;
   const queryString = searchParams ? `?${searchParams.toString()}` : "";
-  const url = `${config.baseUrl}/api/0/${normalizedEndpoint}${queryString}`;
+  const url = buildSentryApiUrl(config.baseUrl, `${endpoint}${queryString}`);
 
   const fetchFn = config.fetch;
   const headers: Record<string, string> = {
@@ -721,12 +780,12 @@ export async function apiRequestToRegionNoContent(
  */
 export async function apiRequest<T>(
   endpoint: string,
-  options: ApiRequestOptions<T> = {}
+  options: ApiRequestOptions<T> = {},
 ): Promise<T> {
   const { data } = await apiRequestToRegion<T>(
     getApiBaseUrl(),
     endpoint,
-    options
+    options,
   );
   return data;
 }
@@ -794,7 +853,7 @@ export async function rawApiRequest(
      * origins outside the active token's trust scope before adding credentials.
      */
     baseUrl?: string;
-  } = {}
+  } = {},
 ): Promise<{
   status: number;
   statusText: string;
@@ -813,19 +872,15 @@ export async function rawApiRequest(
   // enforces isRequestOriginTrusted() before attaching Authorization.
   const config = baseUrl ? getSdkConfig(baseUrl) : getDefaultSdkConfig();
 
-  const normalizedEndpoint = endpoint.startsWith("/")
-    ? endpoint.slice(1)
-    : endpoint;
-  const endpointWithParams = appendSearchParams(normalizedEndpoint, params);
-  // getSdkConfig.baseUrl is the plain region URL; add /api/0/ for raw requests
-  const url = `${config.baseUrl}/api/0/${endpointWithParams}`;
+  const endpointWithParams = appendSearchParams(endpoint, params);
+  const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
 
   // Build request headers and body.
   // String bodies: no Content-Type unless the caller explicitly provides one.
   // Object bodies: application/json (auto-stringified).
   const isStringBody = typeof body === "string";
   const hasContentType = Object.keys(customHeaders).some(
-    (k) => k.toLowerCase() === "content-type"
+    (k) => k.toLowerCase() === "content-type",
   );
 
   const headers: Record<string, string> = { ...customHeaders };

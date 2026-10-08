@@ -32,7 +32,7 @@ describe("safeReadFile", () => {
   beforeEach(() => {
     dir = join(
       tmpdir(),
-      `safe-read-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `safe-read-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(dir, { recursive: true });
   });
@@ -86,7 +86,7 @@ describe("sentryclirc FIFO safety", () => {
     clearSentryCliRcCache();
     dir = join(
       tmpdir(),
-      `sentryclirc-fifo-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `sentryclirc-fifo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(dir, { recursive: true });
     // Point both global fallback locations into `dir` so the loader
@@ -127,7 +127,7 @@ describe("init read-files FIFO safety", () => {
   beforeEach(() => {
     dir = join(
       tmpdir(),
-      `readfiles-fifo-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `readfiles-fifo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(dir, { recursive: true });
   });
@@ -191,7 +191,7 @@ describe("init apply-patchset FIFO safety", () => {
   beforeEach(() => {
     dir = join(
       tmpdir(),
-      `applypatch-fifo-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `applypatch-fifo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(dir, { recursive: true });
   });
@@ -218,7 +218,7 @@ describe("init apply-patchset FIFO safety", () => {
           ],
         },
       },
-      { dryRun: false, authToken: undefined }
+      { dryRun: false, authToken: undefined },
     );
 
     expect(result.ok).toBe(false);
@@ -246,7 +246,7 @@ describe("init apply-patchset FIFO safety", () => {
           ],
         },
       },
-      { dryRun: false, authToken: undefined }
+      { dryRun: false, authToken: undefined },
     );
 
     expect(result.ok).toBe(false);
@@ -260,7 +260,7 @@ describe("workflow-inputs preReadCommonFiles FIFO safety", () => {
   beforeEach(() => {
     dir = join(
       tmpdir(),
-      `preread-fifo-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `preread-fifo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(dir, { recursive: true });
   });
@@ -287,7 +287,7 @@ describe("workflow-inputs preReadCommonFiles FIFO safety", () => {
   test("rejects a common-config alias to sensitive metadata", async () => {
     writeFileSync(
       join(dir, ".netrc"),
-      "machine example.test login user password secret\n"
+      "machine example.test login user password secret\n",
     );
     symlinkSync(".netrc", join(dir, "package.json"));
 
@@ -319,8 +319,8 @@ describe("workflow-inputs preReadCommonFiles FIFO safety", () => {
         buffer: Buffer,
         offset: number,
         length: number,
-        position: number | null
-      ) => actualHandle.read(buffer, offset, Math.min(length, 3), position)
+        position: number | null,
+      ) => actualHandle.read(buffer, offset, Math.min(length, 3), position),
     );
     const openSpy = vi.spyOn(fs.promises, "open").mockResolvedValue({
       close: vi.fn().mockResolvedValue(undefined),

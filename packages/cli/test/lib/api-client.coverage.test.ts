@@ -6,7 +6,7 @@
  * pattern as api-client.seer.test.ts.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import { number, object, string } from "valibot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -231,7 +231,7 @@ describe("issues.ts", () => {
           new Response(JSON.stringify({}), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       try {
@@ -249,7 +249,7 @@ describe("issues.ts", () => {
           new Response(JSON.stringify({ detail: "Not Found" }), {
             status: 404,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       try {
@@ -299,7 +299,7 @@ describe("issues.ts", () => {
               "Content-Type": "application/json",
               Link: linkHeader("cursor-abc", false),
             },
-          })
+          }),
       );
 
       const result = await listIssuesAllPages("test-org", "test-project", {
@@ -328,7 +328,7 @@ describe("issues.ts", () => {
                 "Content-Type": "application/json",
                 Link: linkHeader("page2-cursor", true),
               },
-            }
+            },
           );
         }
         // Second page: return items without cursor
@@ -367,8 +367,8 @@ describe("issues.ts", () => {
                 "Content-Type": "application/json",
                 Link: linkHeader("next", true),
               },
-            }
-          )
+            },
+          ),
       );
 
       const result = await listIssuesAllPages("test-org", "test-project", {
@@ -381,7 +381,7 @@ describe("issues.ts", () => {
 
     test("throws when limit < 1", async () => {
       await expect(
-        listIssuesAllPages("test-org", "test-project", { limit: 0 })
+        listIssuesAllPages("test-org", "test-project", { limit: 0 }),
       ).rejects.toThrow("limit must be at least 1");
     });
 
@@ -398,8 +398,8 @@ describe("issues.ts", () => {
                 "Content-Type": "application/json",
                 Link: linkHeader("end", false),
               },
-            }
-          )
+            },
+          ),
       );
 
       await listIssuesAllPages("test-org", "test-project", {
@@ -425,8 +425,8 @@ describe("issues.ts", () => {
                 "Content-Type": "application/json",
                 Link: linkHeader("has-more", true),
               },
-            }
-          )
+            },
+          ),
       );
 
       const result = await listIssuesAllPages("test-org", "test-project", {
@@ -448,7 +448,7 @@ describe("issues.ts", () => {
         requestedLimits.push(url.searchParams.get("limit") ?? "");
         const count = callCount === 3 ? 50 : 100;
         const issues = Array.from({ length: count }, (_, index) =>
-          mockIssue({ id: `${callCount}-${index}` })
+          mockIssue({ id: `${callCount}-${index}` }),
         );
         return new Response(JSON.stringify(issues), {
           status: 200,
@@ -627,7 +627,7 @@ describe("projects.ts", () => {
             headers: {
               "Content-Type": "application/json",
             },
-          })
+          }),
       );
 
       const result = await listProjects("test-org");
@@ -672,7 +672,7 @@ describe("projects.ts", () => {
               "Content-Type": "application/json",
               Link: linkHeader("next-cursor", true),
             },
-          })
+          }),
       );
 
       const result = await listProjectsPaginated("test-org");
@@ -729,7 +729,7 @@ describe("projects.ts", () => {
           mockProject({
             id: String((callCount - 1) * API_MAX_PER_PAGE + i + 1),
             slug: `proj-${(callCount - 1) * API_MAX_PER_PAGE + i}`,
-          })
+          }),
         );
 
         const hasMore = callCount === 1;
@@ -836,12 +836,12 @@ describe("projects.ts", () => {
         async () =>
           new Response(
             JSON.stringify({ detail: MEMBER_PROJECT_CREATION_DISABLED_DETAIL }),
-            { status: 403, headers: { "Content-Type": "application/json" } }
-          )
+            { status: 403, headers: { "Content-Type": "application/json" } },
+          ),
       );
 
       await expect(
-        createProjectWithAutoTeam("test-org", { name: "Blocked" })
+        createProjectWithAutoTeam("test-org", { name: "Blocked" }),
       ).rejects.toMatchObject({ status: 403 });
     });
 
@@ -918,7 +918,7 @@ describe("projects.ts", () => {
           new Response(JSON.stringify(keys), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       const dsn = await tryGetPrimaryDsn("test-org", "test-project");
@@ -940,7 +940,7 @@ describe("projects.ts", () => {
           new Response(JSON.stringify(keys), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       const dsn = await tryGetPrimaryDsn("test-org", "test-project");
@@ -953,7 +953,7 @@ describe("projects.ts", () => {
           new Response(JSON.stringify([]), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       const dsn = await tryGetPrimaryDsn("test-org", "test-project");
@@ -966,7 +966,7 @@ describe("projects.ts", () => {
           new Response(JSON.stringify({ detail: "Not found" }), {
             status: 404,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       const captureSpy = vi.spyOn(Sentry, "captureException");
@@ -986,7 +986,7 @@ describe("projects.ts", () => {
           new Response(JSON.stringify({ detail: "Internal error" }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       const captureSpy = vi.spyOn(Sentry, "captureException");
@@ -1052,7 +1052,7 @@ describe("users.ts", () => {
           new Response(JSON.stringify({ name: "no-id" }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       await expect(getCurrentUser()).rejects.toThrow(ApiError);
@@ -1091,7 +1091,7 @@ describe("events.ts", () => {
       globalThis.fetch = mockFetch(async (input, init) => {
         const req = new Request(input!, init);
         expect(req.url).toContain(
-          "/projects/test-org/test-project/events/evt-abc/"
+          "/projects/test-org/test-project/events/evt-abc/",
         );
         return new Response(JSON.stringify(event), {
           status: 200,
@@ -1111,7 +1111,7 @@ describe("events.ts", () => {
         const req = new Request(input!, init);
         const url = new URL(req.url);
         expect(url.pathname).toContain(
-          "/projects/test-org/test-project/events/evt-abc/attachments/"
+          "/projects/test-org/test-project/events/evt-abc/attachments/",
         );
         expect(url.searchParams.get("per_page")).toBe("100");
 
@@ -1126,7 +1126,7 @@ describe("events.ts", () => {
                 "Content-Type": "application/json",
                 Link: linkHeader("attachments-next", true),
               },
-            }
+            },
           );
         }
 
@@ -1136,14 +1136,14 @@ describe("events.ts", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       });
 
       const result = await listEventAttachments(
         "test-org",
         "test-project",
-        "evt-abc"
+        "evt-abc",
       );
 
       expect(result.map((attachment) => attachment.id)).toEqual([
@@ -1167,7 +1167,7 @@ describe("events.ts", () => {
           new Response(JSON.stringify(resolved), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       const result = await resolveEventInOrg("test-org", "evt-abc");
@@ -1182,7 +1182,7 @@ describe("events.ts", () => {
           new Response(JSON.stringify({ detail: "Not found" }), {
             status: 404,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       const result = await resolveEventInOrg("test-org", "evt-abc");
@@ -1195,7 +1195,7 @@ describe("events.ts", () => {
           new Response(JSON.stringify({ detail: "Internal Server Error" }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       await expect(resolveEventInOrg("test-org", "evt-abc")).rejects.toThrow();
@@ -1221,7 +1221,7 @@ describe("traces.ts", () => {
       globalThis.fetch = mockFetch(async (input, init) => {
         const req = new Request(input!, init);
         expect(req.url).toContain(
-          "/organizations/test-org/trace/abc123def456/"
+          "/organizations/test-org/trace/abc123def456/",
         );
         const url = new URL(req.url);
         expect(url.searchParams.get("timestamp")).toBe("1700000000");
@@ -1307,9 +1307,8 @@ describe("repositories.ts", () => {
       });
 
       // Dynamic import to avoid circular issue with already-imported listRepositories
-      const { listAllRepositories } = await import(
-        "../../src/lib/api/repositories.js"
-      );
+      const { listAllRepositories } =
+        await import("../../src/lib/api/repositories.js");
       const result = await listAllRepositories("test-org");
       expect(result).toHaveLength(3);
       expect(result.map((r) => r.name)).toEqual([
@@ -1456,8 +1455,8 @@ describe("infrastructure.ts", () => {
             data: undefined;
             error: unknown;
           },
-          "context"
-        )
+          "context",
+        ),
       ).toThrow(apiError);
     });
 
@@ -1469,8 +1468,8 @@ describe("infrastructure.ts", () => {
             data: undefined;
             error: unknown;
           },
-          "context"
-        )
+          "context",
+        ),
       ).toThrow(authError);
     });
 
@@ -1480,7 +1479,7 @@ describe("infrastructure.ts", () => {
           data: { foo: string };
           error: undefined;
         },
-        "context"
+        "context",
       );
       expect(result).toEqual({ foo: "bar" });
     });
@@ -1499,7 +1498,7 @@ describe("infrastructure.ts", () => {
       try {
         unwrapResult(
           result as { data: undefined; error: unknown },
-          "Failed operation"
+          "Failed operation",
         );
         expect(true).toBe(false); // Should not reach
       } catch (error) {
@@ -1519,7 +1518,7 @@ describe("infrastructure.ts", () => {
             status: 429,
             statusText: "Too Many Requests",
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       try {
@@ -1540,7 +1539,7 @@ describe("infrastructure.ts", () => {
             status: 400,
             statusText: "Bad Request",
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       try {
@@ -1562,7 +1561,7 @@ describe("infrastructure.ts", () => {
           new Response("Internal Server Error", {
             status: 500,
             statusText: "Internal Server Error",
-          })
+          }),
       );
 
       try {
@@ -1586,7 +1585,7 @@ describe("infrastructure.ts", () => {
           new Response(JSON.stringify({ wrong_field: "value" }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       try {
@@ -1611,7 +1610,7 @@ describe("infrastructure.ts", () => {
           new Response(JSON.stringify({ name: "test", count: 42 }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       const { data } = await apiRequestToRegion("https://sentry.io", "/test/", {
@@ -1729,7 +1728,7 @@ describe("teams.ts (paginated)", () => {
               "Content-Type": "application/json",
               Link: linkHeader("teams-next", true),
             },
-          })
+          }),
       );
 
       const result = await listTeamsPaginated("test-org");
@@ -1781,7 +1780,7 @@ describe("repositories.ts (paginated)", () => {
               "Content-Type": "application/json",
               Link: linkHeader("repos-next", true),
             },
-          })
+          }),
       );
 
       const result = await listRepositoriesPaginated("test-org");
@@ -1978,7 +1977,7 @@ describe("logs.ts (detailed)", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         return new Response(JSON.stringify({}), { status: 200 });
@@ -2092,7 +2091,7 @@ describe("events.ts (findEventAcrossOrgs)", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       // resolveOrganizationEventId
@@ -2144,7 +2143,7 @@ describe("infrastructure.ts (rawApiRequest)", () => {
           new Response("plain text response", {
             status: 200,
             headers: { "Content-Type": "text/plain" },
-          })
+          }),
       );
 
       const result = await rawApiRequest("/test/");
@@ -2157,7 +2156,7 @@ describe("infrastructure.ts (rawApiRequest)", () => {
           new Response(JSON.stringify({ detail: "Not found" }), {
             status: 404,
             headers: { "Content-Type": "application/json" },
-          })
+          }),
       );
 
       const result = await rawApiRequest("/test/");
@@ -2227,7 +2226,7 @@ describe("infrastructure.ts (rawApiRequest)", () => {
     test("merges query params with an existing endpoint query", async () => {
       globalThis.fetch = mockFetch(async (input) => {
         const url = new URL(
-          String(input instanceof Request ? input.url : input)
+          String(input instanceof Request ? input.url : input),
         );
         expect(url.searchParams.get("download")).toBe("1");
         expect(url.searchParams.get("per_page")).toBe("10");
@@ -2252,23 +2251,20 @@ describe("infrastructure.ts (helpers)", () => {
   describe("buildSearchParams", () => {
     // Import from infrastructure for direct testing
     test("returns undefined for undefined input", async () => {
-      const { buildSearchParams } = await import(
-        "../../src/lib/api/infrastructure.js"
-      );
+      const { buildSearchParams } =
+        await import("../../src/lib/api/infrastructure.js");
       expect(buildSearchParams(undefined)).toBeUndefined();
     });
 
     test("returns undefined for all-undefined values", async () => {
-      const { buildSearchParams } = await import(
-        "../../src/lib/api/infrastructure.js"
-      );
+      const { buildSearchParams } =
+        await import("../../src/lib/api/infrastructure.js");
       expect(buildSearchParams({ a: undefined, b: undefined })).toBeUndefined();
     });
 
     test("handles string, number, and boolean values", async () => {
-      const { buildSearchParams } = await import(
-        "../../src/lib/api/infrastructure.js"
-      );
+      const { buildSearchParams } =
+        await import("../../src/lib/api/infrastructure.js");
       const result = buildSearchParams({
         str: "hello",
         num: 42,
@@ -2281,18 +2277,16 @@ describe("infrastructure.ts (helpers)", () => {
     });
 
     test("handles string arrays (repeated keys)", async () => {
-      const { buildSearchParams } = await import(
-        "../../src/lib/api/infrastructure.js"
-      );
+      const { buildSearchParams } =
+        await import("../../src/lib/api/infrastructure.js");
       const result = buildSearchParams({ tags: ["a", "b", "c"] });
       expect(result).toBeDefined();
       expect(result!.getAll("tags")).toEqual(["a", "b", "c"]);
     });
 
     test("skips undefined values", async () => {
-      const { buildSearchParams } = await import(
-        "../../src/lib/api/infrastructure.js"
-      );
+      const { buildSearchParams } =
+        await import("../../src/lib/api/infrastructure.js");
       const result = buildSearchParams({
         present: "yes",
         missing: undefined,
@@ -2305,23 +2299,20 @@ describe("infrastructure.ts (helpers)", () => {
 
   describe("parseLinkHeader", () => {
     test("returns empty for null header", async () => {
-      const { parseLinkHeader } = await import(
-        "../../src/lib/api/infrastructure.js"
-      );
+      const { parseLinkHeader } =
+        await import("../../src/lib/api/infrastructure.js");
       expect(parseLinkHeader(null)).toEqual({});
     });
 
     test("returns empty for empty string", async () => {
-      const { parseLinkHeader } = await import(
-        "../../src/lib/api/infrastructure.js"
-      );
+      const { parseLinkHeader } =
+        await import("../../src/lib/api/infrastructure.js");
       expect(parseLinkHeader("")).toEqual({});
     });
 
     test("extracts next cursor when results=true", async () => {
-      const { parseLinkHeader } = await import(
-        "../../src/lib/api/infrastructure.js"
-      );
+      const { parseLinkHeader } =
+        await import("../../src/lib/api/infrastructure.js");
       const header =
         '<https://sentry.io/api/0/next/>; rel="next"; results="true"; cursor="1735689600000:0:0"';
       expect(parseLinkHeader(header)).toEqual({
@@ -2330,18 +2321,16 @@ describe("infrastructure.ts (helpers)", () => {
     });
 
     test("returns empty when results=false", async () => {
-      const { parseLinkHeader } = await import(
-        "../../src/lib/api/infrastructure.js"
-      );
+      const { parseLinkHeader } =
+        await import("../../src/lib/api/infrastructure.js");
       const header =
         '<https://sentry.io/api/0/next/>; rel="next"; results="false"; cursor="abc"';
       expect(parseLinkHeader(header)).toEqual({});
     });
 
     test("handles multiple link entries", async () => {
-      const { parseLinkHeader } = await import(
-        "../../src/lib/api/infrastructure.js"
-      );
+      const { parseLinkHeader } =
+        await import("../../src/lib/api/infrastructure.js");
       const header =
         '<url>; rel="previous"; results="false"; cursor="prev",' +
         '<url>; rel="next"; results="true"; cursor="next-val"';

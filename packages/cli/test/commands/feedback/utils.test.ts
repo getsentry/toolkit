@@ -16,11 +16,11 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 
 function issue(overrides: Partial<SentryIssue> = {}): SentryIssue {
@@ -67,7 +67,7 @@ describe("resolveFeedback", () => {
     });
 
     await expect(
-      resolveFeedback("TEST-PROJECT-1A", "/tmp")
+      resolveFeedback("TEST-PROJECT-1A", "/tmp"),
     ).rejects.toMatchObject<Partial<ResolutionError>>({
       name: "ResolutionError",
       hint: "sentry issue view test-org/TEST-PROJECT-1A",
@@ -76,15 +76,34 @@ describe("resolveFeedback", () => {
 
   test("translates short-ID 404s to feedback-specific recovery", async () => {
     vi.spyOn(issueUtils, "resolveIssue").mockRejectedValue(
-      new ApiError("Short ID not found", 404)
+      new ApiError("Short ID not found", 404),
     );
 
     await expect(
-      resolveFeedback("TEST-PROJECT-404", "/tmp")
+      resolveFeedback("TEST-PROJECT-404", "/tmp"),
     ).rejects.toMatchObject<Partial<ResolutionError>>({
       name: "ResolutionError",
       hint: "sentry feedback view <org>/TEST-PROJECT-404",
       suggestions: ["List available Feedback: sentry feedback list"],
+    });
+  });
+
+  test("keeps mutation recovery hints on the requested command", async () => {
+    const resolveIssueSpy = vi
+      .spyOn(issueUtils, "resolveIssue")
+      .mockRejectedValue(new ApiError("Short ID not found", 404));
+
+    await expect(
+      resolveFeedback("TEST-PROJECT-404", "/tmp", "resolve"),
+    ).rejects.toMatchObject<Partial<ResolutionError>>({
+      name: "ResolutionError",
+      hint: "sentry feedback resolve <org>/TEST-PROJECT-404",
+    });
+    expect(resolveIssueSpy).toHaveBeenCalledWith({
+      issueArg: "TEST-PROJECT-404",
+      cwd: "/tmp",
+      command: "resolve",
+      commandBase: "sentry feedback",
     });
   });
 });

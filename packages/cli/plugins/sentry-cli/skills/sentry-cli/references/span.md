@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-span
-version: 0.46.0-dev.0
+version: 0.48.0-dev.0
 description: List and view spans in projects or traces
 requires:
   bins: ["sentry"]
@@ -19,7 +19,7 @@ List spans in a project or trace
 - `-n, --limit <value> - Number of spans (<=1000) - (default: "25")`
 - `-q, --query <value> - Filter spans (e.g., "op:db", "project:backend", "project:[cli,api]")`
 - `-s, --sort <value> - Sort order: date, duration - (default: "date")`
-- `-t, --period <value> - Time range: "7d", "2026-08-01..2026-09-01", ">=2026-08-01" - (default: "7d")`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 

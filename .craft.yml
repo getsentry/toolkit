@@ -1,8 +1,11 @@
-minVersion: '2.29.0'
+minVersion: '2.33.0'
 workspaces:
   packages/cli:
     changelog:
       policy: auto
+      # The CLI release also ships the documentation workspace.
+      includePaths:
+        - apps/cli-docs
     versioning:
       policy: auto
     preReleaseCommand: bash -c 'cd packages/cli && node --experimental-strip-types script/bump-version.ts --pre'
@@ -29,7 +32,7 @@ workspaces:
             name: 'Sentry CLI'
             packageUrl: 'https://www.npmjs.com/package/sentry'
             mainDocsUrl: 'https://cli.sentry.dev'
-            urlTemplate: 'https://github.com/getsentry/sentry-mcp/releases/download/cli@{{version}}/{{file}}'
+            urlTemplate: 'https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/{{file}}'
             includeNames: '/^sentry-.*\.gz$/'
             checksums:
               - algorithm: sha256
@@ -48,20 +51,20 @@ workspaces:
 
             if OS.mac?
               if Hardware::CPU.arm?
-                url "https://github.com/getsentry/sentry-mcp/releases/download/cli@{{version}}/sentry-darwin-arm64.gz"
+                url "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/sentry-darwin-arm64.gz"
                 sha256 "{{checksums.sentry-darwin-arm64__gz}}"
               elsif Hardware::CPU.intel?
-                url "https://github.com/getsentry/sentry-mcp/releases/download/cli@{{version}}/sentry-darwin-x64.gz"
+                url "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/sentry-darwin-x64.gz"
                 sha256 "{{checksums.sentry-darwin-x64__gz}}"
               else
                 raise "Unsupported macOS CPU architecture: #{Hardware::CPU.type}"
               end
             elsif OS.linux?
               if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-                url "https://github.com/getsentry/sentry-mcp/releases/download/cli@{{version}}/sentry-linux-arm64.gz"
+                url "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/sentry-linux-arm64.gz"
                 sha256 "{{checksums.sentry-linux-arm64__gz}}"
               elsif Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-                url "https://github.com/getsentry/sentry-mcp/releases/download/cli@{{version}}/sentry-linux-x64.gz"
+                url "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/sentry-linux-x64.gz"
                 sha256 "{{checksums.sentry-linux-x64__gz}}"
               else
                 raise "Unsupported Linux CPU architecture: #{Hardware::CPU.type} (only 64-bit arm and x86_64 are supported)"

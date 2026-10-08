@@ -122,7 +122,7 @@ export class IgnoreStack implements IgnoreMatcher {
       if (opts.includeGitInfoExclude) {
         await appendGitignoreFile(
           root,
-          path.join(opts.cwd, ".git", "info", "exclude")
+          path.join(opts.cwd, ".git", "info", "exclude"),
         );
       }
     }
@@ -185,13 +185,13 @@ export class IgnoreStack implements IgnoreMatcher {
    * instances, a child `!foo` pattern flips an earlier `ignored=true`
    * back to `false` because we see later results last.
    */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: two-tier fast+slow path with negation handling is inherently branchy
+  // two-tier fast+slow path with negation handling is inherently branchy
   isIgnored(relPath: string, isDirectory: boolean): boolean {
     if (path.isAbsolute(relPath)) {
       // Programming error — a misuse that would silently produce wrong
       // results inside `ignore`. Throwing here flags it immediately.
       throw new Error(
-        `IgnoreStack.isIgnored requires a relative path, got: ${relPath}`
+        `IgnoreStack.isIgnored requires a relative path, got: ${relPath}`,
       );
     }
     if (relPath === "" || relPath === ".") {

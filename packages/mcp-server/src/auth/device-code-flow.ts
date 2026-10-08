@@ -2,18 +2,22 @@ import { exec } from "node:child_process";
 import * as fs from "node:fs";
 import { LIB_VERSION } from "@sentry/mcp-core/version";
 import {
+  deviceCodeRequestBody,
+  deviceTokenRequestBody,
+} from "@sentry/toolkit-core/oauth-device";
+import { advanceDevicePoll } from "@sentry/toolkit-core/oauth-poll";
+import {
   DEVICE_CODE_ENDPOINT,
   DEVICE_CODE_SCOPES,
-  SLOW_DOWN_INCREMENT_SEC,
   TOKEN_ENDPOINT,
 } from "./constants";
 import {
-  DeviceCodeResponseSchema,
   DeviceCodeErrorSchema,
-  TokenResponseSchema,
-  getTokenUserLabel,
   type DeviceCodeResponse,
+  DeviceCodeResponseSchema,
+  getTokenUserLabel,
   type TokenResponse,
+  TokenResponseSchema,
 } from "./types";
 
 const USER_AGENT = `sentry-mcp-server/${LIB_VERSION}`;
@@ -40,10 +44,7 @@ export async function requestDeviceCode(
       "Content-Type": "application/x-www-form-urlencoded",
       "User-Agent": USER_AGENT,
     },
-    body: new URLSearchParams({
-      client_id: clientId,
-      scope: scopes,
-    }),
+    body: deviceCodeRequestBody(clientId, scopes),
   });
 
   if (!resp.ok) {
@@ -87,11 +88,7 @@ export async function pollForToken({
         "Content-Type": "application/x-www-form-urlencoded",
         "User-Agent": USER_AGENT,
       },
-      body: new URLSearchParams({
-        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        device_code: deviceCode,
-        client_id: clientId,
-      }),
+      body: deviceTokenRequestBody(clientId, deviceCode),
     });
 
     if (resp.ok) {
@@ -103,24 +100,22 @@ export async function pollForToken({
     const parsed = DeviceCodeErrorSchema.safeParse(errorBody);
     const errorCode = parsed.success ? parsed.data.error : undefined;
 
-    switch (errorCode) {
-      case "authorization_pending":
-        // Keep polling at current interval
+    const outcome = advanceDevicePoll(pollInterval, errorCode);
+    switch (outcome.status) {
+      case "retry":
+        pollInterval = outcome.intervalSeconds;
         continue;
-      case "slow_down":
-        pollInterval += SLOW_DOWN_INCREMENT_SEC;
-        continue;
-      case "access_denied":
+      case "denied":
         throw new DeviceCodeError(
           "Authorization was denied. Please try again or provide --access-token.",
           errorCode,
         );
-      case "expired_token":
+      case "expired":
         throw new DeviceCodeError(
           "Device code expired before authorization was completed.",
           errorCode,
         );
-      default:
+      case "unexpected":
         throw new DeviceCodeError(
           `Unexpected error during device code polling: ${errorCode ?? resp.statusText}`,
           errorCode,

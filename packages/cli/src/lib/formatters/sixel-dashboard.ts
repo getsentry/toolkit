@@ -45,7 +45,7 @@ const TEXT_COLOR: Rgb = [224, 224, 224];
 /** ANSI CSI, OSC, and DCS escape sequences emitted by text formatters. */
 const TERMINAL_ESCAPE_RE = new RegExp(
   `${String.fromCharCode(27)}(?:\\[[0-?]*[ -/]*[@-~]|\\][\\s\\S]*?(?:${String.fromCharCode(7)}|${String.fromCharCode(27)}\\\\)|P[\\s\\S]*?${String.fromCharCode(27)}\\\\)`,
-  "g"
+  "g",
 );
 
 /** Aggregate function and its simple arguments in a raw query expression. */
@@ -93,7 +93,7 @@ export type RenderSixelDashboardOptions = {
   renderTextContent: (
     widget: SixelDashboardWidget,
     innerWidth: number,
-    contentHeight: number
+    contentHeight: number,
   ) => string[];
   /**
    * Encode the finished RGBA canvas to a terminal graphics escape string.
@@ -116,7 +116,7 @@ export type RenderSixelDashboardResult =
 /** Render every dashboard widget into one terminal-positioned sixel image. */
 export function renderDashboardAsSixel(
   data: SixelDashboardData,
-  options: RenderSixelDashboardOptions
+  options: RenderSixelDashboardOptions,
 ): RenderSixelDashboardResult {
   const widgets = positionWidgets(data.widgets);
   if (widgets.length === 0) {
@@ -125,7 +125,7 @@ export function renderDashboardAsSixel(
 
   const pixelWidth = Math.max(1, Math.floor(options.pixelWidth));
   const gridHeight = Math.max(
-    ...widgets.map((item) => item.layout.y + item.layout.h)
+    ...widgets.map((item) => item.layout.y + item.layout.h),
   );
   const pixelHeight = gridHeight * LINES_PER_GRID_UNIT * options.cellHeight;
   const canvasPixels = pixelWidth * pixelHeight;
@@ -157,8 +157,8 @@ function positionWidgets(widgets: SixelDashboardWidget[]): PositionedWidget[] {
   let nextY = Math.max(
     0,
     ...widgets.flatMap((widget) =>
-      widget.layout ? [widget.layout.y + widget.layout.h] : []
-    )
+      widget.layout ? [widget.layout.y + widget.layout.h] : [],
+    ),
   );
 
   return widgets.map((widget) => {
@@ -175,18 +175,18 @@ function positionWidgets(widgets: SixelDashboardWidget[]): PositionedWidget[] {
 function drawWidget(
   image: ReturnType<typeof createPixelCanvas>,
   positioned: PositionedWidget,
-  options: RenderSixelDashboardOptions
+  options: RenderSixelDashboardOptions,
 ): void {
   const { widget, layout } = positioned;
   const x = Math.floor((layout.x / GRID_COLUMNS) * image.width);
   const y = layout.y * LINES_PER_GRID_UNIT * options.cellHeight;
   const width = Math.max(
     1,
-    Math.floor((layout.w / GRID_COLUMNS) * image.width)
+    Math.floor((layout.w / GRID_COLUMNS) * image.width),
   );
   const height = Math.max(
     1,
-    layout.h * LINES_PER_GRID_UNIT * options.cellHeight
+    layout.h * LINES_PER_GRID_UNIT * options.cellHeight,
   );
   drawFrame(image, { x, y, width, height, title: widget.title, options });
 
@@ -235,7 +235,7 @@ function drawFrame(
     height: number;
     title: string;
     options: RenderSixelDashboardOptions;
-  }
+  },
 ): void {
   const { x, y, width, height, title } = options;
   drawPixelRect(image, { x, y, width, height: 1, color: FRAME_COLOR });
@@ -267,13 +267,13 @@ function drawFrame(
 /** Early-out for empty data or heatmap (which has its own rasterizer). */
 function tryRenderSpecialChart(
   image: ReturnType<typeof createPixelCanvas>,
-  options: Parameters<typeof drawChartContent>[1]
+  options: Parameters<typeof drawChartContent>[1],
 ): boolean {
   if (options.data.series.length === 0) {
     const label = "NO DATA";
     const maxColumns = Math.max(
       1,
-      Math.floor(options.width / options.cellWidth)
+      Math.floor(options.width / options.cellWidth),
     );
     const labelColumns = Math.min(label.length, maxColumns);
     drawPixelText(image, label, {
@@ -281,7 +281,7 @@ function tryRenderSpecialChart(
         options.x +
         Math.max(
           0,
-          Math.floor((options.width - labelColumns * options.cellWidth) / 2)
+          Math.floor((options.width - labelColumns * options.cellWidth) / 2),
         ),
       y:
         options.y +
@@ -323,7 +323,7 @@ function drawChartContent(
     height: number;
     cellWidth: number;
     cellHeight: number;
-  }
+  },
 ): void {
   if (tryRenderSpecialChart(image, options)) {
     return;
@@ -336,7 +336,7 @@ function drawChartContent(
   }
   const contentRows = Math.max(
     1,
-    Math.floor(options.height / options.cellHeight)
+    Math.floor(options.height / options.cellHeight),
   );
   const hasLegend = contentRows >= 4;
   const hasAxisLabels = contentRows >= 5;
@@ -388,7 +388,7 @@ function drawChartContent(
         cellHeight: options.cellHeight,
         maxColumns: gutterColumns,
         color: FRAME_COLOR,
-      }
+      },
     );
     drawPixelText(image, "0", {
       x: options.x,
@@ -438,7 +438,7 @@ function drawChartLabels(
     width: number;
     cellWidth: number;
     cellHeight: number;
-  }
+  },
 ): void {
   const columns = Math.max(1, Math.floor(options.width / options.cellWidth));
   const firstTimestamp = options.data.series[0]?.values[0]?.timestamp;
@@ -484,7 +484,7 @@ function drawLegend(
     width: number;
     cellWidth: number;
     cellHeight: number;
-  }
+  },
 ): void {
   let column = 0;
   const maxColumns = Math.max(1, Math.floor(options.width / options.cellWidth));
@@ -496,7 +496,7 @@ function drawLegend(
     const availableColumns = maxColumns - column - 2;
     const label = truncateLegendLabel(
       formatLegendLabel(series.label),
-      Math.min(18, availableColumns)
+      Math.min(18, availableColumns),
     );
     const requiredColumns = Math.min(maxColumns, label.length + 2);
     if (column + requiredColumns > maxColumns) {
@@ -551,7 +551,7 @@ function truncateLegendLabel(label: string, maxColumns: number): string {
 /** Format a number compactly enough for the chart-axis gutter. */
 function formatChartValue(
   value: number,
-  unit: string | null | undefined
+  unit: string | null | undefined,
 ): string {
   const formatted = new Intl.NumberFormat("en", {
     notation: "compact",
@@ -563,7 +563,7 @@ function formatChartValue(
 /** Format timestamps using the same span-aware form as the character dashboard. */
 export function formatTimestamp(
   timestamp: number | undefined,
-  spanDays: number
+  spanDays: number,
 ): string {
   if (timestamp === undefined) {
     return "";

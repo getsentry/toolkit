@@ -94,12 +94,19 @@ type BaseArgs = readonly unknown[];
 type StricliBuilderArgs<CONTEXT extends CommandContext> =
   import("@stricli/core").CommandBuilderArguments<BaseFlags, BaseArgs, CONTEXT>;
 
+/** A runnable example stored with its command for generated documentation. */
+export type CommandExample = {
+  readonly description: string;
+  readonly command: string;
+};
+
 /**
- * Native Stricli documentation. When `customUsage` is present, its first line
- * must be the canonical signature suffix used by introspection and generated
- * docs; later lines may document equivalent forms.
+ * Native Stricli documentation plus canonical examples for generated docs.
  */
-type CommandDocumentation = StricliBuilderArgs<CommandContext>["docs"];
+export type CommandDocumentation =
+  StricliBuilderArgs<CommandContext>["docs"] & {
+    readonly examples?: readonly CommandExample[];
+  };
 
 /**
  * Command function type for Sentry CLI commands.
@@ -126,7 +133,7 @@ type SentryCommandFunction<
   this: CONTEXT,
   flags: FLAGS,
   ...args: ARGS
-  // biome-ignore lint/suspicious/noConfusingVoidType: void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
+  // void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
 ) => AsyncGenerator<unknown, CommandReturn | void, undefined>;
 
 /**
@@ -156,7 +163,7 @@ type LocalCommandBuilderArguments<
    * })
    * ```
    */
-  // biome-ignore lint/suspicious/noExplicitAny: Variance erasure — OutputConfig<T>.human is contravariant in T, but the builder erases T because it doesn't know the output type. Using `any` allows commands to declare OutputConfig<SpecificType> while the wrapper handles it generically.
+  // oxlint-disable-next-line typescript/no-explicit-any -- Variance erasure — OutputConfig<T>.human is contravariant in T, but the builder erases T because it doesn't know the output type. Using `any` allows commands to declare OutputConfig<SpecificType> while the wrapper handles it generically.
   readonly output?: OutputConfig<any>;
   /**
    * Whether the command requires authentication. Defaults to `true`.
@@ -297,7 +304,7 @@ const LOG_LEVEL_KEY = "log-level";
  */
 export function applyLoggingFlags(
   logLevel: LogLevelName | undefined,
-  verbose: boolean
+  verbose: boolean,
 ): void {
   if (logLevel) {
     setLogLevel(parseLogLevel(logLevel));
@@ -329,7 +336,7 @@ export function applyOrgProjectFlags(
   org: string | undefined,
   project: string | undefined,
   commandOwnsOrg: boolean,
-  commandOwnsProject: boolean
+  commandOwnsProject: boolean,
 ): void {
   const env = getEnv();
   const orgTrimmed = commandOwnsOrg ? undefined : org?.trim();
@@ -384,7 +391,7 @@ export function applyOrgProjectFlags(
  * Build the `--fields` flag definition, enriched with available field names
  * when a schema is registered on the output config.
  */
-// biome-ignore lint/suspicious/noExplicitAny: OutputConfig type is erased at the builder level
+// oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
 function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
   if (!outputConfig?.schema) {
     return FIELDS_FLAG;
@@ -407,8 +414,8 @@ function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
  */
 function enrichDocsWithSchema(
   docs: CommandDocumentation,
-  // biome-ignore lint/suspicious/noExplicitAny: OutputConfig type is erased at the builder level
-  outputConfig?: OutputConfig<any>
+  // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
+  outputConfig?: OutputConfig<any>,
 ): CommandDocumentation {
   if (!outputConfig?.schema) {
     return docs;
@@ -422,6 +429,23 @@ function enrichDocsWithSchema(
   return {
     ...docs,
     fullDescription: `${baseFull}\n\n${jsonFieldsDoc}`,
+  };
+}
+
+/** Render command-owned examples in native help without exposing custom fields to Stricli. */
+function prepareNativeDocs(
+  docs: CommandDocumentation,
+): StricliBuilderArgs<CommandContext>["docs"] {
+  const { examples, ...nativeDocs } = docs;
+  if (!examples?.length) {
+    return nativeDocs;
+  }
+  const rendered = examples
+    .map(({ description, command }) => `  ${command} # ${description}`)
+    .join("\n");
+  return {
+    ...nativeDocs,
+    fullDescription: `${nativeDocs.fullDescription ?? nativeDocs.brief}\n\nExamples:\n${rendered}`,
   };
 }
 
@@ -451,8 +475,8 @@ const ALWAYS_STRIP = new Set([LOG_LEVEL_KEY]);
  */
 function mergeGlobalFlags(
   existingFlags: Record<string, unknown>,
-  // biome-ignore lint/suspicious/noExplicitAny: OutputConfig type is erased at the builder level
-  outputConfig?: OutputConfig<any>
+  // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
+  outputConfig?: OutputConfig<any>,
 ): {
   mergedFlags: Record<string, unknown>;
   commandOwnsOrg: boolean;
@@ -494,7 +518,7 @@ export function buildCommand<
   const ARGS extends BaseArgs = [],
   const CONTEXT extends CommandContext = CommandContext,
 >(
-  builderArgs: LocalCommandBuilderArguments<FLAGS, ARGS, CONTEXT>
+  builderArgs: LocalCommandBuilderArguments<FLAGS, ARGS, CONTEXT>,
 ): Command<CONTEXT> {
   const originalFunc = builderArgs.func;
   const outputConfig = builderArgs.output;
@@ -512,9 +536,10 @@ export function buildCommand<
   const { mergedFlags, commandOwnsOrg, commandOwnsProject, stripKeys } =
     mergeGlobalFlags(existingFlags, outputConfig);
 
-  // Enrich fullDescription with JSON fields when schema is registered.
-  // This makes field info visible in Stricli's --help output.
-  const enrichedDocs = enrichDocsWithSchema(builderArgs.docs, outputConfig);
+  const enrichedDocs = enrichDocsWithSchema(
+    prepareNativeDocs(builderArgs.docs),
+    outputConfig,
+  );
 
   // Inject short aliases for global flags (e.g., -v → --verbose).
   // Derived from the shared GLOBAL_FLAGS definition so adding a new
@@ -547,8 +572,8 @@ export function buildCommand<
     stdout: Writer,
     value: unknown,
     flags: Record<string, unknown>,
-    // biome-ignore lint/suspicious/noExplicitAny: Renderer type mirrors erased OutputConfig<T>
-    renderer?: HumanRenderer<any>
+    // oxlint-disable-next-line typescript/no-explicit-any -- Renderer type mirrors erased OutputConfig<T>
+    renderer?: HumanRenderer<any>,
   ): void {
     // ClearScreen token: defer until next render to avoid flash
     if (value instanceof ClearScreen) {
@@ -577,7 +602,7 @@ export function buildCommand<
    * comma-string to string[] when output: { human: ... }.
    */
   function cleanRawFlags(
-    raw: Record<string, unknown>
+    raw: Record<string, unknown>,
   ): Record<string, unknown> {
     const clean: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(raw)) {
@@ -600,8 +625,8 @@ export function buildCommand<
     stdout: Writer,
     hint: string | undefined,
     json: unknown,
-    // biome-ignore lint/suspicious/noExplicitAny: Renderer type mirrors erased OutputConfig<T>
-    renderer?: HumanRenderer<any>
+    // oxlint-disable-next-line typescript/no-explicit-any -- Renderer type mirrors erased OutputConfig<T>
+    renderer?: HumanRenderer<any>,
   ): void {
     if (json) {
       return;
@@ -641,7 +666,7 @@ export function buildCommand<
     err: unknown,
     stdout: Writer,
     ctx: { commandPrefix?: readonly string[]; stderr: Writer },
-    args: unknown[]
+    args: unknown[],
   ): Promise<boolean> {
     if (!(err instanceof CliError) || err instanceof OutputError) {
       return false;
@@ -664,8 +689,8 @@ export function buildCommand<
     }
     ctx.stderr.write(
       warning(
-        `Tip: use --help for help (e.g., sentry ${pathSegments.join(" ")} --help)\n\n`
-      )
+        `Tip: use --help for help (e.g., sentry ${pathSegments.join(" ")} --help)\n\n`,
+      ),
     );
     stdout.write(`${formatHelpHuman(result)}\n`);
     return true;
@@ -673,7 +698,7 @@ export function buildCommand<
 
   // Wrap func to intercept logging flags, capture telemetry, then call original.
   // The wrapper is an async function that iterates the generator returned by func.
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Central framework wrapper — flag cleanup, env-based JSON, output rendering, and error handling are all tightly coupled.
+  // Central framework wrapper — flag cleanup, env-based JSON, output rendering, and error handling are all tightly coupled.
   const wrappedFunc = async function (
     this: CONTEXT,
     flags: Record<string, unknown>,
@@ -681,7 +706,7 @@ export function buildCommand<
   ) {
     applyLoggingFlags(
       flags[LOG_LEVEL_KEY] as LogLevelName | undefined,
-      flags.verbose as boolean
+      flags.verbose as boolean,
     );
 
     // Map --org / --project compat flags to env vars before anything
@@ -690,7 +715,7 @@ export function buildCommand<
       flags.org as string | undefined,
       flags.project as string | undefined,
       commandOwnsOrg,
-      commandOwnsProject
+      commandOwnsProject,
     );
 
     const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
@@ -715,7 +740,7 @@ export function buildCommand<
         cleanFlags.json === true ||
         cleanFlags.yes === true ||
         cleanFlags["dry-run"] === true
-      )
+      ),
     );
 
     const stdout = (this as unknown as { stdout: Writer }).stdout;
@@ -742,7 +767,7 @@ export function buildCommand<
             stdout,
             new CommandOutput(err.data),
             cleanFlags,
-            renderer
+            renderer,
           );
         }
         throw err;
@@ -778,7 +803,7 @@ export function buildCommand<
           const generator = originalFunc.call(
             this,
             cleanFlags as FLAGS,
-            ...(args as unknown as ARGS)
+            ...(args as unknown as ARGS),
           );
           let result = await generator.next();
           while (!result.done) {
@@ -786,7 +811,7 @@ export function buildCommand<
             result = await generator.next();
           }
           return result.value as CommandReturn | undefined;
-        }
+        },
       );
 
       // Render phase: output finalization.
@@ -816,7 +841,7 @@ export function buildCommand<
           commandPrefix?: readonly string[];
           stderr: Writer;
         },
-        args
+        args,
       );
       if (recovered) {
         return;
@@ -844,6 +869,10 @@ export function buildCommand<
   if (primaryUsage) {
     (cmd as unknown as Record<string, unknown>).__primaryUsage =
       typeof primaryUsage === "string" ? primaryUsage : primaryUsage.input;
+  }
+  if (builderArgs.docs.examples?.length) {
+    (cmd as unknown as Record<string, unknown>).__examples =
+      builderArgs.docs.examples;
   }
 
   // Attach the JSON schema to the built command as a non-standard property.

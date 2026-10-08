@@ -75,7 +75,7 @@ describe("parseOrgProjectArg", () => {
 
   test("trims and de-duplicates comma-separated slugs", () => {
     expect(
-      parseOrgProjectArg("acme/web, api,web", PROJECT_LIST_OPTIONS)
+      parseOrgProjectArg("acme/web, api,web", PROJECT_LIST_OPTIONS),
     ).toEqual({
       type: "explicit",
       org: "acme",
@@ -94,10 +94,10 @@ describe("parseOrgProjectArg", () => {
 
   test("empty comma list throws ValidationError", () => {
     expect(() => parseOrgProjectArg("acme/,,,", PROJECT_LIST_OPTIONS)).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() => parseOrgProjectArg("acme/,,,", PROJECT_LIST_OPTIONS)).toThrow(
-      "empty"
+      "empty",
     );
   });
 
@@ -110,20 +110,20 @@ describe("parseOrgProjectArg", () => {
 
   test("comma-separated display names are rejected", () => {
     expect(() =>
-      parseOrgProjectArg("acme/My App,Other App", PROJECT_LIST_OPTIONS)
+      parseOrgProjectArg("acme/My App,Other App", PROJECT_LIST_OPTIONS),
     ).toThrow("must be slugs");
   });
 
   test("invalid character in one comma token throws", () => {
     expect(() =>
-      parseOrgProjectArg("acme/web,api?x", PROJECT_LIST_OPTIONS)
+      parseOrgProjectArg("acme/web,api?x", PROJECT_LIST_OPTIONS),
     ).toThrow(ValidationError);
   });
 
   // Error case - verify specific message
   test("just slash throws error", () => {
     expect(() => parseOrgProjectArg("/")).toThrow(
-      'Invalid format: "/" requires a project slug'
+      'Invalid format: "/" requires a project slug',
     );
   });
 
@@ -174,9 +174,8 @@ describe("parseOrgProjectArg", () => {
       savedSentryHost = process.env.SENTRY_HOST;
       delete process.env.SENTRY_URL;
       delete process.env.SENTRY_HOST;
-      const { resetEnvTokenHostForTesting } = await import(
-        "../../src/lib/env-token-host.js"
-      );
+      const { resetEnvTokenHostForTesting } =
+        await import("../../src/lib/env-token-host.js");
       resetEnvTokenHostForTesting();
     });
 
@@ -191,17 +190,16 @@ describe("parseOrgProjectArg", () => {
       } else {
         delete process.env.SENTRY_HOST;
       }
-      const { resetEnvTokenHostForTesting } = await import(
-        "../../src/lib/env-token-host.js"
-      );
+      const { resetEnvTokenHostForTesting } =
+        await import("../../src/lib/env-token-host.js");
       resetEnvTokenHostForTesting();
     });
 
     test("issue URL returns org-all", () => {
       expect(
         parseOrgProjectArg(
-          "https://sentry.io/organizations/my-org/issues/12345/"
-        )
+          "https://sentry.io/organizations/my-org/issues/12345/",
+        ),
       ).toEqual({
         type: "org-all",
         org: "my-org",
@@ -211,8 +209,8 @@ describe("parseOrgProjectArg", () => {
     test("project settings URL returns explicit", () => {
       expect(
         parseOrgProjectArg(
-          "https://sentry.io/settings/my-org/projects/backend/"
-        )
+          "https://sentry.io/settings/my-org/projects/backend/",
+        ),
       ).toEqual({
         type: "explicit",
         org: "my-org",
@@ -222,7 +220,7 @@ describe("parseOrgProjectArg", () => {
 
     test("org-only URL returns org-all", () => {
       expect(
-        parseOrgProjectArg("https://sentry.io/organizations/my-org/")
+        parseOrgProjectArg("https://sentry.io/organizations/my-org/"),
       ).toEqual({
         type: "org-all",
         org: "my-org",
@@ -234,8 +232,8 @@ describe("parseOrgProjectArg", () => {
       process.env.SENTRY_HOST = "https://sentry.example.com";
       expect(
         parseOrgProjectArg(
-          "https://sentry.example.com/organizations/acme-corp/issues/99/"
-        )
+          "https://sentry.example.com/organizations/acme-corp/issues/99/",
+        ),
       ).toEqual({
         type: "org-all",
         org: "acme-corp",
@@ -246,8 +244,8 @@ describe("parseOrgProjectArg", () => {
       // No SENTRY_HOST set → env-token defaults to SaaS → mismatch on self-hosted URL.
       expect(() =>
         parseOrgProjectArg(
-          "https://sentry.example.com/organizations/acme-corp/issues/99/"
-        )
+          "https://sentry.example.com/organizations/acme-corp/issues/99/",
+        ),
       ).toThrow(/does not match|sentry auth login --url/);
     });
   });
@@ -312,31 +310,31 @@ describe("parseOrgProjectArg", () => {
   describe("@-selector rejection", () => {
     test("@latest throws with redirect to issue view", () => {
       expect(() => parseOrgProjectArg("@latest")).toThrow(
-        "is an issue selector, not a project slug"
+        "is an issue selector, not a project slug",
       );
       expect(() => parseOrgProjectArg("@latest")).toThrow(
-        "sentry issue view @latest"
+        "sentry issue view @latest",
       );
     });
 
     test("@most_frequent throws with redirect to issue view", () => {
       expect(() => parseOrgProjectArg("@most_frequent")).toThrow(
-        "is an issue selector, not a project slug"
+        "is an issue selector, not a project slug",
       );
       expect(() => parseOrgProjectArg("@most_frequent")).toThrow(
-        "sentry issue view @most_frequent"
+        "sentry issue view @most_frequent",
       );
     });
 
     test("case-insensitive selector variants are rejected", () => {
       expect(() => parseOrgProjectArg("@Latest")).toThrow(
-        "is an issue selector"
+        "is an issue selector",
       );
       expect(() => parseOrgProjectArg("@LATEST")).toThrow(
-        "is an issue selector"
+        "is an issue selector",
       );
       expect(() => parseOrgProjectArg("@mostFrequent")).toThrow(
-        "is an issue selector"
+        "is an issue selector",
       );
     });
 
@@ -346,25 +344,25 @@ describe("parseOrgProjectArg", () => {
 
     test("/@latest (leading slash) throws with redirect", () => {
       expect(() => parseOrgProjectArg("/@latest")).toThrow(
-        "is an issue selector"
+        "is an issue selector",
       );
     });
 
     test("sentry/@latest (org/selector) throws with redirect", () => {
       expect(() => parseOrgProjectArg("sentry/@latest")).toThrow(
-        "is an issue selector"
+        "is an issue selector",
       );
     });
 
     test("@latest/project (selector as org) throws", () => {
       expect(() => parseOrgProjectArg("@latest/cli")).toThrow(
-        "is an issue selector, not an organization slug"
+        "is an issue selector, not an organization slug",
       );
     });
 
     test("@unknown/project (unknown @ as org) throws", () => {
       expect(() => parseOrgProjectArg("@unknown/cli")).toThrow(
-        "starts with '@'"
+        "starts with '@'",
       );
     });
   });
@@ -415,7 +413,7 @@ describe("parseIssueArg", () => {
 
     test("keeps the first line when a note is appended after a newline", () => {
       expect(parseIssueArg("sentry/cli-G\nthe auth-token error")).toEqual(
-        expected
+        expected,
       );
     });
 
@@ -430,7 +428,7 @@ describe("parseIssueArg", () => {
     test("throws a clear error when input is only blank lines", () => {
       expect(() => parseIssueArg("\n   \n\t\n")).toThrow(ValidationError);
       expect(() => parseIssueArg("\n   \n\t\n")).toThrow(
-        /empty after trimming/
+        /empty after trimming/,
       );
     });
   });
@@ -439,13 +437,13 @@ describe("parseIssueArg", () => {
   describe("error cases", () => {
     test("org/-suffix throws error", () => {
       expect(() => parseIssueArg("sentry/-G")).toThrow(
-        "Cannot use trailing slash before suffix"
+        "Cannot use trailing slash before suffix",
       );
     });
 
     test("-suffix (empty left) throws error", () => {
       expect(() => parseIssueArg("-G")).toThrow(
-        "Missing project before suffix"
+        "Missing project before suffix",
       );
     });
 
@@ -455,20 +453,20 @@ describe("parseIssueArg", () => {
 
     test("org/project with trailing dash (empty suffix) throws error", () => {
       expect(() => parseIssueArg("sentry/cli-")).toThrow(
-        "Missing suffix after dash"
+        "Missing suffix after dash",
       );
     });
 
     test("org with trailing slash (empty issue ID) throws error", () => {
       expect(() => parseIssueArg("sentry/")).toThrow(
-        "Missing issue ID after slash"
+        "Missing issue ID after slash",
       );
     });
 
     test("issue-1 throws ValidationError for issue command token prefix", () => {
       expect(() => parseIssueArg("issue-1")).toThrow(ValidationError);
       expect(() => parseIssueArg("issue-1")).toThrow(
-        "looks like a command token plus a suffix"
+        "looks like a command token plus a suffix",
       );
     });
 
@@ -580,7 +578,7 @@ describe("parseIssueArg", () => {
 
     test("issue URL with numeric ID returns explicit-org-numeric", () => {
       expect(
-        parseIssueArg("https://sentry.io/organizations/my-org/issues/32886/")
+        parseIssueArg("https://sentry.io/organizations/my-org/issues/32886/"),
       ).toEqual({
         type: "explicit-org-numeric",
         org: "my-org",
@@ -590,7 +588,7 @@ describe("parseIssueArg", () => {
 
     test("issue URL with short ID returns explicit with lowercase project", () => {
       expect(
-        parseIssueArg("https://sentry.io/organizations/my-org/issues/CLI-G/")
+        parseIssueArg("https://sentry.io/organizations/my-org/issues/CLI-G/"),
       ).toEqual({
         type: "explicit",
         org: "my-org",
@@ -602,8 +600,8 @@ describe("parseIssueArg", () => {
     test("issue URL with multi-part short ID returns explicit with lowercase project", () => {
       expect(
         parseIssueArg(
-          "https://sentry.io/organizations/my-org/issues/SPOTLIGHT-ELECTRON-4Y/"
-        )
+          "https://sentry.io/organizations/my-org/issues/SPOTLIGHT-ELECTRON-4Y/",
+        ),
       ).toEqual({
         type: "explicit",
         org: "my-org",
@@ -616,8 +614,8 @@ describe("parseIssueArg", () => {
       process.env.SENTRY_HOST = "https://sentry.example.com";
       expect(
         parseIssueArg(
-          "https://sentry.example.com/organizations/acme/issues/32886/?project=2"
-        )
+          "https://sentry.example.com/organizations/acme/issues/32886/?project=2",
+        ),
       ).toEqual({
         type: "explicit-org-numeric",
         org: "acme",
@@ -627,7 +625,7 @@ describe("parseIssueArg", () => {
 
     test("event URL extracts issue ID (ignores event part)", () => {
       const result = parseIssueArg(
-        "https://sentry.io/organizations/my-org/issues/32886/events/abc123/"
+        "https://sentry.io/organizations/my-org/issues/32886/events/abc123/",
       );
       expect(result).toEqual({
         type: "explicit-org-numeric",
@@ -639,20 +637,20 @@ describe("parseIssueArg", () => {
     test("trace URL throws ValidationError (no issue ID in URL)", () => {
       expect(() =>
         parseIssueArg(
-          "https://sentry.io/organizations/my-org/traces/a4d1aae7216b47ff/"
-        )
+          "https://sentry.io/organizations/my-org/traces/a4d1aae7216b47ff/",
+        ),
       ).toThrow(ValidationError);
     });
 
     test("org-only URL throws ValidationError (no issue ID in URL)", () => {
       expect(() =>
-        parseIssueArg("https://sentry.io/organizations/my-org/")
+        parseIssueArg("https://sentry.io/organizations/my-org/"),
       ).toThrow(ValidationError);
     });
 
     test("project settings URL throws ValidationError (no issue ID in URL)", () => {
       expect(() =>
-        parseIssueArg("https://sentry.io/settings/my-org/projects/backend/")
+        parseIssueArg("https://sentry.io/settings/my-org/projects/backend/"),
       ).toThrow(ValidationError);
     });
 
@@ -663,7 +661,7 @@ describe("parseIssueArg", () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ValidationError);
         expect((error as ValidationError).message).toContain(
-          "does not contain an issue ID"
+          "does not contain an issue ID",
         );
       }
     });
@@ -671,8 +669,8 @@ describe("parseIssueArg", () => {
     test("SaaS subdomain share URL returns share type with org", () => {
       expect(
         parseIssueArg(
-          "https://gibush-kq.sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/"
-        )
+          "https://gibush-kq.sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/",
+        ),
       ).toEqual({
         type: "share",
         shareId: "f1abd515c51346778384ff25dfb341e5",
@@ -684,8 +682,8 @@ describe("parseIssueArg", () => {
     test("bare sentry.io share URL returns share type without org", () => {
       expect(
         parseIssueArg(
-          "https://sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/"
-        )
+          "https://sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/",
+        ),
       ).toEqual({
         type: "share",
         shareId: "f1abd515c51346778384ff25dfb341e5",
@@ -698,8 +696,8 @@ describe("parseIssueArg", () => {
       process.env.SENTRY_HOST = "https://sentry.example.com";
       expect(
         parseIssueArg(
-          "https://sentry.example.com/share/issue/aabbccdd11223344aabbccdd11223344/"
-        )
+          "https://sentry.example.com/share/issue/aabbccdd11223344aabbccdd11223344/",
+        ),
       ).toEqual({
         type: "share",
         shareId: "aabbccdd11223344aabbccdd11223344",
@@ -793,7 +791,7 @@ describe("parseIssueArg", () => {
 
     test("compound project slug with matching full short ID (CLI-KC)", () => {
       expect(
-        parseIssueArg("org/spotlight-electron/SPOTLIGHT-ELECTRON-4Y")
+        parseIssueArg("org/spotlight-electron/SPOTLIGHT-ELECTRON-4Y"),
       ).toEqual({
         type: "explicit",
         org: "org",
@@ -821,13 +819,13 @@ describe("parseIssueArg", () => {
 
     test("org/project/ (trailing slash, empty suffix) throws error", () => {
       expect(() => parseIssueArg("org/project/")).toThrow(
-        "Missing project or issue ID segment"
+        "Missing project or issue ID segment",
       );
     });
 
     test("org//suffix (empty project) throws error", () => {
       expect(() => parseIssueArg("org//suffix")).toThrow(
-        "Missing project or issue ID segment"
+        "Missing project or issue ID segment",
       );
     });
   });
@@ -1147,7 +1145,7 @@ describe("looksLikeIssueShortId", () => {
   describe("with ignoreCase option", () => {
     test("cam-82x with ignoreCase is false (two-part lowercase slug)", () => {
       expect(looksLikeIssueShortId("cam-82x", { ignoreCase: true })).toBe(
-        false
+        false,
       );
     });
 
@@ -1157,49 +1155,49 @@ describe("looksLikeIssueShortId", () => {
 
     test("javascript-react-mr-1b with ignoreCase", () => {
       expect(
-        looksLikeIssueShortId("javascript-react-mr-1b", { ignoreCase: true })
+        looksLikeIssueShortId("javascript-react-mr-1b", { ignoreCase: true }),
       ).toBe(true);
     });
 
     test("my-frontend-app with ignoreCase is false (3-part project slug)", () => {
       expect(
-        looksLikeIssueShortId("my-frontend-app", { ignoreCase: true })
+        looksLikeIssueShortId("my-frontend-app", { ignoreCase: true }),
       ).toBe(false);
     });
 
     test("my-app-2 with ignoreCase is false (versioned project slug)", () => {
       expect(looksLikeIssueShortId("my-app-2", { ignoreCase: true })).toBe(
-        false
+        false,
       );
     });
 
     test("my-app-2b with ignoreCase is true (lowercase multi-segment, alphanumeric final)", () => {
       expect(looksLikeIssueShortId("my-app-2b", { ignoreCase: true })).toBe(
-        true
+        true,
       );
     });
 
     test("my-apps-2b with ignoreCase is true (alphanumeric final, no length special-casing)", () => {
       expect(looksLikeIssueShortId("my-apps-2b", { ignoreCase: true })).toBe(
-        true
+        true,
       );
     });
 
     test("api-gateway-1 with ignoreCase is false (versioned project slug)", () => {
       expect(looksLikeIssueShortId("api-gateway-1", { ignoreCase: true })).toBe(
-        false
+        false,
       );
     });
 
     test("My-App-2 with ignoreCase is false (title-case project slug)", () => {
       expect(looksLikeIssueShortId("My-App-2", { ignoreCase: true })).toBe(
-        false
+        false,
       );
     });
 
     test("My-Frontend-App with ignoreCase is false (title-case project slug)", () => {
       expect(
-        looksLikeIssueShortId("My-Frontend-App", { ignoreCase: true })
+        looksLikeIssueShortId("My-Frontend-App", { ignoreCase: true }),
       ).toBe(false);
     });
 
@@ -1209,7 +1207,7 @@ describe("looksLikeIssueShortId", () => {
 
     test("My-Project with ignoreCase is false (two-part title-case slug)", () => {
       expect(looksLikeIssueShortId("My-Project", { ignoreCase: true })).toBe(
-        false
+        false,
       );
     });
 
@@ -1235,31 +1233,31 @@ describe("looksLikeIssueShortId", () => {
 
     test("spotlight-electron-4y with ignoreCase is true (lowercase multi-segment short ID)", () => {
       expect(
-        looksLikeIssueShortId("spotlight-electron-4y", { ignoreCase: true })
+        looksLikeIssueShortId("spotlight-electron-4y", { ignoreCase: true }),
       ).toBe(true);
     });
 
     test("SPOTLIGHT-ELECTRON-5 with ignoreCase is true (uppercase multi-segment numeric suffix)", () => {
       expect(
-        looksLikeIssueShortId("SPOTLIGHT-ELECTRON-5", { ignoreCase: true })
+        looksLikeIssueShortId("SPOTLIGHT-ELECTRON-5", { ignoreCase: true }),
       ).toBe(true);
     });
 
     test("JAVASCRIPT-NUXT-52 with ignoreCase is true (uppercase multi-segment numeric suffix)", () => {
       expect(
-        looksLikeIssueShortId("JAVASCRIPT-NUXT-52", { ignoreCase: true })
+        looksLikeIssueShortId("JAVASCRIPT-NUXT-52", { ignoreCase: true }),
       ).toBe(true);
     });
 
     test("my-project with ignoreCase is false (project slug)", () => {
       expect(looksLikeIssueShortId("my-project", { ignoreCase: true })).toBe(
-        false
+        false,
       );
     });
 
     test("acme-corp with ignoreCase is false (org/project slug)", () => {
       expect(looksLikeIssueShortId("acme-corp", { ignoreCase: true })).toBe(
-        false
+        false,
       );
     });
   });
@@ -1268,25 +1266,25 @@ describe("looksLikeIssueShortId", () => {
 describe("rejectIssueCommandTokenListTarget", () => {
   test("issue-1 throws ValidationError", () => {
     expect(() => rejectIssueCommandTokenListTarget("issue-1")).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() => rejectIssueCommandTokenListTarget("issue-1")).toThrow(
-      "looks like a command token plus a suffix"
+      "looks like a command token plus a suffix",
     );
   });
 
   test("my-org/issue-1 throws ValidationError", () => {
     expect(() => rejectIssueCommandTokenListTarget("my-org/issue-1")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("whitespace-padded issue-1 throws ValidationError", () => {
     expect(() => rejectIssueCommandTokenListTarget(" issue-1 ")).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() =>
-      rejectIssueCommandTokenListTarget(" my-org/issue-1\n")
+      rejectIssueCommandTokenListTarget(" my-org/issue-1\n"),
     ).toThrow(ValidationError);
   });
 
@@ -1313,7 +1311,7 @@ describe("detectSwappedViewArgs", () => {
 
   test("returns null when first has slash (correct order)", () => {
     expect(
-      detectSwappedViewArgs("mv-software/mvsoftware", "a9b4ad2c")
+      detectSwappedViewArgs("mv-software/mvsoftware", "a9b4ad2c"),
     ).toBeNull();
   });
 
@@ -1429,7 +1427,7 @@ describe("parseOrgProjectArg space handling (no normalization)", () => {
 
   test("org/project with spaces throws ValidationError (spaces in org)", () => {
     expect(() => parseOrgProjectArg("My Org/My Project")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -1470,31 +1468,31 @@ describe("parseOrgProjectArg space handling (no normalization)", () => {
 describe("parseOrgProjectArg: injection hardening", () => {
   test("rejects query injection in org slug", () => {
     expect(() => parseOrgProjectArg("my-org?query=foo/cli")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("rejects query injection in project slug", () => {
     expect(() => parseOrgProjectArg("sentry/cli?extra=1")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("rejects fragment injection in org slug", () => {
     expect(() => parseOrgProjectArg("my-org#anchor/cli")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("rejects fragment injection in project slug", () => {
     expect(() => parseOrgProjectArg("sentry/my-project#anchor")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("rejects pre-encoded space in project slug", () => {
     expect(() => parseOrgProjectArg("sentry/my%20project")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -1514,7 +1512,7 @@ describe("parseOrgProjectArg: injection hardening", () => {
 
   test("rejects null byte in project slug", () => {
     expect(() => parseOrgProjectArg("sentry/cli\x00extra")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 });
@@ -1749,7 +1747,7 @@ describe("parseSlashSeparatedArg: whitespace trimming", () => {
     const result = parseSlashSeparatedArg(
       "a9b4ad2c\n",
       "Event ID",
-      "sentry event view <id>"
+      "sentry event view <id>",
     );
     expect(result).toEqual({ id: "a9b4ad2c", targetArg: undefined });
   });
@@ -1758,7 +1756,7 @@ describe("parseSlashSeparatedArg: whitespace trimming", () => {
     const result = parseSlashSeparatedArg(
       "sentry/cli/a9b4ad2c\n",
       "Event ID",
-      "sentry event view <id>"
+      "sentry event view <id>",
     );
     expect(result).toEqual({ id: "a9b4ad2c", targetArg: "sentry/cli" });
   });
@@ -1767,7 +1765,7 @@ describe("parseSlashSeparatedArg: whitespace trimming", () => {
     const result = parseSlashSeparatedArg(
       "  a9b4ad2c  ",
       "Event ID",
-      "sentry event view <id>"
+      "sentry event view <id>",
     );
     expect(result).toEqual({ id: "a9b4ad2c", targetArg: undefined });
   });
@@ -1776,7 +1774,7 @@ describe("parseSlashSeparatedArg: whitespace trimming", () => {
     const result = parseSlashSeparatedArg(
       "abc123\ndef456",
       "Log ID",
-      "sentry log view <id>"
+      "sentry log view <id>",
     );
     // No-slash path must NOT strip newlines — log view splits them downstream
     expect(result.id).toBe("abc123\ndef456");

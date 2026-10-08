@@ -66,12 +66,12 @@ export type PaginationState = {
  */
 export function getPaginationState(
   commandKey: string,
-  contextKey: string
+  contextKey: string,
 ): PaginationState | undefined {
   const db = getDatabase();
   const row = db
     .query(
-      "SELECT cursor_stack, page_index, expires_at FROM pagination_cursors WHERE command_key = ? AND context = ?"
+      "SELECT cursor_stack, page_index, expires_at FROM pagination_cursors WHERE command_key = ? AND context = ?",
     )
     .get(commandKey, contextKey) as PaginationCursorRow | undefined;
 
@@ -81,7 +81,7 @@ export function getPaginationState(
 
   if (row.expires_at <= Date.now()) {
     db.query(
-      "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?"
+      "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?",
     ).run(commandKey, contextKey);
     return;
   }
@@ -91,11 +91,11 @@ export function getPaginationState(
   // first page by deleting the bad row and returning a cache miss.
   const stack = safeParseJson<string[]>(
     row.cursor_stack,
-    (value): value is string[] => Array.isArray(value)
+    (value): value is string[] => Array.isArray(value),
   );
   if (!stack) {
     db.query(
-      "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?"
+      "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?",
     ).run(commandKey, contextKey);
     return;
   }
@@ -115,7 +115,7 @@ function savePaginationState(
   commandKey: string,
   contextKey: string,
   state: PaginationState,
-  ttlMs = CURSOR_TTL_MS
+  ttlMs = CURSOR_TTL_MS,
 ): void {
   const db = getDatabase();
   runUpsert(
@@ -128,7 +128,7 @@ function savePaginationState(
       page_index: state.index,
       expires_at: Date.now() + ttlMs,
     },
-    ["command_key", "context"]
+    ["command_key", "context"],
   );
 }
 
@@ -169,7 +169,7 @@ export type ResolvedCursor = {
 export function resolveCursor(
   cursorFlag: string | undefined,
   commandKey: string,
-  contextKey: string
+  contextKey: string,
 ): ResolvedCursor {
   if (!cursorFlag) {
     // No --cursor flag → fresh start. Use "first" so advancePaginationState
@@ -194,7 +194,7 @@ export function resolveCursor(
     if (!state || state.index + 1 >= state.stack.length) {
       throw new ValidationError(
         "No next page saved for this query. Run without --cursor first.",
-        "cursor"
+        "cursor",
       );
     }
     const nextCursor = state.stack[state.index + 1] as string;
@@ -208,7 +208,7 @@ export function resolveCursor(
   if (!state || state.index <= 0) {
     throw new ValidationError(
       "Already on the first page — cannot go back further.",
-      "cursor"
+      "cursor",
     );
   }
   const prevCursor = state.stack[state.index - 1] as string;
@@ -244,7 +244,7 @@ export function advancePaginationState(
   commandKey: string,
   contextKey: string,
   direction: CursorDirection,
-  nextCursor: string | undefined
+  nextCursor: string | undefined,
 ): void {
   const state = getPaginationState(commandKey, contextKey);
 
@@ -306,11 +306,11 @@ export function advancePaginationState(
  */
 export function clearPaginationState(
   commandKey: string,
-  contextKey: string
+  contextKey: string,
 ): void {
   const db = getDatabase();
   db.query(
-    "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?"
+    "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?",
   ).run(commandKey, contextKey);
 }
 
@@ -325,7 +325,7 @@ export function clearPaginationState(
  */
 export function hasPreviousPage(
   commandKey: string,
-  contextKey: string
+  contextKey: string,
 ): boolean {
   const state = getPaginationState(commandKey, contextKey);
   return !!state && state.index > 0;
@@ -375,7 +375,7 @@ export function escapeContextKeyValue(value: string): string {
 export function buildPaginationContextKey(
   type: string,
   scope: string,
-  params?: Record<string, string | undefined>
+  params?: Record<string, string | undefined>,
 ): string {
   let key = `host:${getApiBaseUrl()}|type:${type}:${scope}`;
   if (params) {
@@ -439,17 +439,47 @@ export function decodeCompoundCursor(raw: string): (string | null)[] {
 }
 
 /**
+ * Associate a stored compound cursor with its targets.
+ *
+ * Missing entries start fresh; empty entries mark exhausted targets. Extra
+ * entries are ignored, and legacy JSON cursors start all targets fresh.
+ *
+ * @param raw - Stored cursor, or undefined for the first page
+ * @param sortedKeys - Target keys in the same sorted order used when encoding
+ * @returns Resume cursors and the keys of targets that should not be fetched
+ */
+export function decodeTargetCursors(
+  raw: string | undefined,
+  sortedKeys: readonly string[],
+): { startCursors: Map<string, string>; exhausted: Set<string> } {
+  const startCursors = new Map<string, string>();
+  const exhausted = new Set<string>();
+  for (const [index, cursor] of decodeCompoundCursor(raw ?? "").entries()) {
+    const key = sortedKeys[index];
+    if (key === undefined) {
+      break;
+    }
+    if (cursor) {
+      startCursors.set(key, cursor);
+    } else {
+      exhausted.add(key);
+    }
+  }
+  return { startCursors, exhausted };
+}
+
+/**
  * Build a compound cursor context key encoding the full target set and optional
  * query filters so a cursor from one search is never reused for a different search.
  *
  * @param targets - Resolved org/project targets (sorted internally by key)
  * @param filters - Optional filter parameters for commands that have them
- *   (sort, query, period). When provided they are appended so cursors are
+ *   (sort, query, period, limit). When provided they are appended so cursors are
  *   isolated per unique query.
  */
 export function buildMultiTargetContextKey(
   targets: ResolvedTarget[],
-  filters?: { sort?: string; query?: string; period?: string }
+  filters?: { sort?: string; query?: string; period?: string; limit?: number },
 ): string {
   const host = getApiBaseUrl();
   const targetFingerprint = targets
@@ -471,7 +501,8 @@ export function buildMultiTargetContextKey(
     `${base}` +
     (escapedSort ? `|sort:${escapedSort}` : "") +
     `|period:${escapedPeriod}` +
-    (escapedQuery ? `|q:${escapedQuery}` : "")
+    (escapedQuery ? `|q:${escapedQuery}` : "") +
+    (filters.limit === undefined ? "" : `|limit:${filters.limit}`)
   );
 }
 
@@ -492,7 +523,7 @@ export function buildMultiTargetContextKey(
  */
 export function buildMultiOrgContextKey(
   orgs: string[],
-  query: string | undefined
+  query: string | undefined,
 ): string {
   const sortedOrgs = [...orgs].sort().map(escapeContextKeyValue).join(",");
   return buildPaginationContextKey("multi-org", sortedOrgs, { q: query });

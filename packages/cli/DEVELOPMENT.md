@@ -4,7 +4,7 @@
 
 <!-- GENERATED:START dev-prereq -->
 - [Node.js](https://nodejs.org/) v22.15+ installed
-- [pnpm](https://pnpm.io/) v10.11+ installed
+- [pnpm](https://pnpm.io/) v11.8+ installed
 <!-- GENERATED:END dev-prereq -->
 - A Sentry OAuth application (create one at https://sentry.io/settings/account/api/applications/)
 

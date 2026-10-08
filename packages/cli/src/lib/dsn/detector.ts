@@ -230,7 +230,7 @@ export async function detectAllDsns(cwd: string): Promise<DsnDetectionResult> {
   // Get project root directory mtime for quick invalidation
   // when files are added/removed at root level
   let rootDirMtime = 0;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const stats = await stat(projectRoot);
     rootDirMtime = Math.floor(stats.mtimeMs);
@@ -263,7 +263,7 @@ export async function detectAllDsns(cwd: string): Promise<DsnDetectionResult> {
  * Used to invalidate low-priority cached DSNs when code is added.
  */
 function checkForHigherPriorityCodeDsn(
-  cwd: string
+  cwd: string,
 ): Promise<DetectedDsn | null> {
   return scanCodeForFirstDsn(cwd);
 }
@@ -276,7 +276,7 @@ function checkForHigherPriorityCodeDsn(
  */
 async function verifyEnvVarCache(
   cwd: string,
-  cached: CachedDsnEntry
+  cached: CachedDsnEntry,
 ): Promise<DetectedDsn | null> {
   // First check if a code DSN exists (highest priority)
   const codeDsn = await checkForHigherPriorityCodeDsn(cwd);
@@ -303,7 +303,7 @@ async function verifyEnvVarCache(
  */
 async function verifyFileDsnCache(
   cwd: string,
-  cached: CachedDsnEntry
+  cached: CachedDsnEntry,
 ): Promise<DetectedDsn | null> {
   if (!cached.sourcePath) {
     return null;
@@ -311,7 +311,7 @@ async function verifyFileDsnCache(
 
   const filePath = join(cwd, cached.sourcePath);
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     // Guard: skip non-regular files (FIFOs, sockets, etc.) that would block.
     // 1Password streams secrets via symlinked named pipes; Bun.file().text()
@@ -348,7 +348,7 @@ async function verifyFileDsnCache(
  */
 async function verifyCachedDsn(
   cwd: string,
-  cached: CachedDsnEntry
+  cached: CachedDsnEntry,
 ): Promise<DetectedDsn | null> {
   // Env var source (lowest priority) - check for higher-priority sources
   if (cached.source === "env") {
@@ -375,7 +375,7 @@ async function verifyCachedDsn(
  */
 function extractDsnFromContent(
   content: string,
-  source: DsnSource
+  source: DsnSource,
 ): string | null {
   switch (source) {
     case "env_file":

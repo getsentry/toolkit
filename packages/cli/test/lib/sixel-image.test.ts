@@ -27,7 +27,7 @@ const ESC = "\x1b";
 function solidImage(
   width: number,
   height: number,
-  rgba: [number, number, number, number]
+  rgba: [number, number, number, number],
 ): DecodedImage {
   const data = new Uint8Array(width * height * 4);
   for (let i = 0; i < width * height; i++) {
@@ -50,7 +50,7 @@ function toPngBytes(img: DecodedImage): Uint8Array {
 function toJpegBytes(img: DecodedImage): Uint8Array {
   const { data } = encodeJpeg(
     { data: Buffer.from(img.data), width: img.width, height: img.height },
-    90
+    90,
   );
   return new Uint8Array(data);
 }
@@ -169,7 +169,7 @@ describe("readImageDimensions", () => {
 
   test("returns undefined for a truncated header", () => {
     expect(
-      readImageDimensions(new Uint8Array([0x89, 0x50]), "png")
+      readImageDimensions(new Uint8Array([0x89, 0x50]), "png"),
     ).toBeUndefined();
   });
 });

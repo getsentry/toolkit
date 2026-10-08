@@ -16,10 +16,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { app } from "../../../src/app.js";
 import { uploadCommand } from "../../../src/commands/build/upload.js";
 import type { SentryContext } from "../../../src/context.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../helpers.js";
 
@@ -34,7 +34,7 @@ function createContext() {
       stdout: {
         write: (data: string | Uint8Array) => {
           writes.push(
-            typeof data === "string" ? data : new TextDecoder().decode(data)
+            typeof data === "string" ? data : new TextDecoder().decode(data),
           );
           return true;
         },
@@ -64,7 +64,7 @@ async function writeApk(name = "app-release.apk"): Promise<string> {
  * exit code.
  */
 async function runViaApp(
-  args: string[]
+  args: string[],
 ): Promise<{ stderr: string; exitCode: number | undefined }> {
   let stderr = "";
   const context: SentryContext = {
@@ -76,7 +76,8 @@ async function runViaApp(
     stdout: { write: () => true },
     stderr: {
       write: (data: string | Uint8Array) => {
-        stderr += typeof data === "string" ? data : new TextDecoder().decode(data);
+        stderr +=
+          typeof data === "string" ? data : new TextDecoder().decode(data);
         return true;
       },
     },
@@ -114,7 +115,10 @@ describe("build upload", () => {
     await func.call(harness.context, {}, apk);
 
     expect(uploadSpy).toHaveBeenCalledTimes(1);
-    const opts = uploadSpy.mock.calls[0]?.[0] as { org: string; project: string };
+    const opts = uploadSpy.mock.calls[0]?.[0] as {
+      org: string;
+      project: string;
+    };
     expect(opts.org).toBe("test-org");
     expect(opts.project).toBe("test-project");
     expect(harness.output()).toContain("https://sentry.io/artifact/1");
@@ -132,7 +136,7 @@ describe("build upload", () => {
         "build-configuration": "Release",
         "install-group": ["qa", "beta"],
       },
-      apk
+      apk,
     );
 
     const meta = uploadSpy.mock.calls[0]?.[0] as {
@@ -151,7 +155,7 @@ describe("build upload", () => {
     await func.call(
       harness.context,
       { "head-sha": sha, "head-ref": "main", "pr-number": 9 },
-      apk
+      apk,
     );
 
     const meta = uploadSpy.mock.calls[0]?.[0] as {
@@ -222,7 +226,7 @@ describe("build upload", () => {
       zipSync({
         "Payload/MyApp.app/Info.plist": strToU8("<app/>"),
         "Payload/MyApp.app/MyApp": strToU8("binary"),
-      })
+      }),
     );
     const harness = createContext();
     const func = await uploadCommand.loader();

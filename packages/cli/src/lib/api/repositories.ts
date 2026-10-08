@@ -8,6 +8,7 @@ import { listOrganizationRepos } from "@sentry/api";
 
 import type { SentryRepository } from "../../types/index.js";
 import { getCachedRepos, setCachedRepos } from "../db/repo-cache.js";
+import { ApiError } from "../errors.js";
 import { logger } from "../logger.js";
 
 import {
@@ -30,7 +31,7 @@ const log = logger.withTag("api.repositories");
  * list, use {@link listAllRepositories} — it walks every page.
  */
 export async function listRepositories(
-  orgSlug: string
+  orgSlug: string,
 ): Promise<SentryRepository[]> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -41,7 +42,7 @@ export async function listRepositories(
 
   return unwrapResult<SentryRepository[]>(
     result,
-    "Failed to list repositories"
+    "Failed to list repositories",
   );
 }
 
@@ -52,10 +53,11 @@ export async function listRepositories(
  * @param orgSlug - Organization slug
  * @param options - Pagination options
  * @returns Single page of repositories with cursor metadata
+ * @throws {ApiError} When the response is not an array of repositories
  */
 export async function listRepositoriesPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {}
+  options: { cursor?: string; perPage?: number } = {},
 ): Promise<PaginatedResponse<SentryRepository[]>> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -68,10 +70,20 @@ export async function listRepositoriesPaginated(
     } as { cursor?: string; per_page?: number },
   });
 
-  return unwrapPaginatedResult<SentryRepository[]>(
+  const paginated = unwrapPaginatedResult<SentryRepository[]>(
     result,
-    "Failed to list repositories"
+    "Failed to list repositories",
   );
+
+  if (!Array.isArray(paginated.data)) {
+    throw new ApiError(
+      "Failed to list repositories: unexpected response format",
+      result.response.status,
+      "Expected the repositories endpoint to return an array. Check the configured Sentry URL and the endpoint response.",
+      new URL(result.request.url).pathname,
+    );
+  }
+  return paginated;
 }
 
 /**
@@ -85,7 +97,7 @@ export async function listRepositoriesPaginated(
  * @returns All Sentry-registered repositories across all pages
  */
 export async function listAllRepositories(
-  orgSlug: string
+  orgSlug: string,
 ): Promise<SentryRepository[]> {
   const { data } = await autoPaginate(
     (cursor) =>
@@ -93,7 +105,7 @@ export async function listAllRepositories(
         cursor,
         perPage: API_MAX_PER_PAGE,
       }),
-    MAX_PAGINATION_PAGES * API_MAX_PER_PAGE
+    MAX_PAGINATION_PAGES * API_MAX_PER_PAGE,
   );
   return data;
 }
@@ -117,7 +129,7 @@ export async function listAllRepositories(
  * @returns All Sentry-registered repositories for the org
  */
 export async function listRepositoriesCached(
-  orgSlug: string
+  orgSlug: string,
 ): Promise<SentryRepository[]> {
   const cached = getCachedRepos(orgSlug);
   if (cached) {
@@ -130,7 +142,7 @@ export async function listRepositoriesCached(
     // Non-essential: the primary API fetch already succeeded. A read-only
     // DB or transient write failure shouldn't fail the whole command.
     log.debug(
-      `Could not persist repo cache for '${orgSlug}': ${error instanceof Error ? error.message : String(error)}`
+      `Could not persist repo cache for '${orgSlug}': ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   return fresh;

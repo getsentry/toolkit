@@ -29,13 +29,13 @@ describe("getCommandSuggestion", () => {
 
   test("suggests issue view for 'issue/details'", () => {
     expect(getCommandSuggestion("issue", "details")?.command).toContain(
-      "issue view"
+      "issue view",
     );
   });
 
   test("suggests issue view for 'issue/info'", () => {
     expect(getCommandSuggestion("issue", "info")?.command).toContain(
-      "issue view"
+      "issue view",
     );
   });
 
@@ -67,13 +67,13 @@ describe("getCommandSuggestion", () => {
   // --- Pattern 5: old sentry-cli commands ---
   test("suggests auth status for 'cli/info'", () => {
     expect(getCommandSuggestion("cli", "info")?.command).toContain(
-      "auth status"
+      "auth status",
     );
   });
 
   test("suggests issue list for 'cli/issues'", () => {
     expect(getCommandSuggestion("cli", "issues")?.command).toContain(
-      "issue list"
+      "issue list",
     );
   });
 
@@ -83,14 +83,14 @@ describe("getCommandSuggestion", () => {
 
   test("suggests send-event for 'cli/send-event'", () => {
     expect(getCommandSuggestion("cli", "send-event")?.command).toContain(
-      "sentry event send"
+      "sentry event send",
     );
   });
 
   // --- Pattern 6: dashboard synonyms ---
   test("suggests dashboard list for 'dashboard/default-overview'", () => {
     expect(
-      getCommandSuggestion("dashboard", "default-overview")?.command
+      getCommandSuggestion("dashboard", "default-overview")?.command,
     ).toContain("dashboard list");
   });
 
@@ -123,9 +123,9 @@ describe("routes with defaultCommand", () => {
       .filter(
         (e) =>
           isRouteMap(e.target as unknown) &&
-          (e.target as unknown as RouteMap).getDefaultCommand?.()
+          (e.target as unknown as RouteMap).getDefaultCommand?.(),
       )
-      .map((e) => e.name.original)
+      .map((e) => e.name.original),
   );
 
   test("all route groups with a view subcommand have defaultCommand set", () => {

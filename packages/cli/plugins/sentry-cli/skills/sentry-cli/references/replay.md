@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-replay
-version: 0.46.0-dev.0
+version: 0.48.0-dev.0
 description: Search and inspect Session Replays
 requires:
   bins: ["sentry"]
@@ -11,7 +11,7 @@ requires:
 
 Search and inspect Session Replays
 
-### `sentry replay list <org/project>`
+### `sentry replay list [<org/project>]`
 
 List recent Session Replays
 
@@ -20,7 +20,7 @@ List recent Session Replays
 - `-q, --query <value> - Search query (Sentry replay search syntax)`
 - `-e, --environment <value>... - Filter by environment (repeatable, comma-separated)`
 - `-s, --sort <value> - Sort by: date, oldest, duration, errors, activity, or a raw replay sort field - (default: "date")`
-- `-t, --period <value> - Time range: "7d", "2026-08-01..2026-09-01", ">=2026-08-01" - (default: "7d")`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
@@ -146,6 +146,27 @@ sentry replay view my-org/346789a703f6454384f1de473b8b9fcc --web
 
 # View the replay linked to a trace
 sentry replay view my-org/frontend/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+```
+
+### `sentry replay download <replay-id-or-url...>`
+
+Download a Session Replay as rrweb JSON
+
+**Flags:**
+- `-o, --output <value> - Output path (default: <replay-id>.rrweb.json in the current directory)`
+- `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+
+**Examples:**
+
+```bash
+# Download a replay as rrweb JSON to ./<replay-id>.rrweb.json
+sentry replay download my-org/346789a703f6454384f1de473b8b9fcc
+
+# Choose where the file goes
+sentry replay download my-org/346789a703f6454384f1de473b8b9fcc --output ./replay.json
+
+# Download from a replay URL
+sentry replay download https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

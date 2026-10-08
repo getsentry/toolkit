@@ -63,13 +63,13 @@ const DASHBOARD_GLYPH_INDEX = new Map<number, number>(
   DASHBOARD_CODE_POINTS.map((codePoint, index) => [
     codePoint,
     LAST_ASCII_CODE_POINT - FIRST_ASCII_CODE_POINT + 1 + index,
-  ])
+  ]),
 );
 
 const SPLEEN_FONT_ASSET_KEY = "dist-build/spleen-8x16.bin";
 const SPLEEN_FONT_ASSET_URL = new URL(
   "./assets/spleen-8x16.bin",
-  import.meta.url
+  import.meta.url,
 );
 const EXPECTED_GLYPH_ROWS =
   (LAST_ASCII_CODE_POINT -
@@ -120,7 +120,7 @@ function loadGlyphRows(): Uint8Array {
     new Uint8Array(readFileSync(SPLEEN_FONT_ASSET_URL));
   if (glyphRows.length !== EXPECTED_GLYPH_ROWS) {
     throw new Error(
-      `Invalid Spleen dashboard font asset: expected ${EXPECTED_GLYPH_ROWS} bytes, got ${glyphRows.length}`
+      `Invalid Spleen dashboard font asset: expected ${EXPECTED_GLYPH_ROWS} bytes, got ${glyphRows.length}`,
     );
   }
   return glyphRows;

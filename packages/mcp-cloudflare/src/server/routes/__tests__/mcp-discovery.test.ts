@@ -53,11 +53,12 @@ describe("/.mcp discovery routes", () => {
         surface: "direct",
       }),
     );
-    expect(toolsByName.get("search_events")).toEqual(
+    expect(toolsByName.get("search_traces")).toEqual(
       expect.objectContaining({
         surface: "direct",
       }),
     );
+    expect(toolsByName.get("search_events")?.surface).not.toBe("direct");
     expect(toolsByName.get("get_issue_details")).toEqual(
       expect.objectContaining({
         inputSchema: expect.any(Object),

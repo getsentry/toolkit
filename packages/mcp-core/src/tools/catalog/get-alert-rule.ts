@@ -1,4 +1,3 @@
-import { setTag } from "@sentry/core";
 import { z } from "zod";
 import type { Detector, IssueAlertRule } from "../../api-client/types";
 import { UserInputError } from "../../errors";
@@ -10,7 +9,7 @@ import {
   ParamProjectSlugOrAll,
   ParamRegionUrl,
 } from "../../schema";
-import { setOrganizationContext } from "../../telem/organization";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { getAlertRuleDetails } from "../support/alert-rule-details";
 import {
@@ -106,10 +105,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
-    setOrganizationContext(organizationSlug);
-    if (projectSlug) {
-      setTag("project.slug", projectSlug);
-    }
+    setTargetTagsAndAttributes({ organizationSlug, projectSlug });
 
     let match: AlertRuleMatch;
     if (params.kind === "issue") {

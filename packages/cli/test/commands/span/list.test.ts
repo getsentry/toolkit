@@ -22,11 +22,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
@@ -36,11 +36,11 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -50,12 +50,12 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 
@@ -245,7 +245,7 @@ describe("listCommand.func (trace mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      VALID_TRACE_ID
+      VALID_TRACE_ID,
     );
 
     expect(listSpansSpy).toHaveBeenCalledWith(
@@ -253,7 +253,7 @@ describe("listCommand.func (trace mode)", () => {
       "test-project",
       expect.objectContaining({
         query: `trace:${VALID_TRACE_ID}`,
-      })
+      }),
     );
 
     // Output should contain the span data (rendered by wrapper)
@@ -275,7 +275,7 @@ describe("listCommand.func (trace mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      VALID_TRACE_ID
+      VALID_TRACE_ID,
     );
 
     expect(listSpansSpy).toHaveBeenCalledWith(
@@ -283,13 +283,13 @@ describe("listCommand.func (trace mode)", () => {
       "test-project",
       expect.objectContaining({
         query: `trace:${VALID_TRACE_ID} span.op:db`,
-      })
+      }),
     );
   });
 
   test("converts a search-query parse 400 to a ValidationError when --query is set (trace mode)", async () => {
     listSpansSpy.mockRejectedValue(
-      new ApiError("bad", 400, "Error parsing search query: bad op filter")
+      new ApiError("bad", 400, "Error parsing search query: bad op filter"),
     );
 
     const { context } = createContext();
@@ -304,8 +304,8 @@ describe("listCommand.func (trace mode)", () => {
           period: parsePeriod("7d"),
           fresh: false,
         },
-        VALID_TRACE_ID
-      )
+        VALID_TRACE_ID,
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -322,13 +322,13 @@ describe("listCommand.func (trace mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      `my-org/my-project/${VALID_TRACE_ID}`
+      `my-org/my-project/${VALID_TRACE_ID}`,
     );
 
     expect(listSpansSpy).toHaveBeenCalledWith(
       "my-org",
       "my-project",
-      expect.anything()
+      expect.anything(),
     );
     // Should NOT have called resolveOrgAndProject
     expect(resolveOrgAndProjectSpy).not.toHaveBeenCalled();
@@ -362,7 +362,7 @@ describe("listCommand.func (trace mode)", () => {
         cursor: "1735689600:0:0",
         fresh: false,
       },
-      VALID_TRACE_ID
+      VALID_TRACE_ID,
     );
 
     expect(listSpansSpy).toHaveBeenCalledWith(
@@ -370,7 +370,7 @@ describe("listCommand.func (trace mode)", () => {
       "test-project",
       expect.objectContaining({
         cursor: "1735689600:0:0",
-      })
+      }),
     );
   });
 
@@ -398,7 +398,7 @@ describe("listCommand.func (trace mode)", () => {
         json: true,
         fresh: false,
       },
-      VALID_TRACE_ID
+      VALID_TRACE_ID,
     );
 
     const output = getStdout();
@@ -430,7 +430,7 @@ describe("listCommand.func (trace mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      VALID_TRACE_ID
+      VALID_TRACE_ID,
     );
 
     const output = getStdout();
@@ -450,7 +450,7 @@ describe("listCommand.func (trace mode)", () => {
         period: parsePeriod("24h"),
         fresh: false,
       },
-      VALID_TRACE_ID
+      VALID_TRACE_ID,
     );
 
     expect(listSpansSpy).toHaveBeenCalledWith(
@@ -458,7 +458,7 @@ describe("listCommand.func (trace mode)", () => {
       "test-project",
       expect.objectContaining({
         statsPeriod: "24h",
-      })
+      }),
     );
   });
 
@@ -475,7 +475,7 @@ describe("listCommand.func (trace mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      VALID_TRACE_ID
+      VALID_TRACE_ID,
     );
 
     expect(listSpansSpy).toHaveBeenCalledWith(
@@ -483,7 +483,7 @@ describe("listCommand.func (trace mode)", () => {
       "test-project",
       expect.objectContaining({
         allProjects: true,
-      })
+      }),
     );
   });
 });
@@ -496,12 +496,12 @@ describe("listCommand.func (project mode)", () => {
   let func: ListFunc;
   // span/list.ts calls resolveProjectBoundFromArg (not resolveOrgAndProject)
   const resolveOrgAndProjectSpy = vi.mocked(
-    resolveTarget.resolveProjectBoundFromArg
+    resolveTarget.resolveProjectBoundFromArg,
   );
   const listSpansSpy = vi.mocked(apiClient.listSpans);
   const resolveCursorSpy = vi.mocked(paginationDb.resolveCursor);
   const advancePaginationStateSpy = vi.mocked(
-    paginationDb.advancePaginationState
+    paginationDb.advancePaginationState,
   );
   const hasPreviousPageSpy = vi.mocked(paginationDb.hasPreviousPage);
 
@@ -536,7 +536,7 @@ describe("listCommand.func (project mode)", () => {
           return { org: org!, project: project! };
         }
         return { org: "test-org", project: "test-project" };
-      }
+      },
     );
     vi.spyOn(resolveTarget, "resolveLogProjectId").mockResolvedValue(4242);
     resolveCursorSpy.mockReturnValue({
@@ -603,19 +603,19 @@ describe("listCommand.func (project mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      "my-org/my-project"
+      "my-org/my-project",
     );
 
     expect(listSpansSpy).toHaveBeenCalledWith(
       "my-org",
       "my-project",
-      expect.anything()
+      expect.anything(),
     );
     // resolveProjectBoundFromArg is called with the explicit target
     expect(resolveOrgAndProjectSpy).toHaveBeenCalledWith(
       "my-org/my-project",
       expect.any(String),
-      expect.any(String)
+      expect.any(String),
     );
   });
 
@@ -633,7 +633,7 @@ describe("listCommand.func (project mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      "my-org/my-project"
+      "my-org/my-project",
     );
 
     expect(listSpansSpy).toHaveBeenCalledWith(
@@ -641,7 +641,7 @@ describe("listCommand.func (project mode)", () => {
       "my-project",
       expect.objectContaining({
         query: "span.op:db span.duration:>100ms",
-      })
+      }),
     );
   });
 
@@ -649,7 +649,7 @@ describe("listCommand.func (project mode)", () => {
     // Project mode must wrap listSpans with toSearchQueryError just like trace
     // mode does — a bad user --query is a user mistake, not a reported CLI bug.
     listSpansSpy.mockRejectedValue(
-      new ApiError("bad", 400, "Error parsing search query: bad op filter")
+      new ApiError("bad", 400, "Error parsing search query: bad op filter"),
     );
 
     const { context } = createContext();
@@ -664,8 +664,8 @@ describe("listCommand.func (project mode)", () => {
           period: parsePeriod("7d"),
           fresh: false,
         },
-        "my-org/my-project"
-      )
+        "my-org/my-project",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -673,7 +673,7 @@ describe("listCommand.func (project mode)", () => {
     // No user --query means the CLI built the bad query — stays a reported
     // ApiError(400), not reclassified as user input.
     listSpansSpy.mockRejectedValue(
-      new ApiError("bad", 400, "Error parsing search query: bad op filter")
+      new ApiError("bad", 400, "Error parsing search query: bad op filter"),
     );
 
     const { context } = createContext();
@@ -687,8 +687,8 @@ describe("listCommand.func (project mode)", () => {
           period: parsePeriod("7d"),
           fresh: false,
         },
-        "my-org/my-project"
-      )
+        "my-org/my-project",
+      ),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -705,7 +705,7 @@ describe("listCommand.func (project mode)", () => {
         period: parsePeriod("30d"),
         fresh: false,
       },
-      "my-org/my-project"
+      "my-org/my-project",
     );
 
     expect(listSpansSpy).toHaveBeenCalledWith(
@@ -713,7 +713,7 @@ describe("listCommand.func (project mode)", () => {
       "my-project",
       expect.objectContaining({
         statsPeriod: "30d",
-      })
+      }),
     );
   });
 
@@ -743,7 +743,7 @@ describe("listCommand.func (project mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      "my-org/my-project"
+      "my-org/my-project",
     );
 
     const output = getStdout();
@@ -795,7 +795,7 @@ describe("listCommand.func (project mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      "my-org/my-project"
+      "my-org/my-project",
     );
 
     const output = getStdout();
@@ -815,7 +815,7 @@ describe("listCommand.func (project mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      "my-org/my-project"
+      "my-org/my-project",
     );
 
     const callArgs = listSpansSpy.mock.calls[0];
@@ -847,7 +847,7 @@ describe("listCommand.func (project mode)", () => {
         period: parsePeriod("7d"),
         fresh: false,
       },
-      "my-org/my-project"
+      "my-org/my-project",
     );
 
     const output = getStdout();

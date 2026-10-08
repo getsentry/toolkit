@@ -1,30 +1,30 @@
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
+import type { Issue } from "../../api-client/types";
+import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
+import { formatAssignedTo } from "../../internal/tool-helpers/formatting";
 import {
   assertIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
-import { formatAssignedTo } from "../../internal/tool-helpers/formatting";
-import { logIssue } from "../../telem/logging";
-import { UserInputError } from "../../errors";
-import type { Issue } from "../../api-client/types";
-import type { ServerContext } from "../../types";
 import {
-  ParamOrganizationSlug,
-  ParamRegionUrl,
-  ParamIssueShortId,
-  ParamIssueUrl,
-  ParamIssueStatus,
-  ParamIssueIgnoreMode,
   ParamAssignedTo,
-  ParamIgnoreDurationMinutes,
   ParamIgnoreCount,
-  ParamIgnoreWindowMinutes,
+  ParamIgnoreDurationMinutes,
   ParamIgnoreUserCount,
   ParamIgnoreUserWindowMinutes,
+  ParamIgnoreWindowMinutes,
+  ParamIssueIgnoreMode,
+  ParamIssueShortId,
+  ParamIssueStatus,
+  ParamIssueUrl,
+  ParamOrganizationSlug,
   ParamReason,
+  ParamRegionUrl,
 } from "../../schema";
+import { logIssue } from "../../telem/logging";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 
 type IgnoreMode =
   | "untilEscalating"
@@ -710,7 +710,7 @@ export default defineTool({
         issueUrl: params.issueUrl,
       });
 
-    setOrganizationContext(orgSlug);
+    setTargetTagsAndAttributes({ organizationSlug: orgSlug });
 
     // Get current issue details first
     const currentIssue = await apiService.getIssue({

@@ -33,12 +33,12 @@ describe("getEventForIssue context validation", () => {
   });
 
   it.each([
-    { context: null, contextType: "null" },
     { context: ["private-extra-value"], contextType: "array" },
     { context: "private-extra-value", contextType: "string" },
     { context: 12345, contextType: "number" },
     { context: false, contextType: "boolean" },
     // Valid context can accompany a failure in another field.
+    { context: null, contextType: "null", title: null },
     { context: undefined, contextType: "undefined", title: null },
     {
       context: { "private-extra-key": "private-extra-value" },
@@ -68,6 +68,7 @@ describe("getEventForIssue context validation", () => {
 
   it.each([
     undefined,
+    null,
     {},
     { array: [1, "two"], nested: { value: false }, nullable: null },
   ])("preserves valid context: %j", async (context) => {

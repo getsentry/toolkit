@@ -28,7 +28,9 @@ import { LIB_VERSION } from "./version";
 // Mock the Sentry core module
 vi.mock("@sentry/core", () => ({
   setTag: vi.fn(),
+  setTags: vi.fn(),
   setAttribute: vi.fn(),
+  setAttributes: vi.fn(),
   setUser: vi.fn(),
   getActiveSpan: vi.fn(),
   startSpan: vi.fn(),
@@ -117,12 +119,18 @@ async function callRegisteredTool(
 const DEFAULT_DIRECT_TOOL_NAMES = [
   "analyze_issue_with_seer",
   "execute_sentry_tool",
+  "find_dropped_events",
   "find_organizations",
   "find_projects",
   "get_sentry_resource",
-  "search_events",
+  "search_errors",
   "search_issues",
+  "search_logs",
+  "search_metrics",
+  "search_profiles",
+  "search_replays",
   "search_sentry_tools",
+  "search_traces",
   "update_issue",
 ].sort();
 
@@ -1145,7 +1153,7 @@ describe("buildServer", () => {
 
       const result = await callRegisteredTool(server, "search_sentry_tools", {
         query: "event stacktrace",
-        limit: 5,
+        limit: 8,
       });
       const payload = getStructuredContent<{
         results: Array<{ name: string }>;
@@ -1870,6 +1878,51 @@ describe("buildServer", () => {
         expect(getStructuredContent(result)).toMatchObject(expected);
       }
       expect(writes).toEqual(["POST", "PUT", "DELETE"]);
+    });
+
+    it("discovers and dispatches monitor environment deletion with injected constraints", async () => {
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          grantedSkills: new Set(["project-management"]),
+          constraints: {
+            organizationSlug: "sentry-mcp-evals",
+            projectSlug: "cloudflare-mcp",
+          },
+        },
+      });
+      expect(getRegisteredToolNames(server)).not.toContain(
+        "delete_monitor_environment",
+      );
+      const discovered = await callRegisteredTool(
+        server,
+        "search_sentry_tools",
+        { query: "delete_monitor_environment", limit: 1 },
+      );
+      expect(getStructuredContent(discovered)).toMatchObject({
+        results: [
+          {
+            name: "delete_monitor_environment",
+            inputSchema: { required: ["monitorSlug", "environment"] },
+          },
+        ],
+      });
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "delete_monitor_environment",
+        arguments: {
+          organizationSlug: "other-org",
+          projectSlug: "other-project",
+          monitorSlug: "nightly-import",
+          environment: "production",
+        },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(getStructuredContent(result)).toEqual({
+        success: true,
+        projectSlug: "cloudflare-mcp",
+        monitorSlug: "nightly-import",
+        environment: "production",
+      });
     });
 
     it("execute_sentry_tool dispatches a catalog-only alert update with constrained organization", async () => {

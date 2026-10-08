@@ -19,11 +19,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { validateLimit } from "../../../src/lib/arg-parsing.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
@@ -35,11 +35,11 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { ContextError, ResolutionError } from "../../../src/lib/errors.js";
@@ -51,11 +51,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TransactionListItem } from "../../../src/types/sentry.js";
@@ -139,7 +139,7 @@ describe("resolveProjectBoundFromArg", () => {
     const result = await resolveTarget.resolveProjectBoundFromArg(
       "my-org/my-project",
       "/tmp",
-      "trace list"
+      "trace list",
     );
     expect(result).toEqual({ org: "my-org", project: "my-project" });
     expect(findProjectsBySlugSpy).not.toHaveBeenCalled();
@@ -148,7 +148,7 @@ describe("resolveProjectBoundFromArg", () => {
 
   test("throws for org-all target (org/ without project)", async () => {
     await expect(
-      resolveTarget.resolveProjectBoundFromArg("my-org/", "/tmp", "trace list")
+      resolveTarget.resolveProjectBoundFromArg("my-org/", "/tmp", "trace list"),
     ).rejects.toThrow(ContextError);
   });
 
@@ -157,7 +157,7 @@ describe("resolveProjectBoundFromArg", () => {
       await resolveTarget.resolveProjectBoundFromArg(
         "my-org/",
         "/tmp",
-        "trace list"
+        "trace list",
       );
       expect.unreachable("Should have thrown");
     } catch (error) {
@@ -178,7 +178,7 @@ describe("resolveProjectBoundFromArg", () => {
     const result = await resolveTarget.resolveProjectBoundFromArg(
       "frontend",
       "/tmp",
-      "trace list"
+      "trace list",
     );
     expect(result).toMatchObject({ org: "acme", project: "frontend" });
     expect(result.projectData).toBeDefined();
@@ -191,8 +191,8 @@ describe("resolveProjectBoundFromArg", () => {
       resolveTarget.resolveProjectBoundFromArg(
         "nonexistent",
         "/tmp",
-        "trace list"
-      )
+        "trace list",
+      ),
     ).rejects.toThrow(ResolutionError);
   });
 
@@ -209,7 +209,7 @@ describe("resolveProjectBoundFromArg", () => {
       await resolveTarget.resolveProjectBoundFromArg(
         "frontend",
         "/tmp",
-        "trace list"
+        "trace list",
       );
       expect.unreachable("Should have thrown");
     } catch (error) {
@@ -223,7 +223,7 @@ describe("resolveProjectBoundFromArg", () => {
   // Skip: resolveProjectBoundFromArg calls resolveOrgAndProject internally
   // (same-file call). vi.spyOn on the export doesn't intercept same-file
   // calls in vitest, so the mock has no effect and the real code runs.
-  // biome-ignore lint/suspicious/noSkippedTests: vitest can't intercept same-file internal calls
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("uses auto-detect when no target provided", async () => {
     resolveOrgAndProjectSpy.mockResolvedValue({
       org: "detected-org",
@@ -233,7 +233,7 @@ describe("resolveProjectBoundFromArg", () => {
     const result = await resolveTarget.resolveProjectBoundFromArg(
       undefined,
       "/tmp",
-      "trace list"
+      "trace list",
     );
     expect(result).toEqual({
       org: "detected-org",
@@ -246,12 +246,12 @@ describe("resolveProjectBoundFromArg", () => {
   });
 
   // Skip: same reason — resolveOrgAndProject is an internal same-file call
-  // biome-ignore lint/suspicious/noSkippedTests: vitest can't intercept same-file internal calls
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("throws when auto-detect returns null", async () => {
     resolveOrgAndProjectSpy.mockResolvedValue(null);
 
     await expect(
-      resolveTarget.resolveProjectBoundFromArg(undefined, "/tmp", "trace list")
+      resolveTarget.resolveProjectBoundFromArg(undefined, "/tmp", "trace list"),
     ).rejects.toThrow(ContextError);
   });
 });
@@ -333,7 +333,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -353,7 +353,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -372,7 +372,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -387,7 +387,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -409,7 +409,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 2, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -425,7 +425,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 100, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -441,7 +441,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -463,7 +463,7 @@ describe("listCommand.func", () => {
         query: "transaction:GET",
         period: parsePeriod("7d"),
       },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     expect(listTransactionsSpy).toHaveBeenCalledWith(
@@ -476,7 +476,7 @@ describe("listCommand.func", () => {
         cursor: undefined,
         projectId: 4242,
         statsPeriod: "7d",
-      }
+      },
     );
   });
 
@@ -491,7 +491,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -514,7 +514,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "duration", json: false, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -531,7 +531,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const callArgs = listTransactionsSpy.mock.calls[0];
@@ -549,7 +549,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -574,7 +574,7 @@ describe("listCommand.func", () => {
         query: "transaction:POST",
         period: parsePeriod("7d"),
       },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -590,7 +590,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -608,7 +608,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("24h") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     expect(listTransactionsSpy).toHaveBeenCalledWith(
@@ -616,7 +616,7 @@ describe("listCommand.func", () => {
       "test-project",
       expect.objectContaining({
         statsPeriod: "24h",
-      })
+      }),
     );
   });
 
@@ -631,7 +631,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("30d") },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

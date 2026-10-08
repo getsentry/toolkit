@@ -24,7 +24,7 @@ import type { Writer } from "../../types/index.js";
  */
 function getNestedValue(
   obj: unknown,
-  path: string
+  path: string,
 ): { found: true; value: unknown } | { found: false } {
   if (obj === null || obj === undefined || typeof obj !== "object") {
     return { found: false };
@@ -69,7 +69,7 @@ function setNestedValue(
   target: Record<string, unknown>,
   path: string,
   value: unknown,
-  literalKey = false
+  literalKey = false,
 ): void {
   if (literalKey) {
     target[path] = value;
@@ -116,7 +116,7 @@ function setNestedValue(
 export function filterFields<T>(data: T, fields: string[]): Partial<T> {
   if (Array.isArray(data)) {
     return data.map((item) =>
-      filterFields(item, fields)
+      filterFields(item, fields),
     ) as unknown as Partial<T>;
   }
 
@@ -158,7 +158,7 @@ export function parseFieldsList(input: string): string[] {
       input
         .split(",")
         .map((f) => f.trim())
-        .filter(Boolean)
+        .filter(Boolean),
     ),
   ];
 }
@@ -221,7 +221,7 @@ export function writeJsonList<T>(
     fields?: string[];
     /** Arbitrary extra metadata to include in the wrapper (e.g. `{ hint }`) */
     extra?: Record<string, unknown>;
-  }
+  },
 ): void {
   const { hasMore, nextCursor, errors, fields, extra } = options;
   const filtered =

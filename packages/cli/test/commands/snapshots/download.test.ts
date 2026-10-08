@@ -12,10 +12,10 @@ import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { downloadCommand } from "../../../src/commands/snapshots/download.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
 import { ContextError, ValidationError } from "../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 let tmpDir: string;
@@ -27,7 +27,7 @@ function createContext() {
       stdout: {
         write: (data: string | Uint8Array) => {
           writes.push(
-            typeof data === "string" ? data : new TextDecoder().decode(data)
+            typeof data === "string" ? data : new TextDecoder().decode(data),
           );
           return true;
         },
@@ -43,7 +43,7 @@ function createContext() {
 
 function snapshotZip(): Buffer {
   return Buffer.from(
-    zipSync({ "img1.png": strToU8("A"), "img2.png": strToU8("B") })
+    zipSync({ "img1.png": strToU8("A"), "img2.png": strToU8("B") }),
   );
 }
 
@@ -76,7 +76,7 @@ describe("snapshots download", () => {
           ok: true,
           status: 200,
           body: streamOf(snapshotZip()),
-        } as unknown as Response)
+        } as unknown as Response),
       );
     latestSpy = vi.spyOn(preprod, "getLatestBaseSnapshot").mockResolvedValue({
       headArtifactId: "resolved-art",
@@ -102,7 +102,7 @@ describe("snapshots download", () => {
     expect(waitSpy).toHaveBeenCalledWith(
       "test-org",
       "snap-1",
-      expect.any(Function)
+      expect.any(Function),
     );
     expect(downloadSpy).toHaveBeenCalledWith("test-org", "snap-1");
     expect(latestSpy).not.toHaveBeenCalled();
@@ -133,14 +133,14 @@ describe("snapshots download", () => {
       func.call(createContext().context, {
         "app-id": "a",
         "snapshot-id": "s",
-      })
+      }),
     ).rejects.toThrow(ValidationError);
   });
 
   test("rejects when neither --app-id nor --snapshot-id is given", async () => {
     const func = await downloadCommand.loader();
     await expect(func.call(createContext().context, {})).rejects.toThrow(
-      ContextError
+      ContextError,
     );
   });
 
@@ -150,7 +150,7 @@ describe("snapshots download", () => {
       func.call(createContext().context, {
         "snapshot-id": "s",
         branch: "main",
-      })
+      }),
     ).rejects.toThrow(ValidationError);
   });
 });

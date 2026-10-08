@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-dashboard
-version: 0.46.0-dev.0
+version: 0.48.0-dev.0
 description: Manage Sentry dashboards
 requires:
   bins: ["sentry"]
@@ -42,7 +42,7 @@ View a dashboard
 - `-w, --web - Open in browser`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-r, --refresh <value> - Auto-refresh interval in seconds (default: 60, min: 10)`
-- `-t, --period <value> - Time range: "7d", "2026-08-01..2026-09-01", ">=2026-08-01"`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01"`
 - `--renderer <value> - Graphics renderer (defaults to auto; falls back to auto when unavailable) - (default: "auto")`
 - `--no-graphics-cap - Use the terminal-native graphics width (may fall back to ASCII for very large dashboards)`
 

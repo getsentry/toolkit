@@ -1,0 +1,104 @@
+name: Recover Cloudflare Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Deploy to Cloudflare run ID to recover
+        required: true
+        type: string
+      run_attempt:
+        description: Attempt of that deployment run
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: mcp-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Recover exact owned Worker version
+    if: ${{ github.ref == 'refs/heads/main' && github.event.repository.id == 957245447 }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Require current main and validate source run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.run_attempt }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ || ! "$SOURCE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo 'Invalid deployment run identity' >&2
+            exit 1
+          fi
+          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_sha" != "$EXPECTED_SHA" ]]; then
+            echo 'Main advanced before manual recovery; retry from current main.' >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/attempts/$SOURCE_RUN_ATTEMPT" \
+            --jq '{id,run_attempt,head_sha,head_branch,event,status,path,repository_id:.repository.id}' \
+            > "$RUNNER_TEMP/source-run.json"
+          if ! jq -e --argjson id "$SOURCE_RUN_ID" --argjson attempt "$SOURCE_RUN_ATTEMPT" \
+            --argjson repository "$GITHUB_REPOSITORY_ID" \
+            '.id == $id and .run_attempt == $attempt and .repository_id == $repository and
+             .event == "workflow_run" and .head_branch == "main" and .status == "completed" and
+             .path == ".github/workflows/deploy.yml" and
+             (.head_sha | test("^[0-9a-f]{40}$"))' \
+            "$RUNNER_TEMP/source-run.json" > /dev/null; then
+            echo 'Source run is not a completed Toolkit main deployment.' >&2
+            exit 1
+          fi
+          jq -r '.head_sha | "SOURCE_SHA=\(.)"' "$RUNNER_TEMP/source-run.json" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+        with:
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore only the last owned deployment
+        id: restore
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_RUN_ID: ${{ inputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.run_attempt }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_sha" != "$EXPECTED_SHA" ]]; then
+            echo 'Main advanced before manual recovery; retry from current main.' >&2
+            exit 1
+          fi
+          node scripts/cloudflare-deployment.mjs manual
+
+      - name: Wait for restored version to propagate
+        run: sleep 30
+
+      - name: Verify recovered production Worker
+        env:
+          PREVIEW_URL: https://mcp.sentry.dev
+          EXPECTED_VERSION_ID: ${{ steps.restore.outputs.previous_version }}
+          ALLOW_LEGACY_VERSION_ENDPOINT: "1"
+        run: pnpm --dir packages/smoke-tests test:ci

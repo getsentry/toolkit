@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "tabWidth": 2,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "apps/cli-docs/**",
+    "packages/cli/plugins/**",
+    "packages/cli/README.md",
+    "packages/cli/DEVELOPMENT.md",
+    "packages/cli/CHANGELOG.md",
+    "packages/cli/AGENTS.md",
+    "packages/mcp-server-mocks/src/fixtures/**",
+    "**/worker-configuration.d.ts",
+    "**/tsconfig*.json"
+  ]
+}

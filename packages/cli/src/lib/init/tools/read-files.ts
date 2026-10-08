@@ -39,7 +39,7 @@ type LineScan = {
  * state between calls.
  */
 export async function readFiles(
-  payload: ReadFilesPayload
+  payload: ReadFilesPayload,
 ): Promise<ToolResult> {
   const validated = validateReadRequest(payload);
   if ("error" in validated) {
@@ -47,7 +47,7 @@ export async function readFiles(
   }
   const perFileOutputBytes = Math.max(
     1,
-    Math.floor(MAX_READ_OUTPUT_BYTES / validated.paths.length)
+    Math.floor(MAX_READ_OUTPUT_BYTES / validated.paths.length),
   );
   const window = {
     outputBytes: perFileOutputBytes,
@@ -57,7 +57,7 @@ export async function readFiles(
     validated.paths.map(async (filePath) => {
       const result = await readSingleFileV2(payload.cwd, filePath, window);
       return [filePath, result] as const;
-    })
+    }),
   );
 
   return {
@@ -72,7 +72,7 @@ export async function readFiles(
 async function readSingleFileV2(
   cwd: string,
   filePath: string,
-  window: ReadWindow
+  window: ReadWindow,
 ): Promise<ReadFileV2Result> {
   let opened: OpenedProjectFile | undefined;
   try {
@@ -102,7 +102,7 @@ async function readSingleFileV2(
   } catch (error) {
     return { error: readErrorCode(error), status: "error" };
   } finally {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     await opened?.handle.close().catch(() => {
       // Preserve the primary read result when descriptor cleanup fails.
     });
@@ -112,7 +112,7 @@ async function readSingleFileV2(
 async function readTextPage(
   handle: fs.promises.FileHandle,
   fileSize: number,
-  window: ReadWindow
+  window: ReadWindow,
 ): Promise<ReadFileV2Result> {
   const located = await locateLineStart(handle, fileSize, window.startLine);
   if ("error" in located) {
@@ -128,7 +128,7 @@ async function readTextPage(
       page,
       bytesRead,
       pageBytes - bytesRead,
-      located.offset + bytesRead
+      located.offset + bytesRead,
     );
     if (result.bytesRead === 0) {
       return { error: "unreadable", status: "error" };
@@ -138,7 +138,7 @@ async function readTextPage(
       !isTextChunk(
         decoder,
         page.subarray(bytesRead, nextBytesRead),
-        located.offset + nextBytesRead < fileSize
+        located.offset + nextBytesRead < fileSize,
       )
     ) {
       return { error: "not-text", status: "error" };
@@ -168,7 +168,7 @@ async function readTextPage(
 async function locateLineStart(
   handle: fs.promises.FileHandle,
   fileSize: number,
-  startLine: number
+  startLine: number,
 ): Promise<
   { offset: number } | { error: "invalid-range" | "not-text" | "unreadable" }
 > {
@@ -185,7 +185,7 @@ async function locateLineStart(
       buffer,
       0,
       Math.min(buffer.length, fileSize - position),
-      position
+      position,
     );
     if (result.bytesRead === 0) {
       return { error: "unreadable" };
@@ -198,7 +198,7 @@ async function locateLineStart(
       !isTextChunk(
         decoder,
         chunk.subarray(0, scan.consumedBytes),
-        !scan.found && nextPosition < fileSize
+        !scan.found && nextPosition < fileSize,
       )
     ) {
       return { error: "not-text" };
@@ -235,7 +235,7 @@ function scanLineBreaks(buffer: Buffer, linesToSkip: number): LineScan {
 }
 
 function validateReadRequest(
-  payload: ReadFilesPayload
+  payload: ReadFilesPayload,
 ): { error: string } | { paths: string[]; startLine: number } {
   const params = (payload as { params?: unknown }).params;
   if (typeof params !== "object" || params === null) {
@@ -268,7 +268,7 @@ function validateReadRequest(
 }
 
 function normalizeReadPaths(
-  paths: unknown
+  paths: unknown,
 ): { error: string } | { paths: string[] } {
   if (
     !Array.isArray(paths) ||
@@ -284,7 +284,7 @@ function normalizeReadPaths(
       (filePath) =>
         typeof filePath !== "string" ||
         filePath.length === 0 ||
-        filePath.length > 1000
+        filePath.length > 1000,
     )
   ) {
     return { error: "read-files paths must be non-empty bounded strings" };
@@ -315,17 +315,17 @@ function isInvalidPositiveInteger(value: unknown): boolean {
 function isTextChunk(
   decoder: TextDecoder,
   buffer: Buffer,
-  hasMoreBytes: boolean
+  hasMoreBytes: boolean,
 ): boolean {
   if (
     buffer.some(
       (byte) =>
-        byte === 0x7f || (byte < 0x20 && ![0x09, 0x0a, 0x0d].includes(byte))
+        byte === 0x7f || (byte < 0x20 && ![0x09, 0x0a, 0x0d].includes(byte)),
     )
   ) {
     return false;
   }
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     decoder.decode(buffer, { stream: hasMoreBytes });
     return true;

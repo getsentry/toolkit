@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
 import type { SentryApiService } from "../../api-client";
 import { ApiClientError, ApiNotFoundError } from "../../api-client";
 import type {
@@ -15,28 +14,28 @@ import type {
 } from "../../api-client/types";
 import { ConfigurationError, UserInputError } from "../../errors";
 import type { CodeLocation } from "../../internal/code-location";
+import {
+  dedupeReplayIds,
+  getReplayIdFromEvent,
+  getSeerActionabilityLabel,
+  getSuspectCommit,
+  isPerformanceIssueType,
+  usesSharedFormatterBody,
+} from "../../internal/formatting";
 import type { AIConversationReference } from "../../internal/tool-helpers/ai-conversation-actions";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
-import { structuredResult } from "../../internal/tool-helpers/results";
-import {
-  dedupeReplayIds,
-  getReplayIdFromEvent,
-  isPerformanceIssueType,
-  getSeerActionabilityLabel,
-  getSuspectCommit,
-  usesSharedFormatterBody,
-} from "../../internal/formatting";
-import {
-  getAutofixArtifactSummaries,
-  getStatusDisplayName,
-} from "../../internal/tool-helpers/seer";
 import {
   assertIssueWithinProjectConstraint,
   formatIssueOutput,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
+import {
+  getAutofixArtifactSummaries,
+  getStatusDisplayName,
+} from "../../internal/tool-helpers/seer";
 import {
   ParamEventId,
   ParamIssueShortId,
@@ -45,6 +44,7 @@ import {
   ParamRegionUrl,
 } from "../../schema";
 import { logError, logIssue } from "../../telem/logging";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { resolveCodeLocation } from "../support/code-location";
 
@@ -390,7 +390,7 @@ export default defineTool({
         );
       }
 
-      setOrganizationContext(orgSlug);
+      setTargetTagsAndAttributes({ organizationSlug: orgSlug });
       // Use issueId directly if provided (e.g., from URL parsing), otherwise search by eventId
       let issue: Awaited<ReturnType<typeof apiService.getIssue>>;
       if (params.issueId) {
@@ -510,7 +510,7 @@ export default defineTool({
         issueUrl: params.issueUrl,
       });
 
-    setOrganizationContext(orgSlug);
+    setTargetTagsAndAttributes({ organizationSlug: orgSlug });
 
     // For the main issue lookup, provide parameter context on 404
     let issue: Awaited<ReturnType<typeof apiService.getIssue>>;

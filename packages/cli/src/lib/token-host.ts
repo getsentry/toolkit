@@ -15,11 +15,26 @@
  *   `sentry.acme.evil.com`).
  */
 
-import { getRawEnvToken, getUsableStoredTokenHost } from "./db/auth.js";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
+import {
+  getActiveAuthHost,
+  getCredentialContext,
+  getIdentityFingerprint,
+} from "./db/auth.js";
 import { isTrustedRegionOrigin } from "./db/regions.js";
-import { getEnv } from "./env.js";
-import { getEnvTokenHost } from "./env-token-host.js";
-import { isSaaSTrustOrigin, normalizeOrigin } from "./sentry-urls.js";
+import { normalizeHttpOrigin } from "./sentry-urls.js";
+
+function normalizeTrustOrigin(
+  input: string | URL | Request | undefined | null,
+): string | undefined {
+  const url =
+    input instanceof URL
+      ? input.href
+      : input instanceof Request
+        ? input.url
+        : input;
+  return normalizeHttpOrigin(url);
+}
 
 /**
  * Check whether `candidate` matches `trusted` under the host-scoping trust
@@ -30,13 +45,13 @@ import { isSaaSTrustOrigin, normalizeOrigin } from "./sentry-urls.js";
  */
 export function isHostTrusted(
   candidate: string | URL | Request | undefined | null,
-  trusted: string | undefined | null
+  trusted: string | undefined | null,
 ): boolean {
   if (!trusted) {
     return false;
   }
-  const candidateOrigin = normalizeOrigin(candidate);
-  const trustedOrigin = normalizeOrigin(trusted);
+  const candidateOrigin = normalizeTrustOrigin(candidate);
+  const trustedOrigin = normalizeTrustOrigin(trusted);
   if (!(candidateOrigin && trustedOrigin)) {
     return false;
   }
@@ -55,16 +70,7 @@ export function isHostTrusted(
  * token unless `SENTRY_FORCE_ENV_TOKEN` is set.
  */
 export function getActiveTokenHost(): string | undefined {
-  const hasEnvToken = !!getRawEnvToken();
-  const forceEnv = hasEnvToken && !!getEnv().SENTRY_FORCE_ENV_TOKEN?.trim();
-
-  if (!forceEnv) {
-    const storedHost = getUsableStoredTokenHost();
-    if (storedHost) {
-      return storedHost;
-    }
-  }
-  return hasEnvToken ? getEnvTokenHost() : undefined;
+  return getActiveAuthHost();
 }
 
 /**
@@ -82,7 +88,7 @@ let loginTrustAnchor: string | undefined;
 
 /** Register an explicit login-time trust anchor. URLs are normalized. */
 export function registerLoginTrustAnchor(url: string): void {
-  const origin = normalizeOrigin(url);
+  const origin = normalizeHttpOrigin(url);
   if (origin) {
     loginTrustAnchor = origin;
   }
@@ -110,13 +116,17 @@ export function resetLoginTrustAnchorForTesting(): void {
  */
 function isOriginTrustedFor(
   requestInput: string | URL | Request | undefined | null,
-  anchorHost: string
+  anchorHost: string,
+  identity: string,
 ): boolean {
   if (isHostTrusted(requestInput, anchorHost)) {
     return true;
   }
-  const requestOrigin = normalizeOrigin(requestInput);
-  return requestOrigin !== undefined && isTrustedRegionOrigin(requestOrigin);
+  const requestOrigin = normalizeTrustOrigin(requestInput);
+  return (
+    requestOrigin !== undefined &&
+    isTrustedRegionOrigin(requestOrigin, anchorHost, identity)
+  );
 }
 
 /**
@@ -124,13 +134,21 @@ function isOriginTrustedFor(
  * Returns `true` when no token is active (nothing to protect).
  */
 export function isRequestOriginTrusted(
-  requestInput: string | URL | Request | undefined | null
+  requestInput: string | URL | Request | undefined | null,
 ): boolean {
-  const tokenHost = getActiveTokenHost();
-  if (!tokenHost) {
+  const credential = getCredentialContext();
+  if (!credential) {
     return true;
   }
-  return isOriginTrustedFor(requestInput, tokenHost);
+  return isOriginTrustedFor(requestInput, credential.host, credential.identity);
+}
+
+/** Evaluate the host trust against the credential captured for this request. */
+export function isRequestOriginTrustedForContext(
+  requestInput: string | URL | Request | undefined | null,
+  context: { host: string; identity: string },
+): boolean {
+  return isOriginTrustedFor(requestInput, context.host, context.identity);
 }
 
 /**
@@ -139,9 +157,10 @@ export function isRequestOriginTrusted(
  */
 export function isHostTrustedForClaim(
   requestInput: string | URL | Request | undefined | null,
-  claimUrl: string
+  claimUrl: string,
+  identity = getIdentityFingerprint(),
 ): boolean {
-  return isOriginTrustedFor(requestInput, claimUrl);
+  return isOriginTrustedFor(requestInput, claimUrl, identity);
 }
 
 /**
@@ -153,7 +172,7 @@ export function isHostTrustedForClaim(
  * No anchor at all → fail closed.
  */
 export function isRequestOriginTrustedForCustomHeaders(
-  requestInput: string | URL | Request | undefined | null
+  requestInput: string | URL | Request | undefined | null,
 ): boolean {
   if (getActiveTokenHost()) {
     return isRequestOriginTrusted(requestInput);

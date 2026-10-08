@@ -111,7 +111,7 @@ describe("sentry auth login --token", () => {
 
     expect(result.exitCode).toBe(EXIT.AUTH_HOST_SCOPE);
     expect(result.stderr + result.stdout).toMatch(
-      /invalid|unauthorized|error/i
+      /invalid|unauthorized|error/i,
     );
   });
 });

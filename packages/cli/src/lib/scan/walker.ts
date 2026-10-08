@@ -83,8 +83,7 @@ type WalkStats = {
 
 /**
  * Aggregate of everything the per-entry helpers need. Collecting these
- * into one record keeps each helper's arity small — Biome's
- * `useMaxParams` rule caps us at 4 (plus `this`), and individually
+ * into one record keeps each helper's arity small; individually
  * passing cfg/matcher/stats/stack/budget state would blow past that.
  */
 type WalkContext = {
@@ -155,7 +154,7 @@ async function processDir(
   frame: DirFrame,
   ctx: WalkContext,
   push: (entry: WalkEntry) => void,
-  isCancelled: () => boolean
+  isCancelled: () => boolean,
 ): Promise<void> {
   const { cfg, matcher, stats } = ctx;
   stats.dirsVisited += 1;
@@ -278,7 +277,7 @@ async function* walkFilesImpl(opts: WalkOptions): AsyncGenerator<WalkEntry> {
       stats.hitTimeBudget,
       stats.maxDepthReached,
       Math.round(cfg.clock() - startedAt),
-      cfg.concurrency
+      cfg.concurrency,
     );
   }
 }
@@ -303,7 +302,7 @@ async function* walkSerial(ctx: WalkContext): AsyncGenerator<WalkEntry> {
     ctx.stats.dirsVisited += 1;
     ctx.stats.maxDepthReached = Math.max(
       ctx.stats.maxDepthReached,
-      frame.depth
+      frame.depth,
     );
 
     const entries = await listDirEntries(frame.absDir, cfg.concurrency);
@@ -426,7 +425,7 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
   const workerCount = cfg.concurrency;
   const workers: Promise<void>[] = [];
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: worker lifecycle (cancelled, abort, idle-wait, error path, wake coordination) is inherently branchy
+  // worker lifecycle (cancelled, abort, idle-wait, error path, wake coordination) is inherently branchy
   const runWorker = async (): Promise<void> => {
     while (true) {
       // Outer try catches:
@@ -541,14 +540,14 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
  * Process a single directory entry: skip / descend / yield.
  *
  * Extracted from the generator body purely to keep cognitive complexity
- * under Biome's ceiling. Mutates `ctx.stats`, pushes directories onto
+ * manageable. Mutates `ctx.stats`, pushes directories onto
  * `ctx.stack`, and returns a `WalkEntry` when a file should be yielded.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: filter cascade (hidden, symlink, dir, file, ignore, ext) is inherently branchy
+// filter cascade (hidden, symlink, dir, file, ignore, ext) is inherently branchy
 async function processEntry(
   entry: Dirent,
   frame: DirFrame,
-  ctx: WalkContext
+  ctx: WalkContext,
 ): Promise<WalkEntry | null> {
   const { cfg, matcher } = ctx;
   if (!cfg.hidden && entry.name.startsWith(".")) {
@@ -624,7 +623,7 @@ async function processEntry(
   return tryYieldFile(
     { absPath: abs, relPath: rel, fileDepth },
     cfg,
-    ctx.stats
+    ctx.stats,
   );
 }
 
@@ -633,7 +632,7 @@ async function maybeDescend(
   abs: string,
   rel: string,
   parentDepth: number,
-  ctx: WalkContext
+  ctx: WalkContext,
 ): Promise<void> {
   const { cfg, matcher } = ctx;
   // Default descent is depth + 1; callers (e.g. DSN scanner) can
@@ -707,7 +706,7 @@ type FileCoords = {
 async function tryYieldFile(
   coords: FileCoords,
   cfg: NormalizedOptions,
-  stats: WalkStats
+  stats: WalkStats,
 ): Promise<WalkEntry | null> {
   let statResult: { size: number; mtimeMs: number };
   try {
@@ -769,7 +768,7 @@ async function tryYieldFile(
 async function classifyFile(
   absPath: string,
   size: number,
-  cfg: NormalizedOptions
+  cfg: NormalizedOptions,
 ): Promise<boolean> {
   if (!cfg.classifyBinary) {
     // (a) caller ignores `isBinary` — skip all classification work.
@@ -827,7 +826,7 @@ function compareByName(a: Dirent, b: Dirent): number {
  */
 async function listDirEntries(
   dir: string,
-  concurrency: number
+  concurrency: number,
 ): Promise<Dirent[]> {
   try {
     const entries =
@@ -854,7 +853,7 @@ async function listDirEntries(
  */
 async function notifyDirectoryVisit(
   absDir: string,
-  hook: (dir: string, mtimeMs: number) => void
+  hook: (dir: string, mtimeMs: number) => void,
 ): Promise<void> {
   try {
     const s = await stat(absDir);
@@ -888,7 +887,7 @@ async function inodeKey(absPath: string): Promise<string | null> {
  * `maybeDescend` via `inodeKey`.
  */
 async function statSymlinkTarget(
-  absPath: string
+  absPath: string,
 ): Promise<{ isFile: boolean; isDirectory: boolean } | null> {
   try {
     const s = await stat(absPath);

@@ -7,7 +7,7 @@
  * re-scan files and hit the API.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -37,17 +37,17 @@ vi.mock("../../../src/lib/db/project-cache.js", async (importOriginal) => {
       typeof import("../../../src/lib/db/project-cache.js")
     >();
   projectCacheMocks.cacheProjectsForOrg.mockImplementation(
-    actual.cacheProjectsForOrg
+    actual.cacheProjectsForOrg,
   );
   projectCacheMocks.setCachedProjectByDsnKey.mockImplementation(
-    actual.setCachedProjectByDsnKey
+    actual.setCachedProjectByDsnKey,
   );
   projectCacheMocks.restoreActual = () => {
     projectCacheMocks.cacheProjectsForOrg.mockImplementation(
-      actual.cacheProjectsForOrg
+      actual.cacheProjectsForOrg,
     );
     projectCacheMocks.setCachedProjectByDsnKey.mockImplementation(
-      actual.setCachedProjectByDsnKey
+      actual.setCachedProjectByDsnKey,
     );
   };
   return {
@@ -166,7 +166,7 @@ function mockCreateAndKeysFlow(options?: {
     }
 
     throw new Error(
-      `Unexpected fetch call #${callIndex}: ${req.method} ${req.url}`
+      `Unexpected fetch call #${callIndex}: ${req.method} ${req.url}`,
     );
   });
 }
@@ -265,7 +265,7 @@ describe("createProjectWithDsn", () => {
       }
 
       throw new Error(
-        `Unexpected fetch call #${callIndex}: ${req.method} ${req.url}`
+        `Unexpected fetch call #${callIndex}: ${req.method} ${req.url}`,
       );
     });
 
@@ -329,7 +329,7 @@ describe("listProjects cache seeding", () => {
         new Response(JSON.stringify([SAMPLE_PROJECT]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
     projectCacheMocks.cacheProjectsForOrg.mockImplementation(() => {
       throw new Error("disk full");

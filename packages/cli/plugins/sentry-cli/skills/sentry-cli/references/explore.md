@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-explore
-version: 0.46.0-dev.0
+version: 0.48.0-dev.0
 description: Query aggregate event data (Explore)
 requires:
   bins: ["sentry"]
@@ -11,7 +11,7 @@ requires:
 
 Query aggregate event data (Explore)
 
-### `sentry explore <target>`
+### `sentry explore [<target>]`
 
 Query aggregate event data (Explore)
 
@@ -24,7 +24,7 @@ Query aggregate event data (Explore)
 - `-s, --sort <value> - Sort field (prefix with - for desc, e.g., "-count()")`
 - `-e, --environment <value>... - Environment filter (repeatable, comma-separated)`
 - `-n, --limit <value> - Number of rows (1-1000) - (default: "25")`
-- `-t, --period <value> - Time range: "7d", "2026-08-01..2026-09-01", ">=2026-08-01" - (default: "24h")`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "24h")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 

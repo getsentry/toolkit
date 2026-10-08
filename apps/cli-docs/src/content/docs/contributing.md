@@ -11,7 +11,7 @@ We welcome contributions to the Sentry CLI! This guide will help you get started
 
 <!-- GENERATED:START dev-prereq -->
 - [Node.js](https://nodejs.org) (v22.15 or later)
-- [pnpm](https://pnpm.io) (v10.11 or later)
+- [pnpm](https://pnpm.io) (v11.8 or later)
 <!-- GENERATED:END dev-prereq -->
 - Git
 
@@ -19,11 +19,12 @@ We welcome contributions to the Sentry CLI! This guide will help you get started
 
 ```bash
 # Clone the repository
-git clone https://github.com/getsentry/cli.git
-cd cli
+git clone https://github.com/getsentry/toolkit.git
+cd toolkit
 
 # Install dependencies
 pnpm install
+cd packages/cli
 
 # Run CLI in development mode
 pnpm run cli -- --help
@@ -46,56 +47,61 @@ Edit `.env.local` with your development credentials.
 
 <!-- GENERATED:START project-structure -->
 ```
-cli/
-├── src/
-│   ├── bin.ts          # Entry point
-│   ├── app.ts          # Stricli application setup
-│   ├── context.ts      # Dependency injection context
-│   ├── commands/       # CLI commands
-│   │   ├── agent-conversation/# list, view
-│   │   ├── alert/       # create, delete, edit, list, view
-│   │   ├── auth/        # login, logout, refresh, status, token, whoami
-│   │   ├── build/       # download, upload
-│   │   ├── cli/         # completion, defaults, feedback, fix, import, setup, uninstall, upgrade
-│   │   ├── code-mappings/# upload
-│   │   ├── dart-symbol-map/# upload
-│   │   ├── dashboard/   # add, create, delete, edit, list, restore, revisions, view
-│   │   ├── debug-files/ # bundle-jvm, bundle-sources, check, find, print-sources, upload
-│   │   ├── docs/        # list, query
-│   │   ├── event/       # list, send, view
-│   │   ├── feedback/    # list, view
-│   │   ├── issue/       # archive, events, explain, list, merge, plan, resolve, unresolve, view
-│   │   ├── local/       # run, serve
-│   │   ├── log/         # list, view
-│   │   ├── monitor/     # list, run
-│   │   ├── org/         # list, view
-│   │   ├── platform/    # list
-│   │   ├── proguard/    # upload, uuid
-│   │   ├── project/     # create, delete, list, view
-│   │   ├── react-native/# gradle, xcode
-│   │   ├── release/     # archive, create, delete, deploy, deploys, finalize, list, propose-version, restore, set-commits, view
-│   │   ├── replay/      # list, view
-│   │   ├── repo/        # list
-│   │   ├── snapshots/   # diff, download, upload
-│   │   ├── sourcemap/   # inject, resolve, upload
-│   │   ├── span/        # list, view
-│   │   ├── status/      # show
-│   │   ├── team/        # list
-│   │   ├── trace/       # list, logs, view
-│   │   ├── trial/       # list, start
-│   │   ├── api.ts       # Make an authenticated API request
-│   │   ├── explore.ts   # Query aggregate event data (Explore)
-│   │   ├── help.ts      # Help command
-│   │   ├── info.ts      # Print configuration and verify authentication
-│   │   ├── init.ts      # Initialize Sentry in your project (experimental)
-│   │   ├── schema.ts    # Browse the Sentry API schema
-│   │   └── wasm-split.ts# Add build ids to WebAssembly modules and split out debug data
-│   ├── lib/            # Shared utilities
-│   └── types/          # TypeScript types and Valibot schemas
-├── test/               # Test files (mirrors src/ structure)
-├── script/             # Build and utility scripts
-├── plugins/            # Agent skill files
-└── docs/               # Documentation site (Astro + Starlight)
+toolkit/
+├── packages/
+│   └── cli/
+│       ├── src/
+│       │   ├── bin.ts          # Entry point
+│       │   ├── app.ts          # Stricli application setup
+│       │   ├── context.ts      # Dependency injection context
+│       │   ├── commands/       # CLI commands
+│       │   │   ├── agent-conversation/# list, view
+│       │   │   ├── alert/       # create, delete, edit, list, view
+│       │   │   ├── auth/        # login, logout, refresh, status, token, whoami
+│       │   │   ├── build/       # download, upload
+│       │   │   ├── cli/         # completion, defaults, feedback, fix, import, setup, uninstall, upgrade
+│       │   │   ├── code-mappings/# upload
+│       │   │   ├── dart-symbol-map/# upload
+│       │   │   ├── dashboard/   # add, create, delete, edit, list, restore, revisions, view
+│       │   │   ├── debug-files/ # bundle-jvm, bundle-sources, check, find, print-sources, upload
+│       │   │   ├── docs/        # list, query
+│       │   │   ├── dsn/         # list
+│       │   │   ├── event/       # list, send, view
+│       │   │   ├── feedback/    # list, resolve, spam, unresolve, view
+│       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, unlink, unresolve, view
+│       │   │   ├── local/       # run, serve
+│       │   │   ├── log/         # list, view
+│       │   │   ├── monitor/     # list, run
+│       │   │   ├── org/         # list, view
+│       │   │   ├── platform/    # list
+│       │   │   ├── proguard/    # upload, uuid
+│       │   │   ├── project/     # create, delete, list, view
+│       │   │   ├── react-native/# gradle, xcode
+│       │   │   ├── release/     # archive, create, delete, deploy, deploys, finalize, list, propose-version, restore, set-commits, view
+│       │   │   ├── replay/      # download, list, view
+│       │   │   ├── repo/        # list
+│       │   │   ├── snapshots/   # diff, download, upload
+│       │   │   ├── sourcemap/   # inject, resolve, upload
+│       │   │   ├── span/        # list, view
+│       │   │   ├── status/      # show
+│       │   │   ├── team/        # list
+│       │   │   ├── trace/       # list, logs, view
+│       │   │   ├── trial/       # list, start
+│       │   │   ├── api.ts       # Make an authenticated API request
+│       │   │   ├── explore.ts   # Query aggregate event data (Explore)
+│       │   │   ├── help.ts      # Help command
+│       │   │   ├── info.ts      # Print configuration and verify authentication
+│       │   │   ├── init.ts      # Initialize Sentry in your project (experimental)
+│       │   │   ├── mcp.ts       # Start a local Sentry MCP server
+│       │   │   ├── schema.ts    # Browse the Sentry API schema
+│       │   │   └── wasm-split.ts# Add build ids to WebAssembly modules and split out debug data
+│       │   ├── lib/            # Shared utilities
+│       │   └── types/          # TypeScript types and Valibot schemas
+│       ├── test/               # Test files (mirrors src/ structure)
+│       ├── script/             # Build and utility scripts
+│       └── plugins/            # Agent skill files
+└── apps/
+    └── cli-docs/             # Documentation site (Astro + Starlight)
 ```
 <!-- GENERATED:END project-structure -->
 
@@ -132,7 +138,7 @@ pnpm run test -- --coverage
 
 ## Code Style
 
-The project uses [Ultracite](https://github.com/getsentry/ultracite) for linting and formatting:
+The project uses Oxlint and Oxfmt for linting and formatting:
 
 ```bash
 # Check for issues
@@ -167,5 +173,4 @@ We use conventional commits for automatic changelog generation:
 
 ## Getting Help
 
-- [GitHub Issues](https://github.com/getsentry/cli/issues) - Bug reports and feature requests
-- [GitHub Discussions](https://github.com/getsentry/cli/discussions) - Questions and discussions
+- [GitHub Issues](https://github.com/getsentry/toolkit/issues) - Bug reports and feature requests

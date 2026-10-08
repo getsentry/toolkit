@@ -17,7 +17,7 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { resolveOrg } from "../../lib/resolve-target.js";
-import { buildOrgUrl } from "../../lib/sentry-urls.js";
+import { buildOrgUrl } from "../../lib/sentry-web-urls.js";
 
 type ViewFlags = {
   readonly json: boolean;

@@ -96,7 +96,7 @@ type ProjectWithOrg = SentryProject & { orgSlug?: string };
  * @returns Projects with org context attached
  */
 export async function fetchOrgProjects(
-  orgSlug: string
+  orgSlug: string,
 ): Promise<ProjectWithOrg[]> {
   const projects = await listProjects(orgSlug);
   return projects.map((p) => ({ ...p, orgSlug }));
@@ -107,7 +107,7 @@ export async function fetchOrgProjects(
  * Auth errors propagate so user sees "please log in" message.
  */
 export async function fetchOrgProjectsSafe(
-  orgSlug: string
+  orgSlug: string,
 ): Promise<ProjectWithOrg[]> {
   const result = await withAuthGuard(() => fetchOrgProjects(orgSlug));
   return result.ok ? result.value : [];
@@ -125,7 +125,7 @@ export async function fetchAllOrgProjects(): Promise<ProjectWithOrg[]> {
 
   for (const org of orgs) {
     const projectsResult = await withAuthGuard(() =>
-      fetchOrgProjects(org.slug)
+      fetchOrgProjects(org.slug),
     );
     if (projectsResult.ok) {
       results.push(...projectsResult.value);
@@ -144,14 +144,14 @@ export async function fetchAllOrgProjects(): Promise<ProjectWithOrg[]> {
  */
 export function filterByPlatform(
   projects: ProjectWithOrg[],
-  platform?: string
+  platform?: string,
 ): ProjectWithOrg[] {
   if (!platform) {
     return projects;
   }
   const lowerPlatform = platform.toLowerCase();
   return projects.filter((p) =>
-    p.platform?.toLowerCase().includes(lowerPlatform)
+    p.platform?.toLowerCase().includes(lowerPlatform),
   );
 }
 
@@ -168,7 +168,7 @@ export function filterByPlatform(
 export function buildContextKey(
   parsed: ParsedOrgProject,
   flags: { platform?: string },
-  host: string
+  host: string,
 ): string {
   const parts: string[] = [`host:${host}`];
   switch (parsed.type) {
@@ -180,7 +180,7 @@ export function buildContextKey(
       break;
     case "explicit":
       parts.push(
-        `type:explicit:${formatProjectTarget(parsed.org, explicitProjectSlugs(parsed))}`
+        `type:explicit:${formatProjectTarget(parsed.org, explicitProjectSlugs(parsed))}`,
       );
       break;
     case "project-search":
@@ -194,7 +194,7 @@ export function buildContextKey(
   if (flags.platform) {
     // Normalize to lowercase since platform filtering is case-insensitive.
     parts.push(
-      `platform:${escapeContextKeyValue(flags.platform.toLowerCase())}`
+      `platform:${escapeContextKeyValue(flags.platform.toLowerCase())}`,
     );
   }
   return parts.join("|");
@@ -256,7 +256,7 @@ type PaginatedResult = { projects: ProjectWithOrg[]; nextCursor?: string };
 
 async function fetchPaginatedSafe(
   org: string,
-  limit: number
+  limit: number,
 ): Promise<PaginatedResult> {
   const result = await withAuthGuard(async () => {
     const response = await listProjectsAllPages(org, { limit });
@@ -278,7 +278,7 @@ async function fetchPaginatedSafe(
  */
 async function fetchAutoDetectProjects(
   orgs: string[],
-  flags: ListFlags
+  flags: ListFlags,
 ): Promise<{ projects: ProjectWithOrg[]; nextCursor?: string }> {
   if (orgs.length === 1 && !flags.platform) {
     return fetchPaginatedSafe(orgs[0] as string, flags.limit);
@@ -302,7 +302,7 @@ function autoDetectHeader(
   count: number,
   hasMore: boolean,
   nextCursor: string | undefined,
-  orgs: string[]
+  orgs: string[],
 ): string | undefined {
   if (!hasMore) {
     return;
@@ -319,7 +319,7 @@ function autoDetectHeader(
 
 /** Build self-hosted DSN warning text, or undefined if none skipped. */
 function selfHostedWarning(
-  skippedSelfHosted: number | undefined
+  skippedSelfHosted: number | undefined,
 ): string | undefined {
   if (!skippedSelfHosted) {
     return;
@@ -336,7 +336,7 @@ function selfHostedWarning(
  */
 export async function handleAutoDetect(
   cwd: string,
-  flags: ListFlags
+  flags: ListFlags,
 ): Promise<ListResult<ProjectWithOrg>> {
   const {
     orgs: orgsToFetch,
@@ -349,7 +349,7 @@ export async function handleAutoDetect(
       message: `Fetching projects (up to ${flags.limit})...`,
       json: flags.json,
     },
-    () => fetchAutoDetectProjects(orgsToFetch, flags)
+    () => fetchAutoDetectProjects(orgsToFetch, flags),
   );
 
   const filtered = filterByPlatform(allProjects, flags.platform);
@@ -362,7 +362,7 @@ export async function handleAutoDetect(
     limited.length,
     hasMore,
     nextCursor,
-    orgsToFetch
+    orgsToFetch,
   );
 
   const hintParts: string[] = [];
@@ -375,7 +375,7 @@ export async function handleAutoDetect(
       hintParts.push(footer);
     }
     hintParts.push(
-      "Tip: Use 'sentry project view <org>/<project>' for details"
+      "Tip: Use 'sentry project view <org>/<project>' for details",
     );
   }
 
@@ -402,11 +402,11 @@ export async function handleAutoDetect(
 export async function handleExplicit(
   org: string,
   projectSlug: string,
-  flags: ListFlags
+  flags: ListFlags,
 ): Promise<ListResult<ProjectWithOrg>> {
   const projectResult = await withProgress(
     { message: "Fetching project...", json: flags.json },
-    () => withAuthGuard(() => getProject(org, projectSlug))
+    () => withAuthGuard(() => getProject(org, projectSlug)),
   );
   if (!projectResult.ok) {
     return {
@@ -445,15 +445,15 @@ export async function handleExplicit(
 async function handleExplicitProjects(
   org: string,
   slugs: readonly string[],
-  flags: ListFlags
+  flags: ListFlags,
 ): Promise<ListResult<ProjectWithOrg>> {
   const { found, missing } = await withProgress(
     { message: "Fetching projects...", json: flags.json },
-    () => findProjectsInOrg(org, slugs)
+    () => findProjectsInOrg(org, slugs),
   );
   const selected = found.map((project) => ({ ...project, orgSlug: org }));
-  const items = filterByPlatform(selected, flags.platform);
-  const includedSlugs = new Set(items.map((project) => project.slug));
+  const filtered = filterByPlatform(selected, flags.platform);
+  const includedSlugs = new Set(filtered.map((project) => project.slug));
   const platformFiltered = selected
     .filter((project) => !includedSlugs.has(project.slug))
     .map((project) => project.slug);
@@ -470,22 +470,27 @@ async function handleExplicitProjects(
   const hintParts: string[] = [];
   if (missing.length > 0) {
     hintParts.push(
-      `Missing: ${missing.join(", ")}. Tip: Use 'sentry project list ${org}/' to see all projects`
+      `Missing: ${missing.join(", ")}. Tip: Use 'sentry project list ${org}/' to see all projects`,
     );
   }
   if (platformFiltered.length > 0) {
     hintParts.push(
-      `No match for platform '${flags.platform}': ${platformFiltered.join(", ")}`
+      `No match for platform '${flags.platform}': ${platformFiltered.join(", ")}`,
     );
   }
   if (hintParts.length === 0) {
     hintParts.push(
-      `Tip: Use 'sentry project view ${org}/<project>' for details`
+      `Tip: Use 'sentry project view ${org}/<project>' for details`,
     );
   }
 
+  const items = filtered.slice(0, flags.limit);
   return {
     items,
+    header:
+      filtered.length > items.length
+        ? `Showing ${items.length} of ${filtered.length} matches. Use --limit to show more.`
+        : undefined,
     hint: hintParts.join("\n"),
   };
 }
@@ -505,7 +510,7 @@ export type OrgAllOptions = {
  * {@link listProjectsAllPages} instead of sending an oversized `per_page`.
  */
 export async function handleOrgAll(
-  options: OrgAllOptions
+  options: OrgAllOptions,
 ): Promise<ListResult<ProjectWithOrg>> {
   const { org, flags, contextKey, cursor, direction } = options;
   const response: PaginatedResponse<SentryProject[]> = await withProgress(
@@ -513,7 +518,7 @@ export async function handleOrgAll(
       message: `Fetching projects (up to ${flags.limit})...`,
       json: flags.json,
     },
-    () => listProjectsAllPages(org, { limit: flags.limit, cursor })
+    () => listProjectsAllPages(org, { limit: flags.limit, cursor }),
   );
 
   const projects: ProjectWithOrg[] = response.data.map((p) => ({
@@ -530,7 +535,7 @@ export async function handleOrgAll(
     PAGINATION_KEY,
     contextKey,
     direction,
-    response.nextCursor ?? undefined
+    response.nextCursor ?? undefined,
   );
   const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 
@@ -593,7 +598,7 @@ export async function handleProjectSearch(
     scopedOrg?: string;
     /** Classification supplied by the dispatcher after its target pre-check. */
     projectSearchResolution?: ProjectSearchTargetResolution;
-  }
+  },
 ): Promise<ListResult<ProjectWithOrg>> {
   const { originalSlug, scopedOrg, projectSearchResolution } = options ?? {};
   const parsed = {
@@ -609,14 +614,14 @@ export async function handleProjectSearch(
         message: `Fetching projects (up to ${flags.limit})...`,
         json: flags.json,
       },
-      () => classifyProjectSearchTarget(parsed)
+      () => classifyProjectSearchTarget(parsed),
     ));
 
   if (resolution.kind === "organization") {
     const contextKey = buildContextKey(
       { type: "org-all", org: resolution.org },
       flags,
-      getApiBaseUrl()
+      getApiBaseUrl(),
     );
     const result = await handleOrgAll({
       org: resolution.org,
@@ -668,7 +673,7 @@ export async function handleProjectSearch(
 function handleProjectSearchNotFound(
   resolution: Extract<ProjectSearchTargetResolution, { kind: "not-found" }>,
   projectSlug: string,
-  json: boolean
+  json: boolean,
 ): ListResult<ProjectWithOrg> {
   if (json) {
     return { items: [] };
@@ -677,7 +682,7 @@ function handleProjectSearchNotFound(
     `Project '${resolution.displaySlug}'`,
     "not found",
     `sentry project list <org>/${projectSlug}`,
-    projectSearchNotFoundSuggestions(resolution)
+    projectSearchNotFoundSuggestions(resolution),
   );
 }
 
@@ -763,12 +768,12 @@ export const listCommand = buildListCommand("project", {
           const contextKey = buildContextKey(
             ctx.parsed,
             flags,
-            getApiBaseUrl()
+            getApiBaseUrl(),
           );
           const { cursor, direction } = resolveCursor(
             flags.cursor,
             PAGINATION_KEY,
-            contextKey
+            contextKey,
           );
           return handleOrgAll({
             org: ctx.parsed.org,

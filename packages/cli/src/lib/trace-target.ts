@@ -125,7 +125,7 @@ export type ResolvedTraceOrg = {
  */
 export function parseTraceTarget(
   args: string[],
-  usageHint: string
+  usageHint: string,
 ): ParsedTraceTarget {
   if (args.length === 0) {
     throw new ContextError("Trace ID", usageHint, []);
@@ -139,7 +139,7 @@ export function parseTraceTarget(
   // Warn about extra positional args that will be ignored
   if (args.length > 2) {
     log.warn(
-      `Extra arguments ignored: ${args.slice(2).join(" ")}. Expected: ${usageHint}`
+      `Extra arguments ignored: ${args.slice(2).join(" ")}. Expected: ${usageHint}`,
     );
   }
 
@@ -168,7 +168,7 @@ export function parseTraceTarget(
  */
 export function parseSlashSeparatedTraceTarget(
   input: string,
-  usageHint: string
+  usageHint: string,
 ): ParsedTraceTarget {
   const lastSlash = input.lastIndexOf("/");
 
@@ -237,7 +237,7 @@ export function parseSlashSeparatedTraceTarget(
  */
 export function targetArgToTraceTarget(
   targetArg: string,
-  traceId: string
+  traceId: string,
 ): ParsedTraceTarget {
   const parsed = parseOrgProjectArg(targetArg);
 
@@ -292,7 +292,7 @@ export function targetArgToTraceTarget(
  * there isn't a usable trace ID slot (e.g., zero args).
  */
 export function extractRawTraceId(
-  args: string[]
+  args: string[],
 ): { rawTraceId: string; targetArg?: string } | null {
   if (args.length === 0) {
     return null;
@@ -334,7 +334,7 @@ export function extractRawTraceId(
  */
 export async function parseTraceTargetWithRecovery(
   args: string[],
-  usageHint: string
+  usageHint: string,
 ): Promise<ParsedTraceTarget> {
   try {
     return parseTraceTarget(args, usageHint);
@@ -368,7 +368,7 @@ export async function parseTraceTargetWithRecovery(
  * confusing slug error.
  */
 async function recoveryContextFromTargetArg(
-  targetArg: string | undefined
+  targetArg: string | undefined,
 ): Promise<{ org: string; project?: string }> {
   if (!targetArg) {
     return { org: "", project: undefined };
@@ -416,7 +416,7 @@ export function warnIfNormalized(parsed: ParsedTraceTarget, tag: string): void {
   if ("normalized" in parsed && parsed.normalized) {
     const taggedLog = logger.withTag(tag);
     taggedLog.warn(
-      "Normalized slug (Sentry slugs use lowercase with dashes, not spaces)"
+      "Normalized slug (Sentry slugs use lowercase with dashes, not spaces)",
     );
   }
 }
@@ -445,7 +445,7 @@ function commandNameFromUsageHint(usageHint: string): string {
 export async function resolveTraceOrgOptionalProject(
   parsed: ParsedTraceTarget,
   cwd: string,
-  usageHint: string
+  usageHint: string,
 ): Promise<ResolvedTraceOrgProject | ResolvedTraceOrg> {
   if (parsed.type === "org-scoped") {
     setOrgProjectContext([parsed.org], []);
@@ -456,7 +456,7 @@ export async function resolveTraceOrgOptionalProject(
       parsed,
       cwd,
       commandNameFromUsageHint(usageHint),
-      usageHint
+      usageHint,
     );
     return { traceId: parsed.traceId, ...resolved };
   }
@@ -475,7 +475,7 @@ export async function resolveTraceOrgOptionalProject(
 export async function resolveTraceOrgProject(
   parsed: ParsedTraceTarget,
   cwd: string,
-  usageHint: string
+  usageHint: string,
 ): Promise<ResolvedTraceOrgProject> {
   switch (parsed.type) {
     case "explicit":
@@ -521,13 +521,13 @@ export async function resolveTraceOrgProject(
 async function resolveProjectSearchTarget(
   parsed: Extract<ParsedTraceTarget, { type: "project-search" }>,
   cwd: string,
-  usageHint: string
+  usageHint: string,
 ): Promise<ResolvedTraceOrgProject> {
   const target = await resolveProjectBoundTarget(
     parsed,
     cwd,
     commandNameFromUsageHint(usageHint),
-    { usageHint }
+    { usageHint },
   );
   return {
     traceId: parsed.traceId,
@@ -551,7 +551,7 @@ async function resolveProjectSearchTarget(
 export async function resolveTraceOrg(
   parsed: ParsedTraceTarget,
   cwd: string,
-  usageHint: string
+  usageHint: string,
 ): Promise<ResolvedTraceOrg> {
   switch (parsed.type) {
     case "explicit":
@@ -567,7 +567,7 @@ export async function resolveTraceOrg(
         parsed,
         cwd,
         commandNameFromUsageHint(usageHint),
-        usageHint
+        usageHint,
       );
       return { traceId: parsed.traceId, org };
     }
@@ -628,7 +628,7 @@ export type ParsedDualModeArgs =
  */
 export function parseDualModeArgs(
   args: string[],
-  traceUsageHint: string
+  traceUsageHint: string,
 ): ParsedDualModeArgs {
   if (args.length === 0) {
     return { mode: "project" };

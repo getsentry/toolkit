@@ -41,12 +41,13 @@ export type ResolvedFeedback = {
 async function resolveFeedbackSelector(
   selector: IssueSelector,
   explicitOrg: string | undefined,
-  cwd: string
+  cwd: string,
+  command: string,
 ): Promise<ResolvedFeedback> {
   if (selector !== "@latest") {
     throw new ValidationError(
       "Feedback only supports @latest; @most_frequent is not meaningful for Feedback.",
-      "feedback selector"
+      "feedback selector",
     );
   }
 
@@ -56,7 +57,7 @@ async function resolveFeedbackSelector(
   if (!org) {
     throw new ContextError(
       "Organization",
-      "sentry feedback view <org>/@latest"
+      `sentry feedback ${command} <org>/@latest`,
     );
   }
 
@@ -70,13 +71,13 @@ async function resolveFeedbackSelector(
       "Selector '@latest'",
       "found no unresolved User Feedback",
       `sentry feedback list ${org}/ --status all`,
-      ["The @latest selector only matches unresolved Feedback."]
+      ["The @latest selector only matches unresolved Feedback."],
     );
   }
 
   setOrgProjectContext(
     [org],
-    latest.project?.slug ? [latest.project.slug] : []
+    latest.project?.slug ? [latest.project.slug] : [],
   );
   return { org, feedback: latest };
 }
@@ -84,14 +85,16 @@ async function resolveFeedbackSelector(
 /**
  * Resolve an issue-style identifier or the newest unresolved Feedback via
  * `@latest`, and require the result to remain inside the Feedback category.
+ * The command name keeps recovery hints aligned with the caller's operation.
  */
 export async function resolveFeedback(
   feedbackArg: string,
-  cwd: string
+  cwd: string,
+  command = "view",
 ): Promise<ResolvedFeedback> {
   const parsed = parseIssueArg(feedbackArg);
   if (parsed.type === "selector") {
-    return resolveFeedbackSelector(parsed.selector, parsed.org, cwd);
+    return resolveFeedbackSelector(parsed.selector, parsed.org, cwd, command);
   }
 
   let resolved: Awaited<ReturnType<typeof resolveIssue>>;
@@ -99,7 +102,7 @@ export async function resolveFeedback(
     resolved = await resolveIssue({
       issueArg: feedbackArg,
       cwd,
-      command: "view",
+      command,
       commandBase: "sentry feedback",
     });
   } catch (error) {
@@ -107,8 +110,8 @@ export async function resolveFeedback(
       throw new ResolutionError(
         `Feedback '${feedbackArg}'`,
         "not found",
-        buildCommandHint("view", feedbackArg, "sentry feedback"),
-        ["List available Feedback: sentry feedback list"]
+        buildCommandHint(command, feedbackArg, "sentry feedback"),
+        ["List available Feedback: sentry feedback list"],
       );
     }
     throw error;
@@ -120,7 +123,7 @@ export async function resolveFeedback(
       `Issue '${issue.shortId}'`,
       "is not User Feedback",
       `sentry issue view ${org ? `${org}/` : ""}${issue.shortId}`,
-      ["Use a Feedback ID from: sentry feedback list"]
+      ["Use a Feedback ID from: sentry feedback list"],
     );
   }
 

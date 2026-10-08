@@ -58,9 +58,9 @@ import {
   setProcessInfoProvider,
 } from "../../../src/lib/detect-agent.js";
 import { setEnv } from "../../../src/lib/env.js";
-// biome-ignore lint/performance/noNamespaceImport: dynamic setup imports are mocked at the module boundary
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- dynamic setup imports are mocked at the module boundary
 import * as interactiveLogin from "../../../src/lib/interactive-login.js";
-// biome-ignore lint/performance/noNamespaceImport: dynamic setup imports are mocked at the module boundary
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- dynamic setup imports are mocked at the module boundary
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
 import { useTestConfigDir } from "../../helpers.js";
 
@@ -69,7 +69,7 @@ let originalFetch: typeof globalThis.fetch;
 
 /** Helper to mock fetch without TypeScript errors about missing Bun-specific properties */
 function mockFetch(
-  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>
+  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
   globalThis.fetch = fn as typeof globalThis.fetch;
 }
@@ -86,7 +86,7 @@ function createMockContext(
     homeDir: string;
     env: Record<string, string | undefined>;
     execPath: string;
-  }> = {}
+  }> = {},
 ): {
   context: SentryContext;
   getOutput: () => string;
@@ -166,7 +166,7 @@ describe("sentry cli setup", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `setup-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `setup-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
     vi.mocked(scopeRecovery.ensureCurrentOAuthScopes).mockResolvedValue(false);
@@ -195,7 +195,7 @@ describe("sentry cli setup", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     // With --quiet, no output should be produced
@@ -217,12 +217,12 @@ describe("sentry cli setup", () => {
         "--no-agent-skills",
         "--ensure-auth-scopes",
       ],
-      context
+      context,
     );
 
     expect(scopeRecovery.ensureCurrentOAuthScopes).toHaveBeenCalledOnce();
     expect(scopeRecovery.ensureCurrentOAuthScopes).toHaveBeenCalledWith(
-      interactiveLogin.runInteractiveLogin
+      interactiveLogin.runInteractiveLogin,
     );
   });
 
@@ -243,7 +243,7 @@ describe("sentry cli setup", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getOutput()).toBe("");
@@ -266,7 +266,7 @@ describe("sentry cli setup", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("Recorded installation method: curl");
@@ -290,7 +290,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-completions", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("PATH:");
@@ -313,7 +313,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-completions", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("already in PATH");
@@ -332,7 +332,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-completions", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("No shell config file found");
@@ -356,7 +356,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("Completions:");
@@ -379,7 +379,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("fpath");
@@ -398,7 +398,7 @@ describe("sentry cli setup", () => {
       ".local",
       "share",
       "zsh",
-      "site-functions"
+      "site-functions",
     );
     writeFileSync(zshrc, `# existing\nfpath=("${completionDir}" $fpath)\n`);
 
@@ -415,7 +415,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     // Should still show "Installed to" but not "Added ... to fpath"
@@ -443,7 +443,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-completions", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("GITHUB_PATH");
@@ -472,11 +472,11 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain(
-      "Your shell (xonsh) is not directly supported"
+      "Your shell (xonsh) is not directly supported",
     );
     expect(getOutput()).toContain("bash completions as a fallback");
     expect(getOutput()).toContain("bash-completion");
@@ -497,7 +497,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     // Nothing actionable — no message produced
@@ -520,7 +520,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("Completions: Installed to");
@@ -530,7 +530,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).not.toContain("Completions:");
@@ -550,7 +550,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     // sh/ash shells silently skip completions — no message at all
@@ -574,7 +574,7 @@ describe("sentry cli setup", () => {
         "--no-agent-skills",
         "--quiet",
       ],
-      context
+      context,
     );
 
     // Should not error
@@ -614,7 +614,7 @@ describe("sentry cli setup", () => {
           "--no-completions",
           "--no-agent-skills",
         ],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -663,7 +663,7 @@ describe("sentry cli setup", () => {
           "--no-completions",
           "--no-agent-skills",
         ],
-        context
+        context,
       );
 
       // With --install, the "Recorded installation method" log is suppressed
@@ -706,7 +706,7 @@ describe("sentry cli setup", () => {
           "--no-completions",
           "--no-agent-skills",
         ],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -750,7 +750,7 @@ describe("sentry cli setup", () => {
           "--no-agent-skills",
           "--quiet",
         ],
-        context
+        context,
       );
 
       expect(getOutput()).toBe("");
@@ -781,7 +781,7 @@ describe("sentry cli setup", () => {
         existingBinary?: boolean;
         install?: boolean;
         method?: string;
-      } = {}
+      } = {},
     ) {
       const sourcePath = join(testDir, "sentry-download");
       const installDir = join(testDir, "install-dir");
@@ -822,7 +822,7 @@ describe("sentry cli setup", () => {
               "--no-agent-skills",
               ...(options.flags ?? []),
             ],
-            mock.context
+            mock.context,
           ),
       };
     }
@@ -832,11 +832,11 @@ describe("sentry cli setup", () => {
       vi.mocked(interactiveLogin.runInteractiveLogin).mockImplementation(
         async () => {
           expect(readFileSync(fixture.binaryPath, "utf8")).toBe(
-            "fixture-binary"
+            "fixture-binary",
           );
           expect(fixture.getOutput()).toContain("Installed sentry v");
           return { method: "oauth", configPath: getConfigDir() };
-        }
+        },
       );
 
       await fixture.run();
@@ -912,26 +912,26 @@ describe("sentry cli setup", () => {
       expect(readFileSync(fixture.binaryPath, "utf8")).toBe("fixture-binary");
     });
 
-    test.each([
-      false,
-      true,
-    ])("keeps installation successful when OAuth fails (throws: %s)", async (throws) => {
-      if (throws) {
-        vi.mocked(interactiveLogin.runInteractiveLogin).mockRejectedValue(
-          new Error("OAuth unavailable")
+    test.each([false, true])(
+      "keeps installation successful when OAuth fails (throws: %s)",
+      async (throws) => {
+        if (throws) {
+          vi.mocked(interactiveLogin.runInteractiveLogin).mockRejectedValue(
+            new Error("OAuth unavailable"),
+          );
+        }
+        const fixture = createInstall();
+        await fixture.run();
+        expect(interactiveLogin.runInteractiveLogin).toHaveBeenCalledOnce();
+        expect(fixture.context.process.exitCode).toBe(0);
+        expect(readFileSync(fixture.binaryPath, "utf8")).toBe("fixture-binary");
+        expect(fixture.getOutput()).toContain(
+          throws
+            ? "Authentication failed: OAuth unavailable"
+            : "Run 'sentry auth login' to authenticate later.",
         );
-      }
-      const fixture = createInstall();
-      await fixture.run();
-      expect(interactiveLogin.runInteractiveLogin).toHaveBeenCalledOnce();
-      expect(fixture.context.process.exitCode).toBe(0);
-      expect(readFileSync(fixture.binaryPath, "utf8")).toBe("fixture-binary");
-      expect(fixture.getOutput()).toContain(
-        throws
-          ? "Authentication failed: OAuth unavailable"
-          : "Run 'sentry auth login' to authenticate later."
-      );
-    });
+      },
+    );
   });
 
   describe("agent skills", () => {
@@ -942,7 +942,7 @@ describe("sentry cli setup", () => {
       originalFetch = globalThis.fetch;
       mockFetch(
         async () =>
-          new Response("# Sentry CLI Skill\nTest content", { status: 200 })
+          new Response("# Sentry CLI Skill\nTest content", { status: 200 }),
       );
     });
 
@@ -968,7 +968,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).toContain("Agent skills:");
@@ -980,7 +980,7 @@ describe("sentry cli setup", () => {
         ".claude",
         "skills",
         "sentry-cli",
-        "SKILL.md"
+        "SKILL.md",
       );
       expect(existsSync(skillPath)).toBe(true);
     });
@@ -999,7 +999,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).not.toContain("Agent skills:");
@@ -1021,15 +1021,19 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).toContain("Agent skills: Installed to");
       expect(
-        existsSync(join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(true);
       expect(
-        existsSync(join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(false);
     });
 
@@ -1050,7 +1054,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).toContain("Agent skills: Installed to");
@@ -1060,7 +1064,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).not.toContain("Agent skills:");
@@ -1088,7 +1092,7 @@ describe("sentry cli setup", () => {
           "--no-completions",
           "--no-agent-skills",
         ],
-        context
+        context,
       );
 
       expect(getOutput()).not.toContain("Agent skills:");
@@ -1116,7 +1120,7 @@ describe("sentry cli setup", () => {
           "--no-completions",
           "--no-agent-skills",
         ],
-        context
+        context,
       );
 
       expect(getAgentSkillsPreference()).toBe(false);
@@ -1141,12 +1145,14 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).not.toContain("Agent skills:");
       expect(
-        existsSync(join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(false);
     });
 
@@ -1166,7 +1172,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       // Skill files are embedded at build time, so installation should succeed
@@ -1199,7 +1205,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -1223,7 +1229,7 @@ describe("sentry cli setup — legacy migration", () => {
   beforeEach(() => {
     testHome = join(
       "/tmp",
-      `setup-mig-home-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `setup-mig-home-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testHome, { recursive: true });
   });
@@ -1305,7 +1311,7 @@ describe("sentry cli setup — legacy migration", () => {
     await run(app, setupArgs, context);
 
     expect(await readFile(join(installDir, "sentry"), "utf8")).toBe(
-      "current-binary"
+      "current-binary",
     );
   });
 
@@ -1328,7 +1334,7 @@ describe("sentry cli setup — legacy migration", () => {
     // The ~/.local/bin binary stays put; nothing is copied to the target.
     expect(existsSync(join(localBin, "sentry"))).toBe(true);
     expect(await readFile(join(localBin, "sentry"), "utf8")).toBe(
-      "local-binary"
+      "local-binary",
     );
     expect(existsSync(join(installDir, "sentry"))).toBe(false);
   });
@@ -1362,7 +1368,7 @@ describe("sentry cli setup — legacy migration records new path", () => {
   beforeEach(() => {
     testHome = join(
       "/tmp",
-      `setup-mig-info-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `setup-mig-info-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testHome, { recursive: true });
   });
@@ -1401,7 +1407,7 @@ describe("sentry cli setup — legacy migration records new path", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     const recorded = getInstallInfo();
@@ -1418,7 +1424,7 @@ describe("sentry cli setup — --channel flag", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `setup-channel-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `setup-channel-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
   });
@@ -1446,7 +1452,7 @@ describe("sentry cli setup — --channel flag", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getReleaseChannel()).toBe("nightly");
@@ -1467,7 +1473,7 @@ describe("sentry cli setup — --channel flag", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getReleaseChannel()).toBe("stable");
@@ -1490,7 +1496,7 @@ describe("sentry cli setup — --channel flag", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("Recorded release channel: nightly");
@@ -1517,7 +1523,7 @@ describe("sentry cli setup — --channel flag", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getOutput()).not.toContain("Recorded release channel: nightly");

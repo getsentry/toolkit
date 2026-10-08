@@ -15,6 +15,8 @@
  *   Exit:   0 on success (even if no completions)
  */
 
+import { getConfiguredSentryUrl } from "./constants.js";
+import { getCredentialContext } from "./db/auth.js";
 import { queueCompletionTelemetry } from "./db/completion-telemetry.js";
 import { getProjectAliases } from "./db/project-aliases.js";
 import { getCachedProjectsForOrg } from "./db/project-cache.js";
@@ -23,6 +25,17 @@ import { fuzzyMatch } from "./fuzzy.js";
 import { COMMON_PLATFORMS, VALID_PLATFORMS } from "./platforms.js";
 
 const WHITESPACE_RE = /\s/;
+
+/** Never suggest organizations cached under another credential or lookup host. */
+function getCompletionOrganizations() {
+  const credential = getCredentialContext();
+  return credential
+    ? getCachedOrganizations(
+        getConfiguredSentryUrl() ?? credential.host,
+        credential.identity,
+      )
+    : [];
+}
 
 /**
  * Completion result with optional description for rich shell display.
@@ -91,12 +104,15 @@ export function handleComplete(args: string[]): void {
  * @internal Exported for testing only.
  */
 export const ORG_PROJECT_COMMANDS = new Set([
+  "dsn list",
   "issue list",
   "issue events",
   "issue view",
   "issue explain",
   "issue plan",
   "issue resolve",
+  "issue link",
+  "issue unlink",
   "issue unresolve",
   "issue archive",
   "issue merge",
@@ -160,7 +176,7 @@ export const ORG_ONLY_COMMANDS = new Set([
  */
 export function getCompletions(
   precedingWords: string[],
-  partial: string
+  partial: string,
 ): Completion[] {
   // Build the command path from preceding words (e.g., "issue list")
   const cmdPath =
@@ -241,7 +257,7 @@ export function completeProjectCreateSpec(partial: string): Completion[] {
  * @returns Completions with org names as descriptions
  */
 export function completeOrgSlugs(partial: string, suffix = ""): Completion[] {
-  const orgs = getCachedOrganizations();
+  const orgs = getCompletionOrganizations();
   if (orgs.length === 0) {
     return [];
   }
@@ -318,7 +334,7 @@ function completeOrgSlugsWithSlash(partial: string): Completion[] {
  */
 export function completeProjectSlugs(
   projectPartial: string,
-  orgSlug: string
+  orgSlug: string,
 ): Completion[] {
   const projects = getCachedProjectsForOrg(orgSlug);
 
@@ -346,7 +362,7 @@ export function completeProjectSlugs(
  * @returns The resolved org slug, or undefined if no match
  */
 function fuzzyResolveOrg(orgPart: string): string | undefined {
-  const orgs = getCachedOrganizations();
+  const orgs = getCompletionOrganizations();
   if (orgs.length === 0) {
     return;
   }

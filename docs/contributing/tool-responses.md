@@ -125,6 +125,10 @@ omits the section. Commit lookup is optional: failures do not prevent issue
 details from loading, but unexpected server or response-validation failures
 are reported to Sentry.
 
+The event API's legacy `context` field (extra data) can be `null`. Issue details
+must still load; omit the `Extra Data` section for null or empty values while
+preserving the event's error, stacktrace, and structured `contexts` data.
+
 ## Structured Content
 
 MCP tools may expose `structuredContent` alongside generated text `content`.
@@ -259,3 +263,11 @@ For output-format changes:
 If the raw tool result is clean but the agent final answer adds unrelated
 content, treat that as a client/agent prompt issue rather than a tool response
 formatting issue.
+
+### Cron Monitor Environment Deletion
+
+`delete_monitor_environment` schedules irreversible deletion of one exact
+environment from a project-scoped cron monitor. The structured response
+identifies the project, monitor, and environment; `success` means the deletion
+was accepted or the target was already absent. Deletion completes in the
+background, preserving the monitor and its other environments.

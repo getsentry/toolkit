@@ -7,7 +7,7 @@
  * terminal.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { WizardError } from "../../../src/lib/errors.js";
@@ -17,7 +17,7 @@ import { CANCELLED } from "../../../src/lib/init/ui/types.js";
 import { createMockUI } from "./ui/mock-ui.js";
 
 function makeOptions(
-  overrides?: Partial<InteractiveContext>
+  overrides?: Partial<InteractiveContext>,
 ): InteractiveContext {
   return {
     yes: false,
@@ -37,8 +37,8 @@ describe("handleInteractive dispatcher", () => {
       handleInteractive(
         { type: "interactive", prompt: "test", kind: "unknown" as "select" },
         makeOptions(),
-        ui
-      )
+        ui,
+      ),
     ).rejects.toBeInstanceOf(WizardError);
   });
 });
@@ -54,12 +54,12 @@ describe("handleSelect", () => {
         options: ["my-app"],
       },
       makeOptions({ yes: true }),
-      ui
+      ui,
     );
 
     expect(result).toEqual({ selectedApp: "my-app" });
     expect(
-      calls.some((c) => c.kind === "log.info" && c.message.includes("my-app"))
+      calls.some((c) => c.kind === "log.info" && c.message.includes("my-app")),
     ).toBe(true);
   });
 
@@ -77,8 +77,8 @@ describe("handleSelect", () => {
           ],
         },
         makeOptions({ yes: true }),
-        ui
-      )
+        ui,
+      ),
     ).rejects.toBeInstanceOf(WizardError);
     expect(calls.some((c) => c.kind === "log.error")).toBe(true);
   });
@@ -96,7 +96,7 @@ describe("handleSelect", () => {
         options: ["existing", "create"],
       },
       makeOptions({ yes: true }),
-      ui
+      ui,
     );
     expect(result).toEqual({ selectedApp: "create" });
   });
@@ -112,8 +112,8 @@ describe("handleSelect", () => {
           options: [],
         },
         makeOptions(),
-        ui
-      )
+        ui,
+      ),
     ).rejects.toBeInstanceOf(WizardError);
   });
 
@@ -127,7 +127,7 @@ describe("handleSelect", () => {
         apps: [{ name: "express-app", path: "/app", framework: "Express" }],
       },
       makeOptions({ yes: true }),
-      ui
+      ui,
     );
 
     expect(result).toEqual({ selectedApp: "express-app" });
@@ -145,7 +145,7 @@ describe("handleSelect", () => {
         options: ["react", "vue"],
       },
       makeOptions({ yes: false }),
-      ui
+      ui,
     );
 
     expect(result).toEqual({ selectedApp: "vue" });
@@ -165,8 +165,8 @@ describe("handleSelect", () => {
           options: ["react", "vue"],
         },
         makeOptions({ yes: false }),
-        ui
-      )
+        ui,
+      ),
     ).rejects.toThrow("Setup cancelled");
   });
 });
@@ -185,12 +185,12 @@ describe("handleSelect with --app flag", () => {
         ],
       },
       makeOptions({ yes: true, app: "web" }),
-      ui
+      ui,
     );
 
     expect(result).toEqual({ selectedApp: "web" });
     expect(
-      calls.some((c) => c.kind === "log.info" && c.message.includes("web"))
+      calls.some((c) => c.kind === "log.info" && c.message.includes("web")),
     ).toBe(true);
   });
 
@@ -204,7 +204,7 @@ describe("handleSelect with --app flag", () => {
         apps: [{ name: "Web", path: "/repo/apps/web" }],
       },
       makeOptions({ app: "WEB" }),
-      ui
+      ui,
     );
 
     expect(result).toEqual({ selectedApp: "Web" });
@@ -224,8 +224,8 @@ describe("handleSelect with --app flag", () => {
           ],
         },
         makeOptions({ yes: true, app: "missing" }),
-        ui
-      )
+        ui,
+      ),
     ).rejects.toBeInstanceOf(WizardError);
     const errorCall = calls.find((c) => c.kind === "log.error");
     expect(errorCall?.message).toContain("missing");
@@ -245,7 +245,7 @@ describe("handleSelect with --app flag", () => {
         options: ["existing", "create"],
       },
       makeOptions({ app: "web" }),
-      ui
+      ui,
     );
 
     expect(result).toEqual({ selectedApp: "existing" });
@@ -265,8 +265,8 @@ describe("handleSelect with --app flag", () => {
           ],
         },
         makeOptions({ yes: true }),
-        ui
-      )
+        ui,
+      ),
     ).rejects.toBeInstanceOf(WizardError);
     const errorCall = calls.find((c) => c.kind === "log.error");
     expect(errorCall?.message).toContain("web");
@@ -295,16 +295,16 @@ describe("handleMultiSelect", () => {
         ],
       },
       makeOptions(),
-      ui
+      ui,
     );
 
     expect(setTagSpy).toHaveBeenCalledWith(
       "wizard.features.offered",
-      "errorMonitoring,performanceMonitoring,sessionReplay"
+      "errorMonitoring,performanceMonitoring,sessionReplay",
     );
     expect(setTagSpy).toHaveBeenCalledWith(
       "wizard.features.selected",
-      "errorMonitoring,sessionReplay"
+      "errorMonitoring,sessionReplay",
     );
   });
 
@@ -323,7 +323,7 @@ describe("handleMultiSelect", () => {
         ],
       },
       makeOptions({ yes: true }),
-      ui
+      ui,
     );
 
     expect(result.features).toEqual([
@@ -345,7 +345,7 @@ describe("handleMultiSelect", () => {
         availableFeatures: [],
       },
       makeOptions(),
-      ui
+      ui,
     );
 
     expect(result).toEqual({ features: ["errorMonitoring"] });
@@ -366,7 +366,7 @@ describe("handleMultiSelect", () => {
         availableFeatures: ["sessionReplay", "performanceMonitoring"],
       },
       makeOptions(),
-      ui
+      ui,
     );
 
     expect(result).toEqual({
@@ -394,7 +394,7 @@ describe("handleMultiSelect", () => {
         ],
       },
       makeOptions({ yes: false }),
-      ui
+      ui,
     );
 
     const features = result.features as string[];
@@ -416,16 +416,16 @@ describe("handleMultiSelect", () => {
           availableFeatures: ["errorMonitoring", "performanceMonitoring"],
         },
         makeOptions({ yes: false }),
-        ui
-      )
+        ui,
+      ),
     ).rejects.toThrow("Setup cancelled");
     expect(setTagSpy).toHaveBeenCalledWith(
       "wizard.features.offered",
-      "errorMonitoring,performanceMonitoring"
+      "errorMonitoring,performanceMonitoring",
     );
     expect(setTagSpy).not.toHaveBeenCalledWith(
       "wizard.features.selected",
-      expect.anything()
+      expect.anything(),
     );
   });
 
@@ -441,7 +441,7 @@ describe("handleMultiSelect", () => {
         availableFeatures: ["errorMonitoring"],
       },
       makeOptions({ yes: false }),
-      ui
+      ui,
     );
 
     expect(result).toEqual({ features: ["errorMonitoring"] });
@@ -450,7 +450,7 @@ describe("handleMultiSelect", () => {
     expect(multiselectCall?.initialValues).toEqual(["errorMonitoring"]);
     const reviewCall = calls.find((call) => call.kind === "select");
     expect(reviewCall?.details?.map((detail) => detail.text)).toContain(
-      "✓ Error Monitoring"
+      "✓ Error Monitoring",
     );
   });
 
@@ -467,7 +467,7 @@ describe("handleMultiSelect", () => {
         availableFeatures: ["errorMonitoring", "performanceMonitoring"],
       },
       makeOptions({ yes: false }),
-      ui
+      ui,
     );
 
     const multiselectCall = calls.find((c) => c.kind === "multiselect") as
@@ -482,8 +482,8 @@ describe("handleMultiSelect", () => {
     ]);
     expect(
       multiselectCall?.optionDetails.find(
-        (option) => option.value === "errorMonitoring"
-      )
+        (option) => option.value === "errorMonitoring",
+      ),
     ).toMatchObject({
       description: "Automatically capture exceptions and stack traces",
       locked: true,
@@ -516,7 +516,7 @@ describe("handleMultiSelect", () => {
         ],
       },
       makeOptions({ yes: false }),
-      ui
+      ui,
     );
 
     expect(result.features).toEqual(["errorMonitoring", "sessionReplay"]);
@@ -578,14 +578,14 @@ describe("handleMultiSelect", () => {
         ],
       },
       makeOptions(),
-      ui
+      ui,
     );
 
     expect(result).toEqual({
       features: ["errorMonitoring", "performanceMonitoring"],
     });
     const multiselectCalls = calls.filter(
-      (call) => call.kind === "multiselect"
+      (call) => call.kind === "multiselect",
     );
     expect(multiselectCalls).toHaveLength(2);
     expect(multiselectCalls[1]?.initialValues).toEqual([
@@ -594,18 +594,18 @@ describe("handleMultiSelect", () => {
     ]);
     const reviewCalls = calls.filter((call) => call.kind === "select");
     expect(reviewCalls[0]?.details?.map((detail) => detail.text)).toContain(
-      "✓ Session Replay"
+      "✓ Session Replay",
     );
     expect(reviewCalls[0]?.details?.map((detail) => detail.text)).not.toContain(
-      "✓ Tracing"
+      "✓ Tracing",
     );
     expect(
       reviewCalls[0]?.details
         ?.map((detail) => detail.text)
-        .filter((line) => line.startsWith("✓ "))
+        .filter((line) => line.startsWith("✓ ")),
     ).toEqual(["✓ Error Monitoring", "✓ Session Replay"]);
     expect(reviewCalls[1]?.details?.map((detail) => detail.text)).toContain(
-      "✓ Tracing"
+      "✓ Tracing",
     );
     expect(reviewCalls[1]?.options).toEqual(["continue", "back"]);
   });
@@ -614,35 +614,42 @@ describe("handleMultiSelect", () => {
     ["aiMonitoring", "Agent Tracing"],
     ["mcpObservability", "MCP Observability"],
     ["profiling", "Profiling"],
-  ])("review includes tracing when %s enables it implicitly", async (dependencyFeature, dependencyLabel) => {
-    const { ui, calls, respond } = createMockUI();
-    respond.multiselect([dependencyFeature]);
-    respond.select("continue");
+  ])(
+    "review includes tracing when %s enables it implicitly",
+    async (dependencyFeature, dependencyLabel) => {
+      const { ui, calls, respond } = createMockUI();
+      respond.multiselect([dependencyFeature]);
+      respond.select("continue");
 
-    const result = await handleInteractive(
-      {
-        type: "interactive",
-        prompt: "Select features",
-        kind: "multi-select",
-        availableFeatures: [
+      const result = await handleInteractive(
+        {
+          type: "interactive",
+          prompt: "Select features",
+          kind: "multi-select",
+          availableFeatures: [
+            "errorMonitoring",
+            "performanceMonitoring",
+            dependencyFeature,
+          ],
+        },
+        makeOptions(),
+        ui,
+      );
+
+      expect(result).toEqual({
+        features: [
           "errorMonitoring",
           "performanceMonitoring",
           dependencyFeature,
         ],
-      },
-      makeOptions(),
-      ui
-    );
-
-    expect(result).toEqual({
-      features: ["errorMonitoring", "performanceMonitoring", dependencyFeature],
-    });
-    const reviewCall = calls.find((call) => call.kind === "select");
-    const reviewDetails = reviewCall?.details?.map((detail) => detail.text);
-    expect(reviewDetails).toContain("✓ Error Monitoring");
-    expect(reviewDetails).toContain("✓ Tracing");
-    expect(reviewDetails).toContain(`✓ ${dependencyLabel}`);
-  });
+      });
+      const reviewCall = calls.find((call) => call.kind === "select");
+      const reviewDetails = reviewCall?.details?.map((detail) => detail.text);
+      expect(reviewDetails).toContain("✓ Error Monitoring");
+      expect(reviewDetails).toContain("✓ Tracing");
+      expect(reviewDetails).toContain(`✓ ${dependencyLabel}`);
+    },
+  );
 
   test("Back restores the normalized AI selection including Tracing", async () => {
     const { ui, calls, respond } = createMockUI();
@@ -663,11 +670,11 @@ describe("handleMultiSelect", () => {
         ],
       },
       makeOptions(),
-      ui
+      ui,
     );
 
     const multiselectCalls = calls.filter(
-      (call) => call.kind === "multiselect"
+      (call) => call.kind === "multiselect",
     );
     expect(multiselectCalls[1]?.initialValues).toEqual([
       "errorMonitoring",
@@ -687,7 +694,7 @@ describe("handleConfirm", () => {
         kind: "confirm",
       },
       makeOptions({ yes: true }),
-      ui
+      ui,
     );
 
     expect(result).toEqual({ action: "continue" });
@@ -705,8 +712,8 @@ describe("handleConfirm", () => {
           kind: "confirm",
         },
         makeOptions({ yes: false }),
-        ui
-      )
+        ui,
+      ),
     ).rejects.toThrow("Setup cancelled");
   });
 
@@ -721,7 +728,7 @@ describe("handleConfirm", () => {
         kind: "confirm",
       },
       makeOptions({ yes: false }),
-      ui
+      ui,
     );
 
     expect(result).toEqual({ action: "stop" });

@@ -36,7 +36,7 @@ const BREAKPAD_FIXTURE = [
 const BREAKPAD_ID = "0f13a5da-412a-fbf7-c866-2048f3294f3d";
 
 async function runFind(
-  args: string[]
+  args: string[],
 ): Promise<{ output: string; exitCode: number | undefined }> {
   let output = "";
   const mockContext: SentryContext = {
@@ -79,7 +79,7 @@ describe("sentry debug-files find", () => {
     });
     // A breakpad match does not satisfy the request.
     expect(parsed.missing.map((m: { id: string }) => m.id)).toContain(
-      BREAKPAD_ID
+      BREAKPAD_ID,
     );
     expect(exitCode).toBe(1);
   });

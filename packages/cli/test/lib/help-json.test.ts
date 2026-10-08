@@ -50,7 +50,7 @@ describe("renderJsonHelp", () => {
   test("--fields (spaced) narrows the JSON output", () => {
     const out = renderJsonHelp(
       [APP, "issue", "list"],
-      ["--json", "--fields", "path"]
+      ["--json", "--fields", "path"],
     );
     const parsed = JSON.parse(out as string);
     expect(Object.keys(parsed)).toEqual(["path"]);
@@ -59,7 +59,7 @@ describe("renderJsonHelp", () => {
   test("--fields=<value> inline form narrows the JSON output", () => {
     const out = renderJsonHelp(
       [APP, "issue", "list"],
-      ["--json", "--fields=path"]
+      ["--json", "--fields=path"],
     );
     const parsed = JSON.parse(out as string);
     expect(Object.keys(parsed)).toEqual(["path"]);
@@ -68,7 +68,7 @@ describe("renderJsonHelp", () => {
   test("--fields accepts a comma-separated list", () => {
     const out = renderJsonHelp(
       [APP, "issue", "list"],
-      ["--json", "--fields", "path,brief"]
+      ["--json", "--fields", "path,brief"],
     );
     const parsed = JSON.parse(out as string);
     expect(Object.keys(parsed).sort()).toEqual(["brief", "path"]);
@@ -76,7 +76,7 @@ describe("renderJsonHelp", () => {
 
   test("a --json after a -- escape is ignored (wrapped command's flag)", () => {
     expect(
-      renderJsonHelp([APP, "monitor", "run"], ["--", "tool", "--json"])
+      renderJsonHelp([APP, "monitor", "run"], ["--", "tool", "--json"]),
     ).toBeUndefined();
   });
 
@@ -108,7 +108,7 @@ describe("renderJsonHelp", () => {
     // the resolved `issue list` command rather than an `acme`-prefixed path.
     const out = renderJsonHelp(
       [APP, "issue", "list"],
-      ["--org", "acme", "--json"]
+      ["--org", "acme", "--json"],
     );
     const parsed = JSON.parse(out as string);
     expect(parsed).toHaveProperty("path");
@@ -120,16 +120,16 @@ describe("rewriteHelpJsonToHelpCommand", () => {
   test("returns undefined when not a --help --json request", () => {
     expect(rewriteHelpJsonToHelpCommand(["cli", "nope"])).toBeUndefined();
     expect(
-      rewriteHelpJsonToHelpCommand(["cli", "nope", "--help"])
+      rewriteHelpJsonToHelpCommand(["cli", "nope", "--help"]),
     ).toBeUndefined();
     expect(
-      rewriteHelpJsonToHelpCommand(["cli", "nope", "--json"])
+      rewriteHelpJsonToHelpCommand(["cli", "nope", "--json"]),
     ).toBeUndefined();
   });
 
   test("rewrites an unknown-command --help --json to the help command", () => {
     expect(
-      rewriteHelpJsonToHelpCommand(["cli", "nope", "--help", "--json"])
+      rewriteHelpJsonToHelpCommand(["cli", "nope", "--help", "--json"]),
     ).toEqual(["help", "--json", "cli", "nope"]);
   });
 
@@ -150,7 +150,7 @@ describe("rewriteHelpJsonToHelpCommand", () => {
         "--json",
         "--fields",
         "path",
-      ])
+      ]),
     ).toEqual(["help", "--json", "issue", "list", "--fields", "path"]);
   });
 
@@ -168,7 +168,7 @@ describe("rewriteHelpJsonToHelpCommand", () => {
         "nope",
         "--help",
         "--json",
-      ])
+      ]),
     ).toEqual(["help", "--json", "cli", "nope"]);
   });
 
@@ -180,7 +180,7 @@ describe("rewriteHelpJsonToHelpCommand", () => {
         "nope",
         "--help",
         "--json",
-      ])
+      ]),
     ).toEqual(["help", "--json", "cli", "nope"]);
   });
 
@@ -193,7 +193,7 @@ describe("rewriteHelpJsonToHelpCommand", () => {
         "tool",
         "--help",
         "--json",
-      ])
+      ]),
     ).toBeUndefined();
   });
 });
@@ -226,7 +226,7 @@ describe("isVersionRequest", () => {
 describe("isRecoverableUnknownCommand", () => {
   test("true for a --version request", () => {
     expect(isRecoverableUnknownCommand(["cli", "nope", "--version"])).toBe(
-      true
+      true,
     );
   });
 
@@ -234,7 +234,7 @@ describe("isRecoverableUnknownCommand", () => {
     // Regression: the old guard only checked `argv.at(-1) === "help"`, so this
     // shape leaked a spurious unknown_command telemetry event.
     expect(
-      isRecoverableUnknownCommand(["cli", "nope", "--help", "--json"])
+      isRecoverableUnknownCommand(["cli", "nope", "--help", "--json"]),
     ).toBe(true);
   });
 

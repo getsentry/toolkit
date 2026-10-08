@@ -45,7 +45,7 @@ describe("credential redaction", () => {
     const diagnostic = 'Headers.set: "Bearer SYNTHETIC_SECRET"; ';
     const expected = 'Headers.set: "Bearer [REDACTED]"; ';
     expect(redactCredentialText(diagnostic.repeat(10_000))).toBe(
-      expected.repeat(10_000)
+      expected.repeat(10_000),
     );
   });
 
@@ -68,7 +68,7 @@ describe("credential redaction", () => {
       const input = `Rejected ${prefix}SYNTHETIC_FIRST${separator}SYNTHETIC_TAIL`;
       expect(redactCredentialText(input)).not.toContain("SYNTHETIC");
       expect(
-        redactCredentialText(JSON.stringify({ error: input }))
+        redactCredentialText(JSON.stringify({ error: input })),
       ).not.toContain("SYNTHETIC");
     }
   });
@@ -115,7 +115,7 @@ describe("credential redaction", () => {
 
   test("redacts a quoted header truncated before its closing quote", () => {
     expect(
-      redactCredentialText('Headers.set: "Bearer legacy_PAYLOAD\n_SECRET...')
+      redactCredentialText('Headers.set: "Bearer legacy_PAYLOAD\n_SECRET...'),
     ).toBe('Headers.set: "Bearer [REDACTED]"');
   });
 
@@ -153,7 +153,7 @@ describe("error output boundaries", () => {
     expect(error.stack).not.toContain("SYNTHETIC");
     expect(error.stderr).not.toContain("SYNTHETIC");
     expect(JSON.stringify({ message: error.message, ...error })).not.toContain(
-      "SYNTHETIC"
+      "SYNTHETIC",
     );
   });
 });

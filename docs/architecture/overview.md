@@ -285,7 +285,7 @@ Execute actions and retrieve data:
 
 ## Two-Tier Agent Architecture
 
-Some tools (`search_events` and `search_issues`) implement a two-tier agent pattern:
+Some tools (the dataset search tools like `search_errors`/`search_traces`, and `search_issues`) implement a two-tier agent pattern:
 
 ### Tier 1: Calling Agent (Claude/Cursor)
 - Decides when to use search tools
@@ -304,7 +304,7 @@ Some tools (`search_events` and `search_issues`) implement a two-tier agent patt
 ```
 1. User: "Show me errors from yesterday"
    ↓
-2. Claude: Calls search_events(query="errors from yesterday")
+2. Claude: Calls search_errors(query="errors from yesterday")
    ↓
 3. MCP Tool Handler: Receives request
    ↓

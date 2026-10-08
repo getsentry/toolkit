@@ -58,25 +58,9 @@ export const UNIT_SECONDS: Record<string, number> = {
 /** Valid unit suffixes for relative period strings, derived from UNIT_SECONDS */
 const PERIOD_UNITS = new Set(Object.keys(UNIT_SECONDS));
 
-/**
- * Example dates for --period help text, snapped to the 1st of the month so
- * they only change ~12×/year instead of daily. Keeps examples looking current
- * without causing constant regeneration churn in committed skill files.
- */
-const EXAMPLE_START = (() => {
-  const now = new Date();
-  const previousMonthStartUtc = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)
-  );
-  return previousMonthStartUtc.toISOString().slice(0, 10);
-})();
-const EXAMPLE_END = (() => {
-  const now = new Date();
-  const currentMonthStartUtc = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
-  );
-  return currentMonthStartUtc.toISOString().slice(0, 10);
-})();
+/** Stable example dates keep generated help and skill references reproducible. */
+const EXAMPLE_START = "2024-01-01";
+const EXAMPLE_END = "2024-02-01";
 
 /** Brief text for --period flag help, shared across commands */
 export const PERIOD_BRIEF = `Time range: "7d", "${EXAMPLE_START}..${EXAMPLE_END}", ">=${EXAMPLE_START}"`;
@@ -86,7 +70,7 @@ export const PERIOD_BRIEF = `Time range: "7d", "${EXAMPLE_START}..${EXAMPLE_END}
  * Returns null if the string isn't a valid relative period.
  */
 export function parseRelativeParts(
-  value: string
+  value: string,
 ): { value: number; unit: string } | null {
   if (value.length < 2) {
     return null;
@@ -126,7 +110,7 @@ function validateDate(raw: string): Date {
   if (Number.isNaN(d.getTime())) {
     throw new ValidationError(
       `Invalid date: '${raw}'. Expected ISO-8601 format (e.g., ${EXAMPLE_START} or ${EXAMPLE_START}T12:00:00).`,
-      "period"
+      "period",
     );
   }
   return d;
@@ -148,7 +132,7 @@ export function parseDate(raw: string, position: DatePosition): string {
   if (trimmed.length === 0) {
     throw new ValidationError(
       `Empty date value. Expected ISO-8601 format (e.g., ${EXAMPLE_START})`,
-      "period"
+      "period",
     );
   }
 
@@ -228,7 +212,7 @@ function tryParseOperator(value: string): AbsoluteTimeRange | null {
     if (dateStr.length === 0) {
       throw new ValidationError(
         `Missing date after '${op.prefix}'. Expected e.g., '${op.prefix}${EXAMPLE_START}'.`,
-        "period"
+        "period",
       );
     }
     const parsed = parseDate(dateStr, op.position);
@@ -258,7 +242,7 @@ function tryParseRange(value: string): AbsoluteTimeRange | null {
     throw new ValidationError(
       "Empty range '..'. Provide at least one date " +
         `(e.g., '${EXAMPLE_START}..', '..${EXAMPLE_END}', '${EXAMPLE_START}..${EXAMPLE_END}').`,
-      "period"
+      "period",
     );
   }
 
@@ -273,7 +257,7 @@ function tryParseRange(value: string): AbsoluteTimeRange | null {
       throw new ValidationError(
         `Start date '${left}' is after end date '${right}'. ` +
           "The start must be before the end.",
-        "period"
+        "period",
       );
     }
   }
@@ -293,7 +277,7 @@ function tryParseRelative(value: string): RelativeTimeRange | null {
   if (parts.value === 0) {
     throw new ValidationError(
       `Invalid period '${value}': duration cannot be zero.`,
-      "period"
+      "period",
     );
   }
   return { type: "relative", period: value };
@@ -315,7 +299,7 @@ export function parsePeriod(value: string): TimeRange {
     throw new ValidationError(
       "Empty period value. Use a relative duration (e.g., '7d', '24h') " +
         `or a date range (e.g., '${EXAMPLE_START}..${EXAMPLE_END}', '>=${EXAMPLE_START}').`,
-      "period"
+      "period",
     );
   }
 
@@ -333,7 +317,7 @@ function throwInvalidPeriod(value: string): never {
     `Invalid period '${value}'. Use a relative duration (e.g., '7d', '24h'), ` +
       `a date range (e.g., '${EXAMPLE_START}..${EXAMPLE_END}'), ` +
       `or a comparison operator (e.g., '>=${EXAMPLE_START}', '<${EXAMPLE_END}').`,
-    "period"
+    "period",
   );
 }
 
@@ -427,7 +411,7 @@ function relativeToSeconds(period: string): number | undefined {
 /** Compute seconds between two ISO-8601 datetime strings. */
 function absoluteRangeToSeconds(
   start: string,
-  end: string
+  end: string,
 ): number | undefined {
   const startMs = new Date(start).getTime();
   const endMs = new Date(end).getTime();
@@ -508,7 +492,7 @@ export function appendPeriodHint(
   parts: string[],
   period: TimeRange,
   defaultPeriod: string,
-  flag = "--period"
+  flag = "--period",
 ): void {
   const formatted = formatTimeRangeFlag(period);
   if (formatted !== defaultPeriod) {

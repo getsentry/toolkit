@@ -37,7 +37,7 @@ function mockOk(body: unknown) {
       new Response(JSON.stringify(body), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
   );
 }
 
@@ -90,7 +90,7 @@ describe("listLogs", () => {
     mockOk("Proxy error: upstream not found");
 
     await expect(listLogs("test-org", "test-project")).rejects.toThrow(
-      ApiError
+      ApiError,
     );
 
     try {
@@ -107,7 +107,7 @@ describe("listLogs", () => {
     mockOk(null);
 
     await expect(listLogs("test-org", "test-project")).rejects.toThrow(
-      ApiError
+      ApiError,
     );
 
     try {
@@ -124,7 +124,7 @@ describe("listLogs", () => {
     mockOk({ wrong: "shape" });
 
     await expect(listLogs("test-org", "test-project")).rejects.toThrow(
-      ApiError
+      ApiError,
     );
 
     try {
@@ -132,7 +132,7 @@ describe("listLogs", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).message).toContain(
-        "unexpected response format"
+        "unexpected response format",
       );
     }
   });
@@ -270,7 +270,7 @@ describe("getLogs", () => {
     mockOk("<html><body>502 Bad Gateway</body></html>");
 
     await expect(
-      getLogs("test-org", "test-project", ["log-001"])
+      getLogs("test-org", "test-project", ["log-001"]),
     ).rejects.toThrow(ApiError);
 
     try {

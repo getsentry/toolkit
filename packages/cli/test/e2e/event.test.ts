@@ -80,7 +80,7 @@ describe("sentry event view", () => {
 
     expect(result.exitCode).toBe(EXIT.VALIDATION);
     expect(result.stderr + result.stdout).toMatch(
-      /invalid event id|32-character hexadecimal/i
+      /invalid event id|32-character hexadecimal/i,
     );
   });
 

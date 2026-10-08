@@ -51,7 +51,7 @@ export async function generatePlan(
   client: LLMClient,
   model: string,
   skillContent: string,
-  userPrompt: string
+  userPrompt: string,
 ): Promise<AgentPlan | null> {
   const systemPrompt = buildSystemPrompt(skillContent);
 
@@ -63,7 +63,7 @@ export async function generatePlan(
     ]);
   } catch (err) {
     console.error(
-      `  [planner] API error: ${err instanceof Error ? err.message : String(err)}`
+      `  [planner] API error: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
   }

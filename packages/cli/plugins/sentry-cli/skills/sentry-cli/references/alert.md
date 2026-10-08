@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-alert
-version: 0.46.0-dev.0
+version: 0.48.0-dev.0
 description: Manage Sentry alert rules
 requires:
   bins: ["sentry"]
@@ -11,7 +11,7 @@ requires:
 
 Manage Sentry alert rules
 
-### `sentry alert issues list <org/project>`
+### `sentry alert issues list [<org/project>]`
 
 List issue alert rules
 
@@ -49,7 +49,7 @@ sentry alert issues view my-org/my-project/12345
 sentry alert issues view my-org/my-project/"Error Spike"
 ```
 
-### `sentry alert issues create <target>`
+### `sentry alert issues create [<target>]`
 
 Create an issue alert rule
 
@@ -112,7 +112,7 @@ Edit an issue alert rule
 sentry alert issues edit my-org/my-project/12345 --name "Prod Error Spike" --status disabled
 ```
 
-### `sentry alert metrics list <target>`
+### `sentry alert metrics list [<target>]`
 
 List metric alert rules
 

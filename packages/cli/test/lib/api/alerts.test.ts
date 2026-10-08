@@ -42,14 +42,14 @@ describe("deleteIssueAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("DELETE");
       expect(req.url).toBe(
-        `${DEFAULT_SENTRY_URL}/api/0/organizations/test-org/workflows/42/`
+        `${DEFAULT_SENTRY_URL}/api/0/organizations/test-org/workflows/42/`,
       );
       expect(req.headers.get("Authorization")).toBe("Bearer test-token");
       return new Response(null, { status: 204 });
     });
 
     await expect(
-      deleteIssueAlertRule("test-org", "42")
+      deleteIssueAlertRule("test-org", "42"),
     ).resolves.toBeUndefined();
   });
 });
@@ -109,11 +109,11 @@ describe("getIssueAlertRule", () => {
   test("throws 404 ApiError when no attached rule matches", async () => {
     globalThis.fetch = mockFetch(async () =>
       // Only an unattached workflow comes back → filtered out → not found.
-      Response.json([workflowRule({ id: "42", detectorIds: [] })])
+      Response.json([workflowRule({ id: "42", detectorIds: [] })]),
     );
 
     await expect(
-      getIssueAlertRule("test-org", "test-project", "42")
+      getIssueAlertRule("test-org", "test-project", "42"),
     ).rejects.toMatchObject({ name: "ApiError", status: 404 });
   });
 });
@@ -176,7 +176,7 @@ describe("getMetricAlertRule", () => {
       const url = new URL(new Request(input!, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/detectors/9/");
       return Response.json(
-        metricDetector({ id: "9", name: "Disabled rule", enabled: false })
+        metricDetector({ id: "9", name: "Disabled rule", enabled: false }),
       );
     });
 
@@ -201,8 +201,8 @@ describe("getMetricAlertRule", () => {
               },
             },
           ],
-        })
-      )
+        }),
+      ),
     );
 
     const rule = await getMetricAlertRule("test-org", "9");
@@ -228,8 +228,8 @@ describe("getMetricAlertRule", () => {
               },
             },
           ],
-        })
-      )
+        }),
+      ),
     );
 
     const rule = await getMetricAlertRule("test-org", "9");
@@ -242,8 +242,8 @@ describe("getMetricAlertRule", () => {
   test("prefers projectSlug and falls back to a projects array for projects", async () => {
     globalThis.fetch = mockFetch(async () =>
       Response.json(
-        metricDetector({ projectSlug: undefined, projects: ["frontend"] })
-      )
+        metricDetector({ projectSlug: undefined, projects: ["frontend"] }),
+      ),
     );
 
     const rule = await getMetricAlertRule("test-org", "9");
@@ -255,8 +255,8 @@ describe("getMetricAlertRule", () => {
       Response.json(
         metricDetector({
           dataSources: [{ snubaQuery: { timeWindow: "not-a-number" } }],
-        })
-      )
+        }),
+      ),
     );
 
     const rule = await getMetricAlertRule("test-org", "9");
@@ -265,7 +265,7 @@ describe("getMetricAlertRule", () => {
 
   test("rejects a non-metric detector with a 404 instead of mapping it", async () => {
     globalThis.fetch = mockFetch(async () =>
-      Response.json(metricDetector({ type: "uptime_domain_failure" }))
+      Response.json(metricDetector({ type: "uptime_domain_failure" })),
     );
 
     await expect(getMetricAlertRule("test-org", "9")).rejects.toMatchObject({
@@ -277,8 +277,8 @@ describe("getMetricAlertRule", () => {
   test("reconstructs the legacy actor identifier from an object owner", async () => {
     globalThis.fetch = mockFetch(async () =>
       Response.json(
-        metricDetector({ owner: { type: "team", id: "42", name: "backend" } })
-      )
+        metricDetector({ owner: { type: "team", id: "42", name: "backend" } }),
+      ),
     );
 
     const rule = await getMetricAlertRule("test-org", "9");
@@ -292,7 +292,7 @@ describe("createIssueAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("POST");
       expect(new URL(req.url).pathname).toBe(
-        "/api/0/organizations/test-org/workflows/"
+        "/api/0/organizations/test-org/workflows/",
       );
       expect(await req.json()).toEqual({ name: "New", detectorIds: [7] });
       return Response.json(workflowRule({ id: "5", name: "New" }));
@@ -312,7 +312,7 @@ describe("updateIssueAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("PUT");
       expect(new URL(req.url).pathname).toBe(
-        "/api/0/organizations/test-org/workflows/42/"
+        "/api/0/organizations/test-org/workflows/42/",
       );
       expect(await req.json()).toEqual({ name: "Renamed" });
       return Response.json(workflowRule({ id: "42", name: "Renamed" }));
@@ -349,7 +349,7 @@ describe("resolveErrorDetectorId", () => {
     });
 
     await expect(
-      resolveErrorDetectorId("test-org", "test-project")
+      resolveErrorDetectorId("test-org", "test-project"),
     ).resolves.toBe(7);
   });
 
@@ -357,7 +357,7 @@ describe("resolveErrorDetectorId", () => {
     globalThis.fetch = mockFetch(async () => Response.json([]));
 
     await expect(
-      resolveErrorDetectorId("test-org", "test-project")
+      resolveErrorDetectorId("test-org", "test-project"),
     ).rejects.toMatchObject({ name: "ApiError", status: 404 });
   });
 });
@@ -368,14 +368,14 @@ describe("deleteMetricAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("DELETE");
       expect(new URL(req.url).pathname).toBe(
-        "/api/0/organizations/test-org/detectors/9/"
+        "/api/0/organizations/test-org/detectors/9/",
       );
       expect(req.headers.get("Authorization")).toBe("Bearer test-token");
       return new Response(null, { status: 204 });
     });
 
     await expect(
-      deleteMetricAlertRule("test-org", "9")
+      deleteMetricAlertRule("test-org", "9"),
     ).resolves.toBeUndefined();
   });
 });
@@ -386,7 +386,7 @@ describe("createMetricAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("POST");
       expect(new URL(req.url).pathname).toBe(
-        "/api/0/organizations/test-org/projects/backend/detectors/"
+        "/api/0/organizations/test-org/projects/backend/detectors/",
       );
       expect(await req.json()).toEqual({
         name: "P95 latency",
@@ -411,7 +411,7 @@ describe("createMetricAlertRule", () => {
       });
       return Response.json(
         { ...metricDetector({ id: "77", name: "P95 latency" }) },
-        { status: 201 }
+        { status: 201 },
       );
     });
 
@@ -463,7 +463,7 @@ describe("createMetricAlertRule", () => {
         dataset: "errors",
         timeWindow: 5,
         triggers: [{ alertThreshold: 1, actions: [{ id: "notify" }] }],
-      })
+      }),
     ).rejects.toMatchObject({ name: "ValidationError" });
   });
 });
@@ -493,7 +493,7 @@ describe("putMetricAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("PUT");
       expect(new URL(req.url).pathname).toBe(
-        "/api/0/organizations/test-org/detectors/9/"
+        "/api/0/organizations/test-org/detectors/9/",
       );
       const body = (await req.json()) as Record<string, unknown>;
       expect(body.name).toBe("Renamed");

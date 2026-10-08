@@ -30,7 +30,7 @@ export async function checkReadiness(ui: WizardUI): Promise<void> {
   } else {
     spin.stop("Warning", 2);
     ui.log.warn(
-      "Setup service may be slow or unreachable. The wizard will retry if needed."
+      "Setup service may be slow or unreachable. The wizard will retry if needed.",
     );
   }
 }

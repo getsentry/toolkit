@@ -27,7 +27,7 @@ describe("parseIni", () => {
 
   test("handles Windows line endings (CRLF)", () => {
     const result = parseIni(
-      "[defaults]\r\norg = my-org\r\nproject = my-proj\r\n"
+      "[defaults]\r\norg = my-org\r\nproject = my-proj\r\n",
     );
     expect(result.defaults?.org).toBe("my-org");
     expect(result.defaults?.project).toBe("my-proj");
@@ -68,7 +68,7 @@ describe("parseIni", () => {
 
   test("preserves quotes in middle of value", () => {
     const result = parseIni(
-      '[defaults]\nurl = https://example.com/path?foo="bar"'
+      '[defaults]\nurl = https://example.com/path?foo="bar"',
     );
     expect(result.defaults?.url).toBe('https://example.com/path?foo="bar"');
   });
@@ -90,7 +90,7 @@ describe("parseIni", () => {
 
   test("duplicate sections: merged", () => {
     const result = parseIni(
-      "[defaults]\norg = my-org\n[defaults]\nproject = my-proj"
+      "[defaults]\norg = my-org\n[defaults]\nproject = my-proj",
     );
     expect(result.defaults?.org).toBe("my-org");
     expect(result.defaults?.project).toBe("my-proj");
@@ -98,7 +98,7 @@ describe("parseIni", () => {
 
   test("duplicate section with duplicate key: last wins", () => {
     const result = parseIni(
-      "[defaults]\norg = first\n[defaults]\norg = second"
+      "[defaults]\norg = first\n[defaults]\norg = second",
     );
     expect(result.defaults?.org).toBe("second");
   });
@@ -151,7 +151,7 @@ token = sntrys_eyJpYXQiOjE3MTkzODM1MjQuNjQ0OTgyfQ==_abc123
     expect(result.defaults?.org).toBe("my-org");
     expect(result.defaults?.project).toBe("my-project");
     expect(result.auth?.token).toBe(
-      "sntrys_eyJpYXQiOjE3MTkzODM1MjQuNjQ0OTgyfQ==_abc123"
+      "sntrys_eyJpYXQiOjE3MTkzODM1MjQuNjQ0OTgyfQ==_abc123",
     );
   });
 

@@ -18,11 +18,11 @@ const BEARER_PART = String.raw`(?:${ESCAPED_CONTROL}[ \t]*|\\+[^"'\s\\]|[^\s"'\\
 // Quotes (including JSON-escaped quotes) delimit the diagnostic string.
 const BEARER_CREDENTIAL = new RegExp(
   String.raw`\bBearer[ \t]+${BEARER_PART}+(?:(?:\r\n|(?! )[\s\x00-\x1f\x7f-\x9f])[ \t]*${BEARER_PART}+)*`,
-  "gi"
+  "gi",
 );
 const SENTRY_CREDENTIAL = new RegExp(
   String.raw`\bsntry[su]_[A-Za-z0-9._~+/=-]+(?:(?:\r\n|(?! )[\s\x00-\x1f\x7f-\x9f]|${ESCAPED_CONTROL})[ \t]*[A-Za-z0-9._~+/=-]+)*`,
-  "gi"
+  "gi",
 );
 
 /**
@@ -59,7 +59,7 @@ function redactInvalidBearerHeaders(text: string): string {
     }
     parts.push(
       text.slice(cursor, match.index),
-      `${prefix}${quote}Bearer [REDACTED]${quote}`
+      `${prefix}${quote}Bearer [REDACTED]${quote}`,
     );
     cursor = end + quote.length;
   }
@@ -73,7 +73,7 @@ export function redactCredentialText(text: string): string {
     .replace(QUOTED_CREDENTIAL, (_match, quote: string, prefix: string) =>
       prefix.toLowerCase().startsWith("bearer")
         ? `${quote}Bearer [REDACTED]${quote}`
-        : `${quote}[REDACTED]${quote}`
+        : `${quote}[REDACTED]${quote}`,
     )
     .replace(BEARER_CREDENTIAL, "Bearer [REDACTED]")
     .replace(SENTRY_CREDENTIAL, "[REDACTED]");

@@ -56,10 +56,10 @@ export const ENV_FILES = [
  */
 const TRAILING_UNDERSCORE = /_$/;
 const ENV_DSN_PREFIXES = FRAMEWORK_ENV_PREFIXES.map((p) =>
-  p.replace(TRAILING_UNDERSCORE, "")
+  p.replace(TRAILING_UNDERSCORE, ""),
 ).join("|");
 const ENV_DSN_PATTERN = new RegExp(
-  `^(?:(?:${ENV_DSN_PREFIXES})_)?SENTRY_DSN\\s*=\\s*(['"]?)(.+?)\\1\\s*(?:#.*)?$`
+  `^(?:(?:${ENV_DSN_PREFIXES})_)?SENTRY_DSN\\s*=\\s*(['"]?)(.+?)\\1\\s*(?:#.*)?$`,
 );
 
 /**
@@ -112,7 +112,7 @@ export const extractDsnFromEnvFile = extractDsnFromEnvContent;
  * @returns First detected DSN or null if not found
  */
 export async function detectFromEnvFiles(
-  cwd: string
+  cwd: string,
 ): Promise<DetectedDsn | null> {
   return await withTracingSpan(
     "detectFromEnvFiles",
@@ -131,7 +131,7 @@ export async function detectFromEnvFiles(
       span.setAttribute("dsn.env_files_checked", ENV_FILES.length);
       span.setAttribute("dsn.env_dsn_found", dsns.length > 0);
       return dsns[0] ?? null;
-    }
+    },
   );
 }
 
@@ -146,7 +146,7 @@ export async function detectFromEnvFiles(
  * @returns Object with all detected DSNs and source file mtimes
  */
 export async function detectFromAllEnvFiles(
-  cwd: string
+  cwd: string,
 ): Promise<EnvFileScanResult> {
   return await withTracingSpan(
     "detectFromAllEnvFiles",
@@ -183,7 +183,7 @@ export async function detectFromAllEnvFiles(
       span.setAttribute("dsn.env_files_checked", filesChecked);
       span.setAttribute("dsn.env_dsn_found", allDsns.length > 0);
       return { dsns: allDsns, sourceMtimes: allMtimes };
-    }
+    },
   );
 }
 
@@ -197,7 +197,7 @@ export async function detectFromAllEnvFiles(
  * @returns Object with detected DSNs (with packagePath set) and source file mtimes
  */
 export async function detectFromMonorepoEnvFiles(
-  cwd: string
+  cwd: string,
 ): Promise<EnvFileScanResult> {
   const dsns: DetectedDsn[] = [];
   const sourceMtimes: Record<string, number> = {};
@@ -210,7 +210,7 @@ export async function detectFromMonorepoEnvFiles(
     // surfaces when iterating. Wrap the full open+iterate in one try/catch.
     // No explicit handle.close() needed: for-await-of auto-closes the Dir
     // handle when the loop exits (including early return or break).
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       for await (const entry of await opendir(rootDir)) {
         // Skip hidden dirs (.git, .cache) and non-directories. Accept
@@ -256,7 +256,7 @@ type PackageDsnResult = {
  */
 async function detectDsnInPackage(
   pkgDir: string,
-  packagePath: string
+  packagePath: string,
 ): Promise<PackageDsnResult> {
   const { dsns, sourceMtimes: rawMtimes } = await scanSpecificFiles(
     pkgDir,
@@ -273,10 +273,10 @@ async function detectDsnInPackage(
           raw,
           "env_file",
           sourcePath,
-          metadata?.packagePath
+          metadata?.packagePath,
         );
       },
-    }
+    },
   );
 
   // Prefix mtimes with package path for uniqueness

@@ -2,11 +2,11 @@ import { Writable } from "node:stream";
 import { describe, expect, test } from "vitest";
 import { createWizardSpinner } from "../../../src/lib/init/spinner.js";
 
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI escape sequences in rendered terminal output
+// oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences in rendered terminal output
 const ANSI_CSI_RE = /\u001B\[[0-9;?]*[ -/]*[@-~]/g;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI escape sequences in rendered terminal output
+// oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences in rendered terminal output
 const ANSI_OSC_RE = /\u001B\][^\u0007]*\u0007/g;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI clear-screen escape sequence in rendered terminal output
+// oxlint-disable-next-line no-control-regex -- matching ANSI clear-screen escape sequence in rendered terminal output
 const ANSI_CLEAR_RE = /\u001B\[(?:0)?J/;
 
 class CaptureStream extends Writable {
@@ -22,7 +22,7 @@ class CaptureStream extends Writable {
   _write(
     chunk: string | Buffer,
     _encoding: BufferEncoding,
-    callback: (error?: Error | null) => void
+    callback: (error?: Error | null) => void,
   ): void {
     this.chunks.push(String(chunk));
     callback();

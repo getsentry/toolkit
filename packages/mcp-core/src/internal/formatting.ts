@@ -2326,10 +2326,9 @@ export function formatIssueOutput({
         "Full distributed trace lookup is not available in this session",
     });
     const spanSearchInstruction = formatToolCallInstruction({
-      toolName: "search_events",
+      toolName: "search_traces",
       arguments: {
         organizationSlug,
-        dataset: "spans",
         query: `trace:${traceId}`,
       },
       experimentalMode: experimentalMode ?? false,
@@ -2339,10 +2338,9 @@ export function formatIssueOutput({
         "Related span search is not available in this session",
     });
     const logSearchInstruction = formatToolCallInstruction({
-      toolName: "search_events",
+      toolName: "search_logs",
       arguments: {
         organizationSlug,
-        dataset: "logs",
         query: `trace:${traceId}`,
       },
       experimentalMode: experimentalMode ?? false,

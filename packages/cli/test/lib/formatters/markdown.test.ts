@@ -27,7 +27,7 @@ import {
 
 /** Strip ANSI escape codes for content-only assertions */
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI codes use control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -40,7 +40,7 @@ function withEnv(
     >
   >,
   isTTY: boolean | undefined,
-  fn: () => void
+  fn: () => void,
 ): void {
   const savedEnv: Record<string, string | undefined> = {};
   const savedTTY = process.stdout.isTTY;
@@ -87,7 +87,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -97,7 +97,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -113,7 +113,7 @@ describe("isPlainOutput", () => {
         false,
         () => {
           expect(isPlainOutput()).toBe(false);
-        }
+        },
       );
     });
 
@@ -123,7 +123,7 @@ describe("isPlainOutput", () => {
         false,
         () => {
           expect(isPlainOutput()).toBe(false);
-        }
+        },
       );
     });
 
@@ -159,7 +159,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -177,7 +177,7 @@ describe("isPlainOutput", () => {
         false,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -199,7 +199,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(false);
-        }
+        },
       );
     });
 
@@ -213,7 +213,7 @@ describe("isPlainOutput", () => {
         false,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -227,7 +227,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -241,7 +241,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
   });
@@ -257,7 +257,7 @@ describe("isPlainOutput", () => {
         false,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -271,7 +271,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(false);
-        }
+        },
       );
     });
 
@@ -285,7 +285,7 @@ describe("isPlainOutput", () => {
         undefined,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
   });
@@ -586,7 +586,7 @@ describe("escapeMarkdownInline", () => {
   test("URLs with underscores render without backslashes", () => {
     withEnv({ SENTRY_PLAIN_OUTPUT: "0", NO_COLOR: undefined }, false, () => {
       const escaped = escapeMarkdownInline(
-        "https://spotlightjs.com/_astro/ui-core.js"
+        "https://spotlightjs.com/_astro/ui-core.js",
       );
       const result = stripAnsi(renderInlineMarkdown(escaped));
       expect(result).not.toContain("\\_");

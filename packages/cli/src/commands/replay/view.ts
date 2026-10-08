@@ -44,7 +44,7 @@ import {
   applySentryUrlContext,
   parseSentryUrl,
 } from "../../lib/sentry-url-parser.js";
-import { buildReplayUrl } from "../../lib/sentry-urls.js";
+import { buildReplayUrl } from "../../lib/sentry-web-urls.js";
 import type {
   ReplayActivityEvent,
   ReplayDetails,
@@ -82,10 +82,10 @@ const log = logger.withTag("replay.view");
  * handling because 32-char hex replay IDs look valid to the generic
  * `parseSlashSeparatedArg` which would misinterpret the org as a project.
  */
-function parseSingleArg(arg: string): ParsedPositionalArgs {
+function parseSingleArg(arg: string, usageHint: string): ParsedPositionalArgs {
   const trimmed = arg.trim();
   if (!trimmed) {
-    throw new ContextError("Replay ID", USAGE_HINT, []);
+    throw new ContextError("Replay ID", usageHint, []);
   }
 
   // Handle <org>/<replay-id> shorthand — must check before parseSlashSeparatedArg
@@ -99,7 +99,7 @@ function parseSingleArg(arg: string): ParsedPositionalArgs {
     const normalizedReplayId =
       replaySegment && tryNormalizeHexId(replaySegment);
     if (!normalizedReplayId) {
-      throw new ContextError("Replay ID", USAGE_HINT, []);
+      throw new ContextError("Replay ID", usageHint, []);
     }
     return { replayId: normalizedReplayId, targetArg: `${org}/` };
   }
@@ -107,7 +107,7 @@ function parseSingleArg(arg: string): ParsedPositionalArgs {
   const { id: replayId, targetArg } = parseSlashSeparatedArg(
     trimmed,
     "Replay ID",
-    USAGE_HINT
+    usageHint,
   );
   return { replayId, targetArg };
 }
@@ -121,21 +121,26 @@ function parseSingleArg(arg: string): ParsedPositionalArgs {
  * - `<org>/<project>/<replay-id>`
  * - `<target> <replay-id>`
  * - `<replay-url>`
+ *
+ * `usageHint` lets sibling replay commands show their own usage in errors.
  */
-export function parsePositionalArgs(args: string[]): ParsedPositionalArgs {
+export function parsePositionalArgs(
+  args: string[],
+  usageHint = USAGE_HINT,
+): ParsedPositionalArgs {
   if (args.length === 0) {
-    throw new ContextError("Replay ID", USAGE_HINT, []);
+    throw new ContextError("Replay ID", usageHint, []);
   }
   if (args.length > 2) {
     throw new ValidationError(
-      `Too many positional arguments (got ${args.length}, expected at most 2).\n\nUsage: ${USAGE_HINT}`,
-      "positional"
+      `Too many positional arguments (got ${args.length}, expected at most 2).\n\nUsage: ${usageHint}`,
+      "positional",
     );
   }
 
   const first = args[0];
   if (!first) {
-    throw new ContextError("Replay ID", USAGE_HINT, []);
+    throw new ContextError("Replay ID", usageHint, []);
   }
 
   const urlParsed = parseSentryUrl(first);
@@ -144,18 +149,18 @@ export function parsePositionalArgs(args: string[]): ParsedPositionalArgs {
     if (urlParsed.replayId && urlParsed.org) {
       return { replayId: urlParsed.replayId, targetArg: `${urlParsed.org}/` };
     }
-    throw new ContextError("Replay ID", USAGE_HINT, [
+    throw new ContextError("Replay ID", usageHint, [
       "Pass a replay URL: https://sentry.io/organizations/{org}/explore/replays/{replayId}/",
     ]);
   }
 
   if (args.length === 1) {
-    return parseSingleArg(first);
+    return parseSingleArg(first, usageHint);
   }
 
   const second = args[1];
   if (!second) {
-    throw new ContextError("Replay ID", USAGE_HINT, []);
+    throw new ContextError("Replay ID", usageHint, []);
   }
 
   const warning =
@@ -178,12 +183,21 @@ type ReplayProjectScope = {
   expectedProjectId?: string;
   replayId: string;
   replay: ReplayDetails;
+  /** Subcommand named in the error's usage hint. */
+  command?: "view" | "download";
 };
 
-async function validateReplayProjectScope(
-  scope: ReplayProjectScope
+/**
+ * Reject a replay that is not in the project the user named.
+ *
+ * Replays are looked up org-wide, so an explicit `<org>/<project>/<id>` target
+ * has to be checked against the replay's own project.
+ */
+export async function validateReplayProjectScope(
+  scope: ReplayProjectScope,
 ): Promise<void> {
   const { expectedProjectId, org, project, replay, replayId } = scope;
+  const command = scope.command ?? "view";
   if (!project) {
     return;
   }
@@ -196,10 +210,10 @@ async function validateReplayProjectScope(
     throw new ResolutionError(
       `Replay '${replayId}'`,
       "has no project association",
-      `sentry replay view ${org}/${project}/${replayId}`,
+      `sentry replay ${command} ${org}/${project}/${replayId}`,
       [
-        `Open the org-scoped replay instead: sentry replay view ${org}/${replayId}`,
-      ]
+        `Use the org-scoped replay instead: sentry replay ${command} ${org}/${replayId}`,
+      ],
     );
   }
 
@@ -208,17 +222,17 @@ async function validateReplayProjectScope(
     throw new ResolutionError(
       `Replay '${replayId}'`,
       `is not in project '${project}'`,
-      `sentry replay view ${org}/${project}/${replayId}`,
+      `sentry replay ${command} ${org}/${project}/${replayId}`,
       [
-        `Open the org-scoped replay instead: sentry replay view ${org}/${replayId}`,
-      ]
+        `Use the org-scoped replay instead: sentry replay ${command} ${org}/${replayId}`,
+      ],
     );
   }
 }
 
 async function fetchReplayActivity(
   org: string,
-  replay: ReplayDetails
+  replay: ReplayDetails,
 ): Promise<ReplayActivityEvent[]> {
   if (
     replay.is_archived ||
@@ -233,7 +247,7 @@ async function fetchReplayActivity(
       org,
       String(replay.project_id),
       replay.id,
-      { expectedSegments: replay.count_segments }
+      { expectedSegments: replay.count_segments },
     );
     return extractReplayActivityEvents(segments, MAX_ACTIVITY_EVENTS);
   } catch (error) {
@@ -250,7 +264,7 @@ async function fetchReplayActivity(
  */
 function fetchRelatedReplayIssues(
   org: string,
-  replay: ReplayDetails
+  replay: ReplayDetails,
 ): Promise<ReplayRelatedIssue[]> {
   const eventIds = replay.error_ids.slice(0, MAX_RELATED_ERRORS);
 
@@ -272,13 +286,13 @@ function fetchRelatedReplayIssues(
         log.debug(`Failed to resolve issue for event ${eventId}`, error);
         return { eventId, issueId: null, shortId: null, title: null };
       }
-    })
+    }),
   );
 }
 
 function fetchRelatedReplayTraces(
   org: string,
-  replay: ReplayDetails
+  replay: ReplayDetails,
 ): Promise<ReplayRelatedTrace[]> {
   const traceIds = replay.trace_ids.slice(0, MAX_RELATED_TRACES);
 
@@ -303,13 +317,13 @@ function fetchRelatedReplayTraces(
           spanCount: null,
         };
       }
-    })
+    }),
   );
 }
 
 async function enrichReplayView(
   org: string,
-  replay: ReplayDetails
+  replay: ReplayDetails,
 ): Promise<
   Pick<ReplayViewData, "activity" | "relatedIssues" | "relatedTraces">
 > {
@@ -388,7 +402,7 @@ export const viewCommand = buildCommand({
     const resolved = await resolveOrgOptionalFromArg(
       parsedArgs.targetArg,
       cwd,
-      "replay view"
+      "replay view",
     );
 
     let replay: ReplayDetails;
@@ -405,7 +419,7 @@ export const viewCommand = buildCommand({
           [
             "Check that you are querying the right organization",
             "The replay may be past your retention window",
-          ]
+          ],
         );
       }
       throw error;

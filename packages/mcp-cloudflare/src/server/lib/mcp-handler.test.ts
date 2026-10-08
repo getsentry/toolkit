@@ -288,7 +288,7 @@ describe("MCP Handler", () => {
       }>(response);
       const toolNames = body.result?.tools.map((tool) => tool.name) ?? [];
 
-      expect(toolNames).toContain("search_events");
+      expect(toolNames).toContain("search_traces");
       expect(toolNames).not.toContain("search_docs");
     });
 
@@ -343,7 +343,7 @@ describe("MCP Handler", () => {
       }>(response);
       const toolNames = body.result?.tools.map((tool) => tool.name) ?? [];
 
-      expect(toolNames).toContain("search_events");
+      expect(toolNames).toContain("search_traces");
       expect(toolNames).toContain("update_issue");
     });
 
@@ -480,7 +480,7 @@ describe("MCP Handler", () => {
       }>(response);
       const toolNames = body.result?.tools.map((tool) => tool.name) ?? [];
 
-      expect(toolNames).toContain("search_events");
+      expect(toolNames).toContain("search_traces");
       expect(toolNames).not.toContain("update_issue");
     });
 
@@ -508,7 +508,7 @@ describe("MCP Handler", () => {
       }>(response);
       const toolNames = body.result?.tools.map((tool) => tool.name) ?? [];
 
-      expect(toolNames).toContain("search_events");
+      expect(toolNames).toContain("search_traces");
       expect(toolNames).not.toContain("update_issue");
     });
 

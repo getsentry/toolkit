@@ -12,7 +12,7 @@ import {
   parseCursorFlag,
 } from "../../src/lib/list-command.js";
 import type { OrgListConfig } from "../../src/lib/org-list.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as orgListModule from "../../src/lib/org-list.js";
 
 describe("parseCursorFlag", () => {
@@ -45,7 +45,7 @@ type FakeEntity = { id: string; name: string };
 type FakeWithOrg = FakeEntity & { orgSlug: string };
 
 function makeFakeConfig(
-  overrides?: Partial<OrgListConfig<FakeEntity, FakeWithOrg>>
+  overrides?: Partial<OrgListConfig<FakeEntity, FakeWithOrg>>,
 ): OrgListConfig<FakeEntity, FakeWithOrg> {
   return {
     paginationKey: "fake-list",
@@ -53,7 +53,7 @@ function makeFakeConfig(
     commandPrefix: "sentry widget list",
     listForOrg: vi.fn(() => Promise.resolve([])),
     listPaginated: vi.fn(() =>
-      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined })
+      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
     ),
     withOrg: (entity, orgSlug) => ({ ...entity, orgSlug }),
     displayTable: vi.fn(() => ""),
@@ -125,7 +125,7 @@ describe("buildOrgListCommand", () => {
     const cmd = buildOrgListCommand(
       config,
       { brief: "List widgets" },
-      "widget"
+      "widget",
     );
     const func = await cmd.loader();
     const { context } = createContext();
@@ -145,7 +145,7 @@ describe("buildOrgListCommand", () => {
     const cmd = buildOrgListCommand(
       config,
       { brief: "List widgets" },
-      "widget"
+      "widget",
     );
     const func = await cmd.loader();
     const { context } = createContext();

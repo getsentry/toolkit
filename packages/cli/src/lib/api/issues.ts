@@ -153,7 +153,7 @@ export async function listIssuesPaginated(
     start?: string;
     /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
     end?: string;
-  } = {}
+  } = {},
 ): Promise<PaginatedResponse<SentryIssue[]>> {
   // Prefer the API's repeated `project` parameter. A lone slug retains the
   // search-query fallback for callers that have not resolved project identity.
@@ -235,11 +235,11 @@ export async function listIssuesAllPages(
     start?: string;
     /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
     end?: string;
-  }
+  },
 ): Promise<IssuesPage> {
   if (options.limit < 1) {
     throw new Error(
-      `listIssuesAllPages: limit must be at least 1, got ${options.limit}`
+      `listIssuesAllPages: limit must be at least 1, got ${options.limit}`,
     );
   }
 
@@ -295,7 +295,7 @@ export async function listIssuesAllPages(
  */
 export function getIssue(
   issueId: string,
-  options?: { collapse?: IssueCollapseField[] }
+  options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
   return apiRequest<SentryIssue>(`/issues/${issueId}/`, {
     params: options?.collapse ? { collapse: options.collapse } : undefined,
@@ -319,7 +319,7 @@ export function getIssue(
 export async function getIssueInOrg(
   orgSlug: string,
   issueId: string,
-  options?: { collapse?: IssueCollapseField[] }
+  options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const { data } = await apiRequestToRegion<SentryIssue>(
@@ -327,7 +327,7 @@ export async function getIssueInOrg(
     `/organizations/${orgSlug}/issues/${issueId}/`,
     {
       params: options?.collapse ? { collapse: options.collapse } : undefined,
-    }
+    },
   );
   return data;
 }
@@ -348,7 +348,7 @@ export async function getIssueInOrg(
 export async function getIssueByShortId(
   orgSlug: string,
   shortId: string,
-  options?: { collapse?: IssueCollapseField[] }
+  options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
   const normalizedShortId = shortId.toUpperCase();
   const regionUrl = await resolveOrgRegion(orgSlug);
@@ -360,7 +360,7 @@ export async function getIssueByShortId(
       `/organizations/${orgSlug}/shortids/${normalizedShortId}/`,
       {
         params: options?.collapse ? { collapse: options.collapse } : undefined,
-      }
+      },
     );
     data = result.data;
   } catch (error) {
@@ -376,7 +376,7 @@ export async function getIssueByShortId(
           "The issue may have been deleted or merged",
           `Verify the short ID and org: sentry issue view ${orgSlug}/${normalizedShortId}`,
           `List issues in this org: sentry issue list ${orgSlug}/`,
-        ].join("\n  ")
+        ].join("\n  "),
       );
     }
     throw error;
@@ -386,7 +386,7 @@ export async function getIssueByShortId(
     throw new ApiError(
       `Short ID ${normalizedShortId} resolved but no issue group returned`,
       404,
-      "Issue not found"
+      "Issue not found",
     );
   }
   return data.group;
@@ -406,7 +406,7 @@ export async function getIssueByShortId(
 export async function tryGetIssueByShortId(
   orgSlug: string,
   shortId: string,
-  options?: { collapse?: IssueCollapseField[] }
+  options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue | null> {
   try {
     return await getIssueByShortId(orgSlug, shortId, options);
@@ -499,7 +499,7 @@ export type ParsedResolveSpec =
  *   well-formed `<repo>@<sha>` payload.
  */
 export function parseResolveSpec(
-  spec: string | undefined
+  spec: string | undefined,
 ): ParsedResolveSpec | null {
   if (!spec) {
     return null;
@@ -527,7 +527,7 @@ export function parseResolveSpec(
     if (splitIdx <= 0 || splitIdx === payload.length - 1) {
       throw new ValidationError(
         `Invalid --in spec: '${spec}' — expected '${RESOLVE_COMMIT_EXPLICIT_PREFIX}<repo>@<sha>'.`,
-        "in"
+        "in",
       );
     }
     const repository = payload.slice(0, splitIdx).trim();
@@ -535,7 +535,7 @@ export function parseResolveSpec(
     if (!(repository && commit)) {
       throw new ValidationError(
         `Invalid --in spec: '${spec}' — repo and SHA must both be non-empty.`,
-        "in"
+        "in",
       );
     }
     return { kind: "commit", spec: { kind: "explicit", repository, commit } };
@@ -548,7 +548,7 @@ export function parseResolveSpec(
       `Invalid --in spec: '${spec}' is not a recognized sentinel.\n\n` +
         `Expected '${RESOLVE_NEXT_RELEASE_SENTINEL}', '${RESOLVE_COMMIT_SENTINEL}', or '${RESOLVE_COMMIT_EXPLICIT_PREFIX}<repo>@<sha>'.\n` +
         "If you meant a literal release name, it cannot start with '@'.",
-      "in"
+      "in",
     );
   }
   return { kind: "static", details: { inRelease: trimmed } };
@@ -590,7 +590,7 @@ export async function updateIssueStatus(
     /** Substatus for archive granularity. */
     substatus?: IssueSubstatus;
     orgSlug?: string;
-  }
+  },
 ): Promise<SentryIssue> {
   const body: Record<string, unknown> = { status };
   if (options?.statusDetails) {
@@ -606,7 +606,7 @@ export async function updateIssueStatus(
     const { data } = await apiRequestToRegion<SentryIssue>(
       regionUrl,
       `/organizations/${encodeURIComponent(options.orgSlug)}/issues/${encodeURIComponent(issueId)}/`,
-      { method: "PUT", body }
+      { method: "PUT", body },
     );
     return data;
   }
@@ -640,11 +640,11 @@ export type MergeIssuesResult = {
  */
 export async function mergeIssues(
   orgSlug: string,
-  groupIds: readonly string[]
+  groupIds: readonly string[],
 ): Promise<MergeIssuesResult> {
   if (groupIds.length < 2) {
     throw new ValidationError(
-      `Need at least 2 issues to merge (got ${groupIds.length}).`
+      `Need at least 2 issues to merge (got ${groupIds.length}).`,
     );
   }
   // The bulk mutate endpoint accepts repeated `?id=X` query params plus a
@@ -670,9 +670,9 @@ export async function mergeIssues(
     await Promise.all(
       affectedIds.map((id) =>
         invalidateCachedResponsesMatching(
-          `${apiBase}/api/0/issues/${encodeURIComponent(id)}/`
-        )
-      )
+          `${apiBase}/api/0/issues/${encodeURIComponent(id)}/`,
+        ),
+      ),
     );
     return data.merge;
   } catch (error) {
@@ -685,7 +685,7 @@ export async function mergeIssues(
         `No matching issues found for merge in '${orgSlug}'.`,
         204,
         "All provided issue IDs are out of scope or no longer exist.",
-        path
+        path,
       );
     }
     throw error;
@@ -708,7 +708,7 @@ export async function mergeIssues(
 export async function getSharedIssue(
   baseUrl: string,
   orgSlug: string,
-  shareId: string
+  shareId: string,
 ): Promise<{ id: string }> {
   const path = `organizations/${encodeURIComponent(orgSlug)}/shared/issues/${encodeURIComponent(shareId)}/`;
   const url = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/api/0/${path}`;
@@ -727,7 +727,7 @@ export async function getSharedIssue(
         "TLS certificate error",
         0,
         buildTlsErrorDetail(error),
-        path
+        path,
       );
     }
     throw error;
@@ -740,14 +740,14 @@ export async function getSharedIssue(
         404,
         "The share link may have been disabled by the issue owner.\n" +
           "  Ask them to re-enable sharing, or use the issue ID directly.",
-        path
+        path,
       );
     }
     throw new ApiError(
       "Failed to resolve share link",
       response.status,
       undefined,
-      path
+      path,
     );
   }
 
@@ -762,7 +762,7 @@ export async function getSharedIssue(
       "Share link returned invalid JSON",
       response.status,
       undefined,
-      path
+      path,
     );
   }
 
@@ -777,7 +777,7 @@ export async function getSharedIssue(
       "Share link response missing a valid issue ID",
       response.status,
       undefined,
-      path
+      path,
     );
   }
 

@@ -404,7 +404,7 @@ don't exist in v4 yet. A few notable ones:
 
 Before relying on a flag, confirm it with `sentry <command> --help` — that's the
 authoritative list for v4. If a flag you depend on is missing, please
-[open an issue](https://github.com/getsentry/cli/issues).
+[open an issue](https://github.com/getsentry/toolkit/issues).
 :::
 
 ## Node.js wrapper (`SentryCli` class)
@@ -612,5 +612,5 @@ read. See [Configuration](/configuration/) for the full list.
   [Configuration](/configuration/)
 
 If a command you relied on isn't covered here, please
-[open an issue](https://github.com/getsentry/cli/issues) — we want the
+[open an issue](https://github.com/getsentry/toolkit/issues) — we want the
 migration to be painless.

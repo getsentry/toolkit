@@ -359,7 +359,7 @@ describe("humanizeCategory", () => {
 
   test("handles multi-segment camelCase", () => {
     expect(humanizeCategory("myLongCategoryName")).toBe(
-      "My Long Category Name"
+      "My Long Category Name",
     );
   });
 

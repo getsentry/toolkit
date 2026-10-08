@@ -2,7 +2,7 @@
  * Tests for the replay API helpers.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { MAX_PAGINATION_PAGES } from "../../../src/lib/api/infrastructure.js";
 import {
   getReplay,
@@ -34,7 +34,7 @@ function replayRow(id = REPLAY_ID) {
 
 function recordingSegmentsResponse(
   body: unknown,
-  nextCursor?: string
+  nextCursor?: string,
 ): Response {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -139,12 +139,12 @@ describe("listReplays", () => {
         callIndex === 0
           ? {
               data: Array.from({ length: 100 }, (_, index) =>
-                replayRow(index.toString(16).padStart(32, "a").slice(-32))
+                replayRow(index.toString(16).padStart(32, "a").slice(-32)),
               ),
             }
           : {
               data: Array.from({ length: 50 }, (_, index) =>
-                replayRow(index.toString(16).padStart(32, "b").slice(-32))
+                replayRow(index.toString(16).padStart(32, "b").slice(-32)),
               ),
             };
       const headers =
@@ -201,7 +201,7 @@ describe("getReplay", () => {
     const replay = await getReplay("test-org", REPLAY_ID);
 
     expect(capturedUrl).toContain(
-      `/api/0/organizations/test-org/replays/${REPLAY_ID}/`
+      `/api/0/organizations/test-org/replays/${REPLAY_ID}/`,
     );
     expect(replay.id).toBe(REPLAY_ID);
     expect(replay.count_errors).toBe(2);
@@ -227,8 +227,8 @@ describe("getReplay", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
-        )
+          },
+        ),
     );
 
     const replay = await getReplay("test-org", REPLAY_ID);
@@ -279,7 +279,7 @@ describe("resolveReplay", () => {
     expect(replay.id).toBe(REPLAY_ID);
     expect(capturedUrls).toHaveLength(1);
     expect(capturedUrls[0]).toContain(
-      `/api/0/organizations/test-org/replays/${REPLAY_ID}/`
+      `/api/0/organizations/test-org/replays/${REPLAY_ID}/`,
     );
   });
 
@@ -312,7 +312,7 @@ describe("resolveReplay", () => {
 
     const listUrl = new URL(capturedUrls[1]!);
     expect(listUrl.pathname).toContain(
-      "/api/0/organizations/test-org/replays/"
+      "/api/0/organizations/test-org/replays/",
     );
     expect(listUrl.searchParams.get("query")).toBe(`trace:${TRACE_ID}`);
     expect(listUrl.searchParams.get("statsPeriod")).toBe("90d");
@@ -394,12 +394,12 @@ describe("getReplayRecordingSegments", () => {
     const segments = await getReplayRecordingSegments(
       "test-org",
       "42",
-      REPLAY_ID
+      REPLAY_ID,
     );
 
     const url = new URL(capturedUrl);
     expect(url.pathname).toContain(
-      `/api/0/projects/test-org/42/replays/${REPLAY_ID}/recording-segments/`
+      `/api/0/projects/test-org/42/replays/${REPLAY_ID}/recording-segments/`,
     );
     expect(url.searchParams.get("download")).toBeNull();
     expect(url.searchParams.get("per_page")).toBe("100");
@@ -408,11 +408,11 @@ describe("getReplayRecordingSegments", () => {
 
   test("rejects non-object recording events at the API boundary", async () => {
     globalThis.fetch = mockFetch(async () =>
-      recordingSegmentsResponse([[null]])
+      recordingSegmentsResponse([[null]]),
     );
 
     await expect(
-      getReplayRecordingSegments("test-org", "42", REPLAY_ID)
+      getReplayRecordingSegments("test-org", "42", REPLAY_ID),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -438,7 +438,7 @@ describe("getReplayRecordingSegments", () => {
       "test-org",
       "42",
       REPLAY_ID,
-      { expectedSegments: 101 }
+      { expectedSegments: 101 },
     );
 
     expect(segments).toHaveLength(101);
@@ -453,7 +453,8 @@ describe("getReplayRecordingSegments", () => {
     expect(secondUrl.searchParams.get("per_page")).toBe("100");
   });
 
-  test("stops recording segment pagination at the safety cap", async () => {
+  test("stops recording segment pagination at the safety cap and warns", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const capturedUrls: string[] = [];
     let callIndex = 0;
 
@@ -471,7 +472,7 @@ describe("getReplayRecordingSegments", () => {
     const segments = await getReplayRecordingSegments(
       "test-org",
       "42",
-      REPLAY_ID
+      REPLAY_ID,
     );
 
     expect(segments).toHaveLength(MAX_PAGINATION_PAGES);
@@ -479,8 +480,12 @@ describe("getReplayRecordingSegments", () => {
 
     const finalUrl = new URL(capturedUrls.at(-1)!);
     expect(finalUrl.searchParams.get("cursor")).toBe(
-      `0:${(MAX_PAGINATION_PAGES - 1) * 100}:0`
+      `0:${(MAX_PAGINATION_PAGES - 1) * 100}:0`,
     );
+
+    const stderr = stderrSpy.mock.calls.map((call) => String(call[0])).join("");
+    stderrSpy.mockRestore();
+    expect(stderr).toContain("Pagination limit reached");
   });
 });
 
@@ -513,7 +518,7 @@ describe("listReplayIdsForIssue", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     });
 
@@ -521,7 +526,7 @@ describe("listReplayIdsForIssue", () => {
     const url = new URL(capturedUrl);
 
     expect(url.pathname).toContain(
-      "/api/0/organizations/test-org/replay-count/"
+      "/api/0/organizations/test-org/replay-count/",
     );
     expect(url.searchParams.get("returnIds")).toBe("true");
     expect(url.searchParams.get("query")).toBe("issue.id:[12345]");

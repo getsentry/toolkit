@@ -2,7 +2,7 @@ import { describeEval } from "vitest-evals";
 import { FIXTURES, NoOpTaskRunner, ToolPredictionScorer } from "./utils";
 
 // Note: This eval requires OPENROUTER_API_KEY to be set in the environment
-// The search_events tool uses the AI SDK to translate natural language queries
+// The dataset search tools (search_errors, search_traces, search_logs, ...) use the AI SDK to translate natural language queries
 describeEval("search-events", {
   data: async () => {
     return [
@@ -15,11 +15,10 @@ describeEval("search-events", {
             arguments: {},
           },
           {
-            name: "search_events",
+            name: "search_errors",
             arguments: {
               organizationSlug: FIXTURES.organizationSlug,
               query: "database timeouts from the last week",
-              dataset: "errors",
             },
           },
         ],
@@ -33,11 +32,10 @@ describeEval("search-events", {
             arguments: {},
           },
           {
-            name: "search_events",
+            name: "search_traces",
             arguments: {
               organizationSlug: FIXTURES.organizationSlug,
               query: "slow API calls taking over 5 seconds",
-              dataset: "spans",
             },
           },
         ],
@@ -51,11 +49,10 @@ describeEval("search-events", {
             arguments: {},
           },
           {
-            name: "search_events",
+            name: "search_logs",
             arguments: {
               organizationSlug: FIXTURES.organizationSlug,
               query: "error logs from the last hour",
-              dataset: "logs",
             },
           },
         ],
@@ -69,12 +66,11 @@ describeEval("search-events", {
             arguments: {},
           },
           {
-            name: "search_events",
+            name: "search_errors",
             arguments: {
               organizationSlug: FIXTURES.organizationSlug,
               projectSlug: FIXTURES.projectSlug,
               query: "authentication errors",
-              dataset: "errors",
             },
           },
         ],
@@ -92,11 +88,10 @@ describeEval("search-events", {
             arguments: {},
           },
           {
-            name: "search_events",
+            name: "search_errors",
             arguments: {
               organizationSlug: FIXTURES.organizationSlug,
               query: "errors affecting user.id:12345",
-              dataset: "errors",
             },
           },
         ],

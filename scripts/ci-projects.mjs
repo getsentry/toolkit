@@ -330,7 +330,13 @@ export function selectAffectedProjects(projects, changedFiles, eventName) {
     }
   }
 
-  if (changedProjects.some((project) => project === undefined)) {
+  // Shared Toolkit docs are checked by the quality job, not deployed by a project.
+  if (
+    changedProjects.some(
+      (project, index) =>
+        project === undefined && !changedFiles[index].startsWith("docs/"),
+    )
+  ) {
     return projects.filter((project) => project.enabled);
   }
 

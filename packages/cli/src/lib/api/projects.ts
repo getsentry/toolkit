@@ -7,8 +7,10 @@
 import {
   createOrganizationProject,
   createTeamProject,
+  listOrganizationProjectKeys,
   listOrganizationProjects,
   listProjectKeys,
+  type ProjectKey as SdkProjectKey,
   deleteProject as sdkDeleteProject,
   getProject as sdkGetProject,
 } from "@sentry/api";
@@ -31,7 +33,7 @@ import { reportCliError } from "../error-reporting.js";
 import { type AuthGuardSuccess, withAuthGuard } from "../errors.js";
 import { logger } from "../logger.js";
 import { getApiBaseUrl } from "../sentry-client.js";
-import { buildProjectUrl } from "../sentry-urls.js";
+import { buildProjectUrl } from "../sentry-web-urls.js";
 import { isAllDigits } from "../utils.js";
 
 import {
@@ -84,7 +86,7 @@ export async function listProjects(orgSlug: string): Promise<SentryProject[]> {
     });
     return unwrapPaginatedResult<SentryProject[]>(
       result,
-      "Failed to list projects"
+      "Failed to list projects",
     );
   }, MAX_PAGINATION_PAGES * API_MAX_PER_PAGE);
 
@@ -97,7 +99,7 @@ export async function listProjects(orgSlug: string): Promise<SentryProject[]> {
   } catch (error) {
     reportBestEffortFailure(
       `Failed to cache projects for org '${orgSlug}'`,
-      error
+      error,
     );
   }
 
@@ -118,12 +120,12 @@ export async function listProjects(orgSlug: string): Promise<SentryProject[]> {
  */
 export async function listProjectsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {}
+  options: { cursor?: string; perPage?: number } = {},
 ): Promise<PaginatedResponse<SentryProject[]>> {
   const config = await getOrgSdkConfig(orgSlug);
   const perPage = Math.min(
     options.perPage ?? API_MAX_PER_PAGE,
-    API_MAX_PER_PAGE
+    API_MAX_PER_PAGE,
   );
 
   const result = await listOrganizationProjects({
@@ -137,7 +139,7 @@ export async function listProjectsPaginated(
 
   return unwrapPaginatedResult<SentryProject[]>(
     result,
-    "Failed to list projects"
+    "Failed to list projects",
   );
 }
 
@@ -154,10 +156,10 @@ export async function listProjectsPaginated(
  */
 export function listProjectsAllPages(
   orgSlug: string,
-  options: { limit: number; cursor?: string }
+  options: { limit: number; cursor?: string },
 ): Promise<PaginatedResponse<SentryProject[]>> {
   return paginate(options, (perPage, cursor) =>
-    listProjectsPaginated(orgSlug, { cursor, perPage })
+    listProjectsPaginated(orgSlug, { cursor, perPage }),
   );
 }
 
@@ -186,7 +188,7 @@ type CreateProjectBody = {
 export async function createProject(
   orgSlug: string,
   teamSlug: string,
-  body: CreateProjectBody
+  body: CreateProjectBody,
 ): Promise<SentryProject> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await createTeamProject({
@@ -218,7 +220,7 @@ export type CreatedProjectDetails = {
 function seedProjectCaches(
   orgSlug: string,
   project: SentryProject,
-  dsn: string | null
+  dsn: string | null,
 ): void {
   try {
     const orgName = resolveOrgDisplayName(orgSlug, project.organization?.name);
@@ -228,7 +230,7 @@ function seedProjectCaches(
   } catch (error) {
     reportBestEffortFailure(
       `Failed to seed project cache for '${project.slug}'`,
-      error
+      error,
     );
   }
   if (dsn) {
@@ -246,7 +248,7 @@ function seedProjectCaches(
     } catch (error) {
       reportBestEffortFailure(
         `Failed to seed DSN key cache for '${project.slug}'`,
-        error
+        error,
       );
     }
   }
@@ -257,7 +259,7 @@ function seedProjectCaches(
  * DSN format: https://<public_key>@<host>/<project_id>
  */
 function extractPublicKeyFromDsn(dsn: string): string | null {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const url = new URL(dsn);
     return url.username || null;
@@ -278,7 +280,7 @@ function extractPublicKeyFromDsn(dsn: string): string | null {
 export async function createProjectWithDsn(
   orgSlug: string,
   teamSlug: string,
-  body: CreateProjectBody
+  body: CreateProjectBody,
 ): Promise<CreatedProjectDetails> {
   const project = await createProject(orgSlug, teamSlug, body);
   const dsn = await tryGetPrimaryDsn(orgSlug, project.slug);
@@ -344,7 +346,7 @@ export const MEMBER_PROJECT_CREATION_DISABLED_DETAIL = "disabled this feature";
  */
 export async function createProjectWithAutoTeam(
   orgSlug: string,
-  body: CreateProjectBody
+  body: CreateProjectBody,
 ): Promise<CreatedAutoTeamProjectDetails> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await createOrganizationProject({
@@ -355,7 +357,7 @@ export async function createProjectWithAutoTeam(
   // `team_slug` is returned but not in the spec — see the ProjectWithAutoTeam overlay.
   const data = unwrapResult<ProjectWithAutoTeam>(
     result,
-    "Failed to create project"
+    "Failed to create project",
   );
   const dsn = await tryGetPrimaryDsn(orgSlug, data.slug);
   const url = buildProjectUrl(orgSlug, data.slug);
@@ -375,7 +377,7 @@ export async function createProjectWithAutoTeam(
  */
 export async function deleteProject(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<void> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await sdkDeleteProject({
@@ -410,7 +412,7 @@ export type ProjectSearchResult = {
  * @returns Matching projects and the org list used during search
  */
 export async function findProjectsBySlug(
-  projectSlug: string
+  projectSlug: string,
 ): Promise<ProjectSearchResult> {
   const isNumericId = isAllDigits(projectSlug);
 
@@ -438,9 +440,9 @@ export async function findProjectsBySlug(
             return null;
           }
           return { ...project, orgSlug: org.slug };
-        })
-      )
-    )
+        }),
+      ),
+    ),
   );
 
   return {
@@ -497,7 +499,7 @@ export function matchesWordBoundary(a: string, b: string): boolean {
  * @returns Array of matching projects with their org context
  */
 export async function findProjectsByPattern(
-  pattern: string
+  pattern: string,
 ): Promise<ProjectWithOrg[]> {
   const orgs = await listOrganizations();
 
@@ -510,9 +512,9 @@ export async function findProjectsByPattern(
           return projects
             .filter((p) => matchesWordBoundary(pattern, p.slug))
             .map((p) => ({ ...p, orgSlug: org.slug }));
-        })
-      )
-    )
+        }),
+      ),
+    ),
   );
 
   return searchResults
@@ -531,7 +533,7 @@ export async function findProjectsByPattern(
  * @returns The matching project, or null if not found
  */
 export async function findProjectByDsnKey(
-  publicKey: string
+  publicKey: string,
 ): Promise<SentryProject | null> {
   const regionsResult = await withAuthGuard(() => getUserRegions());
   const regions = regionsResult.ok ? regionsResult.value : ([] as Region[]);
@@ -545,7 +547,7 @@ export async function findProjectByDsnKey(
     const { data: projects } = await apiRequestToRegion<SentryProject[]>(
       getApiBaseUrl(),
       "/projects/",
-      { params: { query: `dsn:${publicKey}` } }
+      { params: { query: `dsn:${publicKey}` } },
     );
     return projects[0] ?? null;
   }
@@ -560,18 +562,18 @@ export async function findProjectByDsnKey(
           const { data } = await apiRequestToRegion<SentryProject[]>(
             region.url,
             "/projects/",
-            { params: { query: `dsn:${publicKey}` } }
+            { params: { query: `dsn:${publicKey}` } },
           );
           return data;
         } catch (error) {
           reportBestEffortFailure(
             `DSN key lookup failed in region '${region.url}'`,
-            error
+            error,
           );
           return [];
         }
-      })
-    )
+      }),
+    ),
   );
 
   for (const projects of results) {
@@ -599,7 +601,7 @@ export async function findProjectByDsnKey(
  */
 export async function getProject(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<SentryProject> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -640,13 +642,116 @@ export async function getProject(
  */
 export function resolveOrgDisplayName(
   orgSlug: string,
-  explicitName?: string
+  explicitName?: string,
 ): string {
   if (explicitName) {
     return explicitName;
   }
   const cached = getCachedOrganizations().find((o) => o.slug === orgSlug);
   return cached?.name ?? orgSlug;
+}
+
+/**
+ * User-facing fields from a project's client key.
+ * Internal identifiers and legacy secret DSNs are not exposed.
+ */
+export type ProjectDsn = Pick<
+  SdkProjectKey,
+  "name" | "isActive" | "dateCreated"
+> & { dsn: string };
+
+/** Project a client key to the fields shown in Sentry's Client Keys UI. */
+function toProjectDsn(key: SdkProjectKey): ProjectDsn {
+  return {
+    name: key.name,
+    isActive: key.isActive,
+    dateCreated: key.dateCreated,
+    dsn: key.dsn.public,
+  };
+}
+
+/**
+ * List public DSNs for a project with bounded pagination.
+ * Uses region-aware routing and returns only user-facing key information.
+ *
+ * @param orgSlug - Organization slug
+ * @param projectSlug - Project slug
+ * @param options - Total item limit and optional resume cursor
+ * @returns Public DSNs with optional pagination cursors
+ */
+export async function listProjectDsns(
+  orgSlug: string,
+  projectSlug: string,
+  options: { limit?: number; cursor?: string } = {},
+): Promise<PaginatedResponse<ProjectDsn[]>> {
+  const config = await getOrgSdkConfig(orgSlug);
+
+  return paginate(options, async (perPage, cursor) => {
+    // The SDK omits the shared per_page parameter supported by this endpoint.
+    const query = { cursor, per_page: perPage };
+    const result = await listProjectKeys({
+      ...config,
+      path: {
+        organization_id_or_slug: orgSlug,
+        project_id_or_slug: projectSlug,
+      },
+      query,
+    });
+    const page = unwrapPaginatedResult<SdkProjectKey[]>(
+      result,
+      "Failed to list project DSNs",
+    );
+
+    return {
+      ...page,
+      data: page.data.map(toProjectDsn),
+    };
+  });
+}
+
+/**
+ * List public DSNs across all accessible projects in an organization.
+ * Resolves project slugs only for keys in the requested page and keeps
+ * internal project IDs inside the API layer.
+ */
+export async function listOrganizationDsns(
+  orgSlug: string,
+  options: { limit?: number; cursor?: string } = {},
+): Promise<PaginatedResponse<(ProjectDsn & { project: string })[]>> {
+  const config = await getOrgSdkConfig(orgSlug);
+  const projectLookups = new Map<number, Promise<string>>();
+  const limitProjectLookups = pLimit(ORG_FANOUT_CONCURRENCY);
+
+  return paginate(options, async (perPage, cursor) => {
+    // These shared query parameters are supported by the backend but absent
+    // from the SDK type. -1 includes accessible projects outside the user's teams.
+    const query = { cursor, per_page: perPage, project: -1 };
+    const result = await listOrganizationProjectKeys({
+      ...config,
+      path: { organization_id_or_slug: orgSlug },
+      query,
+    });
+    const page = unwrapPaginatedResult<SdkProjectKey[]>(
+      result,
+      "Failed to list organization DSNs",
+    );
+
+    const data = await Promise.all(
+      page.data.map(async (key) => {
+        let project = projectLookups.get(key.projectId);
+        if (!project) {
+          project = limitProjectLookups(async () => {
+            const info = await getProject(orgSlug, String(key.projectId));
+            return info.slug;
+          });
+          projectLookups.set(key.projectId, project);
+        }
+        return { ...toProjectDsn(key), project: await project };
+      }),
+    );
+
+    return { ...page, data };
+  });
 }
 
 /**
@@ -660,7 +765,7 @@ export function resolveOrgDisplayName(
 export async function getProjectKeys(
   orgSlug: string,
   projectSlug: string,
-  options: { status?: "active" | "inactive" } = {}
+  options: { status?: "active" | "inactive" } = {},
 ): Promise<ProjectKey[]> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -689,7 +794,7 @@ export async function getProjectKeys(
  */
 export async function tryGetPrimaryDsn(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<string | null> {
   try {
     const keys = await getProjectKeys(orgSlug, projectSlug);
@@ -698,7 +803,7 @@ export async function tryGetPrimaryDsn(
   } catch (error) {
     reportBestEffortFailure(
       `Failed to fetch DSN for '${orgSlug}/${projectSlug}'`,
-      error
+      error,
     );
     return null;
   }
