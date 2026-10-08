@@ -5,7 +5,6 @@ Cloudflare Workers deployment configuration and release process.
 ## Architecture Overview
 
 The deployment consists of:
-
 - **Worker**: Stateless HTTP server with OAuth flow and MCP handler
 - **KV Storage**: OAuth token storage
 - **Static Assets**: React UI for setup instructions
@@ -21,29 +20,26 @@ The deployment consists of:
   "compatibility_date": "2025-03-21",
   "compatibility_flags": [
     "nodejs_compat",
-    "nodejs_compat_populate_process_env",
+    "nodejs_compat_populate_process_env"
   ],
   "keep_vars": true,
 
   // Bindings
-  "kv_namespaces": [
-    {
-      "binding": "OAUTH_KV",
-      "id": "your-kv-namespace-id",
-    },
-  ],
+  "kv_namespaces": [{
+    "binding": "OAUTH_KV",
+    "id": "your-kv-namespace-id"
+  }],
 
   // SPA configuration
   "site": {
-    "bucket": "./dist/client",
-  },
+    "bucket": "./dist/client"
+  }
 }
 ```
 
 ### Environment Variables
 
 Required in production:
-
 ```bash
 SENTRY_CLIENT_ID=your_oauth_app_id
 SENTRY_CLIENT_SECRET=your_oauth_app_secret
@@ -51,7 +47,6 @@ COOKIE_SECRET=32_char_random_string
 ```
 
 Optional overrides for self-hosted deployments:
-
 ```bash
 # Leave unset to target the SaaS host
 SENTRY_HOST=sentry.example.com     # Hostname only (self-hosted only)
@@ -62,7 +57,6 @@ self-hosted Sentry instance; no additional host variables are required for the
 SaaS service.
 
 Development (.dev.vars):
-
 ```bash
 SENTRY_CLIENT_ID=dev_client_id
 SENTRY_CLIENT_SECRET=dev_secret
@@ -78,11 +72,7 @@ import { experimental_createMcpHandler as createMcpHandler } from "agents/mcp";
 import { buildServer } from "@sentry/mcp-server/server";
 
 const mcpHandler: ExportedHandler<Env> = {
-  async fetch(
-    request: Request,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // Extract auth props from ExecutionContext (set by OAuth provider)
     const oauthCtx = ctx as OAuthExecutionContext;
 
@@ -91,7 +81,7 @@ const mcpHandler: ExportedHandler<Env> = {
       userId: oauthCtx.props.userId,
       clientId: oauthCtx.props.clientId,
       accessToken: oauthCtx.props.accessToken,
-      grantedSkills, // Primary authorization method
+      grantedSkills,  // Primary authorization method
       constraints: verification.constraints,
       sentryHost,
       mcpUrl: oauthCtx.props.mcpUrl,
@@ -189,7 +179,6 @@ For feature branches, GitHub Actions automatically uploads new versions without 
 4. Use Cloudflare dashboard to gradually roll out the version
 
 Manual version upload:
-
 ```bash
 pnpm cf:versions:upload
 ```
@@ -197,7 +186,6 @@ pnpm cf:versions:upload
 ### Creating Resources
 
 First-time setup:
-
 ```bash
 # Create KV namespace for OAuth token storage
 npx wrangler kv:namespace create OAUTH_KV
@@ -208,7 +196,6 @@ npx wrangler kv:namespace create OAUTH_KV
 ## Multi-Region Considerations
 
 Cloudflare Workers run globally, but consider:
-
 - KV is eventually consistent globally
 - Workers are stateless and edge-deployed
 - Use regional hints for performance
@@ -218,7 +205,10 @@ Cloudflare Workers run globally, but consider:
 ### CORS Settings
 
 ```typescript
-const ALLOWED_ORIGINS = ["https://sentry.io", "https://*.sentry.io"];
+const ALLOWED_ORIGINS = [
+  "https://sentry.io",
+  "https://*.sentry.io"
+];
 
 // Apply to responses
 response.headers.set("Access-Control-Allow-Origin", origin);
@@ -229,7 +219,7 @@ response.headers.set("Access-Control-Allow-Credentials", "true");
 
 ```typescript
 // Secure cookie settings
-"HttpOnly; Secure; SameSite=Lax; Max-Age=2592000";
+"HttpOnly; Secure; SameSite=Lax; Max-Age=2592000"
 ```
 
 ## Monitoring
@@ -255,7 +245,6 @@ export default {
 ### Worker Analytics
 
 Monitor via Cloudflare dashboard:
-
 - Request rates
 - Error rates
 - CPU time and memory usage
