@@ -323,6 +323,35 @@ export async function loadInkSidecar(): Promise<typeof import("./ink-app.js")> {
 }
 
 /**
+ * Run the standalone Snake game until the player quits. Ink handles the
+ * alternate screen and restores it on exit and on SIGINT/SIGTERM.
+ */
+export async function runSnakeGame(): Promise<void> {
+  const app = await loadInkSidecar();
+  const freshStdin = openFreshTtyForInk();
+  try {
+    const instance = app.mountSnakeGame({
+      // Ctrl+C is routed through the game's own shortcut so it exits cleanly.
+      exitOnCtrlC: false,
+      patchConsole: false,
+      ...(freshStdin ? { stdin: freshStdin } : {}),
+    });
+    await instance.waitUntilExit();
+  } finally {
+    if (freshStdin) {
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- best-effort terminal restore
+      try {
+        freshStdin.setRawMode(false);
+        freshStdin.pause();
+        freshStdin.destroy();
+      } catch {
+        // stream already torn down
+      }
+    }
+  }
+}
+
+/**
  * Async factory for `InkUI`. Loads the Ink sidecar, mounts the React tree,
  * and returns the bridge instance. Throws if Ink can't be loaded (e.g.
  * missing peer deps).

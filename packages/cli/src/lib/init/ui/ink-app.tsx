@@ -3158,7 +3158,14 @@ function SnakeGameScreen(): React.ReactNode {
   );
 }
 
-/** Mount the standalone Snake game; same sidecar rules as `mountApp`. */
+/**
+ * Mount the standalone Snake game; same sidecar rules as `mountApp`. Ink owns
+ * the alternate screen, so it also restores the primary screen on exit and on
+ * SIGINT/SIGTERM.
+ */
 export function mountSnakeGame(options: MountOptions): InkInstance {
-  return inkRender(createElement(SnakeGameApp), options);
+  return inkRender(createElement(SnakeGameApp), {
+    ...options,
+    alternateScreen: true,
+  });
 }
