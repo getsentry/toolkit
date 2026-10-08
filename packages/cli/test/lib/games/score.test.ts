@@ -14,6 +14,12 @@ vi.mock("../../../src/lib/telemetry.js", async (importOriginal) => ({
   isTelemetryEnabled: vi.fn(() => true),
 }));
 
+vi.mock("../../../src/lib/games/player.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../src/lib/games/player.js")>();
+  return { ...actual, getPlayerHandle: vi.fn(actual.getPlayerHandle) };
+});
+
 useTestConfigDir("test-games-score-");
 
 describe("reportSnakeScore", () => {
@@ -43,6 +49,21 @@ describe("reportSnakeScore", () => {
     expect(distribution).not.toHaveBeenCalled();
   });
 
+  test("does not throw when the handle cannot be stored", () => {
+    vi.mocked(getPlayerHandle).mockImplementationOnce(() => {
+      throw new Error("ENOTDIR: not a directory");
+    });
+    expect(() => reportSnakeScore(12)).not.toThrow();
+    expect(distribution).not.toHaveBeenCalled();
+  });
+
+  test("does not throw when the metric cannot be sent", () => {
+    distribution.mockImplementationOnce(() => {
+      throw new Error("transport failed");
+    });
+    expect(() => reportSnakeScore(12)).not.toThrow();
+  });
+
   test.each([0, -1, 1.5, Number.NaN, 10_001])(
     "ignores invalid score %s",
     (score) => {
@@ -59,7 +80,7 @@ describe("scrubAnonymousMetric", () => {
       type: "distribution",
       value: 5,
       attributes: {
-        handle: "brave-otter-42",
+        handle: "brave-otter-4242",
         "user.id": "1",
         "user.email": "a@b.c",
         "user.name": "x",

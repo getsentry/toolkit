@@ -61,13 +61,13 @@ describe("games leaderboard", () => {
       {
         period: "30d",
         entries: [
-          { rank: 1, handle: "brave-otter-42", score: 57 },
+          { rank: 1, handle: "brave-otter-4242", score: 57 },
           { rank: 2, handle, score: 40 },
         ],
       },
       (s) => run(s, { json: false }),
     );
-    expect(out).toContain("brave-otter-42");
+    expect(out).toContain("brave-otter-4242");
     expect(out).toContain(`${handle} (you)`);
     expect(out).toContain(`You play as ${handle}.`);
   });
@@ -78,18 +78,18 @@ describe("games leaderboard", () => {
       {
         period: "30d",
         entries: [
-          { rank: 1, handle: "\x1b[31m-evil-00", score: 5 },
-          { rank: 2, handle: "good-wolf-01", score: 0 },
-          { rank: 3, handle: "ok-fox-02", score: 10_001 },
-          { rank: 4, handle: "fine-fox-03", score: 9 },
+          { rank: 1, handle: "\x1b[31m-evil-0000", score: 5 },
+          { rank: 2, handle: "good-wolf-0101", score: 0 },
+          { rank: 3, handle: "ok-fox-0202", score: 10_001 },
+          { rank: 4, handle: "fine-fox-0303", score: 9 },
         ],
       },
       (s) => run(s, { json: false }),
     );
-    expect(out).toContain("fine-fox-03");
+    expect(out).toContain("fine-fox-0303");
     expect(out).not.toContain("\x1b[31m");
-    expect(out).not.toContain("good-wolf-01");
-    expect(out).not.toContain("ok-fox-02");
+    expect(out).not.toContain("good-wolf-0101");
+    expect(out).not.toContain("ok-fox-0202");
   });
 
   test("shows a message when there are no scores", async () => {
@@ -117,7 +117,7 @@ describe("games leaderboard", () => {
       {
         period: "30d",
         entries: [
-          { rank: 1, handle: "brave-otter-42", score: 57 },
+          { rank: 1, handle: "brave-otter-4242", score: 57 },
           { rank: 2, handle: "bad handle", score: 3 },
         ],
       },
@@ -125,7 +125,7 @@ describe("games leaderboard", () => {
     );
     expect(JSON.parse(out)).toEqual({
       period: "30d",
-      entries: [{ rank: 1, handle: "brave-otter-42", score: 57 }],
+      entries: [{ rank: 1, handle: "brave-otter-4242", score: 57 }],
     });
   });
 });
