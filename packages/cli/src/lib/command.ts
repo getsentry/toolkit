@@ -875,6 +875,9 @@ export function buildCommand<
       builderArgs.docs.examples;
   }
 
+  // Introspection reads this to document whether the command needs credentials.
+  (cmd as unknown as Record<string, unknown>).__auth = builderArgs.auth;
+
   // Attach the JSON schema to the built command as a non-standard property.
   // introspect.ts reads this to populate CommandInfo.jsonFields for help
   // output and SKILL.md generation.

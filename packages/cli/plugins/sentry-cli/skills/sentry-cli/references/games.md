@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: Terminal games
 requires:
   bins: ["sentry"]
-  auth: true
+  auth: false
 ---
 
 # Games Commands
@@ -21,4 +21,4 @@ Play Snake in your terminal
 sentry games snake
 ```
 
-All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
+All commands also support `--help`, `--log-level`, and `--verbose` flags.

@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: Work with Dart/Flutter symbol maps
 requires:
   bins: ["sentry"]
-  auth: true
+  auth: false
 ---
 
 # Dart-symbol-map Commands
