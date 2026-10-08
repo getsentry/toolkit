@@ -329,7 +329,7 @@ export default new Hono<{
     );
 
     if (!code) {
-      logIssue("No authorization code received");
+      logWarn("No authorization code received");
       return c.html(
         createErrorPage(
           "Authentication Failed",
