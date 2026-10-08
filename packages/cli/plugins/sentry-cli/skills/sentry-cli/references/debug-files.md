@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: Work with debug information files
 requires:
   bins: ["sentry"]
-  auth: false
+  auth: true
 ---
 
 # Debug-files Commands

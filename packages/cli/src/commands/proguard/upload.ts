@@ -151,6 +151,7 @@ export const uploadCommand = buildCommand({
   // The upload path calls resolveOrgAndProject which triggers auth.
   auth: false,
   docs: {
+    requiresAuth: true,
     brief: "Upload ProGuard/R8 mapping files to Sentry",
     fullDescription:
       "Upload one or more ProGuard/R8 mapping files to Sentry using " +

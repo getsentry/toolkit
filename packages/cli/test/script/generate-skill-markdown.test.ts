@@ -10,10 +10,15 @@ import {
 } from "../../script/generate-skill-markdown.js";
 import { listCommand } from "../../src/commands/agent-conversation/list.js";
 import { viewCommand } from "../../src/commands/agent-conversation/view.js";
+import { refreshCommand } from "../../src/commands/auth/refresh.js";
+import { uploadCommand as dartUploadCommand } from "../../src/commands/dart-symbol-map/upload.js";
+import { uploadCommand as debugUploadCommand } from "../../src/commands/debug-files/upload.js";
 import { sendCommand } from "../../src/commands/event/send.js";
 import { snakeCommand } from "../../src/commands/games/snake.js";
 import { mergeCommand } from "../../src/commands/issue/merge.js";
 import { createCommand } from "../../src/commands/project/create.js";
+import { uploadCommand as proguardUploadCommand } from "../../src/commands/proguard/upload.js";
+import { xcodeCommand } from "../../src/commands/react-native/xcode.js";
 import { buildCommandInfo } from "../../src/lib/introspect.js";
 
 describe("extractCommandPathFromHeading", () => {
@@ -213,4 +218,27 @@ describe("games reference", () => {
     expect(content).not.toContain("--json");
     expect(content).not.toContain("--fields");
   });
+});
+
+describe("conditional authentication documentation", () => {
+  test.each([
+    ["dart-symbol-map", "upload", dartUploadCommand],
+    ["debug-files", "upload", debugUploadCommand],
+    ["proguard", "upload", proguardUploadCommand],
+    ["react-native", "xcode", xcodeCommand],
+    ["auth", "refresh", refreshCommand],
+  ] as const)(
+    "documents credentials for %s %s despite deferring the auth guard",
+    async (group, command, definition) => {
+      expect(
+        buildCommandInfo(definition as never, `sentry ${group} ${command}`)
+          .requiresAuth,
+      ).toBe(true);
+      const reference = await readFile(
+        `plugins/sentry-cli/skills/sentry-cli/references/${group}.md`,
+        "utf8",
+      );
+      expect(reference).toContain("  auth: true\n");
+    },
+  );
 });

@@ -87,6 +87,7 @@ function formatRefreshResult(data: RefreshOutput): string {
 export const refreshCommand = buildCommand({
   auth: false,
   docs: {
+    requiresAuth: true,
     brief: "Refresh your OAuth access token",
     fullDescription: `
 Manually refresh your OAuth access token using the stored refresh token.
