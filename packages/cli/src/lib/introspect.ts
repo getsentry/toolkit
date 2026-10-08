@@ -61,6 +61,8 @@ export type Command = {
    */
   __primaryUsage?: string;
   __examples?: readonly CommandExample[];
+  /** Documented credential requirement; independent of when the auth guard runs. */
+  __requiresAuth?: boolean;
 };
 
 /** Positional parameter definitions — either fixed-length tuple or variadic array */
@@ -113,6 +115,8 @@ export type CommandInfo = {
   positionals: PositionalInfo[];
   aliases: Record<string, string>;
   examples: string[];
+  /** Whether normal operation needs credentials; offline modes may be exempt. */
+  requiresAuth: boolean;
   /** JSON output field metadata extracted from `OutputConfig.schema` */
   jsonFields?: SchemaFieldInfo[];
 };
@@ -317,6 +321,7 @@ export function buildCommandInfo(
           ({ description, command }) => `# ${description}\n${command}`,
         )
       : examples,
+    requiresAuth: cmd.__requiresAuth !== false,
     jsonFields: jsonFields?.length ? jsonFields : undefined,
   };
 }

@@ -641,6 +641,14 @@ Manage User Feedback
 
 → Full flags and examples: `references/feedback.md`
 
+### Games
+
+Terminal games
+
+- `sentry games snake` — Play Snake in your terminal
+
+→ Full flags and examples: `references/games.md`
+
 ### Log
 
 View Sentry logs

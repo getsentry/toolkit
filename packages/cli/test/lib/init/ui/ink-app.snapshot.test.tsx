@@ -1391,6 +1391,19 @@ describe("snake waiting game", () => {
     return stripAnsi(out.latestFrame());
   }
 
+  // Slow CI runners can need more than one settle window to apply a key.
+  async function frameWhere(
+    out: CaptureStream,
+    predicate: (frame: string) => boolean,
+  ): Promise<string> {
+    const deadline = Date.now() + 2000;
+    let frame = await settledFrame(out);
+    while (!predicate(frame) && Date.now() < deadline) {
+      frame = await settledFrame(out);
+    }
+    return frame;
+  }
+
   test("stays hidden when the game is disabled", async () => {
     const store = new WizardStore();
     store.startSpinner("Verifying setup...");
@@ -1427,11 +1440,15 @@ describe("snake waiting game", () => {
     const store = new WizardStore({ snakeEnabled: true });
     store.startSpinner("Verifying setup...");
     const live = renderLive(store, columns, rows);
-    expect(await settledFrame(live.out)).toContain("to play Snake");
+    expect(
+      await frameWhere(live.out, (frame) => frame.includes("to play Snake")),
+    ).toContain("to play Snake");
     live.stdin.push("g");
     await sleep(20);
     live.stdin.push("\u001B[A");
-    expect(await settledFrame(live.out)).toContain("Bugs squashed");
+    expect(
+      await frameWhere(live.out, (frame) => frame.includes("Bugs squashed")),
+    ).toContain("Bugs squashed");
     return { ...live, store };
   }
 
@@ -1439,7 +1456,10 @@ describe("snake waiting game", () => {
     const { instance, out, store } = await startGame();
     try {
       store.appendLog("warn", "Could not verify setup: app failed to start");
-      const frame = await settledFrame(out);
+      const frame = await frameWhere(
+        out,
+        (current) => !current.includes("Bugs squashed"),
+      );
       expect(frame).toContain("Could not verify setup");
       expect(frame).not.toContain("Bugs squashed");
       expect(frame).toContain("to resume Snake");
@@ -1452,7 +1472,10 @@ describe("snake waiting game", () => {
     const { instance, out, stdin } = await startGame();
     try {
       stdin.push("\u001B");
-      const frame = await settledFrame(out);
+      const frame = await frameWhere(
+        out,
+        (current) => !current.includes("Bugs squashed"),
+      );
       expect(frame).not.toContain("Bugs squashed");
       expect(frame).toContain("to resume Snake");
     } finally {

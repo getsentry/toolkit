@@ -523,6 +523,7 @@ export const uploadCommand = buildCommand({
   // resolveOrgAndProject which triggers auth resolution.
   auth: false,
   docs: {
+    requiresAuth: true,
     brief: "Upload debug information files to Sentry",
     fullDescription:
       "Scan files and directories for native debug information files and " +

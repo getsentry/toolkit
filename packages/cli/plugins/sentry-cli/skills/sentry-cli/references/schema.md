@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: Browse the Sentry API schema
 requires:
   bins: ["sentry"]
-  auth: true
+  auth: false
 ---
 
 # Schema Commands

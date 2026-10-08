@@ -159,6 +159,7 @@ export const uploadCommand = buildCommand({
   // The upload path calls resolveOrgAndProject which triggers auth.
   auth: false,
   docs: {
+    requiresAuth: true,
     brief: "Upload a Dart/Flutter symbol map to Sentry",
     fullDescription:
       "Upload a Dart/Flutter obfuscation map for deobfuscating Dart exception " +
