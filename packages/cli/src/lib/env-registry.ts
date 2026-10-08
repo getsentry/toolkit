@@ -192,7 +192,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_GAMES_API_URL",
     description:
-      "Base URL of the service that serves the `sentry games leaderboard` scores. Defaults to `https://mcp.sentry.dev`. Mainly useful for testing.",
+      "Base URL of the service that serves the `sentry games leaderboard` scores. Defaults to `https://games.sentry.new`. Mainly useful for testing.",
     example: "http://localhost:8787",
   },
   // -- TLS / Certificates --

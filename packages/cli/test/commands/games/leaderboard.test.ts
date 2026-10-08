@@ -8,7 +8,7 @@ import { createMockServer, type MockServer } from "../../mocks/server.js";
 
 useTestConfigDir("test-games-leaderboard-");
 
-const PATH = "/api/games/snake/leaderboard";
+const PATH = "/v1/snake/leaderboard";
 
 async function run(
   server: MockServer,

@@ -36,8 +36,8 @@ import type { Writer } from "../../types/index.js";
 
 const log = logger.withTag("games.leaderboard");
 
-const DEFAULT_GAMES_API_URL = "https://mcp.sentry.dev";
-const LEADERBOARD_PATH = "/api/games/snake/leaderboard";
+const DEFAULT_GAMES_API_URL = "https://games.sentry.new";
+const LEADERBOARD_PATH = "/v1/snake/leaderboard";
 const REQUEST_TIMEOUT_MS = 5000;
 const LOAD_FAILED_MESSAGE = "Could not load the leaderboard. Try again later.";
 

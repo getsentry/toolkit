@@ -157,21 +157,13 @@ COOKIE_SECRET = "..."      # For session encryption
 OPENAI_API_KEY = "..."     # For GPT-4 access
 SENTRY_CLIENT_ID = "..."   # OAuth app ID
 SENTRY_CLIENT_SECRET = "..." # OAuth app secret
-SENTRY_GAMES_READ_TOKEN = "..." # Optional: Snake leaderboard (set with `wrangler secret put`)
 ```
-
-`SENTRY_GAMES_READ_TOKEN` is the Sentry token used by
-`GET /api/games/snake/leaderboard`. The token must belong to a bot account that
-has only `org:read` and is a member only of the team that owns the CLI project.
-Enable "Prevent storing IP addresses" on that project.
-Without the token, the leaderboard route returns 503.
 
 ### API Routes
 
 - `/api/auth/*` - Authentication endpoints
 - `/api/chat` - Main chat endpoint
 - `/api/metadata` - MCP metadata endpoint
-- `/api/games/snake/leaderboard` - Public Snake leaderboard (rate limited by IP, cached in `MCP_CACHE` for 300 seconds)
 - `/sse` - Server-sent events for MCP
 
 ## Security Considerations
