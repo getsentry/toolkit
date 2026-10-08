@@ -31,6 +31,10 @@
       "types": "./src/region-cache.ts",
       "default": "./src/region-cache.ts"
     },
+    "./resource-identity": {
+      "types": "./src/resource-identity.ts",
+      "default": "./src/resource-identity.ts"
+    },
     "./sentry-host": {
       "types": "./src/sentry-host.ts",
       "default": "./src/sentry-host.ts"

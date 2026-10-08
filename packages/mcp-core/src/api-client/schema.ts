@@ -35,6 +35,10 @@
  * }
  * ```
  */
+import type {
+  SentryIssueIdentity,
+  SentryNamedResource,
+} from "@sentry/toolkit-core/resource-identity";
 import { z } from "zod";
 
 /**
@@ -88,7 +92,7 @@ export const OrganizationSchema = z
     features: z.array(z.string()).optional(),
     hideAiFeatures: z.boolean().optional(),
   })
-  .passthrough();
+  .passthrough() satisfies z.ZodType<SentryNamedResource>;
 
 export const OrganizationListSchema = z.array(OrganizationSchema);
 
@@ -98,7 +102,7 @@ export const TeamSchema = z
     slug: z.string(),
     name: z.string(),
   })
-  .passthrough();
+  .passthrough() satisfies z.ZodType<SentryNamedResource>;
 
 export const TeamListSchema = z.array(TeamSchema);
 
@@ -113,7 +117,7 @@ export const ProjectSchema = z
     hasLogs: z.boolean().optional(),
     firstTransactionEvent: z.boolean().optional(),
   })
-  .passthrough();
+  .passthrough() satisfies z.ZodType<SentryNamedResource>;
 
 export const ProjectListSchema = z.array(ProjectSchema);
 
@@ -930,7 +934,7 @@ export const IssueSchema = z
   .passthrough()
   .transform((issue) =>
     Object.assign(issue, { shortId: issue.shortId ?? String(issue.id) }),
-  );
+  ) satisfies z.ZodType<SentryIssueIdentity>;
 
 export const IssueListSchema = z.array(IssueSchema);
 
