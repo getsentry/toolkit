@@ -130,7 +130,6 @@ async function renderApp(
   instance.unmount();
   // waitUntilExit() hangs in CI — race with a short unref'd timeout.
   await Promise.race([
-    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     instance.waitUntilExit().catch(() => {
       // Ink may reject on unmount — ignore.
     }),
@@ -1415,8 +1414,8 @@ describe("snake waiting game", () => {
     expect(frame).not.toContain("Bugs squashed");
   });
 
-  function renderLive(store: WizardStore) {
-    const out = new CaptureStream(110, 32);
+  function renderLive(store: WizardStore, columns = 110, rows = 32) {
+    const out = new CaptureStream(columns, rows);
     const stdin = makeStdin();
     const instance = render(createElement(App, { store }), {
       stdout: out as unknown as NodeJS.WriteStream,
@@ -1430,14 +1429,17 @@ describe("snake waiting game", () => {
     return { instance, out, stdin };
   }
 
-  async function startGame(): Promise<
+  async function startGame(
+    columns = 110,
+    rows = 32,
+  ): Promise<
     ReturnType<typeof renderLive> & {
       store: WizardStore;
     }
   > {
     const store = new WizardStore({ snakeEnabled: true });
     store.startSpinner("Verifying setup...");
-    const live = renderLive(store);
+    const live = renderLive(store, columns, rows);
     expect(
       await frameWhere(live.out, (frame) => frame.includes("to play Snake")),
     ).toContain("to play Snake");
@@ -1478,6 +1480,49 @@ describe("snake waiting game", () => {
       expect(frame).toContain("to resume Snake");
     } finally {
       instance.unmount();
+    }
+  });
+
+  // The sidebar's top border comes first in reading order, so the board's is second.
+  function boardBorder(frame: string): string | undefined {
+    return frame.match(/╭─+╮/g)?.[1];
+  }
+
+  test.each([
+    [80, 20],
+    [160, 50],
+  ])(
+    "keeps the board size and score visible at %i x %i",
+    async (columns, rows) => {
+      const { instance, out } = await startGame(columns, rows);
+      try {
+        const first = await settledFrame(out);
+        await sleep(400);
+        const later = await settledFrame(out);
+        expect(boardBorder(first)).toBeDefined();
+        expect(boardBorder(later)).toBe(boardBorder(first));
+        for (const frame of [first, later]) {
+          expect(frame).toContain("Bugs squashed");
+          expect(frame).toContain("steer");
+          expect(frame).not.toContain("Paused");
+        }
+      } finally {
+        instance.unmount();
+      }
+    },
+  );
+
+  test("draws a distinguishable board without color escapes under NO_COLOR", async () => {
+    vi.stubEnv("NO_COLOR", "1");
+    const { instance, out } = await startGame();
+    try {
+      await settledFrame(out);
+      expect(out.latestFrame()).not.toContain("\x1b[38;2");
+      expect(out.latestFrame()).toContain("@");
+      expect(out.latestFrame()).toContain("*");
+    } finally {
+      instance.unmount();
+      vi.unstubAllEnvs();
     }
   });
 });

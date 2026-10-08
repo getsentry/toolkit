@@ -1,8 +1,10 @@
 import { Box, type DOMElement, Text, useBoxMetrics } from "ink";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { isPlainOutput } from "../../formatters/plain-detect.js";
 import { type ShortcutBinding, useInkShortcuts } from "./ink-shortcuts.js";
 import {
   createSnake,
+  DEFAULT_SNAKE_PALETTE,
   pauseSnake,
   renderSnake,
   resizeSnake,
@@ -21,15 +23,21 @@ type InkKey = Parameters<ShortcutBinding["match"]>[1];
  * Lives above the game view so a prompt can unmount the board without
  * losing the run in progress.
  */
-export type SnakeSession = { state: SnakeState | null; best: number };
+export type SnakeSession = {
+  /** The run in progress, or `null` before the board first mounts. */
+  state: SnakeState | null;
+  /** Highest score across runs in this session. */
+  best: number;
+};
 
+/** Start an empty session for one `sentry init` run. */
 export function createSnakeSession(): SnakeSession {
   return { state: null, best: 0 };
 }
 
 const MAX_BOARD_TERMINAL_ROWS = 14;
-/** Border (2) plus the score line under the board. */
-const BOARD_CHROME_ROWS = 3;
+/** Border (2) plus the score and hint lines under the board. */
+const BOARD_CHROME_ROWS = 4;
 
 /** Board size in cells for a pane of `cols` × `rows` terminal cells. */
 function snakeBoardSize(
@@ -76,6 +84,7 @@ type SnakeGameProps = {
   session: SnakeSession;
 };
 
+/** Playable board sized to the pane it fills. Shows score, best score, and a status hint. */
 export function SnakeGame(props: SnakeGameProps): React.ReactNode {
   const ref = useRef<DOMElement>(null);
   const pane = useBoxMetrics(ref);
@@ -199,7 +208,11 @@ function SnakeBoard({
   );
   useInkShortcuts("snake-game", bindings);
 
-  const frame = useMemo(() => renderSnake(state).join("\n"), [state]);
+  const frame = useMemo(
+    () =>
+      renderSnake(state, DEFAULT_SNAKE_PALETTE, !isPlainOutput()).join("\n"),
+    [state],
+  );
 
   return (
     <Box flexDirection="column" flexShrink={0}>
@@ -209,12 +222,17 @@ function SnakeBoard({
       <Box gap={2} paddingX={1}>
         <Text color={accent}>Bugs squashed {state.score}</Text>
         <Text dimColor>Best {session.best}</Text>
-        <Text dimColor>{STATUS_HINT[state.status]}</Text>
+      </Box>
+      <Box height={1} paddingX={1}>
+        <Text dimColor wrap="truncate">
+          {STATUS_HINT[state.status]}
+        </Text>
       </Box>
     </Box>
   );
 }
 
+/** Prompt that offers the game, or its resume when a run is paused. */
 export function SnakeInvite({
   accent,
   muted,
