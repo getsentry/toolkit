@@ -353,7 +353,14 @@ function AppBody({ store, onGameOver }: AppProps): React.ReactNode {
             gap={isWide ? 2 : 0}
             overflow="hidden"
           >
-            <Box flexDirection="column" flexGrow={1} overflow="hidden">
+            <Box
+              flexDirection="column"
+              // The board is sized from this pane, so its own content must not
+              // size the pane. A zero basis ignores the board and hint widths.
+              flexBasis={showSnake ? 0 : undefined}
+              flexGrow={1}
+              overflow="hidden"
+            >
               {showSnake ? (
                 <Box flexDirection="column" flexGrow={1}>
                   {snapshot.spinner.active ? (
@@ -3170,10 +3177,17 @@ function SnakeGameScreen({
   );
 }
 
-/** Mount the standalone Snake game; same sidecar rules as `mountApp`. */
+/**
+ * Mount the standalone Snake game; same sidecar rules as `mountApp`. Ink owns
+ * the alternate screen, so it also restores the primary screen on exit and on
+ * SIGINT/SIGTERM.
+ */
 export function mountSnakeGame(
   options: MountOptions,
   onGameOver?: (score: number) => void,
 ): InkInstance {
-  return inkRender(createElement(SnakeGameApp, { onGameOver }), options);
+  return inkRender(createElement(SnakeGameApp, { onGameOver }), {
+    ...options,
+    alternateScreen: true,
+  });
 }

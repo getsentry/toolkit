@@ -1,8 +1,7 @@
 /**
  * sentry games snake
  *
- * Full-screen Snake in the alternate screen buffer. Renders through the Ink
- * sidecar, like the init wizard.
+ * Full-screen Snake. Renders through the Ink sidecar, like the init wizard.
  */
 
 import type { SentryContext } from "../../context.js";
@@ -10,9 +9,6 @@ import { buildCommand } from "../../lib/command.js";
 import { detectAgent } from "../../lib/detect-agent.js";
 import { ValidationError } from "../../lib/errors.js";
 import { reportSnakeScore } from "../../lib/games/score.js";
-
-const ENTER_ALT_SCREEN = "\x1b[?1049h\x1b[2J\x1b[H";
-const LEAVE_ALT_SCREEN = "\x1b[?1049l";
 
 export const snakeCommand = buildCommand({
   docs: {
@@ -39,41 +35,7 @@ export const snakeCommand = buildCommand({
 
     // A static import would load Ink and its WebAssembly layout engine
     // whenever the app starts, which breaks the library SDK build.
-    const { loadInkSidecar, openFreshTtyForInk } =
-      await import("../../lib/init/ui/ink-ui.js");
-    const app = await loadInkSidecar();
-    const freshStdin = openFreshTtyForInk();
-    this.stdout.write(ENTER_ALT_SCREEN);
-    let instance: ReturnType<typeof app.mountSnakeGame> | undefined;
-    // Node delivers SIGINT instead of ctrl+c input while raw mode is off; the
-    // default handler would exit before `finally` restores the screen.
-    const quit = () => instance?.unmount();
-    process.on("SIGINT", quit);
-    try {
-      instance = app.mountSnakeGame(
-        {
-          // Ctrl+C is routed through the game's own shortcut so it exits cleanly.
-          exitOnCtrlC: false,
-          patchConsole: false,
-          ...(freshStdin ? { stdin: freshStdin } : {}),
-        },
-        reportSnakeScore,
-      );
-      await instance.waitUntilExit();
-    } finally {
-      process.removeListener("SIGINT", quit);
-      instance?.unmount();
-      this.stdout.write(LEAVE_ALT_SCREEN);
-      if (freshStdin) {
-        // oxlint-disable-next-line sentry-cli/no-silent-catch -- best-effort terminal restore
-        try {
-          freshStdin.setRawMode(false);
-          freshStdin.pause();
-          freshStdin.destroy();
-        } catch {
-          // stream already torn down
-        }
-      }
-    }
+    const { runSnakeGame } = await import("../../lib/init/ui/ink-ui.js");
+    await runSnakeGame(reportSnakeScore);
   },
 });

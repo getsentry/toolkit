@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: Work with ProGuard/R8 mapping files
 requires:
   bins: ["sentry"]
-  auth: true
+  auth: false
 ---
 
 # Proguard Commands

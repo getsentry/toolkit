@@ -61,6 +61,8 @@ export type Command = {
    */
   __primaryUsage?: string;
   __examples?: readonly CommandExample[];
+  /** The `auth` option passed to `buildCommand`; unset means credentials are required. */
+  __auth?: boolean | "dsn";
 };
 
 /** Positional parameter definitions — either fixed-length tuple or variadic array */
@@ -113,6 +115,8 @@ export type CommandInfo = {
   positionals: PositionalInfo[];
   aliases: Record<string, string>;
   examples: string[];
+  /** False for commands built with `auth: false`; they run without credentials. */
+  requiresAuth: boolean;
   /** JSON output field metadata extracted from `OutputConfig.schema` */
   jsonFields?: SchemaFieldInfo[];
 };
@@ -317,6 +321,7 @@ export function buildCommandInfo(
           ({ description, command }) => `# ${description}\n${command}`,
         )
       : examples,
+    requiresAuth: cmd.__auth !== false,
     jsonFields: jsonFields?.length ? jsonFields : undefined,
   };
 }

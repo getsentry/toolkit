@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: Check Sentry service status
 requires:
   bins: ["sentry"]
-  auth: true
+  auth: false
 ---
 
 # Status Commands

@@ -11,6 +11,8 @@ import {
 import { listCommand } from "../../src/commands/agent-conversation/list.js";
 import { viewCommand } from "../../src/commands/agent-conversation/view.js";
 import { sendCommand } from "../../src/commands/event/send.js";
+import { leaderboardCommand } from "../../src/commands/games/leaderboard.js";
+import { snakeCommand } from "../../src/commands/games/snake.js";
 import { mergeCommand } from "../../src/commands/issue/merge.js";
 import { createCommand } from "../../src/commands/project/create.js";
 import { buildCommandInfo } from "../../src/lib/introspect.js";
@@ -186,4 +188,43 @@ test("published skill matches the plugin and links to its references", async () 
   expect(await realpath(`${published}/references`)).toBe(
     await realpath(`${plugin}/references`),
   );
+});
+
+describe("games reference", () => {
+  const reference = () =>
+    readFile(
+      "plugins/sentry-cli/skills/sentry-cli/references/games.md",
+      "utf8",
+    );
+
+  test("marks commands built with auth: false as not requiring auth", () => {
+    expect(
+      buildCommandInfo(snakeCommand as never, "sentry games snake")
+        .requiresAuth,
+    ).toBe(false);
+    expect(
+      buildCommandInfo(createCommand as never, "sentry project create")
+        .requiresAuth,
+    ).toBe(true);
+  });
+
+  test("advertises only the auth and flags that games commands have", async () => {
+    const content = await reference();
+    const infos = [
+      buildCommandInfo(snakeCommand as never, "sentry games snake"),
+      buildCommandInfo(leaderboardCommand as never, "sentry games leaderboard"),
+    ];
+    const accepts = (name: string) =>
+      infos.some((info) => info.flags.some((flag) => flag.name === name));
+
+    expect(content).toContain("auth: false");
+    expect(accepts("json")).toBe(true);
+    expect(content.includes("`--json`")).toBe(accepts("json"));
+    expect(content.includes("`--fields`")).toBe(accepts("fields"));
+    expect(
+      infos
+        .find((info) => info.path === "sentry games snake")
+        ?.flags.some((flag) => flag.name === "json"),
+    ).toBe(false);
+  });
 });
