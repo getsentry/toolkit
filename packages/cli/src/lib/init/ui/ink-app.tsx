@@ -352,7 +352,14 @@ function AppBody({ store }: AppProps): React.ReactNode {
             gap={isWide ? 2 : 0}
             overflow="hidden"
           >
-            <Box flexDirection="column" flexGrow={1} overflow="hidden">
+            <Box
+              flexDirection="column"
+              // The board is sized from this pane, so its own content must not
+              // size the pane. A zero basis ignores the board and hint widths.
+              flexBasis={showSnake ? 0 : undefined}
+              flexGrow={1}
+              overflow="hidden"
+            >
               {showSnake ? (
                 <Box flexDirection="column" flexGrow={1}>
                   {snapshot.spinner.active ? (
