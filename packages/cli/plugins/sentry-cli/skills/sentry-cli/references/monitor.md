@@ -25,7 +25,7 @@ Wrap a command with cron monitor check-ins
 - `--failure-issue-threshold <value> - Consecutive failures before an issue is created (requires --schedule)`
 - `--recovery-threshold <value> - Consecutive successes before an issue is resolved (requires --schedule)`
 
-### `sentry monitor list <org/project>`
+### `sentry monitor list [<org/project>]`
 
 List cron monitors
 

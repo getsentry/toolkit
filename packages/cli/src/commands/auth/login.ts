@@ -1,4 +1,5 @@
 import { isatty } from "node:tty";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
 import {
   getCurrentUser,
@@ -45,7 +46,7 @@ import {
 } from "../../lib/login-host-guard.js";
 import { resolveOAuthScopeString } from "../../lib/oauth.js";
 import { clearResponseCache } from "../../lib/response-cache.js";
-import { isSaaSTrustOrigin, normalizeOrigin } from "../../lib/sentry-urls.js";
+import { normalizeOrigin } from "../../lib/sentry-urls.js";
 import {
   loadSentryCliRc,
   type SentryCliRcConfig,

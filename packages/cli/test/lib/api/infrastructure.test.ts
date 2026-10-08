@@ -606,6 +606,28 @@ describe("rawApiRequest binary handling", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  test("keeps a trusted self-hosted path and bearer credential on raw requests", async () => {
+    setAuthToken(" \tvalid-token\x7f ", undefined, undefined, {
+      host: "https://sentry.example.com",
+    });
+    globalThis.fetch = mockFetch(async (input, init) => {
+      expect(input).toBe(
+        "https://sentry.example.com/sentry/api/0/organizations/acme/?cursor=a%3Ab",
+      );
+      expect(new Headers(init?.headers).get("Authorization")).toBe(
+        "Bearer valid-token",
+      );
+      return new Response("{}", {
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    await rawApiRequest("/organizations/acme/", {
+      baseUrl: "https://sentry.example.com/sentry",
+      params: { cursor: "a:b" },
+    });
+  });
+
   test("returns Uint8Array for image/png without UTF-8 corruption", async () => {
     // Real PNG signature: 89 50 4e 47 0d 0a 1a 0a — the leading 0x89 is not
     // valid UTF-8 and would become EF BF BD if response.text() were used.

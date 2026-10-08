@@ -94,12 +94,19 @@ type BaseArgs = readonly unknown[];
 type StricliBuilderArgs<CONTEXT extends CommandContext> =
   import("@stricli/core").CommandBuilderArguments<BaseFlags, BaseArgs, CONTEXT>;
 
+/** A runnable example stored with its command for generated documentation. */
+export type CommandExample = {
+  readonly description: string;
+  readonly command: string;
+};
+
 /**
- * Native Stricli documentation. When `customUsage` is present, its first line
- * must be the canonical signature suffix used by introspection and generated
- * docs; later lines may document equivalent forms.
+ * Native Stricli documentation plus canonical examples for generated docs.
  */
-type CommandDocumentation = StricliBuilderArgs<CommandContext>["docs"];
+export type CommandDocumentation =
+  StricliBuilderArgs<CommandContext>["docs"] & {
+    readonly examples?: readonly CommandExample[];
+  };
 
 /**
  * Command function type for Sentry CLI commands.
@@ -425,6 +432,23 @@ function enrichDocsWithSchema(
   };
 }
 
+/** Render command-owned examples in native help without exposing custom fields to Stricli. */
+function prepareNativeDocs(
+  docs: CommandDocumentation,
+): StricliBuilderArgs<CommandContext>["docs"] {
+  const { examples, ...nativeDocs } = docs;
+  if (!examples?.length) {
+    return nativeDocs;
+  }
+  const rendered = examples
+    .map(({ description, command }) => `  ${command} # ${description}`)
+    .join("\n");
+  return {
+    ...nativeDocs,
+    fullDescription: `${nativeDocs.fullDescription ?? nativeDocs.brief}\n\nExamples:\n${rendered}`,
+  };
+}
+
 /**
  * Global flag defaults keyed by flag name.
  * Used by {@link mergeGlobalFlags} to inject flags when the command
@@ -512,9 +536,10 @@ export function buildCommand<
   const { mergedFlags, commandOwnsOrg, commandOwnsProject, stripKeys } =
     mergeGlobalFlags(existingFlags, outputConfig);
 
-  // Enrich fullDescription with JSON fields when schema is registered.
-  // This makes field info visible in Stricli's --help output.
-  const enrichedDocs = enrichDocsWithSchema(builderArgs.docs, outputConfig);
+  const enrichedDocs = enrichDocsWithSchema(
+    prepareNativeDocs(builderArgs.docs),
+    outputConfig,
+  );
 
   // Inject short aliases for global flags (e.g., -v → --verbose).
   // Derived from the shared GLOBAL_FLAGS definition so adding a new
@@ -844,6 +869,10 @@ export function buildCommand<
   if (primaryUsage) {
     (cmd as unknown as Record<string, unknown>).__primaryUsage =
       typeof primaryUsage === "string" ? primaryUsage : primaryUsage.input;
+  }
+  if (builderArgs.docs.examples?.length) {
+    (cmd as unknown as Record<string, unknown>).__examples =
+      builderArgs.docs.examples;
   }
 
   // Attach the JSON schema to the built command as a non-standard property.

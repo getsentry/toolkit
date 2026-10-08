@@ -51,7 +51,7 @@ const INK_APP_PATH = join(ROOT_DIR, "dist/ink-app.js");
 describe("npm bundle", () => {
   beforeAll(async () => {
     await ensureBundleBuilt();
-  }, 60_000); // Bundle can take a while
+  }, 120_000); // Cold CI builds include the MCP runtime dependencies
 
   test("bundle file exists", () => {
     expect(existsSync(BUNDLE_BIN_PATH)).toBe(true);

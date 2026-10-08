@@ -11,7 +11,7 @@ requires:
 
 View distributed traces
 
-### `sentry trace list <org/project>`
+### `sentry trace list [<org/project>]`
 
 List recent traces in a project
 

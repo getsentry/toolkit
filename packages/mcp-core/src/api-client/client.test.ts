@@ -44,7 +44,9 @@ describe("API bearer token validation", () => {
       accessToken: "valid\nsecret",
     });
 
-    const error = await api.listOrganizations().catch((cause: unknown) => cause);
+    const error = await api
+      .listOrganizations()
+      .catch((cause: unknown) => cause);
     expect(error).toBeInstanceOf(ConfigurationError);
     expect(String(error)).toContain("Malformed authentication token");
     expect(String(error)).not.toContain("valid\nsecret");
@@ -54,7 +56,9 @@ describe("API bearer token validation", () => {
       host: "sentry.example.com",
       accessToken: "",
     });
-    await expect(emptyTokenApi.listOrganizations()).rejects.toThrow(ConfigurationError);
+    await expect(emptyTokenApi.listOrganizations()).rejects.toThrow(
+      ConfigurationError,
+    );
     expect(requests).toBe(0);
   });
 });
@@ -300,6 +304,29 @@ describe("external issue linking API methods", () => {
     expect(
       await api.listIssueIntegrations({ organizationSlug, issueId }),
     ).toEqual([integration, { ...integration, id: 457 }]);
+    expect(pages).toEqual([null, "next-page"]);
+  });
+
+  it("uses the actual next link rather than a previous link's extension attribute", async () => {
+    const pages: (string | null)[] = [];
+    mswServer.use(
+      http.get(
+        "https://us.sentry.io/api/0/organizations/test-org/issues/123/integrations/",
+        ({ request }) => {
+          const cursor = new URL(request.url).searchParams.get("cursor");
+          pages.push(cursor);
+          return HttpResponse.json([], {
+            headers: cursor
+              ? {}
+              : {
+                  Link: '<https://us.sentry.io/>; x-rel="next"; rel="previous"; results="true"; cursor="previous-page", <https://us.sentry.io/>; rel="next"; results="true"; cursor="next-page"',
+                },
+          });
+        },
+      ),
+    );
+
+    await api.listIssueIntegrations({ organizationSlug, issueId });
     expect(pages).toEqual([null, "next-page"]);
   });
 

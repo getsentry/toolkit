@@ -73,6 +73,21 @@ describe("isHostTrusted", () => {
     ).toBe(true);
   });
 
+  test.each([
+    ["https://user:secret@us.sentry.io/", "https://sentry.io"],
+    ["https://us.sentry.io/", "https://user:secret@sentry.io"],
+    ["https://user:secret@sentry.example.com/", "https://sentry.example.com"],
+    ["https://sentry.example.com/", "https://user:secret@sentry.example.com"],
+  ])("refuses embedded URL credentials in %s or its anchor", (url, anchor) => {
+    expect(isHostTrusted(url, anchor)).toBe(false);
+  });
+
+  test("does not trust non-HTTP(S) exact origins", () => {
+    expect(
+      isHostTrusted("ftp://sentry.example.com", "ftp://sentry.example.com"),
+    ).toBe(false);
+  });
+
   test("scheme mismatch fails", () => {
     expect(
       isHostTrusted("http://sentry.example.com/", "https://sentry.example.com"),

@@ -47,21 +47,22 @@ async function runApp(
       return true;
     },
   };
-  const context: SentryContext = {
-    process: {
-      ...process,
-      // Route the underlying process streams into our buffers too — Stricli's
-      // argument-scanner errors write to context.process.stderr, not context.stderr.
-      stdout: {
-        write(data: string | Uint8Array) {
-          stdout +=
-            typeof data === "string" ? data : new TextDecoder().decode(data);
-          return true;
-        },
+  const mockProcess = {
+    ...process,
+    // Route the underlying process streams into our buffers too — Stricli's
+    // argument-scanner errors write to context.process.stderr, not context.stderr.
+    stdout: {
+      write(data: string | Uint8Array) {
+        stdout +=
+          typeof data === "string" ? data : new TextDecoder().decode(data);
+        return true;
       },
-      stderr: captureStderr,
-      exitCode: undefined,
-    } as unknown as typeof process,
+    },
+    stderr: captureStderr,
+    exitCode: undefined,
+  } as unknown as typeof process;
+  const context: SentryContext = {
+    process: mockProcess,
     env: { ...process.env },
     cwd: emptyCwd,
     homeDir: "/tmp",
@@ -77,8 +78,8 @@ async function runApp(
     stdin: process.stdin,
   };
 
-  const exitCode = await run(app, args, context);
-  return { stdout, stderr, exitCode: exitCode ?? 0 };
+  await run(app, args, context);
+  return { stdout, stderr, exitCode: mockProcess.exitCode ?? 0 };
 }
 
 /**
@@ -86,6 +87,15 @@ async function runApp(
  * subcommand — the failure mode the patch fixes for global flags at depth.
  */
 const NO_COMMAND_REGISTERED = "No command registered";
+
+describe("agent-conversation view required target", () => {
+  test("rejects missing target at the parser before authentication", async () => {
+    const { stderr, exitCode } = await runApp(["agent-conversation", "view"]);
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Expected argument");
+    expect(stderr).not.toMatch(/not authenticated|log in|authorization/i);
+  });
+});
 
 describe("top-level flags on a leaf command (bash-hook, no auth)", () => {
   // bash-hook runs without auth and emits its script to stdout, so a successful

@@ -68,7 +68,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   );
 });
 
-import { ContextError } from "../../../src/lib/errors.js";
+import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { AgentConversationSpan } from "../../../src/types/conversation.js";
@@ -235,6 +235,37 @@ describe("viewCommand.func", () => {
       CONVERSATION_ID,
     );
   });
+
+  test.each([
+    `${ORG}/${CONVERSATION_ID}/extra`,
+    `${ORG}//${CONVERSATION_ID}`,
+    `/${CONVERSATION_ID}`,
+    `${ORG}/`,
+    `acme?x=1/${CONVERSATION_ID}`,
+    `acme#fragment/${CONVERSATION_ID}`,
+    `acme%20bad/${CONVERSATION_ID}`,
+    `acme bad/${CONVERSATION_ID}`,
+    `${ORG}/conv?x=1`,
+    `${ORG}/conv#fragment`,
+    `${ORG}/conv%20bad`,
+    `${ORG}/conv\tbad`,
+    "conv?x=1",
+    "conv#fragment",
+    "conv%20bad",
+    "conv bad",
+    "conv\tbad",
+  ])(
+    "rejects malformed target %s before resolution or API access",
+    async (target) => {
+      const { context } = createMockContext();
+      const func = await viewCommand.loader();
+      await expect(func.call(context, HUMAN_FLAGS, target)).rejects.toThrow(
+        ValidationError,
+      );
+      expect(resolveOrgSpy).not.toHaveBeenCalled();
+      expect(getConversationSpansSpy).not.toHaveBeenCalled();
+    },
+  );
 
   test("throws error when no args provided", async () => {
     const { context } = createMockContext();

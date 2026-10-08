@@ -11,7 +11,7 @@ requires:
 
 Work with Sentry teams
 
-### `sentry team list <org/project>`
+### `sentry team list [<org/project>]`
 
 List teams
 

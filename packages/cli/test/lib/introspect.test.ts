@@ -16,6 +16,7 @@ import {
   buildCommandInfo,
   extractAllRoutes,
   extractFlags,
+  extractPositionals,
   extractRouteGroupCommands,
   getPositionalString,
   isCommand,
@@ -114,6 +115,18 @@ describe("getPositionalString", () => {
     expect(result).toBe("<arg0> <arg1>");
   });
 
+  test("distinguishes optional tuple arguments from required ones", () => {
+    expect(
+      getPositionalString({
+        kind: "tuple",
+        parameters: [
+          { placeholder: "target" },
+          { placeholder: "org", optional: true },
+        ],
+      }),
+    ).toBe("<target> [<org>]");
+  });
+
   test("returns array placeholder with ellipsis", () => {
     const result = getPositionalString({
       kind: "array",
@@ -128,6 +141,29 @@ describe("getPositionalString", () => {
       parameter: {},
     });
     expect(result).toBe("<args...>");
+  });
+});
+
+describe("extractPositionals", () => {
+  test("keeps arrays required and variadic even when the parser accepts zero", () => {
+    expect(
+      extractPositionals({
+        kind: "array",
+        parameter: { placeholder: "issue" },
+      }),
+    ).toEqual([
+      { placeholder: "issue", brief: "", optional: false, variadic: true },
+    ]);
+  });
+  test("preserves optional tuple arguments", () => {
+    expect(
+      extractPositionals({
+        kind: "tuple",
+        parameters: [{ placeholder: "org", optional: true }],
+      }),
+    ).toEqual([
+      { placeholder: "org", brief: "", optional: true, variadic: false },
+    ]);
   });
 });
 
@@ -247,6 +283,12 @@ describe("buildCommandInfo", () => {
 
     const info = buildCommandInfo(cmd, "sentry project create");
     expect(info.positional).toBe("<name>:<kind>...");
+    expect(info.positionals[0]).toMatchObject({
+      placeholder: "name:kind",
+      optional: false,
+      variadic: true,
+      syntax: "<name>:<kind>...",
+    });
   });
 });
 

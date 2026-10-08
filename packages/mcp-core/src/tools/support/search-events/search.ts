@@ -930,8 +930,8 @@ export async function runSearchEvents(
     );
     // No validateEventsSearch here: it validates the /events/ (discover)
     // request shape — fields + orderby — which is not what a timeseries
-    // sends (yAxis + interval, no fields/sort). events-stats validates the
-    // query server-side, so a bad query still surfaces as an API error.
+    // sends (yAxis + interval, no fields/sort). events-timeseries validates
+    // the query server-side, so a bad query still surfaces as an API error.
     const series = await apiService.getEventsTimeSeries({
       organizationSlug,
       query: timeSeriesQuery,

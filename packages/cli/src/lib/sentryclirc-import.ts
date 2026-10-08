@@ -30,6 +30,7 @@
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { DEFAULT_SENTRY_URL, normalizeUrl } from "./constants.js";
 import {
   clearAuth,
@@ -49,7 +50,7 @@ import { setUserInfo } from "./db/user.js";
 import { clearMetadata, getMetadata, setMetadata } from "./db/utils.js";
 import { parseIni } from "./ini.js";
 import { logger } from "./logger.js";
-import { isSaaSTrustOrigin, normalizeOrigin } from "./sentry-urls.js";
+import { normalizeOrigin } from "./sentry-urls.js";
 import {
   CONFIG_FILENAME,
   getGlobalPaths,

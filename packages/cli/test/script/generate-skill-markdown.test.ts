@@ -4,8 +4,16 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 import {
   extractCommandPathFromHeading,
+  formatCommandArguments,
+  formatCommandExamples,
   matchExampleToCommand,
 } from "../../script/generate-skill-markdown.js";
+import { listCommand } from "../../src/commands/agent-conversation/list.js";
+import { viewCommand } from "../../src/commands/agent-conversation/view.js";
+import { sendCommand } from "../../src/commands/event/send.js";
+import { mergeCommand } from "../../src/commands/issue/merge.js";
+import { createCommand } from "../../src/commands/project/create.js";
+import { buildCommandInfo } from "../../src/lib/introspect.js";
 
 describe("extractCommandPathFromHeading", () => {
   test.each([
@@ -26,6 +34,84 @@ describe("extractCommandPathFromHeading", () => {
 });
 
 describe("matchExampleToCommand", () => {
+  test("derives conversation signatures and examples from command metadata", () => {
+    const list = buildCommandInfo(
+      listCommand as never,
+      "sentry agent-conversation list",
+    );
+    const view = buildCommandInfo(
+      viewCommand as never,
+      "sentry agent-conversation view",
+    );
+    expect(list.positional).toBe("[<org>]");
+    expect(list.examples).toContain(
+      "# Explicit organization\nsentry agent-conversation list my-org",
+    );
+    expect(view.positional).toBe("[<org>/]<conversation-id>");
+    expect(view.examples).toContain(
+      "# Explicit organization\nsentry agent-conversation view my-org/conv-123",
+    );
+    expect(formatCommandExamples(view.examples)).toContain(
+      "sentry agent-conversation view conv-123",
+    );
+  });
+
+  test("preserves tuple, variadic, and compound argument syntax", () => {
+    const info = (cmd: unknown, path: string) =>
+      buildCommandInfo(cmd as never, path).positionals;
+    expect(
+      formatCommandArguments(
+        info(listCommand, "sentry agent-conversation list"),
+      ),
+    ).toContain("| `[<org>]` | Organization slug |");
+    expect(
+      formatCommandArguments(
+        info(viewCommand, "sentry agent-conversation view"),
+      ),
+    ).toContain(
+      "| `[<org>/]<conversation-id>` | Organization slug (optional) and conversation ID |",
+    );
+    expect(
+      formatCommandArguments(info(sendCommand, "sentry event send")),
+    ).toContain(
+      "| `<target-or-file...>` | Optional DSN/project target followed by JSON event file path(s) |",
+    );
+    expect(
+      formatCommandArguments(info(mergeCommand, "sentry issue merge")),
+    ).toContain("| `<issue...>` | Issue IDs to merge (2 or more required) |");
+    expect(
+      formatCommandArguments(info(createCommand, "sentry project create")),
+    ).toContain("| `[<org>/]<name>:<platform>...` |");
+  });
+
+  test("generates matching command docs and skill references", async () => {
+    const [docs, skill] = await Promise.all([
+      readFile(
+        "../../apps/cli-docs/src/content/docs/commands/agent-conversation.md",
+        "utf8",
+      ),
+      readFile(
+        "plugins/sentry-cli/skills/sentry-cli/references/agent-conversation.md",
+        "utf8",
+      ),
+    ]);
+    for (const content of [docs, skill]) {
+      expect(content).toContain(
+        "sentry agent-conversation view [<org>/]<conversation-id>",
+      );
+      expect(content).toContain("sentry agent-conversation list [<org>]");
+      expect(content).toContain(
+        "sentry agent-conversation view my-org/conv-123",
+      );
+      expect(content).not.toContain(
+        "sentry agent-conversation view my-org conv-123",
+      );
+    }
+    expect(docs).toContain(
+      "| `[<org>/]<conversation-id>` | Organization slug (optional) and conversation ID |",
+    );
+  });
+
   test("associates a project create block with its command", () => {
     const code = [
       "# Create projects",

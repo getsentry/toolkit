@@ -11,7 +11,7 @@ requires:
 
 Search and inspect Session Replays
 
-### `sentry replay list <org/project>`
+### `sentry replay list [<org/project>]`
 
 List recent Session Replays
 

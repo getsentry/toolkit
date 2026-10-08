@@ -23,3 +23,9 @@ export function normalizeAuthToken(token: string): string | null {
     ? normalized
     : null;
 }
+
+/** Format a validated upstream credential; callers own their auth errors. */
+export function sentryBearerHeader(token: string): string | null {
+  const normalized = normalizeAuthToken(token);
+  return normalized === null ? null : `Bearer ${normalized}`;
+}

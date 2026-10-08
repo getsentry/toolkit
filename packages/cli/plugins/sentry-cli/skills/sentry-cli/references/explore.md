@@ -11,7 +11,7 @@ requires:
 
 Query aggregate event data (Explore)
 
-### `sentry explore <target>`
+### `sentry explore [<target>]`
 
 Query aggregate event data (Explore)
 

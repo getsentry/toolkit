@@ -20,7 +20,11 @@ import type { SentryContext } from "../context.js";
 const _require = createRequire(import.meta.url);
 
 import { parseOrgProjectArg } from "./arg-parsing.js";
-import { buildCommand, numberParser } from "./command.js";
+import {
+  buildCommand,
+  type CommandDocumentation,
+  numberParser,
+} from "./command.js";
 import { disableOrgCache } from "./db/regions.js";
 import { logger } from "./logger.js";
 
@@ -546,10 +550,7 @@ export function buildListCommand<
   routeName: string,
   builderArgs: {
     readonly parameters?: Record<string, unknown>;
-    readonly docs: {
-      readonly brief: string;
-      readonly fullDescription?: string;
-    };
+    readonly docs: CommandDocumentation;
     readonly func: ListCommandFunction<FLAGS, ARGS, CONTEXT>;
     // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig is generic but type is erased at the builder level
     readonly output?: OutputConfig<any>;
@@ -627,13 +628,8 @@ export function buildListCommand<
 // Level D: full command builder for dispatchOrgScopedList-based commands
 // ---------------------------------------------------------------------------
 
-/** Documentation strings for a list command built with `buildOrgListCommand`. */
-export type OrgListCommandDocs = {
-  /** One-line description shown in `--help` summaries. */
-  readonly brief: string;
-  /** Multi-line description shown in the command's own `--help` output. */
-  readonly fullDescription?: string;
-};
+/** Documentation for a list command built with `buildOrgListCommand`. */
+export type OrgListCommandDocs = CommandDocumentation;
 
 /**
  * Format a {@link ListResult} as human-readable output using the config's

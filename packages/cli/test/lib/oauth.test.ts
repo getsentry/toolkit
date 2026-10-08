@@ -72,6 +72,46 @@ describe("performDeviceFlow polling", () => {
     await expect(result).resolves.toEqual(token);
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
+
+  test.each([
+    ["access_denied", "Authorization was denied. Please try again."],
+    [
+      "expired_token",
+      "Device code expired. Please run 'sentry auth login' again.",
+    ],
+    ["invalid_grant", "Token was rejected"],
+  ])("reports %s with the CLI's error message", async (code, message) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          device_code: "test-code",
+          user_code: "ABCD",
+          verification_uri: "https://sentry.example/oauth/device/",
+          interval: 1,
+          expires_in: 30,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: code, error_description: "Token was rejected" },
+          { status: 400 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = performDeviceFlow({ onUserCode: vi.fn() });
+    const rejection = expect(result).rejects.toMatchObject({
+      name: "DeviceFlowError",
+      code: "authorization_failed",
+      message,
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await rejection;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("resolveOAuthScopeString", () => {

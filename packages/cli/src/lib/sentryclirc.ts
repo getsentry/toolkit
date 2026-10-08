@@ -19,13 +19,13 @@
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { normalizeUrl } from "./constants.js";
 import { getConfigDir } from "./db/index.js";
 import { getEnv } from "./env.js";
 import { HostScopeError } from "./errors.js";
 import { parseIni } from "./ini.js";
 import { logger } from "./logger.js";
-import { isSaaSTrustOrigin } from "./sentry-urls.js";
 import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
 import { walkUpFrom } from "./walk-up.js";
 

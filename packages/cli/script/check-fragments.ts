@@ -263,6 +263,9 @@ for (const [routeName, route] of multiCommandRoutes) {
 
   const missing: string[] = [];
   for (const cmd of route.commands) {
+    if (cmd.examples.length > 0) {
+      continue;
+    }
     const sub = cmd.path.slice(`sentry ${routeName} `.length);
     const leaf = sub.split(" ").at(-1) ?? sub;
     const isDefault = leaf === defaultCmd;

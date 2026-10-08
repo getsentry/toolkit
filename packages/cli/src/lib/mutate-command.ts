@@ -19,7 +19,7 @@
 import { isatty } from "node:tty";
 import type { Command, CommandContext } from "@stricli/core";
 import type { ParsedOrgProject } from "./arg-parsing.js";
-import { buildCommand } from "./command.js";
+import { buildCommand, type CommandDocumentation } from "./command.js";
 import { CliError, ContextError } from "./errors.js";
 import type { CommandReturn } from "./formatters/output.js";
 import { logger } from "./logger.js";
@@ -332,10 +332,7 @@ export function buildDeleteCommand<
 >(
   builderArgs: {
     readonly parameters?: Record<string, unknown>;
-    readonly docs: {
-      readonly brief: string;
-      readonly fullDescription?: string;
-    };
+    readonly docs: CommandDocumentation;
     readonly func: DeleteCommandFunction<FLAGS, ARGS, CONTEXT>;
     // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig is generic but type is erased at the builder level
     readonly output?: import("./formatters/output.js").OutputConfig<any>;

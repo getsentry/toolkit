@@ -15,6 +15,7 @@
  *   `sentry.acme.evil.com`).
  */
 
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import {
   getActiveAuthHost,
   getCredentialContext,
@@ -22,7 +23,19 @@ import {
 } from "./db/auth.js";
 import { isTrustedRegionOrigin } from "./db/regions.js";
 import { createInvocationState } from "./env.js";
-import { isSaaSTrustOrigin, normalizeOrigin } from "./sentry-urls.js";
+import { normalizeHttpOrigin } from "./sentry-urls.js";
+
+function normalizeTrustOrigin(
+  input: string | URL | Request | undefined | null,
+): string | undefined {
+  const url =
+    input instanceof URL
+      ? input.href
+      : input instanceof Request
+        ? input.url
+        : input;
+  return normalizeHttpOrigin(url);
+}
 
 /**
  * Check whether `candidate` matches `trusted` under the host-scoping trust
@@ -38,8 +51,8 @@ export function isHostTrusted(
   if (!trusted) {
     return false;
   }
-  const candidateOrigin = normalizeOrigin(candidate);
-  const trustedOrigin = normalizeOrigin(trusted);
+  const candidateOrigin = normalizeTrustOrigin(candidate);
+  const trustedOrigin = normalizeTrustOrigin(trusted);
   if (!(candidateOrigin && trustedOrigin)) {
     return false;
   }
@@ -78,7 +91,7 @@ const getLoginState = createInvocationState<{ loginTrustAnchor?: string }>(
 
 /** Register an explicit login-time trust anchor. URLs are normalized. */
 export function registerLoginTrustAnchor(url: string): void {
-  const origin = normalizeOrigin(url);
+  const origin = normalizeHttpOrigin(url);
   if (origin) {
     getLoginState().loginTrustAnchor = origin;
   }
@@ -112,7 +125,7 @@ function isOriginTrustedFor(
   if (isHostTrusted(requestInput, anchorHost)) {
     return true;
   }
-  const requestOrigin = normalizeOrigin(requestInput);
+  const requestOrigin = normalizeTrustOrigin(requestInput);
   return (
     requestOrigin !== undefined &&
     isTrustedRegionOrigin(requestOrigin, anchorHost, identity)

@@ -10,6 +10,7 @@
  * for introspection and documentation generation.
  */
 
+import type { CommandExample } from "./command.js";
 import {
   extractSchemaFields,
   type SchemaFieldInfo,
@@ -59,6 +60,7 @@ export type Command = {
    * introspection because Stricli does not expose it on the built command.
    */
   __primaryUsage?: string;
+  __examples?: readonly CommandExample[];
 };
 
 /** Positional parameter definitions — either fixed-length tuple or variadic array */
@@ -75,9 +77,14 @@ export type PositionalParam = {
 
 /** Extracted metadata for a single positional argument */
 export type PositionalInfo = {
+  /** Placeholder text without angle brackets or an ellipsis. */
   placeholder: string;
   brief: string;
+  /** Only fixed tuple parameters can be omitted. */
   optional: boolean;
+  variadic: boolean;
+  /** Canonical public syntax for compound positional forms. */
+  syntax?: string;
 };
 
 /** Flag definition as stored in Stricli's command parameters */
@@ -196,7 +203,10 @@ export function getPositionalString(params?: PositionalParams): string {
 
   if (params.kind === "tuple") {
     return params.parameters
-      .map((p, i) => `<${p.placeholder ?? `arg${i}`}>`)
+      .map((p, i) => {
+        const value = `<${p.placeholder ?? `arg${i}`}>`;
+        return p.optional ? `[${value}]` : value;
+      })
       .join(" ");
   }
 
@@ -230,15 +240,17 @@ export function extractPositionals(
       placeholder: p.placeholder ?? `arg${i}`,
       brief: p.brief ?? "",
       optional: p.optional ?? false,
+      variadic: false,
     }));
   }
 
   if (params.kind === "array") {
     return [
       {
-        placeholder: `${params.parameter.placeholder ?? "args"}...`,
+        placeholder: params.parameter.placeholder ?? "args",
         brief: params.parameter.brief ?? "",
-        optional: true,
+        optional: false,
+        variadic: true,
       },
     ];
   }
@@ -285,6 +297,11 @@ export function buildCommandInfo(
   const jsonFields = cmd.__jsonSchema
     ? extractSchemaFields(cmd.__jsonSchema)
     : undefined;
+  const positionals = extractPositionals(cmd.parameters.positional);
+  const [positional] = positionals;
+  if (cmd.__primaryUsage && positional && positionals.length === 1) {
+    positionals[0] = { ...positional, syntax: cmd.__primaryUsage };
+  }
 
   return {
     path,
@@ -293,9 +310,13 @@ export function buildCommandInfo(
     flags: extractFlags(cmd.parameters.flags),
     positional:
       cmd.__primaryUsage ?? getPositionalString(cmd.parameters.positional),
-    positionals: extractPositionals(cmd.parameters.positional),
+    positionals,
     aliases: cmd.parameters.aliases ?? {},
-    examples,
+    examples: cmd.__examples?.length
+      ? cmd.__examples.map(
+          ({ description, command }) => `# ${description}\n${command}`,
+        )
+      : examples,
     jsonFields: jsonFields?.length ? jsonFields : undefined,
   };
 }

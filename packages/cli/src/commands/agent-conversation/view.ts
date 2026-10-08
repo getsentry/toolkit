@@ -7,13 +7,14 @@
 import type { SentryContext } from "../../context.js";
 import { getConversationSpans } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { ContextError } from "../../lib/errors.js";
+import { ContextError, validationError } from "../../lib/errors.js";
 import {
   buildTranscriptResult,
   formatTranscriptResult,
   type TranscriptResult,
 } from "../../lib/formatters/conversation.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import { validateResourceId } from "../../lib/input-validation.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
@@ -27,7 +28,8 @@ type ViewFlags = {
   readonly fresh: boolean;
 };
 
-const USAGE_HINT = "sentry agent-conversation view [<org>/]<conversation-id>";
+const USAGE = "[<org>/]<conversation-id>";
+const USAGE_HINT = `sentry agent-conversation view ${USAGE}`;
 
 /**
  * Split a `[<org>/]<conversation-id>` positional into its parts.
@@ -37,7 +39,7 @@ const USAGE_HINT = "sentry agent-conversation view [<org>/]<conversation-id>";
  * before the first `/` is the org, the remainder is the conversation ID. With
  * no slash the whole value is the conversation ID and the org is auto-detected.
  *
- * @throws {ContextError} When the conversation ID segment is empty.
+ * @throws {ValidationError} When the target contains empty segments or multiple slashes.
  */
 function parseConversationTarget(target: string): {
   org?: string;
@@ -46,27 +48,52 @@ function parseConversationTarget(target: string): {
   const trimmed = target.trim();
   const slashIdx = trimmed.indexOf("/");
   if (slashIdx === -1) {
+    validateResourceId(trimmed, "conversation ID");
     return { conversationId: trimmed };
+  }
+  if (slashIdx !== trimmed.lastIndexOf("/")) {
+    throw validationError(
+      "Conversation target must contain at most one '/'.",
+      [USAGE_HINT],
+      "conversation-id",
+    );
   }
   const org = trimmed.slice(0, slashIdx);
   const conversationId = trimmed.slice(slashIdx + 1);
   if (!(org && conversationId)) {
-    throw new ContextError("Conversation ID", USAGE_HINT, []);
+    throw validationError(
+      "Conversation target must include both an organization and conversation ID when using '/'.",
+      [USAGE_HINT],
+      "conversation-id",
+    );
   }
+  validateResourceId(org, "organization slug");
+  validateResourceId(conversationId, "conversation ID");
   return { org, conversationId };
 }
 
 export const viewCommand = buildCommand({
   docs: {
     brief: "View an agent conversation transcript",
+    customUsage: [USAGE],
     fullDescription:
       "View the full transcript of an agent conversation.\n\n" +
       "The org is optional and auto-detected from your project context when\n" +
-      "omitted. Prefix the ID with an org slug to target a specific org.\n\n" +
-      "Examples:\n" +
-      "  sentry agent-conversation view conv-123\n" +
-      "  sentry agent-conversation view my-org/conv-123\n" +
-      "  sentry agent-conversation view my-org/conv-123 --json\n",
+      "omitted. Prefix the ID with an org slug to target a specific org.",
+    examples: [
+      {
+        description: "View full transcript (organization auto-detected)",
+        command: "sentry agent-conversation view conv-123",
+      },
+      {
+        description: "Explicit organization",
+        command: "sentry agent-conversation view my-org/conv-123",
+      },
+      {
+        description: "JSON output",
+        command: "sentry agent-conversation view my-org/conv-123 --json",
+      },
+    ],
   },
   output: {
     human: formatTranscriptResult,
@@ -77,8 +104,7 @@ export const viewCommand = buildCommand({
       parameters: [
         {
           placeholder: "org/conversation-id",
-          brief:
-            "[<org>/]<conversation-id> - Org (optional) and conversation ID",
+          brief: "Organization slug (optional) and conversation ID",
           parse: String,
         },
       ],
@@ -92,8 +118,15 @@ export const viewCommand = buildCommand({
     applyFreshFlag(flags);
     const { cwd } = this;
 
-    if (!target?.trim()) {
+    if (target === undefined) {
       throw new ContextError("Conversation ID", USAGE_HINT, []);
+    }
+    if (!target.trim()) {
+      throw validationError(
+        "Conversation ID cannot be empty.",
+        [USAGE_HINT],
+        "conversation-id",
+      );
     }
     const { org: orgArg, conversationId } = parseConversationTarget(target);
 

@@ -330,7 +330,7 @@ export function selectAffectedProjects(projects, changedFiles, eventName) {
     }
   }
 
-  // MCP repository docs are checked by the quality job, not deployed by a project.
+  // Shared Toolkit docs are checked by the quality job, not deployed by a project.
   if (
     changedProjects.some(
       (project, index) =>
