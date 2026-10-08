@@ -44,7 +44,7 @@ const DEFAULT_FEATURE_ORDER = [
 ] as const;
 const DEFAULT_FEATURES = new Set<string>(DEFAULT_FEATURE_ORDER);
 const DEFAULT_FEATURE_RANK = new Map<string, number>(
-  DEFAULT_FEATURE_ORDER.map((feature, index) => [feature, index])
+  DEFAULT_FEATURE_ORDER.map((feature, index) => [feature, index]),
 );
 // These features need code-level choices this selector cannot configure yet.
 const UNSUPPORTED_INIT_FEATURES = new Set([
@@ -94,7 +94,7 @@ function buildFeatureReviewDetails(features: string[]): PromptDetail[] {
 export async function handleInteractive(
   payload: InteractivePayload,
   options: InteractiveContext,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<Record<string, unknown>> {
   switch (payload.kind) {
     case "select":
@@ -106,7 +106,7 @@ export async function handleInteractive(
     default:
       throw new WizardError(
         `Unsupported interactive prompt kind: "${(payload as { kind: string }).kind}"`,
-        { rendered: false }
+        { rendered: false },
       );
   }
 }
@@ -143,7 +143,7 @@ function buildMultiAppMessage(apps: AppEntry[], items: string[]): string {
 function buildAppNotFoundMessage(
   requested: string,
   apps: AppEntry[],
-  items: string[]
+  items: string[],
 ): string {
   const exampleApp = items[0] ?? "<app>";
   return [
@@ -160,7 +160,7 @@ function buildAppNotFoundMessage(
 async function handleSelect(
   payload: SelectPayload,
   options: InteractiveContext,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<Record<string, unknown>> {
   const apps = payload.apps ?? [];
   const items = payload.options ?? apps.map((a) => a.name);
@@ -173,7 +173,7 @@ async function handleSelect(
 
   if (options.app && payload.apps && payload.apps.length > 0) {
     const match = items.find(
-      (item) => item.toLowerCase() === options.app?.toLowerCase()
+      (item) => item.toLowerCase() === options.app?.toLowerCase(),
     );
     if (!match) {
       const message = buildAppNotFoundMessage(options.app, apps, items);
@@ -213,17 +213,17 @@ async function handleSelect(
 async function handleMultiSelect(
   payload: MultiSelectPayload,
   options: InteractiveContext,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<Record<string, unknown>> {
   const available = prependRequiredFeature(
     (payload.availableFeatures ?? payload.options ?? []).filter(
-      (feature) => !UNSUPPORTED_INIT_FEATURES.has(feature)
-    )
+      (feature) => !UNSUPPORTED_INIT_FEATURES.has(feature),
+    ),
   );
 
   if (options.yes) {
     ui.log.info(
-      `Auto-selected all features: ${available.map(featureLabel).join(", ")}`
+      `Auto-selected all features: ${available.map(featureLabel).join(", ")}`,
     );
     return { features: available };
   }
@@ -231,7 +231,7 @@ async function handleMultiSelect(
   const sorted = sortFeatureOptions(available);
   setTag("wizard.features.offered", available.join(","));
   let initialValues: string[] = sorted.filter((feature) =>
-    DEFAULT_FEATURES.has(feature)
+    DEFAULT_FEATURES.has(feature),
   );
 
   while (true) {
@@ -277,7 +277,7 @@ async function handleMultiSelect(
 async function handleConfirm(
   payload: ConfirmPayload,
   options: InteractiveContext,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<Record<string, unknown>> {
   if (options.yes) {
     ui.log.info("Auto-confirmed: continuing");

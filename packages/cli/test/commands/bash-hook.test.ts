@@ -18,7 +18,7 @@ useTestConfigDir("bash-hook-");
  * Run bash-hook command and capture stdout.
  */
 async function runBashHook(
-  args: string[]
+  args: string[],
 ): Promise<{ output: string; exitCode: number }> {
   let output = "";
   const mockContext: SentryContext = {
@@ -149,7 +149,7 @@ describe("bashHookCommand (script output mode)", () => {
       "https://key@o1.ingest.sentry.io/1",
     ]);
     expect(output).toContain(
-      "export SENTRY_DSN='https://key@o1.ingest.sentry.io/1'"
+      "export SENTRY_DSN='https://key@o1.ingest.sentry.io/1'",
     );
   });
 });

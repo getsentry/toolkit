@@ -24,13 +24,13 @@ describe("formatSchedule", () => {
 
   test("renders a crontab schedule verbatim", () => {
     expect(formatSchedule(monitor({ schedule: "0 * * * *" }))).toBe(
-      "0 * * * *"
+      "0 * * * *",
     );
   });
 
   test("renders a well-formed interval schedule", () => {
     expect(formatSchedule(monitor({ schedule: [1, "hour"] }))).toBe(
-      "every 1 hour"
+      "every 1 hour",
     );
   });
 

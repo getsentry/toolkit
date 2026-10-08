@@ -133,7 +133,7 @@ export function getDebugIdSnippet(debugId: string): string {
  */
 export function prependDebugIdSnippet(
   jsContent: string,
-  snippet: string
+  snippet: string,
 ): string {
   if (jsContent.startsWith("#!")) {
     const newlineIdx = jsContent.indexOf("\n");
@@ -178,7 +178,7 @@ export function prependDebugIdSnippet(
 export async function injectDebugId(
   jsPath: string,
   mapPath: string,
-  options?: { skipSnippet?: boolean }
+  options?: { skipSnippet?: boolean },
 ): Promise<{ debugId: string; wasInjected: boolean }> {
   const [jsBytes, mapContent] = await Promise.all([
     readFile(jsPath),
@@ -267,7 +267,7 @@ type SourcemapJson = {
 function mutateSourcemap(
   map: SourcemapJson,
   debugId: string,
-  options: { offsetMappings: boolean }
+  options: { offsetMappings: boolean },
 ): void {
   if (map.sources) {
     map.sources = map.sources.map((s) => (s ? s.replaceAll("\\", "/") : s));
@@ -318,7 +318,7 @@ const INLINE_DIRECTIVE_RE =
  */
 export async function injectInlineDebugId(
   jsPath: string,
-  decoded: DecodedInlineMap
+  decoded: DecodedInlineMap,
 ): Promise<{
   debugId: string;
   wasInjected: boolean;
@@ -359,7 +359,7 @@ export async function injectInlineDebugId(
   const last = matches.at(-1);
   if (last?.index === undefined) {
     log.debug(
-      `inline sourcemap directive not found for rewrite in ${jsPath}; leaving file unmodified`
+      `inline sourcemap directive not found for rewrite in ${jsPath}; leaving file unmodified`,
     );
     return { debugId: "", wasInjected: false };
   }

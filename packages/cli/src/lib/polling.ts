@@ -219,7 +219,7 @@ export type WithProgressOptions = {
  */
 export async function withProgress<T>(
   options: WithProgressOptions,
-  fn: (setMessage: (msg: string) => void) => Promise<T>
+  fn: (setMessage: (msg: string) => void) => Promise<T>,
 ): Promise<T> {
   if (
     options.json ||

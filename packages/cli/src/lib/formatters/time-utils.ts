@@ -96,7 +96,7 @@ function pluralize(value: number, singular: string): string {
  * @returns Compact duration string (e.g., `"2m 5s"`, `"1d"`, `"—"`)
  */
 export function formatDurationCompact(
-  seconds: number | null | undefined
+  seconds: number | null | undefined,
 ): string {
   if (seconds === null || seconds === undefined) {
     return "—";

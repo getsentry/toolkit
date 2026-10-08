@@ -76,7 +76,7 @@ export function parseFormat(value: string): FormatValue {
   if (!FORMAT_VALUES.includes(lower as FormatValue)) {
     throw new ValidationError(
       `Invalid format "${value}". Valid values: ${FORMAT_VALUES.join(", ")}`,
-      "format"
+      "format",
     );
   }
   return lower as FormatValue;
@@ -91,7 +91,7 @@ export function parseFilter(value: string): FilterValue {
   if (!FILTER_VALUES.includes(lower as FilterValue)) {
     throw new ValidationError(
       `Invalid filter "${value}". Valid values: ${FILTER_VALUES.join(", ")}`,
-      "filter"
+      "filter",
     );
   }
   return lower as FilterValue;
@@ -118,7 +118,7 @@ export function parsePort(value: string): number {
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new ValidationError(
       `Invalid port: ${value}. Must be an integer between 0 and 65535.`,
-      "port"
+      "port",
     );
   }
   return port;
@@ -205,7 +205,7 @@ function buildSSEHandler(
       data: string;
     }) => Promise<void>;
   },
-  useBase64 = false
+  useBase64 = false,
 ) {
   const base64Indicator = useBase64 ? ";base64" : "";
   return (container: {
@@ -231,12 +231,12 @@ function buildSSEHandler(
           logger.debug(
             `SSE write failed (client likely disconnected): ${
               err instanceof Error ? err.message : String(err)
-            }`
+            }`,
           );
         });
     } catch (err) {
       logger.debug(
-        `SSE serialize failed: ${err instanceof Error ? err.message : String(err)}`
+        `SSE serialize failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   };
@@ -244,7 +244,7 @@ function buildSSEHandler(
 
 export function buildApp(
   spotlightBuffer: ReturnType<typeof createSpotlightBuffer>,
-  { uiActions = false }: LocalReceiverOptions = {}
+  { uiActions = false }: LocalReceiverOptions = {},
 ): Hono {
   const app = new Hono();
 
@@ -301,7 +301,7 @@ export function buildApp(
           ...(isPrivateNetworkRequest
             ? ["Access-Control-Request-Private-Network"]
             : []),
-        ].join(", ")
+        ].join(", "),
       );
       return c.body(null, 204);
     }
@@ -320,7 +320,7 @@ export function buildApp(
           actions: { clear: true, envelope: true },
           retention: "session",
         })
-      : c.body(null, 403)
+      : c.body(null, 403),
   );
 
   app.delete("/clear", (c) => {
@@ -347,7 +347,7 @@ export function buildApp(
       });
     } catch (err) {
       logger.debug(
-        `Envelope lookup failed: ${err instanceof Error ? err.message : String(err)}`
+        `Envelope lookup failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       return c.body(null, 404);
     }
@@ -480,7 +480,7 @@ const PORT_RETRY_DELAY_MS = 5000;
 export function tryListen(
   app: Hono,
   port: number,
-  hostname: string
+  hostname: string,
 ): Promise<{ server: Server; port: number }> {
   let attempts = 0;
 
@@ -505,13 +505,13 @@ export function tryListen(
             reject(
               new ValidationError(
                 `Port ${port} is in use after ${MAX_PORT_RETRIES} retries`,
-                "port"
-              )
+                "port",
+              ),
             );
             return;
           }
           logger.warn(
-            `Port ${port} is in use, retrying in ${PORT_RETRY_DELAY_MS / 1000}s (attempt ${attempts}/${MAX_PORT_RETRIES})...`
+            `Port ${port} is in use, retrying in ${PORT_RETRY_DELAY_MS / 1000}s (attempt ${attempts}/${MAX_PORT_RETRIES})...`,
           );
           await sleep(PORT_RETRY_DELAY_MS);
           resolve(attempt());
@@ -545,14 +545,14 @@ export async function isServerRunning(url: string): Promise<boolean> {
     });
     if (!res.ok) {
       logger.debug(
-        `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`
+        `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`,
       );
     }
     return true;
   } catch (err) {
     logger.debug(
       `No existing server at ${url}`,
-      err instanceof Error ? err.message : String(err)
+      err instanceof Error ? err.message : String(err),
     );
     return false;
   }
@@ -569,7 +569,7 @@ type SSEParserState = {
 export function feedSSELine(
   line: string,
   state: SSEParserState,
-  onEvent: (type: string, data: string, id: string) => void
+  onEvent: (type: string, data: string, id: string) => void,
 ): void {
   if (line.startsWith("event:")) {
     const value = line.slice(6);
@@ -618,7 +618,7 @@ function isAbortError(err: unknown): boolean {
 /** Sleep with abort support, suppressing abort errors. */
 async function sleepUnlessAborted(
   ms: number,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<void> {
   try {
     await sleep(ms, undefined, { signal });
@@ -687,12 +687,12 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
     retries += 1;
     if (retries > SSE_MAX_RECONNECTS) {
       logger.warn(
-        `SSE connection lost after ${SSE_MAX_RECONNECTS} reconnection attempts`
+        `SSE connection lost after ${SSE_MAX_RECONNECTS} reconnection attempts`,
       );
       return;
     }
     logger.info(
-      `SSE connection lost, reconnecting in ${retryDelay / 1000}s...`
+      `SSE connection lost, reconnecting in ${retryDelay / 1000}s...`,
     );
     await sleepUnlessAborted(retryDelay, signal);
     retryDelay = Math.min(retryDelay * 2, SSE_MAX_RETRY_MS);
@@ -706,7 +706,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
  *   but the stream ended or errored — eligible for reconnection
  */
 async function attemptSSEConnection(
-  opts: ConsumeSSEOnceOptions
+  opts: ConsumeSSEOnceOptions,
 ): Promise<"no-connection" | "connected-then-lost"> {
   let wasConnected = false;
   const augmented = {
@@ -723,7 +723,7 @@ async function attemptSSEConnection(
       return "no-connection";
     }
     logger.debug(
-      `SSE error: ${err instanceof Error ? err.message : String(err)}`
+      `SSE error: ${err instanceof Error ? err.message : String(err)}`,
     );
     // If we got a 200 response before the error, the connection existed
     // and is worth retrying. Otherwise, the server is unreachable.
@@ -820,7 +820,7 @@ function processSSEEvent(
   data: string,
   activeFilters: ReadonlySet<FilterValue>,
   useJson = false,
-  showAttributes = false
+  showAttributes = false,
 ): void {
   try {
     const envelope = JSON.parse(data) as [
@@ -840,7 +840,7 @@ function processSSEEvent(
             payload,
             header,
             itemHeader.type ?? "envelope",
-            showAttributes
+            showAttributes,
           );
       for (const line of lines) {
         printLocalEventLine(line, useJson);
@@ -848,7 +848,7 @@ function processSSEEvent(
     }
   } catch (err) {
     logger.debug(
-      `Failed to parse SSE event: ${err instanceof Error ? err.message : String(err)}`
+      `Failed to parse SSE event: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
@@ -928,6 +928,7 @@ export const serverCommand = buildCommand({
     },
   },
   auth: false,
+  // oxlint-disable-next-line require-yield -- The command contract requires an async generator even when it yields no output.
   async *func(this: SentryContext, flags: LocalFlags) {
     validateOpenHost(flags.open, flags.host);
     const activeFilters = new Set(flags.filter);
@@ -977,13 +978,13 @@ export const serverCommand = buildCommand({
           for (const line of formatFn(
             container,
             activeFilters,
-            flags.attributes
+            flags.attributes,
           )) {
             printLocalEventLine(line, useJson);
           }
         } catch (err) {
           logger.debug(
-            `Failed to format envelope: ${err instanceof Error ? err.message : String(err)}`
+            `Failed to format envelope: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       });
@@ -994,7 +995,7 @@ export const serverCommand = buildCommand({
     const { server, port: boundPort } = await tryListen(
       app,
       flags.port,
-      flags.host
+      flags.host,
     );
 
     const listenUrl = formatLocalServerUrl(flags.host, boundPort);
@@ -1003,10 +1004,10 @@ export const serverCommand = buildCommand({
     logger.info(`  Events: ${bold(`${listenUrl}/stream`)} (SSE)`);
     logger.info("");
     logger.info(
-      `  Set ${bold("SENTRY_SPOTLIGHT")}=${listenUrl}/stream in your app`
+      `  Set ${bold("SENTRY_SPOTLIGHT")}=${listenUrl}/stream in your app`,
     );
     logger.info(
-      `  Or run: ${bold(`sentry local run -p ${boundPort} -- <your-command>`)}`
+      `  Or run: ${bold(`sentry local run -p ${boundPort} -- <your-command>`)}`,
     );
     if (activeFilters.size > 0) {
       logger.info(`  Filtering: ${[...activeFilters].join(", ")}`);

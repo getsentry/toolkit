@@ -148,7 +148,7 @@ export function formatEventView(data: EventViewData): string {
  */
 export function jsonTransformEventView(
   data: EventViewData,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const transform = (entry: SingleEventViewData): Record<string, unknown> => {
     const result: Record<string, unknown> = {
@@ -191,7 +191,7 @@ function joinHintParts(parts: Array<string | undefined>): string | undefined {
 function viewOutputHint(
   org: string,
   data: SingleEventViewData | undefined,
-  extra?: string
+  extra?: string,
 ): string | undefined {
   if (!data) {
     return extra;
@@ -247,7 +247,7 @@ function parseSingleArg(arg: string): ParsedPositionalArgs {
   if (slashIdx !== -1 && arg.indexOf("/", slashIdx + 1) === -1) {
     const singleSlash = parseSingleSlashArg(
       arg.slice(0, slashIdx),
-      arg.slice(slashIdx + 1)
+      arg.slice(slashIdx + 1),
     );
     if (singleSlash) {
       return singleSlash;
@@ -257,7 +257,7 @@ function parseSingleArg(arg: string): ParsedPositionalArgs {
   const { id: eventId, targetArg } = parseSlashSeparatedArg(
     arg,
     "Event ID",
-    USAGE_HINT
+    USAGE_HINT,
   );
 
   // Detect bare issue short ID passed as event ID (e.g., "BRUNCHIE-APP-29").
@@ -302,7 +302,7 @@ function parseSingleArg(arg: string): ParsedPositionalArgs {
  */
 function parseSingleSlashArg(
   beforeSlash: string,
-  afterSlash: string
+  afterSlash: string,
 ): ParsedPositionalArgs | null {
   // "org/SHORT-ID" → auto-redirect to that issue's latest event.
   // e.g., "figma/FULLSCREEN-2RN". Use "org/" (trailing slash) to signal
@@ -387,7 +387,7 @@ type ParsedPositionalArgs = {
  *
  * @returns Parsed event ID and optional target arg
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: positional arg parsing has many format branches by design
+// positional arg parsing has many format branches by design
 export function parsePositionalArgs(args: string[]): ParsedPositionalArgs {
   if (args.length === 0) {
     throw new ContextError("Event ID", USAGE_HINT, []);
@@ -524,7 +524,7 @@ export function parsePositionalArgs(args: string[]): ParsedPositionalArgs {
 async function validateAndRecoverEventId(
   rawEventId: string,
   parsed: ReturnType<typeof parseOrgProjectArg>,
-  skipValidation: boolean
+  skipValidation: boolean,
 ): Promise<string> {
   if (skipValidation) {
     return rawEventId;
@@ -578,7 +578,7 @@ type ResolveTargetOptions = {
  * @internal Exported for testing
  */
 export async function resolveEventTarget(
-  options: ResolveTargetOptions
+  options: ResolveTargetOptions,
 ): Promise<ResolvedEventTarget | null> {
   const { parsed, eventId, cwd } = options;
 
@@ -600,7 +600,7 @@ export async function resolveEventTarget(
         parsed.projectSlug,
         USAGE_HINT,
         `sentry event view <org>/${parsed.projectSlug} ${eventId}`,
-        parsed.originalSlug
+        parsed.originalSlug,
       );
       target = {
         org: resolved.org,
@@ -647,14 +647,14 @@ export async function resolveEventTarget(
 export async function resolveOrgAllTarget(
   org: string,
   eventId: string,
-  _cwd: string
+  _cwd: string,
 ): Promise<ResolvedEventTarget> {
   const resolved = await resolveEventInOrg(org, eventId);
   if (!resolved) {
     throw new ResolutionError(
       `Event ${eventId} in organization "${org}"`,
       "not found",
-      `sentry event view ${org}/<project> ${eventId}`
+      `sentry event view ${org}/<project> ${eventId}`,
     );
   }
   return {
@@ -674,7 +674,7 @@ export async function resolveOrgAllTarget(
  */
 export async function resolveAutoDetectTarget(
   eventId: string,
-  cwd: string
+  cwd: string,
 ): Promise<ResolvedEventTarget | null> {
   const autoTarget = await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
   if (autoTarget) {
@@ -687,7 +687,7 @@ export async function resolveAutoDetectTarget(
       .withTag("event.view")
       .warn(
         `Found event in ${resolved.org}/${resolved.project}. ` +
-          `Use: sentry event view ${resolved.org}/${resolved.project} ${eventId}`
+          `Use: sentry event view ${resolved.org}/${resolved.project} ${eventId}`,
       );
     return {
       org: resolved.org,
@@ -714,7 +714,7 @@ async function buildSingleEventViewData(
   org: string,
   event: SentryEvent,
   spans: number,
-  project?: string
+  project?: string,
 ): Promise<SingleEventViewData> {
   const projectSlug = project ?? eventProjectSlug(event);
   const [spanTreeResult, attachments] = await Promise.all([
@@ -744,7 +744,7 @@ async function fetchLatestEventData(
   org: string,
   issueId: string,
   spans: number,
-  project?: string
+  project?: string,
 ): Promise<SingleEventViewData> {
   const event = await getLatestEvent(org, issueId);
   return buildSingleEventViewData(org, event, spans, project);
@@ -762,7 +762,7 @@ async function fetchLatestEventData(
 async function tryEventFallbacks(
   org: string,
   project: string,
-  eventId: string
+  eventId: string,
 ): Promise<ResolvedEvent | null> {
   // Same-org fallback: try cross-project lookup within the specified org.
   // Handles wrong-project resolution from DSN auto-detect or config defaults.
@@ -778,7 +778,7 @@ async function tryEventFallbacks(
     sameOrgSearched = true;
     if (resolved) {
       logger.warn(
-        `Event not found in ${org}/${project}, but found in ${resolved.org}/${resolved.project}.`
+        `Event not found in ${org}/${project}, but found in ${resolved.org}/${resolved.project}.`,
       );
       return resolved;
     }
@@ -845,7 +845,7 @@ export async function fetchEventWithContext(
   prefetchedEvent: SentryEvent | null,
   org: string,
   project: string,
-  eventId: string
+  eventId: string,
 ): Promise<ResolvedEvent> {
   if (prefetchedEvent) {
     return { org, project, event: prefetchedEvent };
@@ -869,7 +869,7 @@ export async function fetchEventWithContext(
       // Nudge the user when the event ID looks like an issue short ID
       if (looksLikeIssueShortId(eventId)) {
         suggestions.unshift(
-          `This looks like an issue short ID. Try: sentry issue view ${eventId}`
+          `This looks like an issue short ID. Try: sentry issue view ${eventId}`,
         );
       }
 
@@ -877,7 +877,7 @@ export async function fetchEventWithContext(
         `Event '${eventId}'`,
         `not found in ${org}/${project}`,
         `sentry event view ${org}/<project> ${eventId}`,
-        suggestions
+        suggestions,
       );
     }
     throw error;
@@ -899,7 +899,7 @@ export async function fetchEventWithContext(
 async function resolveIssueShortIdEvent(
   issueShortId: string,
   org: string,
-  spans: number
+  spans: number,
 ): Promise<SingleEventViewData> {
   const issue = await getIssueByShortId(org, issueShortId);
   return fetchLatestEventData(org, issue.id, spans, issue.project?.slug);
@@ -927,7 +927,7 @@ type IssueShortcutOptions = {
  */
 async function tryResolveIssueProject(
   org: string,
-  issueId: string
+  issueId: string,
 ): Promise<string | undefined> {
   try {
     const issue = await getIssueInOrg(org, issueId, {
@@ -953,7 +953,7 @@ async function resolveIssueIdShortcut(
   parsed: ReturnType<typeof parseOrgProjectArg>,
   issueId: string,
   cwd: string,
-  spans: number
+  spans: number,
 ): Promise<IssueShortcutResult> {
   const log = logger.withTag("event.view");
   const explicitOrg =
@@ -990,7 +990,7 @@ async function resolveIssueIdShortcut(
  * @returns Result with org, data, and hint — or null if not an issue shortcut
  */
 async function resolveIssueShortcut(
-  options: IssueShortcutOptions
+  options: IssueShortcutOptions,
 ): Promise<IssueShortcutResult | null> {
   const { parsed, eventId, issueId, issueShortId, cwd, spans } = options;
   const log = logger.withTag("event.view");
@@ -1017,7 +1017,7 @@ async function resolveIssueShortcut(
     if (!resolved) {
       throw new ContextError(
         "Organization",
-        `sentry issue view ${issueShortId}`
+        `sentry issue view ${issueShortId}`,
       );
     }
 
@@ -1031,7 +1031,7 @@ async function resolveIssueShortcut(
           `Issue '${issueShortId}'`,
           "has no associated project",
           `sentry event view <org>/<project> ${eventId}`,
-          ["Specify the project explicitly to view this event"]
+          ["Specify the project explicitly to view this event"],
         );
       }
       const event = await getEvent(resolved.org, issueProject, eventId);
@@ -1039,7 +1039,7 @@ async function resolveIssueShortcut(
         resolved.org,
         event,
         spans,
-        issueProject
+        issueProject,
       );
       return {
         org: resolved.org,
@@ -1049,12 +1049,12 @@ async function resolveIssueShortcut(
     }
 
     log.warn(
-      `'${issueShortId}' is an issue short ID, not an event ID. Showing the latest event.`
+      `'${issueShortId}' is an issue short ID, not an event ID. Showing the latest event.`,
     );
     const data = await resolveIssueShortIdEvent(
       issueShortId,
       resolved.org,
-      spans
+      spans,
     );
     return {
       org: resolved.org,
@@ -1078,7 +1078,7 @@ async function resolveIssueShortcut(
  */
 export function collectEventIds(
   primaryId: string,
-  extraIds: string[] | undefined
+  extraIds: string[] | undefined,
 ): string[] {
   const seen = new Set<string>([primaryId]);
   const allIds = [primaryId];
@@ -1124,7 +1124,7 @@ type FetchMultipleOptions = {
  * When all fetches fail, re-throws the error from the primary (first) event.
  */
 export async function fetchMultipleEvents(
-  options: FetchMultipleOptions
+  options: FetchMultipleOptions,
 ): Promise<ResolvedEvent[]> {
   const { eventIds, org, project, prefetchedEvent, primaryId } = options;
   const log = logger.withTag("event.view");
@@ -1137,10 +1137,10 @@ export async function fetchMultipleEvents(
           id === primaryId ? prefetchedEvent : null,
           org,
           project,
-          id
-        )
-      )
-    )
+          id,
+        ),
+      ),
+    ),
   );
 
   const events: ResolvedEvent[] = [];
@@ -1240,9 +1240,9 @@ export const viewCommand = buildCommand({
         await openInBrowser(
           buildEventSearchUrl(
             issueShortcut.org,
-            issueShortcut.data.event.eventID
+            issueShortcut.data.event.eventID,
           ),
-          "event"
+          "event",
         );
         return;
       }
@@ -1254,7 +1254,7 @@ export const viewCommand = buildCommand({
         hint: viewOutputHint(
           issueShortcut.org,
           issueShortcut.data,
-          issueShortcut.hint
+          issueShortcut.hint,
         ),
       };
     }
@@ -1281,7 +1281,7 @@ export const viewCommand = buildCommand({
     if (flags.web) {
       if (extraEventIds && extraEventIds.length > 0) {
         log.warn(
-          "--web only opens the first event; extra event IDs are ignored."
+          "--web only opens the first event; extra event IDs are ignored.",
         );
       }
       await openInBrowser(buildEventSearchUrl(target.org, eventId), "event");
@@ -1307,9 +1307,9 @@ export const viewCommand = buildCommand({
           resolved.org,
           resolved.event,
           flags.spans,
-          resolved.project
-        )
-      )
+          resolved.project,
+        ),
+      ),
     );
 
     yield new CommandOutput({
@@ -1320,7 +1320,9 @@ export const viewCommand = buildCommand({
       hint: viewOutputHint(
         viewDataEntries[0]?.org ?? target.org,
         viewDataEntries[0],
-        target.detectedFrom ? `Detected from ${target.detectedFrom}` : undefined
+        target.detectedFrom
+          ? `Detected from ${target.detectedFrom}`
+          : undefined,
       ),
     };
   },

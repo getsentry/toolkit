@@ -50,7 +50,7 @@ export const queryCommand = buildCommand({
     if (!query) {
       throw new ValidationError(
         "Provide a documentation question.",
-        "question"
+        "question",
       );
     }
     const detectedContext = await detectDocsContext(this.cwd);
@@ -62,7 +62,7 @@ export const queryCommand = buildCommand({
         rotatingMessages: DOCS_QUERY_PROGRESS_MESSAGES,
         rotationIntervalMs: 4000,
       },
-      async () => queryDocs(query, detectedContext)
+      async () => queryDocs(query, detectedContext),
     );
     yield new CommandOutput<QueryOutput>({ ...result, detectedContext });
   },

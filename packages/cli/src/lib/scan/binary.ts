@@ -156,7 +156,7 @@ export function isLikelyBinary(head: Uint8Array): boolean {
  */
 export function classifyByExtension(
   absPath: string,
-  textExtensions: ReadonlySet<string>
+  textExtensions: ReadonlySet<string>,
 ): { isBinary: boolean } | null {
   const ext = extname(absPath).toLowerCase();
   if (!ext) {
@@ -183,7 +183,7 @@ export function classifyByExtension(
  * wrap this in try/catch.
  */
 export async function readHeadAndSniff(
-  absPath: string
+  absPath: string,
 ): Promise<{ head: Uint8Array; isBinary: boolean }> {
   const handle = await open(absPath, "r");
   try {

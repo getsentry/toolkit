@@ -7,6 +7,14 @@
     "node": ">=22.13"
   },
   "exports": {
+    "./api-request": {
+      "types": "./src/api-request.ts",
+      "default": "./src/api-request.ts"
+    },
+    "./api-path-segment": {
+      "types": "./src/api-path-segment.ts",
+      "default": "./src/api-path-segment.ts"
+    },
     "./auth-token": {
       "types": "./src/auth-token.ts",
       "default": "./src/auth-token.ts"
@@ -14,6 +22,22 @@
     "./oauth-device": {
       "types": "./src/oauth-device.ts",
       "default": "./src/oauth-device.ts"
+    },
+    "./oauth-poll": {
+      "types": "./src/oauth-poll.ts",
+      "default": "./src/oauth-poll.ts"
+    },
+    "./region-cache": {
+      "types": "./src/region-cache.ts",
+      "default": "./src/region-cache.ts"
+    },
+    "./sentry-host": {
+      "types": "./src/sentry-host.ts",
+      "default": "./src/sentry-host.ts"
+    },
+    "./sentry-origin": {
+      "types": "./src/sentry-origin.ts",
+      "default": "./src/sentry-origin.ts"
     }
   },
   "scripts": {

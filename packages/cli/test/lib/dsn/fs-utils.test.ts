@@ -65,7 +65,7 @@ describe("handleFileError", () => {
         {
           operation: "checkEnvForDsn",
           path: "/project/.env",
-        }
+        },
       );
       expect(captureException).not.toHaveBeenCalled();
     });
@@ -96,7 +96,7 @@ describe("handleFileError", () => {
 
     test("Unknown system error — macOS non-POSIX errno with no standard code", () => {
       const err = new Error(
-        "Unknown system error -11: Unknown system error -11, scandir '/Users/austin/Documents/app-audit.trace'"
+        "Unknown system error -11: Unknown system error -11, scandir '/Users/austin/Documents/app-audit.trace'",
       ) as NodeJS.ErrnoException;
       // No code property — Node.js couldn't map errno to a POSIX name
       handleFileError(err, {

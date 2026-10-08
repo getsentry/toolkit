@@ -51,7 +51,7 @@ describe("project-root", () => {
     // Create a unique temp directory for each test
     testDir = join(
       tmpdir(),
-      `sentry-cli-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `sentry-cli-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     createDir(testDir);
   });
@@ -130,7 +130,7 @@ describe("project-root", () => {
     test("detects .editorconfig with root=true", async () => {
       createFile(
         join(testDir, ".editorconfig"),
-        "root = true\n[*]\nindent_style = space"
+        "root = true\n[*]\nindent_style = space",
       );
       const result = await hasRepoRootMarker(testDir);
       expect(result.found).toBe(true);
@@ -261,7 +261,7 @@ describe("project-root", () => {
         createDir(join(testDir, "src", "lib", "utils"));
 
         const result = await findProjectRoot(
-          join(testDir, "src", "lib", "utils")
+          join(testDir, "src", "lib", "utils"),
         );
 
         expect(result.projectRoot).toBe(testDir);
@@ -378,7 +378,7 @@ describe("stat() concurrency limiting", () => {
   function makeTempConcurrencyDir(prefix: string): string {
     const dir = join(
       tmpdir(),
-      `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(dir, { recursive: true });
     return dir;

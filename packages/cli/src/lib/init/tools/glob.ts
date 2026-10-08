@@ -38,7 +38,7 @@ export async function glob(payload: GlobPayload): Promise<ToolResult> {
         maxResults,
       });
       return { pattern, files, truncated };
-    })
+    }),
   );
   return { ok: true, data: { results } };
 }

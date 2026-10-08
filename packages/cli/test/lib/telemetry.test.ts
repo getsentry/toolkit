@@ -6,7 +6,7 @@
 
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import {
   afterAll,
@@ -59,7 +59,7 @@ afterAll(() => {
     if (!preTestListeners.has(listener)) {
       process.removeListener(
         "beforeExit",
-        listener as (...args: unknown[]) => void
+        listener as (...args: unknown[]) => void,
       );
     }
   }
@@ -122,7 +122,7 @@ describe("withTelemetry", () => {
     await expect(
       withTelemetry(() => {
         throw new Error("test error");
-      })
+      }),
     ).rejects.toThrow("test error");
   });
 
@@ -131,7 +131,7 @@ describe("withTelemetry", () => {
       withTelemetry(async () => {
         await sleep(1);
         throw new Error("async error");
-      })
+      }),
     ).rejects.toThrow("async error");
   });
 
@@ -172,7 +172,7 @@ describe("withTelemetry", () => {
     await expect(
       withTelemetry(() => {
         throw error;
-      })
+      }),
     ).rejects.toThrow(error);
   });
 
@@ -193,7 +193,7 @@ describe("withTelemetry", () => {
       await expect(
         withTelemetry(() => {
           throw error;
-        })
+        }),
       ).rejects.toThrow(error);
     });
 
@@ -202,7 +202,7 @@ describe("withTelemetry", () => {
       await expect(
         withTelemetry(() => {
           throw error;
-        })
+        }),
       ).rejects.toThrow(error);
     });
 
@@ -210,7 +210,7 @@ describe("withTelemetry", () => {
       await expect(
         withTelemetry(() => {
           throw new Error("unexpected bug");
-        })
+        }),
       ).rejects.toThrow("unexpected bug");
     });
 
@@ -225,7 +225,7 @@ describe("withTelemetry", () => {
       await expect(
         withTelemetry(() => {
           throw error;
-        })
+        }),
       ).rejects.toThrow(error);
       expect(captureSpy).not.toHaveBeenCalled();
       captureSpy.mockRestore();
@@ -237,7 +237,7 @@ describe("withTelemetry", () => {
       await expect(
         withTelemetry(() => {
           throw error;
-        })
+        }),
       ).rejects.toThrow(error);
       expect(captureSpy).not.toHaveBeenCalled();
       captureSpy.mockRestore();
@@ -250,18 +250,18 @@ describe("withTelemetry", () => {
         "Not found",
         404,
         "detail",
-        "/api/0/organizations/foo/"
+        "/api/0/organizations/foo/",
       );
       await expect(
         withTelemetry(() => {
           throw error;
-        })
+        }),
       ).rejects.toThrow(error);
       // Silenced: no captureException
       expect(captureSpy).not.toHaveBeenCalled();
       // Metric emitted with normalized endpoint attribute
       const silencedCall = metricSpy.mock.calls.find(
-        (c) => c[0] === "cli.error.silenced"
+        (c) => c[0] === "cli.error.silenced",
       );
       expect(silencedCall).toBeDefined();
       expect(silencedCall?.[2]).toMatchObject({
@@ -282,12 +282,12 @@ describe("withTelemetry", () => {
         "Server error",
         500,
         "Internal",
-        "/api/0/organizations/foo/"
+        "/api/0/organizations/foo/",
       );
       await expect(
         withTelemetry(() => {
           throw error;
-        })
+        }),
       ).rejects.toThrow(error);
       // Captured via reportCliError → Sentry.withScope
       expect(withScopeSpy).toHaveBeenCalled();
@@ -317,18 +317,18 @@ describe("withTelemetry", () => {
       const { ContextError } = await import("../../src/lib/errors.js");
       const error = new ContextError(
         "Organization and project",
-        "sentry issue view <org>/<project>/<id>"
+        "sentry issue view <org>/<project>/<id>",
       );
       await expect(
         withTelemetry(() => {
           throw error;
-        })
+        }),
       ).rejects.toThrow(error);
       // ContextError is no longer silenced — its volume drives auto-detection
       // and UX improvements, so it must be reported to Sentry.
       expect(captureSpy).toHaveBeenCalled();
       const silencedCall = metricSpy.mock.calls.find(
-        (c) => c[0] === "cli.error.silenced"
+        (c) => c[0] === "cli.error.silenced",
       );
       expect(silencedCall).toBeUndefined();
       // ...but the session must NOT be marked crashed.
@@ -355,13 +355,13 @@ describe("withTelemetry", () => {
         } as unknown as Sentry.Scope);
       try {
         await expect(
-          withTelemetry(() => formatAuthHeader("first-part\nsecond-part"))
+          withTelemetry(() => formatAuthHeader("first-part\nsecond-part")),
         ).rejects.toThrow(MalformedAuthTokenError);
         expect(captureSpy).toHaveBeenCalledExactlyOnceWith(
-          expect.any(MalformedAuthTokenError)
+          expect.any(MalformedAuthTokenError),
         );
         expect(
-          metricSpy.mock.calls.find((c) => c[0] === "cli.error.silenced")
+          metricSpy.mock.calls.find((c) => c[0] === "cli.error.silenced"),
         ).toBeUndefined();
         expect(session.status).toBe("ok");
       } finally {
@@ -390,7 +390,7 @@ describe("withTelemetry", () => {
       await expect(
         withTelemetry(() => {
           throw error;
-        })
+        }),
       ).rejects.toThrow(error);
       expect(session.status).toBe("crashed");
       isolationScopeSpy.mockRestore();
@@ -416,7 +416,7 @@ describe("withTelemetry", () => {
       await expect(
         withTelemetry(() => {
           throw error;
-        })
+        }),
       ).rejects.toThrow(error);
       expect(session.status).toBe("crashed");
       isolationScopeSpy.mockRestore();
@@ -445,7 +445,7 @@ describe("withTelemetry", () => {
       await expect(
         withTelemetry(() => {
           throw error;
-        })
+        }),
       ).rejects.toThrow(error);
       expect(session.status).toBe("ok");
       isolationScopeSpy.mockRestore();
@@ -465,8 +465,8 @@ describe("isUserApiError", () => {
     // request — a CLI bug, not a user API error.
     expect(
       isUserApiError(
-        new ApiError("bad", 400, "Error parsing search query: invalid status")
-      )
+        new ApiError("bad", 400, "Error parsing search query: invalid status"),
+      ),
     ).toBe(false);
   });
 
@@ -476,13 +476,13 @@ describe("isUserApiError", () => {
 
   test("returns true for 403 Forbidden", () => {
     expect(isUserApiError(new ApiError("Forbidden", 403, "No access"))).toBe(
-      true
+      true,
     );
   });
 
   test("returns true for 404 Not Found", () => {
     expect(
-      isUserApiError(new ApiError("Not found", 404, "Issue not found"))
+      isUserApiError(new ApiError("Not found", 404, "Issue not found")),
     ).toBe(true);
   });
 
@@ -645,13 +645,13 @@ describe("setOrgProjectContext", () => {
 
   test("handles single org/project", () => {
     expect(() =>
-      setOrgProjectContext(["my-org"], ["my-project"])
+      setOrgProjectContext(["my-org"], ["my-project"]),
     ).not.toThrow();
   });
 
   test("handles multiple orgs/projects", () => {
     expect(() =>
-      setOrgProjectContext(["org1", "org2"], ["proj1", "proj2"])
+      setOrgProjectContext(["org1", "org2"], ["proj1", "proj2"]),
     ).not.toThrow();
   });
 });
@@ -747,7 +747,7 @@ describe("setFlagContext", () => {
     expect(setTagSpy).toHaveBeenCalledWith("flag.no-modify-path", "true");
     expect(setTagSpy).toHaveBeenCalledWith(
       "flag.some-very-long-flag-name",
-      "value"
+      "value",
     );
   });
 
@@ -824,7 +824,7 @@ describe("withHttpSpan", () => {
     await expect(
       withHttpSpan("POST", "/test", async () => {
         throw new Error("http error");
-      })
+      }),
     ).rejects.toThrow("http error");
   });
 });
@@ -839,7 +839,7 @@ describe("withDbSpan", () => {
     expect(() =>
       withDbSpan("testOp", () => {
         throw new Error("db error");
-      })
+      }),
     ).toThrow("db error");
   });
 });
@@ -854,7 +854,7 @@ describe("withSerializeSpan", () => {
     expect(() =>
       withSerializeSpan("format", () => {
         throw new Error("serialize error");
-      })
+      }),
     ).toThrow("serialize error");
   });
 });
@@ -877,7 +877,7 @@ describe("withTracing", () => {
     await expect(
       withTracing("test", "test.op", () => {
         throw new Error("sync error");
-      })
+      }),
     ).rejects.toThrow("sync error");
   });
 
@@ -886,7 +886,7 @@ describe("withTracing", () => {
       withTracing("test", "test.op", async () => {
         await sleep(1);
         throw new Error("async error");
-      })
+      }),
     ).rejects.toThrow("async error");
   });
 
@@ -926,7 +926,7 @@ describe("withFsSpan", () => {
     await expect(
       withFsSpan("readFile", () => {
         throw new Error("fs error");
-      })
+      }),
     ).rejects.toThrow("fs error");
   });
 });
@@ -953,7 +953,7 @@ describe("withTracingSpan", () => {
     await expect(
       withTracingSpan("test", "test.op", () => {
         throw new Error("test error");
-      })
+      }),
     ).rejects.toThrow("test error");
   });
 
@@ -1013,14 +1013,14 @@ describe("createWizardPromptTelemetry", () => {
       "wizard.user_wait_ms",
       25,
       "millisecond",
-      expect.anything()
+      expect.anything(),
     );
     expect(setMeasurementSpy).toHaveBeenNthCalledWith(
       2,
       "wizard.user_wait_ms",
       40,
       "millisecond",
-      expect.anything()
+      expect.anything(),
     );
     expect(metricSpy).toHaveBeenCalledWith("wizard.user_wait_ms", 25, {
       attributes: {
@@ -1289,56 +1289,56 @@ describe("getSentryTracePropagationTargets", () => {
   test("matches SaaS regional URLs", () => {
     const targets = getSentryTracePropagationTargets();
     const regexTargets = targets.filter(
-      (t): t is RegExp => t instanceof RegExp
+      (t): t is RegExp => t instanceof RegExp,
     );
     expect(
-      regexTargets.some((r) => r.test("https://us.sentry.io/api/0/"))
+      regexTargets.some((r) => r.test("https://us.sentry.io/api/0/")),
     ).toBe(true);
     expect(
-      regexTargets.some((r) => r.test("https://de.sentry.io/api/0/"))
+      regexTargets.some((r) => r.test("https://de.sentry.io/api/0/")),
     ).toBe(true);
     expect(
       regexTargets.some((r) =>
-        r.test("https://o1234.ingest.us.sentry.io/api/0/")
-      )
+        r.test("https://o1234.ingest.us.sentry.io/api/0/"),
+      ),
     ).toBe(true);
   });
 
   test("matches bare sentry.io", () => {
     const targets = getSentryTracePropagationTargets();
     const regexTargets = targets.filter(
-      (t): t is RegExp => t instanceof RegExp
+      (t): t is RegExp => t instanceof RegExp,
     );
     expect(regexTargets.some((r) => r.test("https://sentry.io/api/0/"))).toBe(
-      true
+      true,
     );
   });
 
   test("does not match non-sentry URLs", () => {
     const targets = getSentryTracePropagationTargets();
     const regexTargets = targets.filter(
-      (t): t is RegExp => t instanceof RegExp
+      (t): t is RegExp => t instanceof RegExp,
     );
     expect(regexTargets.some((r) => r.test("https://example.com/api/0/"))).toBe(
-      false
+      false,
     );
     expect(
-      regexTargets.some((r) => r.test("https://not-sentry.io/api/0/"))
+      regexTargets.some((r) => r.test("https://not-sentry.io/api/0/")),
     ).toBe(false);
   });
 
   test("does not match domains beyond sentry.io TLD boundary", () => {
     const targets = getSentryTracePropagationTargets();
     const regexTargets = targets.filter(
-      (t): t is RegExp => t instanceof RegExp
+      (t): t is RegExp => t instanceof RegExp,
     );
     // sentry.io.evil.com should NOT match
     expect(
-      regexTargets.some((r) => r.test("https://sentry.io.evil.com/api/0/"))
+      regexTargets.some((r) => r.test("https://sentry.io.evil.com/api/0/")),
     ).toBe(false);
     // us.sentry.io.evil.com should NOT match
     expect(
-      regexTargets.some((r) => r.test("https://us.sentry.io.evil.com/api/0/"))
+      regexTargets.some((r) => r.test("https://us.sentry.io.evil.com/api/0/")),
     ).toBe(false);
   });
 
@@ -1346,7 +1346,7 @@ describe("getSentryTracePropagationTargets", () => {
     process.env[SENTRY_URL_ENV] = "https://sentry.mycompany.com";
     const targets = getSentryTracePropagationTargets();
     const stringTargets = targets.filter(
-      (t): t is string => typeof t === "string"
+      (t): t is string => typeof t === "string",
     );
     expect(stringTargets).toContain("https://sentry.mycompany.com");
   });
@@ -1355,7 +1355,7 @@ describe("getSentryTracePropagationTargets", () => {
     // Default (no SENTRY_URL) → only RegExp targets, no string targets
     const targets = getSentryTracePropagationTargets();
     const stringTargets = targets.filter(
-      (t): t is string => typeof t === "string"
+      (t): t is string => typeof t === "string",
     );
     expect(stringTargets).toHaveLength(0);
   });
@@ -1365,7 +1365,7 @@ describe("getSentryTracePropagationTargets", () => {
     const targets = getSentryTracePropagationTargets();
     // SaaS URLs are already covered by regex — no string target should be added
     const stringTargets = targets.filter(
-      (t): t is string => typeof t === "string"
+      (t): t is string => typeof t === "string",
     );
     expect(stringTargets).toHaveLength(0);
   });

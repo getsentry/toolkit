@@ -75,7 +75,7 @@ function formatProjectHealthTable(release: SentryRelease): string {
       "CRASH-FREE SESSIONS:",
       "USERS (24h):",
       "SESSIONS (24h):",
-    ])
+    ]),
   );
 
   for (const project of projects) {
@@ -98,7 +98,7 @@ function formatReleaseDetails(release: SentryRelease): string {
   const lines: string[] = [];
 
   lines.push(
-    `## Release ${escapeMarkdownInline(release.shortVersion || release.version)}`
+    `## Release ${escapeMarkdownInline(release.shortVersion || release.version)}`,
   );
   lines.push("");
 
@@ -194,7 +194,7 @@ export const viewCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string
+    target: string,
   ) {
     applyFreshFlag(flags);
     const { cwd } = this;
@@ -202,7 +202,7 @@ export const viewCommand = buildCommand({
     const { version, org, detectedFrom } = await resolveReleaseTarget(
       target,
       USAGE_HINT,
-      cwd
+      cwd,
     );
 
     const release = await getRelease(org, version, {

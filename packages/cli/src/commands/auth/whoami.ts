@@ -40,7 +40,7 @@ type WhoamiFlags = {
  * formatter. The `type` field is only present on org-token output.
  */
 function formatWhoami(
-  data: OrgTokenIdentity | Record<string, unknown>
+  data: OrgTokenIdentity | Record<string, unknown>,
 ): string {
   if ("type" in data && data.type === "org-auth-token") {
     return formatOrgTokenIdentity(data as OrgTokenIdentity);
@@ -82,12 +82,12 @@ export const whoamiCommand = buildCommand({
           [
             "Use an OAuth token from `sentry auth login` or a personal access token",
             "Run `sentry org list` to list organizations this token can access",
-          ]
+          ],
         );
       }
 
       log.warn(
-        "This is an organization auth token — not tied to a specific user."
+        "This is an organization auth token — not tied to a specific user.",
       );
 
       const data: OrgTokenIdentity = {

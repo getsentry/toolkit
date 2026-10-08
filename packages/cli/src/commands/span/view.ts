@@ -147,7 +147,7 @@ function tryAutoSplitSpanArg(arg: string): SpanViewArgs | null {
   }
   log.warn(
     `Interpreting '${arg}' as <trace-target>/<span-id>. ` +
-      `Use separate arguments: sentry span view ${tracePrefix} ${possibleSpanId}`
+      `Use separate arguments: sentry span view ${tracePrefix} ${possibleSpanId}`,
   );
   return { kind: "resolved", traceTarget, rawSpanIds: [possibleSpanId] };
 }
@@ -206,7 +206,7 @@ export function parsePositionalArgs(args: string[]): SpanViewArgs {
  */
 async function validateAndRecoverSpanId(
   rawSpanId: string,
-  ctx: { org: string; project: string; traceId: string }
+  ctx: { org: string; project: string; traceId: string },
 ): Promise<string> {
   try {
     return validateSpanId(rawSpanId);
@@ -237,7 +237,7 @@ function warnMissingIds(spanIds: string[], foundIds: Set<string>): void {
   const missing = spanIds.filter((id) => !foundIds.has(id));
   if (missing.length > 0) {
     log.warn(
-      `${missing.length} of ${spanIds.length} span(s) not found in trace:\n${formatIdList(missing)}`
+      `${missing.length} of ${spanIds.length} span(s) not found in trace:\n${formatIdList(missing)}`,
     );
   }
 }
@@ -271,7 +271,7 @@ type SpanViewData = {
 function buildJsonResults(
   results: SpanResult[],
   traceId: string,
-  details?: Map<string, TraceItemDetail>
+  details?: Map<string, TraceItemDetail>,
 ): unknown[] {
   return results.map((r) => {
     const base: Record<string, unknown> = {
@@ -333,7 +333,7 @@ function formatSpanViewHuman(data: SpanViewData): string {
     // Standard span details (KV table + ancestor chain)
     const detail = data.details?.get(result.spanId);
     parts.push(
-      formatSpanDetails(result.span, result.ancestors, data.traceId, detail)
+      formatSpanDetails(result.span, result.ancestors, data.traceId, detail),
     );
 
     // Show child tree if --spans > 0 and the span has children
@@ -342,7 +342,7 @@ function formatSpanViewHuman(data: SpanViewData): string {
       const treeLines = formatSimpleSpanTree(
         data.traceId,
         [result.span],
-        data.spansDepth
+        data.spansDepth,
       );
       if (treeLines.length > 0) {
         parts.push(`${treeLines.join("\n")}\n`);
@@ -419,7 +419,7 @@ export const viewCommand = buildCommand({
     const { traceId, org, project } = await resolveTraceOrgProject(
       traceTarget,
       cwd,
-      USAGE_HINT
+      USAGE_HINT,
     );
 
     // Validate + recover span IDs now that trace context is available.
@@ -427,8 +427,8 @@ export const viewCommand = buildCommand({
     // fuzzy lookup via `ctx.traceId`.
     const spanIds = await Promise.all(
       rawSpanIds.map((raw) =>
-        validateAndRecoverSpanId(raw, { org, project, traceId })
-      )
+        validateAndRecoverSpanId(raw, { org, project, traceId }),
+      ),
     );
     // Fetch trace data (single fetch for all span lookups)
     const spans = await getDetailedTrace(org, traceId);
@@ -462,7 +462,7 @@ export const viewCommand = buildCommand({
         throw new ResolutionError(
           `Span "${spanIds[0]}" in trace ${traceId}`,
           "not found",
-          USAGE_HINT
+          USAGE_HINT,
         );
       }
       const idList = formatIdList(spanIds);
@@ -470,7 +470,7 @@ export const viewCommand = buildCommand({
         `Spans in trace ${traceId}`,
         "none of the requested IDs were found",
         USAGE_HINT,
-        [`Requested IDs:\n${idList}`]
+        [`Requested IDs:\n${idList}`],
       );
     }
 
@@ -483,7 +483,7 @@ export const viewCommand = buildCommand({
         span_id: r.spanId,
         project_slug: r.span.project_slug,
       })),
-      { org, fallbackProject: project, traceId }
+      { org, fallbackProject: project, traceId },
     );
 
     yield new CommandOutput({

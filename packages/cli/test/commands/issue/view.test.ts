@@ -95,7 +95,7 @@ describe("jsonTransformIssueView", () => {
         event: null,
         replayIds: [],
         trace: null,
-      })
+      }),
     );
   });
 
@@ -131,7 +131,7 @@ describe("jsonTransformIssueView", () => {
         issues: [sampleView()],
         requestedCount: 1,
       },
-      ["shortId"]
+      ["shortId"],
     );
     expect(result).toEqual({ shortId: "CLI-123" });
   });
@@ -145,7 +145,7 @@ describe("jsonTransformIssueView", () => {
         ],
         requestedCount: 2,
       },
-      ["shortId"]
+      ["shortId"],
     );
     expect(result).toEqual([{ shortId: "IOS-1" }, { shortId: "IOS-2" }]);
   });

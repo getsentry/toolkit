@@ -10,15 +10,15 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { logoutCommand } from "../../../src/commands/auth/logout.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbIndex from "../../../src/lib/db/index.js";
 import { AuthError } from "../../../src/lib/errors.js";
 
 type LogoutFunc = (
   this: unknown,
-  flags: Record<string, never>
+  flags: Record<string, never>,
 ) => Promise<void>;
 
 function createContext() {

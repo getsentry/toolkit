@@ -7,11 +7,11 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { infoCommand } from "../../src/commands/info.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as users from "../../src/lib/api/users.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as auth from "../../src/lib/db/auth.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as defaults from "../../src/lib/db/defaults.js";
 
 function createContext(env: NodeJS.ProcessEnv = {}) {
@@ -21,7 +21,7 @@ function createContext(env: NodeJS.ProcessEnv = {}) {
       stdout: {
         write: (data: string | Uint8Array) => {
           writes.push(
-            typeof data === "string" ? data : new TextDecoder().decode(data)
+            typeof data === "string" ? data : new TextDecoder().decode(data),
           );
           return true;
         },

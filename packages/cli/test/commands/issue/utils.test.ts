@@ -42,7 +42,7 @@ describe("mapIssueArgsConcurrently", () => {
         }
         return issueArg;
       },
-      onError
+      onError,
     );
 
     expect(result).toEqual(["found"]);
@@ -61,8 +61,8 @@ describe("mapIssueArgsConcurrently", () => {
         async (issueArg) => {
           throw issueArg === "first" ? primary : secondary;
         },
-        onError
-      )
+        onError,
+      ),
     ).rejects.toBe(primary);
     expect(onError).not.toHaveBeenCalled();
   });
@@ -71,82 +71,82 @@ describe("mapIssueArgsConcurrently", () => {
 describe("buildCommandHint", () => {
   test("suggests <org>/ID for numeric IDs", () => {
     expect(buildCommandHint("view", "123456789")).toBe(
-      "sentry issue view <org>/123456789"
+      "sentry issue view <org>/123456789",
     );
     expect(buildCommandHint("explain", "0")).toBe(
-      "sentry issue explain <org>/0"
+      "sentry issue explain <org>/0",
     );
   });
 
   test("suggests <project>-suffix for short suffixes", () => {
     expect(buildCommandHint("view", "G")).toBe("sentry issue view <project>-G");
     expect(buildCommandHint("explain", "4Y")).toBe(
-      "sentry issue explain <project>-4Y"
+      "sentry issue explain <project>-4Y",
     );
     expect(buildCommandHint("plan", "ABC")).toBe(
-      "sentry issue plan <project>-ABC"
+      "sentry issue plan <project>-ABC",
     );
   });
 
   test("suggests <org>/ID for IDs with dashes", () => {
     expect(buildCommandHint("view", "cli-G")).toBe(
-      "sentry issue view <org>/cli-G"
+      "sentry issue view <org>/cli-G",
     );
     expect(buildCommandHint("explain", "PROJECT-ABC")).toBe(
-      "sentry issue explain <org>/PROJECT-ABC"
+      "sentry issue explain <org>/PROJECT-ABC",
     );
   });
 
   test("suggests <org>/@selector for selectors", () => {
     expect(buildCommandHint("view", "@latest")).toBe(
-      "sentry issue view <org>/@latest"
+      "sentry issue view <org>/@latest",
     );
     expect(buildCommandHint("explain", "@most_frequent")).toBe(
-      "sentry issue explain <org>/@most_frequent"
+      "sentry issue explain <org>/@most_frequent",
     );
   });
 
   test("shows as-is when input already contains a slash (CLI-8C)", () => {
     // org/numeric — don't add another <org>/ prefix
     expect(buildCommandHint("view", "saber-ut/103103195")).toBe(
-      "sentry issue view saber-ut/103103195"
+      "sentry issue view saber-ut/103103195",
     );
     // org/project-suffix — already has full context
     expect(buildCommandHint("view", "sentry/cli-G")).toBe(
-      "sentry issue view sentry/cli-G"
+      "sentry issue view sentry/cli-G",
     );
     // org/project/suffix — three-level path, show as-is
     expect(buildCommandHint("explain", "sentry/cli/CLI-A1")).toBe(
-      "sentry issue explain sentry/cli/CLI-A1"
+      "sentry issue explain sentry/cli/CLI-A1",
     );
   });
 
   test("suggests org/<project>-suffix for bare org/suffix form", () => {
     // org/SUFFIX with no project prefix — guide user to supply a project
     expect(buildCommandHint("view", "sentry/SERVER")).toBe(
-      "sentry issue view sentry/<project>-SERVER"
+      "sentry issue view sentry/<project>-SERVER",
     );
     expect(buildCommandHint("explain", "my-org/ABC")).toBe(
-      "sentry issue explain my-org/<project>-ABC"
+      "sentry issue explain my-org/<project>-ABC",
     );
   });
 
   test("shows as-is for slash forms that aren't a bare org/suffix", () => {
     // org/@selector — a special selector, not a project suffix (CLI-RD review)
     expect(buildCommandHint("view", "sentry/@latest")).toBe(
-      "sentry issue view sentry/@latest"
+      "sentry issue view sentry/@latest",
     );
     // org/project/suffix — multi-segment path is already fully specified
     expect(buildCommandHint("view", "sentry/cli/A1")).toBe(
-      "sentry issue view sentry/cli/A1"
+      "sentry issue view sentry/cli/A1",
     );
     // org/project#suffix — GitHub-style separator, already has project context
     expect(buildCommandHint("view", "sentry/cli#A1")).toBe(
-      "sentry issue view sentry/cli#A1"
+      "sentry issue view sentry/cli#A1",
     );
     // leading slash with no org — don't fabricate an org/<project> template
     expect(buildCommandHint("view", "/SERVER")).toBe(
-      "sentry issue view /SERVER"
+      "sentry issue view /SERVER",
     );
   });
 
@@ -154,20 +154,20 @@ describe("buildCommandHint", () => {
     const shareUrl =
       "https://gibush-kq.sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/";
     expect(buildCommandHint("view", shareUrl)).toBe(
-      `sentry issue view ${shareUrl}`
+      `sentry issue view ${shareUrl}`,
     );
   });
 
   test("returns URL as-is for regular issue URLs", () => {
     const issueUrl = "https://sentry.io/organizations/my-org/issues/12345/";
     expect(buildCommandHint("view", issueUrl)).toBe(
-      `sentry issue view ${issueUrl}`
+      `sentry issue view ${issueUrl}`,
     );
   });
 
   test("supports a custom command domain", () => {
     expect(buildCommandHint("view", "PROJECT-ABC", "sentry feedback")).toBe(
-      "sentry feedback view <org>/PROJECT-ABC"
+      "sentry feedback view <org>/PROJECT-ABC",
     );
   });
 });
@@ -184,7 +184,7 @@ beforeEach(async () => {
   // won't produce "unexpected fetch" warnings from the preload trap.
   globalThis.fetch = mockFetch(
     async () =>
-      new Response(JSON.stringify({ detail: "Not found" }), { status: 404 })
+      new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }),
   );
   await setAuthToken("test-token");
   // Pre-populate region cache for orgs used in tests to avoid region resolution API calls
@@ -237,7 +237,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -252,7 +252,7 @@ describe("resolveOrgAndIssueId", () => {
         issueArg: "123456789",
         cwd: getConfigDir(),
         command: "explain",
-      })
+      }),
     ).rejects.toThrow("organization");
   });
 
@@ -279,7 +279,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -322,7 +322,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -366,7 +366,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -387,15 +387,14 @@ describe("resolveOrgAndIssueId", () => {
 
   test("resolves alias-suffix format (e.g., 'f-g') using cached aliases", async () => {
     // Empty fingerprint matches detectAllDsns on empty dir
-    const { setProjectAliases } = await import(
-      "../../../src/lib/db/project-aliases.js"
-    );
+    const { setProjectAliases } =
+      await import("../../../src/lib/db/project-aliases.js");
     setProjectAliases(
       {
         f: { orgSlug: "cached-org", projectSlug: "frontend" },
         b: { orgSlug: "cached-org", projectSlug: "backend" },
       },
-      ""
+      "",
     );
 
     // @ts-expect-error - partial mock
@@ -423,7 +422,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -469,7 +468,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -489,9 +488,8 @@ describe("resolveOrgAndIssueId", () => {
   });
 
   test("resolves short suffix format (e.g., 'G') using project context from defaults", async () => {
-    const { setDefaultOrganization, setDefaultProject } = await import(
-      "../../../src/lib/db/defaults.js"
-    );
+    const { setDefaultOrganization, setDefaultProject } =
+      await import("../../../src/lib/db/defaults.js");
     setDefaultOrganization("my-org");
     setDefaultProject("my-project");
 
@@ -520,7 +518,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -549,14 +547,13 @@ describe("resolveOrgAndIssueId", () => {
         issueArg: "G",
         cwd: getConfigDir(),
         command: "explain",
-      })
+      }),
     ).rejects.toThrow("could not be resolved");
   });
 
   test("searches projects across orgs for project-suffix format", async () => {
-    const { clearProjectAliases } = await import(
-      "../../../src/lib/db/project-aliases.js"
-    );
+    const { clearProjectAliases } =
+      await import("../../../src/lib/db/project-aliases.js");
     clearProjectAliases();
 
     // @ts-expect-error - partial mock
@@ -584,7 +581,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -600,7 +597,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -624,7 +621,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -644,9 +641,8 @@ describe("resolveOrgAndIssueId", () => {
   });
 
   test("throws when project not found in any org", async () => {
-    const { clearProjectAliases } = await import(
-      "../../../src/lib/db/project-aliases.js"
-    );
+    const { clearProjectAliases } =
+      await import("../../../src/lib/db/project-aliases.js");
     clearProjectAliases();
 
     // @ts-expect-error - partial mock
@@ -674,7 +670,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -701,7 +697,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -715,14 +711,13 @@ describe("resolveOrgAndIssueId", () => {
         issueArg: "nonexistent-g",
         cwd: getConfigDir(),
         command: "explain",
-      })
+      }),
     ).rejects.toThrow("Issue 'NONEXISTENT-G'");
   });
 
   test("throws when project found in multiple orgs without explicit org", async () => {
-    const { clearProjectAliases } = await import(
-      "../../../src/lib/db/project-aliases.js"
-    );
+    const { clearProjectAliases } =
+      await import("../../../src/lib/db/project-aliases.js");
     clearProjectAliases();
 
     setOrgRegion("org2", DEFAULT_SENTRY_URL);
@@ -755,7 +750,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -771,7 +766,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -787,7 +782,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -801,14 +796,13 @@ describe("resolveOrgAndIssueId", () => {
         issueArg: "common-g",
         cwd: getConfigDir(),
         command: "explain",
-      })
+      }),
     ).rejects.toThrow("is ambiguous");
   });
 
   test("short suffix auth error (401) propagates", async () => {
-    const { setDefaultOrganization, setDefaultProject } = await import(
-      "../../../src/lib/db/defaults.js"
-    );
+    const { setDefaultOrganization, setDefaultProject } =
+      await import("../../../src/lib/db/defaults.js");
     setDefaultOrganization("my-org");
     setDefaultProject("my-project");
 
@@ -824,14 +818,13 @@ describe("resolveOrgAndIssueId", () => {
         issueArg: "G",
         cwd: getConfigDir(),
         command: "explain",
-      })
+      }),
     ).rejects.toThrow();
   });
 
   test("short suffix server error (500) propagates", async () => {
-    const { setDefaultOrganization, setDefaultProject } = await import(
-      "../../../src/lib/db/defaults.js"
-    );
+    const { setDefaultOrganization, setDefaultProject } =
+      await import("../../../src/lib/db/defaults.js");
     setDefaultOrganization("my-org");
     setDefaultProject("my-project");
 
@@ -847,14 +840,13 @@ describe("resolveOrgAndIssueId", () => {
         issueArg: "G",
         cwd: getConfigDir(),
         command: "explain",
-      })
+      }),
     ).rejects.toThrow("500");
   });
 
   test("fast path: ambiguous when shortid resolves in multiple orgs", async () => {
-    const { clearProjectAliases } = await import(
-      "../../../src/lib/db/project-aliases.js"
-    );
+    const { clearProjectAliases } =
+      await import("../../../src/lib/db/project-aliases.js");
     clearProjectAliases();
 
     setOrgRegion("org2", DEFAULT_SENTRY_URL);
@@ -879,7 +871,7 @@ describe("resolveOrgAndIssueId", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
 
     // @ts-expect-error - partial mock
@@ -908,7 +900,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -930,14 +922,13 @@ describe("resolveOrgAndIssueId", () => {
         issueArg: "shared-g",
         cwd: getConfigDir(),
         command: "explain",
-      })
+      }),
     ).rejects.toThrow("is ambiguous");
   });
 
   test("fast path: surfaces 403 when all orgs return forbidden", async () => {
-    const { clearProjectAliases } = await import(
-      "../../../src/lib/db/project-aliases.js"
-    );
+    const { clearProjectAliases } =
+      await import("../../../src/lib/db/project-aliases.js");
     clearProjectAliases();
 
     // @ts-expect-error - partial mock
@@ -963,7 +954,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -971,7 +962,7 @@ describe("resolveOrgAndIssueId", () => {
       if (url.includes("/shortids/")) {
         return new Response(
           JSON.stringify({ detail: "You do not have permission" }),
-          { status: 403 }
+          { status: 403 },
         );
       }
 
@@ -991,9 +982,8 @@ describe("resolveOrgAndIssueId", () => {
   });
 
   test("fast path: surfaces 500 when all orgs return server error", async () => {
-    const { clearProjectAliases } = await import(
-      "../../../src/lib/db/project-aliases.js"
-    );
+    const { clearProjectAliases } =
+      await import("../../../src/lib/db/project-aliases.js");
     clearProjectAliases();
 
     // @ts-expect-error - partial mock
@@ -1019,7 +1009,7 @@ describe("resolveOrgAndIssueId", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -1027,7 +1017,7 @@ describe("resolveOrgAndIssueId", () => {
       if (url.includes("/shortids/")) {
         return new Response(
           JSON.stringify({ detail: "Internal Server Error" }),
-          { status: 500 }
+          { status: 500 },
         );
       }
 
@@ -1049,9 +1039,8 @@ describe("resolveOrgAndIssueId", () => {
 
 describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
   test("uses cached org on warm cache (single org-scoped call)", async () => {
-    const { setCachedIssueOrg, getCachedIssueOrg } = await import(
-      "../../../src/lib/db/issue-org-cache.js"
-    );
+    const { setCachedIssueOrg, getCachedIssueOrg } =
+      await import("../../../src/lib/db/issue-org-cache.js");
     setCachedIssueOrg("77777777", "cached-org");
 
     // Track which endpoint is hit — must be org-scoped, not legacy unscoped.
@@ -1068,7 +1057,7 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
             permalink:
               "https://sentry.io/organizations/cached-org/issues/77777777/",
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -1085,22 +1074,21 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
     expect(result.org).toBe("cached-org");
     // Should NOT have hit the legacy unscoped /api/0/issues/{id}/ endpoint.
     expect(calls.some((u) => /\/api\/0\/issues\/77777777\//.test(u))).toBe(
-      false
+      false,
     );
     // The org-scoped endpoint is what got called.
     expect(
       calls.some((u) =>
-        u.includes("/organizations/cached-org/issues/77777777/")
-      )
+        u.includes("/organizations/cached-org/issues/77777777/"),
+      ),
     ).toBe(true);
     // Cache stays populated (it was a valid hit).
     expect(getCachedIssueOrg("77777777")).toBe("cached-org");
   });
 
   test("evicts stale cache entry on 404 and uses permalink org (does not leak stale slug)", async () => {
-    const { setCachedIssueOrg, getCachedIssueOrg } = await import(
-      "../../../src/lib/db/issue-org-cache.js"
-    );
+    const { setCachedIssueOrg, getCachedIssueOrg } =
+      await import("../../../src/lib/db/issue-org-cache.js");
     // Seed a stale mapping that will 404 on the org-scoped endpoint.
     setCachedIssueOrg("88888888", "stale-org");
     setOrgRegion("stale-org", DEFAULT_SENTRY_URL);
@@ -1125,7 +1113,7 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
             permalink:
               "https://sentry.io/organizations/correct-org/issues/88888888/",
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -1149,9 +1137,8 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
   });
 
   test("writes numeric-id → org mapping after legacy unscoped fallback", async () => {
-    const { getCachedIssueOrg } = await import(
-      "../../../src/lib/db/issue-org-cache.js"
-    );
+    const { getCachedIssueOrg } =
+      await import("../../../src/lib/db/issue-org-cache.js");
     setOrgRegion("fresh-org", DEFAULT_SENTRY_URL);
 
     // @ts-expect-error - partial mock
@@ -1166,7 +1153,7 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
             permalink:
               "https://sentry.io/organizations/fresh-org/issues/99999999/",
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -1187,9 +1174,8 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
   });
 
   test("5xx on cached-org fetch propagates the error WITHOUT evicting the cache", async () => {
-    const { setCachedIssueOrg, getCachedIssueOrg } = await import(
-      "../../../src/lib/db/issue-org-cache.js"
-    );
+    const { setCachedIssueOrg, getCachedIssueOrg } =
+      await import("../../../src/lib/db/issue-org-cache.js");
     // Seed a valid mapping — the org-scoped endpoint will return 500 (transient).
     setCachedIssueOrg("66666666", "still-valid-org");
     setOrgRegion("still-valid-org", DEFAULT_SENTRY_URL);
@@ -1212,7 +1198,7 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
             permalink:
               "https://sentry.io/organizations/still-valid-org/issues/66666666/",
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -1226,7 +1212,7 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
         issueArg: "66666666",
         cwd: getConfigDir(),
         command: "view",
-      })
+      }),
     ).rejects.toThrow(ApiError);
 
     // Cache must NOT have been evicted — the failure was transient, the
@@ -1255,7 +1241,7 @@ describe("pollAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     };
 
@@ -1284,7 +1270,7 @@ describe("pollAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
 
     const result = await pollAutofixState({
@@ -1311,7 +1297,7 @@ describe("pollAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
 
     const result = await pollAutofixState({
@@ -1345,7 +1331,7 @@ describe("pollAutofixState", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -1360,7 +1346,7 @@ describe("pollAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     };
 
@@ -1423,7 +1409,7 @@ describe("pollAutofixState", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
 
@@ -1438,7 +1424,7 @@ describe("pollAutofixState", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       };
 
@@ -1474,7 +1460,7 @@ describe("pollAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
 
     await expect(
@@ -1486,7 +1472,7 @@ describe("pollAutofixState", () => {
         timeoutMs: 50,
         pollIntervalMs: 20,
         timeoutMessage: "Custom timeout message",
-      })
+      }),
     ).rejects.toThrow("Custom timeout message");
   });
 
@@ -1516,7 +1502,7 @@ describe("pollAutofixState", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     };
 
@@ -1551,7 +1537,7 @@ describe("ensureRootCauseAnalysis", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     };
 
@@ -1583,7 +1569,7 @@ describe("ensureRootCauseAnalysis", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     };
 
@@ -1621,7 +1607,7 @@ describe("ensureRootCauseAnalysis", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         // Before trigger, return null
@@ -1679,7 +1665,7 @@ describe("ensureRootCauseAnalysis", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         return new Response(
@@ -1693,7 +1679,7 @@ describe("ensureRootCauseAnalysis", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -1745,7 +1731,7 @@ describe("ensureRootCauseAnalysis", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
 
@@ -1760,7 +1746,7 @@ describe("ensureRootCauseAnalysis", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -1802,7 +1788,7 @@ describe("ensureRootCauseAnalysis", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -1851,7 +1837,7 @@ describe("ensureRootCauseAnalysis", () => {
       // @ts-expect-error - partial mock
       globalThis.fetch = async (
         input: RequestInfo | URL,
-        init?: RequestInit
+        init?: RequestInit,
       ) => {
         const req = new Request(input, init);
         const url = req.url;
@@ -1869,7 +1855,7 @@ describe("ensureRootCauseAnalysis", () => {
               {
                 status: 200,
                 headers: { "Content-Type": "application/json" },
-              }
+              },
             );
           }
           return new Response(JSON.stringify({ autofix: null }), {
@@ -1912,9 +1898,8 @@ describe("ensureRootCauseAnalysis", () => {
 
 describe("resolveOrgAndIssueId: magic @ selectors", () => {
   test("resolves @latest to the most recent unresolved issue", async () => {
-    const { setDefaultOrganization } = await import(
-      "../../../src/lib/db/defaults.js"
-    );
+    const { setDefaultOrganization } =
+      await import("../../../src/lib/db/defaults.js");
     setDefaultOrganization("test-org");
 
     // @ts-expect-error - partial mock
@@ -1943,7 +1928,7 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -1963,9 +1948,8 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
   });
 
   test("resolves @most_frequent to the highest frequency issue", async () => {
-    const { setDefaultOrganization } = await import(
-      "../../../src/lib/db/defaults.js"
-    );
+    const { setDefaultOrganization } =
+      await import("../../../src/lib/db/defaults.js");
     setDefaultOrganization("test-org");
 
     // @ts-expect-error - partial mock
@@ -1994,7 +1978,7 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -2039,7 +2023,7 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -2059,9 +2043,8 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
   });
 
   test("throws ResolutionError when no unresolved issues found", async () => {
-    const { setDefaultOrganization } = await import(
-      "../../../src/lib/db/defaults.js"
-    );
+    const { setDefaultOrganization } =
+      await import("../../../src/lib/db/defaults.js");
     setDefaultOrganization("test-org");
 
     // @ts-expect-error - partial mock
@@ -2102,7 +2085,7 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
     }).catch((error) => error);
     expect(eventError).toBeInstanceOf(ResolutionError);
     expect(eventError.hint).toBe(
-      'sentry issue list test-org/ -q "is:resolved"'
+      'sentry issue list test-org/ -q "is:resolved"',
     );
   });
 
@@ -2116,7 +2099,7 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
         issueArg: "@latest",
         cwd: getConfigDir(),
         command: "view",
-      })
+      }),
     ).rejects.toThrow("organization");
   });
 });
@@ -2174,7 +2157,7 @@ describe("resolveIssue: numeric 404 error handling", () => {
         issueArg: "123456789",
         cwd: getResolveIssueConfigDir(),
         command: "view",
-      })
+      }),
     ).rejects.not.toBeInstanceOf(ResolutionError);
   });
 
@@ -2216,7 +2199,7 @@ describe("resolveIssue: numeric 404 error handling", () => {
         issueArg: "my-org/999999999",
         cwd: getResolveIssueConfigDir(),
         command: "view",
-      })
+      }),
     ).rejects.not.toBeInstanceOf(ResolutionError);
   });
 });
@@ -2255,7 +2238,7 @@ describe("resolveIssue: project-search DSN shortcut", () => {
     // Write a DSN so detectDsn finds it
     writeFileSync(
       join(cwd, ".env"),
-      "SENTRY_DSN=https://abc@o123.ingest.us.sentry.io/456"
+      "SENTRY_DSN=https://abc@o123.ingest.us.sentry.io/456",
     );
 
     const requests: string[] = [];
@@ -2283,7 +2266,7 @@ describe("resolveIssue: project-search DSN shortcut", () => {
               userCount: 1,
             },
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -2307,8 +2290,8 @@ describe("resolveIssue: project-search DSN shortcut", () => {
     expect(requests.some((r) => r.includes("/users/me/regions/"))).toBe(false);
     expect(
       requests.some(
-        (r) => r.includes("/organizations/") && !r.includes("/shortids/")
-      )
+        (r) => r.includes("/organizations/") && !r.includes("/shortids/"),
+      ),
     ).toBe(false);
   });
 });
@@ -2353,62 +2336,66 @@ describe("resolveIssue with share URLs", () => {
       "test-org",
       `/share/issue/${shareId}/`,
     ],
-  ])("resolves %s using the shared issue id", async (name, baseUrl, org, path) => {
-    const { setDefaultOrganization } = await import(
-      "../../../src/lib/db/defaults.js"
-    );
-    setDefaultOrganization(
-      name === "legacy URL with default org" ? org : "other-org"
-    );
-    const apiBaseUrl =
-      baseUrl === "https://sentry.example.com" ? baseUrl : DEFAULT_SENTRY_URL;
-    setAuthToken("test-token", undefined, undefined, { host: apiBaseUrl });
-    setOrgRegion(org, apiBaseUrl);
-    const requests: Request[] = [];
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const request = new Request(input, init);
-      requests.push(request);
-      if (
-        request.url ===
-        `${baseUrl}/api/0/organizations/${org}/shared/issues/${shareId}/`
-      ) {
-        return Response.json({
-          id: "12345",
-          title: "Shared issue",
-          project: { slug: "backend" },
-        });
-      }
-      if (
-        new URL(request.url).pathname ===
-        `/api/0/organizations/${org}/issues/12345/`
-      ) {
-        return Response.json({
-          id: "12345",
-          shortId: "BACKEND-A1",
-          title: "Shared issue",
-          status: "unresolved",
-          platform: "python",
-          type: "error",
-          count: "5",
-          userCount: 3,
-        });
-      }
-      return Response.json({ detail: "Not found" }, { status: 404 });
-    });
+  ])(
+    "resolves %s using the shared issue id",
+    async (name, baseUrl, org, path) => {
+      const { setDefaultOrganization } =
+        await import("../../../src/lib/db/defaults.js");
+      setDefaultOrganization(
+        name === "legacy URL with default org" ? org : "other-org",
+      );
+      const apiBaseUrl =
+        baseUrl === "https://sentry.example.com" ? baseUrl : DEFAULT_SENTRY_URL;
+      setAuthToken("test-token", undefined, undefined, { host: apiBaseUrl });
+      setOrgRegion(org, apiBaseUrl);
+      const requests: Request[] = [];
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const request = new Request(input, init);
+        requests.push(request);
+        if (
+          request.url ===
+          `${baseUrl}/api/0/organizations/${org}/shared/issues/${shareId}/`
+        ) {
+          return Response.json({
+            id: "12345",
+            title: "Shared issue",
+            project: { slug: "backend" },
+          });
+        }
+        if (
+          new URL(request.url).pathname ===
+          `/api/0/organizations/${org}/issues/12345/`
+        ) {
+          return Response.json({
+            id: "12345",
+            shortId: "BACKEND-A1",
+            title: "Shared issue",
+            status: "unresolved",
+            platform: "python",
+            type: "error",
+            count: "5",
+            userCount: 3,
+          });
+        }
+        return Response.json({ detail: "Not found" }, { status: 404 });
+      });
 
-    const result = await resolveIssue({
-      issueArg: `${baseUrl}${path}`,
-      cwd: getConfigDir(),
-      command: "view",
-    });
+      const result = await resolveIssue({
+        issueArg: `${baseUrl}${path}`,
+        cwd: getConfigDir(),
+        command: "view",
+      });
 
-    expect(result.org).toBe(org);
-    expect(result.issue.id).toBe("12345");
-    expect(result.issue.shortId).toBe("BACKEND-A1");
-    expect(requests).toHaveLength(2);
-    expect(requests[0]?.headers.has("Authorization")).toBe(false);
-    expect(requests[1]?.headers.get("Authorization")).toBe("Bearer test-token");
-  });
+      expect(result.org).toBe(org);
+      expect(result.issue.id).toBe("12345");
+      expect(result.issue.shortId).toBe("BACKEND-A1");
+      expect(requests).toHaveLength(2);
+      expect(requests[0]?.headers.has("Authorization")).toBe(false);
+      expect(requests[1]?.headers.get("Authorization")).toBe(
+        "Bearer test-token",
+      );
+    },
+  );
 
   test("requires organization context before requesting a legacy share URL", async () => {
     const requests: string[] = [];
@@ -2422,7 +2409,7 @@ describe("resolveIssue with share URLs", () => {
         issueArg: `https://sentry.io/share/issue/${shareId}/`,
         cwd: getConfigDir(),
         command: "view",
-      })
+      }),
     ).rejects.toBeInstanceOf(ContextError);
     expect(requests).toEqual([]);
   });
@@ -2439,7 +2426,7 @@ describe("resolveIssue with share URLs", () => {
         issueArg: `https://test-org.sentry.io/share/issue/${shareId}/`,
         cwd: getConfigDir(),
         command: "view",
-      })
+      }),
     ).rejects.toMatchObject({
       name: "ApiError",
       message: "Share link not found or expired",

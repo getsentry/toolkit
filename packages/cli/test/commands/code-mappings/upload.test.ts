@@ -43,7 +43,7 @@ describe("code-mappings upload validation", () => {
   test("rejects nonexistent file", async () => {
     const ctx = makeContext();
     await expect(
-      func.call(ctx, {}, join(tempDir, "nonexistent.json"))
+      func.call(ctx, {}, join(tempDir, "nonexistent.json")),
     ).rejects.toThrow(ValidationError);
   });
 
@@ -61,7 +61,7 @@ describe("code-mappings upload validation", () => {
 
     const ctx = makeContext();
     await expect(func.call(ctx, {}, path)).rejects.toThrow(
-      "expected a JSON array"
+      "expected a JSON array",
     );
   });
 
@@ -79,7 +79,7 @@ describe("code-mappings upload validation", () => {
 
     const ctx = makeContext();
     await expect(func.call(ctx, {}, path)).rejects.toThrow(
-      "Invalid code mapping"
+      "Invalid code mapping",
     );
   });
 
@@ -89,7 +89,7 @@ describe("code-mappings upload validation", () => {
 
     const ctx = makeContext();
     await expect(func.call(ctx, {}, path)).rejects.toThrow(
-      "Invalid code mapping"
+      "Invalid code mapping",
     );
   });
 
@@ -97,12 +97,12 @@ describe("code-mappings upload validation", () => {
     const path = join(tempDir, "bad.json");
     await writeFile(
       path,
-      JSON.stringify([{ stackRoot: "", sourceRoot: "src" }])
+      JSON.stringify([{ stackRoot: "", sourceRoot: "src" }]),
     );
 
     const ctx = makeContext();
     await expect(func.call(ctx, {}, path)).rejects.toThrow(
-      "Invalid code mapping"
+      "Invalid code mapping",
     );
   });
 
@@ -124,7 +124,7 @@ describe("extractRepoName", () => {
       JSON.stringify([
         { stackRoot: "com/example/module", sourceRoot: "modules/module/src" },
         { stackRoot: "com/example/other", sourceRoot: "modules/other/src" },
-      ])
+      ]),
     );
 
     // The command will pass validation but fail at org/project resolution

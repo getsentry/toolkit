@@ -18,11 +18,11 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -32,11 +32,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
@@ -46,11 +46,11 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { IssueEvent, SentryIssue } from "../../../src/types/sentry.js";
@@ -176,7 +176,7 @@ describe("event list command func()", () => {
     await func.call(
       context,
       { limit: 25, json: true, full: false, period: parsePeriod("7d") },
-      "CLI-G5"
+      "CLI-G5",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -200,7 +200,7 @@ describe("event list command func()", () => {
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
-      "CLI-G5"
+      "CLI-G5",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -227,7 +227,7 @@ describe("event list command func()", () => {
     await func.call(
       context,
       { limit: 2, json: false, full: false, period: parsePeriod("7d") },
-      "CLI-G5"
+      "CLI-G5",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -252,14 +252,14 @@ describe("event list command func()", () => {
     await func.call(
       context,
       { limit: 25, json: true, full: false, period: parsePeriod("7d") },
-      "CLI-G5"
+      "CLI-G5",
     );
 
     expect(advancePaginationStateSpy).toHaveBeenCalledWith(
       "event-list",
       expect.any(String),
       "next",
-      "cursor123"
+      "cursor123",
     );
   });
 
@@ -275,14 +275,14 @@ describe("event list command func()", () => {
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
-      "CLI-G5"
+      "CLI-G5",
     );
 
     expect(resolveIssueSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         command: "list",
         commandBase: "sentry event",
-      })
+      }),
     );
   });
 
@@ -299,8 +299,8 @@ describe("event list command func()", () => {
       func.call(
         context,
         { limit: 25, json: false, full: false, period: parsePeriod("7d") },
-        "123456789"
-      )
+        "123456789",
+      ),
     ).rejects.toThrow("organization");
   });
 });

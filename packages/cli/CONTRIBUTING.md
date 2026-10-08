@@ -17,10 +17,11 @@ sentry issue list [<org>/<project>] [--json]
 ```
 
 **Target syntax**:
+
 - `<org>/<project>` - Explicit organization and project (e.g., `my-org/frontend`)
 - `<org>/` - All projects in the specified organization
 - `<project>` - Search for project by name across all accessible organizations
-- *(omit)* - Auto-detect from DSN or config
+- _(omit)_ - Auto-detect from DSN or config
 
 **Rationale**: Positional arguments follow `gh` CLI conventions and are more concise than flags.
 
@@ -49,11 +50,11 @@ Context (org, project) is resolved in this priority order:
 
 ## Common Flags
 
-| Flag | Description | Used In |
-|------|-------------|---------|
-| `--json` | Output as JSON | All view/list commands |
-| `-w`, `--web` | Open in browser | All view commands |
-| `--limit` | Max items to return | List commands |
+| Flag          | Description         | Used In                |
+| ------------- | ------------------- | ---------------------- |
+| `--json`      | Output as JSON      | All view/list commands |
+| `-w`, `--web` | Open in browser     | All view commands      |
+| `--limit`     | Max items to return | List commands          |
 
 ## Error Handling
 
@@ -64,9 +65,9 @@ import { ContextError } from "../../lib/errors.js";
 
 if (!resolved) {
   throw new ContextError(
-    "Organization",                           // What is required
-    "sentry org view <org-slug>",            // Primary usage
-    ["Set SENTRY_DSN for auto-detection"]    // Alternatives
+    "Organization", // What is required
+    "sentry org view <org-slug>", // Primary usage
+    ["Set SENTRY_DSN for auto-detection"], // Alternatives
   );
 }
 ```

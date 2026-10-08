@@ -29,7 +29,7 @@ import type { SentryRepository } from "../../types/index.js";
 
 /** Fetch the git origin URL without throwing when it's missing. */
 function getGitOriginUrl(cwd: string): string | undefined {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return execFileSync("git", ["remote", "get-url", "origin"], {
       cwd,
@@ -50,7 +50,7 @@ function getGitOriginUrl(cwd: string): string | undefined {
  */
 function findSentryRepoMatchingOrigin(
   originOwnerRepo: string,
-  sentryRepos: SentryRepository[]
+  sentryRepos: SentryRepository[],
 ): SentryRepository | null {
   // Prefer externalSlug (canonical `owner/repo` from the integration)
   // then fall back to `name` for repos without that field populated.
@@ -67,7 +67,7 @@ function findSentryRepoMatchingOrigin(
  */
 function findSentryRepoByName(
   repoName: string,
-  sentryRepos: SentryRepository[]
+  sentryRepos: SentryRepository[],
 ): SentryRepository | null {
   return (
     sentryRepos.find((r) => r.name === repoName) ??
@@ -104,13 +104,13 @@ function formatAvailableRepos(repos: SentryRepository[]): string {
 export async function resolveCommitSpec(
   spec: ResolveCommitSpec,
   orgSlug: string,
-  cwd: string
+  cwd: string,
 ): Promise<{ commit: string; repository: string }> {
   if (spec.kind === "auto") {
     if (!isInsideGitWorkTree(cwd)) {
       throw new ValidationError(
         "--in @commit requires a git repository. Run from inside a checkout, or use --in @next / --in <version> / --in @commit:<repo>@<sha>.",
-        "in"
+        "in",
       );
     }
 
@@ -120,7 +120,7 @@ export async function resolveCommitSpec(
     } catch {
       throw new ValidationError(
         "--in @commit could not read HEAD (is this a fresh repo with no commits?). Make a commit first, or pass --in @commit:<repo>@<sha> explicitly.",
-        "in"
+        "in",
       );
     }
 
@@ -128,7 +128,7 @@ export async function resolveCommitSpec(
     if (!originUrl) {
       throw new ValidationError(
         "--in @commit could not determine the git 'origin' remote. Add an origin remote, or pass --in @commit:<repo>@<sha> explicitly.",
-        "in"
+        "in",
       );
     }
 
@@ -136,7 +136,7 @@ export async function resolveCommitSpec(
     if (!originOwnerRepo) {
       throw new ValidationError(
         `--in @commit could not parse the origin URL ('${originUrl}') as 'owner/repo'. Use --in @commit:<repo>@<sha> explicitly.`,
-        "in"
+        "in",
       );
     }
 
@@ -147,7 +147,7 @@ export async function resolveCommitSpec(
         `--in @commit: no Sentry repository matches local origin '${originOwnerRepo}' in organization '${orgSlug}'.\n\n` +
           `${formatAvailableRepos(sentryRepos)}\n\n` +
           "Register the repo in Sentry, or pass --in @commit:<repo>@<sha> with a registered name.",
-        "in"
+        "in",
       );
     }
 
@@ -161,7 +161,7 @@ export async function resolveCommitSpec(
     throw new ValidationError(
       `--in @commit:${spec.repository}@${spec.commit}: no Sentry repository named '${spec.repository}' in organization '${orgSlug}'.\n\n` +
         `${formatAvailableRepos(sentryRepos)}`,
-      "in"
+      "in",
     );
   }
   return { commit: spec.commit, repository: match.name };

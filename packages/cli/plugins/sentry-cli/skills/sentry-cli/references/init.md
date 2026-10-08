@@ -11,7 +11,7 @@ requires:
 
 Initialize Sentry in your project (experimental)
 
-### `sentry init <target> <directory>`
+### `sentry init [<target>] [<directory>]`
 
 Initialize Sentry in your project (experimental)
 

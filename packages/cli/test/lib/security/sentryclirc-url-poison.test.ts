@@ -88,7 +88,7 @@ describe("CVE: .sentryclirc URL credential exfiltration", () => {
     // Critical: assertRcUrlTrusted must throw, blocking any credentialed
     // request via buildCommand's wrapper.
     await expect(assertRcUrlTrusted(testDir)).rejects.toThrow(
-      /does not match|sentry auth login --url/
+      /does not match|sentry auth login --url/,
     );
   });
 
@@ -105,7 +105,7 @@ describe("CVE: .sentryclirc URL credential exfiltration", () => {
 
     await applySentryCliRcEnvShim(testDir);
     await expect(assertRcUrlTrusted(testDir)).rejects.toThrow(
-      /does not match|sentry auth login --url/
+      /does not match|sentry auth login --url/,
     );
   });
 

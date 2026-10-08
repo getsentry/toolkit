@@ -11,7 +11,7 @@ requires:
 
 Find Sentry DSNs
 
-### `sentry dsn list <org/project>`
+### `sentry dsn list [<org/project>]`
 
 List DSNs
 

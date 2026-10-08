@@ -70,7 +70,7 @@ export type GraphicsRendererPreference = "auto" | GraphicsFormat;
 /** Select a graphics renderer from the protocols currently available. */
 export function selectGraphicsFormatFromAvailability(
   preference: GraphicsRendererPreference,
-  available: { kitty: boolean; sixel: boolean }
+  available: { kitty: boolean; sixel: boolean },
 ): GraphicsFormat | undefined {
   if (preference === "kitty" && available.kitty) {
     return "kitty";
@@ -94,7 +94,7 @@ export function selectGraphicsFormatFromAvailability(
  * transmits full RGBA without palette quantization.
  */
 export function selectGraphicsFormat(
-  preference: GraphicsRendererPreference = "auto"
+  preference: GraphicsRendererPreference = "auto",
 ): GraphicsFormat | undefined {
   return selectGraphicsFormatFromAvailability(preference, {
     kitty: canRenderKitty(),
@@ -110,7 +110,7 @@ export function selectGraphicsFormat(
  * never reports its geometry still renders graphics instead of ASCII.
  */
 export function graphicsCellSize(
-  preference: GraphicsRendererPreference = "auto"
+  preference: GraphicsRendererPreference = "auto",
 ): { cellWidth: number; cellHeight: number } | undefined {
   if (!selectGraphicsFormat(preference)) {
     return;
@@ -129,15 +129,15 @@ export function graphicsCellSize(
 }
 
 /** Primary DA reply: `ESC [ ? <p;p;...> c` — attribute list; `4` == sixel. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: parsing terminal escapes
+// oxlint-disable-next-line no-control-regex -- parsing terminal escapes
 const DA1_RE = /\x1b\[\?([0-9;]*)c/;
 
 /** Cell-size report: `ESC [ 6 ; <height> ; <width> t`. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: parsing terminal escapes
+// oxlint-disable-next-line no-control-regex -- parsing terminal escapes
 const CELL_SIZE_RE = /\x1b\[6;(\d+);(\d+)t/;
 
 /** Kitty graphics query reply: `ESC _ G i=<id>;OK ESC \`. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: parsing terminal escapes
+// oxlint-disable-next-line no-control-regex -- parsing terminal escapes
 const KITTY_RE = /\x1b_G[^\x1b]*;OK/;
 
 /**
@@ -188,7 +188,7 @@ export function parseSixelCaps(reply: string): SixelCaps {
 export function sixelFits(
   caps: SixelCaps,
   columns: number,
-  bannerWidth: number
+  bannerWidth: number,
 ): boolean {
   if (!(caps.supported && caps.cellWidth && caps.cellWidth > 0)) {
     return false;
@@ -266,7 +266,7 @@ function probe(): SixelCaps {
   }
   let savedStty: string | undefined;
   let fd: number | undefined;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     fd = openSync("/dev/tty", "r+");
     savedStty = execSync("stty -g < /dev/tty", { encoding: "utf8" }).trim();
@@ -281,7 +281,7 @@ function probe(): SixelCaps {
     return UNSUPPORTED;
   } finally {
     if (savedStty) {
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         execSync(`stty ${savedStty} < /dev/tty`);
       } catch {
@@ -289,7 +289,7 @@ function probe(): SixelCaps {
       }
     }
     if (fd !== undefined) {
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         closeSync(fd);
       } catch {
@@ -355,7 +355,7 @@ export function canRenderKitty(): boolean {
  * session, mirroring the fit check {@link sixelFits} does for the banner.
  */
 export function terminalPixelWidth(
-  columns: number = process.stdout.columns ?? 80
+  columns: number = process.stdout.columns ?? 80,
 ): number | undefined {
   const caps = detectSixelCaps();
   if (
@@ -374,7 +374,7 @@ export function terminalPixelWidth(
  * guessing, because a guessed row height corrupts the dashboard grid.
  */
 export function terminalPixelHeight(
-  rows: number = process.stdout.rows ?? 24
+  rows: number = process.stdout.rows ?? 24,
 ): number | undefined {
   const caps = detectSixelCaps();
   if (
@@ -391,7 +391,7 @@ export function terminalPixelHeight(
  * block-art banner.
  */
 export function sixelBanner(
-  columns: number = process.stdout.columns ?? 80
+  columns: number = process.stdout.columns ?? 80,
 ): string | undefined {
   // Re-evaluate the cheap, I/O-free gates on every call. detectSixelCaps caches
   // the probe result, so this ensures a later opt-out (NO_COLOR,

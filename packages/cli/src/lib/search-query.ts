@@ -90,7 +90,7 @@ function serializeNodes(nodes: SearchNode[]): string {
  * Comparison filters, free text, paren groups, and boolean ops cannot.
  */
 function isMergeableFilter(
-  node: SearchNode
+  node: SearchNode,
 ): node is
   | (SearchNode & { type: "text_filter" })
   | (SearchNode & { type: "text_in_filter" }) {
@@ -118,7 +118,7 @@ function isMergeableFilter(
 
 /** Extract all values from a mergeable filter node. */
 function valuesFromNode(
-  node: SearchNode & { type: "text_filter" | "text_in_filter" }
+  node: SearchNode & { type: "text_filter" | "text_in_filter" },
 ): string[] {
   if (node.type === "text_in_filter") {
     return node.values;
@@ -232,7 +232,7 @@ function isOrNode(nodes: SearchNode[], j: number): boolean {
  */
 function collectOrChain(
   nodes: SearchNode[],
-  start: number
+  start: number,
 ): [SearchNode[], number] {
   const group = [nodes[start] as SearchNode];
   let j = start + 1;
@@ -375,7 +375,7 @@ export function sanitizeQuery(query: string | undefined): string | undefined {
         "Remove the parentheses and use in-list syntax instead:\n" +
         "  (level:error OR level:warning)  →  level:[error,warning]\n\n" +
         "Search syntax: https://docs.sentry.io/concepts/search/",
-      "query"
+      "query",
     );
   }
 
@@ -392,7 +392,7 @@ export function sanitizeQuery(query: string | undefined): string | undefined {
   if (hasAnd) {
     const sanitized = serializeNodes(stripAndNodes(nodes));
     notes.push(
-      "Sentry search implicitly ANDs terms — removed explicit AND operator."
+      "Sentry search implicitly ANDs terms — removed explicit AND operator.",
     );
     warnRunningQuery(notes, sanitized);
     return sanitized;
@@ -406,7 +406,7 @@ export function sanitizeQuery(query: string | undefined): string | undefined {
 function preParseRewriteNotes(
   query: string,
   normalized: string,
-  withNumericProject: string
+  withNumericProject: string,
 ): string[] {
   const notes: string[] = [];
   if (normalized !== query) {
@@ -414,7 +414,7 @@ function preParseRewriteNotes(
   }
   if (withNumericProject !== normalized) {
     notes.push(
-      "`project` is the slug; numeric ids use project_id. Rewrote numeric project: filters."
+      "`project` is the slug; numeric ids use project_id. Rewrote numeric project: filters.",
     );
   }
   return notes;
@@ -439,7 +439,7 @@ function warnRunningQuery(notes: string[], result: string): void {
 function handleOr(
   nodes: SearchNode[],
   hasAnd: boolean,
-  notes: string[]
+  notes: string[],
 ): string {
   const rewritten = tryRewriteOr(nodes);
   if (rewritten) {
@@ -465,7 +465,7 @@ function handleOr(
       '  - Write in-list syntax directly: --query "key:[val1,val2]"\n' +
       "  - Run separate queries for each term\n\n" +
       "Search syntax: https://docs.sentry.io/concepts/search/",
-    "query"
+    "query",
   );
 }
 
@@ -618,7 +618,7 @@ function normalizeQuery(query: string): string {
  */
 function transformUnquoted(
   query: string,
-  fn: (unquoted: string) => string
+  fn: (unquoted: string) => string,
 ): string {
   // Fast path: no quotes → transform the whole string
   if (!query.includes('"')) {
@@ -660,7 +660,7 @@ function transformUnquoted(
 function fixMismatchedBrackets(query: string): string {
   return query.replace(
     MALFORMED_IN_LIST_RE,
-    (_match, inner: string) => `[${inner.replace(TRAILING_COMMA_RE, "")}]`
+    (_match, inner: string) => `[${inner.replace(TRAILING_COMMA_RE, "")}]`,
   );
 }
 
@@ -672,7 +672,7 @@ function fixMismatchedBrackets(query: string): string {
  */
 function stripTrailingListCommas(query: string): string {
   return query.replace(BALANCED_BRACKET_RE, (match) =>
-    match.replace(TRAILING_LIST_COMMA_RE, "]")
+    match.replace(TRAILING_LIST_COMMA_RE, "]"),
   );
 }
 

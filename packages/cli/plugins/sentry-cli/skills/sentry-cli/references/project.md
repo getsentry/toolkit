@@ -55,7 +55,7 @@ sentry project delete my-org/old-project
 sentry project delete my-org/old-project --yes
 ```
 
-### `sentry project list <org/project>`
+### `sentry project list [<org/project>]`
 
 List projects
 
@@ -65,7 +65,7 @@ List projects
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
-### `sentry project view <org/project>`
+### `sentry project view [<org/project>]`
 
 View details of a project
 

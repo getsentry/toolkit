@@ -27,7 +27,7 @@ const USAGE_HINT =
 function formatDeployCreated(data: Record<string, unknown>): string {
   if (data.dryRun) {
     return renderMarkdown(
-      `Would create deploy for ${safeCodeSpan(String(data.environment))} environment (dry run)`
+      `Would create deploy for ${safeCodeSpan(String(data.environment))} environment (dry run)`,
     );
   }
   const deploy = data as unknown as SentryDeploy;
@@ -66,7 +66,7 @@ function formatDeployCreated(data: Record<string, unknown>): string {
 function parseDeployArgs(
   target: string,
   environment: string,
-  name?: string
+  name?: string,
 ): {
   version: string;
   orgSlug?: string;
@@ -150,7 +150,6 @@ export const deployCommand = buildCommand({
     },
     aliases: { ...DRY_RUN_ALIASES, t: "time" },
   },
-  // biome-ignore lint/nursery/useMaxParams: Stricli maps each `kind: "tuple"` positional to a named func param; deploy legitimately takes version + environment + optional name.
   async *func(
     this: SentryContext,
     flags: {
@@ -164,14 +163,14 @@ export const deployCommand = buildCommand({
     },
     target: string,
     environmentArg: string,
-    nameArg?: string
+    nameArg?: string,
   ) {
     const { cwd } = this;
 
     const { version, orgSlug, environment, name } = parseDeployArgs(
       target,
       environmentArg,
-      nameArg
+      nameArg,
     );
     const resolved = await resolveOrg({ org: orgSlug, cwd });
     if (!resolved) {
@@ -189,7 +188,7 @@ export const deployCommand = buildCommand({
       throw new ValidationError(
         "--time cannot be used with --started or --finished. " +
           "Use either --time for duration-based timing, or --started/--finished for explicit timestamps.",
-        "time"
+        "time",
       );
     }
 

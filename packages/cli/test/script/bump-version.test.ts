@@ -14,7 +14,7 @@ import { afterEach, expect, test } from "vitest";
 
 const script = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../../script/bump-version.ts"
+  "../../script/bump-version.ts",
 );
 const fixtures: string[] = [];
 
@@ -36,18 +36,18 @@ test("post-release bump updates tracked skill versions before committing", () =>
   writeFileSync(join(cwd, "package.json"), '{"version":"0.47.0"}\n');
   writeFileSync(
     join(cwd, "plugins/sentry-cli/.claude-plugin/plugin.json"),
-    '{"version":"0.47.0"}\n'
+    '{"version":"0.47.0"}\n',
   );
   for (const path of ["SKILL.md", "references/auth.md"]) {
     writeFileSync(
       join(cwd, skill, path),
-      "---\nname: sentry-cli\nversion: 0.47.0-dev.0\n---\n\nContent\n"
+      "---\nname: sentry-cli\nversion: 0.47.0-dev.0\n---\n\nContent\n",
     );
   }
 
   writeFileSync(
     join(bin, "npm"),
-    '#!/usr/bin/env node\nrequire("node:fs").writeFileSync("package.json", JSON.stringify({ version: "0.48.0-dev.0" }) + "\\n");\n'
+    '#!/usr/bin/env node\nrequire("node:fs").writeFileSync("package.json", JSON.stringify({ version: "0.48.0-dev.0" }) + "\\n");\n',
   );
   writeFileSync(
     join(bin, "git"),
@@ -61,7 +61,7 @@ if (process.argv[2] === "commit") {
   }
 }
 fs.appendFileSync("git-commands", process.argv[2] + "\\n");
-`
+`,
   );
   chmodSync(join(bin, "npm"), 0o755);
   chmodSync(join(bin, "git"), 0o755);
@@ -78,16 +78,16 @@ fs.appendFileSync("git-commands", process.argv[2] + "\\n");
         XDG_CONFIG_HOME: cwd,
       },
       timeout: 15_000,
-    }
+    },
   );
 
   expect(result.status, result.stderr).toBe(0);
   for (const path of ["SKILL.md", "references/auth.md"]) {
     expect(readFileSync(join(cwd, skill, path), "utf8")).toContain(
-      "version: 0.48.0-dev.0"
+      "version: 0.48.0-dev.0",
     );
   }
   expect(readFileSync(join(cwd, "git-commands"), "utf8")).toBe(
-    "commit\npull\npush\n"
+    "commit\npull\npush\n",
   );
 });

@@ -11,7 +11,7 @@ requires:
 
 Manage product trials
 
-### `sentry trial list <org>`
+### `sentry trial list [<org>]`
 
 List product trials
 
@@ -26,7 +26,7 @@ List product trials
 | `isStarted` | boolean | Whether the trial has started |
 | `lengthDays` | number \| null | Trial duration in days |
 
-### `sentry trial start <name> <org>`
+### `sentry trial start <name> [<org>]`
 
 Start a product trial
 

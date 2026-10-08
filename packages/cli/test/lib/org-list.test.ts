@@ -15,11 +15,11 @@ vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../src/lib/api-client.js";
 
 vi.mock("../../src/lib/db/defaults.js", async (importOriginal) => {
@@ -29,16 +29,16 @@ vi.mock("../../src/lib/db/defaults.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as defaults from "../../src/lib/db/defaults.js";
 
 vi.mock("../../src/lib/db/pagination.js");
 
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.mocked access
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as paginationDb from "../../src/lib/db/pagination.js";
 
 vi.mock("../../src/lib/db/regions.js", async (importOriginal) => {
@@ -48,7 +48,7 @@ vi.mock("../../src/lib/db/regions.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
@@ -78,11 +78,11 @@ vi.mock("../../src/lib/polling.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../src/lib/polling.js";
 
 vi.mock("../../src/lib/region.js", async (importOriginal) => {
@@ -92,11 +92,11 @@ vi.mock("../../src/lib/region.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as region from "../../src/lib/region.js";
 
 vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -106,11 +106,11 @@ vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../src/lib/resolve-target.js";
 
 /**
@@ -124,7 +124,7 @@ beforeEach(() => {
     .mockImplementation((_opts, fn) =>
       fn(() => {
         /* no-op setMessage */
-      })
+      }),
     );
 });
 afterEach(() => {
@@ -135,7 +135,7 @@ type FakeEntity = { id: string; name: string };
 type FakeWithOrg = FakeEntity & { orgSlug: string };
 
 function makeConfig(
-  overrides?: Partial<OrgListConfig<FakeEntity, FakeWithOrg>>
+  overrides?: Partial<OrgListConfig<FakeEntity, FakeWithOrg>>,
 ): OrgListConfig<FakeEntity, FakeWithOrg> {
   return {
     paginationKey: "test-list",
@@ -143,7 +143,7 @@ function makeConfig(
     commandPrefix: "sentry widget list",
     listForOrg: vi.fn(() => Promise.resolve([])),
     listPaginated: vi.fn(() =>
-      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined })
+      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
     ),
     withOrg: (entity, orgSlug) => ({ ...entity, orgSlug }),
     displayTable: vi.fn(() => ""),
@@ -207,7 +207,7 @@ describe("fetchOrgSafe", () => {
   test("rethrows AuthError", async () => {
     const config = makeConfig({
       listForOrg: vi.fn(() =>
-        Promise.reject(new AuthError("not_authenticated"))
+        Promise.reject(new AuthError("not_authenticated")),
       ),
     });
     await expect(fetchOrgSafe(config, "my-org")).rejects.toThrow(AuthError);
@@ -273,7 +273,7 @@ describe("fetchAllOrgs", () => {
 
     const config = makeConfig({
       listForOrg: vi.fn(() =>
-        Promise.reject(new AuthError("not_authenticated"))
+        Promise.reject(new AuthError("not_authenticated")),
       ),
     });
 
@@ -287,7 +287,7 @@ describe("fetchAllOrgs", () => {
 
 describe("handleOrgAll", () => {
   const advancePaginationStateSpy = vi.mocked(
-    paginationDb.advancePaginationState
+    paginationDb.advancePaginationState,
   );
   const hasPreviousPageSpy = vi.mocked(paginationDb.hasPreviousPage);
 
@@ -305,7 +305,7 @@ describe("handleOrgAll", () => {
     const items: FakeEntity[] = [{ id: "1", name: "A" }];
     const config = makeConfig({
       listPaginated: vi.fn(() =>
-        Promise.resolve({ data: items, nextCursor: "next:123" })
+        Promise.resolve({ data: items, nextCursor: "next:123" }),
       ),
     });
 
@@ -326,7 +326,7 @@ describe("handleOrgAll", () => {
 
   test("caps perPage at API_MAX_PER_PAGE when limit exceeds it", async () => {
     const listPaginated = vi.fn(() =>
-      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined })
+      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
     );
     const config = makeConfig({ listPaginated });
 
@@ -341,13 +341,13 @@ describe("handleOrgAll", () => {
 
     expect(listPaginated).toHaveBeenCalledWith(
       "my-org",
-      expect.objectContaining({ perPage: 100 })
+      expect.objectContaining({ perPage: 100 }),
     );
   });
 
   test("passes limit through as perPage when below API_MAX_PER_PAGE", async () => {
     const listPaginated = vi.fn(() =>
-      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined })
+      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
     );
     const config = makeConfig({ listPaginated });
 
@@ -362,7 +362,7 @@ describe("handleOrgAll", () => {
 
     expect(listPaginated).toHaveBeenCalledWith(
       "my-org",
-      expect.objectContaining({ perPage: 25 })
+      expect.objectContaining({ perPage: 25 }),
     );
   });
 
@@ -372,7 +372,7 @@ describe("handleOrgAll", () => {
         Promise.resolve({
           data: [{ id: "1", name: "A" }],
           nextCursor: undefined,
-        })
+        }),
       ),
     });
 
@@ -393,7 +393,7 @@ describe("handleOrgAll", () => {
   test("returns hint with 'no entities found' when empty", async () => {
     const config = makeConfig({
       listPaginated: vi.fn(() =>
-        Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined })
+        Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
       ),
     });
 
@@ -413,7 +413,7 @@ describe("handleOrgAll", () => {
   test("returns hint with next page info when more available", async () => {
     const config = makeConfig({
       listPaginated: vi.fn(() =>
-        Promise.resolve({ data: [{ id: "1", name: "A" }], nextCursor: "x" })
+        Promise.resolve({ data: [{ id: "1", name: "A" }], nextCursor: "x" }),
       ),
     });
 
@@ -436,7 +436,7 @@ describe("handleOrgAll", () => {
         Promise.resolve({
           data: [{ id: "1", name: "A" }],
           nextCursor: "cursor:abc",
-        })
+        }),
       ),
     });
 
@@ -453,7 +453,7 @@ describe("handleOrgAll", () => {
       "test-list",
       "ctx",
       "next",
-      "cursor:abc"
+      "cursor:abc",
     );
   });
 
@@ -463,7 +463,7 @@ describe("handleOrgAll", () => {
         Promise.resolve({
           data: [{ id: "1", name: "A" }],
           nextCursor: undefined,
-        })
+        }),
       ),
     });
 
@@ -480,7 +480,7 @@ describe("handleOrgAll", () => {
       "test-list",
       "ctx",
       "next",
-      undefined
+      undefined,
     );
   });
 
@@ -497,7 +497,7 @@ describe("handleOrgAll", () => {
           data,
           nextCursor: String(offset + opts.perPage),
         });
-      }
+      },
     );
     const config = makeConfig({ listPaginated });
 
@@ -599,7 +599,7 @@ describe("handleExplicitOrg", () => {
 describe("handleExplicitProject", () => {
   test("fetches and returns project-scoped entities", async () => {
     const listForProject = vi.fn(() =>
-      Promise.resolve([{ id: "1", name: "Team A" }])
+      Promise.resolve([{ id: "1", name: "Team A" }]),
     );
     const config = makeConfig({ listForProject });
 
@@ -624,7 +624,7 @@ describe("handleExplicitProject", () => {
         org: "my-org",
         project: "my-proj",
         flags: { limit: 10, json: false },
-      })
+      }),
     ).rejects.toThrow("listForProject is not defined");
   });
 
@@ -668,7 +668,7 @@ describe("handleProjectSearch", () => {
     await expect(
       handleProjectSearch(config, "no-such-project", {
         flags: { limit: 10, json: false },
-      })
+      }),
     ).rejects.toThrow(ResolutionError);
   });
 
@@ -691,7 +691,7 @@ describe("handleProjectSearch", () => {
       orgs: [],
     });
     const listForProject = vi.fn(() =>
-      Promise.resolve([{ id: "1", name: "Team A" }])
+      Promise.resolve([{ id: "1", name: "Team A" }]),
     );
     const config = makeConfig({ listForProject });
 
@@ -737,7 +737,7 @@ describe("handleProjectSearch", () => {
       orgs: [],
     });
     const listForOrg = vi.fn(() =>
-      Promise.resolve([{ id: "1", name: "Repo A" }])
+      Promise.resolve([{ id: "1", name: "Repo A" }]),
     );
     const config = makeConfig({ listForOrg });
 
@@ -758,7 +758,7 @@ describe("handleProjectSearch", () => {
       orgs: [],
     });
     const listForOrg = vi.fn(() =>
-      Promise.resolve([{ id: "1", name: "Repo A" }])
+      Promise.resolve([{ id: "1", name: "Repo A" }]),
     );
     const config = makeConfig({ listForOrg });
 
@@ -777,7 +777,7 @@ describe("handleProjectSearch", () => {
     });
     const config = makeConfig();
     const fallback = vi.fn(() =>
-      Promise.resolve({ items: [] } as ListResult<FakeWithOrg>)
+      Promise.resolve({ items: [] } as ListResult<FakeWithOrg>),
     );
 
     await handleProjectSearch(config, "acme-corp", {
@@ -798,7 +798,7 @@ describe("handleProjectSearch", () => {
     await expect(
       handleProjectSearch(config, "acme-corp", {
         flags: { limit: 10, json: false },
-      })
+      }),
     ).rejects.toThrow(ResolutionError);
   });
 
@@ -836,7 +836,7 @@ describe("handleProjectSearch", () => {
       ],
     });
     const listForOrg = vi.fn(() =>
-      Promise.resolve([{ id: "1", name: "Widget" }])
+      Promise.resolve([{ id: "1", name: "Widget" }]),
     );
     const config = makeConfig({ listForOrg });
 
@@ -906,7 +906,7 @@ describe("dispatchOrgScopedList", () => {
         cwd: "/tmp",
         flags: { limit: 10, json: false, cursor: "some-cursor" },
         parsed: { type: "explicit", org: "my-org", project: "my-proj" },
-      })
+      }),
     ).rejects.toThrow(ValidationError);
   });
 
@@ -933,7 +933,7 @@ describe("dispatchOrgScopedList", () => {
     const items: FakeEntity[] = [{ id: "1", name: "A" }];
     const config = makeConfig({
       listPaginated: vi.fn(() =>
-        Promise.resolve({ data: items, nextCursor: undefined })
+        Promise.resolve({ data: items, nextCursor: undefined }),
       ),
     });
     const { writer } = createStdout();
@@ -952,7 +952,7 @@ describe("dispatchOrgScopedList", () => {
 
   test("explicit mode uses listForProject when available", async () => {
     const listForProject = vi.fn(() =>
-      Promise.resolve([{ id: "1", name: "T" }])
+      Promise.resolve([{ id: "1", name: "T" }]),
     );
     const config = makeConfig({ listForProject });
     const { writer } = createStdout();
@@ -991,7 +991,7 @@ describe("dispatchOrgScopedList", () => {
     const config = makeConfig();
     const { writer } = createStdout();
     const overrideCalled = vi.fn(() =>
-      Promise.resolve({ items: [] } as ListResult<FakeWithOrg>)
+      Promise.resolve({ items: [] } as ListResult<FakeWithOrg>),
     );
 
     await dispatchOrgScopedList({
@@ -1012,12 +1012,12 @@ describe("dispatchOrgScopedList", () => {
     const items: FakeEntity[] = [{ id: "1", name: "A" }];
     const config = makeConfig({
       listPaginated: vi.fn(() =>
-        Promise.resolve({ data: items, nextCursor: undefined })
+        Promise.resolve({ data: items, nextCursor: undefined }),
       ),
     });
     const { writer } = createStdout();
     const autoDetectOverride = vi.fn(() =>
-      Promise.resolve({ items: [] } as ListResult<FakeWithOrg>)
+      Promise.resolve({ items: [] } as ListResult<FakeWithOrg>),
     );
 
     const result = await dispatchOrgScopedList({
@@ -1039,7 +1039,7 @@ describe("dispatchOrgScopedList", () => {
   test("metadata-only config with full overrides dispatches correctly", async () => {
     const { writer } = createStdout();
     const handler = vi.fn(() =>
-      Promise.resolve({ items: [] } as ListResult<unknown>)
+      Promise.resolve({ items: [] } as ListResult<unknown>),
     );
 
     await dispatchOrgScopedList({
@@ -1072,10 +1072,10 @@ describe("dispatchOrgScopedList", () => {
         overrides: {
           // missing auto-detect override — should throw
           explicit: vi.fn(() =>
-            Promise.resolve({ items: [] } as ListResult<unknown>)
+            Promise.resolve({ items: [] } as ListResult<unknown>),
           ),
         },
-      })
+      }),
     ).rejects.toThrow("No handler for 'auto-detect' mode");
   });
 
@@ -1103,7 +1103,7 @@ describe("dispatchOrgScopedList", () => {
       const items: FakeEntity[] = [{ id: "1", name: "Widget A" }];
       const config = makeConfig({
         listPaginated: vi.fn(() =>
-          Promise.resolve({ data: items, nextCursor: undefined })
+          Promise.resolve({ data: items, nextCursor: undefined }),
         ),
       });
 
@@ -1137,10 +1137,10 @@ describe("dispatchOrgScopedList", () => {
       });
 
       const projectHandler = vi.fn(() =>
-        Promise.resolve({ items: [] } as ListResult<FakeWithOrg>)
+        Promise.resolve({ items: [] } as ListResult<FakeWithOrg>),
       );
       const orgHandler = vi.fn(() =>
-        Promise.resolve({ items: [] } as ListResult<FakeWithOrg>)
+        Promise.resolve({ items: [] } as ListResult<FakeWithOrg>),
       );
 
       await dispatchOrgScopedList({
@@ -1170,7 +1170,7 @@ describe("dispatchOrgScopedList", () => {
               }),
             ],
           }),
-        })
+        }),
       );
     });
 
@@ -1188,7 +1188,7 @@ describe("dispatchOrgScopedList", () => {
           cwd: "/tmp",
           flags: { limit: 10, json: false, cursor: "next" },
           parsed: { type: "project-search", projectSlug: "missing" },
-        })
+        }),
       ).rejects.toThrow(ValidationError);
 
       expect(findProjectsBySlugMock).toHaveBeenCalledTimes(1);
@@ -1202,7 +1202,7 @@ describe("dispatchOrgScopedList", () => {
       });
 
       const handler = vi.fn(() =>
-        Promise.resolve({ items: [] } as ListResult<FakeWithOrg>)
+        Promise.resolve({ items: [] } as ListResult<FakeWithOrg>),
       );
 
       await dispatchOrgScopedList({

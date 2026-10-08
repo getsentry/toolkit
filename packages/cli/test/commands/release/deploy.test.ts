@@ -12,11 +12,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -26,11 +26,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryDeploy } from "../../../src/types/index.js";
 import { useTestConfigDir } from "../../helpers.js";
@@ -105,7 +105,7 @@ describe("release deploy", () => {
     expect(createRelaseDeploySpy).toHaveBeenCalledWith(
       "my-org",
       "1.0.0",
-      expect.objectContaining({ environment: "staging", name: "Deploy #42" })
+      expect.objectContaining({ environment: "staging", name: "Deploy #42" }),
     );
   });
 
@@ -119,7 +119,7 @@ describe("release deploy", () => {
       context,
       { url: "https://example.com", json: true },
       "1.0.0",
-      "production"
+      "production",
     );
 
     expect(createRelaseDeploySpy).toHaveBeenCalledWith(
@@ -128,7 +128,7 @@ describe("release deploy", () => {
       expect.objectContaining({
         environment: "production",
         url: "https://example.com",
-      })
+      }),
     );
   });
 
@@ -137,7 +137,7 @@ describe("release deploy", () => {
     const func = await deployCommand.loader();
 
     await expect(func.call(context, { json: false }, "1.0.0")).rejects.toThrow(
-      "Release version and environment"
+      "Release version and environment",
     );
   });
 
@@ -146,7 +146,7 @@ describe("release deploy", () => {
     const func = await deployCommand.loader();
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
-      "Release version and environment"
+      "Release version and environment",
     );
   });
 });

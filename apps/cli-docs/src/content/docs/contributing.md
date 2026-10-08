@@ -68,7 +68,7 @@ toolkit/
 │       │   │   ├── dsn/         # list
 │       │   │   ├── event/       # list, send, view
 │       │   │   ├── feedback/    # list, resolve, spam, unresolve, view
-│       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, unresolve, view
+│       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, unlink, unresolve, view
 │       │   │   ├── local/       # run, serve
 │       │   │   ├── log/         # list, view
 │       │   │   ├── monitor/     # list, run
@@ -92,6 +92,7 @@ toolkit/
 │       │   │   ├── help.ts      # Help command
 │       │   │   ├── info.ts      # Print configuration and verify authentication
 │       │   │   ├── init.ts      # Initialize Sentry in your project (experimental)
+│       │   │   ├── mcp.ts       # Start a local Sentry MCP server
 │       │   │   ├── schema.ts    # Browse the Sentry API schema
 │       │   │   └── wasm-split.ts# Add build ids to WebAssembly modules and split out debug data
 │       │   ├── lib/            # Shared utilities
@@ -137,7 +138,7 @@ pnpm run test -- --coverage
 
 ## Code Style
 
-The project uses [Ultracite](https://github.com/getsentry/ultracite) for linting and formatting:
+The project uses Oxlint and Oxfmt for linting and formatting:
 
 ```bash
 # Check for issues

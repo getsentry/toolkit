@@ -13,6 +13,7 @@
 import { redactCredentialText } from "./lib/credential-redaction.js";
 import { getEnv } from "./lib/env.js";
 import { CliError, formatError } from "./lib/errors.js";
+import { buildTopLevelFlags } from "./lib/global-flags.js";
 import { initTimezone } from "./lib/timezone.js";
 
 /**
@@ -51,7 +52,7 @@ async function preloadProjectContext(cwd: string): Promise<void> {
   // Apply persistent URL default (lower priority than env vars and .sentryclirc).
   const env = getEnv();
   if (!(env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim())) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       const { getDefaultUrl } = await import("./lib/db/defaults.js");
       const url = getDefaultUrl();
@@ -172,15 +173,14 @@ function isUnknownCommandExit(unknownCode: number): boolean {
 async function recoverUnknownCommandHelp(
   cliArgs: string[],
   executor: (argv: string[]) => Promise<void>,
-  unknownCode: number
+  unknownCode: number,
 ): Promise<void> {
   if (!isUnknownCommandExit(unknownCode) || cliArgs[0] === "help") {
     return;
   }
 
-  const { isVersionRequest, rewriteHelpJsonToHelpCommand } = await import(
-    "./lib/help.js"
-  );
+  const { isVersionRequest, rewriteHelpJsonToHelpCommand } =
+    await import("./lib/help.js");
 
   if (isVersionRequest(cliArgs)) {
     process.exitCode = 0;
@@ -202,8 +202,8 @@ async function recoverUnknownCommandHelp(
     const { warning } = await import("./lib/formatters/colors.js");
     process.stderr.write(
       warning(
-        `Tip: use --help for help (e.g., sentry ${groupArgs.join(" ")} --help)\n`
-      )
+        `Tip: use --help for help (e.g., sentry ${groupArgs.join(" ")} --help)\n`,
+      ),
     );
     await executor(["help", ...groupArgs]);
   }
@@ -226,8 +226,85 @@ async function recoverUnknownCommandHelp(
  */
 type ErrorMiddleware = (
   proceed: (cmdInput: string[]) => Promise<void>,
-  retryArgs: string[]
+  retryArgs: string[],
 ) => Promise<void>;
+
+/**
+ * Return MCP's arguments when it is the command after leading global flags.
+ *
+ * MCP owns stdout for JSON-RPC, so CLI-level output flags are deliberately
+ * ignored before it starts. Flags after `mcp` belong to the MCP server.
+ */
+function skipLeadingGlobalFlag(
+  cliArgs: readonly string[],
+  index: number,
+): number | undefined {
+  const { booleanFlags, valueFlags } = buildTopLevelFlags();
+  const token = cliArgs[index] ?? "";
+  const flag = token.split("=", 1)[0] ?? token;
+
+  if (booleanFlags.has(flag)) {
+    return index + 1;
+  }
+  if (!valueFlags.has(flag)) {
+    return;
+  }
+  return token.includes("=") || cliArgs[index + 1] === undefined
+    ? index + 1
+    : index + 2;
+}
+
+export function getMcpArgs(cliArgs: readonly string[]): string[] | undefined {
+  for (let index = 0; index < cliArgs.length;) {
+    const token = cliArgs[index] ?? "";
+    if (token === "--") {
+      return;
+    }
+    if (!token.startsWith("-")) {
+      return token === "mcp" ? cliArgs.slice(index + 1) : undefined;
+    }
+
+    const nextIndex = skipLeadingGlobalFlag(cliArgs, index);
+    if (nextIndex === undefined) {
+      return;
+    }
+    index = nextIndex;
+  }
+
+  return;
+}
+
+/** Run MCP and return whether the current invocation was handled by it. */
+export async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
+  const mcpArgs = getMcpArgs(cliArgs);
+  if (!mcpArgs) {
+    return false;
+  }
+
+  const [{ startMcpServer }, { getExitCode }] = await Promise.all([
+    import("./lib/mcp.js"),
+    import("./lib/errors.js"),
+  ]);
+
+  try {
+    await startMcpServer(mcpArgs);
+  } catch (mcpError) {
+    process.stderr.write(`${formatError(mcpError)}\n`);
+    process.exitCode = getExitCode(mcpError);
+    // MCP setup errors are terminal, unlike a running stdio server. Clean up
+    // network resources only on this error path so successful servers retain
+    // their dispatcher and are not force-exited on macOS.
+    const [{ scheduleForceExit }, { closeGlobalDispatcher }] =
+      await Promise.all([
+        import("./lib/force-exit.js"),
+        import("./lib/close-dispatcher.js"),
+      ]);
+    scheduleForceExit();
+    await closeGlobalDispatcher();
+  }
+
+  return true;
+}
 
 /**
  * Full CLI execution with telemetry, middleware, and error recovery.
@@ -236,22 +313,24 @@ type ErrorMiddleware = (
  * `__complete` fast-path can skip them entirely.
  */
 export async function runCli(cliArgs: string[]): Promise<void> {
+  if (await runMcpCommand(cliArgs)) {
+    return;
+  }
+
   const { isatty } = await import("node:tty");
   const { ExitCode, run } = await import("@stricli/core");
   const { app } = await import("./app.js");
   const { buildContext } = await import("./context.js");
-  const { AuthError, OutputError, getExitCode } = await import(
-    "./lib/errors.js"
-  );
+  const { AuthError, OutputError, getExitCode } =
+    await import("./lib/errors.js");
   const { error } = await import("./lib/formatters/colors.js");
   const { runInteractiveLogin } = await import("./lib/interactive-login.js");
   const { recoverWithAutoLogin } = await import("./lib/auto-auth.js");
   const { getEnvLogLevel, setLogLevel } = await import("./lib/logger.js");
   const { scheduleForceExit } = await import("./lib/force-exit.js");
   const { closeGlobalDispatcher } = await import("./lib/close-dispatcher.js");
-  const { isTrialEligible, promptAndStartTrial } = await import(
-    "./lib/seer-trial.js"
-  );
+  const { isTrialEligible, promptAndStartTrial } =
+    await import("./lib/seer-trial.js");
   const { withTelemetry } = await import("./lib/telemetry.js");
   const { startCleanupOldBinary } = await import("./lib/upgrade.js");
   const {
@@ -285,9 +364,9 @@ export async function runCli(cliArgs: string[]): Promise<void> {
     } catch (err) {
       if (isTrialEligible(err)) {
         const started = await promptAndStartTrial(
-          // biome-ignore lint/style/noNonNullAssertion: isTrialEligible guarantees orgSlug is defined
+          // oxlint-disable-next-line typescript/no-non-null-assertion -- isTrialEligible guarantees orgSlug is defined
           err.orgSlug!,
-          err.reason
+          err.reason,
         );
 
         if (started) {
@@ -345,14 +424,13 @@ export async function runCli(cliArgs: string[]): Promise<void> {
     const source = plan.sources.find((s) => s.token)?.path ?? "~/.sentryclirc";
     process.stderr.write(
       `\nFound auth token in ${source}\n` +
-        "Import settings to the new CLI? This stores your token with proper host scoping.\n\n"
+        "Import settings to the new CLI? This stores your token with proper host scoping.\n\n",
     );
 
     const consent = await promptImportConsent();
     if (consent === "declined") {
-      const { markImportDeclined } = await import(
-        "./lib/sentryclirc-import.js"
-      );
+      const { markImportDeclined } =
+        await import("./lib/sentryclirc-import.js");
       markImportDeclined(plan.sources);
       return "declined";
     }
@@ -503,7 +581,7 @@ export async function runCli(cliArgs: string[]): Promise<void> {
           return;
         }
         // Best-effort: telemetry must never crash the CLI
-        // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+        // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
         try {
           await reportUnknownCommand(argv);
         } catch {
@@ -553,7 +631,7 @@ export async function runCli(cliArgs: string[]): Promise<void> {
     const pathSegments = argv.filter((t) => !t.startsWith("-"));
     const resolved = resolveCommandPath(
       routes as unknown as Parameters<typeof resolveCommandPath>[0],
-      pathSegments
+      pathSegments,
     );
     const unknownToken =
       resolved?.kind === "unresolved" ? resolved.input : (argv.at(-1) ?? "");

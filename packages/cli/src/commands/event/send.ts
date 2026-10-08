@@ -52,7 +52,7 @@ function formatSendEventHuman(result: SendEventResult): string {
 async function buildFilePayload(
   file: string,
   raw: boolean,
-  dsnComponents: DsnComponents
+  dsnComponents: DsnComponents,
 ): Promise<{ body: string | Uint8Array; eventId: string }> {
   const bytes = await readFileBytes(file);
 
@@ -75,7 +75,7 @@ async function buildFilePayload(
   } catch (err) {
     throw new ValidationError(
       `Failed to parse JSON from ${file}: ${(err as Error).message}`,
-      "path"
+      "path",
     );
   }
 
@@ -86,7 +86,7 @@ async function buildFilePayload(
   } catch (err) {
     throw new ValidationError(
       `Failed to create envelope from ${file}: ${(err as Error).message}`,
-      "path"
+      "path",
     );
   }
   return { body, eventId: event.event_id ?? "" };
@@ -303,7 +303,7 @@ built entirely from the file contents.
         const { body, eventId } = await buildFilePayload(
           file,
           flags.raw ?? false,
-          dsnComponents
+          dsnComponents,
         );
         await sendEnvelopeRequest(dsn, body);
         yield new CommandOutput<SendEventResult>({ eventId, file });
@@ -312,13 +312,13 @@ built entirely from the file contents.
       if (flags.raw) {
         throw new ValidationError(
           "--raw requires a file argument (raw bytes cannot be built from inline flags)",
-          "raw"
+          "raw",
         );
       }
       if (!flags.message?.length) {
         throw new ConfigError(
           "Provide a message via -m/--message or a JSON event file as a positional argument.",
-          "sentry event send -m 'My message'"
+          "sentry event send -m 'My message'",
         );
       }
       const event = await buildEventFromFlags(flags);
@@ -329,7 +329,7 @@ built entirely from the file contents.
       } catch (err) {
         throw new ValidationError(
           `Failed to create event envelope: ${(err as Error).message}`,
-          "event"
+          "event",
         );
       }
       await sendEnvelopeRequest(dsn, body);

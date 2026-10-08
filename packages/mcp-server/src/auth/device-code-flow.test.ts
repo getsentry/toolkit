@@ -154,6 +154,29 @@ describe("pollForToken", () => {
     ).rejects.toThrow(/expired/);
   });
 
+  it("reports an unexpected token error without retrying", async () => {
+    const fetchMock = vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "invalid_grant" }), {
+        status: 400,
+      }),
+    );
+
+    await expect(
+      pollForToken({
+        deviceCode: "test-device-code",
+        clientId: "test-client-id",
+        host: "sentry.io",
+        interval: 0.01,
+        expiresIn: 10,
+      }),
+    ).rejects.toMatchObject({
+      name: "DeviceCodeError",
+      code: "invalid_grant",
+      message: "Unexpected error during device code polling: invalid_grant",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("increases interval on slow_down", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.mocked(fetch);

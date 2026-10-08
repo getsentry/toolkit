@@ -47,7 +47,7 @@ describe("getBinaryDownloadUrl", () => {
 
     expect(url).toContain("/cli@1.0.0/");
     expect(url).toStartWith(
-      "https://github.com/getsentry/toolkit/releases/download/"
+      "https://github.com/getsentry/toolkit/releases/download/",
     );
     expect(url).toContain("sentry-");
 
@@ -117,7 +117,7 @@ describe("resolveUpgradeSource", () => {
           requests.length === 1
             ? "Not Found"
             : JSON.stringify({ tag_name: "0.45.0" }),
-          { status: requests.length === 1 ? 404 : 200 }
+          { status: requests.length === 1 ? 404 : 200 },
         );
       },
     });
@@ -129,25 +129,26 @@ describe("resolveUpgradeSource", () => {
     ]);
   });
 
-  test.each([
-    401, 403, 429, 500,
-  ])("does not fall back on HTTP %i", async (status) => {
-    const requests: string[] = [];
+  test.each([401, 403, 429, 500])(
+    "does not fall back on HTTP %i",
+    async (status) => {
+      const requests: string[] = [];
 
-    await expect(
-      resolveUpgradeSource({
-        getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
-        fetch: async (url) => {
-          requests.push(String(url));
-          return new Response("failure", { status });
-        },
-      })
-    ).rejects.toThrow(`HTTP ${status}`);
+      await expect(
+        resolveUpgradeSource({
+          getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
+          fetch: async (url) => {
+            requests.push(String(url));
+            return new Response("failure", { status });
+          },
+        }),
+      ).rejects.toThrow(`HTTP ${status}`);
 
-    expect(requests).toEqual([
-      "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.45.0",
-    ]);
-  });
+      expect(requests).toEqual([
+        "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%400.45.0",
+      ]);
+    },
+  );
 
   test("does not fall back on a network failure", async () => {
     const requests: string[] = [];
@@ -159,7 +160,7 @@ describe("resolveUpgradeSource", () => {
           requests.push(String(url));
           throw new TypeError("fetch failed");
         },
-      })
+      }),
     ).rejects.toThrow("Failed to connect to GitHub: fetch failed");
 
     expect(requests).toEqual([
@@ -210,13 +211,13 @@ describe("getBinaryPaths", () => {
 describe("samePath", () => {
   test("matches identical paths", () => {
     expect(samePath("/home/user/.local/bin", "/home/user/.local/bin")).toBe(
-      true
+      true,
     );
   });
 
   test("distinguishes genuinely different paths", () => {
     expect(samePath("/home/user/.local/bin", "/home/user/.sentry/bin")).toBe(
-      false
+      false,
     );
   });
 
@@ -259,7 +260,7 @@ describe("determineInstallDir", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `binary-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `binary-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
   });
@@ -433,7 +434,7 @@ describe("fetchWithUpgradeError", () => {
     const response = await fetchWithUpgradeError(
       "https://example.com",
       {},
-      "Test"
+      "Test",
     );
     expect(response.status).toBe(200);
   });
@@ -487,7 +488,7 @@ describe("fetchWithUpgradeError", () => {
 
   test("wraps non-Error thrown values as UpgradeError", async () => {
     globalThis.fetch = (async () => {
-      // biome-ignore lint/style/useThrowOnlyError: intentionally testing non-Error throw
+      // intentionally testing non-Error throw
       throw { code: "ECONNRESET", reason: "connection reset" };
     }) as typeof globalThis.fetch;
 
@@ -512,7 +513,7 @@ describe("parseUpgradeJson", () => {
     };
 
     await expect(
-      parseUpgradeJson(response, controller.signal, "invalid metadata")
+      parseUpgradeJson(response, controller.signal, "invalid metadata"),
     ).rejects.toBe(reason);
   });
 
@@ -523,7 +524,7 @@ describe("parseUpgradeJson", () => {
     };
 
     await expect(
-      parseUpgradeJson(response, undefined, "invalid metadata")
+      parseUpgradeJson(response, undefined, "invalid metadata"),
     ).rejects.toMatchObject({
       name: "UpgradeTransportError",
       reason: "network_error",
@@ -534,7 +535,7 @@ describe("parseUpgradeJson", () => {
     const response = new Response("not json");
 
     await expect(
-      parseUpgradeJson(response, undefined, "invalid metadata")
+      parseUpgradeJson(response, undefined, "invalid metadata"),
     ).rejects.toMatchObject({
       name: "UpgradeError",
       reason: "network_error",
@@ -549,7 +550,7 @@ describe("replaceBinarySync", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `replace-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `replace-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
   });
@@ -579,8 +580,8 @@ describe("replaceBinarySync", () => {
     expect(
       await access(tempPath).then(
         () => true,
-        () => false
-      )
+        () => false,
+      ),
     ).toBe(false);
   });
 
@@ -608,7 +609,7 @@ describe("installBinary", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `binary-install-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `binary-install-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     sourceDir = join(testDir, "source");
     installDir = join(testDir, "install");
@@ -631,8 +632,8 @@ describe("installBinary", () => {
     expect(
       await access(result).then(
         () => true,
-        () => false
-      )
+        () => false,
+      ),
     ).toBe(true);
 
     const installed = await readFile(result);
@@ -651,8 +652,8 @@ describe("installBinary", () => {
     expect(
       await access(result).then(
         () => true,
-        () => false
-      )
+        () => false,
+      ),
     ).toBe(true);
   });
 
@@ -667,8 +668,8 @@ describe("installBinary", () => {
     expect(
       await access(lockPath).then(
         () => true,
-        () => false
-      )
+        () => false,
+      ),
     ).toBe(false);
   });
 
@@ -683,8 +684,8 @@ describe("installBinary", () => {
     expect(
       await access(tempPath).then(
         () => true,
-        () => false
-      )
+        () => false,
+      ),
     ).toBe(false);
   });
 
@@ -757,7 +758,7 @@ describe("acquireLock", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `lock-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `lock-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
   });
@@ -819,7 +820,7 @@ describe("acquireLock", () => {
     writeFileSync(lockPath, "1");
 
     expect(() => acquireLock(lockPath)).toThrow(
-      "Another upgrade is already in progress"
+      "Another upgrade is already in progress",
     );
   });
 
@@ -867,19 +868,19 @@ describe("compareVersions", () => {
 
   test("nightly: later timestamp > earlier timestamp", () => {
     expect(
-      compareVersions("0.14.0-dev.1772732047", "0.14.0-dev.1772724107")
+      compareVersions("0.14.0-dev.1772732047", "0.14.0-dev.1772724107"),
     ).toBe(1);
   });
 
   test("nightly: earlier timestamp < later timestamp", () => {
     expect(
-      compareVersions("0.14.0-dev.1772724107", "0.14.0-dev.1772732047")
+      compareVersions("0.14.0-dev.1772724107", "0.14.0-dev.1772732047"),
     ).toBe(-1);
   });
 
   test("nightly: equal", () => {
     expect(
-      compareVersions("0.14.0-dev.1772724107", "0.14.0-dev.1772724107")
+      compareVersions("0.14.0-dev.1772724107", "0.14.0-dev.1772724107"),
     ).toBe(0);
   });
 
@@ -903,13 +904,13 @@ describe("isDowngrade", () => {
 
   test("returns true when target is older nightly (earlier timestamp)", () => {
     expect(isDowngrade("0.14.0-dev.1772732047", "0.14.0-dev.1772724107")).toBe(
-      true
+      true,
     );
   });
 
   test("returns false when target is newer nightly (later timestamp)", () => {
     expect(isDowngrade("0.14.0-dev.1772724107", "0.14.0-dev.1772732047")).toBe(
-      false
+      false,
     );
   });
 });

@@ -38,7 +38,7 @@ describe("agent-skills", () => {
     beforeEach(() => {
       testDir = join(
         "/tmp",
-        `agent-skills-detect-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        `agent-skills-detect-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       mkdirSync(testDir, { recursive: true });
     });
@@ -75,7 +75,7 @@ describe("agent-skills", () => {
     beforeEach(() => {
       testDir = join(
         "/tmp",
-        `agent-skills-install-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        `agent-skills-install-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       mkdirSync(testDir, { recursive: true });
     });
@@ -113,7 +113,7 @@ describe("agent-skills", () => {
       expect(result).not.toBeNull();
       expect(result!.created).toBe(true);
       expect(result!.path).toBe(
-        join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md")
+        join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"),
       );
       expect(existsSync(result!.path)).toBe(true);
 
@@ -126,13 +126,15 @@ describe("agent-skills", () => {
         ".agents",
         "skills",
         "sentry-cli",
-        "references"
+        "references",
       );
       expect(existsSync(refsDir)).toBe(true);
       expect(existsSync(join(refsDir, "issue.md"))).toBe(true);
 
       expect(
-        existsSync(join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(false);
     });
 
@@ -151,7 +153,7 @@ describe("agent-skills", () => {
         .mock.calls.map((call) => String(call[0]));
       expect(writeTargets.length).toBeGreaterThan(0);
       expect(writeTargets.every((target) => target.endsWith(".tmp"))).toBe(
-        true
+        true,
       );
 
       const renameDestinations = vi
@@ -183,7 +185,7 @@ describe("agent-skills", () => {
       // branch in atomicWriteFile (rm of the temp) and the null-returning
       // failure handler in writeSkillFiles.
       vi.mocked(rename).mockRejectedValueOnce(
-        new Error("simulated rename failure")
+        new Error("simulated rename failure"),
       );
 
       const result = await installAgentSkills(testDir);
@@ -195,7 +197,7 @@ describe("agent-skills", () => {
 
       const skillDir = join(testDir, ".agents", "skills", "sentry-cli");
       const leftovers = readdirSync(skillDir).filter((name) =>
-        name.endsWith(".tmp")
+        name.endsWith(".tmp"),
       );
       expect(leftovers).toEqual([]);
       expect(existsSync(join(skillDir, "SKILL.md"))).toBe(false);
@@ -225,13 +227,17 @@ describe("agent-skills", () => {
 
       expect(result).not.toBeNull();
       expect(result!.path).toBe(
-        join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md")
+        join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"),
       );
       expect(
-        existsSync(join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(true);
       expect(
-        existsSync(join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(true);
       expect(
         existsSync(
@@ -241,9 +247,9 @@ describe("agent-skills", () => {
             "skills",
             "sentry-cli",
             "references",
-            "issue.md"
-          )
-        )
+            "issue.md",
+          ),
+        ),
       ).toBe(true);
       expect(
         existsSync(
@@ -253,9 +259,9 @@ describe("agent-skills", () => {
             "skills",
             "sentry-cli",
             "references",
-            "issue.md"
-          )
-        )
+            "issue.md",
+          ),
+        ),
       ).toBe(true);
     });
 
@@ -276,7 +282,7 @@ describe("agent-skills", () => {
       const first = await installAgentSkills(testDir);
       expect(first!.created).toBe(true);
       expect(first!.path).toBe(
-        join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md")
+        join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"),
       );
 
       mkdirSync(join(testDir, ".claude"), { recursive: true });
@@ -285,7 +291,7 @@ describe("agent-skills", () => {
       expect(second).not.toBeNull();
       expect(second!.created).toBe(true);
       expect(second!.path).toBe(
-        join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md")
+        join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"),
       );
     });
 
@@ -297,11 +303,13 @@ describe("agent-skills", () => {
       const result = await installAgentSkills(testDir);
       expect(result).not.toBeNull();
       expect(result!.path).toBe(
-        join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md")
+        join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"),
       );
       expect(existsSync(result!.path)).toBe(true);
       expect(
-        existsSync(join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(false);
     });
 
@@ -313,11 +321,13 @@ describe("agent-skills", () => {
       const result = await installAgentSkills(testDir);
       expect(result).not.toBeNull();
       expect(result!.path).toBe(
-        join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md")
+        join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"),
       );
       expect(existsSync(result!.path)).toBe(true);
       expect(
-        existsSync(join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(false);
     });
 

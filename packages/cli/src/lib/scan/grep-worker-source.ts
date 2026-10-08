@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const GREP_WORKER_SOURCE = readFileSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "grep-worker.js"),
-  "utf-8"
+  "utf-8",
 );
 
 export default GREP_WORKER_SOURCE;

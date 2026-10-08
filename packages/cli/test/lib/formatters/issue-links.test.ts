@@ -33,6 +33,22 @@ describe("formatIssueLinkResult", () => {
       { action: "link", linked: true, changed: false },
       `Already linked: ${URL}.`,
     ],
+    [
+      { action: "unlink", linked: true, changed: false, dryRun: true },
+      `Would unlink ${URL} from test-org/123. (dry run)`,
+    ],
+    [
+      { action: "unlink", linked: false, changed: false, dryRun: true },
+      `Already unlinked: ${URL}. (dry run)`,
+    ],
+    [
+      { action: "unlink", linked: false, changed: true },
+      `Unlinked ${URL} from test-org/123. The external issue was not deleted.`,
+    ],
+    [
+      { action: "unlink", linked: false, changed: false },
+      `Already unlinked: ${URL}.`,
+    ],
   ] as const)("renders %j", (state, expected) => {
     const result: ExternalIssueLinkResult = {
       org: "test-org",

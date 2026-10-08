@@ -150,7 +150,7 @@ export function formatEventsHuman(result: EventsResult): string {
  */
 export function jsonTransformEvents(
   result: EventsResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const items =
     fields && fields.length > 0
@@ -179,7 +179,7 @@ export function jsonTransformEvents(
 /** Append active non-default flags to a base command string. */
 export function appendEventsFlags(
   base: string,
-  flags: Pick<EventsFlags, "query" | "full" | "period">
+  flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
   const parts: string[] = [];
   if (flags.query) {

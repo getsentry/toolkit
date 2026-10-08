@@ -16,6 +16,7 @@ import {
   buildCommandInfo,
   extractAllRoutes,
   extractFlags,
+  extractPositionals,
   extractRouteGroupCommands,
   getPositionalString,
   isCommand,
@@ -40,7 +41,7 @@ function makeCommand(overrides: Partial<Command> = {}): Command {
 
 function makeRouteMap(
   entries: RouteMapEntry[],
-  overrides: Partial<RouteMap> = {}
+  overrides: Partial<RouteMap> = {},
 ): RouteMap {
   return {
     brief: "Test route",
@@ -52,7 +53,7 @@ function makeRouteMap(
 function makeEntry(
   name: string,
   target: RouteMap | Command,
-  hidden = false
+  hidden = false,
 ): RouteMapEntry {
   return {
     name: { original: name },
@@ -114,6 +115,18 @@ describe("getPositionalString", () => {
     expect(result).toBe("<arg0> <arg1>");
   });
 
+  test("distinguishes optional tuple arguments from required ones", () => {
+    expect(
+      getPositionalString({
+        kind: "tuple",
+        parameters: [
+          { placeholder: "target" },
+          { placeholder: "org", optional: true },
+        ],
+      }),
+    ).toBe("<target> [<org>]");
+  });
+
   test("returns array placeholder with ellipsis", () => {
     const result = getPositionalString({
       kind: "array",
@@ -128,6 +141,29 @@ describe("getPositionalString", () => {
       parameter: {},
     });
     expect(result).toBe("<args...>");
+  });
+});
+
+describe("extractPositionals", () => {
+  test("keeps arrays required and variadic even when the parser accepts zero", () => {
+    expect(
+      extractPositionals({
+        kind: "array",
+        parameter: { placeholder: "issue" },
+      }),
+    ).toEqual([
+      { placeholder: "issue", brief: "", optional: false, variadic: true },
+    ]);
+  });
+  test("preserves optional tuple arguments", () => {
+    expect(
+      extractPositionals({
+        kind: "tuple",
+        parameters: [{ placeholder: "org", optional: true }],
+      }),
+    ).toEqual([
+      { placeholder: "org", brief: "", optional: true, variadic: false },
+    ]);
   });
 });
 
@@ -247,6 +283,12 @@ describe("buildCommandInfo", () => {
 
     const info = buildCommandInfo(cmd, "sentry project create");
     expect(info.positional).toBe("<name>:<kind>...");
+    expect(info.positionals[0]).toMatchObject({
+      placeholder: "name:kind",
+      optional: false,
+      variadic: true,
+      syntax: "<name>:<kind>...",
+    });
   });
 });
 
@@ -299,7 +341,7 @@ describe("extractAllRoutes", () => {
 
     const issueRoute = makeRouteMap(
       [makeEntry("list", listCmd), makeEntry("view", viewCmd)],
-      { brief: "Manage issues" }
+      { brief: "Manage issues" },
     );
 
     const topLevel = makeRouteMap([
@@ -347,7 +389,7 @@ describe("resolveCommandPath", () => {
 
   const issueRoute = makeRouteMap(
     [makeEntry("list", listCmd), makeEntry("view", viewCmd)],
-    { brief: "Manage issues" }
+    { brief: "Manage issues" },
   );
 
   const topLevel = makeRouteMap([
@@ -413,7 +455,7 @@ describe("resolveCommandPath", () => {
   test("returns null for extra path segments beyond 2 levels", () => {
     expect(resolveCommandPath(topLevel, ["issue", "list", "extra"])).toBeNull();
     expect(
-      resolveCommandPath(topLevel, ["issue", "list", "extra", "more"])
+      resolveCommandPath(topLevel, ["issue", "list", "extra", "more"]),
     ).toBeNull();
   });
 

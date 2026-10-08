@@ -151,7 +151,7 @@ function resolveOfflineTarget(versionArg: string | undefined): string {
   if (!latestVersion) {
     throw new UpgradeError(
       "network_error",
-      "No cached version available. Run any command to trigger a background version check, then retry."
+      "No cached version available. Run any command to trigger a background version check, then retry.",
     );
   }
   return latestVersion;
@@ -193,7 +193,7 @@ async function resolveTargetWithFallback(opts: {
       throw new UpgradeError(
         "unsupported_operation",
         "Cannot switch channels in offline mode — the cached version belongs to the current channel. " +
-          "Run 'sentry cli upgrade' with network access to switch channels."
+          "Run 'sentry cli upgrade' with network access to switch channels.",
       );
     }
     // Read the cached version BEFORE persisting the channel — setReleaseChannel
@@ -244,7 +244,7 @@ async function resolveTargetWithFallback(opts: {
 function validateMethod(
   method: InstallationMethod,
   versionArg: string | undefined,
-  offline: boolean
+  offline: boolean,
 ): void {
   if (method === "unknown") {
     throw new UpgradeError("unknown_method");
@@ -257,7 +257,7 @@ function validateMethod(
   if (method === "brew" && pinnedVersion && !isNightlyVersion(pinnedVersion)) {
     throw new UpgradeError(
       "unsupported_operation",
-      "Homebrew does not support installing a specific version. Run 'brew upgrade getsentry/tools/sentry' to upgrade to the latest formula version."
+      "Homebrew does not support installing a specific version. Run 'brew upgrade getsentry/tools/sentry' to upgrade to the latest formula version.",
     );
   }
   // Offline mode is only supported for curl-installed binaries — package
@@ -265,7 +265,7 @@ function validateMethod(
   if (offline && method !== "curl") {
     throw new UpgradeError(
       "unsupported_operation",
-      "Offline upgrade is only supported for curl-installed binaries."
+      "Offline upgrade is only supported for curl-installed binaries.",
     );
   }
 }
@@ -295,13 +295,13 @@ type ResolveResult =
 
 async function resolvePinnedVersion(
   lookupMethod: InstallationMethod,
-  target: string
+  target: string,
 ): Promise<UpgradeSource | undefined> {
   if (lookupMethod !== "curl") {
     if (!(await versionExists(lookupMethod, target))) {
       throw new UpgradeError(
         "version_not_found",
-        `Version ${target} not found`
+        `Version ${target} not found`,
       );
     }
     return;
@@ -320,7 +320,7 @@ async function resolvePinnedVersion(
  *   or return a completed result immediately.
  */
 async function resolveTargetVersion(
-  opts: ResolveTargetOptions
+  opts: ResolveTargetOptions,
 ): Promise<ResolveResult> {
   const { method, channel, versionArg, channelChanged, flags } = opts;
   const standalone =
@@ -479,7 +479,7 @@ export function isEnoentSpawnError(error: unknown): boolean {
 async function spawnWithRetry(
   binaryPath: string,
   args: string[],
-  env: NodeJS.ProcessEnv | undefined
+  env: NodeJS.ProcessEnv | undefined,
 ): Promise<number> {
   for (let attempt = 1; attempt <= SPAWN_MAX_ATTEMPTS; attempt++) {
     try {
@@ -498,8 +498,8 @@ async function spawnWithRetry(
                 "execution_failed",
                 "Downloaded binary was killed by the operating system (SIGKILL). " +
                   "This usually means the binary has an invalid code signature. " +
-                  "Try reinstalling: curl -sL https://sentry.io/get-cli/ | bash"
-              )
+                  "Try reinstalling: curl -sL https://sentry.io/get-cli/ | bash",
+              ),
             );
             return;
           }
@@ -520,7 +520,7 @@ async function spawnWithRetry(
         throw new UpgradeError(
           "execution_failed",
           `Downloaded binary not found at ${binaryPath}. ` +
-            "The download may have been interrupted — rerun `sentry cli upgrade`."
+            "The download may have been interrupted — rerun `sentry cli upgrade`.",
         );
       }
       if (!isEbusyError(error) || attempt === SPAWN_MAX_ATTEMPTS) {
@@ -528,7 +528,7 @@ async function spawnWithRetry(
       }
       const delay = attempt * SPAWN_RETRY_BASE_MS;
       log.warn(
-        `Binary is locked (antivirus scan?), retrying in ${delay}ms... (attempt ${attempt}/${SPAWN_MAX_ATTEMPTS})`
+        `Binary is locked (antivirus scan?), retrying in ${delay}ms... (attempt ${attempt}/${SPAWN_MAX_ATTEMPTS})`,
       );
       await setTimeout(delay);
     }
@@ -605,7 +605,7 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
   if (exitCode !== 0) {
     throw new UpgradeError(
       "execution_failed",
-      `Setup failed with exit code ${exitCode}`
+      `Setup failed with exit code ${exitCode}`,
     );
   }
 }
@@ -613,7 +613,7 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
 function resolveUpdatedCliPath(
   execPath: string,
   entryPath: string | undefined,
-  pathEnv: string | undefined
+  pathEnv: string | undefined,
 ): string {
   return whichSync("sentry", { PATH: pathEnv }) ?? entryPath ?? execPath;
 }
@@ -634,7 +634,7 @@ function resolveUpdatedCliPath(
  */
 export function resolveUpgradeInstallDir(
   currentInstallDir: string,
-  pathEnv: string | undefined
+  pathEnv: string | undefined,
 ): string {
   const legacyBinDir = join(homedir(), LEGACY_INSTALL_SUBDIR);
   if (!samePath(currentInstallDir, legacyBinDir)) {
@@ -692,12 +692,12 @@ async function executeStandardUpgrade(opts: {
   const downloadResult = await withProgress(
     { message: `Downloading ${target}...`, json },
     async (setMessage) =>
-      executeUpgrade(method, target, downloadTag, offline, setMessage, source)
+      executeUpgrade(method, target, downloadTag, offline, setMessage, source),
   );
 
   if (downloadResult?.patchBytes) {
     log.info(
-      `Applied delta patch (${formatBytes(downloadResult.patchBytes)} downloaded)`
+      `Applied delta patch (${formatBytes(downloadResult.patchBytes)} downloaded)`,
     );
   }
 
@@ -780,19 +780,26 @@ async function migrateToStandaloneForNightly(opts: {
   const downloadResult = await withProgress(
     { message: `Downloading ${target}...`, json },
     async (setMessage) =>
-      executeUpgrade("curl", target, downloadTag, undefined, setMessage, source)
+      executeUpgrade(
+        "curl",
+        target,
+        downloadTag,
+        undefined,
+        setMessage,
+        source,
+      ),
   );
 
   if (downloadResult?.patchBytes) {
     log.info(
-      `Applied delta patch (${formatBytes(downloadResult.patchBytes)} downloaded)`
+      `Applied delta patch (${formatBytes(downloadResult.patchBytes)} downloaded)`,
     );
   }
 
   if (!downloadResult) {
     throw new UpgradeError(
       "execution_failed",
-      "Failed to download nightly binary"
+      "Failed to download nightly binary",
     );
   }
 
@@ -824,7 +831,7 @@ async function migrateToStandaloneForNightly(opts: {
   };
   const warnings: string[] = [];
   warnings.push(
-    `Your ${method}-installed sentry may still appear earlier in PATH.`
+    `Your ${method}-installed sentry may still appear earlier in PATH.`,
   );
   const hint = uninstallHints[method];
   if (hint) {
@@ -836,11 +843,11 @@ async function migrateToStandaloneForNightly(opts: {
 /**
  * Resolve the channel, version arg, method, and channel-changed flag from
  * the positional version argument and flags. Extracted to keep `func()`
- * complexity under the biome limit.
+ * complexity manageable.
  */
 async function resolveContext(
   version: string | undefined,
-  flags: UpgradeFlags
+  flags: UpgradeFlags,
 ): Promise<{
   channel: ReleaseChannel;
   versionArg: string | undefined;
@@ -865,7 +872,7 @@ async function resolveContext(
 function persistChannel(
   channel: ReleaseChannel,
   channelChanged: boolean,
-  version: string | undefined
+  version: string | undefined,
 ): void {
   if (channelChanged || CHANNEL_VERSIONS.has(version ?? "")) {
     setReleaseChannel(channel);
@@ -1004,7 +1011,7 @@ export const upgradeCommand = buildCommand({
           method,
           persistChannelFn: () =>
             persistChannel(channel, channelChanged, version),
-        })
+        }),
     );
     // Early exit for check-only (online) and up-to-date results.
     if (resolved.kind === "done") {
@@ -1048,7 +1055,7 @@ export const upgradeCommand = buildCommand({
           flags,
           offline,
           changelogPromise,
-        })
+        }),
       );
     }
 

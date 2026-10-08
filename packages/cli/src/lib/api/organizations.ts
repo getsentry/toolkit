@@ -39,7 +39,7 @@ import {
 function normalizeOrganizationRegion(
   raw: string | undefined,
   responseOrigin: string,
-  baseUrl: string
+  baseUrl: string,
 ): string | undefined {
   if (!raw) {
     if (normalizeHttpOrigin(baseUrl) === responseOrigin) {
@@ -66,7 +66,7 @@ export async function getUserRegions(): Promise<Region[]> {
   const { data } = await apiRequestToRegion<UserRegionsResponse>(
     getControlSiloUrl(credential),
     "/users/me/regions/",
-    { schema: UserRegionsResponseSchema, credential, validatedRedirects: true }
+    { schema: UserRegionsResponseSchema, credential, validatedRedirects: true },
   );
   return data.regions;
 }
@@ -85,7 +85,7 @@ export async function getUserRegions(): Promise<Region[]> {
 export async function listOrganizationsPage(
   baseUrl: string,
   options: { cursor?: string; perPage?: number } = {},
-  credential = getCredentialContext()
+  credential = getCredentialContext(),
 ): Promise<PaginatedResponse<SentryOrganization[]>> {
   const config = getSdkConfig(baseUrl, {
     credential,
@@ -101,7 +101,7 @@ export async function listOrganizationsPage(
   // throwApiError() in infrastructure.ts — no per-endpoint catch needed.
   const paginated = unwrapPaginatedResult<SentryOrganization[]>(
     result,
-    "Failed to list organizations"
+    "Failed to list organizations",
   );
 
   // CLI-1CQ: self-hosted instances can return non-array data from
@@ -111,7 +111,7 @@ export async function listOrganizationsPage(
       "Failed to list organizations: unexpected response format",
       0,
       `Expected an array from ${baseUrl}/api/0/organizations/ but received ${typeof paginated.data}. ` +
-        "This may indicate an incompatible self-hosted Sentry version or a proxy interfering with the response."
+        "This may indicate an incompatible self-hosted Sentry version or a proxy interfering with the response.",
     );
   }
   return paginated;
@@ -171,13 +171,13 @@ async function listOrganizationPages({
   if (pageIndex >= MAX_PAGINATION_PAGES) {
     throw new ApiError(
       "Failed to list organizations: pagination limit exceeded",
-      0
+      0,
     );
   }
   const page = await listOrganizationsPage(
     baseUrl,
     { cursor, perPage: API_MAX_PER_PAGE },
-    credential
+    credential,
   );
   const responseOrigin =
     page.response && getResponseRequestOrigin(page.response);
@@ -189,7 +189,7 @@ async function listOrganizationPages({
           const region = normalizeOrganizationRegion(
             org.links?.regionUrl,
             responseOrigin,
-            baseUrl
+            baseUrl,
           );
           return region
             ? [
@@ -238,11 +238,10 @@ async function listOrganizationPages({
  * Most callers should use {@link listOrganizations} instead.
  */
 export async function listOrganizationsUncached(
-  credential = getCredentialContext()
+  credential = getCredentialContext(),
 ): Promise<SentryOrganization[]> {
-  const { invalidateCachedOrganizations, setOrgRegions } = await import(
-    "../db/regions.js"
-  );
+  const { invalidateCachedOrganizations, setOrgRegions } =
+    await import("../db/regions.js");
   if (!credential) {
     throw new AuthError("not_authenticated");
   }
@@ -269,7 +268,7 @@ export async function listOrganizationsUncached(
  * Uses region-aware routing for multi-region support.
  */
 export async function getOrganization(
-  orgSlug: string
+  orgSlug: string,
 ): Promise<SentryOrganization> {
   const config = await getOrgSdkConfig(orgSlug);
 

@@ -57,7 +57,7 @@ export type MapFilesOptions<T> = ConcurrentOptions & {
 export async function mapFilesConcurrent<TIn, TOut>(
   source: AsyncIterable<TIn>,
   fn: (item: TIn) => Promise<TOut | null>,
-  opts: MapFilesOptions<TOut> = {}
+  opts: MapFilesOptions<TOut> = {},
 ): Promise<TOut[]> {
   const limit = pLimit(opts.concurrency ?? CONCURRENCY_LIMIT);
   const results: TOut[] = [];
@@ -84,7 +84,7 @@ export async function mapFilesConcurrent<TIn, TOut>(
           if (verdict?.done) {
             state.earlyExit = true;
           }
-        })
+        }),
       );
     }
   } finally {
@@ -111,7 +111,7 @@ export async function mapFilesConcurrent<TIn, TOut>(
 export async function* mapFilesConcurrentStream<TIn, TOut>(
   source: AsyncIterable<TIn>,
   fn: (item: TIn) => Promise<TOut[] | null>,
-  opts: ConcurrentOptions = {}
+  opts: ConcurrentOptions = {},
 ): AsyncGenerator<TOut> {
   const limit = pLimit(opts.concurrency ?? CONCURRENCY_LIMIT);
   const state = { earlyExit: false };
@@ -158,7 +158,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
               queue.push(entry);
             }
             wakeUp();
-          })
+          }),
         );
       }
       await Promise.all(tasks);
@@ -203,7 +203,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
     // the post-try body), so an error thrown outside this block
     // would be silently lost on the break path.
     if (producerError) {
-      // biome-ignore lint/correctness/noUnsafeFinally: intentional — this is the only path to surface producer errors on the break path
+      // oxlint-disable-next-line no-unsafe-finally -- intentional — this is the only path to surface producer errors on the break path
       throw producerError;
     }
   }
@@ -217,7 +217,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
     throw new DOMException(
       signal.reason instanceof Error ? signal.reason.message : "Aborted",
-      "AbortError"
+      "AbortError",
     );
   }
 }

@@ -24,11 +24,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
@@ -38,13 +38,13 @@ vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
-import { ContextError } from "../../../src/lib/errors.js";
+import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
   const actual =
@@ -53,11 +53,11 @@ vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -67,11 +67,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
@@ -81,11 +81,11 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { ConversationListItem } from "../../../src/types/conversation.js";
@@ -118,13 +118,13 @@ function noop() {
 /** Passthrough mock for `withProgress` — bypasses spinner, calls fn directly */
 function mockWithProgress(
   _opts: unknown,
-  fn: (setMessage: () => void) => unknown
+  fn: (setMessage: () => void) => unknown,
 ) {
   return fn(noop);
 }
 
 function makeConversation(
-  overrides: Partial<ConversationListItem> = {}
+  overrides: Partial<ConversationListItem> = {},
 ): ConversationListItem {
   return {
     conversationId: "conv-abc-123",
@@ -243,7 +243,7 @@ describe("listCommand.func", () => {
 
     // resolveOrg receives the positional org directly
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: ORG })
+      expect.objectContaining({ org: ORG }),
     );
     // listConversations called with the resolved org
     expect(listConversationsSpy).toHaveBeenCalledWith(ORG, expect.any(Object));
@@ -261,11 +261,11 @@ describe("listCommand.func", () => {
     await func.call(context, JSON_FLAGS, undefined);
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: undefined })
+      expect.objectContaining({ org: undefined }),
     );
     expect(listConversationsSpy).toHaveBeenCalledWith(
       "auto-org",
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -276,9 +276,39 @@ describe("listCommand.func", () => {
     const func = await listCommand.loader();
 
     await expect(func.call(context, HUMAN_FLAGS, undefined)).rejects.toThrow(
-      ContextError
+      ContextError,
     );
   });
+
+  test("uses the optional-org syntax in resolution errors", async () => {
+    resolveOrgSpy.mockResolvedValue(null);
+    const { context } = createMockContext();
+    const func = await listCommand.loader();
+    await expect(
+      func.call(context, HUMAN_FLAGS, undefined),
+    ).rejects.toMatchObject({
+      command: "sentry agent-conversation list [<org>]",
+    });
+  });
+
+  test.each([
+    "acme?x=1",
+    "acme#fragment",
+    "acme%20bad",
+    "acme bad",
+    "acme\tbad",
+  ])(
+    "rejects unsafe explicit organization %s before resolution",
+    async (target) => {
+      const { context } = createMockContext();
+      const func = await listCommand.loader();
+      await expect(func.call(context, HUMAN_FLAGS, target)).rejects.toThrow(
+        ValidationError,
+      );
+      expect(resolveOrgSpy).not.toHaveBeenCalled();
+      expect(listConversationsSpy).not.toHaveBeenCalled();
+    },
+  );
 
   test("yields CommandOutput with conversation data (JSON)", async () => {
     listConversationsSpy.mockResolvedValue({
@@ -327,7 +357,7 @@ describe("listCommand.func", () => {
 
     expect(listConversationsSpy).toHaveBeenCalledWith(
       ORG,
-      expect.objectContaining({ query: "has:errors" })
+      expect.objectContaining({ query: "has:errors" }),
     );
   });
 
@@ -342,12 +372,12 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { ...JSON_FLAGS, period: parsePeriod("24h") },
-      ORG
+      ORG,
     );
 
     expect(listConversationsSpy).toHaveBeenCalledWith(
       ORG,
-      expect.objectContaining({ statsPeriod: "24h" })
+      expect.objectContaining({ statsPeriod: "24h" }),
     );
   });
 
@@ -363,7 +393,7 @@ describe("listCommand.func", () => {
 
     expect(listConversationsSpy).toHaveBeenCalledWith(
       ORG,
-      expect.objectContaining({ limit: 50 })
+      expect.objectContaining({ limit: 50 }),
     );
   });
 
@@ -456,7 +486,7 @@ describe("listCommand.func", () => {
       "agent-conversation-list",
       expect.any(String),
       "next",
-      "next-cursor"
+      "next-cursor",
     );
   });
 });

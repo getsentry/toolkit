@@ -52,7 +52,7 @@ const pathPrefixArb = constantFrom(
   "/home/user/.local/bin",
   "/opt/homebrew/bin",
   "/nix/store/abc123-bash-5.2/bin",
-  "/snap/bin"
+  "/snap/bin",
 );
 
 /** Generate absolute directory paths */
@@ -62,7 +62,7 @@ const directoryArb = constantFrom(
   "/usr/local/bin",
   "/opt/sentry/bin",
   "/home/user/bin",
-  "/tmp/test/bin"
+  "/tmp/test/bin",
 );
 
 /** Generate home directory paths */
@@ -70,7 +70,7 @@ const homeDirArb = constantFrom(
   "/home/user",
   "/home/alice",
   "/Users/bob",
-  "/root"
+  "/root",
 );
 
 /** Generate PATH strings from a set of directories */
@@ -88,7 +88,7 @@ describe("property: detectShellType", () => {
         const result = detectShellType(`${prefix}/${shell}`);
         expect(result).toBe(shell);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -100,11 +100,11 @@ describe("property: detectShellType", () => {
         knownShellArb,
         (prefix1, prefix2, shell) => {
           expect(detectShellType(`${prefix1}/${shell}`)).toBe(
-            detectShellType(`${prefix2}/${shell}`)
+            detectShellType(`${prefix2}/${shell}`),
           );
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -115,7 +115,7 @@ describe("property: detectShellType", () => {
         const result = detectShellType(`${prefix}/xonsh`);
         expect(allShellTypes).toContain(result);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -131,7 +131,7 @@ describe("property: getConfigCandidates", () => {
         const candidates = getConfigCandidates(shellType, homeDir);
         expect(candidates.length).toBeGreaterThan(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -143,7 +143,7 @@ describe("property: getConfigCandidates", () => {
           expect(path.startsWith(homeDir)).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -155,7 +155,7 @@ describe("property: getPathCommand", () => {
         const cmd = getPathCommand(shellType, dir);
         expect(cmd).toContain(dir);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -165,7 +165,7 @@ describe("property: getPathCommand", () => {
         const cmd = getPathCommand(shellType, dir);
         expect(cmd).toContain(`"${dir}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -177,7 +177,7 @@ describe("property: getPathCommand", () => {
           expect(getPathCommand(shell, dir)).toContain("export PATH=");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -190,7 +190,7 @@ describe("property: isInPath", () => {
         const fullPath = `${pathStr}:${dir}`;
         expect(isInPath(dir, fullPath)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -201,7 +201,7 @@ describe("property: isInPath", () => {
       property(pathStringArb, (pathStr) => {
         expect(isInPath(absentDir, pathStr)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -210,7 +210,7 @@ describe("property: isInPath", () => {
       property(directoryArb, (dir) => {
         expect(isInPath(dir, undefined)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -221,7 +221,7 @@ describe("property: addToPath", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `shell-prop-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `shell-prop-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
   });
@@ -243,7 +243,7 @@ describe("property: addToPath", () => {
         const second = await addToPath(configFile, dir, shellType);
         expect(second.modified).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -260,7 +260,7 @@ describe("property: addToPath", () => {
         const expectedCmd = getPathCommand(shellType, dir);
         expect(content).toContain(expectedCmd);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

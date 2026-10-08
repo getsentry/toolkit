@@ -23,7 +23,7 @@ const { normalizeQuery, transformUnquoted } = __testing;
 describe("sanitizeQuery: passthrough", () => {
   test("passes through a simple qualifier query unchanged", () => {
     expect(sanitizeQuery("is:unresolved level:error")).toBe(
-      "is:unresolved level:error"
+      "is:unresolved level:error",
     );
   });
 
@@ -46,19 +46,19 @@ describe("sanitizeQuery: passthrough", () => {
 
   test("does not match OR inside quoted strings", () => {
     expect(sanitizeQuery('message:"error OR timeout"')).toBe(
-      'message:"error OR timeout"'
+      'message:"error OR timeout"',
     );
   });
 
   test("does not match AND inside quoted strings", () => {
     expect(sanitizeQuery('title:"error AND timeout"')).toBe(
-      'title:"error AND timeout"'
+      'title:"error AND timeout"',
     );
   });
 
   test("does not match OR in qualifier values with more context", () => {
     expect(sanitizeQuery("is:unresolved tag:OR_something")).toBe(
-      "is:unresolved tag:OR_something"
+      "is:unresolved tag:OR_something",
     );
   });
 });
@@ -74,7 +74,7 @@ describe("sanitizeQuery: AND", () => {
 
   test("strips multiple AND operators", () => {
     expect(sanitizeQuery("error AND timeout AND crash")).toBe(
-      "error timeout crash"
+      "error timeout crash",
     );
   });
 
@@ -85,7 +85,7 @@ describe("sanitizeQuery: AND", () => {
 
   test("strips AND with qualifiers", () => {
     expect(sanitizeQuery("is:unresolved AND level:error")).toBe(
-      "is:unresolved level:error"
+      "is:unresolved level:error",
     );
   });
 
@@ -105,58 +105,58 @@ describe("sanitizeQuery: AND", () => {
 describe("sanitizeQuery: numeric project:", () => {
   test("rewrites a numeric project: filter to project_id", () => {
     expect(
-      sanitizeQuery("project:4511730126487632 environment:vercel-production")
+      sanitizeQuery("project:4511730126487632 environment:vercel-production"),
     ).toBe("project_id:4511730126487632 environment:vercel-production");
   });
 
   test("rewrites a numeric project: in-list", () => {
     expect(
-      sanitizeQuery("is:unresolved project:[4505521413357568,6442225]")
+      sanitizeQuery("is:unresolved project:[4505521413357568,6442225]"),
     ).toBe("is:unresolved project_id:[4505521413357568,6442225]");
   });
 
   test("rewrites a negated numeric project: filter", () => {
     expect(sanitizeQuery("!project:1423462 lastSeen:-1h")).toBe(
-      "!project_id:1423462 lastSeen:-1h"
+      "!project_id:1423462 lastSeen:-1h",
     );
   });
 
   test("leaves project slugs alone", () => {
     expect(sanitizeQuery("project:frontend is:unresolved")).toBe(
-      "project:frontend is:unresolved"
+      "project:frontend is:unresolved",
     );
   });
 
   test("leaves project_id numeric filters alone", () => {
     expect(sanitizeQuery("project_id:4511730126487632")).toBe(
-      "project_id:4511730126487632"
+      "project_id:4511730126487632",
     );
   });
 
   test("leaves namespaced project keys alone", () => {
     expect(sanitizeQuery("bolt.project_id:70054175")).toBe(
-      "bolt.project_id:70054175"
+      "bolt.project_id:70054175",
     );
     expect(sanitizeQuery("bolt.project:70054175")).toBe(
-      "bolt.project:70054175"
+      "bolt.project:70054175",
     );
   });
 
   test("does not rewrite a numeric id inside a quoted value", () => {
     expect(sanitizeQuery('message:"project:4511730126487632"')).toBe(
-      'message:"project:4511730126487632"'
+      'message:"project:4511730126487632"',
     );
   });
 
   test("does not rewrite mixed slug/numeric in-lists", () => {
     expect(sanitizeQuery("project:[frontend,6442225]")).toBe(
-      "project:[frontend,6442225]"
+      "project:[frontend,6442225]",
     );
   });
 
   test("rewrites numeric project: then OR in one step", () => {
     expect(sanitizeQuery("project:123 OR project:456")).toBe(
-      "project_id:[123,456]"
+      "project_id:[123,456]",
     );
   });
 });
@@ -168,84 +168,88 @@ describe("sanitizeQuery: numeric project:", () => {
 describe("sanitizeQuery: OR → in-list (success)", () => {
   test("rewrites same-key qualifier OR to in-list", () => {
     expect(sanitizeQuery("level:error OR level:warning")).toBe(
-      "level:[error,warning]"
+      "level:[error,warning]",
     );
   });
 
   test("rewrites OR chain of 3+ same-key qualifiers", () => {
     expect(sanitizeQuery("level:error OR level:warning OR level:fatal")).toBe(
-      "level:[error,warning,fatal]"
+      "level:[error,warning,fatal]",
     );
   });
 
   test("preserves surrounding tokens", () => {
     expect(sanitizeQuery("is:unresolved level:error OR level:warning")).toBe(
-      "is:unresolved level:[error,warning]"
+      "is:unresolved level:[error,warning]",
     );
   });
 
   test("preserves surrounding tokens on both sides", () => {
     expect(
-      sanitizeQuery("is:unresolved level:error OR level:warning firstSeen:-24h")
+      sanitizeQuery(
+        "is:unresolved level:error OR level:warning firstSeen:-24h",
+      ),
     ).toBe("is:unresolved level:[error,warning] firstSeen:-24h");
   });
 
   test("rewrites quoted values", () => {
     expect(
-      sanitizeQuery('message:"pool exhaustion" OR message:"connection timeout"')
+      sanitizeQuery(
+        'message:"pool exhaustion" OR message:"connection timeout"',
+      ),
     ).toBe('message:["pool exhaustion","connection timeout"]');
   });
 
   test("merges existing in-list value with plain value", () => {
     expect(sanitizeQuery("level:[error,warning] OR level:fatal")).toBe(
-      "level:[error,warning,fatal]"
+      "level:[error,warning,fatal]",
     );
   });
 
   test("merges two in-list values", () => {
     expect(sanitizeQuery("level:[error] OR level:[warning,fatal]")).toBe(
-      "level:[error,warning,fatal]"
+      "level:[error,warning,fatal]",
     );
   });
 
   test("rewrites multiple independent OR groups", () => {
     expect(
       sanitizeQuery(
-        "level:error OR level:warning browser:Chrome OR browser:Firefox"
-      )
+        "level:error OR level:warning browser:Chrome OR browser:Firefox",
+      ),
     ).toBe("level:[error,warning] browser:[Chrome,Firefox]");
   });
 
   test("handles case-insensitive OR", () => {
     expect(sanitizeQuery("level:error or level:warning")).toBe(
-      "level:[error,warning]"
+      "level:[error,warning]",
     );
     expect(sanitizeQuery("level:error Or level:warning")).toBe(
-      "level:[error,warning]"
+      "level:[error,warning]",
     );
   });
 
   test("handles mixed AND and OR", () => {
     expect(
-      sanitizeQuery("is:unresolved AND level:error OR level:warning")
+      sanitizeQuery("is:unresolved AND level:error OR level:warning"),
     ).toBe("is:unresolved level:[error,warning]");
   });
 
   test("preserves key casing from first token", () => {
     expect(sanitizeQuery("Level:error OR level:warning")).toBe(
-      "Level:[error,warning]"
+      "Level:[error,warning]",
     );
   });
 
   test("handles leading OR (stray)", () => {
     expect(sanitizeQuery("OR level:error OR level:warning")).toBe(
-      "level:[error,warning]"
+      "level:[error,warning]",
     );
   });
 
   test("handles trailing OR (stray)", () => {
     expect(sanitizeQuery("level:error OR level:warning OR")).toBe(
-      "level:[error,warning]"
+      "level:[error,warning]",
     );
   });
 });
@@ -261,50 +265,50 @@ describe("sanitizeQuery: OR → throws", () => {
 
   test("throws for different keys across OR", () => {
     expect(() => sanitizeQuery("level:error OR assigned:me")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("throws for is: qualifier (not supported with in-list)", () => {
     expect(() => sanitizeQuery("is:unresolved OR is:resolved")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("throws for has: qualifier (not supported with in-list)", () => {
     expect(() => sanitizeQuery("has:user OR has:email")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("throws for negated qualifiers", () => {
     expect(() => sanitizeQuery("!level:error OR !level:warning")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("throws for wildcards in values", () => {
     expect(() => sanitizeQuery("message:*error* OR message:*timeout*")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("throws for comparison operator values (not valid in in-list)", () => {
     expect(() => sanitizeQuery("age:>24h OR age:>7d")).toThrow(ValidationError);
     expect(() => sanitizeQuery("times_seen:>100 OR times_seen:>200")).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() =>
-      sanitizeQuery("span.duration:>=1s OR span.duration:>=500ms")
+      sanitizeQuery("span.duration:>=1s OR span.duration:>=500ms"),
     ).toThrow(ValidationError);
     expect(() =>
-      sanitizeQuery("firstSeen:<=2024-01-01 OR firstSeen:<=2024-06-01")
+      sanitizeQuery("firstSeen:<=2024-01-01 OR firstSeen:<=2024-06-01"),
     ).toThrow(ValidationError);
   });
 
   test("throws for mixed free-text and qualifier OR", () => {
     expect(() => sanitizeQuery("is:unresolved error OR timeout")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -326,14 +330,16 @@ describe("sanitizeQuery: OR → throws", () => {
     // From CLI-16J: AI agent tried free-text OR
     expect(() =>
       sanitizeQuery(
-        "is:unresolved pool exhaustion OR connection timeout OR connection terminated"
-      )
+        "is:unresolved pool exhaustion OR connection timeout OR connection terminated",
+      ),
     ).toThrow(ValidationError);
   });
 
   test("throws for parenthesized groups across OR boundary", () => {
     expect(() =>
-      sanitizeQuery("(level:error assigned:me) OR (level:warning assigned:bob)")
+      sanitizeQuery(
+        "(level:error assigned:me) OR (level:warning assigned:bob)",
+      ),
     ).toThrow(ValidationError);
   });
 });
@@ -345,19 +351,19 @@ describe("sanitizeQuery: OR → throws", () => {
 describe("sanitizeQuery: paren groups", () => {
   test("throws for OR inside paren groups", () => {
     expect(() => sanitizeQuery("(level:error OR level:warning)")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("throws for OR inside paren groups with surrounding filters", () => {
     expect(() =>
-      sanitizeQuery("(level:error OR level:warning) assigned:me")
+      sanitizeQuery("(level:error OR level:warning) assigned:me"),
     ).toThrow(ValidationError);
   });
 
   test("passes through paren groups without boolean operators", () => {
     expect(sanitizeQuery("(level:error) assigned:me")).toBe(
-      "(level:error) assigned:me"
+      "(level:error) assigned:me",
     );
   });
 });
@@ -379,7 +385,7 @@ describe("sanitizeQuery: edge cases", () => {
 
   test("throws for OR in paren group even with rewritable top-level OR", () => {
     expect(() =>
-      sanitizeQuery("level:error OR level:warning (a:1 OR a:2)")
+      sanitizeQuery("level:error OR level:warning (a:1 OR a:2)"),
     ).toThrow(ValidationError);
   });
 
@@ -390,7 +396,7 @@ describe("sanitizeQuery: edge cases", () => {
 
   test("rejects wildcard values in existing in-list during merge", () => {
     expect(() => sanitizeQuery("key:[*err*] OR key:val")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 });
@@ -399,21 +405,21 @@ describe("normalizeQuery: pre-parse text normalization", () => {
   describe("mismatched brackets", () => {
     test("fixes wrong closing delimiter ) → ]", () => {
       expect(normalizeQuery("status_code:[401,403,429,500,)")).toBe(
-        "status_code:[401,403,429,500]"
+        "status_code:[401,403,429,500]",
       );
     });
 
     test("fixes trailing comma + wrong delimiter combined", () => {
       expect(normalizeQuery("error.http.status_code:[401,403,429,500,)")).toBe(
-        "error.http.status_code:[401,403,429,500]"
+        "error.http.status_code:[401,403,429,500]",
       );
     });
 
     test("repairs within a longer query", () => {
       expect(
         normalizeQuery(
-          "is:unresolved error.http.status_code:[401,403,429,500,)"
-        )
+          "is:unresolved error.http.status_code:[401,403,429,500,)",
+        ),
       ).toBe("is:unresolved error.http.status_code:[401,403,429,500]");
     });
   });
@@ -421,13 +427,13 @@ describe("normalizeQuery: pre-parse text normalization", () => {
   describe("trailing list commas", () => {
     test("strips trailing comma in in-list filter", () => {
       expect(normalizeQuery("level:[error,warning,]")).toBe(
-        "level:[error,warning]"
+        "level:[error,warning]",
       );
     });
 
     test("strips trailing comma with spaces", () => {
       expect(normalizeQuery("level:[error, warning, ]")).toBe(
-        "level:[error, warning]"
+        "level:[error, warning]",
       );
     });
   });
@@ -435,13 +441,13 @@ describe("normalizeQuery: pre-parse text normalization", () => {
   describe("passthrough", () => {
     test("leaves valid queries unchanged", () => {
       expect(normalizeQuery("level:[error,warning]")).toBe(
-        "level:[error,warning]"
+        "level:[error,warning]",
       );
     });
 
     test("leaves non-list queries unchanged", () => {
       expect(normalizeQuery("is:unresolved level:error")).toBe(
-        "is:unresolved level:error"
+        "is:unresolved level:error",
       );
     });
 
@@ -458,25 +464,25 @@ describe("normalizeQuery: pre-parse text normalization", () => {
   describe("quote awareness", () => {
     test("does not modify bracket content inside double quotes", () => {
       expect(normalizeQuery('message:"error [500,] found"')).toBe(
-        'message:"error [500,] found"'
+        'message:"error [500,] found"',
       );
     });
 
     test("does not modify mismatched brackets inside quotes", () => {
       expect(normalizeQuery('message:"codes [401,403,)"')).toBe(
-        'message:"codes [401,403,)"'
+        'message:"codes [401,403,)"',
       );
     });
 
     test("repairs unquoted filter but preserves quoted content", () => {
       expect(
-        normalizeQuery('level:[error,warning,) message:"[trailing,]"')
+        normalizeQuery('level:[error,warning,) message:"[trailing,]"'),
       ).toBe('level:[error,warning] message:"[trailing,]"');
     });
 
     test("handles multiple quoted regions", () => {
       expect(normalizeQuery('a:"[1,]" level:[x,) b:"[2,]"')).toBe(
-        'a:"[1,]" level:[x] b:"[2,]"'
+        'a:"[1,]" level:[x] b:"[2,]"',
       );
     });
 
@@ -499,7 +505,7 @@ describe("transformUnquoted", () => {
 
   test("preserves quoted segments", () => {
     expect(transformUnquoted('hello "world" foo', upper)).toBe(
-      'HELLO "world" FOO'
+      'HELLO "world" FOO',
     );
   });
 
@@ -530,10 +536,10 @@ describe("sanitizeQuery: normalization integration", () => {
 
   test("normalizes complex filter in longer query", () => {
     const result = sanitizeQuery(
-      "is:unresolved error.http.status_code:[401,403,429,500,)"
+      "is:unresolved error.http.status_code:[401,403,429,500,)",
     );
     expect(result).toBe(
-      "is:unresolved error.http.status_code:[401,403,429,500]"
+      "is:unresolved error.http.status_code:[401,403,429,500]",
     );
   });
 

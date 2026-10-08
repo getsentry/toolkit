@@ -91,7 +91,7 @@ export function slugify(name: string): string {
 export function getRealUsername(): string {
   // userInfo() can throw on systems with missing or corrupted passwd entries.
   let osUsername = "";
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     osUsername = userInfo().username;
   } catch {

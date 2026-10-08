@@ -123,7 +123,7 @@ export class ZipWriter {
    */
   static async create(
     outputPath: string,
-    options: { compression?: ZipCompression } = {}
+    options: { compression?: ZipCompression } = {},
   ): Promise<ZipWriter> {
     const fh = await open(outputPath, "w");
     const writer = new ZipWriter(fh, options.compression ?? "deflate");
@@ -150,7 +150,7 @@ export class ZipWriter {
    * Safe to call multiple times — subsequent calls are no-ops.
    */
   async close(): Promise<void> {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     await this.fh.close().catch(() => {
       // Already closed — ignore
     });
@@ -183,7 +183,7 @@ export class ZipWriter {
     // Last mod time and date — 0 (unused)
     header.writeUInt16LE(0, 10);
     header.writeUInt16LE(0, 12);
-    // biome-ignore lint/suspicious/noBitwiseOperators: coerce signed CRC-32 to unsigned for writeUInt32LE
+    // oxlint-disable-next-line no-bitwise -- coerce signed CRC-32 to unsigned for writeUInt32LE
     header.writeUInt32LE(checksum >>> 0, 14);
     header.writeUInt32LE(payload.length, 18);
     header.writeUInt32LE(data.length, 22);
@@ -232,7 +232,7 @@ export class ZipWriter {
         // Last mod time and date — 0
         rec.writeUInt16LE(0, 12);
         rec.writeUInt16LE(0, 14);
-        // biome-ignore lint/suspicious/noBitwiseOperators: coerce signed CRC-32 to unsigned for writeUInt32LE
+        // oxlint-disable-next-line no-bitwise -- coerce signed CRC-32 to unsigned for writeUInt32LE
         rec.writeUInt32LE(entry.crc >>> 0, 16);
         rec.writeUInt32LE(entry.compressedSize, 20);
         rec.writeUInt32LE(entry.uncompressedSize, 24);

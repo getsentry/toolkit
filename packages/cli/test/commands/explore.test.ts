@@ -15,11 +15,11 @@ vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../src/lib/api-client.js";
 
 vi.mock("../../src/lib/db/pagination.js", async (importOriginal) => {
@@ -29,11 +29,11 @@ vi.mock("../../src/lib/db/pagination.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../src/lib/db/pagination.js";
 import { ContextError, ValidationError } from "../../src/lib/errors.js";
 import { DEFAULT_REPLAY_EXPLORE_FIELDS } from "../../src/lib/replay-search.js";
@@ -45,16 +45,16 @@ vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../src/lib/time-range.js";
 import { useTestConfigDir } from "../helpers.js";
 
-// Keep namespace references alive so biome doesn't strip the imports
+// Keep namespace references alive so linting doesn't strip the imports
 const _apiRef = apiClient;
 const _paginationRef = paginationDb;
 const _resolveRef = resolveTarget;
@@ -190,12 +190,12 @@ const parseExploreDataset = (
 
 describe("sentry explore", () => {
   describe("dataset parsing", () => {
-    test.each([
-      "transaction",
-      "transactions",
-    ])("accepts %s as the legacy transactions view", (dataset) => {
-      expect(parseExploreDataset(dataset)).toBe(dataset);
-    });
+    test.each(["transaction", "transactions"])(
+      "accepts %s as the legacy transactions view",
+      (dataset) => {
+        expect(parseExploreDataset(dataset)).toBe(dataset);
+      },
+    );
   });
 
   describe("target resolution", () => {
@@ -208,11 +208,11 @@ describe("sentry explore", () => {
       expect(resolveTargetSpy).toHaveBeenCalledWith(
         "my-org/",
         "/tmp/test-explore",
-        "explore"
+        "explore",
       );
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "my-org",
-        expect.objectContaining({ query: undefined })
+        expect.objectContaining({ query: undefined }),
       );
     });
 
@@ -224,7 +224,7 @@ describe("sentry explore", () => {
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "my-org",
-        expect.objectContaining({ query: "project:cli" })
+        expect.objectContaining({ query: "project:cli" }),
       );
     });
 
@@ -235,12 +235,12 @@ describe("sentry explore", () => {
       await func.call(
         context,
         { ...DEFAULT_FLAGS, query: "level:error" },
-        "my-org/cli"
+        "my-org/cli",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "my-org",
-        expect.objectContaining({ query: "project:cli level:error" })
+        expect.objectContaining({ query: "project:cli level:error" }),
       );
     });
 
@@ -256,11 +256,11 @@ describe("sentry explore", () => {
       expect(resolveTargetSpy).toHaveBeenCalledWith(
         "cli",
         "/tmp/test-explore",
-        "explore"
+        "explore",
       );
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ query: "project:test-project" })
+        expect.objectContaining({ query: "project:test-project" }),
       );
     });
 
@@ -273,11 +273,11 @@ describe("sentry explore", () => {
       expect(resolveTargetSpy).toHaveBeenCalledWith(
         undefined,
         "/tmp/test-explore",
-        "explore"
+        "explore",
       );
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ query: undefined })
+        expect.objectContaining({ query: undefined }),
       );
     });
 
@@ -286,12 +286,12 @@ describe("sentry explore", () => {
         new ContextError("Organization", "sentry explore <target>", [
           "SENTRY_ORG environment variable",
           "sentry cli defaults",
-        ])
+        ]),
       );
       const { context } = createContext();
 
       await expect(func.call(context, DEFAULT_FLAGS)).rejects.toThrow(
-        "Organization"
+        "Organization",
       );
     });
   });
@@ -308,7 +308,7 @@ describe("sentry explore", () => {
         expect.objectContaining({
           fields: ["title", "count()"],
           dataset: "errors",
-        })
+        }),
       );
     });
 
@@ -322,14 +322,14 @@ describe("sentry explore", () => {
           ...DEFAULT_FLAGS,
           field: ["transaction", "p50(span.duration)"],
         },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
         expect.objectContaining({
           fields: ["transaction", "p50(span.duration)"],
-        })
+        }),
       );
     });
 
@@ -340,12 +340,12 @@ describe("sentry explore", () => {
       await func.call(
         context,
         { ...DEFAULT_FLAGS, dataset: "spans" },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ dataset: "spans" })
+        expect.objectContaining({ dataset: "spans" }),
       );
     });
 
@@ -360,7 +360,7 @@ describe("sentry explore", () => {
           dataset: "transactions",
           query: "environment:production",
         },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
@@ -369,7 +369,7 @@ describe("sentry explore", () => {
           dataset: "spans",
           fields: ["transaction", "count()"],
           query: "environment:production is_transaction:true",
-        })
+        }),
       );
     });
 
@@ -384,7 +384,7 @@ describe("sentry explore", () => {
           dataset: "transactions",
           query: "is_transaction:true",
         },
-        "test-org/cli"
+        "test-org/cli",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
@@ -392,7 +392,7 @@ describe("sentry explore", () => {
         expect.objectContaining({
           dataset: "spans",
           query: "project:cli is_transaction:true",
-        })
+        }),
       );
     });
 
@@ -403,12 +403,12 @@ describe("sentry explore", () => {
       await func.call(
         context,
         { ...DEFAULT_FLAGS, query: "is:unresolved" },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ query: "is:unresolved" })
+        expect.objectContaining({ query: "is:unresolved" }),
       );
     });
 
@@ -420,7 +420,7 @@ describe("sentry explore", () => {
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ limit: 100 })
+        expect.objectContaining({ limit: 100 }),
       );
     });
 
@@ -437,7 +437,7 @@ describe("sentry explore", () => {
           field: ["id", "user.email", "count_errors", "url"],
           sort: "-count_errors",
         },
-        "test-org/cli"
+        "test-org/cli",
       );
 
       expect(listReplaysSpy).toHaveBeenCalledWith("test-org", {
@@ -464,7 +464,7 @@ describe("sentry explore", () => {
           dataset: "replays",
           query: "count_errors:>0",
         },
-        "test-org/cli"
+        "test-org/cli",
       );
 
       expect(listReplaysSpy).toHaveBeenCalledWith(
@@ -472,7 +472,7 @@ describe("sentry explore", () => {
         expect.objectContaining({
           projectSlugs: ["cli"],
           query: "count_errors:>0",
-        })
+        }),
       );
     });
 
@@ -487,14 +487,14 @@ describe("sentry explore", () => {
           dataset: "replays",
           field: ["id", "count_traces"],
         },
-        "test-org/"
+        "test-org/",
       );
 
       expect(listReplaysSpy).toHaveBeenCalledWith(
         "test-org",
         expect.objectContaining({
           fields: ["id", "trace_ids"],
-        })
+        }),
       );
     });
   });
@@ -510,7 +510,7 @@ describe("sentry explore", () => {
       // sort and needs a stable order for correct cursor pagination (#1519).
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ sort: "-count()" })
+        expect.objectContaining({ sort: "-count()" }),
       );
     });
 
@@ -521,12 +521,12 @@ describe("sentry explore", () => {
       await func.call(
         context,
         { ...DEFAULT_FLAGS, dataset: "spans", sort: "-count()" },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ sort: "-count()", dataset: "spans" })
+        expect.objectContaining({ sort: "-count()", dataset: "spans" }),
       );
     });
 
@@ -541,13 +541,13 @@ describe("sentry explore", () => {
           dataset: "tracemetrics",
           field: ["sum(value,llm.token_usage,distribution,none)"],
         },
-        "test-org/"
+        "test-org/",
       );
 
       // metrics/logs reject sort with 400, so it stays unset.
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ sort: undefined })
+        expect.objectContaining({ sort: undefined }),
       );
     });
 
@@ -562,12 +562,12 @@ describe("sentry explore", () => {
           dataset: "errors",
           field: ["task.name", "failure.node", "count()"],
         },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ sort: "-count()", dataset: "errors" })
+        expect.objectContaining({ sort: "-count()", dataset: "errors" }),
       );
     });
 
@@ -578,12 +578,12 @@ describe("sentry explore", () => {
       await func.call(
         context,
         { ...DEFAULT_FLAGS, dataset: "replays" },
-        "test-org/"
+        "test-org/",
       );
 
       expect(listReplaysSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ sort: "-started_at" })
+        expect.objectContaining({ sort: "-started_at" }),
       );
     });
 
@@ -594,7 +594,7 @@ describe("sentry explore", () => {
       await func.call(
         context,
         { ...DEFAULT_FLAGS, dataset: "replays" },
-        "test-org/"
+        "test-org/",
       );
 
       expect(listReplaysSpy).toHaveBeenCalledWith(
@@ -610,7 +610,7 @@ describe("sentry explore", () => {
             "urls",
             "user",
           ],
-        })
+        }),
       );
     });
   });
@@ -627,7 +627,7 @@ describe("sentry explore", () => {
           dataset: "tracemetrics",
           field: ["title", "count()"],
         },
-        "test-org/"
+        "test-org/",
       );
 
       await expect(promise).rejects.toThrow(ValidationError);
@@ -648,12 +648,12 @@ describe("sentry explore", () => {
             "sum(value,llm.token_usage,distribution,none)",
           ],
         },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ dataset: "tracemetrics" })
+        expect.objectContaining({ dataset: "tracemetrics" }),
       );
     });
 
@@ -664,12 +664,12 @@ describe("sentry explore", () => {
       const promise = func.call(
         context,
         { ...DEFAULT_FLAGS, dataset: "tracemetrics" },
-        "test-org/"
+        "test-org/",
       );
 
       await expect(promise).rejects.toThrow(ValidationError);
       await expect(promise).rejects.toThrow(
-        /requires --metric or explicit --field/
+        /requires --metric or explicit --field/,
       );
     });
 
@@ -684,7 +684,7 @@ describe("sentry explore", () => {
           dataset: "tracemetrics",
           field: ["gen_ai.request.model"],
         },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalled();
@@ -701,7 +701,7 @@ describe("sentry explore", () => {
           dataset: "tracemetrics",
           metric: "llm.token_usage",
         },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryMetricsMetaSpy).toHaveBeenCalledWith("test-org", {
@@ -713,7 +713,7 @@ describe("sentry explore", () => {
         expect.objectContaining({
           fields: ["sum(value,llm.token_usage,distribution,none)"],
           dataset: "tracemetrics",
-        })
+        }),
       );
     });
 
@@ -729,7 +729,7 @@ describe("sentry explore", () => {
           metric: "llm.token_usage",
           field: ["gen_ai.request.model"],
         },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
@@ -739,7 +739,7 @@ describe("sentry explore", () => {
             "gen_ai.request.model",
             "sum(value,llm.token_usage,distribution,none)",
           ],
-        })
+        }),
       );
     });
 
@@ -755,14 +755,14 @@ describe("sentry explore", () => {
           metric: "cache.hit_rate",
           agg: "avg",
         },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
         expect.objectContaining({
           fields: ["avg(value,cache.hit_rate,distribution,none)"],
-        })
+        }),
       );
     });
 
@@ -777,7 +777,7 @@ describe("sentry explore", () => {
           dataset: "errors",
           metric: "llm.token_usage",
         },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
@@ -785,7 +785,7 @@ describe("sentry explore", () => {
         expect.objectContaining({
           dataset: "tracemetrics",
           fields: ["sum(value,llm.token_usage,distribution,none)"],
-        })
+        }),
       );
     });
   });
@@ -836,7 +836,7 @@ describe("sentry explore", () => {
           ...DEFAULT_FLAGS,
           field: ["title", "count()", "count_unique(user)"],
         },
-        "test-org/"
+        "test-org/",
       );
 
       const output = getStdout();
@@ -880,7 +880,7 @@ describe("sentry explore", () => {
           field: ["id", "user.email", "count_errors", "url"],
           json: true,
         },
-        "test-org/"
+        "test-org/",
       );
 
       const parsed = JSON.parse(getStdout());
@@ -937,7 +937,7 @@ describe("sentry explore", () => {
         "explore",
         expect.any(String),
         "next",
-        "cursor123"
+        "cursor123",
       );
     });
 
@@ -952,11 +952,11 @@ describe("sentry explore", () => {
       await func.call(
         context,
         { ...DEFAULT_FLAGS, dataset: "transactions" },
-        "test-org/"
+        "test-org/",
       );
 
       expect(getStdout()).toContain(
-        "sentry explore test-org/ -c next --dataset transactions"
+        "sentry explore test-org/ -c next --dataset transactions",
       );
     });
 
@@ -975,12 +975,12 @@ describe("sentry explore", () => {
           dataset: "replays",
           field: [...DEFAULT_REPLAY_EXPLORE_FIELDS],
         },
-        "test-org/"
+        "test-org/",
       );
 
       const output = getStdout();
       expect(output).toContain(
-        "sentry explore test-org/ -c next --dataset replays"
+        "sentry explore test-org/ -c next --dataset replays",
       );
       expect(output).not.toContain('-F "id"');
       expect(output).not.toContain('-F "started_at"');
@@ -1000,12 +1000,12 @@ describe("sentry explore", () => {
       await func.call(
         context,
         { ...DEFAULT_FLAGS, environment: ["production"] },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ query: "environment:production" })
+        expect.objectContaining({ query: "environment:production" }),
       );
     });
 
@@ -1020,14 +1020,14 @@ describe("sentry explore", () => {
       await func.call(
         context,
         { ...DEFAULT_FLAGS, environment: ["production", "canary"] },
-        "test-org/"
+        "test-org/",
       );
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
         expect.objectContaining({
           query: "environment:[production,canary]",
-        })
+        }),
       );
     });
 
@@ -1039,8 +1039,8 @@ describe("sentry explore", () => {
         func.call(
           context,
           { ...DEFAULT_FLAGS, dataset: "replays", field: ["replay_type"] },
-          "test-org/"
-        )
+          "test-org/",
+        ),
       ).rejects.toThrow(ValidationError);
     });
   });

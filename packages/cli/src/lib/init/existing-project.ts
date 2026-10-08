@@ -12,7 +12,7 @@ import type { ExistingProjectData } from "./types.js";
  */
 export async function tryGetExistingProjectData(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<ExistingProjectData | null> {
   try {
     const project = await getProject(orgSlug, projectSlug);

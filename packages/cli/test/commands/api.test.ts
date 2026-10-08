@@ -1,4 +1,4 @@
-// biome-ignore-all lint/performance/useTopLevelRegex: regex in test assertions is fine
+// Regexes in test assertions need no shared top-level state.
 /**
  * API Command Unit Tests
  *
@@ -7,7 +7,7 @@
 
 import { writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -67,27 +67,27 @@ describe("normalizeEndpoint edge cases", () => {
 describe("normalizeEndpoint: api/0/ prefix stripping (CLI-K1)", () => {
   test("strips api/0/ prefix to avoid doubled path", () => {
     expect(normalizeEndpoint("api/0/projects/my-org/my-project/")).toBe(
-      "projects/my-org/my-project/"
+      "projects/my-org/my-project/",
     );
   });
 
   test("strips /api/0/ prefix with leading slash", () => {
     expect(normalizeEndpoint("/api/0/projects/my-org/my-project/")).toBe(
-      "projects/my-org/my-project/"
+      "projects/my-org/my-project/",
     );
   });
 
   test("strips api/0/ prefix and adds trailing slash", () => {
     expect(normalizeEndpoint("api/0/organizations/my-org/issues")).toBe(
-      "organizations/my-org/issues/"
+      "organizations/my-org/issues/",
     );
   });
 
   test("strips api/0/ prefix with query string", () => {
     expect(
       normalizeEndpoint(
-        "api/0/projects/my-org/my-proj/environments/?visibility=visible"
-      )
+        "api/0/projects/my-org/my-proj/environments/?visibility=visible",
+      ),
     ).toBe("projects/my-org/my-proj/environments/?visibility=visible");
   });
 
@@ -99,14 +99,14 @@ describe("normalizeEndpoint: api/0/ prefix stripping (CLI-K1)", () => {
   test("strips regional origins from absolute URLs", () => {
     expect(
       normalizeEndpoint(
-        "https://de.sentry.io/sentry/api/0/projects/my-org/my-project/events/abc/attachments/1/?download=1"
-      )
+        "https://de.sentry.io/sentry/api/0/projects/my-org/my-project/events/abc/attachments/1/?download=1",
+      ),
     ).toBe("projects/my-org/my-project/events/abc/attachments/1/?download=1");
   });
 
   test("does not strip partial api/ prefix", () => {
     expect(normalizeEndpoint("api/1/organizations/")).toBe(
-      "api/1/organizations/"
+      "api/1/organizations/",
     );
   });
 });
@@ -152,7 +152,7 @@ describe("apiCommand tags org from the path", () => {
         "dry-run": true,
         json: false,
       },
-      "projects/acme/web/events/"
+      "projects/acme/web/events/",
     );
 
     expect(setTagSpy).toHaveBeenCalledWith("sentry.org", "acme");
@@ -167,13 +167,13 @@ describe("normalizeEndpoint: path traversal hardening (#350)", () => {
 
   test("rejects leading ../ traversal", () => {
     expect(() => normalizeEndpoint("../../admin/settings/")).toThrow(
-      /path traversal/
+      /path traversal/,
     );
   });
 
   test("rejects mid-path traversal", () => {
     expect(() => normalizeEndpoint("organizations/my-org/../admin/")).toThrow(
-      /path traversal/
+      /path traversal/,
     );
   });
 
@@ -183,46 +183,46 @@ describe("normalizeEndpoint: path traversal hardening (#350)", () => {
 
   test("rejects traversal before normalizing an absolute URL", () => {
     expect(() =>
-      normalizeEndpoint("https://sentry.io/api/0/projects/acme/%2e%2e/admin/")
+      normalizeEndpoint("https://sentry.io/api/0/projects/acme/%2e%2e/admin/"),
     ).toThrow(/path traversal/);
   });
 
   test("allows single dots in paths", () => {
     expect(normalizeEndpoint("organizations/.well-known/")).toBe(
-      "organizations/.well-known/"
+      "organizations/.well-known/",
     );
   });
 
   test("allows double dots inside segment names", () => {
     expect(normalizeEndpoint("organizations/my..org/")).toBe(
-      "organizations/my..org/"
+      "organizations/my..org/",
     );
   });
 
   test("rejects control characters in endpoint", () => {
     expect(() => normalizeEndpoint("organizations/\x00admin/")).toThrow(
-      /Invalid/
+      /Invalid/,
     );
   });
 
   test("strips newlines from multi-line pasted endpoints (CLI-FR)", () => {
     expect(
       normalizeEndpoint(
-        "organizations/my-org/issues/?\n  environment=Production&project=123"
-      )
+        "organizations/my-org/issues/?\n  environment=Production&project=123",
+      ),
     ).toBe("organizations/my-org/issues/?environment=Production&project=123");
   });
 
   test("strips carriage returns and surrounding indentation", () => {
     expect(normalizeEndpoint("organizations/my-org/\r\n  issues/")).toBe(
-      "organizations/my-org/issues/"
+      "organizations/my-org/issues/",
     );
   });
 
   test("preserves tabs within segments (not line-break related)", () => {
     // Tabs without adjacent line breaks are control chars — rejected
     expect(() => normalizeEndpoint("organizations/\tmy-org/")).toThrow(
-      /Invalid/
+      /Invalid/,
     );
   });
 });
@@ -230,16 +230,16 @@ describe("normalizeEndpoint: path traversal hardening (#350)", () => {
 describe("parseFieldKey error cases", () => {
   test("throws for invalid format with unmatched brackets", () => {
     expect(() => parseFieldKey("user[name")).toThrow(
-      /Invalid field key format/
+      /Invalid field key format/,
     );
     expect(() => parseFieldKey("user]name[")).toThrow(
-      /Invalid field key format/
+      /Invalid field key format/,
     );
   });
 
   test("throws for nested brackets", () => {
     expect(() => parseFieldKey("user[[name]]")).toThrow(
-      /Invalid field key format/
+      /Invalid field key format/,
     );
   });
 
@@ -257,7 +257,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "user", "John");
     expect(() => setNestedValue(obj, "user[name]", "Jane")).toThrow(
-      /expected map type under "user", got string/
+      /expected map type under "user", got string/,
     );
   });
 
@@ -265,7 +265,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "count", 42);
     expect(() => setNestedValue(obj, "count[value]", 100)).toThrow(
-      /expected map type under "count", got number/
+      /expected map type under "count", got number/,
     );
   });
 
@@ -273,7 +273,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "tags", "foo");
     expect(() => setNestedValue(obj, "tags[]", "bar")).toThrow(
-      /expected array type under "tags", got string/
+      /expected array type under "tags", got string/,
     );
   });
 
@@ -281,7 +281,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "tags[name]", "foo");
     expect(() => setNestedValue(obj, "tags[]", "bar")).toThrow(
-      /expected array type under "tags", got map/
+      /expected array type under "tags", got map/,
     );
   });
 
@@ -289,7 +289,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "items[]", "first");
     expect(() => setNestedValue(obj, "items[key]", "value")).toThrow(
-      /expected map type under "items", got array/
+      /expected map type under "items", got array/,
     );
   });
 
@@ -304,7 +304,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "flag", true);
     expect(() => setNestedValue(obj, "flag[value]", "test")).toThrow(
-      /expected map type under "flag", got boolean/
+      /expected map type under "flag", got boolean/,
     );
   });
 
@@ -312,7 +312,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "empty", null);
     expect(() => setNestedValue(obj, "empty[value]", "test")).toThrow(
-      /expected map type under "empty", got/
+      /expected map type under "empty", got/,
     );
   });
 
@@ -320,7 +320,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "flag", false);
     expect(() => setNestedValue(obj, "flag[]", "item")).toThrow(
-      /expected array type under "flag", got boolean/
+      /expected array type under "flag", got boolean/,
     );
   });
 
@@ -328,7 +328,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "empty", null);
     expect(() => setNestedValue(obj, "empty[]", "item")).toThrow(
-      /expected array type under "empty", got/
+      /expected array type under "empty", got/,
     );
   });
 
@@ -336,7 +336,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "a[b][c]", "value");
     expect(() => setNestedValue(obj, "a[b][c][d]", "nested")).toThrow(
-      /expected map type under "a\[b\]\[c\]", got string/
+      /expected map type under "a\[b\]\[c\]", got string/,
     );
   });
 
@@ -344,7 +344,7 @@ describe("setNestedValue type conflicts", () => {
     const obj: Record<string, unknown> = {};
     setNestedValue(obj, "a[b][]", "item");
     expect(() => setNestedValue(obj, "a[b][key]", "value")).toThrow(
-      /expected map type under "a\[b\]", got array/
+      /expected map type under "a\[b\]", got array/,
     );
   });
 });
@@ -397,7 +397,7 @@ describe("parseFields", () => {
         "user[name]=John",
         "user[roles][]=admin",
         "user[roles][]=editor",
-      ])
+      ]),
     ).toEqual({
       user: { name: "John", roles: ["admin", "editor"] },
     });
@@ -432,14 +432,14 @@ describe("parseFields", () => {
   test("handles overwriting array with object", () => {
     // First create array, then try to treat it as object - should throw
     expect(() => parseFields(["items[]=first", "items[key]=value"])).toThrow(
-      /expected map type/
+      /expected map type/,
     );
   });
 
   test("handles overwriting object with array", () => {
     // First create object, then try to treat it as array - should throw
     expect(() => parseFields(["items[key]=value", "items[]=item"])).toThrow(
-      /expected array type/
+      /expected array type/,
     );
   });
 });
@@ -614,7 +614,7 @@ describe("parseHeaders", () => {
 
   test("parses multiple headers", () => {
     expect(
-      parseHeaders(["Content-Type: application/json", "Accept: text/plain"])
+      parseHeaders(["Content-Type: application/json", "Accept: text/plain"]),
     ).toEqual({
       "Content-Type": "application/json",
       Accept: "text/plain",
@@ -665,7 +665,7 @@ describe("buildQueryParams", () => {
         count: "42",
         active: "true",
         value: "null",
-      }
+      },
     );
   });
 
@@ -677,7 +677,7 @@ describe("buildQueryParams", () => {
     expect(() => buildQueryParams(["invalid"])).toThrow(ValidationError);
     expect(() => buildQueryParams(["invalid"])).toThrow(/Invalid field format/);
     expect(() => buildQueryParams(["no-equals"])).toThrow(
-      /Invalid field format/
+      /Invalid field format/,
     );
   });
 
@@ -699,7 +699,7 @@ describe("buildQueryParams", () => {
 
   test("handles arrays of objects by JSON stringifying each element", () => {
     expect(
-      buildQueryParams(['filters=[{"key":"value"},{"key2":"value2"}]'])
+      buildQueryParams(['filters=[{"key":"value"},{"key2":"value2"}]']),
     ).toEqual({
       filters: ['{"key":"value"}', '{"key2":"value2"}'],
     });
@@ -713,16 +713,16 @@ describe("buildQueryParams", () => {
 
   test("throws for empty key", () => {
     expect(() => buildQueryParams(["=value"])).toThrow(
-      /Invalid field key format/
+      /Invalid field key format/,
     );
   });
 
   test("throws for invalid key format with unmatched brackets", () => {
     expect(() => buildQueryParams(["key[=value"])).toThrow(
-      /Invalid field key format/
+      /Invalid field key format/,
     );
     expect(() => buildQueryParams(["key]=value"])).toThrow(
-      /Invalid field key format/
+      /Invalid field key format/,
     );
   });
 
@@ -744,7 +744,7 @@ describe("buildRawQueryParams", () => {
 
   test("keeps JSON-like values as raw strings (no parsing)", () => {
     expect(
-      buildRawQueryParams(["data=[1,2,3]", 'obj={"key":"value"}'])
+      buildRawQueryParams(["data=[1,2,3]", 'obj={"key":"value"}']),
     ).toEqual({
       data: "[1,2,3]",
       obj: '{"key":"value"}',
@@ -770,13 +770,13 @@ describe("buildRawQueryParams", () => {
   test("throws ValidationError for invalid field format without equals", () => {
     expect(() => buildRawQueryParams(["invalid"])).toThrow(ValidationError);
     expect(() => buildRawQueryParams(["invalid"])).toThrow(
-      /Invalid field format/
+      /Invalid field format/,
     );
   });
 
   test("throws for empty key", () => {
     expect(() => buildRawQueryParams(["=value"])).toThrow(
-      /key cannot be empty/
+      /key cannot be empty/,
     );
   });
 
@@ -797,7 +797,7 @@ describe("buildQueryParamsFromFields", () => {
 
   test("builds params from typed fields only", () => {
     expect(
-      buildQueryParamsFromFields(["status=resolved", "count=10"], undefined)
+      buildQueryParamsFromFields(["status=resolved", "count=10"], undefined),
     ).toEqual({
       status: "resolved",
       count: "10",
@@ -806,7 +806,7 @@ describe("buildQueryParamsFromFields", () => {
 
   test("builds params from raw fields only", () => {
     expect(
-      buildQueryParamsFromFields(undefined, ["name=test", "value=raw"])
+      buildQueryParamsFromFields(undefined, ["name=test", "value=raw"]),
     ).toEqual({
       name: "test",
       value: "raw",
@@ -828,7 +828,7 @@ describe("buildQueryParamsFromFields", () => {
 
   test("typed fields parse JSON, raw fields do not", () => {
     expect(
-      buildQueryParamsFromFields(["arr=[1,2,3]"], ["raw=[1,2,3]"])
+      buildQueryParamsFromFields(["arr=[1,2,3]"], ["raw=[1,2,3]"]),
     ).toEqual({
       arr: ["1", "2", "3"], // typed: parsed as JSON array, stringified
       raw: "[1,2,3]", // raw: kept as literal string
@@ -918,7 +918,7 @@ describe("prepareRequestOptions", () => {
     const result = prepareRequestOptions(
       "GET",
       ["status=resolved"],
-      ["raw=value"]
+      ["raw=value"],
     );
     expect(result.params).toEqual({ status: "resolved", raw: "value" });
     expect(result.body).toBeUndefined();
@@ -934,7 +934,7 @@ describe("prepareRequestOptions", () => {
     const result = prepareRequestOptions(
       "GET",
       ["value=123"], // typed: parsed as number, stringified back
-      ["value=raw-string"] // raw: kept as-is, overrides typed
+      ["value=raw-string"], // raw: kept as-is, overrides typed
     );
     expect(result.params).toEqual({ value: "raw-string" });
   });
@@ -998,7 +998,7 @@ describe("buildBodyFromFields", () => {
 describe("formatApiResponse", () => {
   test("formats JSON object with pretty-printing", () => {
     expect(formatApiResponse({ key: "value", num: 42 })).toBe(
-      '{\n  "key": "value",\n  "num": 42\n}'
+      '{\n  "key": "value",\n  "num": 42\n}',
     );
   });
 
@@ -1008,7 +1008,7 @@ describe("formatApiResponse", () => {
 
   test("formats string directly without JSON quoting", () => {
     expect(formatApiResponse("plain text response")).toBe(
-      "plain text response"
+      "plain text response",
     );
   });
 
@@ -1052,7 +1052,7 @@ describe("formatBinaryErrorBody", () => {
     const summary = formatBinaryErrorBody(
       500,
       new Headers(),
-      new Uint8Array(0)
+      new Uint8Array(0),
     );
     expect(summary).toContain("unknown");
     expect(summary).toContain("0 bytes");
@@ -1065,7 +1065,7 @@ describe("resolveApiResponseOutput", () => {
   test("silent + success returns undefined (no body)", () => {
     const out = resolveApiResponseOutput(
       { status: 200, headers: new Headers(), body: "ok" },
-      { silent: true, isTTY: false }
+      { silent: true, isTTY: false },
     );
     expect(out).toBeUndefined();
   });
@@ -1074,7 +1074,7 @@ describe("resolveApiResponseOutput", () => {
     try {
       resolveApiResponseOutput(
         { status: 500, headers: new Headers(), body: "boom" },
-        { silent: true, isTTY: false }
+        { silent: true, isTTY: false },
       );
       throw new Error("expected throw");
     } catch (error) {
@@ -1087,7 +1087,7 @@ describe("resolveApiResponseOutput", () => {
     try {
       resolveApiResponseOutput(
         { status: 404, headers: new Headers(), body: { detail: "not found" } },
-        { silent: false, isTTY: false }
+        { silent: false, isTTY: false },
       );
       throw new Error("expected throw");
     } catch (error) {
@@ -1110,13 +1110,13 @@ describe("resolveApiResponseOutput", () => {
           isTTY: false,
           method: "GET",
           endpoint: "issues/7670740039/committers/",
-        }
+        },
       );
       throw new Error("expected throw");
     } catch (error) {
       expect(error).toBeInstanceOf(OutputError);
       expect((error as OutputError).data).toBe(
-        "HTTP 404 Not Found — GET /api/0/issues/7670740039/committers/"
+        "HTTP 404 Not Found — GET /api/0/issues/7670740039/committers/",
       );
     }
   });
@@ -1135,13 +1135,13 @@ describe("resolveApiResponseOutput", () => {
           isTTY: false,
           method: "GET",
           endpoint: "missing/",
-        }
+        },
       );
       throw new Error("expected throw");
     } catch (error) {
       expect(error).toBeInstanceOf(OutputError);
       expect((error as OutputError).data).toBe(
-        "HTTP 404 Not Found — GET /api/0/missing/"
+        "HTTP 404 Not Found — GET /api/0/missing/",
       );
     }
   });
@@ -1164,13 +1164,13 @@ describe("resolveApiResponseOutput", () => {
           isTTY: false,
           method: "GET",
           endpoint: "missing/",
-        }
+        },
       );
       throw new Error("expected throw");
     } catch (error) {
       expect(error).toBeInstanceOf(OutputError);
       expect((error as OutputError).data).toBe(
-        `HTTP ${status} ${statusText} — GET /api/0/missing/`
+        `HTTP ${status} ${statusText} — GET /api/0/missing/`,
       );
     }
   });
@@ -1190,7 +1190,7 @@ describe("resolveApiResponseOutput", () => {
           json: true,
           method: "GET",
           endpoint: "missing/",
-        }
+        },
       );
       throw new Error("expected throw");
     } catch (error) {
@@ -1211,7 +1211,7 @@ describe("resolveApiResponseOutput", () => {
           headers: new Headers({ "content-type": "image/png" }),
           body: png,
         },
-        { silent: false, isTTY: false }
+        { silent: false, isTTY: false },
       );
       throw new Error("expected throw");
     } catch (error) {
@@ -1227,7 +1227,7 @@ describe("resolveApiResponseOutput", () => {
   test("success + text body returns the body unchanged", () => {
     const out = resolveApiResponseOutput(
       { status: 200, headers: new Headers(), body: { ok: true } },
-      { silent: false, isTTY: false }
+      { silent: false, isTTY: false },
     );
     expect(out).toEqual({ ok: true });
   });
@@ -1235,7 +1235,7 @@ describe("resolveApiResponseOutput", () => {
   test("success + binary body returns raw bytes (non-TTY, no warning)", () => {
     const out = resolveApiResponseOutput(
       { status: 200, headers: new Headers(), body: png },
-      { silent: false, isTTY: false }
+      { silent: false, isTTY: false },
     );
     expect(out).toBe(png);
   });
@@ -1243,7 +1243,7 @@ describe("resolveApiResponseOutput", () => {
   test("success + binary body to a TTY still returns raw bytes (warn only, no hard-refuse)", () => {
     const out = resolveApiResponseOutput(
       { status: 200, headers: new Headers(), body: png },
-      { silent: false, isTTY: true }
+      { silent: false, isTTY: true },
     );
     expect(out).toBe(png);
   });
@@ -1283,7 +1283,7 @@ describe("resolveBinaryTtyOutput", () => {
     // and no inline image is produced — the caller keeps the raw bytes.
     const out = resolveBinaryTtyOutput(
       new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
-      new Headers({ "content-type": "image/png" })
+      new Headers({ "content-type": "image/png" }),
     );
     expect(out).toBeUndefined();
   });
@@ -1294,7 +1294,7 @@ describe("resolveBinaryTtyOutput", () => {
     const out = resolveBinaryTtyOutput(
       new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
       new Headers({ "content-type": "image/png" }),
-      false
+      false,
     );
     expect(out).toBeUndefined();
     expect(stderrOutput).toContain("Binary response written to a TTY");
@@ -1349,9 +1349,8 @@ describe("buildBodyFromInput", () => {
 
   test("reads JSON from file", async () => {
     // Create a temp file using test config dir (which is writable)
-    const { createTestConfigDir, cleanupTestDir } = await import(
-      "../helpers.js"
-    );
+    const { createTestConfigDir, cleanupTestDir } =
+      await import("../helpers.js");
     const testDir = await createTestConfigDir("test-api-file-");
     const tempFile = `${testDir}/test-input.json`;
     await writeFile(tempFile, JSON.stringify({ key: "value" }));
@@ -1367,9 +1366,8 @@ describe("buildBodyFromInput", () => {
 
   test("reads non-JSON from file", async () => {
     // Create a temp file using test config dir (which is writable)
-    const { createTestConfigDir, cleanupTestDir } = await import(
-      "../helpers.js"
-    );
+    const { createTestConfigDir, cleanupTestDir } =
+      await import("../helpers.js");
     const testDir = await createTestConfigDir("test-api-file-");
     const tempFile = `${testDir}/test-input.txt`;
     await writeFile(tempFile, "plain text from file");
@@ -1387,7 +1385,7 @@ describe("buildBodyFromInput", () => {
     const mockStdin = createMockStdin("");
 
     await expect(
-      buildBodyFromInput("/nonexistent/path/file.json", mockStdin)
+      buildBodyFromInput("/nonexistent/path/file.json", mockStdin),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 });
@@ -1406,7 +1404,7 @@ describe("resolveEffectiveHeaders", () => {
   test("does not override explicit Content-Type", () => {
     const headers = resolveEffectiveHeaders(
       { "Content-Type": "text/plain" },
-      { key: "value" }
+      { key: "value" },
     );
     expect(headers["Content-Type"]).toBe("text/plain");
   });
@@ -1414,7 +1412,7 @@ describe("resolveEffectiveHeaders", () => {
   test("case-insensitive Content-Type check", () => {
     const headers = resolveEffectiveHeaders(
       { "content-type": "text/xml" },
-      { key: "value" }
+      { key: "value" },
     );
     expect(headers["content-type"]).toBe("text/xml");
     expect(headers["Content-Type"]).toBeUndefined();
@@ -1423,7 +1421,7 @@ describe("resolveEffectiveHeaders", () => {
   test("preserves custom headers", () => {
     const headers = resolveEffectiveHeaders(
       { Authorization: "Bearer token", "X-Custom": "value" },
-      undefined
+      undefined,
     );
     expect(headers.Authorization).toBe("Bearer token");
     expect(headers["X-Custom"]).toBe("value");
@@ -1460,7 +1458,7 @@ describe("parseDataBody", () => {
 
   test("parses nested JSON", () => {
     expect(
-      parseDataBody('{"status":"ignored","statusDetails":{"ignoreCount":1}}')
+      parseDataBody('{"status":"ignored","statusDetails":{"ignoreCount":1}}'),
     ).toEqual({ status: "ignored", statusDetails: { ignoreCount: 1 } });
   });
 
@@ -1544,10 +1542,10 @@ describe("extractJsonBody", () => {
 
   test("throws on multiple JSON bodies", () => {
     expect(() => extractJsonBody(['{"a":1}', '{"b":2}'])).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() => extractJsonBody(['{"a":1}', '{"b":2}'])).toThrow(
-      /Multiple JSON bodies/
+      /Multiple JSON bodies/,
     );
   });
 
@@ -1630,13 +1628,13 @@ describe("buildFromFields", () => {
       buildFromFields("PUT", {
         "raw-field": ["[1,2,3]"],
         field: ["extra=field"],
-      })
+      }),
     ).toThrow(ValidationError);
     expect(() =>
       buildFromFields("PUT", {
         "raw-field": ["[1,2,3]"],
         field: ["extra=field"],
-      })
+      }),
     ).toThrow(/Cannot combine a JSON array/);
   });
 
@@ -1644,7 +1642,7 @@ describe("buildFromFields", () => {
     // GET with a bare JSON field: no body extracted, falls to buildRawQueryParams
     // which throws "Invalid field format" since there is no '='
     expect(() =>
-      buildFromFields("GET", { "raw-field": ['{"status":"ignored"}'] })
+      buildFromFields("GET", { "raw-field": ['{"status":"ignored"}'] }),
     ).toThrow(ValidationError);
     // No hint should have been emitted (JSON extraction was skipped for GET)
     expect(stderrOutput).toBe("");
@@ -1655,13 +1653,13 @@ describe("buildFromFields", () => {
       buildFromFields("PUT", {
         "raw-field": ['{"status":"ignored","statusDetails":{"ignoreCount":1}}'],
         field: ["statusDetails[minCount]=5"],
-      })
+      }),
     ).toThrow(ValidationError);
     expect(() =>
       buildFromFields("PUT", {
         "raw-field": ['{"status":"ignored","statusDetails":{"ignoreCount":1}}'],
         field: ["statusDetails[minCount]=5"],
-      })
+      }),
     ).toThrow(/conflict/i);
   });
 
@@ -1684,7 +1682,7 @@ describe("resolveBody", () => {
   test("--data returns parsed JSON body", async () => {
     const result = await resolveBody(
       { method: "PUT", data: '{"status":"resolved"}' },
-      MOCK_STDIN
+      MOCK_STDIN,
     );
     expect(result.body).toEqual({ status: "resolved" });
     expect(result.params).toBeUndefined();
@@ -1693,7 +1691,7 @@ describe("resolveBody", () => {
   test("--data with non-JSON returns raw string body", async () => {
     const result = await resolveBody(
       { method: "POST", data: "hello world" },
-      MOCK_STDIN
+      MOCK_STDIN,
     );
     expect(result.body).toBe("hello world");
   });
@@ -1702,14 +1700,14 @@ describe("resolveBody", () => {
     await expect(
       resolveBody(
         { method: "PUT", data: '{"a":1}', input: "file.json" },
-        MOCK_STDIN
-      )
+        MOCK_STDIN,
+      ),
     ).rejects.toThrow(ValidationError);
     await expect(
       resolveBody(
         { method: "PUT", data: '{"a":1}', input: "file.json" },
-        MOCK_STDIN
-      )
+        MOCK_STDIN,
+      ),
     ).rejects.toThrow(/--data.*--input/i);
   });
 
@@ -1717,14 +1715,14 @@ describe("resolveBody", () => {
     await expect(
       resolveBody(
         { method: "PUT", data: '{"a":1}', field: ["key=value"] },
-        MOCK_STDIN
-      )
+        MOCK_STDIN,
+      ),
     ).rejects.toThrow(ValidationError);
     await expect(
       resolveBody(
         { method: "PUT", data: '{"a":1}', field: ["key=value"] },
-        MOCK_STDIN
-      )
+        MOCK_STDIN,
+      ),
     ).rejects.toThrow(/--data.*--field|--field.*--data/i);
   });
 
@@ -1732,15 +1730,15 @@ describe("resolveBody", () => {
     await expect(
       resolveBody(
         { method: "PUT", data: '{"a":1}', "raw-field": ["key=value"] },
-        MOCK_STDIN
-      )
+        MOCK_STDIN,
+      ),
     ).rejects.toThrow(ValidationError);
   });
 
   test("falls through to buildFromFields when neither --data nor --input", async () => {
     const result = await resolveBody(
       { method: "PUT", field: ["status=resolved"] },
-      MOCK_STDIN
+      MOCK_STDIN,
     );
     expect(result.body).toEqual({ status: "resolved" });
     expect(result.params).toBeUndefined();
@@ -1749,7 +1747,7 @@ describe("resolveBody", () => {
   test("GET fields produce params, not body", async () => {
     const result = await resolveBody(
       { method: "GET", "raw-field": ["query=is:unresolved"] },
-      MOCK_STDIN
+      MOCK_STDIN,
     );
     expect(result.body).toBeUndefined();
     expect(result.params).toEqual({ query: "is:unresolved" });
@@ -1758,7 +1756,7 @@ describe("resolveBody", () => {
   test("GET --data converts URL-encoded string to query params", async () => {
     const result = await resolveBody(
       { method: "GET", data: "stat=received&resolution=1d" },
-      MOCK_STDIN
+      MOCK_STDIN,
     );
     expect(result.body).toBeUndefined();
     expect(result.params).toEqual({ stat: "received", resolution: "1d" });
@@ -1767,7 +1765,7 @@ describe("resolveBody", () => {
   test("GET --data converts JSON object to query params", async () => {
     const result = await resolveBody(
       { method: "GET", data: '{"stat":"received","resolution":"1d"}' },
-      MOCK_STDIN
+      MOCK_STDIN,
     );
     expect(result.body).toBeUndefined();
     expect(result.params).toEqual({ stat: "received", resolution: "1d" });
@@ -1775,26 +1773,26 @@ describe("resolveBody", () => {
 
   test("GET --data with JSON array throws ValidationError", async () => {
     await expect(
-      resolveBody({ method: "GET", data: "[1,2,3]" }, MOCK_STDIN)
+      resolveBody({ method: "GET", data: "[1,2,3]" }, MOCK_STDIN),
     ).rejects.toThrow(ValidationError);
     await expect(
-      resolveBody({ method: "GET", data: "[1,2,3]" }, MOCK_STDIN)
+      resolveBody({ method: "GET", data: "[1,2,3]" }, MOCK_STDIN),
     ).rejects.toThrow(/cannot.*query parameters/i);
   });
 
   test("GET --data with JSON primitive throws ValidationError", async () => {
     await expect(
-      resolveBody({ method: "GET", data: "null" }, MOCK_STDIN)
+      resolveBody({ method: "GET", data: "null" }, MOCK_STDIN),
     ).rejects.toThrow(ValidationError);
     await expect(
-      resolveBody({ method: "GET", data: "42" }, MOCK_STDIN)
+      resolveBody({ method: "GET", data: "42" }, MOCK_STDIN),
     ).rejects.toThrow(ValidationError);
   });
 
   test("POST --data still returns body (regression guard)", async () => {
     const result = await resolveBody(
       { method: "POST", data: '{"status":"resolved"}' },
-      MOCK_STDIN
+      MOCK_STDIN,
     );
     expect(result.body).toEqual({ status: "resolved" });
     expect(result.params).toBeUndefined();
@@ -1838,25 +1836,25 @@ describe("dataToQueryParams", () => {
   test("throws on JSON array", () => {
     expect(() => dataToQueryParams([1, 2, 3])).toThrow(ValidationError);
     expect(() => dataToQueryParams([1, 2, 3])).toThrow(
-      /cannot.*JSON primitive or array.*query parameters/i
+      /cannot.*JSON primitive or array.*query parameters/i,
     );
   });
 
   test("throws on null", () => {
     expect(() =>
-      dataToQueryParams(null as unknown as Record<string, unknown>)
+      dataToQueryParams(null as unknown as Record<string, unknown>),
     ).toThrow(ValidationError);
   });
 
   test("throws on boolean", () => {
     expect(() =>
-      dataToQueryParams(true as unknown as Record<string, unknown>)
+      dataToQueryParams(true as unknown as Record<string, unknown>),
     ).toThrow(ValidationError);
   });
 
   test("throws on number", () => {
     expect(() =>
-      dataToQueryParams(42 as unknown as Record<string, unknown>)
+      dataToQueryParams(42 as unknown as Record<string, unknown>),
     ).toThrow(ValidationError);
   });
 });
@@ -1868,7 +1866,7 @@ describe("resolveRequestUrl", () => {
     const url = resolveRequestUrl(
       "organizations/",
       undefined,
-      "https://de.sentry.io/sentry"
+      "https://de.sentry.io/sentry",
     );
     expect(url).toBe("https://de.sentry.io/sentry/api/0/organizations/");
   });
@@ -1926,11 +1924,11 @@ describe("resolveRequestUrl", () => {
         "dry-run": true,
         json: true,
       },
-      "https://de.sentry.io/sentry/api/0/organizations/acme/"
+      "https://de.sentry.io/sentry/api/0/organizations/acme/",
     );
 
     expect(JSON.parse(output).url).toBe(
-      "https://de.sentry.io/sentry/api/0/organizations/acme/"
+      "https://de.sentry.io/sentry/api/0/organizations/acme/",
     );
   });
 });

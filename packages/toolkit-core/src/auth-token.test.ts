@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAuthToken, trimAuthToken } from "./auth-token";
+import {
+  normalizeAuthToken,
+  sentryBearerHeader,
+  trimAuthToken,
+} from "./auth-token";
 
 describe("Sentry bearer credentials", () => {
   it("preserves every visible ASCII byte through edge normalization", () => {
@@ -18,5 +22,13 @@ describe("Sentry bearer credentials", () => {
     }
     expect(normalizeAuthToken("  \t\x00  ")).toBeNull();
     expect(normalizeAuthToken("é")).toBeNull();
+  });
+
+  it("formats a bearer header only for a valid upstream token", () => {
+    expect(sentryBearerHeader(" \tvalid-token\x7f ")).toBe(
+      "Bearer valid-token",
+    );
+    expect(sentryBearerHeader("valid\nsecret")).toBeNull();
+    expect(sentryBearerHeader(" \t ")).toBeNull();
   });
 });

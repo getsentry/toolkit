@@ -45,7 +45,7 @@ function createPreMigrationDatabase(db: Database): void {
   db.exec(statements.join(";\n"));
   db.query("INSERT INTO schema_version (version) VALUES (4)").run();
   db.query(
-    "INSERT INTO metadata (key, value) VALUES ('json_migration_completed', 'true')"
+    "INSERT INTO metadata (key, value) VALUES ('json_migration_completed', 'true')",
   ).run();
 }
 
@@ -55,7 +55,7 @@ function createPreMigrationDatabase(db: Database): void {
  */
 function createDatabaseWithMissingTables(
   db: Database,
-  missingTables: string[]
+  missingTables: string[],
 ): void {
   const statements: string[] = [];
 
@@ -67,7 +67,7 @@ function createDatabaseWithMissingTables(
   db.exec(statements.join(";\n"));
   db.query("INSERT INTO schema_version (version) VALUES (4)").run();
   db.query(
-    "INSERT INTO metadata (key, value) VALUES ('json_migration_completed', 'true')"
+    "INSERT INTO metadata (key, value) VALUES ('json_migration_completed', 'true')",
   ).run();
 }
 
@@ -206,7 +206,7 @@ describe("sentry cli fix", () => {
     const verifyDb = new Database(join(getTestDir(), "cli.db"));
     const tables = verifyDb
       .query(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='dsn_cache'"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='dsn_cache'",
       )
       .all();
     expect(tables.length).toBe(1);
@@ -254,9 +254,9 @@ describe("sentry cli fix", () => {
     expect(output).toContain("repaired successfully");
     expect(exitCode).toBe(0);
 
-    // biome-ignore lint/suspicious/noBitwiseOperators: verifying permission bits
+    // oxlint-disable-next-line no-bitwise -- verifying permission bits
     const repairedMode = statSync(dbPath).mode & 0o777;
-    // biome-ignore lint/suspicious/noBitwiseOperators: verifying permission bits
+    // oxlint-disable-next-line no-bitwise -- verifying permission bits
     expect(repairedMode & 0o600).toBe(0o600);
   });
 
@@ -289,7 +289,7 @@ describe("sentry cli fix", () => {
     expect(output).not.toContain("✓");
 
     // File should still be readonly — dry-run didn't touch it
-    // biome-ignore lint/suspicious/noBitwiseOperators: verifying permission bits
+    // oxlint-disable-next-line no-bitwise -- verifying permission bits
     const mode = statSync(dbPath).mode & 0o777;
     expect(mode).toBe(0o444);
 
@@ -392,7 +392,7 @@ describe("sentry cli fix", () => {
     initSchema(db);
     db.exec("DROP TABLE pagination_cursors");
     db.exec(
-      "CREATE TABLE pagination_cursors (command_key TEXT PRIMARY KEY, context TEXT NOT NULL, cursor TEXT NOT NULL, expires_at INTEGER NOT NULL)"
+      "CREATE TABLE pagination_cursors (command_key TEXT PRIMARY KEY, context TEXT NOT NULL, cursor TEXT NOT NULL, expires_at INTEGER NOT NULL)",
     );
     db.close();
     chmodSync(dbPath, 0o600);
@@ -418,7 +418,7 @@ describe("sentry cli fix", () => {
     initSchema(db);
     db.exec("DROP TABLE pagination_cursors");
     db.exec(
-      "CREATE TABLE pagination_cursors (command_key TEXT PRIMARY KEY, context TEXT NOT NULL, cursor TEXT NOT NULL, expires_at INTEGER NOT NULL)"
+      "CREATE TABLE pagination_cursors (command_key TEXT PRIMARY KEY, context TEXT NOT NULL, cursor TEXT NOT NULL, expires_at INTEGER NOT NULL)",
     );
     db.close();
     chmodSync(dbPath, 0o600);
@@ -436,7 +436,7 @@ describe("sentry cli fix", () => {
     const verifyDb = new Database(dbPath);
     const row = verifyDb
       .query(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='pagination_cursors'"
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='pagination_cursors'",
       )
       .get() as { sql: string };
     expect(row.sql).not.toContain("PRIMARY KEY (command_key, context)");

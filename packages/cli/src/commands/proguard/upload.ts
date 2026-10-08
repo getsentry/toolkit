@@ -78,7 +78,7 @@ function validateUuidFormat(uuid: string): void {
   if (!UUID_RE.test(uuid)) {
     throw new ValidationError(
       `Invalid UUID format: '${uuid}'. Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
-      "uuid"
+      "uuid",
     );
   }
 }
@@ -99,25 +99,25 @@ async function readMappingFile(path: string): Promise<Buffer> {
     if (code === "ENOENT") {
       throw new ValidationError(
         `ProGuard mapping file '${path}' does not exist.`,
-        "path"
+        "path",
       );
     }
     if (code === "EISDIR") {
       throw new ValidationError(
         `Path '${path}' is a directory, not a ProGuard mapping file.`,
-        "path"
+        "path",
       );
     }
     const msg = err instanceof Error ? err.message : String(err);
     throw new ValidationError(
       `Cannot read ProGuard mapping file '${path}': ${msg}`,
-      "path"
+      "path",
     );
   }
   if (content.length === 0) {
     throw new ValidationError(
       `ProGuard mapping file '${path}' is empty.`,
-      "path"
+      "path",
     );
   }
   return content;
@@ -134,7 +134,7 @@ function deduplicateMappings(mappings: ProguardMapping[]): ProguardMapping[] {
     const existing = seen.get(m.uuid);
     if (existing) {
       log.warn(
-        `Skipping '${m.path}': identical content as '${existing}' (UUID ${m.uuid})`
+        `Skipping '${m.path}': identical content as '${existing}' (UUID ${m.uuid})`,
       );
       continue;
     }
@@ -213,7 +213,7 @@ export const uploadCommand = buildCommand({
       if (flags["require-one"]) {
         throw new ValidationError(
           "No mapping files provided (--require-one is set)",
-          "path"
+          "path",
         );
       }
       throw new ContextError("Mapping file path(s)", USAGE_HINT, []);
@@ -223,7 +223,7 @@ export const uploadCommand = buildCommand({
     if (flags.uuid && paths.length > 1) {
       throw new ValidationError(
         "--uuid cannot be used with multiple files (each file needs a unique UUID)",
-        "uuid"
+        "uuid",
       );
     }
 

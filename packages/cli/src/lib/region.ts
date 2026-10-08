@@ -6,6 +6,7 @@
  */
 
 import { getOrganization } from "@sentry/api";
+import { resolveCachedRegion } from "@sentry/toolkit-core/region-cache";
 import { type CredentialContext, getCredentialContext } from "./db/auth.js";
 import { getOrgByNumericId, getOrgRegion, setOrgRegion } from "./db/regions.js";
 import { stripDsnOrgPrefix } from "./dsn/index.js";
@@ -61,22 +62,12 @@ export function resolveOrgRegion(orgSlug: string): Promise<string> {
   }
   const baseUrl = getApiBaseUrl(credential);
   const key = `${credential.identity}\0${baseUrl}\0${orgSlug}`;
-  const existing = regionCache.get(key);
-  if (existing) {
-    return existing.then((resolution) => resolution.url);
-  }
-
-  const promise = resolveOrgRegionUncached(orgSlug, credential, baseUrl);
-  regionCache.set(key, promise);
-  promise.then(
-    (resolution) => {
-      if (!resolution.cacheable) {
-        regionCache.delete(key);
-      }
-    },
-    () => regionCache.delete(key)
-  );
-  return promise.then((resolution) => resolution.url);
+  return resolveCachedRegion(
+    regionCache,
+    key,
+    () => resolveOrgRegionUncached(orgSlug, credential, baseUrl),
+    (resolution) => resolution.cacheable,
+  ).then((resolution) => resolution.url);
 }
 
 /**
@@ -89,7 +80,7 @@ export function resolveOrgRegion(orgSlug: string): Promise<string> {
  */
 function normalizeRegionUrl(
   raw: string,
-  responseOrigin: string
+  responseOrigin: string,
 ): string | undefined {
   return normalizeRegionBaseUrl(raw, responseOrigin);
 }
@@ -97,7 +88,7 @@ function normalizeRegionUrl(
 function getResolvedRegionUrl(
   raw: string | undefined,
   responseOrigin: string | undefined,
-  baseUrl: string
+  baseUrl: string,
 ): string | undefined {
   if (!responseOrigin) {
     return;
@@ -117,7 +108,7 @@ function getResolvedRegionUrl(
 async function resolveOrgRegionUncached(
   orgSlug: string,
   credential: CredentialContext,
-  baseUrl: string
+  baseUrl: string,
 ): Promise<RegionResolution> {
   // 1. Check SQLite cache first
   const cached = getOrgRegion(orgSlug, baseUrl, credential.identity);
@@ -158,7 +149,7 @@ async function resolveOrgRegionUncached(
     const regionUrl = getResolvedRegionUrl(
       rawRegionUrl,
       responseOrigin,
-      baseUrl
+      baseUrl,
     );
     if (!(responseOrigin && regionUrl)) {
       return { cacheable: false, url: responseOrigin ?? baseUrl };
@@ -175,7 +166,7 @@ async function resolveOrgRegionUncached(
       regionUrl,
       responseOrigin,
       baseUrl,
-      credential.identity
+      credential.identity,
     );
 
     return { cacheable: true, url: regionUrl };
@@ -223,7 +214,7 @@ function resolveOrgFromCache(orgSlug: string): string | undefined {
     const match = getOrgByNumericId(
       numericId,
       sourceOrigin,
-      credential.identity
+      credential.identity,
     );
     if (match) {
       return match.slug;
@@ -279,7 +270,7 @@ export async function resolveEffectiveOrg(orgSlug: string): Promise<string> {
       // boundary. Log here so --verbose shows why we used the raw slug.
       logger.debug(
         `resolveOrgRegion failed for '${orgSlug}', using raw slug`,
-        error
+        error,
       );
       return orgSlug;
     }
@@ -294,7 +285,7 @@ export async function resolveEffectiveOrg(orgSlug: string): Promise<string> {
     // Same as above: the command fails downstream and is reported there.
     logger.debug(
       `Failed to refresh org list for numeric ID '${orgSlug}'`,
-      error
+      error,
     );
     return orgSlug;
   }

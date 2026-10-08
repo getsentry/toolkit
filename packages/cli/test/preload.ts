@@ -128,7 +128,7 @@ const mockFetch = async (input: RequestInfo | URL, _init?: RequestInit) => {
   const url = getUrlFromInput(input);
   console.error(`[TEST] Unexpected fetch call to: ${url}`);
   console.error(
-    "[TEST] Tests should mock fetch or use SENTRY_TEST_* credentials for real API calls"
+    "[TEST] Tests should mock fetch or use SENTRY_TEST_* credentials for real API calls",
   );
   throw new Error(`Unmocked fetch call to: ${url}`);
 };

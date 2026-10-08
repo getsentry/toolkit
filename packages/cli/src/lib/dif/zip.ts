@@ -117,7 +117,7 @@ function isDirectoryEntry(name: string): boolean {
  *   cannot be opened or is shorter than the 2-byte magic.
  */
 async function peekZipContainer(
-  path: string
+  path: string,
 ): Promise<{ isZip: boolean; size: number }> {
   try {
     const fd = await open(path, "r");
@@ -158,7 +158,7 @@ async function peekZipContainer(
  */
 export async function readZipDifEntries(
   path: string,
-  options: ReadZipOptions = {}
+  options: ReadZipOptions = {},
 ): Promise<ReadZipResult | null> {
   if (!path.toLowerCase().endsWith(".zip")) {
     return null;
@@ -178,7 +178,7 @@ export async function readZipDifEntries(
   // header, finds no object format, and skips it without a full read.
   if (maxTotalSize > 0 && size > maxTotalSize) {
     log.warn(
-      `Skipping ${path}: archive size ${size} exceeds maximum total extraction size ${maxTotalSize}`
+      `Skipping ${path}: archive size ${size} exceeds maximum total extraction size ${maxTotalSize}`,
     );
     return null;
   }
@@ -204,7 +204,7 @@ export async function readZipDifEntries(
     // which would discard the whole archive and its valid siblings. Skip it.
     if (!SUPPORTED_COMPRESSION.has(file.compression)) {
       log.debug(
-        `Skipping ${path}/${file.name}: unsupported compression method ${file.compression}`
+        `Skipping ${path}/${file.name}: unsupported compression method ${file.compression}`,
       );
       return false;
     }
@@ -217,7 +217,7 @@ export async function readZipDifEntries(
     if (maxFileSize > 0 && file.originalSize > maxFileSize) {
       oversizedCount += 1;
       log.warn(
-        `Skipping ${path}/${file.name}: uncompressed size ${file.originalSize} exceeds maximum file size ${maxFileSize}`
+        `Skipping ${path}/${file.name}: uncompressed size ${file.originalSize} exceeds maximum file size ${maxFileSize}`,
       );
       return false;
     }
@@ -225,7 +225,7 @@ export async function readZipDifEntries(
     // cannot inflate unbounded (unzipSync holds all accepted entries at once).
     if (maxTotalSize > 0 && acceptedTotal + file.originalSize > maxTotalSize) {
       log.warn(
-        `Skipping ${path}/${file.name}: would exceed maximum total extraction size ${maxTotalSize}`
+        `Skipping ${path}/${file.name}: would exceed maximum total extraction size ${maxTotalSize}`,
       );
       return false;
     }

@@ -58,7 +58,7 @@ describe("requireAutofixRunId", () => {
       status: "COMPLETED",
     };
     expect(requireAutofixRunId(state)).toBe(
-      "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     );
   });
 
@@ -340,7 +340,7 @@ describe("extractNoSolutionReason", () => {
     } as unknown as AutofixState;
 
     expect(extractNoSolutionReason(state)).toBe(
-      "Root cause is infrastructure-level, no code fix identified"
+      "Root cause is infrastructure-level, no code fix identified",
     );
   });
 
@@ -362,7 +362,7 @@ describe("extractNoSolutionReason", () => {
     } as unknown as AutofixState;
 
     expect(extractNoSolutionReason(state)).toBe(
-      "No actionable code change found"
+      "No actionable code change found",
     );
   });
 
@@ -422,7 +422,7 @@ describe("extractNoSolutionReason", () => {
     } as unknown as AutofixState;
 
     expect(extractNoSolutionReason(state)).toBe(
-      "Cannot produce a fix: the issue is in a third-party library"
+      "Cannot produce a fix: the issue is in a third-party library",
     );
   });
 
@@ -440,7 +440,7 @@ describe("extractNoSolutionReason", () => {
     } as unknown as AutofixState;
 
     expect(extractNoSolutionReason(state)).toBe(
-      "Infrastructure-level issue, no code change applicable"
+      "Infrastructure-level issue, no code change applicable",
     );
   });
 
@@ -512,18 +512,18 @@ describe("extractSolution", () => {
     expect(result).not.toBeNull();
     expect(result!.key).toBe("solution");
     expect(result!.data.one_line_summary).toBe(
-      "Fix the null pointer dereference in handler"
+      "Fix the null pointer dereference in handler",
     );
     expect(result!.data.steps).toHaveLength(2);
     expect(result!.data.steps[0]?.title).toBe(
-      "Add null check before accessing property"
+      "Add null check before accessing property",
     );
     expect(result!.data.steps[0]?.description).toBe(
-      "Check if `request.user` is defined before accessing `.id`"
+      "Check if `request.user` is defined before accessing `.id`",
     );
     expect(result!.data.steps[1]?.title).toBe("Add fallback error response");
     expect(result!.data.steps[1]?.description).toBe(
-      "Return 401 when user is not authenticated"
+      "Return 401 when user is not authenticated",
     );
   });
 
@@ -551,7 +551,7 @@ describe("extractSolution", () => {
     expect(result!.data.one_line_summary).toBe("Update the config parser");
     expect(result!.data.steps).toHaveLength(1);
     expect(result!.data.steps[0]?.title).toBe(
-      "Handle missing fields gracefully"
+      "Handle missing fields gracefully",
     );
   });
 
@@ -753,7 +753,7 @@ describe("extractSolution", () => {
     const result = extractSolution(state);
     expect(result).not.toBeNull();
     expect(result!.data.one_line_summary).toBe(
-      "Add null check before property access"
+      "Add null check before property access",
     );
     expect(result!.data.steps).toHaveLength(2);
     expect(result!.data.steps[0]?.title).toBe("Add guard clause");

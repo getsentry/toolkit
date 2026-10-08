@@ -11,7 +11,6 @@ patchedDependencies:
 
 allowBuilds:
   "@ast-grep/cli": true
-  "@biomejs/biome": true
   "@sentry/cli": false
   "@tailwindcss/oxide": false
   better-sqlite3: true

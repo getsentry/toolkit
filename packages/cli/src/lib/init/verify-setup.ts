@@ -102,7 +102,7 @@ function findFatalError(line: string): boolean {
 
 /** Scan collected lines for fatal errors, returning the first match. */
 function scanLinesForError(
-  lines: readonly string[]
+  lines: readonly string[],
 ): StartupOutcome & { kind: "errored" | "started" } {
   for (const line of lines) {
     if (findFatalError(line)) {
@@ -121,7 +121,7 @@ function scanLinesForError(
  */
 function watchChildOutput(
   child: ChildProcess,
-  timeoutMs: number
+  timeoutMs: number,
 ): { promise: Promise<StartupOutcome>; getLines: () => string[] } {
   const lines: string[] = [];
   let hasOutput = false;
@@ -183,7 +183,7 @@ function watchChildOutput(
 function buildVerifyEnv(
   spotlightUrl: string,
   detected: { source: string },
-  cwd: string
+  cwd: string,
 ): Record<string, string | undefined> {
   let env: Record<string, string | undefined> = {
     ...process.env,
@@ -206,7 +206,7 @@ function buildVerifyEnv(
 /** Signal the POSIX process group or force-terminate the Windows process tree. */
 function terminateProcessTree(
   child: ChildProcess,
-  signal: NodeJS.Signals
+  signal: NodeJS.Signals,
 ): boolean {
   const pid = child.pid;
   if (pid === undefined) {
@@ -227,13 +227,13 @@ function terminateProcessTree(
       if (taskkill.error) {
         logger.debug(
           `Failed to terminate Windows verification process tree while handling ${signal}`,
-          taskkill.error
+          taskkill.error,
         );
         return false;
       }
       if (taskkill.status !== 0) {
         logger.debug(
-          `taskkill exited with status ${taskkill.status} while handling ${signal} for the verification process tree`
+          `taskkill exited with status ${taskkill.status} while handling ${signal} for the verification process tree`,
         );
         return false;
       }
@@ -280,7 +280,7 @@ function isPosixProcessGroupAlive(child: ChildProcess): boolean {
 /** Wait for a POSIX verification process group to exit, bounded by a timeout. */
 async function waitForPosixProcessGroupExit(
   child: ChildProcess,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (isPosixProcessGroupAlive(child)) {
@@ -308,7 +308,7 @@ async function cleanupProcessTree(child: ChildProcess): Promise<void> {
     terminateProcessTree(child, "SIGTERM");
     const exited = await waitForPosixProcessGroupExit(
       child,
-      PROCESS_SHUTDOWN_GRACE_MS
+      PROCESS_SHUTDOWN_GRACE_MS,
     );
     if (!exited) {
       terminateProcessTree(child, "SIGKILL");
@@ -366,7 +366,7 @@ export type VerifyResult = {
 export async function verifySetup(
   result: WorkflowRunResult,
   ui: WizardUI,
-  cwd: string
+  cwd: string,
 ): Promise<VerifyResult> {
   const detected = await detectDevCommand(cwd);
   if (!detected) {
@@ -401,7 +401,7 @@ export async function verifySetup(
   const envelopeReceived = new Promise<void>((r) => {
     subscriptionId = buffer.subscribe((container) => {
       if (firstEventId === undefined) {
-        // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+        // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
         try {
           const parsed = container.getParsedEnvelope();
           const header = parsed?.envelope?.[0] as
@@ -459,11 +459,11 @@ export async function verifySetup(
 
   const { promise: startupPromise, getLines } = watchChildOutput(
     child,
-    VERIFY_TIMEOUT_S * 1000
+    VERIFY_TIMEOUT_S * 1000,
   );
   const childExited = new Promise<{ kind: "exited"; code: number }>((r) => {
     child.on("close", (code) =>
-      r({ kind: "exited" as const, code: code ?? 1 })
+      r({ kind: "exited" as const, code: code ?? 1 }),
     );
   });
   const childErrored = new Promise<{ kind: "spawn_error"; error: Error }>(
@@ -471,7 +471,7 @@ export async function verifySetup(
       child.once("error", (error) => {
         resolveError({ kind: "spawn_error", error });
       });
-    }
+    },
   );
 
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
@@ -483,7 +483,7 @@ export async function verifySetup(
     new Promise<{ kind: "timeout" }>((r) => {
       timeoutHandle = setTimeout(
         () => r({ kind: "timeout" as const }),
-        VERIFY_TIMEOUT_S * 1000
+        VERIFY_TIMEOUT_S * 1000,
       );
     }),
   ]);
@@ -597,7 +597,7 @@ function reportOutcome(outcome: VerifyOutcome, ctx: ReportContext): void {
       return;
     }
     ui.log.warn(
-      `Could not verify — dev server exited with code ${outcome.code}`
+      `Could not verify — dev server exited with code ${outcome.code}`,
     );
     logger.debug(`Last output: ${getLines().slice(-3).join(" | ")}`);
     captureException(new Error("init verification failed"), {

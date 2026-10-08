@@ -34,10 +34,10 @@ describe("credential and origin scoped organization regions", () => {
       `${REGION_A}/sentry/`,
       SOURCE_A,
       SOURCE_A,
-      IDENTITY_A
+      IDENTITY_A,
     );
     expect(getOrgRegion("subpath-org", SOURCE_A, IDENTITY_A)).toBe(
-      `${REGION_A}/sentry`
+      `${REGION_A}/sentry`,
     );
     expect(isTrustedRegionOrigin(REGION_A, SOURCE_A, IDENTITY_A)).toBe(true);
     expect(isTrustedRegionOrigin(REGION_A, SOURCE_A, IDENTITY_B)).toBe(false);
@@ -59,7 +59,7 @@ describe("credential and origin scoped organization regions", () => {
     "not a URL",
   ])("rejects untrusted region URL %s", (regionUrl) => {
     expect(() =>
-      setOrgRegion("invalid", regionUrl, SOURCE_A, SOURCE_A, IDENTITY_A)
+      setOrgRegion("invalid", regionUrl, SOURCE_A, SOURCE_A, IDENTITY_A),
     ).toThrow();
   });
 });

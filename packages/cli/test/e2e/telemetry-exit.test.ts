@@ -33,7 +33,7 @@ describe("telemetry exit timing", () => {
     });
     disabledProc.on("error", noop);
     const disabledExitCode = await new Promise<number>((resolve) =>
-      disabledProc.on("close", (code) => resolve(code ?? 1))
+      disabledProc.on("close", (code) => resolve(code ?? 1)),
     );
     const disabledDuration = performance.now() - disabledStart;
 
@@ -50,7 +50,7 @@ describe("telemetry exit timing", () => {
     });
     enabledProc.on("error", noop);
     const enabledExitCode = await new Promise<number>((resolve) =>
-      enabledProc.on("close", (code) => resolve(code ?? 1))
+      enabledProc.on("close", (code) => resolve(code ?? 1)),
     );
     const enabledDuration = performance.now() - enabledStart;
 

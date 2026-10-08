@@ -34,6 +34,7 @@ import { listCommand as issueListCommand } from "./commands/issue/list.js";
 import { localRoute } from "./commands/local/index.js";
 import { logRoute } from "./commands/log/index.js";
 import { listCommand as logListCommand } from "./commands/log/list.js";
+import { mcpCommand } from "./commands/mcp.js";
 import { monitorRoute } from "./commands/monitor/index.js";
 import { listCommand as monitorListCommand } from "./commands/monitor/list.js";
 import { orgRoute } from "./commands/org/index.js";
@@ -142,6 +143,7 @@ export const routes = buildRouteMap({
     explore: exploreCommand,
     feedback: feedbackRoute,
     log: logRoute,
+    mcp: mcpCommand,
     monitor: monitorRoute,
     snapshots: snapshotsRoute,
     sourcemap: sourcemapRoute,
@@ -224,9 +226,9 @@ const routesWithDefaultCommand: ReadonlySet<string> = new Set(
     .filter(
       (e) =>
         isRouteMap(e.target as unknown) &&
-        (e.target as unknown as RouteMap).getDefaultCommand?.()
+        (e.target as unknown as RouteMap).getDefaultCommand?.(),
     )
-    .map((e) => e.name.original)
+    .map((e) => e.name.original),
 );
 
 /**
@@ -278,7 +280,7 @@ function detectPluralAliasMisuse(ansiColor: boolean): string | undefined {
  */
 function formatSynonymError(
   exc: unknown,
-  ansiColor: boolean
+  ansiColor: boolean,
 ): string | undefined {
   if (!(exc instanceof CliError)) {
     return;
@@ -315,7 +317,7 @@ const customText: ApplicationText = {
   ...text_en,
   exceptionWhileParsingArguments: (
     exc: unknown,
-    ansiColor: boolean
+    ansiColor: boolean,
   ): string => {
     // Case A: bare route group with no subcommand (e.g., `sentry issue`)
     if (exc instanceof UnsatisfiedPositionalError) {

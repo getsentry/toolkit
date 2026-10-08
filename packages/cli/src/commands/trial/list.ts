@@ -238,7 +238,7 @@ export const listCommand = buildCommand({
 
     const info = await withProgress(
       { message: "Fetching trials...", json: flags.json },
-      () => getCustomerTrialInfo(resolved.org)
+      () => getCustomerTrialInfo(resolved.org),
     );
     const productTrials = info.productTrials ?? [];
 
@@ -253,7 +253,7 @@ export const listCommand = buildCommand({
         lengthDays: t.lengthDays,
         startDate: t.startDate,
         endDate: t.endDate,
-      }))
+      })),
     );
 
     // Add plan-level trial entry (available or active) at the top
@@ -264,14 +264,14 @@ export const listCommand = buildCommand({
 
     const hints: string[] = [];
     const hasAvailableProduct = entries.some(
-      (e) => e.status === "available" && e.category !== "plan"
+      (e) => e.status === "available" && e.category !== "plan",
     );
     if (hasAvailableProduct) {
       hints.push("Tip: Use 'sentry trial start <name>' to start a trial");
     }
     if (planEntry?.status === "available") {
       hints.push(
-        "Tip: Use 'sentry trial start plan' to start a Business plan trial"
+        "Tip: Use 'sentry trial start plan' to start a Business plan trial",
       );
     }
 

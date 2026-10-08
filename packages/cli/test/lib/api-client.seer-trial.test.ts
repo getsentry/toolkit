@@ -56,8 +56,8 @@ describe("getProductTrials", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
-        )
+          },
+        ),
     );
 
     const trials = await getProductTrials("test-org");
@@ -75,7 +75,7 @@ describe("getProductTrials", () => {
         new Response(JSON.stringify({}), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     const trials = await getProductTrials("test-org");
@@ -89,7 +89,7 @@ describe("getProductTrials", () => {
         new Response(JSON.stringify({ productTrials: [] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     const trials = await getProductTrials("test-org");
@@ -107,7 +107,7 @@ describe("getProductTrials", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
+      },
     );
 
     await getProductTrials("test-org");
@@ -122,7 +122,7 @@ describe("getProductTrials", () => {
         new Response(JSON.stringify({ detail: "Not found" }), {
           status: 404,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     await expect(getProductTrials("test-org")).rejects.toThrow();
@@ -140,7 +140,7 @@ describe("startProductTrial", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
+      },
     );
 
     await startProductTrial("test-org", "seerUsers");
@@ -161,7 +161,7 @@ describe("startProductTrial", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
+      },
     );
 
     await startProductTrial("test-org", "seerAutofix");
@@ -182,7 +182,7 @@ describe("startProductTrial", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
+      },
     );
 
     await startProductTrial("test-org", "replays");
@@ -205,7 +205,7 @@ describe("startProductTrial", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
+      },
     );
 
     await startProductTrial("test-org", "seerUsers");
@@ -220,7 +220,7 @@ describe("startProductTrial", () => {
         new Response(JSON.stringify({ detail: "Forbidden" }), {
           status: 403,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     await expect(startProductTrial("test-org", "seerUsers")).rejects.toThrow();

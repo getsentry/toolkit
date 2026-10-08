@@ -1,4 +1,8 @@
 import type { SentryApiService } from "../../../api-client";
+import type {
+  EventsTimeSeriesResponse,
+  IngestionMeta,
+} from "../../../api-client/schema";
 import { formatToolCallInstruction } from "../../../internal/tool-helpers/tool-call-formatting";
 import { formatUserGeoSummary } from "../../../internal/user-formatting";
 import { logInfo } from "../../../telem/logging";
@@ -938,12 +942,42 @@ function isAdditiveAggregate(yAxis: string): boolean {
   return fn === "count()" || fn.startsWith("sum(");
 }
 
+function formatBucketTime(timestampMs: number): string {
+  return new Date(timestampMs).toISOString().slice(0, 16).replace("T", " ");
+}
+
 /**
- * Format an events-stats (timeseries) result: a metric bucketed over time.
+ * One line describing the measured ingestion delay, so the caller knows how
+ * far behind the data is before reading a trailing dip as a real drop.
+ */
+function formatIngestionStatus(ingestion: IngestionMeta): string {
+  const parts: string[] = [];
+  if (ingestion.delaySeconds !== undefined) {
+    const seconds = Math.round(ingestion.delaySeconds);
+    const delay =
+      seconds >= 60
+        ? `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+        : `${seconds}s`;
+    parts.push(`~${delay} behind`);
+  }
+  if (ingestion.completeThrough !== undefined) {
+    parts.push(
+      `data complete through ${formatBucketTime(ingestion.completeThrough)} UTC`,
+    );
+  }
+  const detail = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  return `- **Ingestion**: ${ingestion.status}${detail}`;
+}
+
+/**
+ * Format an events-timeseries result: a metric bucketed over time.
  * `interval` is null when Sentry chose the bucket size for the range.
+ * Buckets flagged `incomplete` by Sentry are marked in the table. Those still
+ * receiving data are also excluded from the peak; those that start before the
+ * retention window are permanently partial and will not change.
  */
 export function formatTimeSeriesResults(params: {
-  series: { data: Array<[number, Array<{ count?: string | number | null }>]> };
+  series: EventsTimeSeriesResponse;
   yAxis: string;
   interval: string | null;
   inputQuery: string;
@@ -963,31 +997,41 @@ export function formatTimeSeriesResults(params: {
     url,
   } = params;
 
-  const points = series.data.map(([ts, values]) => {
-    const raw = values[0]?.count ?? 0;
+  const points = (series.timeSeries[0]?.values ?? []).map((bucket) => {
+    // OUTSIDE_RETENTION buckets start before the retention window: their data
+    // is permanently partial. Every other reason means data is still arriving.
+    const outsideRetention =
+      bucket.incomplete && bucket.incompleteReason === "OUTSIDE_RETENTION";
+    const raw = bucket.value ?? 0;
     // Date-typed aggregates such as max(timestamp) return ISO datetime
     // strings. Number() rejects those whole (parseFloat would keep the year),
     // so order them by parsed time and display the raw string.
     const numeric = typeof raw === "number" ? raw : Number(raw);
     const isNumeric = !Number.isNaN(numeric);
-    const value = isNumeric ? numeric : Date.parse(String(raw)) || 0;
-    const display = isNumeric ? numeric.toLocaleString() : String(raw);
     return {
-      time: new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " "),
-      value,
-      display,
+      time: formatBucketTime(bucket.timestamp),
+      value: isNumeric ? numeric : Date.parse(String(raw)) || 0,
+      display: isNumeric ? numeric.toLocaleString() : String(raw),
+      filling: bucket.incomplete && !outsideRetention,
+      outsideRetention,
     };
   });
+  const hasFilling = points.some((p) => p.filling);
+  const ingestion = series.meta?.ingestion;
 
   // Total is only meaningful for additive aggregates; summing count_unique /
   // avg / percentile buckets would be wrong, so omit it for those.
   const total = isAdditiveAggregate(yAxis)
     ? points.reduce((sum, p) => sum + p.value, 0)
     : null;
-  const peak = points.reduce<(typeof points)[number] | undefined>(
-    (max, p) => (max === undefined || p.value > max.value ? p : max),
-    undefined,
-  );
+  // Buckets still filling can't be the peak yet. Partial retention buckets are
+  // final, so if one still tops the rest it is a real peak.
+  const peak = points
+    .filter((p) => !p.filling)
+    .reduce<(typeof points)[number] | undefined>(
+      (max, p) => (max === undefined || p.value > max.value ? p : max),
+      undefined,
+    );
 
   const MAX_ROWS = 48;
   const shown = points.length > MAX_ROWS ? points.slice(-MAX_ROWS) : points;
@@ -1008,10 +1052,15 @@ export function formatTimeSeriesResults(params: {
   );
   lines.push(`- **Time range**: ${formatExecutedTimeRange(timeRange)}`);
   if (total !== null) {
-    lines.push(`- **Total**: ${total.toLocaleString()}`);
+    lines.push(
+      `- **Total**: ${total.toLocaleString()}${hasFilling ? " (so far)" : ""}`,
+    );
   }
   if (peak) {
     lines.push(`- **Peak**: ${peak.display} at ${peak.time}`);
+  }
+  if (ingestion) {
+    lines.push(formatIngestionStatus(ingestion));
   }
 
   if (shown.length > 0) {
@@ -1023,7 +1072,25 @@ export function formatTimeSeriesResults(params: {
       "| --- | --- |",
     );
     for (const p of shown) {
-      lines.push(`| ${p.time} | ${p.display} |`);
+      const marker = p.filling ? " *" : p.outsideRetention ? " †" : "";
+      lines.push(`| ${p.time} | ${p.display}${marker} |`);
+    }
+    // Footnotes describe markers in the visible rows only; older retention
+    // buckets may have been cut by MAX_ROWS.
+    const shownFilling = shown.some((p) => p.filling);
+    const shownOutsideRetention = shown.some((p) => p.outsideRetention);
+    if (shownFilling || shownOutsideRetention) {
+      lines.push("");
+    }
+    if (shownFilling) {
+      lines.push(
+        "\\* Incomplete bucket: data is still arriving, so the value may rise.",
+      );
+    }
+    if (shownOutsideRetention) {
+      lines.push(
+        "† Partial bucket: it starts before the retention window, so older data is missing and the value will not change.",
+      );
     }
   } else {
     lines.push("", "No data points in this range.");

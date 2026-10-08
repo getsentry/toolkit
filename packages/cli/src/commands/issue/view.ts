@@ -63,7 +63,7 @@ type ViewFlags = {
  */
 async function tryGetLatestEvent(
   orgSlug: string,
-  issueId: string
+  issueId: string,
 ): Promise<SentryEvent | undefined> {
   try {
     return await getLatestEvent(orgSlug, issueId);
@@ -79,7 +79,7 @@ async function tryGetLatestEvent(
  */
 async function tryListReplayIdsForIssue(
   orgSlug: string,
-  issueId: string
+  issueId: string,
 ): Promise<string[]> {
   try {
     return await listReplayIdsForIssue(orgSlug, issueId);
@@ -92,7 +92,7 @@ async function tryListReplayIdsForIssue(
 async function buildIssueSpanData(
   orgSlug: string | undefined,
   event: SentryEvent | undefined,
-  spans: number
+  spans: number,
 ): Promise<Pick<SingleIssueViewData, "spanTreeLines" | "trace">> {
   const spanTreeResult =
     orgSlug && event && spans > 0
@@ -131,7 +131,7 @@ async function buildIssueSpanData(
 async function buildSingleIssueViewData(
   issueArg: string,
   cwd: string,
-  spans: number
+  spans: number,
 ): Promise<SingleIssueViewData> {
   const { org: orgSlug, issue } = await resolveIssue({
     issueArg,
@@ -180,7 +180,7 @@ type FetchMultipleIssueViewsOptions = {
  * When all fetches fail, re-throws the error from the primary (first) issue.
  */
 export function fetchMultipleIssueViews(
-  options: FetchMultipleIssueViewsOptions
+  options: FetchMultipleIssueViewsOptions,
 ): Promise<SingleIssueViewData[]> {
   const { issueArgs, cwd, spans } = options;
   return mapIssueArgsConcurrently(
@@ -188,7 +188,7 @@ export function fetchMultipleIssueViews(
     (issueArg) => buildSingleIssueViewData(issueArg, cwd, spans),
     (issueArg, reason) => {
       log.warn(`Failed to fetch issue ${issueArg}: ${reason}`);
-    }
+    },
   );
 }
 
@@ -202,12 +202,12 @@ export function fetchMultipleIssueViews(
 async function openIssuesInBrowser(
   issueArgs: readonly string[],
   cwd: string,
-  force: boolean
+  force: boolean,
 ): Promise<void> {
   const argsToOpen = force ? issueArgs : issueArgs.slice(0, MAX_WEB_ISSUES);
   if (argsToOpen.length < issueArgs.length) {
     log.warn(
-      `Opening the first ${MAX_WEB_ISSUES} of ${issueArgs.length} issues. Use --force to open all.`
+      `Opening the first ${MAX_WEB_ISSUES} of ${issueArgs.length} issues. Use --force to open all.`,
     );
   }
 
@@ -223,7 +223,7 @@ async function openIssuesInBrowser(
     },
     (issueArg, reason) => {
       log.warn(`Failed to open issue ${issueArg}: ${reason}`);
-    }
+    },
   );
 
   for (const issue of issues) {

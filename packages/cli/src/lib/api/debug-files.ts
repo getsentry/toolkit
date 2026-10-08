@@ -140,7 +140,7 @@ type AssembleEvaluation = {
  * `skip_serializing_if none` behavior).
  */
 function buildAssembleBody(
-  chunked: ChunkedDif[]
+  chunked: ChunkedDif[],
 ): Record<string, { name: string; debug_id?: string; chunks: string[] }> {
   const body: Record<
     string,
@@ -177,7 +177,7 @@ function buildAssembleBody(
 function evaluateAssembly(
   response: DifAssembleResponse,
   chunked: ChunkedDif[],
-  wait: boolean
+  wait: boolean,
 ): AssembleEvaluation {
   const missingChecksums = new Set<string>();
   let allHeld = true;
@@ -209,7 +209,7 @@ function evaluateAssembly(
  */
 function classifyEntry(
   entry: AssembleResponse | undefined,
-  cd: ChunkedDif
+  cd: ChunkedDif,
 ): { held: boolean; terminal: boolean; missing: string[] } {
   if (!entry) {
     return {
@@ -270,12 +270,12 @@ async function uploadMissing(params: {
 async function postAssemble(
   regionUrl: string,
   endpoint: string,
-  body: unknown
+  body: unknown,
 ): Promise<DifAssembleResponse> {
   const { data } = await apiRequestToRegion<DifAssembleResponse>(
     regionUrl,
     endpoint,
-    { method: "POST", body, schema: DifAssembleResponseSchema }
+    { method: "POST", body, schema: DifAssembleResponseSchema },
   );
   return data;
 }
@@ -283,7 +283,7 @@ async function postAssemble(
 /** Build per-file results from the last-observed assemble response. */
 function buildResults(
   chunked: ChunkedDif[],
-  response: DifAssembleResponse
+  response: DifAssembleResponse,
 ): DebugFileUploadResult[] {
   return chunked.map((cd) => {
     const entry = response[cd.overallChecksum];
@@ -311,7 +311,7 @@ function buildResults(
  */
 function filterBySize(
   difs: DebugFileUpload[],
-  maxFileSize: number
+  maxFileSize: number,
 ): { accepted: DebugFileUpload[]; dropped: DebugFileUpload[] } {
   if (maxFileSize <= 0) {
     return { accepted: difs, dropped: [] };
@@ -321,7 +321,7 @@ function filterBySize(
   for (const dif of difs) {
     if (dif.content.length > maxFileSize) {
       log.warn(
-        `Skipping ${dif.name}: size ${dif.content.length} exceeds server maximum file size ${maxFileSize}`
+        `Skipping ${dif.name}: size ${dif.content.length} exceeds server maximum file size ${maxFileSize}`,
       );
       dropped.push(dif);
       continue;
@@ -346,7 +346,7 @@ function filterBySize(
  */
 function buildOversizeResults(
   dropped: DebugFileUpload[],
-  maxFileSize: number
+  maxFileSize: number,
 ): DebugFileUploadResult[] {
   return dropped.map((dif) => ({
     name: dif.name,
@@ -371,7 +371,7 @@ function clampMaxWait(requestedMs: number, serverMaxWaitSec: number): number {
   const serverMaxMs = serverMaxWaitSec * 1000;
   if (serverMaxMs < requestedMs) {
     log.debug(
-      `Clamping assembly wait from ${requestedMs}ms to server maximum ${serverMaxMs}ms`
+      `Clamping assembly wait from ${requestedMs}ms to server maximum ${serverMaxMs}ms`,
     );
     return serverMaxMs;
   }
@@ -397,7 +397,7 @@ function clampMaxWait(requestedMs: number, serverMaxWaitSec: number): number {
  *   not complete within the effective (clamped) wait.
  */
 export async function uploadDebugFiles(
-  options: DebugFilesUploadOptions
+  options: DebugFilesUploadOptions,
 ): Promise<DebugFileUploadResult[]> {
   const { org, project, difs, wait, maxWaitMs } = options;
 
@@ -426,14 +426,14 @@ export async function uploadDebugFiles(
     throw new ValidationError(
       `All ${difs.length} debug file(s) exceed the maximum file size ` +
         `(${effectiveMaxFileSize} bytes). Nothing was uploaded.`,
-      "file"
+      "file",
     );
   }
 
   const chunked: ChunkedDif[] = accepted.map((dif) => {
     const { chunks, overallChecksum } = hashBuffer(
       dif.content,
-      serverOptions.chunkSize
+      serverOptions.chunkSize,
     );
     return { dif, chunks, overallChecksum };
   });
@@ -466,13 +466,13 @@ export async function uploadDebugFiles(
           "Debug file assembly timed out",
           408,
           `Assembly did not complete within ${Math.round(effectiveMaxWaitMs / 1000)}s`,
-          endpoint
+          endpoint,
         );
       }
       // No-wait mode: the server kept reporting missing chunks past the
       // deadline. Stop and report the last-observed state rather than hang.
       log.warn(
-        "Chunk delivery did not settle before the deadline — some files may not have been fully uploaded"
+        "Chunk delivery did not settle before the deadline — some files may not have been fully uploaded",
       );
       break;
     }

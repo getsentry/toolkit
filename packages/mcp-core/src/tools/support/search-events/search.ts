@@ -661,7 +661,6 @@ export async function runSearchEvents(
   // preserves. Like the UI, an explicit environment is added to Seer's query
   // afterwards.
   const seerTranslation =
-    context.experimentalMode &&
     params.query &&
     isSeerSearchDataset(params.dataset) &&
     !hasStructuredQuery &&
@@ -931,8 +930,8 @@ export async function runSearchEvents(
     );
     // No validateEventsSearch here: it validates the /events/ (discover)
     // request shape — fields + orderby — which is not what a timeseries
-    // sends (yAxis + interval, no fields/sort). events-stats validates the
-    // query server-side, so a bad query still surfaces as an API error.
+    // sends (yAxis + interval, no fields/sort). events-timeseries validates
+    // the query server-side, so a bad query still surfaces as an API error.
     const series = await apiService.getEventsTimeSeries({
       organizationSlug,
       query: timeSeriesQuery,

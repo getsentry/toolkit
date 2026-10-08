@@ -70,14 +70,14 @@ function validateMetricEditFlags(flags: EditFlags): void {
   if (!hasMetricMutations(flags)) {
     throw new ValidationError(
       "Pass at least one editable field (for example --name or --status).",
-      "name"
+      "name",
     );
   }
 }
 
 function applyMetricCoreFields(
   body: Record<string, unknown>,
-  flags: EditFlags
+  flags: EditFlags,
 ): string | undefined {
   let notice: string | undefined;
   if (flags.name !== undefined) {
@@ -115,7 +115,7 @@ function applyMetricCoreFields(
 
 function applyMetricOptionalFields(
   body: Record<string, unknown>,
-  flags: EditFlags
+  flags: EditFlags,
 ): Record<string, unknown> {
   if (flags.trigger !== undefined) {
     body.triggers = parseJsonObjectList(flags.trigger, "trigger");
@@ -135,11 +135,11 @@ function applyMetricOptionalFields(
 
 function validateMetricBody(
   body: Record<string, unknown>,
-  flags: EditFlags
+  flags: EditFlags,
 ): void {
   if (flags.trigger !== undefined) {
     validateMetricTriggers(
-      body.triggers as Record<string, unknown>[] | undefined
+      body.triggers as Record<string, unknown>[] | undefined,
     );
   }
   if (flags.dataset !== undefined) {
@@ -157,7 +157,7 @@ function validateMetricBody(
   ) {
     throw new ValidationError(
       "aggregate must be present and non-empty.",
-      "aggregate"
+      "aggregate",
     );
   }
 }
@@ -269,13 +269,13 @@ export const editCommand = buildCommand({
     const org = await resolveOrgOnlyFromArg(
       targetArg,
       cwd,
-      "alert metrics edit"
+      "alert metrics edit",
     );
     const orgSlugs = [org];
     const { orgSlug, rule } = await resolveMetricAlertRule(
       orgSlugs,
       ref,
-      USAGE_HINT
+      USAGE_HINT,
     );
     const body = {
       ...(await getMetricAlertRuleDocument(orgSlug, rule.id)),

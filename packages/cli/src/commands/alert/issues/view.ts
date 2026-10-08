@@ -85,7 +85,7 @@ export const viewCommand = buildCommand({
     if (flags.web && parsed.type === "explicit") {
       await openInBrowser(
         buildIssueAlertsUrl(parsed.org, parsed.project),
-        "issue alert rules"
+        "issue alert rules",
       );
       return;
     }
@@ -99,11 +99,11 @@ export const viewCommand = buildCommand({
     }
 
     if (flags.web) {
-      // biome-ignore lint/style/noNonNullAssertion: guarded by length check above
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- guarded by length check above
       const t = targets[0]!;
       await openInBrowser(
         buildIssueAlertsUrl(t.org, t.project),
-        "issue alert rules"
+        "issue alert rules",
       );
       return;
     }

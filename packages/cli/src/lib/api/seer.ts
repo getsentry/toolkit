@@ -33,7 +33,7 @@ const EXPLORER_MODE_PARAMS = { mode: "explorer" };
  * `WAITING_FOR_USER_RESPONSE`.
  */
 export function normalizeAgentStatus(
-  status: string | null | undefined
+  status: string | null | undefined,
 ): string {
   if (!status) {
     return "PROCESSING";
@@ -68,7 +68,7 @@ export function normalizeAgentStatus(
  */
 export async function triggerRootCauseAnalysis(
   orgSlug: string,
-  issueId: string
+  issueId: string,
 ): Promise<{ run_id?: number; sentry_run_id: string | null }> {
   const regionUrl = await resolveOrgRegion(orgSlug);
 
@@ -96,7 +96,7 @@ export async function triggerRootCauseAnalysis(
  */
 export async function getAutofixState(
   orgSlug: string,
-  issueId: string
+  issueId: string,
 ): Promise<AutofixState | null> {
   const regionUrl = await resolveOrgRegion(orgSlug);
 
@@ -106,7 +106,7 @@ export async function getAutofixState(
     {
       params: EXPLORER_MODE_PARAMS,
       schema: AutofixResponseSchema,
-    }
+    },
   );
 
   if (!data.autofix) {
@@ -132,7 +132,7 @@ export async function getAutofixState(
 export async function triggerSolutionPlanning(
   orgSlug: string,
   issueId: string,
-  runId: string | number
+  runId: string | number,
 ): Promise<unknown> {
   const regionUrl = await resolveOrgRegion(orgSlug);
 
@@ -151,7 +151,7 @@ export async function triggerSolutionPlanning(
         ...runIdBodyField,
         referrer: "api.cli",
       },
-    }
+    },
   );
   return data;
 }

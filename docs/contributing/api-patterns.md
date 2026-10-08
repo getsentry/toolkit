@@ -26,13 +26,13 @@ pagination behavior, feature-gate handling, and test fixtures.
 ```typescript
 // Standard usage with context helper
 const apiService = apiServiceFromContext(context, {
-  regionUrl: params.regionUrl
+  regionUrl: params.regionUrl,
 });
 
 // Direct instantiation
 const api = new SentryApiService({
   host: "sentry.io",
-  accessToken: token
+  accessToken: token,
 });
 ```
 
@@ -47,19 +47,19 @@ tools.
 const issues = await api.issues.list({
   organizationSlug: "org",
   query: "is:unresolved",
-  sort: "date"
+  sort: "date",
 });
 
 // Get specific resource
 const project = await api.projects.get({
   organizationSlug: "org",
-  projectIdOrSlug: "frontend"
+  projectIdOrSlug: "frontend",
 });
 
 // Create/update
 await api.issues.update({
   issueId: "123",
-  status: "resolved"
+  status: "resolved",
 });
 ```
 
@@ -79,6 +79,11 @@ User identity (`/api/0/auth/`, used by `whoami`) follows the same control-host
 routing. Organization-scoped requests continue to use the configured host or
 a validated `regionUrl`.
 
+Region URL checks reject embedded URL credentials. SaaS region hosts also need
+HTTPS, the default port, and an explicit entry in the MCP region allowlist;
+self-hosted region hosts must match the configured host and port exactly. The
+shared `isSaaSTrustOrigin` check never replaces those product-specific rules.
+
 Web links use `<organization>.sentry.io` for public SaaS. Single-tenant and
 self-hosted links keep the configured host and `/organizations/<organization>`
 path prefix. Use `isPublicSentryHost` for these routing decisions;
@@ -94,7 +99,7 @@ const orgs = await api.organizations.list();
 
 // Use region URL
 const api = apiServiceFromContext(context, {
-  regionUrl: org.region_url
+  regionUrl: org.region_url,
 });
 ```
 
@@ -105,17 +110,15 @@ const api = apiServiceFromContext(context, {
 ```typescript
 // Support ID variations
 const IssueIdSchema = z.union([
-  z.string(),  // "PROJ-123"
-  z.number()   // 123456789
+  z.string(), // "PROJ-123"
+  z.number(), // 123456789
 ]);
 
 // Partial with passthrough for unknowns
-const FlexibleSchema = BaseSchema
-  .partial()
-  .passthrough();
+const FlexibleSchema = BaseSchema.partial().passthrough();
 
 // Nullable handling
-z.union([DateSchema, z.null()])
+z.union([DateSchema, z.null()]);
 ```
 
 See Zod patterns in [common-patterns.md](common-patterns.md#zod-schema-patterns).
@@ -146,11 +149,11 @@ export const handlers = [
       if (!params.org) {
         return HttpResponse.json("Invalid org", { status: 400 });
       }
-      
+
       // Return fixture
       return HttpResponse.json(issueListFixture);
-    }
-  }
+    },
+  },
 ];
 ```
 
@@ -162,19 +165,17 @@ See: `packages/mcp-server-mocks/src/handlers/`
 fetch: async ({ request }) => {
   const url = new URL(request.url);
   const query = url.searchParams.get("query");
-  
+
   // Validate query parameters
   if (query && !isValidQuery(query)) {
     return HttpResponse.json("Invalid query", { status: 400 });
   }
-  
+
   // Filter based on query
-  const filtered = fixtures.filter(item => 
-    matchesQuery(item, query)
-  );
-  
+  const filtered = fixtures.filter((item) => matchesQuery(item, query));
+
   return HttpResponse.json(filtered);
-}
+};
 ```
 
 ### Dynamic Responses
@@ -189,10 +190,14 @@ const page = fixtures.slice(start, start + limit);
 
 return HttpResponse.json(page, {
   headers: {
-    "Link": `<...?cursor=${start + limit}>; rel="next"`
-  }
+    Link: `<https://sentry.io/api/0/issues/?cursor=${start + limit}>; rel="next"; results="true"; cursor="${start + limit}"`,
+  },
 });
 ```
+
+Use `@sentry/api`'s `parseSentryLinkHeader` to read the next cursor. Sentry's
+`Link` header reports whether the next page has results; a URL query alone does
+not establish that another page exists.
 
 ## Testing with Mocks
 
@@ -213,13 +218,12 @@ afterAll(() => server.close());
 ```typescript
 it("handles errors", async () => {
   server.use(
-    http.get("*/issues/", () => 
-      HttpResponse.json({ error: "Server error" }, { status: 500 })
-    )
+    http.get("*/issues/", () =>
+      HttpResponse.json({ error: "Server error" }, { status: 500 }),
+    ),
   );
-  
-  await expect(api.issues.list(params))
-    .rejects.toThrow(ApiError);
+
+  await expect(api.issues.list(params)).rejects.toThrow(ApiError);
 });
 ```
 

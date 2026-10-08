@@ -50,7 +50,7 @@ export type ProjectRootCacheEntry = {
  * @returns Cached project root or undefined if not cached/invalid
  */
 export async function getCachedProjectRoot(
-  cwd: string
+  cwd: string,
 ): Promise<CachedProjectRoot | undefined> {
   const db = getDatabase();
 
@@ -106,14 +106,14 @@ export async function getCachedProjectRoot(
  */
 export async function setCachedProjectRoot(
   cwd: string,
-  entry: ProjectRootCacheEntry
+  entry: ProjectRootCacheEntry,
 ): Promise<void> {
   const db = getDatabase();
   const now = Date.now();
 
   // Get current mtime of the cwd directory
   let cwdMtime: number;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const stats = await stat(cwd);
     cwdMtime = Math.floor(stats.mtimeMs);
@@ -133,7 +133,7 @@ export async function setCachedProjectRoot(
       cached_at: now,
       ttl_expires_at: now + CACHE_TTL_MS,
     },
-    ["cwd"]
+    ["cwd"],
   );
 
   maybeCleanupCaches();

@@ -6,6 +6,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import {
   DEFAULT_SENTRY_HOST,
   DEFAULT_SENTRY_URL,
@@ -55,7 +56,8 @@ export function getOrgBaseUrl(orgSlug: string): string {
  * Resolves the configured base URL (env `SENTRY_HOST`/`SENTRY_URL`, else the
  * default SaaS URL) and applies the hostname-only {@link isSentrySaasUrl}
  * check. Intended for routing/UX decisions (e.g. choosing a SaaS-only default),
- * NOT for credential-trust decisions — use {@link isSaaSTrustOrigin} for those.
+ * NOT for credential-trust decisions — use the shared
+ * `@sentry/toolkit-core/sentry-origin` helper for those.
  *
  * @returns true when the active base URL is sentry.io or a subdomain of it
  */
@@ -74,50 +76,17 @@ export function isSaaS(): boolean {
  * routing (test harnesses occasionally use these).
  *
  * For TRUST decisions (deciding whether a SaaS-scoped token is valid for
- * a given origin), use {@link isSaaSTrustOrigin} which additionally
+ * a given origin), use `@sentry/toolkit-core/sentry-origin`, which additionally
  * requires https scheme and default port.
  *
  * @param url - URL string to validate
  * @returns true if the hostname is sentry.io or a subdomain of sentry.io
  */
 export function isSentrySaasUrl(url: string): boolean {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const parsed = new URL(url);
-    return (
-      parsed.hostname === DEFAULT_SENTRY_HOST ||
-      parsed.hostname.endsWith(`.${DEFAULT_SENTRY_HOST}`)
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if a URL is a Sentry SaaS origin for TRUST purposes.
- *
- * Stricter than {@link isSentrySaasUrl}: additionally requires
- * - scheme = `https:` (production SaaS is HTTPS-only; `http://sentry.io`
- *   is never legitimate and a crafted plaintext URL must NOT inherit
- *   SaaS trust)
- * - port = default (empty `port` in WHATWG URL means the scheme's
- *   default port; any explicit non-default port indicates either a
- *   crafted URL or DNS redirect we don't trust)
- *
- * Used by the host-scoping trust check (`token-host.ts::isHostTrusted`)
- * to decide SaaS equivalence. Keep in sync with {@link isSentrySaasUrl}
- * when adding new trust classes.
- *
- * @param url - URL string to validate
- * @returns true only if the URL is a strictly-SaaS origin
- */
-export function isSaaSTrustOrigin(url: string): boolean {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.protocol === "https:" && parsed.port === "" && isSentrySaasUrl(url)
-    );
+    return isSentryHost(parsed.hostname);
   } catch {
     return false;
   }
@@ -130,7 +99,7 @@ export function isSaaSTrustOrigin(url: string): boolean {
  * for user-supplied strings that may be bare hostnames.
  */
 export function normalizeOrigin(
-  input: string | URL | Request | undefined | null
+  input: string | URL | Request | undefined | null,
 ): string | undefined {
   if (input === null || input === undefined) {
     return;
@@ -143,7 +112,7 @@ export function normalizeOrigin(
   } else {
     raw = input.url;
   }
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return new URL(raw).origin;
   } catch {
@@ -154,12 +123,12 @@ export function normalizeOrigin(
 /** Normalize only credential-free HTTP(S) origins; allow root-relative URLs with a base. */
 export function normalizeHttpOrigin(
   input: string | undefined | null,
-  base?: string
+  base?: string,
 ): string | undefined {
   if (!input) {
     return;
   }
-  // biome-ignore lint/plugin: malformed external URLs are rejected with undefined by design.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- malformed external URLs are rejected with undefined by design.
   try {
     const parsed = base ? new URL(input, base) : new URL(input);
     if (
@@ -179,12 +148,12 @@ export function normalizeHttpOrigin(
 /** Validate an API-provided region URL while retaining an installation path. */
 export function normalizeRegionBaseUrl(
   raw: string,
-  responseOrigin: string
+  responseOrigin: string,
 ): string | undefined {
   if (!(raw.startsWith("/") || HTTP_URL_RE.test(raw))) {
     return;
   }
-  // biome-ignore lint/plugin: reject malformed region metadata without making discovery fail.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- reject malformed region metadata without making discovery fail.
   try {
     const parsed = new URL(raw, responseOrigin);
     const origin = normalizeHttpOrigin(parsed.href);
@@ -206,7 +175,7 @@ export function normalizeRegionBaseUrl(
  * to parse after the prefix.
  */
 export function normalizeUserInputToOrigin(
-  input: string | undefined
+  input: string | undefined,
 ): string | undefined {
   const prefixed = normalizeUrl(input);
   return prefixed ? normalizeOrigin(prefixed) : undefined;
@@ -280,7 +249,7 @@ export function buildEventSearchUrl(orgSlug: string, eventId: string): string {
  */
 export function buildProjectIssuesUrl(
   orgSlug: string,
-  projectId?: string
+  projectId?: string,
 ): string {
   const filter = projectId ? `?project=${projectId}` : "";
   if (isSaaS()) {
@@ -302,7 +271,7 @@ export function parseOrgProjectFromSettingsUrl(url: string): {
   orgSlug?: string;
   projectSlug?: string;
 } {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const parsed = new URL(url);
     const segments = parsed.pathname.split("/").filter(Boolean);
@@ -423,7 +392,7 @@ export function buildDashboardsListUrl(orgSlug: string): string {
  */
 export function buildDashboardUrl(
   orgSlug: string,
-  dashboardId: string
+  dashboardId: string,
 ): string {
   if (isSaaS()) {
     return `${getOrgBaseUrl(orgSlug)}/dashboard/${dashboardId}/`;
@@ -456,7 +425,7 @@ export function buildTraceUrl(orgSlug: string, traceId: string): string {
  */
 export function buildIssueAlertsUrl(
   orgSlug: string,
-  projectSlug?: string
+  projectSlug?: string,
 ): string {
   const projectFilter = projectSlug ? `?project=${projectSlug}` : "";
   if (isSaaS()) {

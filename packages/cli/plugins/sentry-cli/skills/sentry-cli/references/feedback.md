@@ -11,7 +11,7 @@ requires:
 
 Manage User Feedback
 
-### `sentry feedback list <org/project>`
+### `sentry feedback list [<org/project>]`
 
 List and search User Feedback
 
