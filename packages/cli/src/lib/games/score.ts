@@ -17,6 +17,7 @@ const log = logger.withTag("games");
 
 export const SNAKE_SCORE_METRIC = "snake.score";
 export const MAX_SNAKE_SCORE = 10_000;
+const SCORE_FLUSH_TIMEOUT_MS = 3000;
 
 /**
  * Record a finished Snake game. No-op when telemetry is off or the score is
@@ -46,6 +47,15 @@ export function reportSnakeScore(score: number): void {
         });
       });
     });
+    // Metrics otherwise wait up to 5s in the SDK buffer, and on macOS the CLI
+    // force-exits ~100ms after the command ends (force-exit.ts), cutting off
+    // the exit flush. Without this, quitting right after game over drops the
+    // score.
+    Sentry.getClient()
+      ?.flush(SCORE_FLUSH_TIMEOUT_MS)
+      .then(undefined, (error: unknown) => {
+        log.debug("Could not flush the Snake score", error);
+      });
   } catch (error) {
     log.debug("Could not report the Snake score", error);
   }

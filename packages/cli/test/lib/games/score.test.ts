@@ -1,4 +1,4 @@
-import { metrics } from "@sentry/node-core/light";
+import { type Client, getCurrentScope, metrics } from "@sentry/node-core/light";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getPlayerHandle } from "../../../src/lib/games/player.js";
 import { reportSnakeScore } from "../../../src/lib/games/score.js";
@@ -24,15 +24,19 @@ useTestConfigDir("test-games-score-");
 
 describe("reportSnakeScore", () => {
   let distribution: ReturnType<typeof vi.spyOn>;
+  let flush: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     distribution = vi
       .spyOn(metrics, "distribution")
       .mockImplementation(() => undefined);
+    flush = vi.fn().mockResolvedValue(true);
+    getCurrentScope().setClient({ flush } as unknown as Client);
   });
 
   afterEach(() => {
     distribution.mockRestore();
+    getCurrentScope().setClient(undefined);
   });
 
   test("emits the score with only the handle attribute", () => {
@@ -43,10 +47,22 @@ describe("reportSnakeScore", () => {
     });
   });
 
+  test("flushes right away so a quick quit does not drop the score", () => {
+    reportSnakeScore(12);
+    expect(flush).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not throw when the flush fails", async () => {
+    flush.mockRejectedValueOnce(new Error("network down"));
+    expect(() => reportSnakeScore(12)).not.toThrow();
+    await Promise.resolve();
+  });
+
   test("is skipped when telemetry is disabled", () => {
     vi.mocked(isTelemetryEnabled).mockReturnValueOnce(false);
     reportSnakeScore(12);
     expect(distribution).not.toHaveBeenCalled();
+    expect(flush).not.toHaveBeenCalled();
   });
 
   test("does not throw when the handle cannot be stored", () => {
