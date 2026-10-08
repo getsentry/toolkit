@@ -7,25 +7,44 @@
  * and keeps the whole frame a single `<Text>` node for Ink.
  */
 
+/** Heading of the snake on the board. */
 export type SnakeDirection = "up" | "down" | "left" | "right";
 
+/**
+ * Where a run stands. `ready` waits for the first turn, `paused` waits for
+ * a resume, and `over` is final until a new run starts.
+ */
 export type SnakeStatus = "ready" | "playing" | "paused" | "over";
 
-export type SnakePoint = { x: number; y: number };
+/** A board cell. The origin is the top-left corner; `y` grows downward. */
+export type SnakePoint = {
+  /** Column in cells. */
+  x: number;
+  /** Row in cells. */
+  y: number;
+};
 
+/** Complete state of one run. Engine functions return new objects. */
 export type SnakeState = {
+  /** Board width in cells. */
   width: number;
+  /** Board height in cells. Two board rows share one terminal row. */
   height: number;
-  /** Head first. */
+  /** Snake cells, head first. Cells never repeat and stay on the board. */
   body: SnakePoint[];
+  /** Heading of the last step, or the initial heading before the first one. */
   direction: SnakeDirection;
   /** Turns pressed faster than the tick rate, applied one per step. */
   queuedTurns: SnakeDirection[];
+  /** The food cell, or `null` when no free cell is left. */
   food: SnakePoint | null;
+  /** Food eaten in this run. */
   score: number;
+  /** Phase of the run. */
   status: SnakeStatus;
 };
 
+/** Returns a number in `[0, 1)`, like `Math.random`. Tests inject a fixed one. */
 export type RandomSource = () => number;
 
 const MAX_QUEUED_TURNS = 2;
@@ -45,6 +64,10 @@ const DELTA: Record<SnakeDirection, SnakePoint> = {
   right: { x: 1, y: 0 },
 };
 
+/**
+ * Start a run: a three-cell snake heading right, one food cell, and
+ * status `ready`. The snake is clamped onto boards narrower than its start.
+ */
 export function createSnake(
   width: number,
   height: number,
@@ -74,6 +97,11 @@ export function snakeTickMs(state: SnakeState): number {
   return Math.max(55, 110 - state.score * 3);
 }
 
+/**
+ * Queue a turn. A reversal or repeat of the last queued heading is dropped,
+ * and so is a turn past the queue limit. A `ready` or `paused` run starts
+ * playing; a finished run is returned unchanged.
+ */
 export function turnSnake(
   state: SnakeState,
   direction: SnakeDirection,
@@ -95,6 +123,7 @@ export function turnSnake(
   return { ...started, queuedTurns: [...state.queuedTurns, direction] };
 }
 
+/** Pause a playing run and resume a paused one. Other states are unchanged. */
 export function togglePause(state: SnakeState): SnakeState {
   if (state.status === "playing") {
     return { ...state, status: "paused" };
@@ -105,10 +134,17 @@ export function togglePause(state: SnakeState): SnakeState {
   return state;
 }
 
+/** Pause a playing run. Other states are returned unchanged. */
 export function pauseSnake(state: SnakeState): SnakeState {
   return state.status === "playing" ? { ...state, status: "paused" } : state;
 }
 
+/**
+ * Advance a playing run by one cell, applying one queued turn. Hitting a wall
+ * or the snake's own body ends the run. Eating food grows the snake, adds a
+ * point, and places new food; a full board ends the run. Other states are
+ * returned unchanged.
+ */
 export function stepSnake(
   state: SnakeState,
   random: RandomSource = Math.random,
@@ -230,11 +266,13 @@ const FOOD = 3;
 
 type CellKind = typeof EMPTY | typeof BODY | typeof HEAD | typeof FOOD;
 
+/** RGB triples (0-255) for the body, head and food cell kinds. */
 export type SnakePalette = Record<
   Exclude<CellKind, typeof EMPTY>,
   [number, number, number]
 >;
 
+/** Purple snake on a pink food cell, matching the init screen accent. */
 export const DEFAULT_SNAKE_PALETTE: SnakePalette = {
   [BODY]: [139, 106, 200],
   [HEAD]: [196, 176, 255],
@@ -250,10 +288,15 @@ export function snakeTerminalRows(height: number): number {
  * Draw the board as `snakeTerminalRows(height)` lines, each exactly
  * `width` columns wide. Colors are 24-bit SGR sequences that change
  * only between runs of different styles.
+ *
+ * With `color` off the output has no escape codes. Each terminal cell then
+ * shows the most important of its two board cells as a distinct glyph:
+ * `@` head, `*` food, `o` body, space for empty.
  */
 export function renderSnake(
   state: SnakeState,
   palette: SnakePalette = DEFAULT_SNAKE_PALETTE,
+  color = true,
 ): string[] {
   const cells = new Uint8Array(state.width * state.height);
   if (state.food) {
@@ -274,7 +317,9 @@ export function renderSnake(
         bottomY < state.height
           ? (cells[bottomY * state.width + x] as CellKind)
           : EMPTY;
-      const [style, glyph] = halfBlock(top, bottom, palette);
+      const [style, glyph] = color
+        ? halfBlock(top, bottom, palette)
+        : ["", plainGlyph(top, bottom)];
       if (style !== activeStyle) {
         line += activeStyle ? `\x1b[0m${style}` : style;
         activeStyle = style;
@@ -284,6 +329,20 @@ export function renderSnake(
     lines.push(activeStyle ? `${line}\x1b[0m` : line);
   }
   return lines;
+}
+
+const PLAIN_GLYPH: Record<CellKind, string> = {
+  [EMPTY]: " ",
+  [BODY]: "o",
+  [HEAD]: "@",
+  [FOOD]: "*",
+};
+
+function plainGlyph(top: CellKind, bottom: CellKind): string {
+  const importance = [EMPTY, BODY, FOOD, HEAD];
+  const winner =
+    importance.indexOf(top) >= importance.indexOf(bottom) ? top : bottom;
+  return PLAIN_GLYPH[winner];
 }
 
 function halfBlock(

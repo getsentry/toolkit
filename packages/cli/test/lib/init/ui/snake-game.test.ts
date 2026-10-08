@@ -1,3 +1,10 @@
+import {
+  array,
+  constantFrom,
+  assert as fcAssert,
+  integer,
+  property,
+} from "fast-check";
 import { describe, expect, test } from "vitest";
 import { stripAnsi } from "../../../../src/lib/formatters/plain-detect.js";
 import {
@@ -5,6 +12,7 @@ import {
   pauseSnake,
   renderSnake,
   resizeSnake,
+  type SnakeDirection,
   type SnakeState,
   snakeTerminalRows,
   stepSnake,
@@ -116,6 +124,99 @@ describe("renderSnake", () => {
       food: { x: 2, y: 1 },
     };
     expect(stripAnsi(renderSnake(state)[0] ?? "")).toBe("▀ ▄");
+  });
+
+  describe("without color", () => {
+    const state: SnakeState = {
+      ...createSnake(4, 2, firstFreeCell),
+      body: [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+      ],
+      food: { x: 2, y: 1 },
+    };
+    const plain = renderSnake(state, undefined, false);
+
+    test("emits no escape codes", () => {
+      expect(plain.join("")).not.toContain("\x1b");
+    });
+
+    test("keeps head, body, food and empty cells distinguishable", () => {
+      expect(plain).toEqual(["@o* "]);
+    });
+
+    test("keeps the fixed width", () => {
+      expect(plain.every((line) => line.length === 4)).toBe(true);
+    });
+  });
+});
+
+describe("engine invariants", () => {
+  const directions = constantFrom<SnakeDirection>(
+    "up",
+    "down",
+    "left",
+    "right",
+  );
+
+  /** Plays random turns and steps from a seeded start and checks each state. */
+  function check(
+    seed: number,
+    turns: SnakeDirection[],
+    verify: (state: SnakeState) => void,
+  ) {
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    let state = createSnake(12, 8, random);
+    for (const turn of turns) {
+      state = stepSnake(turnSnake(state, turn), random);
+      verify(state);
+    }
+  }
+
+  test("the snake never overlaps itself and stays on the board", () => {
+    fcAssert(
+      property(
+        integer({ min: 1, max: 2 ** 30 }),
+        array(directions, { maxLength: 300 }),
+        (seed, turns) => {
+          check(seed, turns, (state) => {
+            if (state.status === "over") {
+              return;
+            }
+            const keys = state.body.map((part) => `${part.x},${part.y}`);
+            expect(new Set(keys).size).toBe(keys.length);
+            for (const part of state.body) {
+              expect(part.x).toBeGreaterThanOrEqual(0);
+              expect(part.y).toBeGreaterThanOrEqual(0);
+              expect(part.x).toBeLessThan(state.width);
+              expect(part.y).toBeLessThan(state.height);
+            }
+          });
+        },
+      ),
+    );
+  });
+
+  test("food is never placed on the snake and the score counts growth", () => {
+    fcAssert(
+      property(
+        integer({ min: 1, max: 2 ** 30 }),
+        array(directions, { maxLength: 300 }),
+        (seed, turns) => {
+          check(seed, turns, (state) => {
+            const food = state.food;
+            if (food) {
+              expect(
+                state.body.some(
+                  (part) => part.x === food.x && part.y === food.y,
+                ),
+              ).toBe(false);
+            }
+            expect(state.body.length).toBe(3 + state.score);
+          });
+        },
+      ),
+    );
   });
 });
 
