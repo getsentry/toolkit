@@ -96,7 +96,6 @@ Other configuration:
 - **`SENTRY_CLIENT_SECRET`** - Sentry OAuth client secret
 - **`COOKIE_SECRET`** - Session cookie encryption secret
 - **`OPENAI_API_KEY`** - For AI-powered search features
-- **`SENTRY_GAMES_READ_TOKEN`** - Not a GitHub secret. The deploy workflow does not pass Worker secrets; set it with `wrangler secret put SENTRY_GAMES_READ_TOKEN`. The token must belong to a bot account with only `org:read` and membership only in the team that owns the CLI project. Enable "Prevent storing IP addresses" on that project.
 - **`AI_GATEWAY_API_KEY`** - Vercel AI Gateway key for Jev PR risk classification
 
 ## Deployment Architecture

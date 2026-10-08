@@ -46,15 +46,6 @@
         },
       },
       {
-        "name": "GAMES_RATE_LIMITER",
-        "type": "ratelimit",
-        "namespace_id": "1005",
-        "simple": {
-          "limit": 30,
-          "period": 60,
-        },
-      },
-      {
         "name": "MCP_IP_RATE_LIMITER",
         "type": "ratelimit",
         "namespace_id": "1003",

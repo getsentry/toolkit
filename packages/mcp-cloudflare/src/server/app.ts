@@ -9,7 +9,6 @@ import sentryOauth from "./oauth";
 import { createProtectedResourceMetadataResponse } from "./protected-resource-metadata";
 import chat from "./routes/chat";
 import chatOauth from "./routes/chat-oauth";
-import games from "./routes/games";
 import mcpRoutes from "./routes/mcp";
 import metadata from "./routes/metadata";
 import search from "./routes/search";
@@ -121,7 +120,6 @@ const app = new Hono<{
   .route("/api/auth", chatOauth)
   .route("/api/chat", chat)
   .route("/api/search", search)
-  .route("/api/games", games)
   .route("/api/metadata", metadata)
   .route("/.mcp", mcpRoutes)
   .get("/sse", (c) => {

@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { logWarn } from "@sentry/mcp-core/telem/logging";
-import type { Env } from "../types";
-import type { RateLimitResult } from "../types/chat";
-import { getClientIp } from "../utils/client-ip";
-import { annotateResponseMetric } from "../metrics";
+
+export type Env = {
+  SENTRY_GAMES_READ_TOKEN?: string;
+  GAMES_RATE_LIMITER?: RateLimit;
+};
 
 export const SNAKE_HANDLE_REGEX = /^[a-z]{2,12}-[a-z]{2,12}-\d{4}$/;
 export const MAX_SNAKE_SCORE = 10000;
@@ -17,7 +17,7 @@ const HANDLE_FIELD = "tags[handle,string]";
 const LEADERBOARD_PERIOD = "30d";
 const LEADERBOARD_SIZE = 10;
 const UPSTREAM_TIMEOUT_MS = 5000;
-const CACHE_KEY = "games:snake:leaderboard:v1";
+const CACHE_URL = "https://games.sentry.new/__cache/snake/leaderboard/v1";
 const CACHE_TTL_SECONDS = 300;
 
 const LeaderboardSchema = z.object({
@@ -48,10 +48,7 @@ class UpstreamError extends Error {
 // Failure details are deliberately dropped: errors may carry the upstream
 // URL, headers or body.
 function logUpstreamFailure(status?: number) {
-  logWarn("Snake leaderboard upstream failed", {
-    loggerScope: ["cloudflare", "games"],
-    extra: { status: status ?? null },
-  });
+  console.warn("Snake leaderboard upstream failed", { status: status ?? null });
 }
 
 function buildUpstreamUrl(): string {
@@ -84,18 +81,18 @@ async function fetchLeaderboard(token: string): Promise<Leaderboard> {
     throw new UpstreamError(response.status);
   }
 
-  let parsed: z.infer<typeof UpstreamSchema>;
+  let body: unknown;
   try {
-    const result = UpstreamSchema.safeParse(await response.json());
-    if (!result.success) throw new UpstreamError(response.status);
-    parsed = result.data;
+    body = await response.json();
   } catch {
     throw new UpstreamError(response.status);
   }
+  const parsed = UpstreamSchema.safeParse(body);
+  if (!parsed.success) throw new UpstreamError(response.status);
 
   const seen = new Set<string>();
   const entries: Leaderboard["entries"] = [];
-  for (const row of parsed.data) {
+  for (const row of parsed.data.data) {
     const handle = row[HANDLE_FIELD];
     const rawScore = row[SCORE_FIELD];
     if (typeof handle !== "string" || !SNAKE_HANDLE_REGEX.test(handle)) {
@@ -113,29 +110,31 @@ async function fetchLeaderboard(token: string): Promise<Leaderboard> {
   return { period: LEADERBOARD_PERIOD, entries };
 }
 
-async function readCache(kv: KVNamespace): Promise<Leaderboard | null> {
+async function readCache(): Promise<Leaderboard | null> {
   try {
-    const cached = await kv.get(CACHE_KEY, "json");
-    if (cached === null) return null;
-    const result = LeaderboardSchema.safeParse(cached);
+    const response = await caches.default.match(CACHE_URL);
+    if (!response) return null;
+    const result = LeaderboardSchema.safeParse(await response.json());
     return result.success ? result.data : null;
   } catch {
-    logWarn("Snake leaderboard cache read failed", {
-      loggerScope: ["cloudflare", "games"],
-    });
+    console.warn("Snake leaderboard cache read failed");
     return null;
   }
 }
 
-async function writeCache(kv: KVNamespace, value: Leaderboard) {
+async function writeCache(value: Leaderboard) {
   try {
-    await kv.put(CACHE_KEY, JSON.stringify(value), {
-      expirationTtl: CACHE_TTL_SECONDS,
-    });
+    await caches.default.put(
+      CACHE_URL,
+      new Response(JSON.stringify(value), {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": `max-age=${CACHE_TTL_SECONDS}`,
+        },
+      }),
+    );
   } catch {
-    logWarn("Snake leaderboard cache write failed", {
-      loggerScope: ["cloudflare", "games"],
-    });
+    console.warn("Snake leaderboard cache write failed");
   }
 }
 
@@ -144,7 +143,7 @@ const CACHE_CONTROL = "public, max-age=60";
 export default new Hono<{ Bindings: Env }>().get(
   "/snake/leaderboard",
   async (c) => {
-    const clientIP = getClientIp(c.req.raw);
+    const clientIP = c.req.header("CF-Connecting-IP");
 
     // The rate limiter binding is optional; it is absent in local development.
     if (c.env.GAMES_RATE_LIMITER && clientIP) {
@@ -156,20 +155,14 @@ export default new Hono<{ Bindings: Env }>().get(
         const hashHex = Array.from(new Uint8Array(hashBuffer))
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("");
-        const { success }: RateLimitResult =
-          await c.env.GAMES_RATE_LIMITER.limit({
-            key: `games:ip:${hashHex.substring(0, 16)}`,
-          });
+        const { success } = await c.env.GAMES_RATE_LIMITER.limit({
+          key: `games:ip:${hashHex.substring(0, 16)}`,
+        });
         if (!success) {
-          return annotateResponseMetric(
-            c.json({ error: "Too many requests" }, 429),
-            { responseReason: "local_rate_limit", rateLimitScope: "ip" },
-          );
+          return c.json({ error: "Too many requests" }, 429);
         }
       } catch {
-        logWarn("Snake leaderboard rate limiter failed", {
-          loggerScope: ["cloudflare", "games"],
-        });
+        console.warn("Snake leaderboard rate limiter failed");
         return c.json({ error: "Leaderboard unavailable" }, 503);
       }
     }
@@ -179,7 +172,7 @@ export default new Hono<{ Bindings: Env }>().get(
       return c.json({ error: "Leaderboard unavailable" }, 503);
     }
 
-    const cached = c.env.MCP_CACHE ? await readCache(c.env.MCP_CACHE) : null;
+    const cached = await readCache();
     if (cached) {
       return c.json(cached, 200, { "Cache-Control": CACHE_CONTROL });
     }
@@ -194,7 +187,15 @@ export default new Hono<{ Bindings: Env }>().get(
       return c.json({ error: "Leaderboard unavailable" }, 502);
     }
 
-    if (c.env.MCP_CACHE) await writeCache(c.env.MCP_CACHE, leaderboard);
+    const write = writeCache(leaderboard);
+    let ctx: ExecutionContext | undefined;
+    try {
+      ctx = c.executionCtx;
+    } catch {
+      // Hono throws when no execution context exists (e.g. in tests).
+    }
+    if (ctx) ctx.waitUntil(write);
+    else await write;
     return c.json(leaderboard, 200, { "Cache-Control": CACHE_CONTROL });
   },
 );

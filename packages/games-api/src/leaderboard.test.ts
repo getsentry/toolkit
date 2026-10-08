@@ -1,29 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { Hono } from "hono";
-import gamesRoute from "./games";
-import type { Env } from "../types";
+import app from "./index";
+import type { Env } from "./leaderboard";
 
 const TOKEN = "sntrys_test_token_value";
 const SCORE_FIELD = "max(value,snake.score,distribution,-)";
 const HANDLE_FIELD = "tags[handle,string]";
 
-function createTestApp() {
-  const app = new Hono<{ Bindings: Env }>();
-  app.route("/api/games", gamesRoute);
-  return app;
-}
+const CACHE_URL = "https://games.sentry.new/__cache/snake/leaderboard/v1";
 
-function createKv(initial?: unknown) {
-  return {
-    get: vi.fn().mockResolvedValue(initial ?? null),
-    put: vi.fn().mockResolvedValue(undefined),
-  };
+function cacheResponse(value: unknown) {
+  return new Response(JSON.stringify(value), {
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 function makeEnv(overrides: Record<string, unknown> = {}): Env {
   return {
     SENTRY_GAMES_READ_TOKEN: TOKEN,
-    MCP_CACHE: createKv(),
     ...overrides,
   } as unknown as Env;
 }
@@ -44,17 +37,20 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-const PATH = "/api/games/snake/leaderboard";
+const PATH = "/v1/snake/leaderboard";
 const REQ = { headers: { "CF-Connecting-IP": "192.0.2.1" } };
 
 describe("games leaderboard route", () => {
   const fetchMock = vi.fn();
-  let app: ReturnType<typeof createTestApp>;
+  const cacheMatch = vi.fn();
+  const cachePut = vi.fn();
 
   beforeEach(() => {
-    app = createTestApp();
     fetchMock.mockReset();
+    cacheMatch.mockReset().mockResolvedValue(undefined);
+    cachePut.mockReset().mockResolvedValue(undefined);
     vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("caches", { default: { match: cacheMatch, put: cachePut } });
   });
 
   afterEach(() => {
@@ -66,11 +62,9 @@ describe("games leaderboard route", () => {
       period: "30d",
       entries: [{ rank: 1, handle: "brave-otter-4242", score: 57 }],
     };
-    const res = await app.request(
-      PATH,
-      REQ,
-      makeEnv({ MCP_CACHE: createKv(cached) }),
-    );
+    cacheMatch.mockResolvedValue(cacheResponse(cached));
+    const res = await app.request(PATH, REQ, makeEnv());
+    expect(cacheMatch).toHaveBeenCalledWith(CACHE_URL);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(cached);
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=60");
@@ -81,11 +75,8 @@ describe("games leaderboard route", () => {
     fetchMock.mockResolvedValue(
       jsonResponse(upstreamBody([["brave-otter-4242", 57]])),
     );
-    const res = await app.request(
-      PATH,
-      REQ,
-      makeEnv({ MCP_CACHE: createKv({ bogus: true }) }),
-    );
+    cacheMatch.mockResolvedValue(cacheResponse({ bogus: true }));
+    const res = await app.request(PATH, REQ, makeEnv());
     expect(res.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -94,8 +85,7 @@ describe("games leaderboard route", () => {
     fetchMock.mockResolvedValue(
       jsonResponse(upstreamBody([["brave-otter-4242", 57]])),
     );
-    const env = makeEnv();
-    const res = await app.request(PATH, REQ, env);
+    const res = await app.request(PATH, REQ, makeEnv());
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=60");
@@ -126,12 +116,16 @@ describe("games leaderboard route", () => {
       Authorization: `Bearer ${TOKEN}`,
     });
 
-    const kv = env.MCP_CACHE as unknown as ReturnType<typeof createKv>;
-    expect(kv.put).toHaveBeenCalledWith(
-      "games:snake:leaderboard:v1",
-      expect.any(String),
-      { expirationTtl: 300 },
+    expect(cachePut).toHaveBeenCalledTimes(1);
+    const [key, cachedResponse] = cachePut.mock.calls[0];
+    expect(key).toBe(CACHE_URL);
+    expect((cachedResponse as Response).headers.get("Cache-Control")).toBe(
+      "max-age=300",
     );
+    expect(await (cachedResponse as Response).json()).toEqual({
+      period: "30d",
+      entries: [{ rank: 1, handle: "brave-otter-4242", score: 57 }],
+    });
   });
 
   it("filters invalid rows, dedupes, caps at 10 and assigns ranks", async () => {
@@ -241,15 +235,19 @@ describe("games leaderboard route", () => {
     expect(limit.mock.calls[0][0].key).not.toContain("192.0.2.1");
   });
 
-  it("fails open when KV throws", async () => {
+  it("fails open when the cache throws", async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(upstreamBody([["brave-otter-4242", 57]])),
     );
-    const kv = {
-      get: vi.fn().mockRejectedValue(new Error("kv down")),
-      put: vi.fn().mockRejectedValue(new Error("kv down")),
-    };
-    const res = await app.request(PATH, REQ, makeEnv({ MCP_CACHE: kv }));
+    cacheMatch.mockRejectedValue(new Error("cache down"));
+    cachePut.mockRejectedValue(new Error("cache down"));
+    const res = await app.request(PATH, REQ, makeEnv());
     expect(res.status).toBe(200);
+  });
+
+  it("returns 404 for unknown paths", async () => {
+    const res = await app.request("/nope", REQ, makeEnv());
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
   });
 });

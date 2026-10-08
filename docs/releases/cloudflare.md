@@ -61,12 +61,6 @@ Configure these overrides only when your Cloudflare deployment connects to a
 self-hosted Sentry instance; no additional host variables are required for the
 SaaS service.
 
-Optional secret for the Snake leaderboard (`GET /api/games/snake/leaderboard`).
-Set it with `wrangler secret put SENTRY_GAMES_READ_TOKEN`. Without it, the
-route returns 503. The token must belong to a bot account with only `org:read`
-and membership only in the team that owns the CLI project. Enable "Prevent
-storing IP addresses" on that project.
-
 Development (.dev.vars):
 
 ```bash
