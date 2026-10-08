@@ -9,6 +9,7 @@ import {
 } from "fast-check";
 import { describe, expect, test } from "vitest";
 import {
+  encodeAuthTokenForEnv,
   formatAuthHeader,
   normalizeAuthToken,
   trimAuthToken,
@@ -84,4 +85,62 @@ describe("auth token normalization", () => {
       );
     },
   );
+});
+
+/** Token-shaped input mixing printable, padding, NUL, and other bytes. */
+const envTokenInput = array(
+  constantFrom(
+    "a",
+    "Z",
+    "0",
+    "-",
+    "_",
+    " ",
+    "\t",
+    "\n",
+    "\x00",
+    "\x7f",
+    "\x01",
+    "é",
+  ),
+  { maxLength: 60 },
+).map((chars) => chars.join(""));
+
+/** Shared validator result: the normalized credential or null when rejected. */
+function normalizeOrNull(input: string): string | null {
+  try {
+    return normalizeAuthToken(input);
+  } catch (error) {
+    if (error instanceof MalformedAuthTokenError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+describe("env-storage encoding", () => {
+  test("never emits a byte env storage would truncate on", () => {
+    fcAssert(
+      property(envTokenInput, (input) => {
+        expect(encodeAuthTokenForEnv(input)).not.toContain("\x00");
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("preserves the shared normalization outcome for any input", () => {
+    fcAssert(
+      property(envTokenInput, (input) => {
+        const encoded = encodeAuthTokenForEnv(input);
+        // Edge padding trims identically: NUL and DEL occupy the same
+        // padding class, so the trimmed lengths always match — including
+        // both-empty (padding-only) cases.
+        expect(trimAuthToken(encoded).length).toBe(trimAuthToken(input).length);
+        // Validity is preserved exactly: the validator accepts the encoded
+        // form iff it accepts the raw form, with the same normalized result.
+        expect(normalizeOrNull(encoded)).toBe(normalizeOrNull(input));
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
 });
