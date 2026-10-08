@@ -9,13 +9,20 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
+import { logger } from "../logger.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { getPlayerHandle } from "./player.js";
+
+const log = logger.withTag("games");
 
 export const SNAKE_SCORE_METRIC = "snake.score";
 export const MAX_SNAKE_SCORE = 10_000;
 
-/** Record a finished Snake game. No-op when telemetry is off or the score is out of range. */
+/**
+ * Record a finished Snake game. No-op when telemetry is off or the score is
+ * out of range. Never throws: it runs from the game's timer, where an error
+ * would crash `sentry init`.
+ */
 export function reportSnakeScore(score: number): void {
   if (
     !isTelemetryEnabled() ||
@@ -26,16 +33,20 @@ export function reportSnakeScore(score: number): void {
     return;
   }
 
-  const handle = getPlayerHandle();
-  Sentry.withIsolationScope((isolationScope) => {
-    isolationScope.setUser(null);
-    Sentry.withScope((scope) => {
-      scope.setUser(null);
-      Sentry.startNewTrace(() => {
-        Sentry.metrics.distribution(SNAKE_SCORE_METRIC, score, {
-          attributes: { handle },
+  try {
+    const handle = getPlayerHandle();
+    Sentry.withIsolationScope((isolationScope) => {
+      isolationScope.setUser(null);
+      Sentry.withScope((scope) => {
+        scope.setUser(null);
+        Sentry.startNewTrace(() => {
+          Sentry.metrics.distribution(SNAKE_SCORE_METRIC, score, {
+            attributes: { handle },
+          });
         });
       });
     });
-  });
+  } catch (error) {
+    log.debug("Could not report the Snake score", error);
+  }
 }

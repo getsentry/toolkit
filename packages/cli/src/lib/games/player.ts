@@ -1,7 +1,7 @@
 /**
  * Anonymous player handle for game leaderboards.
  *
- * A random `adjective-animal-NN` label generated once and stored in the
+ * A random `adjective-animal-NNNN` label generated once and stored in the
  * metadata table. It is deliberately independent of the telemetry instance ID,
  * user, and machine data, so a leaderboard entry cannot be linked to a person.
  */
@@ -13,7 +13,7 @@ import { getMetadata, setMetadata } from "../db/utils.js";
 const PLAYER_HANDLE_KEY = "games.handle";
 
 /** Shape of a valid handle. Also used to vet handles received from the server. */
-export const PLAYER_HANDLE_REGEX = /^[a-z]{2,12}-[a-z]{2,12}-\d{2}$/;
+export const PLAYER_HANDLE_REGEX = /^[a-z]{2,12}-[a-z]{2,12}-\d{4}$/;
 
 const ADJECTIVES = [
   "brave",
@@ -88,7 +88,7 @@ const ANIMALS = [
 function generateHandle(): string {
   const adjective = ADJECTIVES[randomInt(ADJECTIVES.length)];
   const animal = ANIMALS[randomInt(ANIMALS.length)];
-  const suffix = String(randomInt(100)).padStart(2, "0");
+  const suffix = String(randomInt(10_000)).padStart(4, "0");
   return `${adjective}-${animal}-${suffix}`;
 }
 

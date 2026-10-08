@@ -64,7 +64,7 @@ describe("games leaderboard route", () => {
   it("returns cached data without calling upstream", async () => {
     const cached = {
       period: "30d",
-      entries: [{ rank: 1, handle: "brave-otter-42", score: 57 }],
+      entries: [{ rank: 1, handle: "brave-otter-4242", score: 57 }],
     };
     const res = await app.request(
       PATH,
@@ -79,7 +79,7 @@ describe("games leaderboard route", () => {
 
   it("treats an invalid cached value as a miss", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse(upstreamBody([["brave-otter-42", 57]])),
+      jsonResponse(upstreamBody([["brave-otter-4242", 57]])),
     );
     const res = await app.request(
       PATH,
@@ -92,7 +92,7 @@ describe("games leaderboard route", () => {
 
   it("fetches upstream on a miss and writes the cache", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse(upstreamBody([["brave-otter-42", 57]])),
+      jsonResponse(upstreamBody([["brave-otter-4242", 57]])),
     );
     const env = makeEnv();
     const res = await app.request(PATH, REQ, env);
@@ -101,7 +101,7 @@ describe("games leaderboard route", () => {
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=60");
     expect(await res.json()).toEqual({
       period: "30d",
-      entries: [{ rank: 1, handle: "brave-otter-42", score: 57 }],
+      entries: [{ rank: 1, handle: "brave-otter-4242", score: 57 }],
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -136,13 +136,14 @@ describe("games leaderboard route", () => {
 
   it("filters invalid rows, dedupes, caps at 10 and assigns ranks", async () => {
     const rows: Array<[unknown, unknown]> = [
-      ["Bad-Handle-01", 900],
+      ["Bad-Handle-0101", 900],
       ["no-digits-xx", 800],
-      ["too-high-01", 10001],
-      ["zero-score-01", 0],
-      ["float-score-01", 700.9],
-      ["float-score-01", 600],
-      ["string-score-01", "500"],
+      ["old-format-42", 850],
+      ["too-high-0101", 10001],
+      ["zero-score-0101", 0],
+      ["float-score-0101", 700.9],
+      ["float-score-0101", 600],
+      ["string-score-0101", "500"],
       [42, 400],
     ];
     const names = [
@@ -159,7 +160,7 @@ describe("games leaderboard route", () => {
       "kk",
       "ll",
     ];
-    names.forEach((n, i) => rows.push([`${n}-${n}-1${i % 10}`, 300 - i]));
+    names.forEach((n, i) => rows.push([`${n}-${n}-100${i % 10}`, 300 - i]));
     fetchMock.mockResolvedValue(jsonResponse(upstreamBody(rows)));
 
     const res = await app.request(PATH, REQ, makeEnv());
@@ -169,13 +170,14 @@ describe("games leaderboard route", () => {
     expect(body.entries).toHaveLength(10);
     expect(body.entries[0]).toEqual({
       rank: 1,
-      handle: "float-score-01",
+      handle: "float-score-0101",
       score: 700,
     });
     expect(body.entries.map((e) => e.rank)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     ]);
-    expect(body.entries.map((e) => e.handle)).not.toContain("Bad-Handle-01");
+    expect(body.entries.map((e) => e.handle)).not.toContain("Bad-Handle-0101");
+    expect(body.entries.map((e) => e.handle)).not.toContain("old-format-42");
   });
 
   it("returns 502 without leaking upstream details or the token", async () => {
@@ -241,7 +243,7 @@ describe("games leaderboard route", () => {
 
   it("fails open when KV throws", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse(upstreamBody([["brave-otter-42", 57]])),
+      jsonResponse(upstreamBody([["brave-otter-4242", 57]])),
     );
     const kv = {
       get: vi.fn().mockRejectedValue(new Error("kv down")),

@@ -23,7 +23,7 @@ row is marked `(you)`. Use `--json` for machine-readable output.
 ## Anonymous scores
 
 When a Snake game ends, the CLI sends one score and a random player handle such
-as `brave-otter-42`. The handle is generated on your machine and is not linked
+as `brave-otter-4242`. The handle is generated on your machine and is not linked
 to your account, name, email, organization, or installation. The score is sent
 in its own trace, apart from the CLI's other telemetry.
 

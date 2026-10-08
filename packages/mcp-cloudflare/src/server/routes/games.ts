@@ -6,7 +6,7 @@ import type { RateLimitResult } from "../types/chat";
 import { getClientIp } from "../utils/client-ip";
 import { annotateResponseMetric } from "../metrics";
 
-export const SNAKE_HANDLE_REGEX = /^[a-z]{2,12}-[a-z]{2,12}-\d{2}$/;
+export const SNAKE_HANDLE_REGEX = /^[a-z]{2,12}-[a-z]{2,12}-\d{4}$/;
 export const MAX_SNAKE_SCORE = 10000;
 
 const SENTRY_HOST = "https://us.sentry.io";
