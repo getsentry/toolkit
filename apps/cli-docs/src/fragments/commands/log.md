@@ -46,6 +46,11 @@ sentry log list my-org/backend -f -q 'severity:error'
 
 ### View a log entry
 
+Log ID lookups automatically narrow the search when a usable timestamp can be
+determined from each ID. Otherwise, they use a 90-day lookup window. If a partial
+scan leaves IDs missing, the CLI retries those IDs once with the highest
+available scan accuracy.
+
 ```bash
 sentry log view 968c763c740cfda8b6728f27fb9e9b01
 ```
