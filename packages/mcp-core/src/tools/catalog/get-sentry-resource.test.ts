@@ -1,4 +1,5 @@
 import {
+  createDefaultEvent,
   mswServer,
   organizationFixture,
   replayDetailsFixture,
@@ -8,7 +9,9 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { encode as encodePng } from "fast-png";
 import { http, HttpResponse } from "msw";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getStructuredContent } from "../../test-utils/structured-content";
+import { getIssueDetailsOutputSchema } from "./get-issue-details";
 import getSentryResource from "./get-sentry-resource.js";
 
 const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
@@ -1004,7 +1007,156 @@ describe("get_sentry_resource", () => {
         "resourceType",
         "resourceId",
         "organizationSlug",
+        "packageNames",
       ]);
     });
+  });
+});
+
+describe("event package selection", () => {
+  beforeEach(() => mswServer.resetHandlers());
+  afterEach(() => mswServer.resetHandlers());
+  const eventId = "7ca573c0f4814912aaa9bdc77d1a7d51";
+
+  it.each([
+    {
+      resourceType: "event" as const,
+      organizationSlug: "sentry-mcp-evals",
+      resourceId: eventId,
+    },
+    {
+      url: `https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/events/${eventId}/`,
+    },
+  ])(
+    "forwards selected packages through the event reader (%j)",
+    async (params) => {
+      mswServer.use(
+        http.get(
+          `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+          () =>
+            HttpResponse.json({
+              ...createDefaultEvent({ id: eventId, contexts: {} }),
+              packages: { example: "1.2.3", unrelated: "9.9.9" },
+              formatted: {
+                format: "markdown",
+                content: "### Message\n\nSynthetic event",
+              },
+            }),
+        ),
+      );
+      const result = await getSentryResource.handler(
+        { ...params, packageNames: ["example"] },
+        baseContext,
+      );
+      expect(result).not.toContain("unrelated");
+      expect(result).toMatchInlineSnapshot(`
+      "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
+
+      **Description**: Error: Tool list_organizations is already registered
+      **Culprit**: Object.fetch(index)
+      **First Seen**: 2025-04-03T22:51:19.403Z
+      **Last Seen**: 2025-04-12T11:34:11.000Z
+      **Occurrences**: 25
+      **Users Impacted**: 1
+      **Status**: unresolved
+      **Substatus**: ongoing
+      **Assigned To**: Jane Developer (User)
+      **Issue Type**: error
+      **Issue Category**: error
+      **Platform**: javascript
+      **Project**: CLOUDFLARE-MCP
+      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
+
+      ## Event Details
+
+      **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
+      **Type**: default
+      **Occurred At**: 2025-10-02T12:00:00.000Z
+      **Message**:
+      Something went wrong
+
+      ### Message
+
+      Synthetic event
+
+      ### Selected Package Versions
+
+      - example: 1.2.3
+
+      ## Response Notes
+
+      - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
+      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
+      - Issue event search: Use the Sentry tool \`search_issue_events\`
+      "
+    `);
+    },
+  );
+
+  it("returns selected packages when an event URL resolves to structured output", async () => {
+    mswServer.use(
+      http.get(
+        `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+        () =>
+          HttpResponse.json({
+            ...createDefaultEvent({ id: eventId, contexts: {} }),
+            packages: { example: "1.2.3", unrelated: "9.9.9" },
+            formatted: {
+              format: "json",
+              content: JSON.stringify({ message: "Synthetic event" }),
+            },
+          }),
+      ),
+    );
+    const result = await getSentryResource.handler(
+      {
+        url: `https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/events/${eventId}/`,
+        packageNames: ["example"],
+      },
+      baseContext,
+    );
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(result),
+    );
+    expect(payload.event.packageVersions).toEqual({
+      metadataAvailable: true,
+      packages: [
+        {
+          name: "example",
+          status: "recorded",
+          version: "1.2.3",
+          truncated: false,
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("unrelated");
+  });
+
+  it("rejects latest instead of an exact event ID", async () => {
+    await expect(
+      getSentryResource.handler(
+        {
+          resourceType: "event",
+          organizationSlug: "sentry-mcp-evals",
+          resourceId: "latest",
+          packageNames: ["example"],
+        },
+        baseContext,
+      ),
+    ).rejects.toThrow("32-character hexadecimal event ID");
+  });
+
+  it("rejects package selection for other resource types", async () => {
+    await expect(
+      getSentryResource.handler(
+        {
+          resourceType: "issue",
+          organizationSlug: "sentry-mcp-evals",
+          resourceId: "CLOUDFLARE-MCP-41",
+          packageNames: ["example"],
+        },
+        baseContext,
+      ),
+    ).rejects.toThrow("requires an event URL");
   });
 });

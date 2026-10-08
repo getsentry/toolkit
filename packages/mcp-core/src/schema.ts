@@ -62,6 +62,14 @@ export const ParamIssueShortId = z
   .trim()
   .describe("The Issue ID. e.g. `PROJECT-1Z43`");
 
+export const ParamPackageNames = z
+  .array(z.string().min(1).max(256))
+  .min(1)
+  .max(10)
+  .describe(
+    "Exact, case-sensitive package names recorded with a specific event (1–10 names, up to 256 characters each). Requires an event lookup. Only selected package versions are added; versions longer than 256 characters are truncated.",
+  );
+
 export const ParamIssueUrl = z
   .string()
   .url()

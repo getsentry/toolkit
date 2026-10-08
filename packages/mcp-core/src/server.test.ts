@@ -3,6 +3,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
 import { type Span, setUser, startSpan } from "@sentry/core";
 import {
+  createDefaultEvent,
   issueFixture,
   mswServer,
   projectFixture,
@@ -20,6 +21,7 @@ import {
   getStructuredContent,
   getTextContent,
 } from "./test-utils/structured-content";
+import type { GetIssueDetailsPayload } from "./tools/catalog/get-issue-details";
 import { createExecuteTool } from "./tools/special/execute-tool";
 import type { ToolConfig } from "./tools/types";
 import type { ServerContext } from "./types";
@@ -1448,6 +1450,74 @@ describe("buildServer", () => {
       expect(getTextContent(result)).toContain(
         "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
       );
+    });
+
+    it.each(["get_sentry_resource", "get_issue_details"])(
+      "dispatches package selection through %s",
+      async (toolName) => {
+        const eventId = "7ca573c0f4814912aaa9bdc77d1a7d51";
+        mswServer.use(
+          http.get(
+            `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+            () =>
+              HttpResponse.json({
+                ...createDefaultEvent({ id: eventId, contexts: {} }),
+                packages: { example: "1.2.3", unrelated: "9.9.9" },
+                formatted: {
+                  format: "json",
+                  content: JSON.stringify({ message: "Synthetic event" }),
+                },
+              }),
+          ),
+        );
+        const server = buildServer({
+          context: {
+            ...baseContext,
+            constraints: {
+              organizationSlug: "sentry-mcp-evals",
+              projectSlug: "CLOUDFLARE-MCP",
+            },
+          },
+        });
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name: toolName,
+          arguments: {
+            ...(toolName === "get_sentry_resource"
+              ? { resourceType: "event", resourceId: eventId }
+              : { eventId }),
+            packageNames: ["example"],
+          },
+        });
+        const payload = getStructuredContent<GetIssueDetailsPayload>(result);
+        expect(payload.event.packageVersions).toEqual({
+          metadataAvailable: true,
+          packages: [
+            {
+              name: "example",
+              status: "recorded",
+              version: "1.2.3",
+              truncated: false,
+            },
+          ],
+        });
+        expect(getTextContent(result)).toBe(JSON.stringify(payload, null, 2));
+        expect(result.isError).not.toBe(true);
+        expect(getTextContent(result)).not.toContain("unrelated");
+      },
+    );
+
+    it("rejects excessive package selection at the MCP boundary", async () => {
+      const result = await callRegisteredTool(
+        buildServer({ context: baseContext }),
+        "get_sentry_resource",
+        {
+          resourceType: "event",
+          resourceId: "7ca573c0f4814912aaa9bdc77d1a7d51",
+          organizationSlug: "sentry-mcp-evals",
+          packageNames: Array.from({ length: 11 }, (_, i) => `package${i}`),
+        },
+      );
+      expect(result.isError).toBe(true);
     });
 
     it("execute_sentry_tool dispatches to catalog-only event stacktrace", async () => {

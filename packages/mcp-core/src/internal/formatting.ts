@@ -30,6 +30,7 @@ import type {
   TraceSpan,
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
+import { selectEventPackages } from "./event-packages";
 import {
   type CodeLocation,
   findMostRelevantInAppFrame,
@@ -1985,6 +1986,38 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
   return `${parts.join("\n")}\n\n`;
 }
 
+function formatEventPackages(event: Event, packageNames: string[]): string {
+  const selection = selectEventPackages(event.packages, packageNames);
+  if (!selection) {
+    return "";
+  }
+  let output = "\n### Selected Package Versions\n\n";
+  if (!selection.metadataAvailable) {
+    return `${output}Package metadata is unavailable for this event.\n\n`;
+  }
+
+  for (const entry of selection.packages) {
+    const value =
+      entry.status === "recorded"
+        ? entry.truncated
+          ? `${entry.version}… (truncated)`
+          : entry.version
+        : entry.status === "not_listed"
+          ? "Not listed in this event's package metadata"
+          : "Version not recorded";
+    output += `- ${formatPackageText(entry.name)}: ${formatPackageText(value)}\n`;
+  }
+  return `${output}\n`;
+}
+
+function formatPackageText(value: string): string {
+  return value
+    .replace(/[\r\n\t]/g, " ")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/([\\`*_\[\]|>])/g, "\\$1");
+}
+
 /** Projects the suspect commit consistently for structured and markdown issue details. */
 export function getSuspectCommit(committers: CommitterList | undefined) {
   // The endpoint currently returns the issue's latest suspect commit, grouped by author.
@@ -2009,6 +2042,7 @@ export function getSuspectCommit(committers: CommitterList | undefined) {
  * @returns Formatted markdown string with complete issue information
  */
 export function formatIssueOutput({
+  packageNames,
   organizationSlug,
   issue,
   event,
@@ -2024,6 +2058,7 @@ export function formatIssueOutput({
   availableToolNames,
   directToolNames,
 }: {
+  packageNames?: string[];
   organizationSlug: string;
   issue: Issue;
   event: Event;
@@ -2179,6 +2214,10 @@ export function formatIssueOutput({
       });
     }
 
+    if (packageNames?.length) {
+      output += formatEventPackages(event, packageNames);
+    }
+
     // For unsupported event types, return early without trying to render event details
     return output;
   }
@@ -2233,6 +2272,10 @@ export function formatIssueOutput({
         directToolNames,
       },
     });
+  }
+
+  if (packageNames?.length) {
+    output += formatEventPackages(event, packageNames);
   }
 
   // Add Seer context if available

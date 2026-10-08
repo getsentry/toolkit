@@ -129,6 +129,32 @@ The event API's legacy `context` field (extra data) can be `null`. Issue details
 must still load; omit the `Extra Data` section for null or empty values while
 preserving the event's error, stacktrace, and structured `contexts` data.
 
+## Selected Event Package Versions
+
+Use `get_sentry_resource` with `resourceType: "event"` (or an event URL) and
+`packageNames: ["example-package", "@example/client"]` to inspect dependency
+versions recorded with that event. The catalog tool `get_issue_details` accepts
+the same selection with an explicit `eventId`.
+
+- Selection is optional: omitting it preserves the ordinary response.
+- Accept 1–10 exact, case-sensitive names, each up to 256 characters. Duplicate
+  names produce one entry; package names are not normalized across ecosystems.
+- Use the existing response's `packages` map without extra API calls. With Sentry's
+  JSON formatter, include `event.packageVersions` in `structuredContent`: a
+  `metadataAvailable` flag and selected `packages` entries with `name`, `status`,
+  `version`, and `truncated`. Status is `recorded`, `not_listed`, or
+  `version_not_recorded`; unavailable metadata has an empty selection. The server
+  generates equivalent JSON text. When returning Markdown, append the same
+  selection after Sentry-supplied or local event formatting.
+- Missing, null, and empty maps mean metadata is unavailable. In a populated map,
+  distinguish a name not listed from a null or blank version. Neither proves a
+  dependency was absent from the application.
+- Truncate versions after 256 characters with an explicit marker and escape
+  Markdown in package data when rendering Markdown; structured strings stay raw.
+  Do not render unrelated packages.
+- Package selection requires an exact event; issue/latest-event and other resource
+  lookups reject it.
+
 ## Structured Content
 
 MCP tools may expose `structuredContent` alongside generated text `content`.

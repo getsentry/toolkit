@@ -1,5 +1,6 @@
 import {
   autofixStateExplorerFixture,
+  createDefaultEvent,
   issueNullCulpritFixture,
   profileChunkFixture,
   tagsFixture,
@@ -1160,5 +1161,17 @@ describe("TransactionProfileSchema", () => {
     });
 
     expect(profile.profile.thread_metadata).toEqual({});
+  });
+});
+
+describe("event packages", () => {
+  it.each([
+    { label: "missing", packages: undefined },
+    { label: "null", packages: null },
+    { label: "empty", packages: {} },
+    { label: "recorded", packages: { example: "1.2.3", redacted: null } },
+  ])("retains $label package metadata during event parsing", ({ packages }) => {
+    const event = EventSchema.parse({ ...createDefaultEvent(), packages });
+    expect(event.packages).toEqual(packages);
   });
 });
