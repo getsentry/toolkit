@@ -5,9 +5,9 @@
  * - Organization and project target resolution
  * - Organization auto-detection
  * - Yielding CommandOutput with conversation data
- * - Query filter passthrough
+ * - Query and sort passthrough
  * - Time params passthrough
- * - Pagination hints with -q flag preserved
+ * - Pagination hints with active filters preserved
  * - Empty result handling
  *
  * Uses spyOn mocking to avoid real HTTP calls or database access.
@@ -364,6 +364,26 @@ describe("listCommand.func", () => {
     );
   });
 
+  test("passes sort to API", async () => {
+    listConversationsSpy.mockResolvedValue({
+      data: [],
+      nextCursor: undefined,
+    });
+
+    const { context } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(
+      context,
+      { ...JSON_FLAGS, sort: "-conversation.totalCost" },
+      ORG,
+    );
+
+    expect(listConversationsSpy).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ sort: "-conversation.totalCost" }),
+    );
+  });
+
   test("passes time params to API", async () => {
     listConversationsSpy.mockResolvedValue({
       data: [],
@@ -400,7 +420,7 @@ describe("listCommand.func", () => {
     );
   });
 
-  test("preserves project and query in pagination hints", async () => {
+  test("preserves project, query, and sort in pagination hints", async () => {
     resolveTargetSpy.mockResolvedValue({
       org: ORG,
       project: PROJECT.slug,
@@ -415,7 +435,11 @@ describe("listCommand.func", () => {
     const func = await listCommand.loader();
     await func.call(
       context,
-      { ...HUMAN_FLAGS, query: "conversation.errors:>0" },
+      {
+        ...HUMAN_FLAGS,
+        query: "conversation.errors:>0",
+        sort: "-conversation.totalCost",
+      },
       `${ORG}/${PROJECT.slug}`,
     );
 
@@ -425,6 +449,12 @@ describe("listCommand.func", () => {
       `agent-conversation list ${ORG}/${PROJECT.slug} -c next`,
     );
     expect(output).toContain('-q "conversation.errors:>0"');
+    expect(output).toContain('--sort "-conversation.totalCost"');
+    expect(resolveCursorSpy).toHaveBeenCalledWith(
+      undefined,
+      "agent-conversation-list",
+      expect.stringContaining("sort:-conversation.totalCost"),
+    );
   });
 
   test("handles empty results (human mode)", async () => {
