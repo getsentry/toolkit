@@ -153,6 +153,26 @@ const ISSUE_SHORT_ID_MULTI_SEGMENT_PARTS = 3;
 /** Splits a string into lines on LF or CRLF boundaries. */
 const LINE_SPLIT_PATTERN = /\r?\n/;
 
+/**
+ * Return the first non-blank line of `arg`, trimmed, or `""` if every line is
+ * blank.
+ *
+ * A bare `.trim()` only strips leading/trailing whitespace, so multi-line input
+ * (command substitution that captured extra output, a value with an appended
+ * note, or several newline-separated values — common from AI agents) keeps an
+ * internal newline that later fails `validateResourceId` with a cryptic
+ * "contains a newline" error (CLI-1G1, CLI-1RA). Slugs and identifiers are
+ * always single-line tokens, so the first non-blank line is the intended value.
+ */
+function firstNonBlankLine(arg: string): string {
+  return (
+    arg
+      .split(LINE_SPLIT_PATTERN)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? ""
+  );
+}
+
 /** Splits a string on any run of whitespace. */
 const WHITESPACE_SPLIT_PATTERN = /\s+/;
 
@@ -900,11 +920,12 @@ export function parseOrgProjectArg(
   arg: string | undefined,
   options: { multi?: boolean } = {},
 ): ParsedOrgProject {
-  if (!arg || arg.trim() === "") {
+  // Keep only the first non-blank line: agents often pass targets with
+  // appended output or notes after a newline (CLI-1RA).
+  const trimmed = arg ? firstNonBlankLine(arg) : "";
+  if (!trimmed) {
     return { type: "auto-detect" };
   }
-
-  const trimmed = arg.trim();
 
   // URL detection — extract org/project from Sentry web URLs
   const urlParsed = parseSentryUrl(trimmed);
@@ -1412,11 +1433,7 @@ export function parseIssueArg(arg: string): ParsedIssueArg {
   // lines would produce garbage, so we keep only the first line.
   // Splitting on `\n` (a control char) never breaks project display names with
   // spaces (#1116), since those are rejected as control chars anyway.
-  const input =
-    arg
-      .split(LINE_SPLIT_PATTERN)
-      .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? "";
+  const input = firstNonBlankLine(arg);
 
   if (!input) {
     throw new ValidationError(

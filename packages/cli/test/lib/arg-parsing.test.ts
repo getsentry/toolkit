@@ -1517,6 +1517,45 @@ describe("parseOrgProjectArg: injection hardening", () => {
   });
 });
 
+// Agents pass targets with appended output/notes after a newline. A bare
+// trim() left the internal newline, which threw "Invalid project slug:
+// contains a newline" (CLI-1RA). Targets are single-line, so keep line one.
+describe("parseOrgProjectArg: multi-line input (CLI-1RA)", () => {
+  test("keeps the first line of an org/project target", () => {
+    expect(parseOrgProjectArg("sentry/cli\nextra")).toEqual({
+      type: "explicit",
+      org: "sentry",
+      project: "cli",
+    });
+  });
+
+  test("keeps the first line of a bare project target", () => {
+    expect(parseOrgProjectArg("cli\nsome note")).toEqual({
+      type: "project-search",
+      projectSlug: "cli",
+    });
+  });
+
+  test("skips leading blank lines and handles CRLF", () => {
+    expect(parseOrgProjectArg("\r\n  \r\nsentry/cli\r\nextra\r\n")).toEqual({
+      type: "explicit",
+      org: "sentry",
+      project: "cli",
+    });
+  });
+
+  test("keeps the first line of an org-all target", () => {
+    expect(parseOrgProjectArg("sentry/\nextra")).toEqual({
+      type: "org-all",
+      org: "sentry",
+    });
+  });
+
+  test("all-blank multi-line input auto-detects", () => {
+    expect(parseOrgProjectArg("  \n \r\n  ")).toEqual({ type: "auto-detect" });
+  });
+});
+
 describe("parseIssueArg: injection hardening", () => {
   test("rejects query injection in issue arg", () => {
     expect(() => parseIssueArg("CLI-G?query=foo")).toThrow(ValidationError);
