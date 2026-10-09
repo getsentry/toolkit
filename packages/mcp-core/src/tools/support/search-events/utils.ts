@@ -967,12 +967,10 @@ function toAttributeRecord(
 }
 
 /**
- * Swap each deprecated field for its replacement when the replacement is also
- * available. The replacement takes the deprecated field's slot so it isn't
- * truncated off the end of the listing, and the swapped-out fields are
- * returned separately so the agent can be told not to use them.
+ * Swap each deprecated key for its replacement key when available,
+ * otherwise remove the deprecated attribute from the available attributes.
  */
-function preferReplacementFields(fields: Record<string, AttributeDescriptor>): {
+function resolveAvailableFields(fields: Record<string, AttributeDescriptor>): {
   available: Map<string, AttributeDescriptor>;
   replaced: AttributeDescriptor[];
 } {
@@ -980,17 +978,20 @@ function preferReplacementFields(fields: Record<string, AttributeDescriptor>): {
   const replaced: AttributeDescriptor[] = [];
 
   for (const [key, field] of Object.entries(fields)) {
-    const replacementKey = field.context?.isDeprecated
-      ? field.context.replacementAttribute
-      : undefined;
-    const replacement = replacementKey ? fields[replacementKey] : undefined;
-
-    if (replacementKey && replacement) {
+    const attributeDeprecated = field.context?.isDeprecated;
+    const replacementKey =
+      attributeDeprecated && field.context
+        ? field.context.replacementAttribute
+        : undefined;
+    if (attributeDeprecated && !replacementKey) {
+      continue;
+    } else if (replacementKey) {
+      const replacementAttribute = { ...field, key: replacementKey };
+      available.set(replacementKey, replacementAttribute);
       replaced.push(field);
-      if (!available.has(replacementKey)) {
-        available.set(replacementKey, replacement);
-      }
-    } else if (!available.has(key)) {
+    }
+
+    if (!available.has(key)) {
       available.set(key, field);
     }
   }
@@ -1005,13 +1006,6 @@ function describeField(field: AttributeDescriptor): string {
   const { context } = field;
   const parts: string[] = [];
 
-  if (context?.isDeprecated) {
-    parts.push(
-      context.replacementAttribute
-        ? `DEPRECATED: use ${context.replacementAttribute} instead.`
-        : "DEPRECATED.",
-    );
-  }
   parts.push(context?.brief || field.name);
   if (context?.examples?.length) {
     parts.push(`Examples: ${context.examples.join(", ")}.`);
@@ -1098,7 +1092,7 @@ export function createDatasetAttributesTool(options: {
       };
 
       const { available: availableFields, replaced: replacedFields } =
-        preferReplacementFields(allFields);
+        resolveAvailableFields(allFields);
       const replacedKeys = new Set(replacedFields.map((field) => field.key));
       const fieldCount = availableFields.size;
 

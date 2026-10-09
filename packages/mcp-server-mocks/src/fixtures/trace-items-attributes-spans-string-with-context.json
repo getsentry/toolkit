@@ -235,18 +235,6 @@
     }
   },
   {
-    "key": "user.geo.region",
-    "name": "user.geo.region",
-    "context": {
-      "isConvention": true,
-      "brief": "The region of the user's location.",
-      "isDeprecated": false,
-      "examples": [
-        "Canada"
-      ]
-    }
-  },
-  {
     "key": "geo.city",
     "name": "geo.city",
     "context": {

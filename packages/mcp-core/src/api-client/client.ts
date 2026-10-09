@@ -515,7 +515,7 @@ const TraceItemAttributeSchema = z
       name,
       type: attributeType,
       attributeSource,
-      ...(secondaryAliases ? { secondaryAliases } : {}),
+      ...(secondaryAliases && { secondaryAliases }),
       context,
     }),
   );
