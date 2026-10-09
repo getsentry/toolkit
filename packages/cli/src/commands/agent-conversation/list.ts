@@ -134,8 +134,23 @@ export const listCommand = buildListCommand("agent-conversation", {
         command: "sentry agent-conversation list --limit 50 --period 24h",
       },
       {
-        description: "Filter conversations",
-        command: 'sentry agent-conversation list -q "has:errors"',
+        description: "Find conversations with errors",
+        command: 'sentry agent-conversation list -q "conversation.errors:>0"',
+      },
+      {
+        description: "Find conversations for an agent",
+        command:
+          'sentry agent-conversation list -q "gen_ai.agent.name:my-agent"',
+      },
+      {
+        description: "Find conversations with more than two tool calls",
+        command:
+          'sentry agent-conversation list -q "conversation.toolCalls:>2"',
+      },
+      {
+        description: "Find conversations that used a tool",
+        command:
+          'sentry agent-conversation list -q "gen_ai.tool.name:search_issues"',
       },
       {
         description: "Paginate through project results",
@@ -160,7 +175,8 @@ export const listCommand = buildListCommand("agent-conversation", {
       query: {
         kind: "parsed",
         parse: String,
-        brief: "Search query",
+        brief:
+          "Any matching span selects its conversation; totals include all spans in selected projects and time range",
         optional: true,
       },
       period: LIST_PERIOD_FLAG,

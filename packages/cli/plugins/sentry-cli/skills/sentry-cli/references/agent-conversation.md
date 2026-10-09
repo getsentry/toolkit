@@ -17,7 +17,7 @@ List recent agent conversations
 
 **Flags:**
 - `-n, --limit <value> - Number of conversations (1-1000) - (default: "25")`
-- `-q, --query <value> - Search query`
+- `-q, --query <value> - Any matching span selects its conversation; totals include all spans in selected projects and time range`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
@@ -63,8 +63,17 @@ sentry agent-conversation list my-project
 # Show more, last 24 hours
 sentry agent-conversation list --limit 50 --period 24h
 
-# Filter conversations
-sentry agent-conversation list -q "has:errors"
+# Find conversations with errors
+sentry agent-conversation list -q "conversation.errors:>0"
+
+# Find conversations for an agent
+sentry agent-conversation list -q "gen_ai.agent.name:my-agent"
+
+# Find conversations with more than two tool calls
+sentry agent-conversation list -q "conversation.toolCalls:>2"
+
+# Find conversations that used a tool
+sentry agent-conversation list -q "gen_ai.tool.name:search_issues"
 
 # Paginate through project results
 sentry agent-conversation list my-org/my-project -c next
