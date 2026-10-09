@@ -27,6 +27,7 @@ export default defineTool({
     "<hints>",
     "- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.",
     "- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.",
+    "- Sentry search syntax for logs includes RE2 regex filters, never quoted: `message://^Timeout after \\d+ms//`.",
     "</hints>",
   ].join("\n"),
   inputSchema: buildDatasetSearchInputSchema(),

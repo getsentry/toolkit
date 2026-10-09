@@ -52,6 +52,7 @@ import {
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
   validateEventsSearch,
 } from "./utils";
@@ -262,7 +263,8 @@ function tokenizeSearchQuery(query: string): string[] {
   let quote: '"' | "'" | null = null;
   let escaped = false;
 
-  for (const char of query) {
+  for (let i = 0; i < query.length; i += 1) {
+    const char = query[i];
     if (escaped) {
       currentToken += char;
       escaped = false;
@@ -280,6 +282,13 @@ function tokenizeSearchQuery(query: string): string[] {
       if (char === quote) {
         quote = null;
       }
+      continue;
+    }
+
+    const regexValue = readRegexFilterValue(query, i);
+    if (regexValue) {
+      currentToken += regexValue;
+      i += regexValue.length - 1;
       continue;
     }
 
@@ -322,6 +331,7 @@ function choosePreservingRepairedQuery(params: {
   originalQuery: string;
   repairedQuery?: string | null;
   filter?: string;
+  dataset: PublicEventsDataset | "replays";
 }): string {
   const originalQuery = params.originalQuery.trim();
   const repairedQuery = params.repairedQuery?.trim();
@@ -329,7 +339,7 @@ function choosePreservingRepairedQuery(params: {
     return appendSearchFilter(originalQuery, params.filter);
   }
 
-  if (isSemanticFilterDowngrade(originalQuery, repairedQuery)) {
+  if (isSemanticFilterDowngrade(originalQuery, repairedQuery, params.dataset)) {
     return appendSearchFilter(originalQuery, params.filter);
   }
 
@@ -611,7 +621,10 @@ export async function runSearchEvents(
   setTargetTagsAndAttributes(params);
 
   const inputDataset = params.dataset ?? "errors";
-  const hasStructuredQuery = looksLikeSentrySearchSyntax(params.query);
+  const hasStructuredQuery = looksLikeSentrySearchSyntax(
+    params.query,
+    inputDataset,
+  );
   const canApplyEnvironmentFilter =
     inputDataset !== "replays" &&
     isTraceItemDataset(inputDataset) &&
@@ -780,9 +793,14 @@ export async function runSearchEvents(
           originalQuery: params.query ?? "",
           repairedQuery: parsed.query,
           filter: environmentFilter,
+          dataset,
         })
-      : looksLikeSentrySearchSyntax(params.query) &&
-          isSemanticFilterDowngrade(params.query ?? "", parsed.query || "")
+      : looksLikeSentrySearchSyntax(params.query, dataset) &&
+          isSemanticFilterDowngrade(
+            params.query ?? "",
+            parsed.query || "",
+            dataset,
+          )
         ? (params.query ?? "")
         : parsed.query || "";
     sortParam =

@@ -3260,6 +3260,115 @@ describe("search_events", () => {
     expect(result).toContain("TimeoutError");
   });
 
+  describe("with regex log queries", () => {
+    const regexSearchParams = {
+      organizationSlug: "test-org",
+      regionUrl: null,
+      projectSlug: null,
+      dataset: "logs" as const,
+      fields: null,
+      sort: null,
+      period: "24h",
+      limit: 10,
+      includeExplanation: false,
+    };
+    const regexSearchContext = {
+      constraints: {
+        organizationSlug: null,
+        regionUrl: null,
+        projectSlug: null,
+      },
+      accessToken: "test-token",
+      userId: "1",
+    };
+
+    const captureEventsQueries = () => {
+      const queries: Array<string | null> = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            queries.push(new URL(request.url).searchParams.get("query"));
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+      return queries;
+    };
+
+    it("runs a regex-only query as written without the agent when fields and sort are explicit", async () => {
+      const queries = captureEventsQueries();
+
+      await searchEvents.handler(
+        {
+          ...regexSearchParams,
+          query: "message://^Timeout after \\d+ms//",
+          fields: ["timestamp", "message"],
+          sort: "-timestamp",
+        },
+        regexSearchContext,
+      );
+
+      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(queries).toEqual(["message://^Timeout after \\d+ms//"]);
+    });
+
+    it("keeps the regex filter when the agent rewrites it into a wildcard", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("logs", 'message:"*Timeout after*"'),
+      );
+      const queries = captureEventsQueries();
+
+      await searchEvents.handler(
+        { ...regexSearchParams, query: "message://^Timeout after \\d+ms//" },
+        regexSearchContext,
+      );
+
+      expect(mockGenerateText).toHaveBeenCalledTimes(1);
+      expect(queries).toEqual(["message://^Timeout after \\d+ms//"]);
+    });
+
+    it("accepts agent repairs that keep a regex value with spaces and apostrophes", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse(
+          "logs",
+          "severity:error message://can't connect to \\w+// has:trace",
+        ),
+      );
+      const queries = captureEventsQueries();
+
+      await searchEvents.handler(
+        {
+          ...regexSearchParams,
+          query: "message://can't connect to \\w+// severity:error",
+        },
+        regexSearchContext,
+      );
+
+      expect(queries).toEqual([
+        "severity:error message://can't connect to \\w+// has:trace",
+      ]);
+    });
+
+    it("uses the agent's rewrite of regex syntax outside logs", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", 'span.description:"GET /api/*"'),
+      );
+      const queries = captureEventsQueries();
+
+      await searchEvents.handler(
+        {
+          ...regexSearchParams,
+          dataset: "spans",
+          query: "span.description://^GET \\/api\\/\\d+//",
+        },
+        regexSearchContext,
+      );
+
+      expect(queries).toEqual(['span.description:"GET /api/*"']);
+    });
+  });
+
   it("keeps caller fields when the agent returns an empty fields array", async () => {
     let eventsRequestUrl: URL | undefined;
 
@@ -4160,6 +4269,10 @@ describe("search_events", () => {
 
     it.each([
       ["a structured query", { query: "span.op:http.client" }],
+      [
+        "a regex-only logs query",
+        { dataset: "logs" as const, query: "message://^Timeout//" },
+      ],
       ["explicit fields", { fields: ["span.description", "count()"] }],
       ["an explicit sort", { sort: "-count()" }],
     ])("should skip Seer for %s", async (_, overrides) => {
