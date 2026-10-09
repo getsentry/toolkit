@@ -11,6 +11,16 @@ requires:
 
 Terminal games
 
+### `sentry games leaderboard`
+
+Show the top Snake scores from the last 30 days
+
+**Examples:**
+
+```bash
+sentry games leaderboard
+```
+
 ### `sentry games snake`
 
 Play Snake in your terminal
@@ -21,4 +31,4 @@ Play Snake in your terminal
 sentry games snake
 ```
 
-All commands also support `--help`, `--log-level`, and `--verbose` flags.
+All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

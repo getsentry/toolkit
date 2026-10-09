@@ -645,6 +645,7 @@ Manage User Feedback
 
 Terminal games
 
+- `sentry games leaderboard` — Show the top Snake scores from the last 30 days
 - `sentry games snake` — Play Snake in your terminal
 
 → Full flags and examples: `references/games.md`

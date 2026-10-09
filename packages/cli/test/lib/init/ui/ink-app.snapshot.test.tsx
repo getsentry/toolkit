@@ -130,6 +130,7 @@ async function renderApp(
   instance.unmount();
   // waitUntilExit() hangs in CI — race with a short unref'd timeout.
   await Promise.race([
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     instance.waitUntilExit().catch(() => {
       // Ink may reject on unmount — ignore.
     }),

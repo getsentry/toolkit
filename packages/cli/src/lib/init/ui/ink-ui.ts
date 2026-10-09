@@ -70,6 +70,7 @@ import {
   formatSuccessExitLine,
   formatSuccessReport,
 } from "./ink-report.js";
+import { reportSnakeScore } from "../../games/score.js";
 import { LEARN_SEQUENCE } from "./learn-content.js";
 import { SENTRY_TIPS } from "./sentry-tips.js";
 import {
@@ -325,17 +326,24 @@ export async function loadInkSidecar(): Promise<typeof import("./ink-app.js")> {
 /**
  * Run the standalone Snake game until the player quits. Ink handles the
  * alternate screen and restores it on exit and on SIGINT/SIGTERM.
+ *
+ * @param onGameOver - Called with the final score when a game ends
  */
-export async function runSnakeGame(): Promise<void> {
+export async function runSnakeGame(
+  onGameOver?: (score: number) => void,
+): Promise<void> {
   const app = await loadInkSidecar();
   const freshStdin = openFreshTtyForInk();
   try {
-    const instance = app.mountSnakeGame({
-      // Ctrl+C is routed through the game's own shortcut so it exits cleanly.
-      exitOnCtrlC: false,
-      patchConsole: false,
-      ...(freshStdin ? { stdin: freshStdin } : {}),
-    });
+    const instance = app.mountSnakeGame(
+      {
+        // Ctrl+C is routed through the game's own shortcut so it exits cleanly.
+        exitOnCtrlC: false,
+        patchConsole: false,
+        ...(freshStdin ? { stdin: freshStdin } : {}),
+      },
+      onGameOver,
+    );
     await instance.waitUntilExit();
   } finally {
     if (freshStdin) {
@@ -405,7 +413,7 @@ export async function createInkUI(
   // startup never shows stale layout from a prior render.
   process.stdout.write("\x1b[?1049h\x1b[2J\x1b[H");
   try {
-    const instance = app.mountApp(store, renderOptions);
+    const instance = app.mountApp(store, renderOptions, reportSnakeScore);
 
     return new InkUI(instance, store, freshStdin, {
       initialWelcome,

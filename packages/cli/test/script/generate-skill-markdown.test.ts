@@ -14,6 +14,7 @@ import { refreshCommand } from "../../src/commands/auth/refresh.js";
 import { uploadCommand as dartUploadCommand } from "../../src/commands/dart-symbol-map/upload.js";
 import { uploadCommand as debugUploadCommand } from "../../src/commands/debug-files/upload.js";
 import { sendCommand } from "../../src/commands/event/send.js";
+import { leaderboardCommand } from "../../src/commands/games/leaderboard.js";
 import { snakeCommand } from "../../src/commands/games/snake.js";
 import { mergeCommand } from "../../src/commands/issue/merge.js";
 import { createCommand } from "../../src/commands/project/create.js";
@@ -212,11 +213,24 @@ describe("games reference", () => {
     ).toBe(true);
   });
 
-  test("does not advertise auth or JSON flags that snake lacks", async () => {
+  test("advertises only the auth and flags that games commands have", async () => {
     const content = await reference();
+    const infos = [
+      buildCommandInfo(snakeCommand as never, "sentry games snake"),
+      buildCommandInfo(leaderboardCommand as never, "sentry games leaderboard"),
+    ];
+    const accepts = (name: string) =>
+      infos.some((info) => info.flags.some((flag) => flag.name === name));
+
     expect(content).toContain("auth: false");
-    expect(content).not.toContain("--json");
-    expect(content).not.toContain("--fields");
+    expect(accepts("json")).toBe(true);
+    expect(content.includes("`--json`")).toBe(accepts("json"));
+    expect(content.includes("`--fields`")).toBe(accepts("fields"));
+    expect(
+      infos
+        .find((info) => info.path === "sentry games snake")
+        ?.flags.some((flag) => flag.name === "json"),
+    ).toBe(false);
   });
 });
 

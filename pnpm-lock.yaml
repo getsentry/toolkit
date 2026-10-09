@@ -443,6 +443,31 @@ importers:
         specifier: ^10.0.0
         version: 10.0.1
 
+  packages/games-api:
+    dependencies:
+      hono:
+        specifier: 'catalog:'
+        version: 4.13.8
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 4.20260405.1
+      '@sentry/mcp-server-tsconfig':
+        specifier: workspace:*
+        version: link:../mcp-server-tsconfig
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(@vitest/coverage-v8@4.1.11)(msw@2.10.2(@types/node@24.13.5)(typescript@5.8.3))(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+      wrangler:
+        specifier: 4.80.0
+        version: 4.80.0(@cloudflare/workers-types@4.20260405.1)(@types/node@24.13.5)
+
   packages/mcp-cloudflare:
     dependencies:
       '@ai-sdk/mcp':

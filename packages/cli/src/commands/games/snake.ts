@@ -8,6 +8,7 @@ import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { detectAgent } from "../../lib/detect-agent.js";
 import { ValidationError } from "../../lib/errors.js";
+import { reportSnakeScore } from "../../lib/games/score.js";
 
 export const snakeCommand = buildCommand({
   docs: {
@@ -35,6 +36,6 @@ export const snakeCommand = buildCommand({
     // A static import would load Ink and its WebAssembly layout engine
     // whenever the app starts, which breaks the library SDK build.
     const { runSnakeGame } = await import("../../lib/init/ui/ink-ui.js");
-    await runSnakeGame();
+    await runSnakeGame(reportSnakeScore);
   },
 });
