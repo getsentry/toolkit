@@ -40,9 +40,10 @@ TOOL USAGE GUIDELINES:
 4. Use whoami tool when queries contain "me" references for user.id or user.email fields
 5. IMPORTANT: For ambiguous terms like "user agents", "browser", "client" - use the appropriate field discovery tool instead of guessing field names
 6. When the user already supplied Sentry search syntax for spans/logs/metrics, call datasetAttributes with substringMatch or query filters from the request before dropping or renaming fields
-7. Use datasetAttributes substringMatch, query, and attributeTypes for targeted lookup when broad field discovery is truncated
-8. For non-replay datasets, call validateSearch after constructing the candidate request. If invalid, fix and validate again in this same pass
-9. NEVER replace a structured field:value filter with message/log.body/full-text matching. If an explicit field is unavailable on the dataset, keep it and let validation fail instead of inventing a weaker query
+7. If datasetAttributes lists a field under Deprecated Fields, use its replacement instead, even when the deprecated name appears in the guidance or examples in this prompt
+8. Use datasetAttributes substringMatch, query, and attributeTypes for targeted lookup when broad field discovery is truncated
+9. For non-replay datasets, call validateSearch after constructing the candidate request. If invalid, fix and validate again in this same pass
+10. NEVER replace a structured field:value filter with message/log.body/full-text matching. If an explicit field is unavailable on the dataset, keep it and let validation fail instead of inventing a weaker query
 
 CRITICAL - TOOL RESPONSE HANDLING:
 All tools return responses in this format: {error?: string, result?: data}
@@ -232,6 +233,7 @@ Return a JSON object with these fields:
 CORRECT QUERY PATTERNS (FOLLOW THESE):
 - For field existence: Use has:field_name (NOT field_name IS NOT NULL)
 - For field absence: Use !has:field_name (NOT field_name IS NULL)
+- For field negation: Use !span.op:db (NOT span.op IS db)
 - For time periods: Use timeRange parameter (NOT SQL date functions)
 - Example: "items processed yesterday" → query: "has:item.processed", timeRange: {"statsPeriod": "24h"}
 
@@ -621,6 +623,21 @@ export const DATASET_EXAMPLES: Record<
         sort: "-p75(span.duration)",
       },
     },
+    {
+      description: "spans that did not succeed, excluding database queries",
+      output: {
+        query: "!span.status:ok AND !span.op:db*",
+        fields: [
+          "span.op",
+          "span.description",
+          "span.status",
+          "span.duration",
+          "transaction",
+          "timestamp",
+        ],
+        sort: "-span.duration",
+      },
+    },
   ],
   errors: [
     {
@@ -678,6 +695,14 @@ export const DATASET_EXAMPLES: Record<
         sort: "-count()",
       },
     },
+    {
+      description: "errors excluding TypeError and ReferenceError",
+      output: {
+        query: "level:error AND !error.type:[TypeError,ReferenceError]",
+        fields: ["error.type", "count()"],
+        sort: "-count()",
+      },
+    },
   ],
   logs: [
     {
@@ -716,6 +741,14 @@ export const DATASET_EXAMPLES: Record<
       description: "warning logs about memory",
       output: {
         query: 'severity:warn AND message:"*memory*"',
+        fields: ["timestamp", "message", "severity", "trace"],
+        sort: "-timestamp",
+      },
+    },
+    {
+      description: "error logs excluding health checks",
+      output: {
+        query: 'severity:error AND !message:"*health check*"',
         fields: ["timestamp", "message", "severity", "trace"],
         sort: "-timestamp",
       },
@@ -786,6 +819,19 @@ export const DATASET_EXAMPLES: Record<
         sort: "-avg(value,http.request.duration,distribution,millisecond)",
       },
     },
+    {
+      description: "request duration by route, excluding health check routes",
+      output: {
+        query:
+          "metric.name:http.request.duration AND metric.type:distribution AND !transaction:*health*",
+        fields: [
+          "transaction",
+          "p95(value,http.request.duration,distribution,millisecond)",
+          "count(value,http.request.duration,distribution,millisecond)",
+        ],
+        sort: "-p95(value,http.request.duration,distribution,millisecond)",
+      },
+    },
   ],
   profiles: [
     {
@@ -842,6 +888,14 @@ export const DATASET_EXAMPLES: Record<
         query: "",
         fields: ["environment", "count()", "p95()"],
         sort: "-count()",
+      },
+    },
+    {
+      description: "slowest profiled transactions outside development",
+      output: {
+        query: "!environment:development",
+        fields: ["transaction", "p95()", "count()"],
+        sort: "-p95()",
       },
     },
   ],
