@@ -5,7 +5,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { listConversations } from "../../lib/api-client.js";
+import { getProject, listConversations } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
@@ -13,23 +13,25 @@ import {
   hasPreviousPage,
   resolveCursor,
 } from "../../lib/db/pagination.js";
-import { ContextError } from "../../lib/errors.js";
 import { formatConversationTable } from "../../lib/formatters/conversation.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
-import { validateResourceId } from "../../lib/input-validation.js";
-import { getPositionalString } from "../../lib/introspect.js";
 import {
   buildListCommand,
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
   LIST_PERIOD_FLAG,
+  LIST_TARGET_POSITIONAL,
   PERIOD_ALIASES,
   paginationHint,
+  targetPatternExplanation,
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
+import {
+  resolveOrgOptionalFromArg,
+  toNumericId,
+} from "../../lib/resolve-target.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -57,36 +59,26 @@ type ConversationListResult = {
   hasPrev?: boolean;
   nextCursor?: string;
   org: string;
+  project?: string;
 };
 
 const COMMAND_NAME = "agent-conversation list";
 const PAGINATION_KEY = "agent-conversation-list";
 const DEFAULT_PERIOD = "7d";
-const POSITIONAL = {
-  kind: "tuple",
-  parameters: [
-    {
-      placeholder: "org",
-      brief: "Organization slug",
-      parse: String,
-      optional: true,
-    },
-  ],
-} as const;
-const USAGE_HINT = `sentry ${COMMAND_NAME} ${getPositionalString(POSITIONAL)}`;
 
 function parseLimit(value: string): number {
   return validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT);
 }
 
 function formatListHuman(result: ConversationListResult): string {
-  const { conversations, hasMore, org } = result;
+  const { conversations, hasMore, org, project } = result;
   if (conversations.length === 0) {
     return hasMore
       ? "No conversations on this page."
       : "No agent conversations found.";
   }
-  return `Agent conversations in ${org}:\n\n${formatConversationTable(conversations)}`;
+  const scope = project ? `${org}/${project}` : `${org} (all projects)`;
+  return `Agent conversations in ${scope}:\n\n${formatConversationTable(conversations)}`;
 }
 
 function jsonTransform(
@@ -113,16 +105,29 @@ export const listCommand = buildListCommand("agent-conversation", {
   docs: {
     brief: "List recent agent conversations",
     fullDescription:
-      "List recent agent conversations from a Sentry organization.\n\n" +
-      "The organization is auto-detected when omitted.",
+      "List recent agent conversations from Sentry projects.\n\n" +
+      "Target patterns:\n" +
+      "  sentry agent-conversation list              # Auto-detect organization\n" +
+      "  sentry agent-conversation list <org>/       # All projects in an organization\n" +
+      "  sentry agent-conversation list <org>/<proj> # One project\n" +
+      "  sentry agent-conversation list <project>    # Find project across organizations\n\n" +
+      targetPatternExplanation(),
     examples: [
       {
         description: "List recent agent conversations",
         command: "sentry agent-conversation list",
       },
       {
-        description: "Explicit organization",
-        command: "sentry agent-conversation list my-org",
+        description: "Explicit organization (all projects)",
+        command: "sentry agent-conversation list my-org/",
+      },
+      {
+        description: "One project",
+        command: "sentry agent-conversation list my-org/my-project",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry agent-conversation list my-project",
       },
       {
         description: "Show more, last 24 hours",
@@ -133,8 +138,8 @@ export const listCommand = buildListCommand("agent-conversation", {
         command: 'sentry agent-conversation list -q "has:errors"',
       },
       {
-        description: "Paginate through results",
-        command: "sentry agent-conversation list my-org -c next",
+        description: "Paginate through project results",
+        command: "sentry agent-conversation list my-org/my-project -c next",
       },
     ],
   },
@@ -144,7 +149,7 @@ export const listCommand = buildListCommand("agent-conversation", {
     schema: ConversationListItemSchema,
   },
   parameters: {
-    positional: POSITIONAL,
+    positional: LIST_TARGET_POSITIONAL,
     flags: {
       limit: {
         kind: "parsed",
@@ -168,17 +173,18 @@ export const listCommand = buildListCommand("agent-conversation", {
   },
   async *func(this: SentryContext, flags: ListFlags, target?: string) {
     const { cwd } = this;
-    if (target !== undefined) {
-      validateResourceId(target, "organization slug");
-    }
 
-    const resolved = await resolveOrg({ org: target, cwd });
-    if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT);
+    const resolved = await resolveOrgOptionalFromArg(target, cwd, COMMAND_NAME);
+    const { org, project } = resolved;
+    let projectId: number | undefined;
+    if (project) {
+      const projectData =
+        resolved.projectData ?? (await getProject(org, project));
+      projectId = toNumericId(projectData.id);
     }
-    const org = resolved.org;
+    const scope = project ? `${org}/${project}` : `${org}/`;
 
-    const contextKey = buildPaginationContextKey("agent-conversation", org, {
+    const contextKey = buildPaginationContextKey("agent-conversation", scope, {
       q: flags.query,
       period: serializeTimeRange(flags.period),
     });
@@ -200,6 +206,7 @@ export const listCommand = buildListCommand("agent-conversation", {
           query: flags.query,
           limit: flags.limit,
           cursor,
+          project: projectId === undefined ? undefined : String(projectId),
           ...timeParams,
         }),
     );
@@ -214,6 +221,7 @@ export const listCommand = buildListCommand("agent-conversation", {
       hasPrev,
       nextCursor,
       org,
+      project,
     });
 
     const parts: string[] = [];
@@ -227,8 +235,8 @@ export const listCommand = buildListCommand("agent-conversation", {
       hint: paginationHint({
         hasMore,
         hasPrev: !!hasPrev,
-        nextHint: `sentry agent-conversation list ${org} -c next${flagSuffix}`,
-        prevHint: `sentry agent-conversation list ${org} -c prev${flagSuffix}`,
+        nextHint: `sentry agent-conversation list ${scope} -c next${flagSuffix}`,
+        prevHint: `sentry agent-conversation list ${scope} -c prev${flagSuffix}`,
       }),
     };
   },

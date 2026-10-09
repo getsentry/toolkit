@@ -43,9 +43,9 @@ describe("matchExampleToCommand", () => {
       viewCommand as never,
       "sentry agent-conversation view",
     );
-    expect(list.positional).toBe("[<org>]");
+    expect(list.positional).toBe("[<org/project>]");
     expect(list.examples).toContain(
-      "# Explicit organization\nsentry agent-conversation list my-org",
+      "# Explicit organization (all projects)\nsentry agent-conversation list my-org/",
     );
     expect(view.positional).toBe("[<org>/]<conversation-id>");
     expect(view.examples).toContain(
@@ -63,7 +63,9 @@ describe("matchExampleToCommand", () => {
       formatCommandArguments(
         info(listCommand, "sentry agent-conversation list"),
       ),
-    ).toContain("| `[<org>]` | Organization slug |");
+    ).toContain(
+      "| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |",
+    );
     expect(
       formatCommandArguments(
         info(viewCommand, "sentry agent-conversation view"),
@@ -99,7 +101,9 @@ describe("matchExampleToCommand", () => {
       expect(content).toContain(
         "sentry agent-conversation view [<org>/]<conversation-id>",
       );
-      expect(content).toContain("sentry agent-conversation list [<org>]");
+      expect(content).toContain(
+        "sentry agent-conversation list [<org/project>]",
+      );
       expect(content).toContain(
         "sentry agent-conversation view my-org/conv-123",
       );

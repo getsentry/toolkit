@@ -493,7 +493,7 @@ Manage code mappings for stack trace linking
 
 List and view agent conversations
 
-- `sentry agent-conversation list [<org>]` — List recent agent conversations
+- `sentry agent-conversation list [<org/project>]` — List recent agent conversations
 - `sentry agent-conversation view [<org>/]<conversation-id>` — View an agent conversation transcript
 
 → Full flags and examples: `references/agent-conversation.md`
