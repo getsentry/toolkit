@@ -252,7 +252,7 @@ Split by argument type — do not mix the conventions:
   query several projects together may parse their single optional target token
   as a list because Sentry slugs cannot contain commas. For example,
   `issue list acme/web,api` selects two projects. Pass
-  `{ allowProjectList: true }` to `parseOrgProjectArg`; never enable it for
+  `{ multi: true }` to `parseOrgProjectArg`; never enable it for
   mutation or single-project commands.
 - **Optional flags → comma-separated (sometimes also repeatable).** Split the
   flag value on `,`: `--features errors,tracing`, set-commits `--path a,b`,

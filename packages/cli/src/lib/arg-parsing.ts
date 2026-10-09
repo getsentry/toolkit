@@ -744,10 +744,7 @@ function rejectAtSelector(value: string, label: string): void {
  * Applies {@link normalizeSlug} to both components and validates against
  * URL injection characters.
  */
-function parseSlashOrgProject(
-  input: string,
-  allowProjectList: boolean,
-): ParsedOrgProject {
+function parseSlashOrgProject(input: string, multi: boolean): ParsedOrgProject {
   const slashIndex = input.indexOf("/");
   const rawOrg = input.slice(0, slashIndex);
   const rawProject = input.slice(slashIndex + 1);
@@ -791,7 +788,7 @@ function parseSlashOrgProject(
   }
 
   // "sentry/web,api,worker" for list commands that explicitly opt in
-  if (allowProjectList && rawProject.includes(",")) {
+  if (multi && rawProject.includes(",")) {
     return parseExplicitProjectList(no, rawProject);
   }
 
@@ -879,13 +876,13 @@ function parseExplicitProjectList(
  * - `https://sentry.io/organizations/org/...` → extract from Sentry URL
  * - `sentry/cli` → explicit org and project
  * - `sentry/web,api` → explicit org and multiple projects when
- *   `options.allowProjectList` is true
+ *   `options.multi` is true
  * - `sentry/` → org with all projects
  * - `/cli` → search for project across all orgs (leading slash)
  * - `cli` → search for project across all orgs
  *
  * @param arg - Input string from CLI positional argument
- * @param options.allowProjectList - Parse comma-separated project slugs after
+ * @param options.multi - Parse comma-separated project slugs after
  *   the org. Only commands that can query multiple projects together should
  *   enable it.
  * @returns Parsed result with type discrimination
@@ -893,7 +890,7 @@ function parseExplicitProjectList(
  * @example
  * parseOrgProjectArg(undefined)     // { type: "auto-detect" }
  * parseOrgProjectArg("sentry/cli")  // { type: "explicit", org: "sentry", project: "cli" }
- * parseOrgProjectArg("sentry/web,api", { allowProjectList: true })
+ * parseOrgProjectArg("sentry/web,api", { multi: true })
  * // { type: "explicit", ..., projects: ["web","api"] }
  * parseOrgProjectArg("sentry/")     // { type: "org-all", org: "sentry" }
  * parseOrgProjectArg("/cli")        // { type: "project-search", projectSlug: "cli" }
@@ -901,7 +898,7 @@ function parseExplicitProjectList(
  */
 export function parseOrgProjectArg(
   arg: string | undefined,
-  options: { allowProjectList?: boolean } = {},
+  options: { multi?: boolean } = {},
 ): ParsedOrgProject {
   if (!arg || arg.trim() === "") {
     return { type: "auto-detect" };
@@ -918,7 +915,7 @@ export function parseOrgProjectArg(
 
   let parsed: ParsedOrgProject;
   if (trimmed.includes("/")) {
-    parsed = parseSlashOrgProject(trimmed, options.allowProjectList === true);
+    parsed = parseSlashOrgProject(trimmed, options.multi === true);
   } else {
     // No slash → search for project across all orgs
     rejectAtSelector(trimmed, "project slug");

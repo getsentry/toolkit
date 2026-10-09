@@ -318,7 +318,7 @@ describe("parseOrgProjectArg properties", () => {
             return;
           }
           const result = parseOrgProjectArg(`${org}/${first},${second}`, {
-            allowProjectList: true,
+            multi: true,
           });
           expect(result.type).toBe("explicit");
           if (result.type === "explicit") {

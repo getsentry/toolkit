@@ -1622,7 +1622,7 @@ export const listCommand = buildListCommand("issue", {
       rejectIssueCommandTokenListTarget(target);
     }
 
-    const parsed = parseOrgProjectArg(target, { allowProjectList: true });
+    const parsed = parseOrgProjectArg(target, { multi: true });
 
     // Auto-recover: user passed an issue short ID (e.g., "ARMAX-3E" or a
     // lowercase/multi-segment variant like "javascript-react-mr-1b") instead

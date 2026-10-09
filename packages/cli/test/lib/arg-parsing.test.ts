@@ -21,7 +21,7 @@ import {
 import { stripDsnOrgPrefix } from "../../src/lib/dsn/index.js";
 import { ValidationError } from "../../src/lib/errors.js";
 
-const PROJECT_LIST_OPTIONS = { allowProjectList: true } as const;
+const PROJECT_LIST_OPTIONS = { multi: true } as const;
 
 describe("stripDsnOrgPrefix", () => {
   test("strips 'o' prefix from DSN-style org IDs", () => {
