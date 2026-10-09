@@ -24,11 +24,13 @@ export type {
   AgentConversationDetails,
   AgentConversationSpan,
   ConversationListItem,
+  ConversationStats,
 } from "./conversation.js";
 export {
   AgentConversationDetailsSchema,
   AgentConversationSpanSchema,
   ConversationListItemSchema,
+  ConversationStatsSchema,
 } from "./conversation.js";
 // Dashboard types
 export type {
