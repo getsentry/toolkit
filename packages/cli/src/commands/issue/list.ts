@@ -781,7 +781,7 @@ async function resolveOrganizationIssuesScope(
     target: formatProjectTarget(org, projects),
     contextKey: buildPaginationContextKey(
       "projects",
-      formatProjectTarget(org, [...projects].sort()),
+      formatProjectTarget(org, projects.toSorted()),
       searchParams,
     ),
   };
