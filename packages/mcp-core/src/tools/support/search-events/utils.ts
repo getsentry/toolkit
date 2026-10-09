@@ -970,9 +970,13 @@ function toAttributeRecord(
  * Swap each deprecated key for its replacement key when available,
  * otherwise remove the deprecated attribute from the available attributes.
  */
-function resolveAvailableFields(fields: Record<string, AttributeDescriptor>): {
+function resolveAvailableFields(
+  fields: Record<string, AttributeDescriptor>,
+  fieldTypes: Record<string, TraceItemAttributeType>,
+): {
   available: Map<string, AttributeDescriptor>;
   replaced: AttributeDescriptor[];
+  updatedFieldTypes: Record<string, TraceItemAttributeType>;
 } {
   const available = new Map<string, AttributeDescriptor>();
   const replaced: AttributeDescriptor[] = [];
@@ -985,22 +989,22 @@ function resolveAvailableFields(fields: Record<string, AttributeDescriptor>): {
         : undefined;
     if (attributeDeprecated && !replacementKey) {
       continue;
-    } else if (replacementKey) {
+    } else if (attributeDeprecated && replacementKey) {
       const replacementAttribute = { ...field, key: replacementKey };
       available.set(replacementKey, replacementAttribute);
       replaced.push(field);
-    }
-
-    if (!available.has(key)) {
+      fieldTypes[replacementKey] = fieldTypes[key];
+      delete fieldTypes[key];
+    } else if (!attributeDeprecated && !available.has(key)) {
       available.set(key, field);
     }
   }
 
-  return { available, replaced };
+  return { available, replaced, updatedFieldTypes: fieldTypes };
 }
 
 /**
- * Describe a field for the agent, leading with deprecation so it isn't missed
+ * Describe a field for the agent with examples is provided.
  */
 function describeField(field: AttributeDescriptor): string {
   const { context } = field;
@@ -1091,8 +1095,11 @@ export function createDatasetAttributesTool(options: {
         ...customAttributes,
       };
 
-      const { available: availableFields, replaced: replacedFields } =
-        resolveAvailableFields(allFields);
+      const {
+        available: availableFields,
+        replaced: replacedFields,
+        updatedFieldTypes,
+      } = resolveAvailableFields(allFields, fieldTypes);
       const replacedKeys = new Set(replacedFields.map((field) => field.key));
       const fieldCount = availableFields.size;
 
@@ -1100,7 +1107,7 @@ export function createDatasetAttributesTool(options: {
 
       // Combine field types from both static config and dynamic API
       const allFieldTypes: Record<string, TraceItemAttributeType> = {
-        ...fieldTypes,
+        ...updatedFieldTypes,
       };
       const staticNumericFields =
         NUMERIC_FIELDS[normalizedDataset] || new Set();
