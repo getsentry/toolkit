@@ -702,7 +702,7 @@ export const listCommand = buildListCommand("project", {
       "  sentry project list                # auto-detect from DSN or config\n" +
       "  sentry project list <org>/         # all projects in org (paginated)\n" +
       "  sentry project list <org>/<proj>   # show specific project\n" +
-      "  sentry project list <org>/a,b      # show several projects\n" +
+      "  sentry project list <org>/<proj1>,<proj2>      # show several projects\n" +
       "  sentry project list <project>      # find project across all orgs\n\n" +
       `${targetPatternExplanation("Cursor pagination (--cursor) requires the <org>/ form.")}\n\n` +
       "Pagination:\n" +
