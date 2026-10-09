@@ -17,6 +17,10 @@ export const SEER_SEARCH_AGENT_TIMEOUT = 60 * 1000; // 1 minute
 // Sentry's sentinel for all projects the user can access.
 const ALL_ACCESSIBLE_PROJECTS = -1;
 
+// Gradual rollout flag for Seer translation in search_events. The search agent
+// endpoints themselves are ungated; `hideAiFeatures` is checked separately.
+const SEER_TRANSLATE_FEATURE = "mcp-search-events-seer-translate";
+
 const SEER_STRATEGIES = {
   errors: "Errors",
   logs: "Logs",
@@ -50,12 +54,16 @@ async function hasSeerSearchAgentAccess(
   apiService: SentryApiService,
   organizationSlug: string,
 ): Promise<boolean> {
-  // The search agent endpoints are no longer behind a feature flag, so only
-  // the org's AI opt-out applies. Other access failures fall back to the agent.
+  // Sentry omits `features` unless explicitly requested.
   const organization = await apiService.getOrganization(organizationSlug, {
+    includeFeatureFlags: true,
     detailed: false,
   });
-  return !organization.hideAiFeatures;
+  if (organization.hideAiFeatures) {
+    return false;
+  }
+  const features = organization.features ?? [];
+  return features.includes(SEER_TRANSLATE_FEATURE);
 }
 
 function toSearchTranslation(

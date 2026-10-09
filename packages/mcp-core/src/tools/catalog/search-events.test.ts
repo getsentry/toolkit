@@ -3611,14 +3611,25 @@ describe("search_events", () => {
       metric_query: null,
     };
 
-    const mockOrganization = ({ hideAiFeatures = false } = {}) =>
-      http.get("https://sentry.io/api/0/organizations/test-org/", () =>
-        HttpResponse.json({
-          id: "1",
-          slug: "test-org",
-          name: "Test Org",
-          hideAiFeatures,
-        }),
+    const mockOrganization = (
+      features: string[],
+      { hideAiFeatures = false } = {},
+    ) =>
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/",
+        ({ request }) =>
+          HttpResponse.json({
+            id: "1",
+            slug: "test-org",
+            name: "Test Org",
+            // Sentry only serializes features when explicitly requested.
+            ...(new URL(request.url).searchParams.get(
+              "include_feature_flags",
+            ) === "1"
+              ? { features }
+              : {}),
+            hideAiFeatures,
+          }),
       );
     const mockProject = http.get(
       "https://sentry.io/api/0/projects/test-org/test-project/",
@@ -3651,7 +3662,7 @@ describe("search_events", () => {
 
     it("should translate natural language queries with Seer", async () => {
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: { responses: [seerQuery], unsupported_reason: null },
@@ -3690,7 +3701,7 @@ describe("search_events", () => {
 
     it("should return a time series when Seer sets an interval", async () => {
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: {
@@ -3744,7 +3755,7 @@ describe("search_events", () => {
 
     it("should apply Seer's cross-event filters", async () => {
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: {
@@ -3782,7 +3793,7 @@ describe("search_events", () => {
       "warns about unapplied time-series filters with includeExplanation=%s",
       async (includeExplanation) => {
         mswServer.use(
-          mockOrganization(),
+          mockOrganization(["mcp-search-events-seer-translate"]),
           mockSeerState({
             status: "completed",
             final_response: {
@@ -3875,7 +3886,7 @@ describe("search_events", () => {
 
     it("should keep a grouped Seer query with an interval as a table", async () => {
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: {
@@ -3906,7 +3917,7 @@ describe("search_events", () => {
 
     it("should add an explicit environment to Seer's query", async () => {
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: { responses: [seerQuery], unsupported_reason: null },
@@ -3950,7 +3961,7 @@ describe("search_events", () => {
       "should keep the requested project and %s Seer's wider scope",
       async (_, handlerContext, expectNote) => {
         mswServer.use(
-          mockOrganization(),
+          mockOrganization(["mcp-search-events-seer-translate"]),
           mockSeerState({
             status: "completed",
             final_response: {
@@ -3980,7 +3991,7 @@ describe("search_events", () => {
 
     it("should keep the requested project when Seer does not broaden it", async () => {
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: {
@@ -4013,7 +4024,7 @@ describe("search_events", () => {
         },
       );
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         http.post(
           "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
           mockAllProjectsStart,
@@ -4060,7 +4071,7 @@ describe("search_events", () => {
 
     it("should keep Seer's all-project scope for time series", async () => {
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         http.post(
           "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
           async ({ request }) => {
@@ -4101,7 +4112,7 @@ describe("search_events", () => {
 
     it("should prefer an explicit period over Seer's time range", async () => {
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: { responses: [seerQuery], unsupported_reason: null },
@@ -4123,7 +4134,7 @@ describe("search_events", () => {
 
     it("should not group by a non-aggregate Seer sort", async () => {
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: {
@@ -4159,7 +4170,7 @@ describe("search_events", () => {
         mockAIResponse("spans", "span.op:http.client"),
       );
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
           HttpResponse.json({ data: [] }),
         ),
@@ -4171,12 +4182,12 @@ describe("search_events", () => {
       expect(mockGenerateText).toHaveBeenCalled();
     });
 
-    it("should fall back to the agent when AI features are hidden", async () => {
+    it("should fall back to the agent when Seer is not enabled", async () => {
       mockGenerateText.mockResolvedValueOnce(
         mockAIResponse("spans", "span.op:http.client"),
       );
       mswServer.use(
-        mockOrganization({ hideAiFeatures: true }),
+        mockOrganization([]),
         http.get(
           "https://sentry.io/api/0/organizations/test-org/environments/",
           ({ request }) => {
@@ -4215,12 +4226,31 @@ describe("search_events", () => {
       expect(mockGenerateText).toHaveBeenCalled();
     });
 
+    it("should fall back to the agent when AI features are hidden", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", "span.op:http.client"),
+      );
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"], {
+          hideAiFeatures: true,
+        }),
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json({ data: [] }),
+        ),
+      );
+
+      await searchEvents.handler(seerParams, context);
+
+      expect(mockSeerStart).not.toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+    });
+
     it("should fall back to the agent when Seer cannot translate", async () => {
       mockGenerateText.mockResolvedValueOnce(
         mockAIResponse("spans", "span.op:http.client"),
       );
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({ status: "error", unsupported_reason: "Unsupported" }),
         http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
           HttpResponse.json({ data: [] }),
@@ -4238,7 +4268,7 @@ describe("search_events", () => {
         mockAIResponse("spans", "span.op:http.client"),
       );
       mswServer.use(
-        mockOrganization(),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         http.post(
           "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
           () =>
