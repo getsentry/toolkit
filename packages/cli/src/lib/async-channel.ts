@@ -15,9 +15,9 @@ export type AsyncChannelOptions = {
   /**
    * Called when the consumer calls `return()` on the iterator
    * (e.g., `break` in a `for await...of` loop). Use this to signal
-   * the producer to stop.
+   * the producer to stop. Iterator return waits for asynchronous cleanup.
    */
-  onReturn?: () => void;
+  onReturn?: () => void | Promise<void>;
 };
 
 /**
@@ -111,16 +111,19 @@ export function createAsyncChannel<T>(
 
   const iterator: AsyncIterator<T> = {
     next,
-    return(): Promise<IteratorResult<T>> {
+    async return(): Promise<IteratorResult<T>> {
       closed = true;
       buffer.length = 0;
-      if (pending) {
-        const p = pending;
-        pending = undefined;
-        p.resolve({ value: undefined as T, done: true });
+      try {
+        await options?.onReturn?.();
+      } finally {
+        if (pending) {
+          const p = pending;
+          pending = undefined;
+          p.resolve({ value: undefined as T, done: true });
+        }
       }
-      options?.onReturn?.();
-      return Promise.resolve({ value: undefined as T, done: true });
+      return { value: undefined as T, done: true };
     },
   };
 

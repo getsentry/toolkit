@@ -3,9 +3,10 @@
  */
 
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { normalizeAuthToken, trimAuthToken } from "../auth-header.js";
 import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
-import { getEnv } from "../env.js";
+import { createInvocationState, getEnv } from "../env.js";
 import {
   getBootConfiguredSentryUrl,
   getEnvTokenHost,
@@ -14,7 +15,7 @@ import { ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { withDbSpan } from "../telemetry.js";
-import { getDatabase } from "./index.js";
+import { getDatabase, getDbPath } from "./index.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
 import { clearTrustedHostState } from "./regions.js";
 import { runUpsert } from "./utils.js";
@@ -300,10 +301,13 @@ export function getUsableStoredTokenHost(): string | undefined {
   }
 }
 
-const authCacheState = {
-  tokens: new WeakMap<NodeJS.ProcessEnv, { value: string | undefined }>(),
-  fingerprints: new WeakMap<NodeJS.ProcessEnv, string>(),
+/** Wrappers distinguish cache misses from cached absence of credentials. */
+type AuthState = {
+  token?: { value: string | undefined };
+  hasStoredCreds?: { value: boolean };
+  fingerprint?: string;
 };
+const getAuthState = createInvocationState<AuthState>(() => ({}));
 
 /**
  * Get the active auth token.
@@ -312,13 +316,12 @@ const authCacheState = {
  * With `SENTRY_FORCE_ENV_TOKEN=1`: checks env vars first (old behavior).
  */
 export function getAuthToken(): string | undefined {
-  const env = getEnv();
-  const cached = authCacheState.tokens.get(env);
-  if (cached !== undefined) {
-    return cached.value;
+  const state = getAuthState();
+  if (state.token !== undefined) {
+    return state.token.value;
   }
   const value = computeAuthToken();
-  authCacheState.tokens.set(env, { value });
+  state.token = { value };
   return value;
 }
 
@@ -356,34 +359,21 @@ function computeAuthToken(): string | undefined {
   return;
 }
 
-/** Reset the memoized auth token. Tests only — call between auth-state mutations. */
+/** Discard the token after auth mutations. */
 export function resetAuthTokenCache(): void {
-  authCacheState.tokens = new WeakMap();
+  getAuthState().token = undefined;
 }
 
-/** Memoized result for {@link hasStoredAuthCredentials}. */
-let cachedHasStoredCreds: { value: boolean } | undefined;
-
-/** Memoized full auth row for {@link refreshToken}. */
-let cachedAuthRow: { value: AuthRow | undefined } | undefined;
-
-function getCachedAuthRow(): AuthRow | undefined {
-  if (cachedAuthRow !== undefined) {
-    return cachedAuthRow.value;
-  }
-  const row = getAuthRow();
-  cachedAuthRow = { value: row };
-  return row;
-}
-
-/** Reset the memoized auth row. Tests only — call between auth-state mutations. */
-export function resetAuthRowCache(): void {
-  cachedAuthRow = undefined;
-}
-
-/** Reset the memoized stored-credentials flag. Tests only — call between auth-state mutations. */
+/** Discard the credentials flag after mutations. */
 export function resetHasStoredCredsCache(): void {
-  cachedHasStoredCreds = undefined;
+  getAuthState().hasStoredCreds = undefined;
+}
+
+/** Discard all credential-derived caches in the current invocation. */
+function resetAuthCaches(): void {
+  resetIdentityFingerprintCache();
+  resetAuthTokenCache();
+  resetHasStoredCredsCache();
 }
 
 /**
@@ -445,13 +435,8 @@ export function setAuthToken(
       ["id"],
     );
   });
-  // Auth row changed — drop memoized fingerprint, token, row, and
-  // stored-credentials flag so the next read reflects the new row.
-  resetIdentityFingerprintCache();
-  refreshIdentityAliases.clear();
-  resetAuthTokenCache();
-  resetAuthRowCache();
-  resetHasStoredCredsCache();
+  resetAuthCaches();
+  clearRefreshIdentityAliases();
 }
 
 export async function clearAuth(): Promise<void> {
@@ -466,11 +451,8 @@ export async function clearAuth(): Promise<void> {
     db.query("DELETE FROM pagination_cursors").run();
     clearAllIssueOrgCache();
   });
-  resetIdentityFingerprintCache();
-  refreshIdentityAliases.clear();
-  resetAuthTokenCache();
-  resetAuthRowCache();
-  resetHasStoredCredsCache();
+  resetAuthCaches();
+  clearRefreshIdentityAliases();
   // Evict in-process trust extensions tied to the now-cleared identity.
   clearTrustedHostState();
 
@@ -508,19 +490,16 @@ export const ANON_IDENTITY = "<anon>";
  * {@link resetIdentityFingerprintCache}.
  */
 export function getIdentityFingerprint(): string {
-  const env = getEnv();
-  const cached = authCacheState.fingerprints.get(env);
-  if (cached !== undefined) {
-    return cached;
+  const state = getAuthState();
+  if (state.fingerprint === undefined) {
+    state.fingerprint = computeIdentityFingerprint();
   }
-  const fingerprint = computeIdentityFingerprint();
-  authCacheState.fingerprints.set(env, fingerprint);
-  return fingerprint;
+  return state.fingerprint;
 }
 
-/** Reset the memoized fingerprint. Tests only — call between auth-state mutations. */
+/** Discard the identity after auth mutations. */
 export function resetIdentityFingerprintCache(): void {
-  authCacheState.fingerprints = new WeakMap();
+  getAuthState().fingerprint = undefined;
 }
 
 function computeIdentityFingerprint(): string {
@@ -643,7 +622,7 @@ export function getActiveAuthHost(): string | undefined {
  * - A non-expired token, or
  * - An expired token with a refresh token (will be refreshed on next use)
  *
- * Memoized within the process. Reset on {@link setAuthToken} and
+ * Memoized within the current invocation. Reset on {@link setAuthToken} and
  * {@link clearAuth} mutations. Tests call {@link resetHasStoredCredsCache}
  * between cases.
  *
@@ -651,8 +630,9 @@ export function getActiveAuthHost(): string | undefined {
  * when an env token is present.
  */
 export function hasStoredAuthCredentials(): boolean {
-  if (cachedHasStoredCreds !== undefined) {
-    return cachedHasStoredCreds.value;
+  const state = getAuthState();
+  if (state.hasStoredCreds !== undefined) {
+    return state.hasStoredCreds.value;
   }
   const row = getAuthRow();
   let result = false;
@@ -665,7 +645,7 @@ export function hasStoredAuthCredentials(): boolean {
       result = !!row.refresh_token;
     }
   }
-  cachedHasStoredCreds = { value: result };
+  state.hasStoredCreds = { value: result };
   return result;
 }
 
@@ -698,9 +678,23 @@ type StoredCredentialSnapshot = {
 
 const refreshPromises = new Map<string, Promise<RefreshTokenResult>>();
 // Only successful rotations can link a pinned in-flight request to the next
-// refresh-token identity. A new login or logout clears every link.
+// refresh-token identity. A new login or logout clears that store's links.
 const refreshIdentityAliases = new Map<string, string>();
 const MAX_REFRESH_IDENTITY_ALIASES = 128;
+
+function getAuthStorePath(): string {
+  getDatabase();
+  return realpathSync(getDbPath());
+}
+
+function clearRefreshIdentityAliases(): void {
+  const prefix = `${getAuthStorePath()}\0`;
+  for (const key of refreshIdentityAliases.keys()) {
+    if (key.startsWith(prefix)) {
+      refreshIdentityAliases.delete(key);
+    }
+  }
+}
 
 function rememberRefreshIdentity(
   host: string,
@@ -710,7 +704,10 @@ function rememberRefreshIdentity(
   if (previous === next) {
     return;
   }
-  refreshIdentityAliases.set(`${host}\0${previous}`, next);
+  refreshIdentityAliases.set(
+    `${getAuthStorePath()}\0${host}\0${previous}`,
+    next,
+  );
   if (refreshIdentityAliases.size > MAX_REFRESH_IDENTITY_ALIASES) {
     const oldest = refreshIdentityAliases.keys().next().value;
     if (oldest !== undefined) {
@@ -725,7 +722,8 @@ function matchesRefreshIdentity(
   current: string,
 ): boolean {
   const seen = new Set<string>();
-  const start = `${host}\0${previous}`;
+  const store = getAuthStorePath();
+  const start = `${store}\0${host}\0${previous}`;
   for (let key = start; !seen.has(key);) {
     seen.add(key);
     const next = refreshIdentityAliases.get(key);
@@ -735,7 +733,7 @@ function matchesRefreshIdentity(
     if (next === current) {
       return true;
     }
-    key = `${host}\0${next}`;
+    key = `${store}\0${host}\0${next}`;
   }
   return false;
 }
@@ -801,10 +799,7 @@ function persistRefreshedCredential(
     })();
   });
   if (saved) {
-    resetIdentityFingerprintCache();
-    resetAuthTokenCache();
-    resetAuthRowCache();
-    resetHasStoredCredsCache();
+    resetAuthCaches();
   }
   return saved;
 }
@@ -881,19 +876,19 @@ function getEnvRefreshResult(
 async function refreshStoredCredential(
   credential: StoredCredentialSnapshot,
 ): Promise<RefreshTokenResult> {
-  const key = `${credential.identity}\0${credential.host}\0${hashIdentity("oauth-access", credential.token)}\0${credential.updatedAt}`;
-  const existing = refreshPromises.get(key);
-  if (existing) {
-    return await existing;
+  const key = `${getAuthStorePath()}\0${credential.identity}\0${credential.host}\0${hashIdentity("oauth-access", credential.token)}\0${credential.updatedAt}`;
+  let pending = refreshPromises.get(key);
+  if (!pending) {
+    pending = performTokenRefresh(credential).finally(() => {
+      refreshPromises.delete(key);
+    });
+    refreshPromises.set(key, pending);
   }
-  const pending = performTokenRefresh(credential);
-  refreshPromises.set(key, pending);
   try {
     return await pending;
   } finally {
-    if (refreshPromises.get(key) === pending) {
-      refreshPromises.delete(key);
-    }
+    // The refresh runs in its creator's context; joiners need fresh auth too.
+    resetAuthCaches();
   }
 }
 
@@ -912,7 +907,7 @@ export async function refreshToken(
   const { force = false } = options;
   const { AuthError } = await import("../errors.js");
 
-  const row = getCachedAuthRow();
+  const row = getAuthRow();
 
   if (!row?.token) {
     // No stored token — try env token as fallback

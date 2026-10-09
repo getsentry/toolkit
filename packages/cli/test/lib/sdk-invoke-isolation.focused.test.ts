@@ -47,13 +47,14 @@ vi.mock("@sentry/node-core/light", () => ({ getClient: () => null }));
 import { getCustomHeaders } from "../../src/lib/custom-headers.js";
 import { getEnv } from "../../src/lib/env.js";
 import { buildInvoker } from "../../src/lib/sdk-invoke.js";
+import { SentryError } from "../../src/lib/sdk-types.js";
 import { useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("sdk-invoke-isolation-focused-");
 
 type InvocationResult = { header?: string; host?: string; token?: string };
 
-describe("overlapping SDK invocation isolation", () => {
+describe("SDK invocation isolation", () => {
   beforeEach(() => {
     invocationState.handler = undefined;
   });
@@ -61,7 +62,7 @@ describe("overlapping SDK invocation isolation", () => {
     invocationState.handler = undefined;
   });
 
-  test("keeps environment and structured headers invocation-local", async () => {
+  test("rejects overlap and keeps environment and structured headers invocation-local", async () => {
     const started = new Map<string, Barrier>();
     const release = new Map<string, Barrier>();
     for (const id of ["first", "second"]) {
@@ -81,29 +82,49 @@ describe("overlapping SDK invocation isolation", () => {
       } satisfies InvocationResult);
     };
 
+    const invokeSecond = buildInvoker({
+      token: "token-second",
+      url: "https://second.example.com",
+      headers: { "X-Invocation": "second" },
+    });
     const first = buildInvoker({
       token: "token-first",
       url: "https://first.example.com",
       headers: { "X-Invocation": "first" },
     })(["focused", "probe"], { id: "first" }, []) as Promise<InvocationResult>;
-    await started.get("first")?.promise;
-    const second = buildInvoker({
-      token: "token-second",
-      url: "https://second.example.com",
-      headers: { "X-Invocation": "second" },
-    })(["focused", "probe"], { id: "second" }, []) as Promise<InvocationResult>;
-    await started.get("second")?.promise;
-    release.get("first")?.resolve();
-    expect(await first).toEqual({
-      header: "first",
-      host: "https://first.example.com",
-      token: "token-first",
-    });
-    release.get("second")?.resolve();
-    expect(await second).toEqual({
-      header: "second",
-      host: "https://second.example.com",
-      token: "token-second",
-    });
+    try {
+      await started.get("first")?.promise;
+      // Production output and telemetry require sequential calls, even though
+      // this focused test replaces telemetry with a stateless mock.
+      release.get("second")?.resolve();
+      const overlapping = invokeSecond(
+        ["focused", "probe"],
+        { id: "second" },
+        [],
+      );
+      await expect(overlapping).rejects.toBeInstanceOf(SentryError);
+      await expect(overlapping).rejects.toThrow(
+        "Concurrent SDK calls are not supported",
+      );
+
+      release.get("first")?.resolve();
+      expect(await first).toEqual({
+        header: "first",
+        host: "https://first.example.com",
+        token: "token-first",
+      });
+      expect(
+        await invokeSecond(["focused", "probe"], { id: "second" }, []),
+      ).toEqual({
+        header: "second",
+        host: "https://second.example.com",
+        token: "token-second",
+      });
+    } finally {
+      for (const barrier of release.values()) {
+        barrier.resolve();
+      }
+      await Promise.allSettled([first]);
+    }
   });
 });

@@ -4,7 +4,10 @@ import {
   listOrganizations,
   listOrganizationsUncached,
 } from "../../../src/lib/api/organizations.js";
-import { setAuthToken } from "../../../src/lib/db/auth.js";
+import {
+  getIdentityFingerprint,
+  setAuthToken,
+} from "../../../src/lib/db/auth.js";
 import { getDatabase } from "../../../src/lib/db/index.js";
 import {
   clearOrgRegions,
@@ -426,7 +429,10 @@ describe("organization discovery credential context", () => {
     await storeCachedResponse(
       "GET",
       "https://sentry.io/api/0/organizations/?per_page=100",
-      { authorization: `Bearer ${token}` },
+      {
+        headers: { authorization: `Bearer ${token}` },
+        identity: getIdentityFingerprint(),
+      },
       Response.json([{ id: "9", slug: "cached-org", name: "Cached" }], {
         headers: { "Cache-Control": "public, max-age=300" },
       }),

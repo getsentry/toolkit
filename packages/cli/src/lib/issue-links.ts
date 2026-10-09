@@ -19,6 +19,7 @@ import {
   resolveNativeIssueLink,
   unlinkNativeIssueLink,
 } from "./api/issue-integrations.js";
+import { getIdentityFingerprint } from "./db/auth.js";
 import { ValidationError } from "./errors.js";
 import { resolveOrgRegion } from "./region.js";
 import { invalidateCachedResponsesMatching } from "./response-cache.js";
@@ -229,12 +230,17 @@ async function invalidateIssueLinks(
   const regionUrl = await resolveOrgRegion(options.orgSlug);
   const base = getApiBaseUrl();
   const issuePath = `/api/0/organizations/${encodeURIComponent(options.orgSlug)}/issues/${encodeURIComponent(options.issueId)}/`;
+  const identity = getIdentityFingerprint();
   await Promise.all([
-    invalidateCachedResponsesMatching(new URL(issuePath, regionUrl).href),
-    invalidateCachedResponsesMatching(new URL(issuePath, base).href),
+    invalidateCachedResponsesMatching(
+      new URL(issuePath, regionUrl).href,
+      identity,
+    ),
+    invalidateCachedResponsesMatching(new URL(issuePath, base).href, identity),
     invalidateCachedResponsesMatching(
       new URL(`/api/0/issues/${encodeURIComponent(options.issueId)}/`, base)
         .href,
+      identity,
     ),
   ]);
 }
