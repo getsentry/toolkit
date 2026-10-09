@@ -20,6 +20,7 @@ import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
+import { encodeAuthTokenForEnv } from "./auth-header.js";
 import { normalizeUrl } from "./constants.js";
 import { getConfigDir } from "./db/index.js";
 import { getEnv } from "./env.js";
@@ -349,6 +350,10 @@ export function getRcInjectedTokenSource(): string | undefined {
  * - `[auth] token` → `SENTRY_AUTH_TOKEN` (if neither `SENTRY_AUTH_TOKEN` nor `SENTRY_TOKEN` is set)
  * - `[defaults] url` → `SENTRY_URL` (if both `SENTRY_HOST` and `SENTRY_URL` are unset)
  *
+ * The token assignment goes through {@link encodeAuthTokenForEnv}: env values
+ * cannot hold NUL bytes, and a raw token with an embedded NUL would silently
+ * truncate into a different — possibly still valid — credential.
+ *
  * The URL is applied unconditionally at boot — the trust check is deferred
  * to {@link assertRcUrlTrusted}, which `buildCommand` calls after Stricli
  * identifies the command (so the command can opt out via `skipRcUrlCheck`).
@@ -367,7 +372,14 @@ export async function applySentryCliRcEnvShim(cwd: string): Promise<void> {
     log.debug(
       `Setting SENTRY_AUTH_TOKEN from ${CONFIG_FILENAME} (${config.sources.token})`,
     );
-    env.SENTRY_AUTH_TOKEN = config.token;
+    const envToken = encodeAuthTokenForEnv(config.token);
+    if (envToken !== config.token) {
+      log.debug(
+        `Token in ${config.sources.token} contains NUL byte(s); ` +
+          "storing the env-safe encoding so validation still rejects it",
+      );
+    }
+    env.SENTRY_AUTH_TOKEN = envToken;
     rcInjectedTokenSource = config.sources.token;
   }
 
