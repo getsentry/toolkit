@@ -11,7 +11,9 @@ import {
   formatLogsHeader,
   formatLogTable,
   getLogId,
+  type LogLike,
 } from "../../../src/lib/formatters/log.js";
+import { renderInlineMarkdown } from "../../../src/lib/formatters/markdown.js";
 import type {
   DetailedSentryLog,
   SentryLog,
@@ -226,13 +228,13 @@ describe("formatLogRow (plain mode)", () => {
     expect(result).toMatch(/^\|.+\|.+\|.+\|.+\|\n$/);
   });
 
-  test("contains log ID prefix, timestamp, severity, message", () => {
+  test("contains full log ID, timestamp, severity, message", () => {
     const log = createTestLog({
       severity: "error",
       message: "connection failed",
     });
     const result = formatLogRow(log);
-    expect(result).toContain("test-id-"); // first 8 chars of "test-id-123"
+    expect(result).toContain("test-id-123");
     expect(result).toContain("connection failed");
     expect(result).toContain("ERROR");
     expect(result).toMatch(/\d{4}-\d{2}-\d{2}/);
@@ -267,6 +269,47 @@ describe("formatLogRow (plain mode)", () => {
     const result = formatLogRow(log, true, ["email"]);
     expect(result).toContain("user@example.com");
   });
+});
+
+describe.each(["plain", "rendered"])("copyable log IDs (%s mode)", (mode) => {
+  if (mode === "plain") {
+    usePlainMode();
+  } else {
+    useRenderedMode();
+  }
+
+  test.each(["sentry.item_id", "id"])(
+    "preserves distinct UUIDv7 IDs from %s that share a timestamp prefix",
+    (idField) => {
+      const ids = [
+        "019a0000123470008000000000000001",
+        "019a0000123470008000000000000002",
+      ];
+      const logs: LogLike[] = ids.map((id) => ({
+        [idField]: id,
+        timestamp: "2025-01-30T14:32:15Z",
+        severity: "info",
+        message:
+          "A log message long enough to require wrapping in a narrow terminal",
+      }));
+      const table = createLogStreamingTable({ maxWidth: 80 });
+      const outputs = [
+        logs.map((log) => formatLogRow(log)).join(""),
+        formatLogTable(logs),
+        logs
+          .map((log) =>
+            table.row(buildLogRowCells(log).map(renderInlineMarkdown)),
+          )
+          .join(""),
+      ];
+
+      for (const output of outputs) {
+        for (const id of ids) {
+          expect(stripAnsi(output)).toContain(id);
+        }
+      }
+    },
+  );
 });
 
 describe("formatLogsHeader (plain mode)", () => {
@@ -569,11 +612,10 @@ describe("buildLogRowCells", () => {
     expect(cells.length).toBe(4);
   });
 
-  test("first cell contains short log ID", () => {
+  test("first cell contains full log ID", () => {
     const log = createTestLog();
     const cells = buildLogRowCells(log);
-    // First 8 chars of "test-id-123"
-    expect(stripAnsi(cells[0])).toContain("test-id-");
+    expect(stripAnsi(cells[0])).toContain("test-id-123");
   });
 
   test("appends extra field cells when provided", () => {
@@ -599,8 +641,7 @@ describe("formatLogTable", () => {
 
   test("includes log ID in output", () => {
     const result = stripAnsi(formatLogTable([createTestLog()]));
-    // First 8 chars of "test-id-123"
-    expect(result).toContain("test-id-");
+    expect(result).toContain("test-id-123");
   });
 
   test("includes all log messages", () => {

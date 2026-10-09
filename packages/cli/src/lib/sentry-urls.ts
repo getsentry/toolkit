@@ -56,7 +56,8 @@ export function getOrgBaseUrl(orgSlug: string): string {
  * Resolves the configured base URL (env `SENTRY_HOST`/`SENTRY_URL`, else the
  * default SaaS URL) and applies the hostname-only {@link isSentrySaasUrl}
  * check. Intended for routing/UX decisions (e.g. choosing a SaaS-only default),
- * NOT for credential-trust decisions — use {@link isSaaSTrustOrigin} for those.
+ * NOT for credential-trust decisions — use the shared
+ * `@sentry/toolkit-core/sentry-origin` helper for those.
  *
  * @returns true when the active base URL is sentry.io or a subdomain of it
  */
@@ -75,7 +76,7 @@ export function isSaaS(): boolean {
  * routing (test harnesses occasionally use these).
  *
  * For TRUST decisions (deciding whether a SaaS-scoped token is valid for
- * a given origin), use {@link isSaaSTrustOrigin} which additionally
+ * a given origin), use `@sentry/toolkit-core/sentry-origin`, which additionally
  * requires https scheme and default port.
  *
  * @param url - URL string to validate
@@ -86,36 +87,6 @@ export function isSentrySaasUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     return isSentryHost(parsed.hostname);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if a URL is a Sentry SaaS origin for TRUST purposes.
- *
- * Stricter than {@link isSentrySaasUrl}: additionally requires
- * - scheme = `https:` (production SaaS is HTTPS-only; `http://sentry.io`
- *   is never legitimate and a crafted plaintext URL must NOT inherit
- *   SaaS trust)
- * - port = default (empty `port` in WHATWG URL means the scheme's
- *   default port; any explicit non-default port indicates either a
- *   crafted URL or DNS redirect we don't trust)
- *
- * Used by the host-scoping trust check (`token-host.ts::isHostTrusted`)
- * to decide SaaS equivalence. Keep in sync with {@link isSentrySaasUrl}
- * when adding new trust classes.
- *
- * @param url - URL string to validate
- * @returns true only if the URL is a strictly-SaaS origin
- */
-export function isSaaSTrustOrigin(url: string): boolean {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.protocol === "https:" && parsed.port === "" && isSentrySaasUrl(url)
-    );
   } catch {
     return false;
   }

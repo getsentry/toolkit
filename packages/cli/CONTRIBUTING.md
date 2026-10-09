@@ -19,6 +19,7 @@ sentry issue list [<org>/<project>] [--json]
 **Target syntax**:
 
 - `<org>/<project>` - Explicit organization and project (e.g., `my-org/frontend`)
+- `<org>/<project>,<project>` - Several projects in the same org (e.g., `my-org/web,api`)
 - `<org>/` - All projects in the specified organization
 - `<project>` - Search for project by name across all accessible organizations
 - _(omit)_ - Auto-detect from DSN or config

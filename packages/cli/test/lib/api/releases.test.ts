@@ -40,6 +40,7 @@ const {
   listReleaseDeploys,
   listReleasesPaginated,
   setCommitsAuto,
+  setCommitsWithRefs,
   setCommitsLocal,
   updateRelease,
 } = await import("../../../src/lib/api/releases.js");
@@ -470,6 +471,49 @@ describe("setCommitsAuto", () => {
     await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
       /--local/,
     );
+  });
+});
+
+describe("setCommitsWithRefs", () => {
+  test.each([".", ".."])(
+    "rejects a bare dot release version %s before making a request",
+    async (version) => {
+      const fetchMock = vi.fn<typeof globalThis.fetch>();
+      globalThis.fetch = fetchMock;
+
+      await expect(
+        setCommitsWithRefs("test-org", version, []),
+      ).rejects.toMatchObject({ name: "ValidationError", field: "version" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test("rejects a bare dot organization before making a request", async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock;
+
+    await expect(setCommitsWithRefs("..", "1.0.0", [])).rejects.toMatchObject({
+      name: "ValidationError",
+      field: "organization",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("keeps a slash in a release version within the org release endpoint", async () => {
+    const requestPaths: string[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const request = new Request(input!, init);
+      requestPaths.push(new URL(request.url).pathname);
+      return new Response(JSON.stringify(SAMPLE_RELEASE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await setCommitsWithRefs("test-org", "release/feature", []);
+    expect(requestPaths).toEqual([
+      "/api/0/organizations/test-org/releases/release%2Ffeature/",
+    ]);
   });
 });
 

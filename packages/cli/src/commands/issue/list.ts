@@ -17,6 +17,7 @@ import {
 } from "../../lib/api-client.js";
 import { extractRequiredScopes } from "../../lib/api-scope.js";
 import {
+  formatProjectTarget,
   looksLikeIssueShortId,
   parseOrgProjectArg,
   rejectIssueCommandTokenListTarget,
@@ -81,6 +82,7 @@ import {
   type ProjectSearchTargetResolution,
   type ResolvedTarget,
   resolveProjectBoundTargets,
+  resolveProjectIdsInOrg,
 } from "../../lib/resolve-target.js";
 import {
   SEARCH_SYNTAX_REFERENCE,
@@ -427,7 +429,8 @@ async function fetchIssuesForTarget(
       target.project,
       {
         ...options,
-        projectId: target.projectId,
+        projects:
+          target.projectId === undefined ? undefined : [target.projectId],
         groupStatsPeriod: options.groupStatsPeriod,
         start: options.start,
         end: options.end,
@@ -642,32 +645,35 @@ function appendIssueFlags(base: string, flags: ListFlags): string {
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }
 
-function nextPageHint(org: string, flags: ListFlags): string {
-  return appendIssueFlags(`sentry issue list ${org}/ -c next`, flags);
-}
-
-function prevPageHint(org: string, flags: ListFlags): string {
-  return appendIssueFlags(`sentry issue list ${org}/ -c prev`, flags);
+/** Build the `-c next` / `-c prev` resume command for an org-scoped listing. */
+function pageHint(
+  direction: "next" | "prev",
+  target: string,
+  flags: ListFlags,
+): string {
+  return appendIssueFlags(`sentry issue list ${target} -c ${direction}`, flags);
 }
 
 /**
- * Fetch org-wide issues, auto-paginating from the start or resuming from a cursor.
+ * Fetch issues for an organization, optionally restricted to a project set.
  *
  * When `cursor` is provided (--cursor resume), fetches a single page to keep the
  * cursor chain intact. Otherwise auto-paginates up to the requested limit.
  */
-async function fetchOrgAllIssues(
+async function fetchOrganizationIssues(
   org: string,
   flags: Pick<ListFlags, "query" | "limit" | "sort" | "json" | "fields">,
   timeRange: TimeRange,
   options: {
     cursor?: string;
+    /** Resolved numeric project IDs; omit for an org-wide listing. */
+    projects?: readonly number[];
     onPage?: (fetched: number, limit: number) => void;
   },
 ): Promise<IssuesPage> {
   const apiOpts = buildListApiOptions(flags.json, flags.fields);
   const timeParams = timeRangeToApiParams(timeRange);
-  const { cursor, onPage } = options;
+  const { cursor, onPage, projects } = options;
 
   // When resuming with --cursor, fetch a single page so the cursor chain stays intact.
   if (cursor) {
@@ -678,6 +684,7 @@ async function fetchOrgAllIssues(
       perPage,
       sort: flags.sort,
       ...timeParams,
+      projects,
       groupStatsPeriod: apiOpts.groupStatsPeriod,
       collapse: apiOpts.collapse,
     });
@@ -690,6 +697,7 @@ async function fetchOrgAllIssues(
     limit: flags.limit,
     sort: flags.sort,
     ...timeParams,
+    projects,
     groupStatsPeriod: apiOpts.groupStatsPeriod,
     collapse: apiOpts.collapse,
     onPage,
@@ -697,30 +705,102 @@ async function fetchOrgAllIssues(
   return { issues, nextCursor };
 }
 
-/** Options for {@link handleOrgAllIssues}. */
-type OrgAllIssuesOptions = {
+/** Options for {@link handleOrganizationIssues}. */
+type OrganizationIssuesOptions = {
+  /** Organization slug; the dispatcher has already resolved DSN-style identifiers. */
   org: string;
+  /** Project slugs from `org/a,b`; omit for an org-wide listing. */
+  projects?: readonly string[];
+  /** Parsed `issue list` flags (query, sort, limit, cursor, output options). */
   flags: ListFlags;
+  /** Time window from `--period`, sent as `statsPeriod` or `start`/`end`. */
   timeRange: TimeRange;
 };
 
 /**
- * Handle org-all mode for issues: cursor-paginated listing of all issues in an org.
+ * Compute and persist project aliases for a comma-separated selector so the
+ * ALIAS column and `sentry issue view <ALIAS>` work exactly as they do for
+ * multi-target listings.
+ *
+ * An explicit selector does not depend on the working directory, so the
+ * aliases are stored without a DSN fingerprint and resolve from any
+ * directory, including one whose DSNs point at other projects.
+ *
+ * @returns Map from `org/project` to its alias
+ */
+function registerSelectorAliases(
+  org: string,
+  projects: readonly string[],
+): Map<string, string> {
+  const { aliasMap, entries } = buildProjectAliasMap(
+    projects.map((project) => ({ target: { org, project } })),
+  );
+  setProjectAliases(entries);
+  return aliasMap;
+}
+
+/** Resolved request scope for {@link handleOrganizationIssues}. */
+type OrganizationIssuesScope = {
+  /** Org slug; the dispatcher has already resolved DSN-style identifiers. */
+  org: string;
+  /** Numeric project IDs for the SDK `project` param; absent for org-all. */
+  projectFilter?: number[];
+  /** Positional form used in titles and pagination hints. */
+  target: string;
+  /** Cursor-stack context key. */
+  contextKey: string;
+};
+
+/**
+ * Resolve the project filter and cursor context for an org-scoped listing.
+ *
+ * Org-all keeps its historical `org:<slug>` context key so stored cursors
+ * survive upgrades. Selectors get a `projects:<org>/<a,b>` key built from the
+ * sorted slugs: the server returns the same results in any order, so
+ * `-c next` keeps working when the slugs are retyped in a different order.
+ */
+async function resolveOrganizationIssuesScope(
+  options: OrganizationIssuesOptions,
+): Promise<OrganizationIssuesScope> {
+  const { org, projects, flags, timeRange } = options;
+  const searchParams = {
+    sort: flags.sort,
+    period: serializeTimeRange(timeRange),
+    q: flags.query,
+  };
+  if (!projects) {
+    return {
+      org,
+      target: formatProjectTarget(org),
+      contextKey: buildPaginationContextKey("org", org, searchParams),
+    };
+  }
+  return {
+    org,
+    projectFilter: await resolveProjectIdsInOrg(org, projects),
+    target: formatProjectTarget(org, projects),
+    contextKey: buildPaginationContextKey(
+      "projects",
+      formatProjectTarget(org, projects.toSorted()),
+      searchParams,
+    ),
+  };
+}
+
+/**
+ * List issues for one organization, either org-wide (`org/`) or filtered to
+ * an explicit project set (`org/web,api`) in a single server-side request.
  *
  * Uses a sort+query-aware context key so cursors from different searches are
  * never accidentally reused. Returns an {@link IssueListResult} — the caller
  * is responsible for rendering (JSON or human output).
  */
-async function handleOrgAllIssues(
-  options: OrgAllIssuesOptions,
+async function handleOrganizationIssues(
+  options: OrganizationIssuesOptions,
 ): Promise<IssueListResult> {
-  const { org, flags, timeRange } = options;
-  // Encode sort + query in context key so cursors from different searches don't collide.
-  const contextKey = buildPaginationContextKey("org", org, {
-    sort: flags.sort,
-    period: serializeTimeRange(timeRange),
-    q: flags.query,
-  });
+  const { projects, flags, timeRange } = options;
+  const { org, projectFilter, target, contextKey } =
+    await resolveOrganizationIssuesScope(options);
   const { cursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
@@ -735,8 +815,9 @@ async function handleOrgAllIssues(
         json: flags.json,
       },
       (setMessage) =>
-        fetchOrgAllIssues(org, flags, timeRange, {
+        fetchOrganizationIssues(org, flags, timeRange, {
           cursor,
+          projects: projectFilter,
           onPage: (fetched, limit) =>
             setMessage(
               `Fetching issues, ${fetched} and counting (up to ${limit})...`,
@@ -753,37 +834,47 @@ async function handleOrgAllIssues(
   const hasMore = !!nextCursor;
   const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 
+  const navHints = {
+    prevHint: pageHint("prev", target, flags),
+    nextHint: pageHint("next", target, flags),
+  };
+
+  // Register aliases before the empty-page return so `issue view <ALIAS>`
+  // always reflects the selector that was just queried, never a previous one.
+  const aliasMap = projects
+    ? registerSelectorAliases(org, projects)
+    : undefined;
+
   if (issues.length === 0) {
-    const nav = paginationHint({
-      hasPrev,
-      hasMore,
-      prevHint: prevPageHint(org, flags),
-      nextHint: nextPageHint(org, flags),
-    });
-    const hint = nav
-      ? `No issues on this page. ${nav}`
-      : `No issues found in organization '${org}'.`;
+    const nav = paginationHint({ hasPrev, hasMore, ...navHints });
+    let hint: string;
+    if (nav) {
+      hint = `No issues on this page. ${nav}`;
+    } else if (projects) {
+      hint = `No issues found in ${target}.`;
+    } else {
+      hint = `No issues found in organization '${org}'.`;
+    }
     return { items: [], hasMore, hasPrev, nextCursor, hint };
   }
 
-  // isMultiProject=true: org-all shows issues from every project, so the ALIAS
-  // column is needed to identify which project each issue belongs to.
-  const displayRows: IssueTableRow[] = issues.map((issue) => ({
-    issue,
-    // org-all: org context comes from the `org` param; issue.organization may be absent
-    orgSlug: org,
-    formatOptions: {
-      projectSlug: issue.project?.slug ?? "",
-      isMultiProject: true,
-    },
-  }));
-
-  const nav = paginationHint({
-    hasPrev,
-    hasMore,
-    prevHint: prevPageHint(org, flags),
-    nextHint: nextPageHint(org, flags),
+  // Org-wide and explicit project-list queries can contain several projects,
+  // so the ALIAS column identifies which project each issue belongs to.
+  const displayRows: IssueTableRow[] = issues.map((issue) => {
+    const projectSlug = issue.project?.slug ?? "";
+    return {
+      issue,
+      // Org context comes from the request's `org`; issue.organization may be absent
+      orgSlug: org,
+      formatOptions: {
+        projectSlug,
+        projectAlias: aliasMap?.get(`${org}/${projectSlug}`),
+        isMultiProject: true,
+      },
+    };
   });
+
+  const nav = paginationHint({ hasPrev, hasMore, ...navHints });
   const hintParts: string[] = [];
   if (hasMore) {
     hintParts.push(`Showing ${issues.length} issues (more available)`);
@@ -801,7 +892,10 @@ async function handleOrgAllIssues(
     nextCursor,
     hint: hintParts.join("\n"),
     displayRows,
-    title: `Issues in ${org}`,
+    title: projects ? `Issues in ${target}` : `Issues in ${org}`,
+    // Org-all never showed a footer tip; a project selector spans several
+    // projects, so point at the ALIAS-based `issue view` form.
+    ...(projects && { footerMode: "multi" as const }),
     compact: resolveCompact(flags.compact, displayRows.length),
   };
 }
@@ -1445,6 +1539,7 @@ export const listCommand = buildListCommand("issue", {
       "Target patterns:\n" +
       "  sentry issue list               # auto-detect from DSN or config\n" +
       "  sentry issue list <org>/<proj>  # explicit org and project\n" +
+      "  sentry issue list <org>/a,b     # several projects in the same org\n" +
       "  sentry issue list <org>/        # all projects in org (trailing / required)\n" +
       "  sentry issue list <project>     # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
@@ -1527,7 +1622,7 @@ export const listCommand = buildListCommand("issue", {
       rejectIssueCommandTokenListTarget(target);
     }
 
-    const parsed = parseOrgProjectArg(target);
+    const parsed = parseOrgProjectArg(target, { multi: true });
 
     // Auto-recover: user passed an issue short ID (e.g., "ARMAX-3E" or a
     // lowercase/multi-segment variant like "javascript-react-mr-1b") instead
@@ -1601,14 +1696,24 @@ export const listCommand = buildListCommand("issue", {
       // Bare slug: the project wins when one exists. If none does and the
       // slug is an organization, list that org. `<org>/` is the explicit form.
       // Multi-target modes (auto-detect, explicit, project-search) handle
-      // compound cursor pagination themselves via handleResolvedTargets.
+      // compound cursor pagination themselves via handleResolvedTargets. A
+      // comma-separated `<org>/a,b` selector is one org-scoped request
+      // instead, so it shares the org-all handler and its server-side cursor.
       allowCursorInModes: ["auto-detect", "explicit", "project-search"],
       overrides: {
         "auto-detect": resolveAndHandle,
-        explicit: resolveAndHandle,
+        explicit: (ctx) =>
+          ctx.parsed.projects
+            ? handleOrganizationIssues({
+                org: ctx.parsed.org,
+                projects: ctx.parsed.projects,
+                flags,
+                timeRange,
+              })
+            : resolveAndHandle(ctx),
         "project-search": resolveAndHandle,
         "org-all": (ctx) =>
-          handleOrgAllIssues({
+          handleOrganizationIssues({
             org: ctx.parsed.org,
             flags,
             timeRange,

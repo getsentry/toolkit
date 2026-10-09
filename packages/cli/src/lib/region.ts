@@ -6,6 +6,7 @@
  */
 
 import { getOrganization } from "@sentry/api";
+import { resolveCachedRegion } from "@sentry/toolkit-core/region-cache";
 import { type CredentialContext, getCredentialContext } from "./db/auth.js";
 import { getOrgByNumericId, getOrgRegion, setOrgRegion } from "./db/regions.js";
 import { stripDsnOrgPrefix } from "./dsn/index.js";
@@ -61,22 +62,12 @@ export function resolveOrgRegion(orgSlug: string): Promise<string> {
   }
   const baseUrl = getApiBaseUrl(credential);
   const key = `${credential.identity}\0${baseUrl}\0${orgSlug}`;
-  const existing = regionCache.get(key);
-  if (existing) {
-    return existing.then((resolution) => resolution.url);
-  }
-
-  const promise = resolveOrgRegionUncached(orgSlug, credential, baseUrl);
-  regionCache.set(key, promise);
-  promise.then(
-    (resolution) => {
-      if (!resolution.cacheable) {
-        regionCache.delete(key);
-      }
-    },
-    () => regionCache.delete(key),
-  );
-  return promise.then((resolution) => resolution.url);
+  return resolveCachedRegion(
+    regionCache,
+    key,
+    () => resolveOrgRegionUncached(orgSlug, credential, baseUrl),
+    (resolution) => resolution.cacheable,
+  ).then((resolution) => resolution.url);
 }
 
 /**

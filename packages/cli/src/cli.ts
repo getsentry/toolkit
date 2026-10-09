@@ -13,6 +13,7 @@
 import { redactCredentialText } from "./lib/credential-redaction.js";
 import { getEnv } from "./lib/env.js";
 import { CliError, formatError } from "./lib/errors.js";
+import { buildTopLevelFlags } from "./lib/global-flags.js";
 import { initTimezone } from "./lib/timezone.js";
 
 /**
@@ -229,12 +230,93 @@ type ErrorMiddleware = (
 ) => Promise<void>;
 
 /**
+ * Return MCP's arguments when it is the command after leading global flags.
+ *
+ * MCP owns stdout for JSON-RPC, so CLI-level output flags are deliberately
+ * ignored before it starts. Flags after `mcp` belong to the MCP server.
+ */
+function skipLeadingGlobalFlag(
+  cliArgs: readonly string[],
+  index: number,
+): number | undefined {
+  const { booleanFlags, valueFlags } = buildTopLevelFlags();
+  const token = cliArgs[index] ?? "";
+  const flag = token.split("=", 1)[0] ?? token;
+
+  if (booleanFlags.has(flag)) {
+    return index + 1;
+  }
+  if (!valueFlags.has(flag)) {
+    return;
+  }
+  return token.includes("=") || cliArgs[index + 1] === undefined
+    ? index + 1
+    : index + 2;
+}
+
+export function getMcpArgs(cliArgs: readonly string[]): string[] | undefined {
+  for (let index = 0; index < cliArgs.length;) {
+    const token = cliArgs[index] ?? "";
+    if (token === "--") {
+      return;
+    }
+    if (!token.startsWith("-")) {
+      return token === "mcp" ? cliArgs.slice(index + 1) : undefined;
+    }
+
+    const nextIndex = skipLeadingGlobalFlag(cliArgs, index);
+    if (nextIndex === undefined) {
+      return;
+    }
+    index = nextIndex;
+  }
+
+  return;
+}
+
+/** Run MCP and return whether the current invocation was handled by it. */
+export async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
+  const mcpArgs = getMcpArgs(cliArgs);
+  if (!mcpArgs) {
+    return false;
+  }
+
+  const [{ startMcpServer }, { getExitCode }] = await Promise.all([
+    import("./lib/mcp.js"),
+    import("./lib/errors.js"),
+  ]);
+
+  try {
+    await startMcpServer(mcpArgs);
+  } catch (mcpError) {
+    process.stderr.write(`${formatError(mcpError)}\n`);
+    process.exitCode = getExitCode(mcpError);
+    // MCP setup errors are terminal, unlike a running stdio server. Clean up
+    // network resources only on this error path so successful servers retain
+    // their dispatcher and are not force-exited on macOS.
+    const [{ scheduleForceExit }, { closeGlobalDispatcher }] =
+      await Promise.all([
+        import("./lib/force-exit.js"),
+        import("./lib/close-dispatcher.js"),
+      ]);
+    scheduleForceExit();
+    await closeGlobalDispatcher();
+  }
+
+  return true;
+}
+
+/**
  * Full CLI execution with telemetry, middleware, and error recovery.
  *
  * All heavy imports are loaded here (not at module top level) so the
  * `__complete` fast-path can skip them entirely.
  */
 export async function runCli(cliArgs: string[]): Promise<void> {
+  if (await runMcpCommand(cliArgs)) {
+    return;
+  }
+
   const { isatty } = await import("node:tty");
   const { ExitCode, run } = await import("@stricli/core");
   const { app } = await import("./app.js");

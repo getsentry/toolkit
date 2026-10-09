@@ -23,6 +23,10 @@ import type {
   OrgReleaseResponse as SdkReleaseResponse,
   BaseTeam as SdkTeam,
 } from "@sentry/api";
+import type {
+  SentryIssueIdentity,
+  SentryNamedResource,
+} from "@sentry/toolkit-core/resource-identity";
 import {
   vBaseTeam,
   vEventAttachmentDetailsResponse,
@@ -71,15 +75,13 @@ import {
  * Organization.flags.disable_member_project_creation is set — project creation
  * requires org:write scope or team:admin on the target team.
  */
-export type SentryOrganization = Partial<SdkOrganizationList[number]> & {
-  id: string;
-  slug: string;
-  name: string;
-  /** False when org admins have restricted project creation to owners/managers/team-admins. Default for new orgs. */
-  allowMemberProjectCreation?: boolean;
-  /** The authenticated user's role in this org ("member", "admin", "manager", "owner"). */
-  orgRole?: string;
-};
+export type SentryOrganization = Partial<SdkOrganizationList[number]> &
+  SentryNamedResource<string> & {
+    /** False when org admins have restricted project creation to owners/managers/team-admins. Default for new orgs. */
+    allowMemberProjectCreation?: boolean;
+    /** The authenticated user's role in this org ("member", "admin", "manager", "owner"). */
+    orgRole?: string;
+  };
 
 // Project
 
@@ -93,35 +95,33 @@ type SdkProjectListItem = SdkProjectList[number];
  * The `organization` field is present in detail responses but absent in list responses,
  * so it is declared as an optional extension.
  */
-export type SentryProject = Partial<SdkProjectListItem> & {
-  id: string;
-  slug: string;
-  name: string;
-  /**
-   * Organization context (present in detail responses, absent in list).
-   *
-   * `name` is optional because `getProject()` passes `?collapse=organization`
-   * to skip full-org serialization on the server (~400-500ms faster). The
-   * collapsed payload only carries `{id, slug}`. Callers needing a display
-   * name should use `resolveOrgDisplayName()` which falls back to the
-   * cached organizations list.
-   */
-  organization?: {
-    id: string;
-    slug: string;
-    name?: string;
-    [key: string]: unknown;
+export type SentryProject = Partial<SdkProjectListItem> &
+  SentryNamedResource<string> & {
+    /**
+     * Organization context (present in detail responses, absent in list).
+     *
+     * `name` is optional because `getProject()` passes `?collapse=organization`
+     * to skip full-org serialization on the server (~400-500ms faster). The
+     * collapsed payload only carries `{id, slug}`. Callers needing a display
+     * name should use `resolveOrgDisplayName()` which falls back to the
+     * cached organizations list.
+     */
+    organization?: {
+      id: string;
+      slug: string;
+      name?: string;
+      [key: string]: unknown;
+    };
+    /**
+     * Project status (returned by API but not in the OpenAPI spec).
+     *
+     * Overlay convention: the SDK type (`SdkProjectListItem`) carries every
+     * documented field; this overlay adds ONLY fields the API returns but the
+     * spec omits, each a backend `@extend_schema` candidate. Keep it minimal —
+     * do not restate fields the SDK already types.
+     */
+    status?: string;
   };
-  /**
-   * Project status (returned by API but not in the OpenAPI spec).
-   *
-   * Overlay convention: the SDK type (`SdkProjectListItem`) carries every
-   * documented field; this overlay adds ONLY fields the API returns but the
-   * spec omits, each a backend `@extend_schema` candidate. Keep it minimal —
-   * do not restate fields the SDK already types.
-   */
-  status?: string;
-};
 
 // Issue Constants
 
@@ -166,34 +166,32 @@ export type IssueLevel = (typeof ISSUE_LEVELS)[number];
  * The `metadata` field is overridden from the SDK's discriminated union to a single
  * object with all optional fields, matching how the API actually returns data.
  */
-export type SentryIssue = Omit<Partial<SdkIssueDetail>, "metadata"> & {
-  id: string;
-  shortId: string;
-  title: string;
-  /** Issue metadata (value, filename, function, etc.) */
-  metadata?: {
-    value?: string;
-    type?: string;
-    filename?: string;
-    function?: string;
-    title?: string;
-    display_title_with_tree_label?: boolean;
-    [key: string]: unknown;
+export type SentryIssue = Omit<Partial<SdkIssueDetail>, "metadata"> &
+  SentryIssueIdentity<string> & {
+    /** Issue metadata (value, filename, function, etc.) */
+    metadata?: {
+      value?: string;
+      type?: string;
+      filename?: string;
+      function?: string;
+      title?: string;
+      display_title_with_tree_label?: boolean;
+      [key: string]: unknown;
+    };
+    /** Issue substatus (not in OpenAPI spec) */
+    substatus?: string | null;
+    /** Issue priority (not in OpenAPI spec) */
+    priority?: string;
+    /** Whether the issue is unhandled (not in OpenAPI spec) */
+    isUnhandled?: boolean;
+    /** Platform of the issue (not in OpenAPI spec) */
+    platform?: string;
+    /**
+     * Seer AI fixability score (0-1). Higher = easier to fix automatically.
+     * `null` when Seer has not analyzed this issue; absent when the org has Seer disabled.
+     */
+    seerFixabilityScore?: number | null;
   };
-  /** Issue substatus (not in OpenAPI spec) */
-  substatus?: string | null;
-  /** Issue priority (not in OpenAPI spec) */
-  priority?: string;
-  /** Whether the issue is unhandled (not in OpenAPI spec) */
-  isUnhandled?: boolean;
-  /** Platform of the issue (not in OpenAPI spec) */
-  platform?: string;
-  /**
-   * Seer AI fixability score (0-1). Higher = easier to fix automatically.
-   * `null` when Seer has not analyzed this issue; absent when the org has Seer disabled.
-   */
-  seerFixabilityScore?: number | null;
-};
 
 /**
  * Valibot schema describing the key fields of a {@link SentryIssue} for JSON output.
@@ -1416,11 +1414,7 @@ export const SentryTeamSchema = looseObject({
  * schema and type are allowed to diverge: the schema curates a user-facing
  * subset of fields, the type follows the SDK's structural superset.
  */
-export type SentryTeam = Partial<SdkTeam> & {
-  id: string;
-  slug: string;
-  name: string;
-};
+export type SentryTeam = Partial<SdkTeam> & SentryNamedResource<string>;
 
 // Product Trials
 

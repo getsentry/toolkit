@@ -270,8 +270,6 @@ describe("get_event_attachment", () => {
           userId: "1",
         },
       ),
-    ).rejects.toThrow(
-      "Invalid regionUrl provided: https. Must be a valid URL.",
-    );
+    ).rejects.toThrow("Invalid regionUrl provided. Must be a valid URL.");
   });
 });

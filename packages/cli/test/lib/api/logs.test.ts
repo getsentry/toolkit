@@ -7,7 +7,7 @@
  * unhandled schema validation error; now it throws a descriptive ApiError.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getLogs, listLogs } from "../../../src/lib/api/logs.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError } from "../../../src/lib/errors.js";
@@ -234,6 +234,277 @@ describe("listLogs", () => {
 });
 
 describe("getLogs", () => {
+  const LOG_TIMESTAMP = "2026-10-08T12:00:00.000Z";
+
+  beforeEach(() => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse(LOG_TIMESTAMP));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function logIdAt(timestamp: string): string {
+    const timeHex = Date.parse(timestamp).toString(16).padStart(12, "0");
+    return `${timeHex}70008000000000000000`;
+  }
+
+  function logEntryAt(timestamp: string) {
+    return {
+      "sentry.item_id": logIdAt(timestamp),
+      timestamp,
+      timestamp_precise: Date.parse(timestamp) * 1_000_000,
+      message: "Test log message",
+      severity: "info",
+      trace: null,
+    };
+  }
+
+  test("finds an exact log ID that a partial scan would miss", async () => {
+    const logId = logIdAt(LOG_TIMESTAMP);
+    const entry = logEntryAt(LOG_TIMESTAMP);
+    const requests: URL[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      requests.push(url);
+      const fullScan = url.searchParams.get("sampling") === "HIGHEST_ACCURACY";
+      return new Response(
+        JSON.stringify({
+          data: fullScan ? [entry] : [],
+          meta: { fields: {}, dataScanned: fullScan ? "full" : "partial" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    const logs = await getLogs("test-org", "test-project", [logId]);
+
+    expect(logs).toEqual([entry]);
+    expect(requests).toHaveLength(2);
+    expect(requests.map((url) => url.searchParams.get("sampling"))).toEqual([
+      "NORMAL",
+      "HIGHEST_ACCURACY",
+    ]);
+    for (const url of requests) {
+      expect(url.searchParams.get("start")).toBe("2026-10-08T11:55:00.000Z");
+      expect(url.searchParams.get("end")).toBe("2026-10-08T12:05:00.000Z");
+      expect(url.searchParams.get("statsPeriod")).toBeNull();
+      expect(url.searchParams.get("query")).toBe(
+        `project:test-project sentry.item_id:[${logId}]`,
+      );
+      expect(url.searchParams.get("project")).toBeNull();
+      expect(url.searchParams.getAll("field")).toEqual(
+        requests[0]!.searchParams.getAll("field"),
+      );
+    }
+  });
+
+  test("retries only missing IDs in a partial batch and preserves options", async () => {
+    const found = logEntryAt(LOG_TIMESTAMP);
+    const missing = logEntryAt("2026-10-09T12:00:00.000Z");
+    const requests: URL[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      requests.push(url);
+      const isRetry = url.searchParams.get("sampling") === "HIGHEST_ACCURACY";
+      return new Response(
+        JSON.stringify({
+          data: isRetry ? [missing] : [found],
+          meta: { fields: {}, dataScanned: isRetry ? "full" : "partial" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    const logs = await getLogs(
+      "test-org",
+      "test-project",
+      [
+        found["sentry.item_id"],
+        missing["sentry.item_id"],
+        missing["sentry.item_id"],
+      ],
+      { projectId: 4242, extraFields: ["custom.attribute"] },
+    );
+
+    expect(logs).toEqual([found, missing]);
+    expect(requests).toHaveLength(2);
+    const [initial, retry] = requests;
+    expect(initial!.searchParams.get("sampling")).toBe("NORMAL");
+    expect(initial!.searchParams.get("start")).toBe("2026-10-08T11:55:00.000Z");
+    expect(initial!.searchParams.get("end")).toBe("2026-10-09T12:05:00.000Z");
+    expect(retry!.searchParams.get("sampling")).toBe("HIGHEST_ACCURACY");
+    expect(retry!.searchParams.get("query")).toBe(
+      `sentry.item_id:[${missing["sentry.item_id"]}]`,
+    );
+    expect(retry!.searchParams.get("per_page")).toBe("1");
+    expect(retry!.searchParams.get("start")).toBe("2026-10-09T11:55:00.000Z");
+    expect(retry!.searchParams.get("end")).toBe("2026-10-09T12:05:00.000Z");
+    for (const url of requests) {
+      expect(url.searchParams.get("project")).toBe("4242");
+      expect(url.searchParams.getAll("field")).toContain("custom.attribute");
+      expect(url.searchParams.getAll("field")).toEqual(
+        initial!.searchParams.getAll("field"),
+      );
+      expect(url.searchParams.get("statsPeriod")).toBeNull();
+    }
+  });
+
+  test.each([
+    { kind: "full empty scan", data: [], meta: { dataScanned: "full" } },
+    { kind: "missing metadata", data: [], meta: undefined },
+    { kind: "missing scan status", data: [], meta: { fields: {} } },
+    {
+      kind: "partial scan with every ID found",
+      data: [logEntryAt(LOG_TIMESTAMP)],
+      meta: { dataScanned: "partial" },
+    },
+  ])("does not retry a $kind", async ({ data, meta }) => {
+    const requests: URL[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      requests.push(new URL(new Request(input, init).url));
+      return new Response(JSON.stringify({ data, meta }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const id = logIdAt(LOG_TIMESTAMP);
+
+    expect(await getLogs("test-org", "test-project", [id, id])).toEqual(data);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.searchParams.get("sampling")).toBe("NORMAL");
+  });
+
+  test("stops after one accuracy retry even if the scan remains partial", async () => {
+    const requests: URL[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      requests.push(new URL(new Request(input, init).url));
+      return new Response(
+        JSON.stringify({ data: [], meta: { dataScanned: "partial" } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    expect(
+      await getLogs("test-org", "test-project", [logIdAt(LOG_TIMESTAMP)]),
+    ).toEqual([]);
+
+    expect(requests.map((url) => url.searchParams.get("sampling"))).toEqual([
+      "NORMAL",
+      "HIGHEST_ACCURACY",
+    ]);
+  });
+
+  test("propagates API errors from the accuracy retry", async () => {
+    const requests: URL[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      requests.push(url);
+      const retry = url.searchParams.get("sampling") === "HIGHEST_ACCURACY";
+      return new Response(
+        JSON.stringify(
+          retry
+            ? { detail: "Access denied" }
+            : { data: [], meta: { dataScanned: "partial" } },
+        ),
+        {
+          status: retry ? 403 : 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    });
+
+    await expect(
+      getLogs("test-org", "test-project", [logIdAt(LOG_TIMESTAMP)]),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(requests).toHaveLength(2);
+  });
+
+  test("bounds each batch by all its UUIDv7 timestamps and preserves options", async () => {
+    const firstIds = Array.from({ length: 100 }, (_, i) =>
+      logIdAt(new Date(Date.parse(LOG_TIMESTAMP) + i * 60_000).toISOString()),
+    ).reverse();
+    const lastId = logIdAt("2026-10-09T12:00:00.000Z");
+    const requests: URL[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      requests.push(new URL(new Request(input, init).url));
+      return new Response(JSON.stringify(EMPTY_LOGS), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const logs = await getLogs(
+      "test-org",
+      "test-project",
+      [...firstIds, lastId],
+      {
+        projectId: 4242,
+        extraFields: ["custom.attribute"],
+      },
+    );
+
+    expect(logs).toEqual([]);
+    expect(requests).toHaveLength(2);
+    const first = requests.find(
+      (url) => url.searchParams.get("per_page") === "100",
+    )!;
+    const last = requests.find(
+      (url) => url.searchParams.get("per_page") === "1",
+    )!;
+    expect(first.searchParams.get("start")).toBe("2026-10-08T11:55:00.000Z");
+    expect(first.searchParams.get("end")).toBe("2026-10-08T13:44:00.000Z");
+    expect(first.searchParams.get("query")).toBe(
+      `sentry.item_id:[${firstIds.join(",")}]`,
+    );
+    expect(last.searchParams.get("start")).toBe("2026-10-09T11:55:00.000Z");
+    expect(last.searchParams.get("end")).toBe("2026-10-09T12:05:00.000Z");
+    expect(last.searchParams.get("query")).toBe(`sentry.item_id:[${lastId}]`);
+    for (const url of requests) {
+      expect(url.searchParams.get("sampling")).toBe("NORMAL");
+      expect(url.searchParams.get("statsPeriod")).toBeNull();
+      expect(url.searchParams.get("project")).toBe("4242");
+      expect(url.searchParams.getAll("field")).toContain("custom.attribute");
+    }
+  });
+
+  test.each([
+    { kind: "non-v7", ids: ["c0a5a9d4dce44358ab4231fc3bead7e9"] },
+    { kind: "pre-2020", ids: [logIdAt("2019-12-31T23:59:59.999Z")] },
+    { kind: "epoch-zero", ids: [logIdAt("1970-01-01T00:00:00.000Z")] },
+    {
+      kind: "future timestamp beyond tolerance",
+      ids: [logIdAt("2026-10-09T12:00:00.001Z")],
+    },
+    {
+      kind: "arbitrary hex with a v7 nibble",
+      ids: ["deadbeefdead7eefdeadbeefdeadbeef"],
+    },
+    {
+      kind: "maximum UUID timestamp",
+      ids: ["ffffffffffff70008000000000000000"],
+    },
+    {
+      kind: "mixed",
+      ids: [logIdAt(LOG_TIMESTAMP), "c0a5a9d4dce44358ab4231fc3bead7e9"],
+    },
+    {
+      kind: "mixed plausible and implausible timestamps",
+      ids: [logIdAt(LOG_TIMESTAMP), logIdAt("1970-01-01T00:00:00.000Z")],
+    },
+  ])("keeps the retention window for $kind IDs", async ({ ids }) => {
+    const captured = captureRequest(EMPTY_LOGS);
+
+    expect(await getLogs("test-org", "test-project", ids)).toEqual([]);
+
+    const url = new URL(captured.url());
+    expect(url.searchParams.get("sampling")).toBe("NORMAL");
+    expect(url.searchParams.get("statsPeriod")).toBe("90d");
+    expect(url.searchParams.get("start")).toBeNull();
+    expect(url.searchParams.get("end")).toBeNull();
+  });
+
   test("returns logs when API returns a valid detailed response", async () => {
     mockOk({
       data: [

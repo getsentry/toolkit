@@ -19,6 +19,8 @@ import {
   type PaginatedResponse,
 } from "../../lib/api-client.js";
 import {
+  explicitProjectSlugs,
+  formatProjectTarget,
   type ParsedOrgProject,
   parseOrgProjectArg,
 } from "../../lib/arg-parsing.js";
@@ -55,6 +57,7 @@ import {
 import { withProgress } from "../../lib/polling.js";
 import {
   classifyProjectSearchTarget,
+  findProjectsInOrg,
   type ProjectSearchTargetResolution,
   projectSearchNotFoundSuggestions,
   type ResolvedTarget,
@@ -176,7 +179,9 @@ export function buildContextKey(
       parts.push("type:auto");
       break;
     case "explicit":
-      parts.push(`type:explicit:${parsed.org}/${parsed.project}`);
+      parts.push(
+        `type:explicit:${formatProjectTarget(parsed.org, explicitProjectSlugs(parsed))}`,
+      );
       break;
     case "project-search":
       parts.push(`type:search:${parsed.projectSlug}`);
@@ -428,6 +433,68 @@ export async function handleExplicit(
   };
 }
 
+/**
+ * Comma-separated `org/web,api` mode.
+ *
+ * Each slug is looked up directly ({@link findProjectsInOrg}); the hint
+ * reports slugs that do not exist separately from slugs that exist but were
+ * excluded by `--platform`. Lookup failures other than 404 propagate like
+ * org-all so a network or permission error is never rendered as "no
+ * projects found".
+ */
+async function handleExplicitProjects(
+  org: string,
+  slugs: readonly string[],
+  flags: ListFlags,
+): Promise<ListResult<ProjectWithOrg>> {
+  const { found, missing } = await withProgress(
+    { message: "Fetching projects...", json: flags.json },
+    () => findProjectsInOrg(org, slugs),
+  );
+  const selected = found.map((project) => ({ ...project, orgSlug: org }));
+  const filtered = filterByPlatform(selected, flags.platform);
+  const includedSlugs = new Set(filtered.map((project) => project.slug));
+  const platformFiltered = selected
+    .filter((project) => !includedSlugs.has(project.slug))
+    .map((project) => project.slug);
+
+  if (found.length === 0) {
+    return {
+      items: [],
+      hint:
+        `No projects found among: ${slugs.map((slug) => `'${slug}'`).join(", ")}.\n` +
+        `Tip: Use 'sentry project list ${org}/' to see all projects`,
+    };
+  }
+
+  const hintParts: string[] = [];
+  if (missing.length > 0) {
+    hintParts.push(
+      `Missing: ${missing.join(", ")}. Tip: Use 'sentry project list ${org}/' to see all projects`,
+    );
+  }
+  if (platformFiltered.length > 0) {
+    hintParts.push(
+      `No match for platform '${flags.platform}': ${platformFiltered.join(", ")}`,
+    );
+  }
+  if (hintParts.length === 0) {
+    hintParts.push(
+      `Tip: Use 'sentry project view ${org}/<project>' for details`,
+    );
+  }
+
+  const items = filtered.slice(0, flags.limit);
+  return {
+    items,
+    header:
+      filtered.length > items.length
+        ? `Showing ${items.length} of ${filtered.length} matches. Use --limit to show more.`
+        : undefined,
+    hint: hintParts.join("\n"),
+  };
+}
+
 export type OrgAllOptions = {
   org: string;
   flags: ListFlags;
@@ -635,6 +702,7 @@ export const listCommand = buildListCommand("project", {
       "  sentry project list                # auto-detect from DSN or config\n" +
       "  sentry project list <org>/         # all projects in org (paginated)\n" +
       "  sentry project list <org>/<proj>   # show specific project\n" +
+      "  sentry project list <org>/<proj1>,<proj2>      # show several projects\n" +
       "  sentry project list <project>      # find project across all orgs\n\n" +
       `${targetPatternExplanation("Cursor pagination (--cursor) requires the <org>/ form.")}\n\n` +
       "Pagination:\n" +
@@ -681,7 +749,7 @@ export const listCommand = buildListCommand("project", {
   async *func(this: SentryContext, flags: ListFlags, target?: string) {
     const { cwd } = this;
 
-    const parsed = parseOrgProjectArg(target);
+    const parsed = parseOrgProjectArg(target, { multi: true });
 
     const result = await dispatchOrgScopedList({
       config: projectListMeta,
@@ -691,7 +759,9 @@ export const listCommand = buildListCommand("project", {
       overrides: {
         "auto-detect": (ctx) => handleAutoDetect(ctx.cwd, flags),
         explicit: (ctx) =>
-          handleExplicit(ctx.parsed.org, ctx.parsed.project, flags),
+          ctx.parsed.projects
+            ? handleExplicitProjects(ctx.parsed.org, ctx.parsed.projects, flags)
+            : handleExplicit(ctx.parsed.org, ctx.parsed.project, flags),
         "org-all": (ctx) => {
           // Build context key and resolve cursor only in org-all mode, after
           // dispatchOrgScopedList has already validated --cursor is allowed here.

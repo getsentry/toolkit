@@ -248,6 +248,12 @@ Split by argument type — do not mix the conventions:
   values on commas; commas may be part of the value. Every project passed to
   `project create` requires a `name:platform` pair — there is no space-separated
   form, with or without an explicit org. Project names cannot contain whitespace.
+- **Exception: opted-in `org/project` list selectors.** Commands whose API can
+  query several projects together may parse their single optional target token
+  as a list because Sentry slugs cannot contain commas. For example,
+  `issue list acme/web,api` selects two projects. Pass
+  `{ multi: true }` to `parseOrgProjectArg`; never enable it for
+  mutation or single-project commands.
 - **Optional flags → comma-separated (sometimes also repeatable).** Split the
   flag value on `,`: `--features errors,tracing`, set-commits `--path a,b`,
   `auth login --scope a,b`. Use `value.split(",")` (repeatable array flags:
@@ -672,6 +678,10 @@ Commands select a capability wrapper instead of performing API lookups:
   organization or a project.
 - `resolveOrgOnlyTarget()` / `resolveOrgOnlyFromArg()` return the effective
   organization while preserving project-first precedence for bare targets.
+- `resolveProjectIdsInOrg()` / `findProjectsInOrg()` resolve a
+  comma-separated `org/a,b` selector: numeric IDs for a single request
+  (unknown slugs are an error), or the projects themselves plus the slugs
+  that returned 404.
 
 Do not call `findProjectsBySlug()` or implement org fallback directly in a
 command. `sentry init` is the intentional not-found exception: it calls the

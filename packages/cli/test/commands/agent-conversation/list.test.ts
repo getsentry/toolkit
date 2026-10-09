@@ -2,9 +2,8 @@
  * Conversation List Command Tests
  *
  * Tests for the `sentry agent-conversation list` command func() body, covering:
- * - Organization resolution from positional arg
- * - Organization resolution via resolveOrg fallback
- * - Error when org cannot be resolved
+ * - Organization and project target resolution
+ * - Organization auto-detection
  * - Yielding CommandOutput with conversation data
  * - Query filter passthrough
  * - Time params passthrough
@@ -44,7 +43,6 @@ vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
-import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
   const actual =
@@ -95,6 +93,7 @@ import type { ConversationListItem } from "../../../src/types/conversation.js";
 // ============================================================================
 
 const ORG = "test-org";
+const PROJECT = { id: "42", slug: "backend", name: "Backend" };
 
 function createMockContext() {
   const stdoutWrite = vi.fn(() => true);
@@ -197,16 +196,20 @@ afterEach(() => {
 // ============================================================================
 
 describe("listCommand.func", () => {
+  let getProjectSpy: ReturnType<typeof vi.spyOn>;
   let listConversationsSpy: ReturnType<typeof vi.spyOn>;
-  let resolveOrgSpy: ReturnType<typeof vi.spyOn>;
+  let resolveTargetSpy: ReturnType<typeof vi.spyOn>;
   let withProgressSpy: ReturnType<typeof vi.spyOn>;
   let resolveCursorSpy: ReturnType<typeof vi.spyOn>;
   let advancePaginationStateSpy: ReturnType<typeof vi.spyOn>;
   let hasPreviousPageSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    getProjectSpy = vi.spyOn(apiClient, "getProject");
     listConversationsSpy = vi.spyOn(apiClient, "listConversations");
-    resolveOrgSpy = vi.spyOn(resolveTarget, "resolveOrg");
+    resolveTargetSpy = vi
+      .spyOn(resolveTarget, "resolveOrgOptionalFromArg")
+      .mockResolvedValue({ org: ORG });
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
       .mockImplementation(mockWithProgress);
@@ -223,15 +226,16 @@ describe("listCommand.func", () => {
   });
 
   afterEach(() => {
+    getProjectSpy.mockRestore();
     listConversationsSpy.mockRestore();
-    resolveOrgSpy.mockRestore();
+    resolveTargetSpy.mockRestore();
     withProgressSpy.mockRestore();
     resolveCursorSpy.mockRestore();
     advancePaginationStateSpy.mockRestore();
     hasPreviousPageSpy.mockRestore();
   });
 
-  test("resolves org from positional arg", async () => {
+  test("resolves explicit organization scope", async () => {
     listConversationsSpy.mockResolvedValue({
       data: sampleConversations,
       nextCursor: undefined,
@@ -239,18 +243,21 @@ describe("listCommand.func", () => {
 
     const { context } = createMockContext();
     const func = await listCommand.loader();
-    await func.call(context, JSON_FLAGS, ORG);
+    await func.call(context, JSON_FLAGS, `${ORG}/`);
 
-    // resolveOrg receives the positional org directly
-    expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: ORG }),
+    expect(resolveTargetSpy).toHaveBeenCalledWith(
+      `${ORG}/`,
+      "/tmp",
+      "agent-conversation list",
     );
-    // listConversations called with the resolved org
-    expect(listConversationsSpy).toHaveBeenCalledWith(ORG, expect.any(Object));
+    expect(listConversationsSpy).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ project: undefined }),
+    );
   });
 
-  test("resolves org via resolveOrg when no positional", async () => {
-    resolveOrgSpy.mockResolvedValue({ org: "auto-org" });
+  test("auto-detects organization when target is omitted", async () => {
+    resolveTargetSpy.mockResolvedValue({ org: "auto-org" });
     listConversationsSpy.mockResolvedValue({
       data: [],
       nextCursor: undefined,
@@ -260,8 +267,10 @@ describe("listCommand.func", () => {
     const func = await listCommand.loader();
     await func.call(context, JSON_FLAGS, undefined);
 
-    expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: undefined }),
+    expect(resolveTargetSpy).toHaveBeenCalledWith(
+      undefined,
+      "/tmp",
+      "agent-conversation list",
     );
     expect(listConversationsSpy).toHaveBeenCalledWith(
       "auto-org",
@@ -269,46 +278,40 @@ describe("listCommand.func", () => {
     );
   });
 
-  test("throws error when org cannot be resolved", async () => {
-    resolveOrgSpy.mockResolvedValue(null);
+  test("resolves and passes explicit project scope", async () => {
+    resolveTargetSpy.mockResolvedValue({ org: ORG, project: PROJECT.slug });
+    getProjectSpy.mockResolvedValue(PROJECT);
+    listConversationsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
     const func = await listCommand.loader();
+    await func.call(context, JSON_FLAGS, `${ORG}/${PROJECT.slug}`);
 
-    await expect(func.call(context, HUMAN_FLAGS, undefined)).rejects.toThrow(
-      ContextError,
+    expect(getProjectSpy).toHaveBeenCalledWith(ORG, PROJECT.slug);
+    expect(listConversationsSpy).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ project: PROJECT.id }),
     );
   });
 
-  test("uses the optional-org syntax in resolution errors", async () => {
-    resolveOrgSpy.mockResolvedValue(null);
+  test("uses project data returned by bare-project search", async () => {
+    resolveTargetSpy.mockResolvedValue({
+      org: ORG,
+      project: PROJECT.slug,
+      projectData: PROJECT,
+    });
+    listConversationsSpy.mockResolvedValue({ data: [] });
+
     const { context } = createMockContext();
     const func = await listCommand.loader();
-    await expect(
-      func.call(context, HUMAN_FLAGS, undefined),
-    ).rejects.toMatchObject({
-      command: "sentry agent-conversation list [<org>]",
-    });
-  });
+    await func.call(context, JSON_FLAGS, PROJECT.slug);
 
-  test.each([
-    "acme?x=1",
-    "acme#fragment",
-    "acme%20bad",
-    "acme bad",
-    "acme\tbad",
-  ])(
-    "rejects unsafe explicit organization %s before resolution",
-    async (target) => {
-      const { context } = createMockContext();
-      const func = await listCommand.loader();
-      await expect(func.call(context, HUMAN_FLAGS, target)).rejects.toThrow(
-        ValidationError,
-      );
-      expect(resolveOrgSpy).not.toHaveBeenCalled();
-      expect(listConversationsSpy).not.toHaveBeenCalled();
-    },
-  );
+    expect(getProjectSpy).not.toHaveBeenCalled();
+    expect(listConversationsSpy).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ project: PROJECT.id }),
+    );
+  });
 
   test("yields CommandOutput with conversation data (JSON)", async () => {
     listConversationsSpy.mockResolvedValue({
@@ -397,7 +400,12 @@ describe("listCommand.func", () => {
     );
   });
 
-  test("returns pagination hints with -q flag preserved", async () => {
+  test("preserves project and query in pagination hints", async () => {
+    resolveTargetSpy.mockResolvedValue({
+      org: ORG,
+      project: PROJECT.slug,
+      projectData: PROJECT,
+    });
     listConversationsSpy.mockResolvedValue({
       data: sampleConversations,
       nextCursor: "next-cursor-abc",
@@ -405,12 +413,18 @@ describe("listCommand.func", () => {
 
     const { context, stdoutWrite } = createMockContext();
     const func = await listCommand.loader();
-    await func.call(context, { ...HUMAN_FLAGS, query: "has:errors" }, ORG);
+    await func.call(
+      context,
+      { ...HUMAN_FLAGS, query: "conversation.errors:>0" },
+      `${ORG}/${PROJECT.slug}`,
+    );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
-    // The hint should include the -q flag for navigation commands
-    expect(output).toContain("-c next");
-    expect(output).toContain('-q "has:errors"');
+    expect(output).toContain(`Agent conversations in ${ORG}/${PROJECT.slug}:`);
+    expect(output).toContain(
+      `agent-conversation list ${ORG}/${PROJECT.slug} -c next`,
+    );
+    expect(output).toContain('-q "conversation.errors:>0"');
   });
 
   test("handles empty results (human mode)", async () => {

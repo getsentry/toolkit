@@ -349,12 +349,13 @@ export type AliasMapResult = {
  * prefix. The returned `aliasMap` is keyed by `"org/project"` composite key;
  * `entries` is suitable for passing to `setProjectAliases`.
  *
- * @param results - Fetch results that each carry a {@link ResolvedTarget}
+ * @param results - Fetch results that each carry at least the `org` and
+ *   `project` slugs of a {@link ResolvedTarget}
  * @returns Alias map and DB entries
  */
-export function buildProjectAliasMap<T extends { target: ResolvedTarget }>(
-  results: T[],
-): AliasMapResult {
+export function buildProjectAliasMap<
+  T extends { target: Pick<ResolvedTarget, "org" | "project"> },
+>(results: T[]): AliasMapResult {
   const entries: Record<string, ProjectAliasEntry> = {};
   const pairs = results.map((r) => ({
     org: r.target.org,

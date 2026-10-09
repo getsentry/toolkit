@@ -32,7 +32,7 @@
 
 import { paginate } from "./api/infrastructure.js";
 import { listOrganizations, type PaginatedResponse } from "./api-client.js";
-import type { ParsedOrgProject } from "./arg-parsing.js";
+import { explicitProjectSlugs, type ParsedOrgProject } from "./arg-parsing.js";
 import {
   advancePaginationState,
   buildOrgContextKey,
@@ -1187,7 +1187,7 @@ async function resolveOrgInParsed(
   if (resolved.type === "explicit" || resolved.type === "org-all") {
     setOrgProjectContext(
       [effectiveOrg],
-      resolved.type === "explicit" ? [resolved.project] : [],
+      resolved.type === "explicit" ? explicitProjectSlugs(resolved) : [],
     );
   }
   return resolved;

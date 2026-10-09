@@ -518,10 +518,10 @@
   {
     "id": "project-management",
     "name": "Manage Projects & Teams",
-    "description": "Create and modify projects, teams, DSNs, uptime monitors, metric monitors, and alert rules",
+    "description": "Create and modify projects, teams, DSNs, cron monitor environments, uptime monitors, metric monitors, and alert rules",
     "defaultEnabled": false,
     "order": 5,
-    "toolCount": 22,
+    "toolCount": 23,
     "tools": [
       {
         "name": "add_team_to_project",
@@ -567,6 +567,11 @@
         "name": "delete_metric_monitor",
         "description": "Permanently delete a Sentry Metric Monitor, preserving its connected Alerts and their other monitors.\nUse get_metric_monitor_details to inspect the monitor and obtain its native monitorId. Legacy metric alert IDs are not monitor IDs.\nUse update_metric_monitor(status='disabled') to pause detection instead. Deletion also removes an associated legacy metric alert and its incident history when present.\nSentry hides the monitor from normal reads immediately and completes deletion in the background.\ndelete_metric_monitor(organizationSlug='my-org', monitorId='12345')",
         "requiredScopes": ["org:read", "project:read", "alerts:write"]
+      },
+      {
+        "name": "delete_monitor_environment",
+        "description": "Delete one environment from a Sentry cron monitor.\n\nUse find_monitors or get_monitor_details to identify the monitor and exact environment name.\n\nDeletion is irreversible and completes in the background. The monitor and its other environments are preserved. An already absent environment is treated as success.\n\n<examples>\ndelete_monitor_environment(organizationSlug='my-organization', projectSlug='backend', monitorSlug='nightly-import', environment='production')\n</examples>",
+        "requiredScopes": ["project:write"]
       },
       {
         "name": "delete_uptime_monitor",

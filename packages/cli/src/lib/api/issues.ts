@@ -117,13 +117,14 @@ export const ISSUE_DETAIL_COLLAPSE: IssueCollapseField[] = [
 ];
 
 /**
- * List issues for a project with pagination control.
+ * List issues for an organization with optional project filtering.
  *
  * Uses the @sentry/api SDK's `listOrganizationIssues` for type-safe
  * query parameters, and extracts pagination from the response Link header.
  *
  * @param orgSlug - Organization slug
- * @param projectSlug - Project slug (empty string for org-wide listing)
+ * @param projectSlug - Single-slug fallback used when `options.projects` is
+ *   absent; pass an empty string for org-wide listing
  * @param options - Query and pagination options
  * @returns Single page of issues with cursor metadata
  */
@@ -136,10 +137,13 @@ export async function listIssuesPaginated(
     perPage?: number;
     sort?: IssueSort;
     statsPeriod?: string;
-    /** Numeric project ID. When provided, uses the `project` query param
-     *  instead of `project:<slug>` search syntax, avoiding "not actively
-     *  selected" errors. */
-    projectId?: number;
+    /**
+     * Numeric project IDs sent as the repeated `project` query param. Selects
+     * projects directly, bypassing the "actively selected" requirement that
+     * `project:<slug>` search syntax is subject to. IDs only: self-hosted
+     * releases before 26.6 reject slugs in this param.
+     */
+    projects?: readonly number[];
     /** Controls the time resolution of inline stats data. "auto" adapts to statsPeriod. */
     groupStatsPeriod?: "" | "14d" | "24h" | "auto";
     /** Fields to collapse (omit) from the response for performance.
@@ -151,13 +155,13 @@ export async function listIssuesPaginated(
     end?: string;
   } = {},
 ): Promise<PaginatedResponse<SentryIssue[]>> {
-  // When we have a numeric project ID, use the `project` query param (Array<number>)
-  // instead of `project:<slug>` in the search query. The API's `project` param
-  // selects the project directly, bypassing the "actively selected" requirement.
-  let projectFilter = "";
-  if (!options.projectId && projectSlug) {
-    projectFilter = `project:${projectSlug}`;
-  }
+  // Prefer the API's repeated `project` parameter. A lone slug retains the
+  // search-query fallback for callers that have not resolved project identity.
+  const projects = options.projects?.length
+    ? Array.from(options.projects)
+    : undefined;
+  const projectFilter =
+    projects === undefined && projectSlug ? `project:${projectSlug}` : "";
   const fullQuery = [projectFilter, options.query].filter(Boolean).join(" ");
 
   const config = await getOrgSdkConfig(orgSlug);
@@ -166,7 +170,7 @@ export async function listIssuesPaginated(
     ...config,
     path: { organization_id_or_slug: orgSlug },
     query: {
-      project: options.projectId ? [options.projectId] : undefined,
+      project: projects,
       // Convert empty string to undefined so the SDK omits the param entirely;
       // sending `query=` causes the Sentry API to behave differently than
       // omitting the parameter.
@@ -205,7 +209,8 @@ export type IssuesPage = {
  * Safety-bounded by {@link MAX_PAGINATION_PAGES} to prevent runaway requests.
  *
  * @param orgSlug - Organization slug
- * @param projectSlug - Project slug (empty string for org-wide)
+ * @param projectSlug - Single-slug fallback used when `options.projects` is
+ *   absent; pass an empty string for org-wide listing
  * @param options - Query, sort, and limit options
  * @returns Issues (up to `limit` items) and a cursor for the next page if available
  */
@@ -217,8 +222,8 @@ export async function listIssuesAllPages(
     limit: number;
     sort?: IssueSort;
     statsPeriod?: string;
-    /** Numeric project ID for direct project selection via query param. */
-    projectId?: number;
+    /** Numeric project IDs to select in one organization-scoped request. */
+    projects?: readonly number[];
     /** Controls the time resolution of inline stats data. "auto" adapts to statsPeriod. */
     groupStatsPeriod?: "" | "14d" | "24h" | "auto";
     /** Resume pagination from this cursor instead of starting from the beginning. */
@@ -254,7 +259,7 @@ export async function listIssuesAllPages(
       statsPeriod: options.statsPeriod,
       start: options.start,
       end: options.end,
-      projectId: options.projectId,
+      projects: options.projects,
       groupStatsPeriod: options.groupStatsPeriod,
       collapse: options.collapse,
     });

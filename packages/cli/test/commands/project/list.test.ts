@@ -14,7 +14,7 @@ import {
   property,
   tuple,
 } from "fast-check";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   buildContextKey,
   displayProjectTable,
@@ -26,6 +26,7 @@ import {
   handleExplicit,
   handleOrgAll,
   handleProjectSearch,
+  listCommand,
   PAGINATION_KEY,
 } from "../../../src/commands/project/list.js";
 import type { ParsedOrgProject } from "../../../src/lib/arg-parsing.js";
@@ -39,6 +40,7 @@ import {
 } from "../../../src/lib/db/pagination.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import {
+  ApiError,
   AuthError,
   ResolutionError,
   ValidationError,
@@ -47,7 +49,9 @@ import type { SentryProject } from "../../../src/types/index.js";
 import { useTestConfigDir } from "../../helpers.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
-useTestConfigDir("test-project-list-", { isolateProjectRoot: true });
+const getConfigDir = useTestConfigDir("test-project-list-", {
+  isolateProjectRoot: true,
+});
 
 /** Create a minimal project for testing */
 function makeProject(
@@ -307,8 +311,13 @@ function mockProjectFetch(
 
     // getProject (single project fetch via /projects/{org}/{slug}/)
     if (url.match(/\/projects\/[^/]+\/[^/]+\//)) {
-      if (projects.length > 0) {
-        return new Response(JSON.stringify(projects[0]), {
+      const projectSlug = new URL(url).pathname
+        .split("/")
+        .filter(Boolean)
+        .at(-1);
+      const project = projects.find(({ slug }) => slug === projectSlug);
+      if (project) {
+        return new Response(JSON.stringify(project), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -453,6 +462,173 @@ describe("handleExplicit", () => {
 
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.slug).toBe("frontend");
+  });
+});
+
+describe("project list: comma-separated project slugs", () => {
+  const flags = { limit: 30, json: false, fresh: false };
+  let func: Awaited<ReturnType<typeof listCommand.loader>>;
+
+  beforeEach(async () => {
+    originalFetch = globalThis.fetch;
+    func = await listCommand.loader();
+    await setAuthToken("test-token");
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function createCommandContext() {
+    const stdout = {
+      output: "",
+      write(value: string) {
+        stdout.output += value;
+        return true;
+      },
+    };
+    const stderr = { write: () => true };
+    const context = {
+      process,
+      env: process.env,
+      stdout,
+      stderr,
+      cwd: getConfigDir(),
+    };
+    return { context, stdout };
+  }
+
+  test("looks up each project directly and keeps input order", async () => {
+    const fetchSpy = vi.fn(mockProjectFetch(sampleProjects));
+    globalThis.fetch = fetchSpy;
+    const { context, stdout } = createCommandContext();
+
+    await func.call(
+      context,
+      { ...flags, json: true },
+      "test-org/backend,frontend",
+    );
+
+    const output = JSON.parse(stdout.output) as SentryProject[];
+    expect(output.map(({ slug }) => slug)).toEqual(["backend", "frontend"]);
+    const requestedUrls = fetchSpy.mock.calls.map(
+      ([input, init]) => new Request(input, init).url,
+    );
+    expect(
+      requestedUrls.some((url) =>
+        url.includes("/organizations/test-org/projects/"),
+      ),
+    ).toBe(false);
+    expect(
+      requestedUrls.filter(
+        (url) =>
+          url.includes("/projects/test-org/frontend/") ||
+          url.includes("/projects/test-org/backend/"),
+      ),
+    ).toHaveLength(2);
+  });
+
+  test.each([false, true])(
+    "respects --limit for selectors (json=%s)",
+    async (json) => {
+      globalThis.fetch = mockProjectFetch(sampleProjects);
+      const { context, stdout } = createCommandContext();
+
+      await func.call(
+        context,
+        { ...flags, limit: 1, json },
+        "test-org/backend,frontend",
+      );
+
+      if (json) {
+        const output = JSON.parse(stdout.output) as SentryProject[];
+        expect(output.map(({ slug }) => slug)).toEqual(["backend"]);
+      } else {
+        expect(stdout.output).toContain("backend");
+        expect(stdout.output).not.toContain("frontend");
+        expect(stdout.output).toContain(
+          "Showing 1 of 2 matches. Use --limit to show more.",
+        );
+      }
+    },
+  );
+
+  test("applies the selector limit after platform filtering", async () => {
+    globalThis.fetch = mockProjectFetch(sampleProjects);
+    const { context, stdout } = createCommandContext();
+
+    await func.call(
+      context,
+      { ...flags, limit: 1, platform: "javascript", json: true },
+      "test-org/backend,frontend",
+    );
+
+    const output = JSON.parse(stdout.output) as SentryProject[];
+    expect(output.map(({ slug }) => slug)).toEqual(["frontend"]);
+  });
+
+  test("propagates lookup errors other than not found", async () => {
+    const projectFetch = mockProjectFetch(sampleProjects);
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      if (
+        new Request(input, init).url.includes("/projects/test-org/backend/")
+      ) {
+        return new Response(JSON.stringify({ detail: "Forbidden" }), {
+          status: 403,
+        });
+      }
+      return projectFetch(input, init);
+    }) as typeof globalThis.fetch;
+    const { context } = createCommandContext();
+
+    const error = await func
+      .call(context, flags, "test-org/frontend,backend")
+      .catch((caught: Error) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(403);
+  });
+
+  test("returns matches and names missing projects", async () => {
+    globalThis.fetch = mockProjectFetch(sampleProjects.slice(0, 1));
+    const { context, stdout } = createCommandContext();
+
+    await func.call(context, flags, "test-org/frontend,backend");
+
+    expect(stdout.output).toContain("frontend");
+    expect(stdout.output).toContain("Missing: backend");
+  });
+
+  test("distinguishes platform-filtered projects from missing projects", async () => {
+    globalThis.fetch = mockProjectFetch(sampleProjects);
+    const { context, stdout } = createCommandContext();
+
+    await func.call(
+      context,
+      { ...flags, platform: "javascript" },
+      "test-org/frontend,backend",
+    );
+
+    expect(stdout.output).toContain("frontend");
+    expect(stdout.output).toContain(
+      "No match for platform 'javascript': backend",
+    );
+    expect(stdout.output).not.toContain("Missing: backend");
+  });
+
+  test("reports every requested project when none exist", async () => {
+    globalThis.fetch = mockProjectFetch([]);
+    const { context, stdout } = createCommandContext();
+
+    await func.call(context, flags, "test-org/frontend,backend");
+
+    expect(stdout.output).toContain(
+      "No projects found among: 'frontend', 'backend'.",
+    );
   });
 });
 

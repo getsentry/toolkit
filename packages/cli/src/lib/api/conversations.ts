@@ -20,6 +20,7 @@ import {
   type AgentConversationSpan,
   type ConversationListItem,
   ConversationListItemSchema,
+  type ConversationStats,
 } from "../../types/conversation.js";
 
 import { logger } from "../logger.js";
@@ -126,6 +127,7 @@ export async function getConversationSpans(
   } = {},
 ): Promise<{
   spans: AgentConversationSpan[];
+  stats?: ConversationStats;
   truncated: boolean;
   title: string | null;
 }> {
@@ -140,6 +142,7 @@ export async function getConversationSpans(
   }
 
   const spans: AgentConversationSpan[] = [];
+  let stats: ConversationStats | undefined;
   let title: string | null = null;
   let cursor: string | undefined;
 
@@ -156,6 +159,7 @@ export async function getConversationSpans(
       );
 
     if (page === 0) {
+      stats = data.stats;
       title = data.title;
     }
     spans.push(...data.spans);
@@ -173,5 +177,5 @@ export async function getConversationSpans(
     );
   }
 
-  return { spans, truncated, title };
+  return { spans, stats, truncated, title };
 }

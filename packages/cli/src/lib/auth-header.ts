@@ -2,6 +2,7 @@
 
 import {
   normalizeAuthToken as parseAuthToken,
+  sentryBearerHeader,
   trimAuthToken as trimSharedAuthToken,
 } from "@sentry/toolkit-core/auth-token";
 import { MalformedAuthTokenError } from "./errors.js";
@@ -22,5 +23,9 @@ export function normalizeAuthToken(token: string): string {
 
 /** Normalize and validate a credential before constructing its Authorization value. */
 export function formatAuthHeader(token: string): string {
-  return `Bearer ${normalizeAuthToken(token)}`;
+  const header = sentryBearerHeader(token);
+  if (header === null) {
+    throw new MalformedAuthTokenError();
+  }
+  return header;
 }

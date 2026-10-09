@@ -54,6 +54,9 @@ List issues in a project
 # List issues in a specific project
 sentry issue list my-org/frontend
 
+# Several projects in the same org
+sentry issue list my-org/frontend,backend,worker
+
 # All projects in an org
 sentry issue list my-org/
 

@@ -1354,7 +1354,7 @@ describe("listIssuesPaginated", () => {
     expect(url.searchParams.get("sort")).toBe("freq");
   });
 
-  test("uses project query param instead of project:slug when projectId is provided", async () => {
+  test("uses project query param instead of project:slug when a project ID is provided", async () => {
     let capturedUrl = "";
 
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1369,7 +1369,7 @@ describe("listIssuesPaginated", () => {
       return new Response(JSON.stringify([]), { status: 200 });
     };
 
-    await listIssuesPaginated("my-org", "my-proj", { projectId: 12_345 });
+    await listIssuesPaginated("my-org", "my-proj", { projects: [12_345] });
 
     const url = new URL(capturedUrl);
     // Should use project=12345 query param
@@ -1379,7 +1379,29 @@ describe("listIssuesPaginated", () => {
     expect(query).not.toContain("project:my-proj");
   });
 
-  test("uses project:slug in query when projectId is not provided", async () => {
+  test("sends multiple project IDs as repeated project query params", async () => {
+    let capturedUrl = "";
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      if (req.url.includes("/issues/")) {
+        capturedUrl = req.url;
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    };
+
+    await listIssuesPaginated("my-org", "", { projects: [1, 2] });
+
+    const url = new URL(capturedUrl);
+    expect(url.searchParams.getAll("project")).toEqual(["1", "2"]);
+    expect(url.searchParams.has("query")).toBe(false);
+  });
+
+  test("uses project:slug in query when no project IDs are provided", async () => {
     let capturedUrl = "";
 
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1403,7 +1425,7 @@ describe("listIssuesPaginated", () => {
     expect(url.searchParams.get("query")).toContain("project:my-proj");
   });
 
-  test("combines projectId with custom query without project:slug", async () => {
+  test("combines a project ID with custom query without project:slug", async () => {
     let capturedUrl = "";
 
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1419,7 +1441,7 @@ describe("listIssuesPaginated", () => {
     };
 
     await listIssuesPaginated("my-org", "my-proj", {
-      projectId: 12_345,
+      projects: [12_345],
       query: "is:unresolved",
     });
 

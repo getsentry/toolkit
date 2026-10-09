@@ -19,6 +19,7 @@ import {
   listConversations,
 } from "../../../src/lib/api/conversations.js";
 import { MAX_PAGINATION_PAGES } from "../../../src/lib/api/infrastructure.js";
+import type { ConversationStats } from "../../../src/types/conversation.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
 // ============================================================================
@@ -311,11 +312,13 @@ describe("getConversationSpans", () => {
   function makeEnvelope(
     spans: ReturnType<typeof makeSpan>[],
     title: string | null = "Test conversation",
+    stats?: ConversationStats,
   ) {
     return {
       conversationId: CONV_ID,
       title,
       spans,
+      ...(stats ? { stats } : {}),
     };
   }
 
@@ -340,15 +343,26 @@ describe("getConversationSpans", () => {
     expect(url).toContain("statsPeriod=30d");
   });
 
-  test("returns spans from a single page envelope", async () => {
+  test("returns spans and stats from a single page envelope", async () => {
     const spans = [makeSpan("span-1-aabb1122")];
-    mockOk(makeEnvelope(spans, "Refund flow"));
+    mockOk(
+      makeEnvelope(spans, "Refund flow", {
+        errors: 1,
+        llmCalls: 1,
+        toolCalls: 2,
+        toolErrors: 1,
+        totalCost: 0.0042,
+        totalTokens: 100,
+      }),
+    );
 
     const result = await getConversationSpans(ORG, CONV_ID);
 
     expect(result.spans).toHaveLength(1);
     expect(result.spans[0].span_id).toBe("span-1-aabb1122");
     expect(result.title).toBe("Refund flow");
+    expect(result.stats?.totalCost).toBe(0.0042);
+    expect(result.stats?.totalTokens).toBe(100);
     expect(result.truncated).toBe(false);
   });
 

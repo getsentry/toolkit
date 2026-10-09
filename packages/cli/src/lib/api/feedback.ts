@@ -89,7 +89,8 @@ export async function listFeedback(
       start: options.start,
       end: options.end,
       startCursor: options.cursor,
-      projectId: options.projectId,
+      projects:
+        options.projectId === undefined ? undefined : [options.projectId],
       collapse: buildIssueListCollapse({ shouldCollapseStats: false }),
     },
   );

@@ -11,7 +11,7 @@ requires:
 
 List and view agent conversations
 
-### `sentry agent-conversation list [<org>]`
+### `sentry agent-conversation list [<org/project>]`
 
 List recent agent conversations
 
@@ -51,8 +51,14 @@ List recent agent conversations
 # List recent agent conversations
 sentry agent-conversation list
 
-# Explicit organization
-sentry agent-conversation list my-org
+# Explicit organization (all projects)
+sentry agent-conversation list my-org/
+
+# One project
+sentry agent-conversation list my-org/my-project
+
+# Find a project across organizations
+sentry agent-conversation list my-project
 
 # Show more, last 24 hours
 sentry agent-conversation list --limit 50 --period 24h
@@ -60,8 +66,8 @@ sentry agent-conversation list --limit 50 --period 24h
 # Filter conversations
 sentry agent-conversation list -q "has:errors"
 
-# Paginate through results
-sentry agent-conversation list my-org -c next
+# Paginate through project results
+sentry agent-conversation list my-org/my-project -c next
 ```
 
 ### `sentry agent-conversation view [<org>/]<conversation-id>`

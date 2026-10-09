@@ -29,6 +29,7 @@ import {
   getProject,
   listOrganizations,
   listProjects,
+  ORG_FANOUT_CONCURRENCY,
   type ProjectWithOrg,
   resolveOrgDisplayName,
 } from "./api-client.js";
@@ -1052,7 +1053,8 @@ function buildProjectNotFoundSuggestions(
  *
  * Throws on auth errors and 404s (user-actionable). Returns undefined
  * for transient failures (network, 500s) so the command can still
- * attempt slug-based querying as a fallback.
+ * attempt slug-based querying as a fallback. Callers that cannot fall
+ * back to slug scoping pass `strict` to get the underlying error instead.
  *
  * On 404, attempts to list similar projects in the org to help the
  * user find the correct slug (CLI-C0, 36 users).
@@ -1062,10 +1064,14 @@ function buildProjectNotFoundSuggestions(
  * invocation. The cache is populated by `listProjects()` (batch) and
  * by DSN resolution. Cache entries without a `projectId` fall through
  * to the API call (older rows from before schema v7).
+ *
+ * @param options.strict - Re-throw non-404 lookup failures instead of
+ *   returning `undefined`
  */
 export async function fetchProjectId(
   org: string,
   project: string,
+  options: { strict?: boolean } = {},
 ): Promise<number | undefined> {
   // Cache-first: avoid a round trip when `listProjects()` or DSN resolution
   // has already populated the entry for this (org, project) slug pair.
@@ -1092,6 +1098,9 @@ export async function fetchProjectId(
         `sentry project list ${org}/`,
         buildProjectNotFoundSuggestions(org, project, similar),
       );
+    }
+    if (options.strict) {
+      throw projectResult.error;
     }
     return;
   }
@@ -1126,6 +1135,140 @@ function cacheResolvedProject(
       );
     }
   }
+}
+
+/**
+ * Look up the projects of a comma-separated selector (`org/web,api`).
+ *
+ * Each slug is fetched directly and in parallel, so the cost follows the
+ * number of slugs rather than the size of the organization. The caller
+ * decides how to treat `missing`.
+ *
+ * @param org - Organization slug
+ * @param slugs - Project slugs to find
+ * @returns `found` in input order plus the slugs that returned 404
+ * @throws The underlying error for any lookup failure other than a 404
+ */
+export async function findProjectsInOrg(
+  org: string,
+  slugs: readonly string[],
+): Promise<{ found: SentryProject[]; missing: string[] }> {
+  const limit = pLimit(ORG_FANOUT_CONCURRENCY);
+  const lookups = await Promise.all(
+    slugs.map((slug) =>
+      limit(async () => {
+        const result = await withAuthGuard(() => getProject(org, slug));
+        if (result.ok) {
+          return { slug, project: result.value };
+        }
+        if (result.error instanceof ApiError && result.error.status === 404) {
+          return { slug, project: undefined };
+        }
+        throw result.error;
+      }),
+    ),
+  );
+  return {
+    found: lookups.flatMap(({ project }) => (project ? [project] : [])),
+    missing: lookups.flatMap(({ slug, project }) => (project ? [] : [slug])),
+  };
+}
+
+/**
+ * Merge the not-found errors of several selector slugs into one.
+ *
+ * Suggestions every slug shares (such as the org's projects page) are listed
+ * once; the rest are prefixed with the slug they belong to, so similar-project
+ * hints stay attributable.
+ *
+ * @param org - Organization slug the selector was resolved in
+ * @param misses - Unknown slugs with the error their lookup raised
+ * @returns A single error naming every unknown slug
+ */
+function combineProjectNotFoundErrors(
+  org: string,
+  misses: readonly { slug: string; error: ResolutionError }[],
+): ResolutionError {
+  const [first, ...others] = misses.map(
+    ({ error }) => new Set(error.suggestions),
+  );
+  const shared = [...(first ?? [])].filter((suggestion) =>
+    others.every((suggestions) => suggestions.has(suggestion)),
+  );
+  const specific = misses.flatMap(({ slug, error }) =>
+    error.suggestions
+      .filter((suggestion) => !shared.includes(suggestion))
+      .map((suggestion) => `'${slug}': ${suggestion}`),
+  );
+  return new ResolutionError(
+    `Projects ${misses.map(({ slug }) => `'${slug}'`).join(", ")}`,
+    `not found in organization '${org}'`,
+    `sentry project list ${org}/`,
+    [...specific, ...shared],
+  );
+}
+
+/**
+ * Resolve the project slugs of a comma-separated selector to numeric IDs.
+ *
+ * Each slug takes the same cache-first path as a single `<org>/<project>`
+ * target ({@link fetchProjectId}), in parallel: a warm cache costs no
+ * requests and a cold one a single `getProject` per slug. Unknown slugs are
+ * reported here because the issues endpoint answers them with a 403 that
+ * reads like a permissions problem. Lookups are strict: a slug is never sent
+ * in place of an ID, since self-hosted releases before 26.6 reject
+ * non-numeric `project` values.
+ *
+ * @param org - Organization slug
+ * @param slugs - Project slugs to resolve
+ * @returns Numeric project IDs in input order
+ * @throws {ResolutionError} When any slug does not exist in `org`; a single
+ *   miss keeps the error of the single-project path, several misses are
+ *   merged with each slug's suggestions
+ * @throws The underlying error when a lookup fails for any other reason
+ */
+export async function resolveProjectIdsInOrg(
+  org: string,
+  slugs: readonly string[],
+): Promise<number[]> {
+  const limit = pLimit(ORG_FANOUT_CONCURRENCY);
+  const lookups = await Promise.all(
+    slugs.map((slug) =>
+      limit(() =>
+        fetchProjectId(org, slug, { strict: true }).then(
+          (id) => ({ slug, id, error: undefined }),
+          (error: unknown) => ({ slug, id: undefined, error }),
+        ),
+      ),
+    ),
+  );
+
+  const failure = lookups.find(
+    ({ error }) => error !== undefined && !(error instanceof ResolutionError),
+  );
+  if (failure) {
+    throw failure.error;
+  }
+  const misses = lookups.flatMap(({ slug, error }) =>
+    error instanceof ResolutionError ? [{ slug, error }] : [],
+  );
+  const [onlyMiss] = misses;
+  if (onlyMiss && misses.length === 1) {
+    throw onlyMiss.error;
+  }
+  if (misses.length > 1) {
+    throw combineProjectNotFoundErrors(org, misses);
+  }
+  return lookups.map(({ slug, id }) => {
+    if (id === undefined) {
+      throw new ResolutionError(
+        `Project '${slug}'`,
+        `has no numeric ID in organization '${org}'`,
+        `sentry project list ${org}/`,
+      );
+    }
+    return id;
+  });
 }
 
 /**

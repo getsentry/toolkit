@@ -51,8 +51,16 @@ import {
 } from "../../../src/lib/db/defaults.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- namespace needed for vi.spyOn on mocked module
 import * as paginationDb from "../../../src/lib/db/pagination.js";
+import {
+  getProjectByAlias,
+  setProjectAliases,
+} from "../../../src/lib/db/project-aliases.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
-import { ApiError, ValidationError } from "../../../src/lib/errors.js";
+import {
+  ApiError,
+  ResolutionError,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 import type { TimeRange } from "../../../src/lib/time-range.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
@@ -1899,6 +1907,187 @@ describe("appendIssueFlags", () => {
         sort: "recommended",
       }),
     ).toContain("--sort recommended");
+  });
+});
+
+describe("issue list: comma-separated project slugs", () => {
+  const catalog = [
+    { id: "1", slug: "web", name: "Web" },
+    { id: "2", slug: "api", name: "API" },
+    { id: "3", slug: "worker", name: "Worker" },
+  ] as Awaited<ReturnType<typeof projectsApi.listProjects>>;
+  const getProjectMock = vi.mocked(projectsApi.getProject);
+  const listProjectsMock = vi.mocked(projectsApi.listProjects);
+  const baseFlags = {
+    limit: 10,
+    sort: "date",
+    period: parsePeriod("90d"),
+    json: true,
+  } as const;
+
+  beforeEach(() => {
+    listIssuesAllPagesMock.mockReset();
+    listIssuesPaginatedMock.mockReset();
+    resolveCursorMock.mockReset();
+    advancePaginationStateMock.mockReset();
+    getProjectMock.mockReset();
+    getProjectMock.mockImplementation(async (_org, slug) => {
+      const project = catalog.find((candidate) => candidate.slug === slug);
+      if (!project) {
+        throw new ApiError("Not found", 404);
+      }
+      return project;
+    });
+    listProjectsMock.mockReset();
+    listProjectsMock.mockResolvedValue(catalog);
+  });
+
+  afterEach(() => {
+    getProjectMock.mockReset();
+    listProjectsMock.mockReset();
+  });
+
+  test("looks up each slug and selects all IDs in one SDK request", async () => {
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [
+        mockIssue({ id: "web", shortId: "WEB-1", project: { slug: "web" } }),
+        mockIssue({ id: "api", shortId: "API-1", project: { slug: "api" } }),
+      ],
+      nextCursor: undefined,
+    });
+
+    const { context, stdout } = createContext();
+    await func.call(context, baseFlags, "test-org/web,api");
+
+    expect(getProjectMock).toHaveBeenCalledTimes(2);
+    expect(listProjectsMock).not.toHaveBeenCalled();
+    expect(listIssuesAllPagesMock).toHaveBeenCalledTimes(1);
+    expect(listIssuesAllPagesMock).toHaveBeenCalledWith(
+      "test-org",
+      "",
+      expect.objectContaining({ limit: 10, projects: [1, 2] }),
+    );
+    const output = JSON.parse(stdout.output);
+    expect(output.data).toHaveLength(2);
+  });
+
+  test("registers aliases that resolve from any directory", async () => {
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [
+        mockIssue({ id: "1", shortId: "WEB-1", project: { slug: "web" } }),
+        mockIssue({ id: "2", shortId: "API-1", project: { slug: "api" } }),
+      ],
+      nextCursor: undefined,
+    });
+
+    const { context, stdout } = createContext();
+    await func.call(context, { ...baseFlags, json: false }, "test-org/web,api");
+
+    expect(stdout.output).toContain("Issues in test-org/web,api");
+    expect(stdout.output).toContain("sentry issue view <ALIAS>");
+    expect(stdout.output).toMatch(/\bw-1\b/);
+    expect(stdout.output).toMatch(/\ba-1\b/);
+    // `issue view` passes the fingerprint of the DSNs in its working directory.
+    expect(getProjectByAlias("w", "o1:2")).toEqual({
+      orgSlug: "test-org",
+      projectSlug: "web",
+    });
+    expect(getProjectByAlias("a", "")).toEqual({
+      orgSlug: "test-org",
+      projectSlug: "api",
+    });
+  });
+
+  test("replaces stored aliases even when the selector returns no issues", async () => {
+    setProjectAliases({ stale: { orgSlug: "old-org", projectSlug: "old" } });
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [],
+      nextCursor: undefined,
+    });
+
+    const { context, stdout } = createContext();
+    await func.call(context, { ...baseFlags, json: false }, "test-org/web,api");
+
+    expect(stdout.output).toContain("No issues found in test-org/web,api");
+    expect(getProjectByAlias("stale")).toBeUndefined();
+    expect(getProjectByAlias("w")).toEqual({
+      orgSlug: "test-org",
+      projectSlug: "web",
+    });
+  });
+
+  test("resumes the cursor when the slugs are retyped in another order", async () => {
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [
+        mockIssue({ id: "1", shortId: "WEB-1", project: { slug: "web" } }),
+      ],
+      nextCursor: "1735689600:0:1",
+    });
+    listIssuesPaginatedMock.mockResolvedValue({
+      data: [],
+      nextCursor: undefined,
+    });
+
+    await func.call(createContext().context, baseFlags, "test-org/web,api");
+    await func.call(
+      createContext().context,
+      { ...baseFlags, cursor: "next" },
+      "test-org/api,web",
+    );
+
+    expect(listIssuesPaginatedMock).toHaveBeenCalledWith(
+      "test-org",
+      "",
+      expect.objectContaining({ cursor: "1735689600:0:1", projects: [2, 1] }),
+    );
+  });
+
+  test("rejects an unknown slug before querying issues", async () => {
+    const error = await func
+      .call(createContext().context, baseFlags, "test-org/web,nope")
+      .catch((caught: Error) => caught);
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    expect((error as Error).message).toContain(
+      "Project 'nope' not found in organization 'test-org'",
+    );
+    expect(listIssuesAllPagesMock).not.toHaveBeenCalled();
+  });
+
+  test("reports every unknown slug in one error with attributed suggestions", async () => {
+    const error = await func
+      .call(createContext().context, baseFlags, "test-org/workr,web,nope")
+      .catch((caught: Error) => caught);
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    const { message, suggestions } = error as ResolutionError;
+    expect(message).toContain(
+      "Projects 'workr', 'nope' not found in organization 'test-org'",
+    );
+    expect(suggestions).toContain("'workr': Similar projects: 'worker'");
+    expect(
+      suggestions.filter((line) => line.includes("Check the project slug at")),
+    ).toEqual([
+      "Check the project slug at https://sentry.io/organizations/test-org/projects/",
+    ]);
+    expect(listIssuesAllPagesMock).not.toHaveBeenCalled();
+  });
+
+  test("fails instead of guessing when a project lookup errors", async () => {
+    getProjectMock.mockImplementation(async (_org, slug) => {
+      if (slug === "api") {
+        throw new ApiError("Forbidden", 403);
+      }
+      return catalog[0] as (typeof catalog)[number];
+    });
+
+    const error = await func
+      .call(createContext().context, baseFlags, "test-org/web,api")
+      .catch((caught: Error) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(403);
+    expect(listIssuesAllPagesMock).not.toHaveBeenCalled();
   });
 });
 
