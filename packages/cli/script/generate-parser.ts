@@ -63,6 +63,13 @@ export type TextInFilter = {
   values: string[];
 };
 
+export type RegexFilter = {
+  type: "regex_filter";
+  negated: boolean;
+  key: string;
+  value: string;
+};
+
 /** A comparison filter: key:>value, key:<=value */
 export type ComparisonFilter = {
   type: "comparison_filter";
@@ -96,6 +103,7 @@ export type ParenGroup = {
 export type SearchNode =
   | TextFilter
   | TextInFilter
+  | RegexFilter
   | ComparisonFilter
   | FreeText
   | BooleanOp
