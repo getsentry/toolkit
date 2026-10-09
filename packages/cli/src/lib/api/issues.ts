@@ -157,7 +157,7 @@ export async function listIssuesPaginated(
 ): Promise<PaginatedResponse<SentryIssue[]>> {
   // Prefer the API's repeated `project` parameter. A lone slug retains the
   // search-query fallback for callers that have not resolved project identity.
-  const projects = options.projects?.length ? [...options.projects] : undefined;
+  const projects = options.projects?.length ? Array.from(options.projects) : undefined;
   const projectFilter =
     projects === undefined && projectSlug ? `project:${projectSlug}` : "";
   const fullQuery = [projectFilter, options.query].filter(Boolean).join(" ");
