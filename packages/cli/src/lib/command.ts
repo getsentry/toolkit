@@ -101,11 +101,17 @@ export type CommandExample = {
 };
 
 /**
- * Native Stricli documentation plus canonical examples for generated docs.
+ * Native Stricli documentation plus metadata for generated docs.
  */
 export type CommandDocumentation =
   StricliBuilderArgs<CommandContext>["docs"] & {
     readonly examples?: readonly CommandExample[];
+    /**
+     * Credential requirement for documentation; defaults to the `auth` option.
+     * Set to true when `auth: false` only defers authentication, e.g. to allow
+     * an offline dry run. This does not change the runtime auth guard.
+     */
+    readonly requiresAuth?: boolean;
   };
 
 /**
@@ -436,7 +442,7 @@ function enrichDocsWithSchema(
 function prepareNativeDocs(
   docs: CommandDocumentation,
 ): StricliBuilderArgs<CommandContext>["docs"] {
-  const { examples, ...nativeDocs } = docs;
+  const { examples, requiresAuth: _requiresAuth, ...nativeDocs } = docs;
   if (!examples?.length) {
     return nativeDocs;
   }
@@ -876,7 +882,8 @@ export function buildCommand<
   }
 
   // Introspection reads this to document whether the command needs credentials.
-  (cmd as unknown as Record<string, unknown>).__auth = builderArgs.auth;
+  (cmd as unknown as Record<string, unknown>).__requiresAuth =
+    builderArgs.docs.requiresAuth ?? builderArgs.auth !== false;
 
   // Attach the JSON schema to the built command as a non-standard property.
   // introspect.ts reads this to populate CommandInfo.jsonFields for help
