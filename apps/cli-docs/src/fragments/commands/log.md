@@ -46,6 +46,10 @@ sentry log list my-org/backend -f -q 'severity:error'
 
 ### View a log entry
 
+Copy the full ID from the `ID` column in `sentry log list` or `sentry trace logs`
+into `sentry log view`. An abbreviated prefix can match multiple logs and cannot
+be expanded into a unique full ID by itself.
+
 Log ID lookups automatically narrow the search when a usable timestamp can be
 determined from each ID. Otherwise, they use a 90-day lookup window. If a partial
 scan leaves IDs missing, the CLI retries those IDs once with the highest
