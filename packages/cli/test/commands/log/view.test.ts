@@ -302,10 +302,10 @@ describe("parsePositionalArgs", () => {
   describe("multiple fully-qualified org/project/logId args (CLI-1XC)", () => {
     test("splits each full path into a shared target + log IDs", () => {
       const result = parsePositionalArgs([
-        `butterflylink/paradoor-android/${ID1}`,
-        `butterflylink/paradoor-android/${ID2}`,
+        `my-org/frontend/${ID1}`,
+        `my-org/frontend/${ID2}`,
       ]);
-      expect(result.targetArg).toBe("butterflylink/paradoor-android");
+      expect(result.targetArg).toBe("my-org/frontend");
       expect(result.rawLogIds).toEqual([ID1, ID2]);
     });
 
