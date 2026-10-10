@@ -1,3 +1,4 @@
+import { ApiClientError } from "../../api-client";
 import type { Issue } from "../../api-client/types";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -599,7 +600,9 @@ async function tryPostReasonComment(
     });
     return { posted: true };
   } catch (error) {
-    logIssue(error);
+    if (!(error instanceof ApiClientError)) {
+      logIssue(error);
+    }
     return {
       posted: false,
       error: error instanceof Error ? error.message : String(error),
