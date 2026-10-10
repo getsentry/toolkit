@@ -109,6 +109,50 @@ describe("single-tenant web URLs", () => {
   );
 });
 
+describe("array trace attributes", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("parses and filters array attributes from the API", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/trace-items/attributes/",
+        () =>
+          HttpResponse.json([
+            {
+              key: "tags[items,array]",
+              name: "items",
+              attributeType: "array",
+              attributeSource: { source_type: "user" },
+            },
+            {
+              key: "tags[name]",
+              name: "name",
+              attributeType: "string",
+              attributeSource: { source_type: "user" },
+            },
+          ]),
+      ),
+    );
+    const api = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    const result = await api.listTraceItemAttributes({
+      organizationSlug: "test-org",
+      itemType: "spans",
+      attributeTypes: ["array"],
+    });
+    expect(result).toEqual([
+      {
+        key: "tags[items,array]",
+        name: "items",
+        type: "array",
+        attributeSource: { source_type: "user" },
+      },
+    ]);
+  });
+});
+
 describe("getIssueUrl", () => {
   it("should work with sentry.io", () => {
     const apiService = new SentryApiService({ host: "sentry.io" });

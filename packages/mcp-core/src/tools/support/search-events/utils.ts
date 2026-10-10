@@ -951,7 +951,7 @@ export function createDatasetAttributesTool(options: {
   projectId?: string;
 }) {
   const { apiService, organizationSlug, projectId } = options;
-  const traceItemAttributeTypeSchema = z.enum(["string", "number", "boolean"]);
+  const traceItemAttributeTypeSchema = z.enum(["string", "number", "boolean", "array"]);
 
   return agentTool({
     description:
