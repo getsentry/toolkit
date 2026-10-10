@@ -44,6 +44,12 @@ src/
 - Handles authentication and API communication
 - Formats responses for LLM consumption
 
+`buildServer()` fixes the tool catalog for each server instance. Both SDK versions
+advertise `tools.listChanged: false`: stdio does not mutate its registered catalog,
+and hosted requests build independent servers without a notification channel for
+catalog changes. Modern `subscriptions/listen` acknowledgments therefore omit
+`toolsListChanged`, following the [MCP subscription contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/subscriptions).
+
 **Note:** This package is **not published to npm**. It's a workspace-only package.
 
 ### packages/mcp-server

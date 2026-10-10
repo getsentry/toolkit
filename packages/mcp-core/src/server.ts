@@ -168,6 +168,9 @@ export function buildServer({
     for (const { name, config, handler } of registrations) {
       server.registerTool(name, config, handler);
     }
+    if (registrations.length > 0) {
+      server.server.registerCapabilities({ tools: { listChanged: false } });
+    }
     return wrapMcpServerWithSentry(server);
   }
 
@@ -180,6 +183,10 @@ export function buildServer({
   });
   for (const { name, config, handler } of registrations) {
     server.registerTool(name, config, handler);
+  }
+  // Registration enables this by default, but each server's tool catalog is fixed.
+  if (registrations.length > 0) {
+    server.server.registerCapabilities({ tools: { listChanged: false } });
   }
   return wrapMcpServerWithSentry(server);
 }
