@@ -24,7 +24,7 @@ allowBuilds:
   workerd: true
 
 overrides:
-  "@modelcontextprotocol/sdk": 1.30.0
+  "@modelcontextprotocol/sdk": 1.31.0
   fast-xml-parser: 5.7.2
   "picomatch@2.3.1": 2.3.2
   seroval: ^1.5.4
@@ -41,7 +41,7 @@ catalog:
   "@cloudflare/vitest-pool-workers": 0.14.1
   "@cloudflare/workers-oauth-provider": ^0.10.3
   "@cloudflare/workers-types": ^4.20260405.1
-  "@modelcontextprotocol/sdk": 1.30.0
+  "@modelcontextprotocol/sdk": 1.31.0
   "@modelcontextprotocol/server": 2.0.0
   "@radix-ui/react-accordion": ^1.2.20
   "@radix-ui/react-slot": ^1.2.3
