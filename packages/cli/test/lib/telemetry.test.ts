@@ -48,6 +48,26 @@ import {
   withTracingSpan,
 } from "../../src/lib/telemetry.js";
 
+// Tests in this file enable the real SDK (initSentry(true) / withTelemetry with
+// SENTRY_CLI_NO_TELEMETRY unset), which uses the production SENTRY_CLI_DSN. The
+// transport sends via node:http/https, bypassing the global fetch mock in
+// preload.ts, so without this stub every captured test fixture (e.g. CLI-299)
+// is uploaded to the real CLI Sentry project. Replace it with a no-op transport
+// so the full capture pipeline still runs but nothing leaves the process.
+vi.mock("../../src/lib/telemetry/zstd-transport.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/lib/telemetry/zstd-transport.js")
+    >();
+  const { createTransport } = await import("@sentry/core");
+  return {
+    ...actual,
+    makeCompressedTransport: (
+      options: Parameters<typeof actual.makeCompressedTransport>[0],
+    ) => createTransport(options, () => Promise.resolve({})),
+  };
+});
+
 // Snapshot beforeExit listeners before any test calls initSentry(true).
 // The ProcessSession integration registers an anonymous handler via setupOnce
 // that has no cleanup mechanism. After all tests, we remove any listeners
