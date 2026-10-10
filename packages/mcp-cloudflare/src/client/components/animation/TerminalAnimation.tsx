@@ -195,6 +195,7 @@ export default function TerminalAnimation() {
       isMobileRef.current = false;
     }
 
+    if (typeof WebAssembly === "undefined") return;
     const AsciinemaPlayerLibrary = await import("asciinema-player" as any);
     if (!cliDemoRef.current) return;
 

@@ -1,4 +1,11 @@
-# sentry-mcp
+# Sentry Toolkit
+
+This repository contains the Sentry CLI, the Sentry MCP server, and shared
+packages. For the CLI, see the [CLI guide](docs/cli/README.md) and the published
+documentation at <https://cli.sentry.dev/>. The [documentation index](docs/README.md)
+covers both products and shared contributor guidance.
+
+## Sentry MCP
 
 Sentry's MCP service is primarily designed for human-in-the-loop coding agents. Our tool selection and priorities are focused on developer workflows and debugging use cases, rather than providing a general-purpose MCP server for all Sentry functionality.
 
@@ -33,7 +40,7 @@ claude plugin install sentry-mcp@sentry-mcp-experimental
 
 While this repository is focused on acting as an MCP service, we also support a `stdio` transport. This is still a work in progress, but is the easiest way to adapt run the MCP against a self-hosted Sentry install.
 
-**Note:** The AI-powered search tools (`search_events`, `search_issues`, etc.) require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter). These tools use natural language processing to translate queries into Sentry's query syntax. Without a configured provider, these specific tools will be unavailable, but all other tools will function normally.
+**Note:** The AI-powered search tools (`search_errors`, `search_traces`, `search_logs`, `search_issues`, etc.) require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter). These tools use natural language processing to translate queries into Sentry's query syntax. Without a configured provider, these specific tools will be unavailable, but all other tools will function normally.
 
 To utilize the `stdio` transport, you'll need to create an User Auth Token in Sentry with the necessary scopes. As of writing this is:
 
@@ -267,6 +274,7 @@ pnpm -w run cli --access-token=TOKEN "query"
 Note: The CLI defaults to `http://localhost:5173`. Override with `--mcp-host` or set `MCP_URL` environment variable.
 
 **Comprehensive testing playbooks:**
+
 - **Stdio testing:** See `docs/testing/stdio.md` for complete guide on building, running, and testing the stdio implementation (IDEs, MCP Inspector)
 - **Remote testing:** See `docs/testing/remote.md` for complete guide on testing the remote server (OAuth, web UI, CLI client)
 
@@ -287,4 +295,6 @@ When addressing automated feedback, focus on the underlying concerns rather than
 
 ### Contributor Documentation
 
-Looking to contribute or explore the full documentation map? See `CLAUDE.md` (also available as `AGENTS.md`) for contributor workflows and the complete docs index. The `docs/` folder contains the per-topic guides and tool-integrated `.md` files.
+Looking to contribute? Start at the [Toolkit documentation index](docs/README.md)
+for CLI, MCP, and shared guides. See `AGENTS.md` for repository rules and
+`packages/cli/AGENTS.md` for CLI-specific rules.

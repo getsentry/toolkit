@@ -1,0 +1,17 @@
+{
+  "name": "express-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5",
+    "@types/node": "^22",
+    "typescript": "^5"
+  }
+}

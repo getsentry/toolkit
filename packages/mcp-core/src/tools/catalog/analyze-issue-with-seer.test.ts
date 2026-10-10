@@ -497,7 +497,7 @@ describe("analyze_issue_with_seer", () => {
     expect(autofixRequests).toBe(0);
     expect(result).toContain("Seer Analysis Not Available");
     expect(result).toContain("metric");
-    expect(result).toContain("search_events");
+    expect(result).toContain("search_metrics");
   });
 
   it("rejects issues outside the active project constraint", async () => {

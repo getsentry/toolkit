@@ -1,3 +1,4 @@
+import { encodeApiPathSegment } from "@sentry/toolkit-core/api-path-segment";
 import { UserInputError } from "../errors";
 
 /**
@@ -26,12 +27,13 @@ export function apiPath(
     }
 
     const value = String(values[index]);
-    if (value === "." || value === "..") {
+    const encoded = encodeApiPathSegment(value);
+    if (encoded === null) {
       throw new UserInputError(
         `Invalid identifier "${value}": relative path segments are not allowed.`,
       );
     }
 
-    return acc + literal + encodeURIComponent(value);
+    return acc + literal + encoded;
   }, "");
 }

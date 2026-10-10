@@ -44,12 +44,25 @@ export async function createTracedToolHandler<T extends ToolName>(
 }
 ```
 
-### Organization Context
+### Request Context
 
-Call `setOrganizationContext(slug)` from `src/telem/organization.ts` after
-resolving the organization, including from URLs. It sets `organization.slug`
-as a scope attribute for streamed spans, logs, and metrics, and as a tag for
-errors. SDK v11 no longer copies scope tags onto spans.
+Call `setTargetTagsAndAttributes()` from `src/telem/scope.ts` after
+resolving the organization, including from URLs. It sets the Sentry
+resources that the tool call targets as scope attributes for streamed spans,
+logs, and metrics, and as tags for errors. It requires `organizationSlug`.
+All other `Target` fields are optional, such as `projectSlug`, `teamSlug`,
+`issueId`, or `traceId`, so a tool can pass its `params` directly when they
+use these names. A numeric `projectSlugOrId` becomes `project.id`, any other
+value `project.slug`. To send a new kind of resource, add a field to
+`Target` and its key to `targetKeys`.
+
+For other searchable values that are not a target, such as `client.id` or
+`doc.path`, put the keys in one object and pass it to both `setTags` and
+`setAttributes` from `@sentry/core`. SDK v11 no longer copies scope tags
+onto spans, so do not call `setTag` alone.
+
+For values set at startup, put the same keys in both `initialScope.tags` and
+`initialScope.attributes` of `Sentry.init`.
 
 ### Span Management
 

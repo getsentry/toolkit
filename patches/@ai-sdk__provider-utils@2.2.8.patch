@@ -1,0 +1,156 @@
+diff --git a/dist/index.js b/dist/index.js
+index 58756649c132c7b9f241a90a529a39997c45ffca..95329c190376596e22fbb74175fe7138164c5b58 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -706,12 +706,54 @@ async function resolve(value) {
+ 
+ // src/response-handler.ts
+ var import_provider9 = require("@ai-sdk/provider");
++var DEFAULT_MAX_RESPONSE_SIZE = 2 * 1024 * 1024 * 1024;
++var textDecoder = new TextDecoder();
++async function readResponseBodyAsText({ response, url }) {
++  const contentLength = response.headers.get("content-length");
++  if (contentLength != null) {
++    const length = Number.parseInt(contentLength, 10);
++    if (!Number.isNaN(length) && length > DEFAULT_MAX_RESPONSE_SIZE) {
++      await response.body?.cancel();
++      throw new Error(`Response from ${url} exceeded maximum size of ${DEFAULT_MAX_RESPONSE_SIZE} bytes.`);
++    }
++  }
++  if (response.body == null) {
++    return "";
++  }
++  const reader = response.body.getReader();
++  const chunks = [];
++  let totalBytes = 0;
++  try {
++    while (true) {
++      const { done, value } = await reader.read();
++      if (done) break;
++      totalBytes += value.length;
++      if (totalBytes > DEFAULT_MAX_RESPONSE_SIZE) {
++        throw new Error(`Response from ${url} exceeded maximum size of ${DEFAULT_MAX_RESPONSE_SIZE} bytes.`);
++      }
++      chunks.push(value);
++    }
++  } finally {
++    try {
++      await reader.cancel();
++    } finally {
++      reader.releaseLock();
++    }
++  }
++  const result = new Uint8Array(totalBytes);
++  let offset = 0;
++  for (const chunk of chunks) {
++    result.set(chunk, offset);
++    offset += chunk.length;
++  }
++  return textDecoder.decode(result);
++}
+ var createJsonErrorResponseHandler = ({
+   errorSchema,
+   errorToMessage,
+   isRetryable
+ }) => async ({ response, url, requestBodyValues }) => {
+-  const responseBody = await response.text();
++  const responseBody = await readResponseBodyAsText({ response, url });
+   const responseHeaders = extractResponseHeaders(response);
+   if (responseBody.trim() === "") {
+     return {
+@@ -812,7 +854,7 @@ var createJsonStreamResponseHandler = (chunkSchema) => async ({ response }) => {
+   };
+ };
+ var createJsonResponseHandler = (responseSchema) => async ({ response, url, requestBodyValues }) => {
+-  const responseBody = await response.text();
++  const responseBody = await readResponseBodyAsText({ response, url });
+   const parsedResult = safeParseJSON({
+     text: responseBody,
+     schema: responseSchema
+@@ -867,7 +909,7 @@ var createBinaryResponseHandler = () => async ({ response, url, requestBodyValue
+ };
+ var createStatusCodeErrorResponseHandler = () => async ({ response, url, requestBodyValues }) => {
+   const responseHeaders = extractResponseHeaders(response);
+-  const responseBody = await response.text();
++  const responseBody = await readResponseBodyAsText({ response, url });
+   return {
+     responseHeaders,
+     value: new import_provider9.APICallError({
+diff --git a/dist/index.mjs b/dist/index.mjs
+index b0d8bed91fb0f8e4b5d28b92594139b354b31ddc..a2b2d4d2f95089c95bdebddf4ad3131d9e80e874 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -636,12 +636,54 @@ async function resolve(value) {
+ 
+ // src/response-handler.ts
+ import { APICallError as APICallError3, EmptyResponseBodyError } from "@ai-sdk/provider";
++var DEFAULT_MAX_RESPONSE_SIZE = 2 * 1024 * 1024 * 1024;
++var textDecoder = new TextDecoder();
++async function readResponseBodyAsText({ response, url }) {
++  const contentLength = response.headers.get("content-length");
++  if (contentLength != null) {
++    const length = Number.parseInt(contentLength, 10);
++    if (!Number.isNaN(length) && length > DEFAULT_MAX_RESPONSE_SIZE) {
++      await response.body?.cancel();
++      throw new Error(`Response from ${url} exceeded maximum size of ${DEFAULT_MAX_RESPONSE_SIZE} bytes.`);
++    }
++  }
++  if (response.body == null) {
++    return "";
++  }
++  const reader = response.body.getReader();
++  const chunks = [];
++  let totalBytes = 0;
++  try {
++    while (true) {
++      const { done, value } = await reader.read();
++      if (done) break;
++      totalBytes += value.length;
++      if (totalBytes > DEFAULT_MAX_RESPONSE_SIZE) {
++        throw new Error(`Response from ${url} exceeded maximum size of ${DEFAULT_MAX_RESPONSE_SIZE} bytes.`);
++      }
++      chunks.push(value);
++    }
++  } finally {
++    try {
++      await reader.cancel();
++    } finally {
++      reader.releaseLock();
++    }
++  }
++  const result = new Uint8Array(totalBytes);
++  let offset = 0;
++  for (const chunk of chunks) {
++    result.set(chunk, offset);
++    offset += chunk.length;
++  }
++  return textDecoder.decode(result);
++}
+ var createJsonErrorResponseHandler = ({
+   errorSchema,
+   errorToMessage,
+   isRetryable
+ }) => async ({ response, url, requestBodyValues }) => {
+-  const responseBody = await response.text();
++  const responseBody = await readResponseBodyAsText({ response, url });
+   const responseHeaders = extractResponseHeaders(response);
+   if (responseBody.trim() === "") {
+     return {
+@@ -742,7 +784,7 @@ var createJsonStreamResponseHandler = (chunkSchema) => async ({ response }) => {
+   };
+ };
+ var createJsonResponseHandler = (responseSchema) => async ({ response, url, requestBodyValues }) => {
+-  const responseBody = await response.text();
++  const responseBody = await readResponseBodyAsText({ response, url });
+   const parsedResult = safeParseJSON({
+     text: responseBody,
+     schema: responseSchema
+@@ -797,7 +839,7 @@ var createBinaryResponseHandler = () => async ({ response, url, requestBodyValue
+ };
+ var createStatusCodeErrorResponseHandler = () => async ({ response, url, requestBodyValues }) => {
+   const responseHeaders = extractResponseHeaders(response);
+-  const responseBody = await response.text();
++  const responseBody = await readResponseBodyAsText({ response, url });
+   return {
+     responseHeaders,
+     value: new APICallError3({

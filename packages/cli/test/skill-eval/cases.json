@@ -1,0 +1,211 @@
+[
+  {
+    "id": "list-issues-basic",
+    "prompt": "show me the sentry issues",
+    "description": "Basic issue listing — should auto-detect org/project",
+    "criteria": {
+      "no-pre-auth": {
+        "brief": "Does not run auth commands before the actual command",
+        "anti-patterns": [
+          "sentry auth login",
+          "sentry auth status",
+          "sentry auth whoami"
+        ]
+      },
+      "no-pre-lookup": {
+        "brief": "Does not run org/project listing before the actual command",
+        "anti-patterns": [
+          "sentry org list",
+          "sentry project list",
+          "sentry org view",
+          "sentry project view"
+        ]
+      },
+      "correct-command": {
+        "brief": "Uses sentry issue list as the primary command",
+        "expected-patterns": ["sentry issue list"]
+      },
+      "minimal-calls": {
+        "brief": "Plans at most 2 CLI commands total",
+        "max-commands": 2
+      },
+      "trusts-auto-detect": {
+        "brief": "Does not hardcode org/project names",
+        "anti-patterns": ["my-org/", "my-project"]
+      }
+    }
+  },
+  {
+    "id": "identify-local-project",
+    "prompt": "which sentry project does this checkout correspond to? then show me its unresolved issues",
+    "description": "Tempting fan-out — agent should trust auto-detection and run issue list directly instead of listing orgs then projects to match the checkout",
+    "criteria": {
+      "no-pre-auth": {
+        "brief": "Does not pre-authenticate",
+        "anti-patterns": ["sentry auth login", "sentry auth status"]
+      },
+      "no-pre-lookup": {
+        "brief": "Does not list orgs/projects to identify the local project",
+        "anti-patterns": [
+          "sentry org list",
+          "sentry project list",
+          "sentry org view",
+          "sentry project view"
+        ]
+      },
+      "correct-command": {
+        "brief": "Runs sentry issue list and lets the CLI resolve the target",
+        "expected-patterns": ["sentry issue list"]
+      },
+      "minimal-calls": {
+        "brief": "Plans at most 2 CLI commands total",
+        "max-commands": 2
+      },
+      "trusts-auto-detect": {
+        "brief": "Does not hardcode org/project names",
+        "anti-patterns": ["my-org/", "my-project"]
+      }
+    }
+  },
+  {
+    "id": "recent-errors",
+    "prompt": "what errors happened recently in my project?",
+    "description": "Recent error lookup — should use issue list, auto-detect context",
+    "criteria": {
+      "no-pre-auth": {
+        "brief": "Does not run auth commands before the actual command",
+        "anti-patterns": ["sentry auth login", "sentry auth status"]
+      },
+      "no-pre-lookup": {
+        "brief": "Does not run org/project listing before the actual command",
+        "anti-patterns": ["sentry org list", "sentry project list"]
+      },
+      "correct-command": {
+        "brief": "Uses sentry issue list as the primary command",
+        "expected-patterns": ["sentry issue list"]
+      },
+      "minimal-calls": {
+        "brief": "Plans at most 2 CLI commands total",
+        "max-commands": 2
+      }
+    }
+  },
+  {
+    "id": "view-specific-issue",
+    "prompt": "tell me about issue PROJ-42",
+    "description": "View a specific issue by short ID — single command",
+    "criteria": {
+      "no-pre-auth": {
+        "brief": "Does not pre-authenticate",
+        "anti-patterns": ["sentry auth login", "sentry auth status"]
+      },
+      "correct-command": {
+        "brief": "Uses sentry issue view with the correct short ID",
+        "expected-patterns": ["sentry issue view", "PROJ-42"]
+      },
+      "minimal-calls": {
+        "brief": "Plans exactly 1 CLI command",
+        "max-commands": 1
+      }
+    }
+  },
+  {
+    "id": "explain-issue",
+    "prompt": "why is CLI-G5 happening? can you analyze the root cause?",
+    "description": "Root cause analysis — view + explain is acceptable (2 commands max)",
+    "criteria": {
+      "no-pre-auth": {
+        "brief": "Does not pre-authenticate",
+        "anti-patterns": ["sentry auth login", "sentry auth status"]
+      },
+      "correct-command": {
+        "brief": "Uses sentry issue explain with the correct ID",
+        "expected-patterns": ["sentry issue explain", "CLI-G5"]
+      },
+      "minimal-calls": {
+        "brief": "Plans at most 2 CLI commands",
+        "max-commands": 2
+      }
+    }
+  },
+  {
+    "id": "list-traces",
+    "prompt": "show me recent traces for performance analysis",
+    "description": "Trace listing — should use trace list with auto-detection. Second command (if any) could be a follow-up like trace view.",
+    "criteria": {
+      "no-pre-auth": {
+        "brief": "Does not pre-authenticate",
+        "anti-patterns": ["sentry auth login", "sentry auth status"]
+      },
+      "no-pre-lookup": {
+        "brief": "Does not look up org/project first",
+        "anti-patterns": ["sentry org list", "sentry project list"]
+      },
+      "correct-command": {
+        "brief": "Uses sentry trace list",
+        "expected-patterns": ["sentry trace list"]
+      },
+      "minimal-calls": {
+        "brief": "Plans at most 2 CLI commands",
+        "max-commands": 2
+      },
+      "trusts-auto-detect": {
+        "brief": "Does not hardcode org/project names",
+        "anti-patterns": ["my-org/", "my-project"]
+      }
+    }
+  },
+  {
+    "id": "json-output",
+    "prompt": "get me all unresolved issues as JSON so I can process them in a script",
+    "description": "Machine-readable output — should use --json flag",
+    "criteria": {
+      "correct-command": {
+        "brief": "Uses sentry issue list with --json flag",
+        "expected-patterns": ["sentry issue list", "--json"]
+      },
+      "minimal-calls": {
+        "brief": "Plans at most 2 CLI commands",
+        "max-commands": 2
+      },
+      "trusts-auto-detect": {
+        "brief": "Does not hardcode org/project names",
+        "anti-patterns": ["my-org/", "my-project"]
+      }
+    }
+  },
+  {
+    "id": "api-fallback",
+    "prompt": "I need to get the raw organization settings from the Sentry API",
+    "description": "API call — should use sentry api, not external curl",
+    "criteria": {
+      "correct-command": {
+        "brief": "Uses sentry api for the request",
+        "expected-patterns": ["sentry api"]
+      },
+      "no-external-curl": {
+        "brief": "Does not use raw curl commands",
+        "anti-patterns": ["curl "]
+      }
+    }
+  },
+  {
+    "id": "explore-schema",
+    "prompt": "what API endpoints are available for releases?",
+    "description": "Schema exploration — should use sentry schema",
+    "criteria": {
+      "correct-command": {
+        "brief": "Uses sentry schema to explore the API",
+        "expected-patterns": ["sentry schema"]
+      },
+      "no-external-fetch": {
+        "brief": "Does not fetch external API docs",
+        "anti-patterns": ["docs.sentry.io/api", "openapi", "swagger"]
+      },
+      "minimal-calls": {
+        "brief": "Plans at most 2 CLI commands",
+        "max-commands": 2
+      }
+    }
+  }
+]

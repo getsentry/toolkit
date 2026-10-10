@@ -3,6 +3,7 @@ import { APICallError, generateText } from "ai";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UserInputError } from "../../errors";
+import { runSearchEvents } from "../support/search-events/search";
 import searchEvents from "./search-events";
 
 // Mock the AI SDK
@@ -197,17 +198,27 @@ describe("search_events", () => {
 
     mswServer.use(
       http.get(
-        "https://sentry.io/api/0/organizations/test-org/events-stats/",
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
         ({ request }) => {
           const url = new URL(request.url);
           expect(url.searchParams.get("yAxis")).toBe("count()");
           expect(url.searchParams.get("interval")).toBe("1h");
           expect(url.searchParams.get("dataset")).toBe("errors");
           return HttpResponse.json({
-            data: [
-              [1757548800, [{ count: 5 }]],
-              [1757552400, [{ count: 8 }]],
-              [1757556000, [{ count: 3 }]],
+            timeSeries: [
+              {
+                yAxis: "count()",
+                values: [
+                  { timestamp: 1757548800000, value: 5, incomplete: false },
+                  { timestamp: 1757552400000, value: 8, incomplete: false },
+                  { timestamp: 1757556000000, value: 3, incomplete: false },
+                ],
+                meta: {
+                  interval: 3600000,
+                  valueType: "integer",
+                  valueUnit: null,
+                },
+              },
             ],
           });
         },
@@ -265,12 +276,22 @@ describe("search_events", () => {
 
     mswServer.use(
       http.get(
-        "https://sentry.io/api/0/organizations/test-org/events-stats/",
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
         () =>
           HttpResponse.json({
-            data: [
-              [1757548800, [{ count: 5 }]],
-              [1757552400, [{ count: 8 }]],
+            timeSeries: [
+              {
+                yAxis: "count_unique(user)",
+                values: [
+                  { timestamp: 1757548800000, value: 5, incomplete: false },
+                  { timestamp: 1757552400000, value: 8, incomplete: false },
+                ],
+                meta: {
+                  interval: 3600000,
+                  valueType: "integer",
+                  valueUnit: null,
+                },
+              },
             ],
           }),
       ),
@@ -303,6 +324,173 @@ describe("search_events", () => {
     expect(result).not.toContain("**Total**");
     // Peak (the max bucket) is still meaningful for non-additive aggregates.
     expect(result).toContain("**Peak**: 8");
+  });
+
+  it("marks incomplete buckets and reports ingestion delay", async () => {
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "count()", interval: "1h" },
+      timeRange: { statsPeriod: "24h" },
+      explanation: "",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+        () =>
+          HttpResponse.json({
+            timeSeries: [
+              {
+                yAxis: "count()",
+                values: [
+                  {
+                    timestamp: 1757548800000,
+                    value: 10,
+                    incomplete: true,
+                    incompleteReason: "OUTSIDE_RETENTION",
+                  },
+                  { timestamp: 1757552400000, value: 8, incomplete: false },
+                  {
+                    timestamp: 1757556000000,
+                    value: 9,
+                    incomplete: true,
+                    incompleteReason: "NOT_ELAPSED",
+                  },
+                ],
+                meta: {
+                  interval: 3600000,
+                  valueType: "integer",
+                  valueUnit: null,
+                },
+              },
+            ],
+            meta: {
+              dataset: "errors",
+              start: 1757462400000,
+              end: 1757548800000,
+              ingestion: {
+                status: "healthy",
+                delaySeconds: 95,
+                completeThrough: 1757556600000,
+              },
+            },
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "errors per hour",
+        fields: null,
+        sort: null,
+        period: "24h",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    // The still-filling bucket can't be the peak yet. The retention-partial
+    // bucket is final, so it still counts and wins here.
+    expect(result).toContain("**Peak**: 10 at 2025-09-11 00:00");
+    expect(result).toContain("**Total**: 27 (so far)");
+    expect(result).toContain("| 2025-09-11 00:00 | 10 † |");
+    expect(result).toContain("| 2025-09-11 02:00 | 9 * |");
+    expect(result).toContain("Incomplete bucket: data is still arriving");
+    expect(result).toContain(
+      "Partial bucket: it starts before the retention window",
+    );
+    expect(result).toContain(
+      "**Ingestion**: healthy (~1m 35s behind, data complete through 2025-09-11 02:10 UTC)",
+    );
+  });
+
+  it("omits the retention footnote when its buckets are cut from the table", async () => {
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "count()", interval: "1d" },
+      timeRange: { statsPeriod: "100d" },
+      explanation: "",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    // 60 daily buckets: the first is outside retention, but only the latest
+    // 48 rows are rendered, so no † row is visible.
+    const day = 86400000;
+    const values = Array.from({ length: 60 }, (_, i) => ({
+      timestamp: 1752364800000 + i * day,
+      value: i + 1,
+      incomplete: i === 0,
+      ...(i === 0 ? { incompleteReason: "OUTSIDE_RETENTION" } : {}),
+    }));
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+        () =>
+          HttpResponse.json({
+            timeSeries: [{ yAxis: "count()", values, meta: { interval: day } }],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "errors per day",
+        fields: null,
+        sort: null,
+        period: "100d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("## Buckets (most recent 48 of 60)");
+    expect(result).not.toContain("†");
+    expect(result).not.toContain("so far");
   });
 
   it("should handle spans dataset queries", async () => {
@@ -3133,6 +3321,7 @@ describe("search_events", () => {
 
   it("merges agent environment into the events search query for non-replay datasets", async () => {
     let eventsRequestUrl: URL | undefined;
+    let validationRequestUrl: URL | undefined;
 
     mockGenerateText.mockResolvedValueOnce(
       mockAIResponse(
@@ -3149,7 +3338,10 @@ describe("search_events", () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/test-org/events/validate/",
-        () => HttpResponse.json(validEventsValidationResponse),
+        ({ request }) => {
+          validationRequestUrl = new URL(request.url);
+          return HttpResponse.json(validEventsValidationResponse);
+        },
       ),
       http.get(
         "https://sentry.io/api/0/organizations/test-org/events/",
@@ -3189,6 +3381,9 @@ describe("search_events", () => {
     expect(eventsRequestUrl).toBeDefined();
     expect(eventsRequestUrl!.searchParams.get("query")).toContain(
       "environment:production",
+    );
+    expect(validationRequestUrl!.searchParams.get("environment")).toBe(
+      "production",
     );
   });
 
@@ -3330,5 +3525,766 @@ describe("search_events", () => {
     ).rejects.toThrow(/Search validation failed:/);
 
     expect(mockGenerateText).not.toHaveBeenCalled();
+  });
+
+  it("keeps the caller's dataset when lockDataset is set", async () => {
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse("logs", "level:error"),
+    );
+    const requestedDatasets: Array<string | null> = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          requestedDatasets.push(
+            new URL(request.url).searchParams.get("dataset"),
+          );
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    await runSearchEvents(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "how many errors today",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        constraints: {
+          organizationSlug: null,
+          regionUrl: null,
+          projectSlug: null,
+        },
+        accessToken: "test-token",
+        userId: "1",
+      },
+      { lockDataset: true },
+    );
+
+    expect(requestedDatasets).toEqual(["errors"]);
+    expect(JSON.stringify(mockGenerateText.mock.calls[0])).toContain(
+      "The dataset is fixed to errors",
+    );
+  });
+
+  describe("with Seer", () => {
+    const seerParams = {
+      organizationSlug: "test-org",
+      regionUrl: null,
+      projectSlug: "test-project",
+      dataset: "spans" as const,
+      query: "slowest http requests in the last day",
+      fields: null,
+      sort: null,
+      period: undefined,
+      limit: 10,
+      includeExplanation: true,
+    };
+    const context = {
+      constraints: {
+        organizationSlug: null,
+        regionUrl: null,
+        projectSlug: null,
+      },
+      accessToken: "test-token",
+      userId: "1",
+    };
+    const seerQuery = {
+      query: "span.op:http.client",
+      group_by: ["span.description"],
+      visualization: [
+        { chart_type: 1, y_axes: ["p95(span.duration)"], interval: null },
+      ],
+      sort: "-p95(span.duration)",
+      stats_period: "24h",
+      start: null,
+      end: null,
+      mode: "aggregates",
+      result_count: 1,
+      span_query: null,
+      log_query: null,
+      metric_query: null,
+    };
+
+    const mockOrganization = (
+      features: string[],
+      { hideAiFeatures = false } = {},
+    ) =>
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/",
+        ({ request }) =>
+          HttpResponse.json({
+            id: "1",
+            slug: "test-org",
+            name: "Test Org",
+            // Sentry only serializes features when explicitly requested.
+            ...(new URL(request.url).searchParams.get(
+              "include_feature_flags",
+            ) === "1"
+              ? { features }
+              : {}),
+            hideAiFeatures,
+          }),
+      );
+    const mockProject = http.get(
+      "https://sentry.io/api/0/projects/test-org/test-project/",
+      () => HttpResponse.json({ id: "42", slug: "test-project", name: "Test" }),
+    );
+    const mockSeerStart = vi.fn(async ({ request }: { request: Request }) => {
+      expect(await request.json()).toEqual({
+        project_ids: [42],
+        natural_language_query: "slowest http requests in the last day",
+        strategy: "Traces",
+      });
+      return HttpResponse.json({ run_id: 1, sentry_run_id: "run-uuid" });
+    });
+    const mockSeerState = (session: Record<string, unknown>) =>
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/search-agent/state/run-uuid/",
+        () => HttpResponse.json({ session, sentry_run_id: "run-uuid" }),
+      );
+
+    beforeEach(() => {
+      mockSeerStart.mockClear();
+      mswServer.use(
+        mockProject,
+        http.post(
+          "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
+          mockSeerStart,
+        ),
+      );
+    });
+
+    it("should translate natural language queries with Seer", async () => {
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        mockSeerState({
+          status: "completed",
+          final_response: { responses: [seerQuery], unsupported_reason: null },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            const url = new URL(request.url);
+            expect(url.searchParams.get("dataset")).toBe("spans");
+            expect(url.searchParams.get("query")).toBe("span.op:http.client");
+            expect(url.searchParams.getAll("field")).toEqual([
+              "span.description",
+              "p95(span.duration)",
+            ]);
+            expect(url.searchParams.get("sort")).toBe("-p95(span.duration)");
+            expect(url.searchParams.get("statsPeriod")).toBe("24h");
+            return HttpResponse.json({
+              data: [
+                {
+                  "span.description": "GET /api/users",
+                  "p95(span.duration)": 1200,
+                },
+              ],
+            });
+          },
+        ),
+      );
+
+      const result = await searchEvents.handler(seerParams, context);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(result).toContain("GET /api/users");
+      expect(result).toContain("Translated by Seer's search agent.");
+    });
+
+    it("should return a time series when Seer sets an interval", async () => {
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        mockSeerState({
+          status: "completed",
+          final_response: {
+            responses: [
+              {
+                ...seerQuery,
+                query: "",
+                group_by: [],
+                visualization: [
+                  { chart_type: 1, y_axes: ["count()"], interval: "1d" },
+                ],
+                sort: "-count()",
+                stats_period: "7d",
+              },
+            ],
+            unsupported_reason: null,
+          },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+          ({ request }) => {
+            const url = new URL(request.url);
+            expect(url.searchParams.get("yAxis")).toBe("count()");
+            expect(url.searchParams.get("interval")).toBe("1d");
+            expect(url.searchParams.get("dataset")).toBe("spans");
+            expect(url.searchParams.get("statsPeriod")).toBe("7d");
+            return HttpResponse.json({
+              timeSeries: [
+                {
+                  yAxis: "count()",
+                  values: [
+                    { timestamp: 1757548800000, value: 5, incomplete: false },
+                    { timestamp: 1757635200000, value: 8, incomplete: false },
+                  ],
+                  meta: { interval: 86400000 },
+                },
+              ],
+            });
+          },
+        ),
+      );
+
+      const result = await searchEvents.handler(seerParams, context);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(result).toContain("## count() over time");
+      expect(result).toContain("- **Total**: 13");
+      expect(result).not.toContain("**Warning:**");
+    });
+
+    it("should apply Seer's cross-event filters", async () => {
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        mockSeerState({
+          status: "completed",
+          final_response: {
+            responses: [
+              {
+                ...seerQuery,
+                span_query: "span.op:db",
+                log_query: "severity:error",
+              },
+            ],
+            unsupported_reason: null,
+          },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            const url = new URL(request.url);
+            expect(url.searchParams.get("spanQuery")).toBe("span.op:db");
+            expect(url.searchParams.get("logQuery")).toBe("severity:error");
+            expect(url.searchParams.has("metricQuery")).toBe(false);
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      const result = await searchEvents.handler(seerParams, context);
+
+      expect(result).toContain(
+        "Only includes results whose trace also has matching spans `span.op:db`, logs `severity:error`.",
+      );
+      expect(result).not.toContain("**Warning:**");
+    });
+
+    it.each([false, undefined, true])(
+      "warns about unapplied time-series filters with includeExplanation=%s",
+      async (includeExplanation) => {
+        mswServer.use(
+          mockOrganization(["mcp-search-events-seer-translate"]),
+          mockSeerState({
+            status: "completed",
+            final_response: {
+              responses: [
+                {
+                  ...seerQuery,
+                  group_by: [],
+                  visualization: [
+                    { chart_type: 1, y_axes: ["count()"], interval: "1h" },
+                  ],
+                  sort: "-count()",
+                  span_query: "span.op:db",
+                  log_query: "severity:error",
+                  metric_query: "metric.name:requests",
+                },
+              ],
+              unsupported_reason: null,
+            },
+          }),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+            ({ request }) => {
+              const url = new URL(request.url);
+              expect(url.searchParams.has("spanQuery")).toBe(false);
+              expect(url.searchParams.has("logQuery")).toBe(false);
+              expect(url.searchParams.has("metricQuery")).toBe(false);
+              return HttpResponse.json({
+                timeSeries: [
+                  {
+                    yAxis: "count()",
+                    values: [
+                      {
+                        timestamp: 1757548800000,
+                        value: 100,
+                        incomplete: false,
+                      },
+                    ],
+                    meta: { interval: 3600000 },
+                  },
+                ],
+              });
+            },
+          ),
+        );
+
+        const result = await searchEvents.handler(
+          {
+            ...seerParams,
+            includeExplanation:
+              searchEvents.inputSchema.includeExplanation.parse(
+                includeExplanation,
+              ),
+          },
+          context,
+        );
+
+        const warning =
+          "**Warning:** Time series results are unfiltered by the requested cross-event filters (spans `span.op:db`, logs `severity:error`, metrics `metric.name:requests`). Counts and other values may include events outside the requested subset.";
+        expect(result.startsWith(`${warning}\n\n`)).toBe(true);
+        expect(result.split(warning)).toHaveLength(2);
+        expect(result.includes("Translated by Seer's search agent.")).toBe(
+          includeExplanation === true,
+        );
+        expect(result).toContain("- **Total**: 100");
+        if (includeExplanation === false) {
+          expect(result).toMatchInlineSnapshot(`
+            "**Warning:** Time series results are unfiltered by the requested cross-event filters (spans \`span.op:db\`, logs \`severity:error\`, metrics \`metric.name:requests\`). Counts and other values may include events outside the requested subset.
+
+            # Search Results for "slowest http requests in the last day"
+
+            ## count() over time
+            - **Interval**: \`1h\`
+            - **Time range**: Last 24h
+            - **Total**: 100
+            - **Peak**: 100 at 2025-09-11 00:00
+
+            ## Buckets
+
+            | Time (UTC) | Value |
+            | --- | --- |
+            | 2025-09-11 00:00 | 100 |
+
+            **View these results in Sentry**:
+            https://test-org.sentry.io/explore/traces/?query=span.op%3Ahttp.client&project=42&aggregateField=%7B%22yAxes%22%3A%5B%22count%28%29%22%5D%7D&mode=aggregate&sort=-count%28%29&statsPeriod=24h&table=span
+            Please tell the user this dashboard link is available if they want to open the results in Sentry."
+          `);
+        }
+      },
+    );
+
+    it("should keep a grouped Seer query with an interval as a table", async () => {
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        mockSeerState({
+          status: "completed",
+          final_response: {
+            responses: [
+              {
+                ...seerQuery,
+                visualization: [
+                  {
+                    chart_type: 1,
+                    y_axes: ["p95(span.duration)"],
+                    interval: "1h",
+                  },
+                ],
+              },
+            ],
+            unsupported_reason: null,
+          },
+        }),
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json({ data: [] }),
+        ),
+      );
+
+      const result = await searchEvents.handler(seerParams, context);
+
+      expect(result).not.toContain("over time");
+    });
+
+    it("should add an explicit environment to Seer's query", async () => {
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        mockSeerState({
+          status: "completed",
+          final_response: { responses: [seerQuery], unsupported_reason: null },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/environments/",
+          () => HttpResponse.json([{ id: "1", name: "production" }]),
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            const url = new URL(request.url);
+            expect(url.searchParams.get("query")).toBe(
+              "span.op:http.client environment:production",
+            );
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      await searchEvents.handler(
+        { ...seerParams, environment: "production" },
+        context,
+      );
+
+      expect(mockSeerStart).toHaveBeenCalled();
+      expect(mockGenerateText).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["suggest", context, true],
+      [
+        "not suggest in a project-scoped session",
+        {
+          ...context,
+          constraints: { ...context.constraints, projectSlug: "test-project" },
+        },
+        false,
+      ],
+    ])(
+      "should keep the requested project and %s Seer's wider scope",
+      async (_, handlerContext, expectNote) => {
+        mswServer.use(
+          mockOrganization(["mcp-search-events-seer-translate"]),
+          mockSeerState({
+            status: "completed",
+            final_response: {
+              responses: [seerQuery],
+              unsupported_reason: null,
+              project_ids: [42, 43],
+            },
+          }),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events/",
+            ({ request }) => {
+              const url = new URL(request.url);
+              expect(url.searchParams.getAll("project")).toEqual(["42"]);
+              return HttpResponse.json({ data: [] });
+            },
+          ),
+        );
+
+        const result = await searchEvents.handler(seerParams, handlerContext);
+
+        expect(mockSeerStart).toHaveBeenCalled();
+        expect(
+          result.includes("Seer suggested also searching project IDs 43"),
+        ).toBe(expectNote);
+      },
+    );
+
+    it("should keep the requested project when Seer does not broaden it", async () => {
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        mockSeerState({
+          status: "completed",
+          final_response: {
+            responses: [seerQuery],
+            unsupported_reason: null,
+            project_ids: [42],
+          },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            const url = new URL(request.url);
+            expect(url.searchParams.getAll("project")).toEqual(["42"]);
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      const result = await searchEvents.handler(seerParams, context);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+      expect(result).not.toContain("Seer suggested also searching");
+    });
+
+    it("should search all accessible projects without a projectSlug", async () => {
+      const mockAllProjectsStart = vi.fn(
+        async ({ request }: { request: Request }) => {
+          expect(await request.json()).toMatchObject({ project_ids: [-1] });
+          return HttpResponse.json({ run_id: 1, sentry_run_id: "run-uuid" });
+        },
+      );
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        http.post(
+          "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
+          mockAllProjectsStart,
+        ),
+        mockSeerState({
+          status: "completed",
+          final_response: { responses: [seerQuery], unsupported_reason: null },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/environments/",
+          ({ request }) => {
+            expect(new URL(request.url).searchParams.get("project")).toBe("-1");
+            return HttpResponse.json([{ id: "1", name: "production" }]);
+          },
+          { once: true },
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          ({ request }) => {
+            expect(new URL(request.url).searchParams.get("project")).toBe("-1");
+            return HttpResponse.json(validEventsValidationResponse);
+          },
+          { once: true },
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            expect(new URL(request.url).searchParams.get("project")).toBe("-1");
+            return HttpResponse.json({ data: [] });
+          },
+          { once: true },
+        ),
+      );
+
+      const result = await searchEvents.handler(
+        { ...seerParams, projectSlug: null, environment: "production" },
+        context,
+      );
+
+      expect(mockAllProjectsStart).toHaveBeenCalled();
+      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(result).toContain("project=-1");
+    });
+
+    it("should keep Seer's all-project scope for time series", async () => {
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        http.post(
+          "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
+          async ({ request }) => {
+            expect(await request.json()).toMatchObject({ project_ids: [-1] });
+            return HttpResponse.json({ run_id: 1, sentry_run_id: "run-uuid" });
+          },
+          { once: true },
+        ),
+        mockSeerState({
+          status: "completed",
+          final_response: {
+            responses: [
+              {
+                ...seerQuery,
+                group_by: [],
+                visualization: [{ y_axes: ["count()"], interval: "1d" }],
+              },
+            ],
+          },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+          ({ request }) => {
+            expect(new URL(request.url).searchParams.get("project")).toBe("-1");
+            return HttpResponse.json({ timeSeries: [] });
+          },
+          { once: true },
+        ),
+      );
+
+      const result = await searchEvents.handler(
+        { ...seerParams, projectSlug: null },
+        context,
+      );
+
+      expect(result).toContain("project=-1");
+    });
+
+    it("should prefer an explicit period over Seer's time range", async () => {
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        mockSeerState({
+          status: "completed",
+          final_response: { responses: [seerQuery], unsupported_reason: null },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            const url = new URL(request.url);
+            expect(url.searchParams.get("statsPeriod")).toBe("7d");
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      await searchEvents.handler({ ...seerParams, period: "7d" }, context);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+    });
+
+    it("should not group by a non-aggregate Seer sort", async () => {
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        mockSeerState({
+          status: "completed",
+          final_response: {
+            responses: [{ ...seerQuery, sort: "-timestamp" }],
+            unsupported_reason: null,
+          },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            const url = new URL(request.url);
+            expect(url.searchParams.getAll("field")).toEqual([
+              "span.description",
+              "p95(span.duration)",
+            ]);
+            expect(url.searchParams.get("sort")).toBe("-p95(span.duration)");
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      await searchEvents.handler(seerParams, context);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+    });
+
+    it.each([
+      ["a structured query", { query: "span.op:http.client" }],
+      ["explicit fields", { fields: ["span.description", "count()"] }],
+      ["an explicit sort", { sort: "-count()" }],
+    ])("should skip Seer for %s", async (_, overrides) => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", "span.op:http.client"),
+      );
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json({ data: [] }),
+        ),
+      );
+
+      await searchEvents.handler({ ...seerParams, ...overrides }, context);
+
+      expect(mockSeerStart).not.toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+    });
+
+    it("should fall back to the agent when Seer is not enabled", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", "span.op:http.client"),
+      );
+      mswServer.use(
+        mockOrganization([]),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/environments/",
+          ({ request }) => {
+            expect(new URL(request.url).searchParams.has("project")).toBe(
+              false,
+            );
+            return HttpResponse.json([]);
+          },
+          { once: true },
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          ({ request }) => {
+            expect(new URL(request.url).searchParams.has("project")).toBe(
+              false,
+            );
+            return HttpResponse.json(validEventsValidationResponse);
+          },
+          { once: true },
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            expect(new URL(request.url).searchParams.has("project")).toBe(
+              false,
+            );
+            return HttpResponse.json({ data: [] });
+          },
+          { once: true },
+        ),
+      );
+
+      await searchEvents.handler({ ...seerParams, projectSlug: null }, context);
+
+      expect(mockSeerStart).not.toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+    });
+
+    it("should fall back to the agent when AI features are hidden", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", "span.op:http.client"),
+      );
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"], {
+          hideAiFeatures: true,
+        }),
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json({ data: [] }),
+        ),
+      );
+
+      await searchEvents.handler(seerParams, context);
+
+      expect(mockSeerStart).not.toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+    });
+
+    it("should fall back to the agent when Seer cannot translate", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", "span.op:http.client"),
+      );
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        mockSeerState({ status: "error", unsupported_reason: "Unsupported" }),
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json({ data: [] }),
+        ),
+      );
+
+      await searchEvents.handler(seerParams, context);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+    });
+
+    it("should fall back to the agent when Seer returns 403", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", "span.op:http.client"),
+      );
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"]),
+        http.post(
+          "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
+          () =>
+            HttpResponse.json(
+              { detail: "Feature flag not enabled" },
+              { status: 403 },
+            ),
+        ),
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json({ data: [] }),
+        ),
+      );
+
+      await searchEvents.handler(seerParams, context);
+
+      expect(mockGenerateText).toHaveBeenCalled();
+    });
   });
 });

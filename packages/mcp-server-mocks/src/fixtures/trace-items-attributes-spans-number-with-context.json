@@ -1,0 +1,57 @@
+[
+  {
+    "key": "span.duration",
+    "name": "span.duration",
+    "context": {
+      "isConvention": false,
+      "brief": "The total time taken by the span.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "transaction.duration",
+    "name": "transaction.duration",
+    "context": {}
+  },
+  {
+    "key": "http.status_code",
+    "name": "HTTP Status Code",
+    "context": {
+      "isConvention": true,
+      "brief": "The status code of the HTTP response.",
+      "isDeprecated": true,
+      "examples": [404],
+      "replacementAttribute": "http.response.status_code"
+    }
+  },
+  {
+    "key": "http.response.status_code",
+    "name": "http.response.status_code",
+    "context": {
+      "isConvention": true,
+      "brief": "The status code of the HTTP response.",
+      "isDeprecated": false,
+      "examples": [404]
+    }
+  },
+  {
+    "key": "custom.count",
+    "name": "custom.count",
+    "context": {}
+  },
+  {
+    "key": "custom.score",
+    "name": "custom.score",
+    "context": {}
+  },
+  {
+    "key": "custom.latency_ms",
+    "name": "custom.latency_ms",
+    "context": {}
+  },
+  {
+    "key": "custom.db.pool_size",
+    "name": "custom.db.pool_size",
+    "context": {}
+  }
+]

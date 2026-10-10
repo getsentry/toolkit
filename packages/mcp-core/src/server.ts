@@ -24,8 +24,9 @@ import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
 import {
   getActiveSpan,
   type SpanAttributeValue,
-  setTag,
   setUser,
+  setAttributes,
+  setTags,
 } from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
@@ -301,16 +302,16 @@ function configureServer({
         };
         setUser(user);
       }
-      if (context.clientId) {
-        setTag("client.id", context.clientId);
-      }
-      if (context.clientFamily) {
-        setTag("app.client.family", context.clientFamily);
-      }
-      if (context.transport) {
-        setTag("app.transport", context.transport);
-      }
-      setTag("app.server.mode.experimental", experimentalMode);
+      const requestContext = {
+        ...(context.clientId ? { "client.id": context.clientId } : {}),
+        ...(context.clientFamily
+          ? { "app.client.family": context.clientFamily }
+          : {}),
+        ...(context.transport ? { "app.transport": context.transport } : {}),
+        "app.server.mode.experimental": experimentalMode,
+      };
+      setTags(requestContext);
+      setAttributes(requestContext);
 
       // Hoisted so both the handler path and the catch (onError) share one
       // narrowing instead of re-casting `params`.

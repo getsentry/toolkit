@@ -1,25 +1,25 @@
 #!/usr/bin/env node
 
+import path from "node:path";
+import { stdin as input, stdout as output } from "node:process";
 /**
  * CLI entry point for MCP QA: loads env, resolves transport/provider, then runs
  * either tool discovery or the test agent against a single MCP connection.
  */
 import * as readline from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
+import { fileURLToPath } from "node:url";
+import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
+import * as Sentry from "@sentry/node";
+import chalk from "chalk";
 import { Command, Option } from "commander";
 import { config } from "dotenv";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import chalk from "chalk";
-import * as Sentry from "@sentry/node";
+import { runAgent } from "./agent.js";
+import { resolveAgentProvider } from "./agent-provider.js";
+import { logError, logInfo } from "./logger.js";
 import { connectToMCPServer } from "./mcp-test-client.js";
 import { connectToRemoteMCPServer } from "./mcp-test-client-remote.js";
-import { runAgent } from "./agent.js";
-import { logError, logInfo } from "./logger.js";
-import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
-import type { MCPConnection } from "./types.js";
 import { resolveTransportMode } from "./transport.js";
-import { resolveAgentProvider } from "./agent-provider.js";
+import type { MCPConnection } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "../../../");
@@ -70,15 +70,19 @@ program
         process.env.SENTRY_DSN ||
         process.env.DEFAULT_SENTRY_DSN;
 
+      const scopeContext = {
+        "gen_ai.agent.name": "sentry-mcp-agent",
+        "gen_ai.provider.name": agentProvider ?? "unknown",
+      };
+
       Sentry.init({
         dsn: sentryDsn,
         tracesSampleRate: 1,
         beforeSend: sentryBeforeSend,
         initialScope: {
-          tags: {
-            "gen_ai.agent.name": "sentry-mcp-agent",
-            "gen_ai.provider.name": agentProvider ?? "unknown",
-          },
+          tags: scopeContext,
+          // SDK v11 does not copy scope tags onto streamed spans.
+          attributes: scopeContext,
         },
         release: process.env.SENTRY_RELEASE,
         integrations: [
@@ -141,8 +145,9 @@ program
         });
       }
 
-      // Set conversation ID as a global tag for all traces
+      // The tag reaches error events; setConversationId puts the ID on gen_ai spans.
       Sentry.setTag("gen_ai.conversation.id", connection.sessionId);
+      Sentry.setConversationId(connection.sessionId);
 
       const agentConfig = {
         model: options.model,

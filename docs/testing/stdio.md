@@ -198,14 +198,14 @@ This opens the MCP Inspector at `http://localhost:6274`
 1. **List Tools** - Verify expected tools appear
 2. **Call a tool** - Start with `execute_sentry_tool` using `name="whoami"` and `arguments={}`
 3. **Test with parameters** - Try `find_organizations()`
-4. **Test complex operations** - Try `search_events(query="errors in the last hour")`
+4. **Test complex operations** - Try `search_errors(query="errors in the last hour")`
 
 **Example test sequence:**
 ```
 1. execute_sentry_tool(name="whoami", arguments={})
 2. find_organizations()
 3. find_projects(organizationSlug="your-org")
-4. search_events(
+4. search_errors(
      organizationSlug="your-org",
      query="errors from yesterday"
    )
@@ -425,7 +425,7 @@ SENTRY_HOST=sentry.example.com
 MCP_SKILLS=inspect,docs,triage           # Limit to specific skills
 
 # AI features
-OPENAI_API_KEY=your-key                  # For AI-powered search tools like search_events/search_issues
+OPENAI_API_KEY=your-key                  # For AI-powered search tools like search_errors/search_traces/search_issues
 
 # Sentry reporting
 SENTRY_DSN=your-dsn
@@ -481,9 +481,9 @@ pnpm start --access-token=TOKEN --skills=inspect,seer,docs
 # With OpenAI API key
 OPENAI_API_KEY=your-key pnpm start --access-token=TOKEN
 
-# Test search_events and search_issues work
+# Test the dataset search tools and search_issues work
 # In MCP Inspector:
-# - Call search_events(query="errors in production")
+# - Call search_errors(query="errors in production")
 # - Call search_issues(query="unresolved crashes")
 ```
 

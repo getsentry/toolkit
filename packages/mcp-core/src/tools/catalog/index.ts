@@ -9,6 +9,7 @@ import findDashboards from "./find-dashboards";
 import getDashboardDetails from "./get-dashboard-details";
 import findMonitors from "./find-monitors";
 import getMonitorDetails from "./get-monitor-details";
+import deleteMonitorEnvironment from "./delete-monitor-environment";
 import findUptimeMonitors from "./find-uptime-monitors";
 import getUptimeMonitorDetails from "./get-uptime-monitor-details";
 import findMetricMonitors from "./find-metric-monitors";
@@ -36,7 +37,16 @@ import getSpanDetails from "./get-span-details";
 import getReplayDetails from "./get-replay-details";
 import getEventAttachment from "./get-event-attachment";
 import updateIssue from "./update-issue";
+import linkIssue from "./link-issue";
+import unlinkIssue from "./unlink-issue";
 import searchEvents from "./search-events";
+import searchErrors from "./search-errors";
+import searchLogs from "./search-logs";
+import searchTraces from "./search-traces";
+import searchMetrics from "./search-metrics";
+import searchProfiles from "./search-profiles";
+import searchReplays from "./search-replays";
+import findDroppedEvents from "./find-dropped-events";
 import createTeam from "./create-team";
 import createProject from "./create-project";
 import updateProject from "./update-project";
@@ -104,6 +114,7 @@ const catalogTools = {
   get_dashboard_details: getDashboardDetails,
   find_monitors: findMonitors,
   get_monitor_details: getMonitorDetails,
+  delete_monitor_environment: deleteMonitorEnvironment,
   find_uptime_monitors: findUptimeMonitors,
   get_uptime_monitor_details: getUptimeMonitorDetails,
   find_metric_monitors: findMetricMonitors,
@@ -131,6 +142,14 @@ const catalogTools = {
   get_replay_details: getReplayDetails,
   get_event_attachment: getEventAttachment,
   update_issue: updateIssue,
+  link_issue: linkIssue,
+  unlink_issue: unlinkIssue,
+  search_errors: searchErrors,
+  search_logs: searchLogs,
+  search_traces: searchTraces,
+  search_metrics: searchMetrics,
+  search_profiles: searchProfiles,
+  search_replays: searchReplays,
   search_events: searchEvents,
   create_team: createTeam,
   create_project: createProject,
@@ -145,6 +164,7 @@ const catalogTools = {
   get_doc: getDoc,
   search_issues: searchIssues,
   search_issue_events: searchIssueEvents,
+  find_dropped_events: findDroppedEvents,
   get_profile: getProfile,
   get_profile_details: getProfileDetails,
   get_sentry_mcp_info: getSentryMcpInfo,

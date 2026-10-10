@@ -4,63 +4,276 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION_20: "20.20.2"
+  NODE_VERSION_22: "22.23.1"
+  NODE_VERSION_24: "24.18.0"
 
 jobs:
-  test:
+  discover-projects:
+    name: Discover projects
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.projects.outputs.matrix }}
+      count: ${{ steps.projects.outputs.count }}
+      runtime-matrix: ${{ steps.projects.outputs.runtime-matrix }}
+      runtime-count: ${{ steps.projects.outputs.runtime-count }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_22 }}
+      - name: Build project matrix
+        id: projects
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          matrix="$(node scripts/ci-projects.mjs --event "$GITHUB_EVENT_NAME" --base "$BASE_SHA" --head "$HEAD_SHA")"
+          count="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).include.length))' "$matrix")"
+          runtime_matrix="$(node -e 'const { include } = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify({ include: include.filter((project) => project.npmRuntime !== "") }))' "$matrix")"
+          runtime_count="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).include.length))' "$runtime_matrix")"
+          {
+            echo "matrix=$matrix"
+            echo "count=$count"
+            echo "runtime-matrix=$runtime_matrix"
+            echo "runtime-count=$runtime_count"
+          } >> "$GITHUB_OUTPUT"
+
+  install:
+    name: Install
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          node-version: "22"
-
-      # pnpm/action-setup@v4
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda
-        name: Install pnpm
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          run_install: false
+          node-version: ${{ env.NODE_VERSION_22 }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
 
-      - name: Get pnpm store directory
-        shell: bash
+  quality:
+    name: Repository quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_22 }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:ci-projects
+      - run: pnpm run docs:check
+      - run: pnpm run lint
+      - run: pnpm run check:generated
+      - name: Check generated files
+        run: git diff --exit-code
+
+  project:
+    name: ${{ matrix.name }}
+    needs: discover-projects
+    if: needs.discover-projects.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover-projects.outputs.matrix) }}
+    env:
+      BRAINTRUST_API_KEY: ci-test-key
+      GITHUB_TOKEN: ci-test-token
+      HONEYCOMB_API_KEY: ci-test-key
+      SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
+      SENTRY_OAUTH_CLIENT_SECRET: ci-test-secret
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_22 }}
+          cache: pnpm
+      - run: cp .env.example .env.local
+      - run: pnpm install --frozen-lockfile
+      - name: Build project dependencies
+        env:
+          PROJECT_NAME: ${{ matrix.name }}
+        run: pnpm --filter "${PROJECT_NAME}^..." --if-present run build
+      - name: Prepare project
+        if: matrix.prepare != ''
+        env:
+          PROJECT_NAME: ${{ matrix.name }}
+          CHECK_SCRIPT: ${{ matrix.prepare }}
+        run: pnpm --filter "$PROJECT_NAME" run "$CHECK_SCRIPT"
+      - name: Build project
+        if: matrix.build != ''
+        env:
+          PROJECT_NAME: ${{ matrix.name }}
+          CHECK_SCRIPT: ${{ matrix.build }}
+        run: pnpm --filter "$PROJECT_NAME" run "$CHECK_SCRIPT"
+      - name: Lint project
+        if: matrix.lint != ''
+        env:
+          PROJECT_NAME: ${{ matrix.name }}
+          CHECK_SCRIPT: ${{ matrix.lint }}
+        run: pnpm --filter "$PROJECT_NAME" run "$CHECK_SCRIPT"
+      - name: Typecheck project
+        if: matrix.typecheck != ''
+        env:
+          PROJECT_NAME: ${{ matrix.name }}
+          CHECK_SCRIPT: ${{ matrix.typecheck }}
+        run: pnpm --filter "$PROJECT_NAME" run "$CHECK_SCRIPT"
+      - name: Clear stale JUnit
+        if: matrix.junit != ''
+        env:
+          JUNIT_FILE: ${{ matrix.junit }}
+        run: rm -f "$JUNIT_FILE"
+      - name: Test project
+        if: matrix.test != ''
+        env:
+          PROJECT_NAME: ${{ matrix.name }}
+          CHECK_SCRIPT: ${{ matrix.test }}
+        run: pnpm --filter "$PROJECT_NAME" run "$CHECK_SCRIPT"
+      - name: Verify JUnit
+        if: matrix.junit != ''
+        env:
+          JUNIT_FILE: ${{ matrix.junit }}
         run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - uses: actions/cache@v4
-        name: Setup pnpm cache
+          test -s "$JUNIT_FILE"
+          python3 -c 'import sys, xml.etree.ElementTree as ET; ET.parse(sys.argv[1])' "$JUNIT_FILE"
+      - name: Check project policies
+        if: matrix.policy != ''
+        env:
+          PROJECT_NAME: ${{ matrix.name }}
+          CHECK_SCRIPT: ${{ matrix.policy }}
+        run: pnpm --filter "$PROJECT_NAME" run "$CHECK_SCRIPT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: matrix.e2e != ''
         with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Check lockfile is up to date
+          node-version: ${{ env.NODE_VERSION_24 }}
+          cache: pnpm
+      - name: Run E2E tests on Node 24
+        if: matrix.e2e != ''
+        env:
+          PROJECT_NAME: ${{ matrix.name }}
+          CHECK_SCRIPT: ${{ matrix.e2e }}
+          SENTRY_CLI_BINARY: ${{ github.workspace }}/packages/cli/dist-bin/sentry-linux-x64
+        run: pnpm --filter "$PROJECT_NAME" run "$CHECK_SCRIPT"
+      - name: Verify coverage
+        if: matrix.coverage != ''
+        env:
+          COVERAGE_FILE: ${{ matrix.coverage }}
+        run: test -s "$COVERAGE_FILE"
+      - name: Check generated files
         run: |
-          pnpm install --lockfile-only
-          git diff --exit-code pnpm-lock.yaml || (echo "pnpm-lock.yaml is out of sync with manifest files. Run 'pnpm install' and commit the result." && exit 1)
+          git diff --exit-code
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run build
-        run: pnpm build
-
-      - name: Check generated definitions
-        run: pnpm run check:generated
-
-      - name: Run type checking
-        run: pnpm -w run tsc
-
-      - name: Run linter
-        run: pnpm lint
-
-      - name: Run tests
-        run: pnpm test:ci
-
-      - name: Publish Test Report
-        uses: mikepenz/action-junit-report@cf701569b05ccdd861a76b8607a66d76f6fd4857
-        if: ${{ !cancelled() }}
+  npm-runtime:
+    name: NPM package (${{ matrix.name }})
+    needs: discover-projects
+    if: needs.discover-projects.outputs.runtime-count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover-projects.outputs.runtime-matrix) }}
+    env:
+      SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
+      SENTRY_CLI_NO_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          report_paths: "**/*.junit.xml"
-          comment: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_22 }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build package dependencies
+        env:
+          PROJECT_NAME: ${{ matrix.name }}
+        run: pnpm --filter "${PROJECT_NAME}^..." --if-present run build
+      - name: Build and pack once on Node 22
+        env:
+          BUILD_SCRIPT: ${{ matrix.npmRuntime }}
+          PROJECT_NAME: ${{ matrix.name }}
+        run: |
+          pnpm --filter "$PROJECT_NAME" run "$BUILD_SCRIPT"
+          mkdir -p "$RUNNER_TEMP/npm-package"
+          pnpm --filter "$PROJECT_NAME" pack --pack-destination "$RUNNER_TEMP/npm-package"
+          shopt -s nullglob
+          packages=("$RUNNER_TEMP/npm-package"/*.tgz)
+          [[ "${#packages[@]}" == 1 ]]
+          test -s "${packages[0]}"
+          [[ "$(stat -c %s "${packages[0]}")" -le 52428800 ]]
+          mv "${packages[0]}" "$RUNNER_TEMP/npm-package/package.tgz"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_20 }}
+      - name: Validate packaged runtime on Node 20
+        env:
+          RUNTIME_BIN: ${{ matrix.runtimeBin }}
+          RUNTIME_PACKAGE: ${{ matrix.name }}
+        run: bash scripts/validate-npm-runtime.sh
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_22 }}
+      - name: Validate packaged runtime on Node 22
+        env:
+          RUNTIME_BIN: ${{ matrix.runtimeBin }}
+          RUNTIME_PACKAGE: ${{ matrix.name }}
+        run: bash scripts/validate-npm-runtime.sh
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_24 }}
+      - name: Validate packaged runtime on Node 24
+        env:
+          RUNTIME_BIN: ${{ matrix.runtimeBin }}
+          RUNTIME_PACKAGE: ${{ matrix.name }}
+        run: bash scripts/validate-npm-runtime.sh
+
+  test:
+    name: test
+    if: always()
+    needs: [discover-projects, install, quality, project, npm-runtime]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all workspace checks
+        env:
+          DISCOVER_RESULT: ${{ needs.discover-projects.result }}
+          INSTALL_RESULT: ${{ needs.install.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          PROJECT_RESULT: ${{ needs.project.result }}
+          PROJECT_COUNT: ${{ needs.discover-projects.outputs.count }}
+          RUNTIME_RESULT: ${{ needs.npm-runtime.result }}
+          RUNTIME_COUNT: ${{ needs.discover-projects.outputs.runtime-count }}
+        run: |
+          [[ "$DISCOVER_RESULT" == success ]]
+          [[ "$INSTALL_RESULT" == success ]]
+          [[ "$QUALITY_RESULT" == success ]]
+          expected=success
+          if [[ "$PROJECT_COUNT" == 0 ]]; then
+            expected=skipped
+          fi
+          [[ "$PROJECT_RESULT" == "$expected" ]]
+          expected=success
+          if [[ "$RUNTIME_COUNT" == 0 ]]; then
+            expected=skipped
+          fi
+          [[ "$RUNTIME_RESULT" == "$expected" ]]

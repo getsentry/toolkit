@@ -323,8 +323,8 @@ catch (error) {
 
 ```typescript
 // Verify organization access
-const orgs = await apiService.listOrganizations();
-if (!orgs.find(org => org.slug === requestedOrg)) {
+const { organizations } = await apiService.listOrganizations();
+if (!organizations.find(org => org.slug === requestedOrg)) {
   throw new UserInputError("No access to organization");
 }
 ```
