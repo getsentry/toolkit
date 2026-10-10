@@ -331,6 +331,15 @@ async function handleAuthenticatedMcpRequest(
     auth.kind === "oauth" ? auth.userId : undefined,
   );
 
+  // Discovery and unsupported-method spans bypass the tool handlers.
+  Sentry.getIsolationScope().setAttributes({
+    "app.client.family": clientFamily,
+    "app.transport": "http",
+    ...(auth.kind === "oauth" && auth.clientName
+      ? { "app.client.name": auth.clientName }
+      : {}),
+  });
+
   const activeSpan = Sentry.getActiveSpan();
   activeSpan?.setAttribute("app.transport", "http");
   activeSpan?.setAttribute(

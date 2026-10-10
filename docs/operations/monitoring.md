@@ -156,7 +156,7 @@ process.on("uncaughtException", (error) => {
 Sentry follows OpenTelemetry semantic conventions for consistent observability.
 
 ### MCP Attributes (Model Context Protocol)
-Based on the current [OpenTelemetry MCP conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/mcp/), the standard MCP semantic attributes are:
+Based on the [OpenTelemetry MCP conventions](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/mcp.md), which are currently Development, the standard MCP semantic attributes are:
 
 - `mcp.method.name` - The name of the request or notification method (e.g., "notifications/cancelled", "initialize", "tools/call")
 - `mcp.protocol.version` - The MCP protocol version (e.g., "2025-06-18")
@@ -180,6 +180,7 @@ These are Sentry MCP application attributes that are not part of the MCP semanti
 - `app.resource.type` - Resolved Sentry resource type for `get_sentry_resource`
 - `app.transport` - The product transport label (values: "http", "sse", "stdio")
 - `app.client.family` - Low-cardinality MCP client bucket derived from User-Agent or registered client name
+- `app.client.name` - Registered OAuth client name, when available; separate from protocol-provided `mcp.client.name`
 - `app.constraint.organization_slug` - Session organization constraint
 - `app.constraint.project_slug` - Session project constraint
 - `app.server.mode.experimental` - Whether experimental tools are enabled for this MCP request or stdio session
@@ -193,7 +194,15 @@ Following [OpenTelemetry semantic conventions for user agent](https://openteleme
 
 - `user_agent.original` - The original User-Agent header value from the client
 
-**Cloudflare Transport**: Captured from the initial SSE/WebSocket connection request headers and cached for the session
+**Cloudflare Transport**: Captured on each HTTP request. The request isolation scope adds `app.client.family`, `app.transport`, and the optional registered `app.client.name` to all emitted spans, including discovery and unsupported-method requests that bypass tool handlers. `mcp.client.name` remains owned by the SDK and reflects protocol metadata, not OAuth registration.
+
+### Discovery and Error Classification
+
+The hosted server uses Cloudflare `agents` with the MCP TypeScript SDK v2. The stdio server uses SDK v1. The [2026-07-28 discovery specification](https://modelcontextprotocol.io/specification/2026-07-28/server/discover) requires `server/discover` and permits clients to call methods directly without discovery. The hosted server does not advertise resources; `resources/list` therefore returns `-32601` (and HTTP 404 for modern requests), as specified by [Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http).
+
+Protocol rejection and server failure are different measurements. The current OTel server conventions exclude `-32700`, `-32600`, `-32601`, `-32602`, and legacy `-32002` from error span status, while preserving their JSON-RPC error codes in `rpc.response.status_code`. Other JSON-RPC errors and tool results with `isError: true` remain failures. The new MCP codes `-32020`, `-32021`, and `-32022` are not yet excluded by those conventions.
+
+This classification requires the corresponding Sentry JavaScript SDK fix to be released and adopted here; the currently pinned `11.0.0-rc.0` still classifies unsupported-method responses as failures. Application attribution can ship independently. When interpreting resource widgets, filter by the exact `mcp.method.name`: the presence of `mcp.resource.uri` alone also includes subscriptions and unsuccessful reads.
 
 ### Network Attributes
 Based on [OpenTelemetry network conventions](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/registry/attributes/network.md):

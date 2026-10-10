@@ -10,6 +10,7 @@ const { sentryMetricsCount, sentrySetUser } = vi.hoisted(() => ({
 
 vi.mock("@sentry/cloudflare", () => ({
   getActiveSpan: vi.fn(() => undefined),
+  getIsolationScope: vi.fn(() => ({ setAttributes: vi.fn() })),
   metrics: {
     count: sentryMetricsCount,
   },
