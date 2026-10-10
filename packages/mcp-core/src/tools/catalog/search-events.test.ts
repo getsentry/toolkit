@@ -326,6 +326,177 @@ describe("search_events", () => {
     expect(result).toContain("**Peak**: 8");
   });
 
+  it("handles timeseries when the API returns a numeric string value (e.g. max(timestamp) epoch)", async () => {
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "max(timestamp)", interval: "1d" },
+      timeRange: { statsPeriod: "45d" },
+      explanation: "Max timestamp per day",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    // Sentry passes non-count aggregate values through unchanged; numeric
+    // strings should be parsed and never render as "NaN".
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+        () =>
+          HttpResponse.json({
+            timeSeries: [
+              {
+                yAxis: "max(timestamp)",
+                values: [
+                  {
+                    timestamp: 1757548800000,
+                    value: "1757548800",
+                    incomplete: false,
+                  },
+                  {
+                    timestamp: 1757635200000,
+                    value: "1757635200",
+                    incomplete: false,
+                  },
+                ],
+                meta: {
+                  interval: 86400000,
+                  valueType: "date",
+                  valueUnit: null,
+                },
+              },
+            ],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "latest event timestamp per day",
+        fields: null,
+        sort: null,
+        period: "45d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("max(timestamp) over time");
+    expect(result).toContain("**Peak**: 1,757,635,200 at 2025-09-12 00:00");
+    expect(result).not.toContain("NaN");
+  });
+
+  it("handles timeseries when the API returns ISO datetime string values", async () => {
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "max(timestamp)", interval: "1d" },
+      timeRange: { statsPeriod: "7d" },
+      explanation: "Max timestamp per day",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+        () =>
+          HttpResponse.json({
+            timeSeries: [
+              {
+                yAxis: "max(timestamp)",
+                values: [
+                  // Empty buckets are zero-filled with a numeric 0 by Sentry.
+                  { timestamp: 1757462400000, value: 0, incomplete: false },
+                  {
+                    timestamp: 1757548800000,
+                    value: "2026-07-11T00:00:00+00:00",
+                    incomplete: false,
+                  },
+                  {
+                    timestamp: 1757635200000,
+                    value: "2026-07-12T00:00:00+00:00",
+                    incomplete: false,
+                  },
+                  {
+                    timestamp: 1757721600000,
+                    value: "2026-07-13T00:00:00+00:00",
+                    incomplete: false,
+                  },
+                ],
+                meta: {
+                  interval: 86400000,
+                  valueType: "date",
+                  valueUnit: null,
+                },
+              },
+            ],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "latest event timestamp per day",
+        fields: null,
+        sort: null,
+        period: "7d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("max(timestamp) over time");
+    // ISO datetime strings appear as-is, and the peak is the latest time.
+    expect(result).toContain(
+      "| 2025-09-13 00:00 | 2026-07-13T00:00:00+00:00 |",
+    );
+    expect(result).toContain(
+      "**Peak**: 2026-07-13T00:00:00+00:00 at 2025-09-13 00:00",
+    );
+    expect(result).not.toContain("NaN");
+  });
+
   it("marks incomplete buckets and reports ingestion delay", async () => {
     const output = {
       dataset: "errors" as const,
