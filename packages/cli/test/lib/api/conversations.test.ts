@@ -141,6 +141,14 @@ describe("listConversations", () => {
     expect(decodeURIComponent(getCapturedUrl())).toContain("query=has:errors");
   });
 
+  test("passes sort param", async () => {
+    const { getCapturedUrl } = mockOk([]);
+
+    await listConversations(ORG, { sort: "-conversation.totalCost" });
+
+    expect(getCapturedUrl()).toContain("sort=-conversation.totalCost");
+  });
+
   test("passes statsPeriod param", async () => {
     const { getCapturedUrl } = mockOk([]);
 
@@ -187,6 +195,7 @@ describe("listConversations", () => {
 
     const url = getCapturedUrl();
     expect(url).not.toContain("query=");
+    expect(url).not.toContain("sort=");
     expect(url).not.toContain("statsPeriod=");
     expect(url).not.toContain("start=");
     expect(url).not.toContain("end=");
