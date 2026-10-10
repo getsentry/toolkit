@@ -2781,6 +2781,35 @@ describe("API query builders", () => {
 
       expect(repos).toHaveLength(0);
     });
+
+    it("should accept repos with null externalSlug and externalId", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        headers: {
+          get: (key: string) =>
+            key === "content-type" ? "application/json" : null,
+        },
+        json: () =>
+          Promise.resolve([
+            {
+              id: "101",
+              name: "getsentry/sentry",
+              provider: { id: "integrations:github", name: "GitHub" },
+              status: "active",
+              externalSlug: null,
+              externalId: null,
+            },
+          ]),
+      });
+
+      const repos = await apiService.listRepos({
+        organizationSlug: "test-org",
+      });
+
+      expect(repos).toHaveLength(1);
+      expect(repos[0].externalSlug).toBeNull();
+      expect(repos[0].externalId).toBeNull();
+    });
   });
 
   describe("linkProjectRepository", () => {
