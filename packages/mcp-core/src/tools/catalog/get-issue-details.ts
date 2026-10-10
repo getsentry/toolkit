@@ -15,12 +15,15 @@ import type {
 import { ConfigurationError, UserInputError } from "../../errors";
 import type { CodeLocation } from "../../internal/code-location";
 import {
+  buildIssueResponseNotes,
   dedupeReplayIds,
+  formatEventOutput,
   getReplayIdFromEvent,
   getSeerActionabilityLabel,
   getSuspectCommit,
   isPerformanceIssueType,
-  usesSharedFormatterBody,
+  isSupportedEventType,
+  stripReplayMetadata,
 } from "../../internal/formatting";
 import type { AIConversationReference } from "../../internal/tool-helpers/ai-conversation-actions";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -60,10 +63,7 @@ const TRACE_ID_PATTERN = /^[0-9a-fA-F]{32}$/;
  * Every field is mapped explicitly rather than spread from an api response, so a passthrough
  * upstream schema cannot leak backend-only fields into the public interface.
  *
- * `event.body` is the one open record: it is whatever Sentry's shared formatter emits
- * for `?llmFormat=json`, and its sections are decided there. Enumerating them here would make
- * this schema a second declaration of that contract, needing a bump every time a section is
- * added on the Sentry side.
+ * `event.body` is this server's own markdown rendering of the event.
  */
 export const getIssueDetailsOutputSchema = z.object({
   issue: z.object({
@@ -91,7 +91,8 @@ export const getIssueDetailsOutputSchema = z.object({
     id: z.string(),
     type: z.string().nullish(),
     occurredAt: z.string().nullish(),
-    body: z.record(z.string(), z.unknown()),
+    message: z.string().nullish(),
+    body: z.string(),
   }),
   seer: z
     .object({
@@ -143,6 +144,7 @@ export const getIssueDetailsOutputSchema = z.object({
       }),
     )
     .nullish(),
+  responseNotes: z.array(z.string()),
 });
 
 export type GetIssueDetailsPayload = z.infer<
@@ -150,38 +152,13 @@ export type GetIssueDetailsPayload = z.infer<
 >;
 
 /**
- * Parses the shared formatter's json body. Returns undefined when the caller's org is not on
- * the rollout yet, which is the signal to keep returning markdown: a structured result has to
- * carry the whole answer, and without the body it would not.
- */
-function parseFormattedBody(event: Event): Record<string, unknown> | undefined {
-  // the same event-type gate the markdown path applies: a transaction still needs the local
-  // rendering, which carries the fetched performance trace that the shared body does not
-  if (!usesSharedFormatterBody(event)) {
-    return undefined;
-  }
-  const content = event.formatted?.content;
-  if (!content) {
-    return undefined;
-  }
-  try {
-    const parsed = JSON.parse(content);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * The attached replay plus the related ones, derived the way the markdown output derives them.
  * The attached id lives on the event rather than in the related list, so passing that list
  * through alone loses the replay for an issue whose only one is attached.
  */
 /**
- * ``dateCreated`` sits on the shared-formatter event types rather than the base union, and
- * the markdown path normalizes it to ISO. Read it the same way and tolerate a bad value.
+ * ``dateCreated`` sits on the error, default, generic and csp event types rather than the base
+ * union, and the markdown path normalizes it to ISO. Read it the same way and tolerate a bad value.
  */
 function eventOccurredAt(event: Event): string | null {
   const raw = "dateCreated" in event ? event.dateCreated : null;
@@ -211,30 +188,45 @@ function buildReplays(
   };
 }
 
+type IssueDetailsArgs = Parameters<typeof formatIssueOutput>[0];
+
+function issueDetailsResult(args: IssueDetailsArgs) {
+  if (args.experimentalMode && isSupportedEventType(args.event)) {
+    return structuredResult(buildIssueDetailsPayload(args));
+  }
+  return formatIssueOutput(args);
+}
+
 function buildIssueDetailsPayload({
   organizationSlug,
   issue,
   event,
-  body,
   apiService,
   autofixState,
+  performanceTrace,
   externalIssues,
   relatedReplayIds,
   aiConversations,
   codeLocation,
   committers,
+  experimentalMode,
+  availableToolNames,
+  directToolNames,
 }: {
   organizationSlug: string;
   issue: Issue;
   event: Event;
-  body: Record<string, unknown>;
   apiService: SentryApiService;
   autofixState?: AutofixRunState;
+  performanceTrace?: Trace;
   externalIssues?: ExternalIssueList;
   relatedReplayIds?: string[];
   aiConversations?: AIConversationReference[];
   codeLocation?: CodeLocation;
   committers?: CommitterList;
+  experimentalMode?: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
 }): GetIssueDetailsPayload {
   const autofix = autofixState?.autofix;
   // the run's own artifacts, not the whole state: an AutofixRunState carries every step and
@@ -276,7 +268,12 @@ function buildIssueDetailsPayload({
       id: event.id,
       type: typeof event.type === "string" ? event.type : null,
       occurredAt: eventOccurredAt(event),
-      body,
+      message:
+        typeof event.message === "string" && event.message.length > 0
+          ? event.message
+          : null,
+      // replays are their own field below
+      body: formatEventOutput(stripReplayMetadata(event), { performanceTrace }),
     },
     seer: autofix
       ? {
@@ -312,6 +309,16 @@ function buildIssueDetailsPayload({
           spanId: conversation.spanId,
         }))
       : null,
+    responseNotes: buildIssueResponseNotes({
+      organizationSlug,
+      issue,
+      event,
+      apiService,
+      aiConversations,
+      experimentalMode,
+      availableToolNames,
+      directToolNames,
+    }),
   };
 }
 
@@ -368,9 +375,9 @@ export default defineTool({
     issueUrl: ParamIssueUrl.optional(),
   },
   // outputSchema is deliberately not declared yet. tools/list would export it immediately,
-  // while an org that is not on sentry's formatter rollout still gets a markdown result with
+  // while a session outside experimental mode still gets a markdown result with
   // no structuredContent -- advertising a schema that some success paths cannot satisfy. Wire
-  // it up once the rollout guarantees a json body on every event.
+  // it up once every success path returns structuredContent.
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -451,28 +458,7 @@ export default defineTool({
         }),
       ]);
 
-      const body = parseFormattedBody(event);
-      if (body) {
-        return structuredResult(
-          buildIssueDetailsPayload({
-            organizationSlug: orgSlug,
-            issue,
-            event,
-            body,
-            apiService,
-            autofixState,
-            externalIssues,
-            relatedReplayIds,
-            aiConversations,
-            codeLocation,
-            committers,
-          }),
-        );
-      }
-
-      // no shared-formatter body for this org yet: keep returning markdown rather than a
-      // structured result that is missing the event itself
-      return formatIssueOutput({
+      return issueDetailsResult({
         organizationSlug: orgSlug,
         issue,
         event,
@@ -559,28 +545,7 @@ export default defineTool({
       }),
     ]);
 
-    const body = parseFormattedBody(event);
-    if (body) {
-      return structuredResult(
-        buildIssueDetailsPayload({
-          organizationSlug: orgSlug,
-          issue,
-          event,
-          body,
-          apiService,
-          autofixState,
-          externalIssues,
-          relatedReplayIds,
-          aiConversations,
-          codeLocation,
-          committers,
-        }),
-      );
-    }
-
-    // no shared-formatter body for this org yet: keep returning markdown rather than a
-    // structured result that is missing the event itself
-    return formatIssueOutput({
+    return issueDetailsResult({
       organizationSlug: orgSlug,
       issue,
       event,

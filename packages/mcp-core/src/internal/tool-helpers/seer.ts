@@ -116,20 +116,6 @@ function wrapSeerAnalysisOutput({
   return `<seer_analysis ${attrs.join(" ")}>\n${output.trimEnd()}\n</seer_analysis>\n`;
 }
 
-/**
- * Wraps shared-formatter Seer analysis content in the provenance boundary,
- * mirroring the tags getOutputForAutofixRun applies to MCP-rendered output.
- * Seer content is LLM-generated, so it must be marked as untrusted data.
- */
-export function wrapSeerContent(content: string, runId?: number): string {
-  return wrapSeerAnalysisOutput({
-    output: content,
-    runId,
-    step: "analysis",
-    includeProvenanceTags: true,
-  });
-}
-
 // Artifact data shapes from getsentry/sentry's
 // `src/sentry/seer/autofix/artifact_schemas.py`. Fields are LLM-generated, so
 // everything is treated as optional.
