@@ -1,6 +1,4 @@
-import { setTag } from "@sentry/core";
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
@@ -9,6 +7,7 @@ import {
   ParamProjectSlugOrAll,
   ParamRegionUrl,
 } from "../../schema";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { assertProjectRefWithinConstraint } from "./support/project-constraints";
 import {
@@ -85,8 +84,6 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
-    setOrganizationContext(organizationSlug);
-
     const requestedProjectSlug =
       params.projectSlug && params.projectSlug !== "all"
         ? params.projectSlug
@@ -99,9 +96,7 @@ export default defineTool({
       });
     }
     const projectSlug = context.constraints.projectSlug ?? requestedProjectSlug;
-    if (projectSlug) {
-      setTag("project.slug", projectSlug);
-    }
+    setTargetTagsAndAttributes({ organizationSlug, projectSlug });
 
     const monitors = await apiService.listUptimeMonitors({
       organizationSlug,

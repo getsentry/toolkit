@@ -1,59 +1,80 @@
-# search_events Tool Specification
+# Dataset Search Tools Specification
 
 ## Overview
 
-A unified search tool that accepts natural language queries and translates them to Sentry's discover endpoint parameters using the configured embedded LLM provider. Replaces `find_errors` and `find_transactions` with a single, more flexible interface.
+Natural-language event search is exposed as one tool per dataset:
+
+| Tool              | Dataset    | Seer strategy |
+| ----------------- | ---------- | ------------- |
+| `search_errors`   | `errors`   | `Errors`      |
+| `search_logs`     | `logs`     | `Logs`        |
+| `search_traces`   | `spans`    | `Traces`      |
+| `search_metrics`  | `metrics`  | `Metrics`     |
+| `search_profiles` | `profiles` | —             |
+| `search_replays`  | `replays`  | —             |
+
+All six share one handler (`tools/support/search-events/search.ts`). Each tool
+fixes its dataset, so the caller never chooses a `dataset` parameter and the
+embedded agent is told it cannot switch datasets (`lockDataset`). This removes
+the most common routing mistake from the old multi-dataset `search_events` tool,
+where clients omitted `dataset`, silently got `errors`, and skipped Seer.
+
+`search_events` stays in the catalog as a deprecated alias for backward
+compatibility (reachable via `execute_sentry_tool`). It is no longer on the
+direct MCP surface and is excluded from skill definitions.
 
 ## Motivation
 
-- **Before**: Two separate tools with rigid parameters, users must know Sentry query syntax
-- **After**: Single tool with natural language input, AI handles translation to Sentry syntax
-- **Benefits**: Better UX, reduced tool count (20 → 19), accessible to non-technical users
+- **Before**: One `search_events` tool with an optional `dataset` enum; agents
+  often omitted or mis-picked it.
+- **After**: Tool selection picks the dataset. Each description only documents
+  its own dataset, so descriptions are shorter and more specific.
+- **Cross-event**: same-trace co-occurrence questions ("slow checkout requests
+  that also logged an error") route to `search_traces`, the only Seer strategy
+  that supports cross-event filters.
 
 ## Interface
 
 ```typescript
-interface SearchEventsParams {
-  organizationSlug: string;      // Required
-  query: string;  // Natural language search description
-  dataset?: "spans" | "errors" | "logs" | "metrics"; // Dataset to search (default: "errors")
-  projectSlug?: string;          // Optional - limit to specific project
-  regionUrl?: string;           
-  limit?: number;                // Default: 10, Max: 100
-  includeExplanation?: boolean;  // Include translation explanation
+// search_errors / search_logs / search_traces / search_metrics / search_profiles
+interface DatasetSearchParams {
+  organizationSlug: string;
+  query?: string; // Natural language (preferred) or Sentry search syntax
+  projectSlug?: string;
+  fields?: string[];
+  sort?: string;
+  period?: string; // e.g. "24h", "7d"
+  limit?: number; // Default: 10, Max: 100
+  includeExplanation?: boolean;
+  regionUrl?: string;
 }
+
+// search_replays drops `fields` and adds a separate `environment` parameter.
 ```
 
 ### Examples
 
 ```typescript
-// Find errors (errors dataset is default)
-search_events({
+search_errors({
   organizationSlug: "my-org",
-  query: "database timeouts in checkout flow from last hour"
-})
+  query: "database timeouts in checkout flow from last hour",
+});
 
-// Find slow transactions
-search_events({
+search_traces({
   organizationSlug: "my-org",
   query: "API calls taking over 5 seconds",
   projectSlug: "backend",
-  dataset: "spans"
-})
+});
 
-// Find logs
-search_events({
+search_logs({
   organizationSlug: "my-org",
   query: "warning logs about memory usage",
-  dataset: "logs"
-})
+});
 
-// Find request duration metrics
-search_events({
+search_metrics({
   organizationSlug: "my-org",
   query: "p95 request duration by transaction this week",
-  dataset: "metrics"
-})
+});
 ```
 
 ## Architecture
@@ -91,22 +112,41 @@ search_events({
 The AI produces different query patterns based on the selected dataset:
 
 - **Spans dataset**: Focus on `span.op`, `span.description`, `span.duration`, `transaction`, supports timestamp filters
-- **Errors dataset**: Focus on `message`, `level`, `error.type`, `error.handled`, supports timestamp filters  
+- **Errors dataset**: Focus on `message`, `level`, `error.type`, `error.handled`, supports timestamp filters
 - **Logs dataset**: Focus on `message`, `severity`, `severity_number`, **NO timestamp filters** (uses statsPeriod instead)
 - **Tracemetrics dataset**: Focus on `metric.name`, `metric.type`, `metric.unit`, `value`, and metric-aware aggregates like `p95(value,http.request.duration,distribution,millisecond)`
 
+### Environment Filters
+
+The embedded agent receives known visible environment names as context. It must
+only add an environment filter when requested; a single available environment or
+grouping by environment does not imply a filter. These instructions also apply
+when discovery fails or the list is too large to include in the prompt.
+
+For non-replay datasets, environment filters belong in `query`; the agent leaves
+its separate `environment` output null. The internal `validateSearch` tool accepts
+the candidate query without a separate environment argument. Replays retain the
+separate environment parameter and do not use this validation tool.
+
+The discovered list is not an exhaustive allowlist: hidden environments can be
+absent. Existing final validation and unknown-environment notices remain in place.
+
 ### Time Series
 
-Requests for a metric over time ("per hour", "per day", "trend", "over time") return a bucketed series via the `events-stats` endpoint instead of failing.
+Requests for a metric over time ("per hour", "per day", "trend", "over time") return a bucketed series via the `events-timeseries` endpoint instead of failing.
 
 - The embedded agent sets `timeSeries: { yAxis, interval }` on its output. `yAxis` is the aggregate to plot (e.g. `count()`); the query, environment, and time range are reused from the normal translation.
 - **Interval is agent-decided, never a required input.** It is set only when the user names a granularity ("per hour" → `1h`); otherwise it is left `null` so Sentry picks a sensible bucket for the range (mirrors `get_interval_from_range`). Sentry rejects an interval that would produce too many buckets.
 - The handler routes `timeSeries` to `SentryApiService.getEventsTimeSeries` and renders the buckets (with total and peak) via `formatTimeSeriesResults`.
+- Buckets Sentry flags as `incomplete` are marked in the table. Those still receiving data (`NOT_ELAPSED`, `INGESTION_PENDING`) get `*`, are excluded from the peak, and label the total "so far". Those that start before the retention window (`OUTSIDE_RETENTION`) get `†` and stay in the peak, since their value is final. When the response carries `meta.ingestion`, an **Ingestion** line reports the measured delay and the time data is complete through.
 
 ### Key Technical Constraints
 
 - **Logs timestamp handling**: Logs don't support query-based timestamp filters like `timestamp:-1h`. Instead, use `statsPeriod=24h` parameter
 - **Project ID mapping**: API requires numeric project IDs, not slugs. Tool automatically converts project slugs to IDs
+- **Seer translation**: Seer translates natural-language queries when the organization has the `mcp-search-events-seer-translate` rollout flag and has not hidden AI features. If Seer is unavailable or cannot translate the query, the tool falls back to the configured embedded agent.
+- **Seer cross-event filters**: Time series results do not apply cross-event filters. When Seer returns those filters for a time series, the response always begins with a warning identifying the omitted filters and the broader results, even when `includeExplanation` is false.
+- **Seer project scope**: For a successful Seer translation without `projectSlug`, search and Explorer links use `project=-1` to match the all-accessible-project scope sent to Seer. Other unscoped searches retain their existing default scope.
 - **Parallel attribute fetching**: For spans/logs/metrics, fetches both string and number attribute types in parallel for better performance
 - **itemType specification**: Must use `logs` and `tracemetrics` exactly for the trace-items attributes API
 - **Tracemetrics sort handling**: Aggregate sort expressions like `-p95(value,...)` must be sent to the API unchanged
@@ -128,21 +168,21 @@ Requests for a metric over time ("per hour", "per day", "trend", "over time") re
 find_errors({
   organizationSlug: "sentry",
   filename: "checkout.js",
-  query: "is:unresolved"
-})
+  query: "is:unresolved",
+});
 
 // After
-search_events({
+search_errors({
   organizationSlug: "sentry",
-  query: "unresolved errors in checkout.js"
-})
+  query: "unresolved errors in checkout.js",
+});
 ```
 
 ## Implementation Status
 
 ### Completed Features
 
-1. **Custom attributes API integration**: 
+1. **Custom attributes API integration**:
    - ✅ `/organizations/{org}/trace-items/attributes/` for spans/logs/metrics with parallel string/number fetching
    - ✅ `/organizations/{org}/tags/` for errors (legacy API)
 

@@ -1,5 +1,5 @@
-import { defineConfig } from "tsdown";
 import { readFileSync } from "node:fs";
+import { defineConfig } from "tsdown";
 
 const packageVersion =
   process.env.npm_package_version ??
@@ -12,6 +12,8 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   external: [
+    // Sentry 11 exposes MCP instrumentation only from this server subpath.
+    "@sentry/core/server",
     // Keep workspace dependencies external (don't bundle them)
     "@sentry/mcp-server-mocks",
   ],

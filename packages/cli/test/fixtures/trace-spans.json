@@ -1,0 +1,33 @@
+[
+  {
+    "span_id": "span-root-001",
+    "op": "http.server",
+    "description": "GET /api/users",
+    "transaction": "GET /api/users",
+    "transaction.op": "http.server",
+    "start_timestamp": 1706621535.0,
+    "end_timestamp": 1706621535.245,
+    "project_slug": "test-project",
+    "event_id": "evt001evt001evt001evt001evt00101",
+    "children": [
+      {
+        "span_id": "span-child-001",
+        "op": "db.query",
+        "description": "SELECT * FROM users",
+        "start_timestamp": 1706621535.01,
+        "end_timestamp": 1706621535.08,
+        "project_slug": "test-project",
+        "children": []
+      },
+      {
+        "span_id": "span-child-002",
+        "op": "http.client",
+        "description": "GET https://api.example.com/v1/data",
+        "start_timestamp": 1706621535.09,
+        "end_timestamp": 1706621535.2,
+        "project_slug": "test-project",
+        "children": []
+      }
+    ]
+  }
+]

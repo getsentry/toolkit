@@ -1,0 +1,15 @@
+---
+import Default from "@astrojs/starlight/components/PageFrame.astro";
+import Analytics from "@vercel/analytics/astro";
+import SpeedInsights from "@vercel/speed-insights/astro";
+---
+
+<!-- Starlight owns the layout; this wrapper preserves its slots and only mounts global telemetry. -->
+<Default>
+  <slot />
+  <slot name="header" slot="header" />
+  <slot name="sidebar" slot="sidebar" />
+</Default>
+
+<Analytics />
+<SpeedInsights />

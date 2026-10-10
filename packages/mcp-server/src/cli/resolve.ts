@@ -4,8 +4,8 @@ import {
   parseSkills,
   type Skill,
 } from "@sentry/mcp-core/skills";
+import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import {
-  isSentryHost,
   validateAndParseSentryUrlThrows,
   validateOpenAiBaseUrlThrows,
   validateSentryHostThrows,

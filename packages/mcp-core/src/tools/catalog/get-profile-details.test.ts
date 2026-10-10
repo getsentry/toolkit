@@ -30,7 +30,7 @@ describe("get_profile_details", () => {
 
       expect(result).toMatchInlineSnapshot(`
         "# Profile cfe78a5c892d4a64a962d837673398d2
-        
+
         ## Summary
         - **Profile URL**: https://sentry-mcp-evals.sentry.io/explore/profiling/profile/backend/cfe78a5c892d4a64a962d837673398d2/flamegraph/
         - **Project**: backend
@@ -46,29 +46,29 @@ describe("get_profile_details", () => {
         - **OS**: macOS 14.4
         - **SDK**: sentry.python 2.24.1
         - **Active Thread**: 1
-        
+
         ## Sample Summary
         - **Total Frames**: 3
         - **Total Samples**: 3
         - **Total Stacks**: 2
         - **Threads**: 1
-        
+
         ## Thread Information
-        
+
         - **Thread 1**: MainThread (3 samples)
-        
+
         ## Top Frames by Occurrence
-        
+
         | Function | File:Line | Count | Type |
         |----------|-----------|-------|------|
         | \`handle_request\` | main.py:42 | 3 | User Code |
         | \`execute_query\` | db.py:118 | 2 | User Code |
-        
+
         ## Next Steps
-        
+
         - Open the profile URL above in Sentry for the full flamegraph
         - Open the related trace URL to inspect the end-to-end request
-        - Use \`search_events\` with the profiles dataset to find similar profiles"
+        - Use \`search_profiles\` to find similar profiles"
       `);
     });
 

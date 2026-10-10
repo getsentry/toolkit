@@ -1,0 +1,473 @@
+#!/bin/bash
+set -euo pipefail
+
+RED='\033[0;31m'
+MUTED='\033[0;2m'
+NC='\033[0m'
+
+# Sentry error telemetry — fire-and-forget error reporting via envelope API.
+# Uses the CLI's public write-only DSN. No PII collected.
+# Opt-out: SENTRY_CLI_NO_TELEMETRY=1
+SENTRY_DSN_KEY="1188a86f3f8168f089450587b00bca66"
+SENTRY_INGEST="https://o1.ingest.us.sentry.io"
+SENTRY_PROJECT_ID="4510776311808000"
+
+# Generate a UUID for the event. Tries /proc, uuidgen, then awk fallback.
+gen_uuid() {
+  if [[ -r /proc/sys/kernel/random/uuid ]]; then
+    cat /proc/sys/kernel/random/uuid
+  elif command -v uuidgen >/dev/null 2>&1; then
+    uuidgen | tr '[:upper:]' '[:lower:]'
+  else
+    awk 'BEGIN{srand();for(i=1;i<=32;i++)printf "%c",substr("0123456789abcdef",int(rand()*16)+1,1);print ""}'
+  fi
+}
+
+# Send an error event to Sentry. Runs in a subshell in the background so it
+# never blocks installation or propagates failures.
+# Usage: report_error "message" "step-name"
+report_error() {
+  # Respect the same opt-out as the CLI binary
+  [[ "${SENTRY_CLI_NO_TELEMETRY:-}" == "1" ]] && return 0
+
+  (
+    set +e  # Telemetry must never fail the script
+    local msg="${1:-unknown error}"
+    local step="${2:-unknown}"
+    local event_id
+    event_id=$(gen_uuid | tr -d '-')
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
+
+    # Escape a value for safe JSON string interpolation
+    _esc() { printf '%s' "$1" | sed 's/\\/\\\\/g;s/"/\\"/g' | tr '\n' ' '; }
+
+    local json_msg; json_msg=$(_esc "$msg")
+    local json_step; json_step=$(_esc "$step")
+    local json_channel; json_channel=$(_esc "${requested_version:-stable}")
+    local json_version; json_version=$(_esc "${version:-unknown}")
+
+    local envelope
+    envelope=$(printf '%s\n%s\n%s' \
+      "{\"event_id\":\"${event_id}\",\"dsn\":\"https://${SENTRY_DSN_KEY}@o1.ingest.us.sentry.io/${SENTRY_PROJECT_ID}\"}" \
+      '{"type":"event"}' \
+      "{\"event_id\":\"${event_id}\",\"timestamp\":\"${timestamp}\",\"platform\":\"other\",\"level\":\"error\",\"logger\":\"install\",\"server_name\":\"install-script\",\"message\":{\"formatted\":\"${json_msg}\"},\"tags\":{\"os\":\"${os:-unknown}\",\"arch\":\"${arch:-unknown}\",\"libc\":\"${libc_variant:-glibc}\",\"channel\":\"${json_channel}\",\"step\":\"${json_step}\",\"install.version\":\"${json_version}\"},\"contexts\":{\"runtime\":{\"name\":\"bash\",\"version\":\"${BASH_VERSION:-unknown}\"}}}")
+
+    curl -sf --max-time 2 \
+      -H "Content-Type: application/x-sentry-envelope" \
+      -H "X-Sentry-Auth: Sentry sentry_key=${SENTRY_DSN_KEY},sentry_version=7" \
+      -d "$envelope" \
+      "${SENTRY_INGEST}/api/${SENTRY_PROJECT_ID}/envelope/" \
+      >/dev/null 2>&1
+  ) &
+}
+
+# Print error message, report to Sentry, and exit.
+# Usage: die "message" "step-name"
+die() {
+  echo -e "${RED}$1${NC}" >&2
+  report_error "$1" "${2:-unknown}"
+  exit 1
+}
+
+# Catch unexpected failures from set -e / pipefail (e.g., gunzip failing)
+trap 'die "Unexpected failure at line $LINENO" "trap"' ERR
+
+usage() {
+  cat <<EOF
+Sentry CLI Installer
+
+Usage: install [options]
+
+Options:
+    -h, --help              Display this help message
+    -v, --version <version> Install a specific version (e.g., 0.2.0) or "nightly"
+        --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
+        --no-completions    Don't install shell completions
+        --no-agent-skills   Don't install agent skills
+
+Environment Variables:
+    SENTRY_INSTALL_DIR      Override the installation directory
+    SENTRY_VERSION          Install a specific version (e.g., 0.42.2, nightly)
+    SENTRY_INIT             Set to 1 to run \`sentry init\` after installing
+
+Examples:
+    curl -fsSL https://cli.sentry.dev/install | bash
+    curl -fsSL https://cli.sentry.dev/install | SENTRY_INIT=1 bash
+    curl -fsSL https://cli.sentry.dev/install | bash -s -- --version nightly
+    curl -fsSL https://cli.sentry.dev/install | bash -s -- --version 0.42.2
+    curl -fsSL https://cli.sentry.dev/install | SENTRY_VERSION=nightly bash
+    curl -fsSL https://cli.sentry.dev/install | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
+EOF
+}
+
+requested_version="${SENTRY_VERSION:-}"
+no_modify_path=false
+no_completions=false
+no_agent_skills=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    -v|--version)
+      if [[ -n "${2:-}" ]]; then
+        requested_version="$2"
+        shift 2
+      else
+        die "Error: --version requires a version argument" "args"
+      fi
+      ;;
+    --no-modify-path)
+      no_modify_path=true
+      shift
+      ;;
+    --no-completions)
+      no_completions=true
+      shift
+      ;;
+    --no-agent-skills)
+      no_agent_skills=true
+      shift
+      ;;
+    *) shift ;;
+  esac
+done
+
+# Detect OS
+case "$(uname -s)" in
+  Darwin*) os="darwin" ;;
+  Linux*) os="linux" ;;
+  MINGW*|MSYS*|CYGWIN*) os="windows" ;;
+  *) die "Unsupported OS: $(uname -s)" "detect-os" ;;
+esac
+
+# Detect architecture
+arch=$(uname -m)
+case "$arch" in
+  x86_64) arch="x64" ;;
+  aarch64|arm64) arch="arm64" ;;
+  *) die "Unsupported architecture: $arch" "detect-arch" ;;
+esac
+
+# Official Node.js SEA binaries target glibc, not musl.
+if [[ "$os" == "linux" ]]; then
+  detect_musl() {
+    # Heuristic 1: Check for musl dynamic linker
+    local musl_arch
+    case "$arch" in
+      x64) musl_arch="x86_64" ;;
+      arm64) musl_arch="aarch64" ;;
+    esac
+    [ -f "/lib/ld-musl-${musl_arch}.so.1" ] && return 0
+
+    # Heuristic 2: ldd --version outputs "musl libc" on musl systems
+    if command -v ldd >/dev/null 2>&1; then
+      ldd --version 2>&1 | grep -qi musl && return 0
+    fi
+
+    return 1
+  }
+
+  if detect_musl; then
+    libc_variant="musl"
+    die "The standalone binary requires glibc. On musl (Alpine), install Node.js and run: npm install -g sentry" "detect-libc"
+  fi
+fi
+
+# Validate supported combinations
+suffix=""
+if [[ "$os" == "windows" ]]; then
+  suffix=".exe"
+  if [[ "$arch" != "x64" ]]; then
+    die "Unsupported: windows-$arch (only windows-x64 is supported)" "detect-arch"
+  fi
+fi
+
+# Download binary to a temp location
+tmpdir="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+tmp_binary="${tmpdir}/sentry-install-$$${suffix}"
+blob_headers="${tmpdir}/sentry-install-headers-$$"
+blob_file="${tmpdir}/sentry-install-blob-$$"
+version=""
+
+# Clean up temporary files after setup or on failure.
+trap 'rm -f "$tmp_binary" "$blob_headers" "$blob_file"' EXIT
+
+if [[ "$requested_version" == "nightly" ]]; then
+  # Nightly build: download from GHCR via OCI blob protocol.
+  # No jq needed — parse JSON with awk.
+  # ghcr.io blob downloads redirect to Azure Blob Storage. curl -L would
+  # forward the Authorization header to Azure, which returns 404. Instead,
+  # extract the redirect URL and follow it without the auth header.
+
+  echo -e "${MUTED}Fetching nightly build from GHCR...${NC}"
+
+  # Step 1: Get anonymous pull token
+  if ! GHCR_TOKEN=$(curl -sf \
+    "https://ghcr.io/token?scope=repository:getsentry/toolkit:pull" \
+    | awk -F'"' '{for(i=1;i<=NF;i++) if($i=="token"){print $(i+2);exit}}'); then
+    die "Failed to get GHCR token" "ghcr-token"
+  fi
+  if [[ -z "$GHCR_TOKEN" ]]; then
+    die "Failed to get GHCR token" "ghcr-token"
+  fi
+
+  # Step 2: Fetch the OCI manifest for the :nightly tag
+  if ! MANIFEST=$(curl -sf \
+    -H "Authorization: Bearer $GHCR_TOKEN" \
+    -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+    "https://ghcr.io/v2/getsentry/toolkit/manifests/nightly"); then
+    die "Failed to fetch nightly manifest from GHCR" "ghcr-manifest"
+  fi
+  if [[ -z "$MANIFEST" ]]; then
+    die "Failed to fetch nightly manifest from GHCR" "ghcr-manifest"
+  fi
+
+  # Step 3: Extract version from manifest annotation
+  version=$(echo "$MANIFEST" \
+    | awk -F'"' '{for(i=1;i<=NF;i++) if($i=="version"){print $(i+2);exit}}')
+  if [[ -z "$version" ]]; then
+    die "Failed to extract version from nightly manifest" "ghcr-version"
+  fi
+
+  echo -e "${MUTED}Installing nightly sentry ${version}...${NC}"
+
+  # Step 4: Find the blob digest for this platform's .gz file.
+  # Each OCI layer has "digest" before "org.opencontainers.image.title".
+  # Track the last-seen digest and print it when the target filename matches.
+  # This avoids sed newline replacement which differs between GNU and BSD.
+  gz_filename="sentry-${os}-${arch}${suffix}.gz"
+  digest=$(echo "$MANIFEST" \
+    | awk -F'"' -v target="$gz_filename" '{
+        for(i=1;i<=NF;i++){
+          if($i=="digest") d=$(i+2)
+          if($i=="org.opencontainers.image.title"&&$(i+2)==target){print d;exit}
+        }
+      }')
+  if [[ -z "$digest" ]]; then
+    die "No nightly build found for ${gz_filename}" "ghcr-digest"
+  fi
+
+  # Step 5: Fetch the blob. GHCR normally redirects to Azure, but it can also
+  # return the blob directly with HTTP 200. Do not forward the auth header to
+  # the redirect target.
+  if ! blob_status=$(curl -sS -D "$blob_headers" -o "$blob_file" -w '%{http_code}' \
+    -H "Authorization: Bearer $GHCR_TOKEN" \
+    "https://ghcr.io/v2/getsentry/toolkit/blobs/${digest}"); then
+    die "Failed to fetch nightly blob from GHCR" "ghcr-blob"
+  fi
+
+  case "$blob_status" in
+    200)
+      gunzip -c "$blob_file" > "$tmp_binary"
+      ;;
+    3??)
+      redir_url=$(awk '/^[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*/ { sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit }' "$blob_headers")
+      if [[ -z "$redir_url" ]]; then
+        die "Failed to get blob redirect URL from GHCR" "ghcr-redirect"
+      fi
+      curl -fsSL "$redir_url" | gunzip > "$tmp_binary"
+      ;;
+    *)
+      die "Failed to fetch nightly blob from GHCR (HTTP ${blob_status})" "ghcr-blob"
+      ;;
+  esac
+
+else
+  # Stable build: resolve version and download from GitHub Releases.
+
+  if [[ -z "$requested_version" ]]; then
+    # Craft publishes this app's stable version to the release registry.
+    # Consume the full response: an early parser exit can cause SIGPIPE under pipefail.
+    if metadata=$(curl -fsSL --max-time 10 https://release-registry.services.sentry.io/apps/sentry/latest); then
+      version=$(printf '%s\n' "$metadata" \
+        | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')
+    fi
+    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      echo -e "${MUTED}Could not resolve latest version from Sentry's release registry. Trying GitHub...${NC}" >&2
+      release_tag=""
+      # GitHub may have many pages of MCP releases before its newest CLI release.
+      for page in {1..20}; do
+        if ! releases=$(curl -fsSL "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=${page}"); then
+          die "Failed to list Toolkit releases" "gh-version"
+        fi
+        # Read the full page: exiting awk early can SIGPIPE printf under pipefail.
+        # Match top-level release fields regardless of whitespace, field order, or nested assets.
+        release_tag=$(printf '%s\n' "$releases" \
+          | awk '
+              function consider() {
+                if (selected == "" && !prerelease && tag ~ /^cli@[0-9]+\.[0-9]+\.[0-9]+$/) selected=tag
+              }
+              {
+                for (i=1; i<=length($0); i++) {
+                  c=substr($0,i,1)
+                  if (quoted) {
+                    if (escaped) { escaped=0; continue }
+                    if (c == "\\") { escaped=1; invalid=1; continue }
+                    if (c == "\"") {
+                      quoted=0
+                      if (depth == 1 && !invalid) {
+                        if (key == "") key=token
+                        else if (key == "tag_name") tag=token
+                      }
+                      continue
+                    }
+                    if (depth == 1 && (key == "" || key == "tag_name")) {
+                      if (length(token) < 128) token=token c
+                      else invalid=1
+                    }
+                    continue
+                  }
+                  if (c == "\"") { quoted=1; token=""; invalid=0; continue }
+                  if (c == "{") {
+                    depth++
+                    if (depth == 1) { key=""; tag=""; prerelease=1 }
+                  } else if (c == "}") {
+                    if (depth == 1) consider()
+                    depth--
+                  } else if (depth == 1) {
+                    if (c == ",") key=""
+                    else if (key == "prerelease" && c == "f" && substr($0,i,5) == "false") prerelease=0
+                  }
+                }
+              }
+              END { print selected }
+            ')
+        if [[ -n "$release_tag" || "$releases" == "[]" ]]; then
+          break
+        fi
+      done
+      if [[ -z "$release_tag" ]]; then
+        if [[ "$releases" != "[]" ]]; then
+          die "Toolkit release pagination exceeded 20 pages" "gh-version"
+        fi
+        # Before the first Toolkit CLI release, use the legacy version only
+        # after checking whether that exact Toolkit tag exists.
+        if ! legacy_release=$(curl -fsSL 'https://api.github.com/repos/getsentry/cli/releases/latest'); then
+          die "Failed to fetch latest stable version from Sentry's release registry and GitHub. Retry or install a specific version with --version <version>." "resolve-version"
+        fi
+        release_tag=$(printf '%s\n' "$legacy_release" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
+        if [[ ! "${release_tag#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          die "Failed to fetch latest stable version from Sentry's release registry and GitHub. Retry or install a specific version with --version <version>." "resolve-version"
+        fi
+      fi
+      version="${release_tag#cli@}"
+      version="${version#v}"
+    fi
+  else
+    version="$requested_version"
+    version="${version#cli@}"
+    version="${version#v}"
+  fi
+
+  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    die "Invalid release version: ${version}" "gh-version"
+  fi
+
+  # Fall back to legacy only when GitHub confirms the exact Toolkit tag is absent.
+  if ! release_status=$(curl -sS -o /dev/null -w '%{http_code}' \
+    "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%40${version}"); then
+    die "Failed to check Toolkit release" "gh-version"
+  fi
+  case "$release_status" in
+    200) release_repo="getsentry/toolkit"; release_tag="cli@${version}" ;;
+    404)
+      if ! legacy_status=$(curl -sS -o /dev/null -w '%{http_code}' \
+        "https://api.github.com/repos/getsentry/cli/releases/tags/${version}"); then
+        die "Failed to check legacy CLI release" "gh-version"
+      fi
+      if [[ "$legacy_status" != "200" ]]; then
+        die "Legacy CLI release unavailable (HTTP ${legacy_status})" "gh-version"
+      fi
+      release_repo="getsentry/cli"
+      release_tag="$version"
+      ;;
+    *) die "Toolkit release check failed (HTTP ${release_status})" "gh-version" ;;
+  esac
+
+  filename="sentry-${os}-${arch}${suffix}"
+  url="https://github.com/${release_repo}/releases/download/${release_tag}/${filename}"
+
+  echo -e "${MUTED}Downloading sentry v${version}...${NC}"
+
+  # Try gzip-compressed download first (~60% smaller, ~37 MB vs ~99 MB).
+  # gunzip is POSIX and available on all Unix systems.
+  # Falls back to raw binary if the .gz asset doesn't exist yet.
+  if curl -fsSL "${url}.gz" 2>/dev/null | gunzip > "$tmp_binary" 2>/dev/null; then
+    : # Compressed download succeeded
+  else
+    curl -fsSL --progress-bar "$url" -o "$tmp_binary"
+  fi
+fi
+
+chmod +x "$tmp_binary"
+
+# Delegate installation and configuration to the binary itself.
+# setup --install handles: directory selection, binary placement, PATH,
+# completions, agent skills, and the welcome message.
+# --channel persists the release channel so future `sentry cli upgrade`
+# calls track the same channel without requiring a flag.
+if [[ "$requested_version" == "nightly" ]]; then
+  channel="nightly"
+else
+  channel="stable"
+fi
+setup_args="--install --method curl --channel $channel"
+if [[ "$no_modify_path" == "true" ]]; then
+  setup_args="$setup_args --no-modify-path"
+fi
+if [[ "$no_completions" == "true" ]]; then
+  setup_args="$setup_args --no-completions"
+fi
+if [[ "$no_agent_skills" == "true" ]]; then
+  setup_args="$setup_args --no-agent-skills"
+fi
+
+# curl | bash leaves stdin on the script pipe. Give setup the controlling
+# terminal only when both output streams are interactive; setup checks whether
+# this is a fresh human install before starting login.
+trap - ERR
+if [[ "${SENTRY_INIT:-}" != "1" && -t 1 && -t 2 ]] && { exec 3</dev/tty; } 2>/dev/null; then
+  # shellcheck disable=SC2086
+  "$tmp_binary" cli setup $setup_args <&3 3<&-
+  exit 0
+fi
+
+# shellcheck disable=SC2086
+"$tmp_binary" cli setup $setup_args
+
+# Optionally launch the setup wizard after install.
+# Reconnect stdin to the real terminal so the wizard can prompt
+# interactively — when piped (curl | bash), stdin is the pipe.
+if [[ "${SENTRY_INIT:-}" == "1" ]]; then
+  # Only honor XDG_BIN_HOME when absolute, per the XDG spec (matches the Node
+  # determineInstallDir logic); a relative value is ignored. Accept both POSIX
+  # (/…) and Windows drive-letter (C:\… or C:/…) absolute paths so a Windows
+  # XDG_BIN_HOME isn't dropped while Node still installs there.
+  xdg_bin_home="${XDG_BIN_HOME:-}"
+  if [[ "$xdg_bin_home" != /* && ! "$xdg_bin_home" =~ ^[A-Za-z]:[\\/] ]]; then
+    xdg_bin_home=""
+  fi
+  if [[ -n "${SENTRY_INSTALL_DIR:-}" ]]; then
+    install_dir="$SENTRY_INSTALL_DIR"
+  elif [[ -n "$xdg_bin_home" ]]; then
+    install_dir="$xdg_bin_home"
+  else
+    # Match determineInstallDir(): prefer existing directories on PATH, then
+    # fall back to the XDG location even when it is not yet on PATH.
+    install_dir="$HOME/.local/bin"
+    for dir in "$HOME/.local/bin" "$HOME/bin"; do
+      if [[ -d "$dir" ]] && { [[ ":${PATH:-}:" == *":${dir}:"* ]] || [[ ":${PATH:-}:" == *":${dir}/:"* ]]; }; then
+        install_dir="$dir"
+        break
+      fi
+    done
+  fi
+  sentry_bin="${install_dir}/sentry${suffix}"
+  if [[ ! -x "$sentry_bin" ]]; then
+    die "Cannot find installed sentry binary" "init"
+  fi
+  if [[ ! -e /dev/tty ]]; then
+    die "SENTRY_INIT=1 requires an interactive terminal (/dev/tty not available)" "init"
+  fi
+  "$sentry_bin" init </dev/tty
+fi

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "pnpm --filter sentry run lint:fix"
+      }
+    ]
+  }
+}

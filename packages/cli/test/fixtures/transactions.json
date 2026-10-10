@@ -1,0 +1,30 @@
+{
+  "data": [
+    {
+      "trace": "aaaa1111bbbb2222cccc3333dddd4444",
+      "id": "a1b2c3d4e5f60718",
+      "transaction": "GET /api/users",
+      "timestamp": "2025-01-30T14:32:15+00:00",
+      "span.duration": 245,
+      "project": "test-project"
+    },
+    {
+      "trace": "eeee5555ffff6666aaaa7777bbbb8888",
+      "id": "b2c3d4e5f6071829",
+      "transaction": "POST /api/checkout",
+      "timestamp": "2025-01-30T14:31:00+00:00",
+      "span.duration": 1823,
+      "project": "test-project"
+    }
+  ],
+  "meta": {
+    "fields": {
+      "trace": "string",
+      "id": "string",
+      "transaction": "string",
+      "timestamp": "date",
+      "span.duration": "duration",
+      "project": "string"
+    }
+  }
+}

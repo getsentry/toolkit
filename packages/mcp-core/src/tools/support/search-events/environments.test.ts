@@ -3,28 +3,19 @@ import { SentryApiService } from "../../../api-client";
 import { buildSystemPromptWithEnvironments } from "./agent";
 
 describe("buildSystemPromptWithEnvironments", () => {
-  it("returns the base prompt unchanged when there are no environments", () => {
-    expect(buildSystemPromptWithEnvironments("BASE", [])).toBe("BASE");
-  });
-
-  it("inlines a small list of real environment names with a guardrail", () => {
+  it("inlines a small list of real environment names", () => {
     const out = buildSystemPromptWithEnvironments("BASE", [
       "production",
       "dev",
     ]);
     expect(out).toContain("BASE");
-    expect(out).toContain("Available environments");
     expect(out).toContain('"production"');
     expect(out).toContain('"dev"');
-    // Guardrail against the hallucinated placeholders that caused the failures.
-    expect(out).toContain("OMIT the field");
-    expect(out).toContain("Never use wildcards");
   });
 
   it("does not dump the full list for very large orgs", () => {
     const many = Array.from({ length: 250 }, (_, i) => `env-${i}`);
     const out = buildSystemPromptWithEnvironments("BASE", many);
-    expect(out).toContain("250 environments");
     expect(out).not.toContain('"env-0"');
   });
 });

@@ -1,0 +1,33 @@
+{
+  "id": "feed123def456abc123def456abc1234",
+  "eventID": "feed123def456abc123def456abc1234",
+  "groupID": "5146636313",
+  "projectID": "300001",
+  "context": {},
+  "contexts": {
+    "feedback": {
+      "url": "https://example.com/checkout",
+      "associated_event_id": "def456abc123def456abc123def456ab"
+    }
+  },
+  "culprit": "",
+  "dateCreated": "2026-07-16T12:00:00.000000Z",
+  "dateReceived": "2026-07-16T12:00:01.000000Z",
+  "entries": [],
+  "errors": [],
+  "fingerprints": ["{{ default }}"],
+  "location": "",
+  "message": "Checkout is broken",
+  "metadata": {
+    "message": "Checkout is broken"
+  },
+  "platform": "javascript",
+  "tags": [
+    {
+      "key": "replay.id",
+      "value": "346789a703f6454384f1de473b8b9fcc"
+    }
+  ],
+  "title": "User Feedback",
+  "type": "feedback"
+}

@@ -1,22 +1,21 @@
-import { setTag } from "@sentry/core";
 import { z } from "zod";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
-import { apiServiceFromContext } from "../../internal/tool-helpers/api";
-import { resolveRegionUrlForOrganization } from "../../internal/tool-helpers/resolve-region-url";
 import { UserInputError } from "../../errors";
-import type { ServerContext } from "../../types";
+import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { defineTool } from "../../internal/tool-helpers/define";
+import { resolveRegionUrlForOrganization } from "../../internal/tool-helpers/resolve-region-url";
+import { isProfileUrl, parseSentryUrl } from "../../internal/url-helpers";
+import {
+  resolveScopedOrganizationSlug,
+  resolveScopedProjectSlugOrId,
+} from "../../internal/url-scope";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 import {
   isNumericId,
   validateResourceId,
   validateSlugOrId,
 } from "../../utils/slug-validation";
-import { parseSentryUrl, isProfileUrl } from "../../internal/url-helpers";
-import {
-  resolveScopedOrganizationSlug,
-  resolveScopedProjectSlugOrId,
-} from "../../internal/url-scope";
 import {
   formatProfileChunkAnalysis,
   formatTransactionProfileAnalysis,
@@ -303,10 +302,13 @@ export default defineTool({
       regionUrl: regionUrl ?? undefined,
     });
 
-    setOrganizationContext(resolved.organizationSlug);
+    setTargetTagsAndAttributes({ organizationSlug: resolved.organizationSlug });
 
     if (resolved.mode === "transaction") {
-      setTag("profile.id", resolved.profileId);
+      setTargetTagsAndAttributes({
+        organizationSlug: resolved.organizationSlug,
+        profileId: resolved.profileId,
+      });
       const isNumericProjectInput =
         typeof resolved.projectSlugOrId === "number" ||
         isNumericId(String(resolved.projectSlugOrId));
@@ -337,7 +339,10 @@ export default defineTool({
         });
       }
 
-      setTag("project.slug", projectSlug);
+      setTargetTagsAndAttributes({
+        organizationSlug: resolved.organizationSlug,
+        projectSlug,
+      });
 
       const profileUrl =
         params.profileUrl ??
@@ -362,7 +367,10 @@ export default defineTool({
       });
     }
 
-    setTag("profiler.id", resolved.profilerId);
+    setTargetTagsAndAttributes({
+      organizationSlug: resolved.organizationSlug,
+      profilerId: resolved.profilerId,
+    });
 
     const { projectId, projectSlug } = await resolveProjectContext(
       apiService,
@@ -371,8 +379,11 @@ export default defineTool({
       { requireNumericId: true },
     );
 
-    setTag("project.slug", projectSlug);
-    setTag("project.id", String(projectId));
+    setTargetTagsAndAttributes({
+      organizationSlug: resolved.organizationSlug,
+      projectSlug,
+      projectId,
+    });
 
     const chunk = await apiService.getProfileChunk({
       organizationSlug: resolved.organizationSlug,

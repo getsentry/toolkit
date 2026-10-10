@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { setTag } from "@sentry/core";
-import { setOrganizationContext } from "../../telem/organization";
-import { defineTool } from "../../internal/tool-helpers/define";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
-import type { ServerContext } from "../../types";
+import { defineTool } from "../../internal/tool-helpers/define";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
+import { setTargetTagsAndAttributes } from "../../telem/scope";
+import type { ServerContext } from "../../types";
 import { isNumericId } from "../../utils/slug-validation";
 import { renderSnapshotImageTreeSection } from "../support/snapshots/formatting";
 
@@ -15,7 +14,7 @@ export default defineTool({
   description: [
     "Get the latest UI screenshots/images for an app from the preprod snapshot system.",
     "",
-    "This is the primary tool for retrieving app screenshots — not search_events or search_issues.",
+    "This is the primary tool for retrieving app screenshots.",
     "",
     "Use this tool when you need to:",
     "- Get screenshots, screens, golden images, or reference images for an app",
@@ -77,8 +76,6 @@ export default defineTool({
     openWorldHint: true,
   },
   async handler(params, context: ServerContext) {
-    setOrganizationContext(params.organizationSlug);
-
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });
@@ -86,8 +83,11 @@ export default defineTool({
     const project = params.project ?? undefined;
     const projectId = project && isNumericId(project) ? project : undefined;
     const projectSlug = project && !isNumericId(project) ? project : undefined;
-    if (projectId) setTag("project.id", projectId);
-    if (projectSlug) setTag("project.slug", projectSlug);
+    setTargetTagsAndAttributes({
+      organizationSlug: params.organizationSlug,
+      projectId,
+      projectSlug,
+    });
 
     const data = (await apiService.getLatestBaseSnapshot({
       organizationSlug: params.organizationSlug,

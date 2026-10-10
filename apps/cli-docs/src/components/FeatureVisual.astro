@@ -1,0 +1,24 @@
+---
+import { getImage } from 'astro:assets';
+
+interface Props {
+  /** Image import from src/assets/ — processed by Astro's image pipeline */
+  image: ImageMetadata;
+  class?: string;
+}
+
+const { image, class: className } = Astro.props;
+
+const optimized = await getImage({
+  src: image,
+  format: 'webp',
+  quality: 80,
+});
+---
+
+<div
+  class:list={['feature-visual', className]}
+  style={`background-image: url('${optimized.src}');`}
+>
+  <slot />
+</div>

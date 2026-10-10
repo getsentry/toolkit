@@ -1,0 +1,289 @@
+---
+import { getImage } from 'astro:assets';
+import bgImage from '../assets/bg.png';
+
+interface Props {
+  title?: string;
+  background?: 'custom';
+}
+
+const { title = "Terminal", background } = Astro.props;
+const bgClass = background ? `bg-${background}` : '';
+
+let bgStyle = '';
+if (background) {
+  const optimized = await getImage({ src: bgImage, format: 'webp', quality: 80 });
+  bgStyle = `--bg-image: url('${optimized.src}');`;
+}
+---
+
+<div class={`terminal-wrapper ${bgClass}`} style={bgStyle}>
+  <div class="terminal">
+    <div class="terminal-header">
+      <div class="terminal-dots">
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+      </div>
+      <span class="terminal-title">{title}</span>
+      <div class="terminal-dots-placeholder"></div>
+    </div>
+    <div class="terminal-body">
+      <div class="line">
+        <span class="prompt">$</span>
+        <span class="command">sentry auth</span>
+      </div>
+      <div class="line output">
+        <span class="icon blue">●</span>
+        <span>Opening browser for authentication...</span>
+      </div>
+      <div class="line output">
+        <span class="icon green">✓</span>
+        <span>Authenticated as <span class="highlight">john@example.com</span></span>
+      </div>
+      
+      <div class="line spacer"></div>
+      
+      <div class="line">
+        <span class="prompt">$</span>
+        <span class="command">sentry issue list</span>
+      </div>
+      <div class="line output dimmed small">Issues from 3 projects:</div>
+      <div class="line spacer-sm"></div>
+      <pre class="table-box"><span class="border">╭─────────┬───────┬───────────────┬────────┬──────┬────────────┬──────────────────────────────────────────╮</span>
+<span class="border">│</span> <span class="header-text">LEVEL</span>   <span class="border">│</span> <span class="header-text">ALIAS</span> <span class="border">│</span> <span class="header-text">SHORT ID</span>      <span class="border">│</span> <span class="header-text">COUNT</span>  <span class="border">│</span> <span class="header-text">SEEN</span> <span class="border">│</span> <span class="header-text">FIXABILITY</span> <span class="border">│</span> <span class="header-text">TITLE</span>                                    <span class="border">│</span>
+<span class="border">├─────────┼───────┼───────────────┼────────┼──────┼────────────┼──────────────────────────────────────────┤</span>
+<span class="border">│</span> <span class="red-text">ERROR</span>   <span class="border">│</span> <span class="accent">f-79</span>  <span class="border">│</span> <span class="alias-hl">F</span>RONTEND-<span class="alias-hl">79</span>   <span class="border">│</span>   2.4k <span class="border">│</span>   2h <span class="border">│</span>        <span class="green-text">92%</span> <span class="border">│</span> <span class="dimmed">TypeError: Cannot read property 'map'...</span> <span class="border">│</span>
+<span class="border">│</span> <span class="yellow-text">WARN</span>    <span class="border">│</span> <span class="accent">a-2f</span>  <span class="border">│</span> <span class="alias-hl">A</span>PI-<span class="alias-hl">2F</span>        <span class="border">│</span>    891 <span class="border">│</span>   1d <span class="border">│</span>        <span class="yellow-text">67%</span> <span class="border">│</span> <span class="dimmed">ReferenceError: user is not defined</span>      <span class="border">│</span>
+<span class="border">│</span> <span class="red-text">ERROR</span>   <span class="border">│</span> <span class="accent">m-4d</span>  <span class="border">│</span> <span class="alias-hl">M</span>OBILE-<span class="alias-hl">4D</span>     <span class="border">│</span>    456 <span class="border">│</span>   5d <span class="border">│</span>        <span class="red-text">23%</span> <span class="border">│</span> <span class="dimmed">NetworkError: Failed to fetch</span>            <span class="border">│</span>
+<span class="border">╰─────────┴───────┴───────────────┴────────┴──────┴────────────┴──────────────────────────────────────────╯</span></pre>
+      
+      <div class="line spacer"></div>
+      
+      <div class="line">
+        <span class="prompt">$</span>
+        <span class="command">sentry issue explain f-79</span>
+      </div>
+      <div class="line spacer-sm"></div>
+      <div class="line output header-line">Root Cause Analysis Complete</div>
+      <div class="line output header-border">══════════════════════════════</div>
+      <div class="line spacer-sm"></div>
+      <div class="line output">
+        <span class="cause-label">Cause:</span>
+        <span>The <span class="code">userData</span> response from <span class="code">/api/users</span> returns</span>
+      </div>
+      <div class="line output indent">
+        <span><span class="code">null</span> when user session expires, but the component</span>
+      </div>
+      <div class="line output indent">
+        <span>assumes it's always an array and calls <span class="code">.map()</span> directly.</span>
+      </div>
+      <div class="line spacer-sm"></div>
+      <div class="line output dimmed small">
+        <span class="icon yellow">→</span>
+        <span>Add null check before mapping: <span class="code">userData?.map()</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .terminal-wrapper {
+    position: relative;
+    margin: 0 0 4rem 0;
+    padding: 3rem 3.5rem;
+    background: linear-gradient(135deg, 
+      rgba(88, 28, 135, 0.3) 0%, 
+      rgba(15, 23, 42, 0.8) 50%,
+      rgba(30, 58, 138, 0.3) 100%
+    );
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .terminal-wrapper::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: 
+      radial-gradient(ellipse at 20% 20%, rgb(var(--sl-color-accent-rgb) / 0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(59, 130, 246, 0.15) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  /* Background image variant */
+  .terminal-wrapper.bg-custom {
+    background: var(--bg-image) center / cover;
+  }
+
+  .terminal-wrapper.bg-custom::before {
+    background: none;
+  }
+
+  .terminal {
+    position: relative;
+    background: rgba(10, 10, 15, 0.99);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+    box-shadow: 
+      0 25px 50px -12px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+
+  .terminal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+  }
+
+  .terminal-dots {
+    display: flex;
+    gap: 8px;
+  }
+
+  .terminal-dots-placeholder {
+    width: 52px;
+  }
+
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .terminal-title {
+    color: rgba(255, 255, 255, 0.25);
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+
+  .terminal-body {
+    padding: 0 1.5rem 1.25rem;
+    font-family: var(--sl-font-mono);
+    font-size: 0.8rem;
+    line-height: 1.6;
+  }
+
+  .line {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+  }
+
+  .line.spacer {
+    height: 1rem;
+  }
+
+  .line.spacer-sm {
+    height: 0.35rem;
+  }
+
+  .line.output {
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .line.indent {
+    padding-left: 3.5rem;
+  }
+
+  .prompt {
+    color: rgba(255, 255, 255, 0.4);
+    user-select: none;
+  }
+
+  .command {
+    color: #fff;
+  }
+
+  .icon {
+    font-size: 0.7rem;
+  }
+
+  .icon.blue { color: #3b82f6; }
+  .icon.green { color: #22c55e; }
+  .icon.yellow { color: #eab308; }
+
+  .highlight {
+    color: #22d3ee;
+  }
+
+  .dimmed {
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .small {
+    font-size: 0.75rem;
+  }
+
+  .green-text { color: #22c55e; }
+  .yellow-text { color: #eab308; }
+  .red-text { color: #ef4444; }
+
+  .header-line {
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .header-border {
+    color: rgba(255, 255, 255, 0.3);
+  }
+
+  .cause-label {
+    color: #f472b6;
+    font-weight: 500;
+    margin-right: 0.25rem;
+  }
+
+  .code {
+    color: #22d3ee;
+    background: rgba(34, 211, 238, 0.1);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+  }
+
+  .table-box {
+    font-family: var(--sl-font-mono);
+    font-size: 0.7rem;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    overflow-x: auto;
+  }
+
+  .table-box .border {
+    color: rgba(255, 255, 255, 0.15);
+  }
+
+  .table-box .header-text {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.7rem;
+  }
+
+  .accent {
+    color: #9e86ff;
+  }
+
+  .alias-hl {
+    font-weight: 700;
+    text-decoration: underline;
+  }
+
+  @media (max-width: 640px) {
+    .terminal-wrapper {
+      margin: 0 0 3rem 0;
+      padding: 1rem;
+      border-radius: 12px;
+    }
+
+    .terminal-body {
+      padding: 0 1rem 1rem;
+      font-size: 0.7rem;
+    }
+  }
+</style>

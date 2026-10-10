@@ -8,11 +8,11 @@ on:
       - ".github/workflows/mcp-server-package.yml"
       - "packages/mcp-core/**"
       - "packages/mcp-server/**"
+      - "packages/mcp-server-mocks/**"
       - "packages/mcp-server-tsconfig/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
-      - "turbo.json"
 
 permissions:
   contents: read
@@ -52,11 +52,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build package dependencies
-        run: pnpm --filter @sentry/mcp-core build
-
-      - name: Build stdio package
-        run: pnpm --filter @sentry/mcp-server build
+      - name: Build stdio package and dependencies
+        run: pnpm --filter '@sentry/mcp-server...' --if-present run build
 
       - name: Pack stdio package
         run: pnpm --dir packages/mcp-server pack --pack-destination "$RUNNER_TEMP"

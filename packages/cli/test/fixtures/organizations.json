@@ -1,0 +1,26 @@
+[
+  {
+    "id": "100001",
+    "slug": "test-org",
+    "status": { "id": "active", "name": "active" },
+    "name": "Test Organization",
+    "dateCreated": "2020-01-15T10:00:00.000000Z",
+    "isEarlyAdopter": false,
+    "require2FA": false,
+    "requireEmailVerification": false,
+    "avatar": { "avatarType": "letter_avatar", "avatarUuid": null },
+    "features": ["advanced-search", "discover-basic", "discover-query"]
+  },
+  {
+    "id": "100002",
+    "slug": "test-org-2",
+    "status": { "id": "active", "name": "active" },
+    "name": "Test Organization 2",
+    "dateCreated": "2021-06-20T14:30:00.000000Z",
+    "isEarlyAdopter": true,
+    "require2FA": false,
+    "requireEmailVerification": false,
+    "avatar": { "avatarType": "letter_avatar", "avatarUuid": null },
+    "features": ["advanced-search", "discover-basic"]
+  }
+]

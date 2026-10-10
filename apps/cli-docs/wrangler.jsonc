@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cli",
+  // Static-assets-only Worker: no `main` entrypoint, Cloudflare serves the
+  // built Astro output directly from the edge. `compatibility_date` is still
+  // required by wrangler even for assets-only Workers.
+  "compatibility_date": "2025-08-01",
+  "assets": {
+    "directory": "./dist",
+    // Serve Astro's generated 404.html for unknown paths so deep links and
+    // typo'd URLs render the themed not-found page instead of a bare error.
+    "not_found_handling": "404-page"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

@@ -327,7 +327,7 @@ describe("formatIssueResults", () => {
 
         - Get more details about a specific issue: Use get_sentry_resource with the issue ID or issue URL
         - Update issue status: Use the Sentry tool \`update_issue\` to resolve or assign issues
-        - View event counts: Use search_events for aggregated statistics
+        - View event counts: Use search_errors for aggregated statistics
         - View feedback details: Use get_sentry_resource to see full feedback content and linked error events
         "
       `);

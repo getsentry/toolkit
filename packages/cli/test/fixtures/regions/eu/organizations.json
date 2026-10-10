@@ -1,0 +1,26 @@
+[
+  {
+    "id": "100020",
+    "slug": "euro-gmbh",
+    "status": { "id": "active", "name": "active" },
+    "name": "Euro GmbH",
+    "dateCreated": "2021-06-15T10:00:00.000000Z",
+    "isEarlyAdopter": false,
+    "require2FA": true,
+    "requireEmailVerification": true,
+    "avatar": { "avatarType": "letter_avatar", "avatarUuid": null },
+    "features": ["advanced-search", "discover-basic", "discover-query", "sso"]
+  },
+  {
+    "id": "100021",
+    "slug": "berlin-startup",
+    "status": { "id": "active", "name": "active" },
+    "name": "Berlin Startup",
+    "dateCreated": "2022-01-10T09:00:00.000000Z",
+    "isEarlyAdopter": true,
+    "require2FA": false,
+    "requireEmailVerification": false,
+    "avatar": { "avatarType": "letter_avatar", "avatarUuid": null },
+    "features": ["advanced-search", "discover-basic"]
+  }
+]

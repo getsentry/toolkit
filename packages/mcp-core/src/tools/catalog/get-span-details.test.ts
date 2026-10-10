@@ -163,9 +163,9 @@ describe("get_span_details", () => {
 
       ## Next Steps
 
-      - **Search spans**: Use the Sentry tool \`search_events\`
-      - **Search errors**: Use the Sentry tool \`search_events\`
-      - **Search logs**: Use the Sentry tool \`search_events\`"
+      - **Search spans**: Use the Sentry tool \`search_traces\`
+      - **Search errors**: Use the Sentry tool \`search_errors\`
+      - **Search logs**: Use the Sentry tool \`search_logs\`"
     `);
   });
 });

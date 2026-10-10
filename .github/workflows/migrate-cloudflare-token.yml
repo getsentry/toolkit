@@ -1,0 +1,117 @@
+name: Move Cloudflare token to production environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Copy the token or remove the repository copy after a verified deployment
+        required: true
+        type: choice
+        options:
+          - copy
+          - remove
+      deployment_run_id:
+        description: Successful post-copy Deploy to Cloudflare run ID (required for remove)
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: migrate-cloudflare-token
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: github.repository_id == '957245447' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      GH_TOKEN: ${{ secrets.CLOUDFLARE_MIGRATION_PAT }}
+      TARGET_REPOSITORY: getsentry/toolkit
+    steps:
+      - name: Validate repository and protected environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${GH_TOKEN:?CLOUDFLARE_MIGRATION_PAT is not configured}"
+          test "$GITHUB_REPOSITORY" = "$TARGET_REPOSITORY"
+          test "$(gh api "repos/$TARGET_REPOSITORY" --jq .id)" = '957245447'
+          test "$(gh api "repos/$TARGET_REPOSITORY/environments/production" --jq '.deployment_branch_policy | "\(.protected_branches):\(.custom_branch_policies)"')" = 'false:true'
+          test "$(gh api "repos/$TARGET_REPOSITORY/environments/production/deployment-branch-policies" --jq '[.branch_policies[] | "\(.type):\(.name)"] | join(",")')" = 'branch:main'
+
+      - name: Copy repository token to protected production
+        if: inputs.operation == 'copy'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          : "${CLOUDFLARE_API_TOKEN:?Repository CLOUDFLARE_API_TOKEN is not configured}"
+          test "$(gh secret list --repo "$TARGET_REPOSITORY" --json name --jq '[.[].name | select(. == "CLOUDFLARE_API_TOKEN")] | length')" = '1'
+          test "$(gh secret list --repo "$TARGET_REPOSITORY" --env production --json name --jq '[.[].name | select(. == "CLOUDFLARE_API_TOKEN")] | length')" = '0'
+          printf '%s' "$CLOUDFLARE_API_TOKEN" | gh secret set CLOUDFLARE_API_TOKEN --repo "$TARGET_REPOSITORY" --env production --app actions
+          test "$(gh secret list --repo "$TARGET_REPOSITORY" --env production --json name --jq '[.[].name | select(. == "CLOUDFLARE_API_TOKEN")] | length')" = '1'
+
+      - name: Validate successful deployment after environment copy
+        if: inputs.operation == 'remove'
+        env:
+          DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}
+          RUN_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOYMENT_RUN_ID" =~ ^[1-9][0-9]{0,17}$ ]]
+          test "$(gh secret list --repo "$TARGET_REPOSITORY" --env production --json name --jq '[.[].name | select(. == "CLOUDFLARE_API_TOKEN")] | length')" = '1'
+          copied_at="$(gh api "repos/$TARGET_REPOSITORY/environments/production/secrets/CLOUDFLARE_API_TOKEN" --jq .updated_at)"
+          deploy_workflow_id="$(GH_TOKEN="$RUN_TOKEN" gh api "repos/$TARGET_REPOSITORY/actions/workflows/deploy.yml" --jq .id)"
+          GH_TOKEN="$RUN_TOKEN" gh api "repos/$TARGET_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID" --jq '
+            [.workflow_id, .event, .head_branch, .head_repository.id, .status, .conclusion, .created_at, .run_attempt] | @tsv
+          ' | {
+            IFS=$'\t' read -r workflow_id event branch repository_id status conclusion created_at run_attempt
+            test "$workflow_id" = "$deploy_workflow_id"
+            test "$event" = workflow_run
+            test "$branch" = main
+            test "$repository_id" = '957245447'
+            test "$status" = completed
+            test "$conclusion" = success
+            [[ "$created_at" > "$copied_at" ]]
+            [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]]
+            GH_TOKEN="$RUN_TOKEN" gh api "repos/$TARGET_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/attempts/$run_attempt/jobs?per_page=100" | jq -e --argjson attempt "$run_attempt" '
+              .total_count == 1 and
+              (.jobs | type == "array" and length == 1) and
+              (.jobs[0] |
+                .name == "Deploy to Cloudflare" and
+                .run_attempt == $attempt and
+                .status == "completed" and
+                .conclusion == "success" and
+                (. as $job | [
+                  "Capture active production version",
+                  "Upload production version without moving traffic",
+                  "Identify uploaded production version",
+                  "Require tested revision on main before staging",
+                  "Stage exact candidate at zero percent",
+                  "Smoke test exact production Worker version",
+                  "Require tested revision on main before promotion",
+                  "Promote tested version to production",
+                  "Verify production deployment ownership",
+                  "Run Smoke Tests on Production"
+                ] | all(.[]; . as $name | ($job.steps | map(select(.name == $name and .status == "completed" and .conclusion == "success")) | length) == 1))
+              )
+            ' > /dev/null
+          }
+
+      - name: Remove repository token and temporary migration credential
+        if: inputs.operation == 'remove'
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          gh secret delete CLOUDFLARE_API_TOKEN --repo "$TARGET_REPOSITORY" --app actions
+          test "$(gh secret list --repo "$TARGET_REPOSITORY" --json name --jq '[.[].name | select(. == "CLOUDFLARE_API_TOKEN")] | length')" = '0'
+          test "$(gh secret list --repo "$TARGET_REPOSITORY" --env production --json name --jq '[.[].name | select(. == "CLOUDFLARE_API_TOKEN")] | length')" = '1'
+          gh secret delete CLOUDFLARE_MIGRATION_PAT --repo "$TARGET_REPOSITORY" --env production --app actions

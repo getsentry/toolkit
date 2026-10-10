@@ -115,7 +115,7 @@ pnpm -w run cli --access-token=TOKEN "query"
 - Testing OAuth flows
 - Debugging tool interactions
 - Validating real API responses
-- Testing AI-powered tools (search_events, search_issues, search_issue_events)
+- Testing AI-powered tools (search_errors/search_traces/search_logs etc., search_issues, search_issue_events)
 
 **Note:** The CLI defaults to `http://localhost:5173` for easier local development. Override with `--mcp-host` or set `MCP_URL` environment variable to test against different servers.
 

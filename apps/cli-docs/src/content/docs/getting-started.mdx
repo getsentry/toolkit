@@ -1,0 +1,201 @@
+---
+title: Installation
+description: How to install and set up the Sentry CLI
+---
+
+import PackageManagerCode from "../../components/PackageManagerCode.astro";
+
+## Install Script
+
+Install the latest stable release:
+
+```bash
+curl https://cli.sentry.dev/install -fsS | bash
+```
+
+Install the nightly build (built from `main`, updated on every commit):
+
+```bash
+curl https://cli.sentry.dev/install -fsS | bash -s -- --version nightly
+```
+
+You can also use the `SENTRY_VERSION` environment variable to pin a version,
+which is especially useful in CI/CD pipelines and Dockerfiles:
+
+```bash
+# Pin to a specific stable version
+curl https://cli.sentry.dev/install -fsS | SENTRY_VERSION=0.42.2 bash
+
+# Pin to nightly
+curl https://cli.sentry.dev/install -fsS | SENTRY_VERSION=nightly bash
+```
+
+The `--version` flag takes precedence over `SENTRY_VERSION` if both are set.
+The chosen channel is persisted so that `sentry cli upgrade` automatically
+tracks the same channel on future updates.
+
+### Installer Flags
+
+The install script accepts additional flags to customize behavior:
+
+```bash
+# Skip shell config modifications (~/.zshrc, ~/.bashrc, etc.)
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-modify-path
+
+# Skip shell completion installation
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-completions
+
+# Skip AI agent skill installation
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-agent-skills
+```
+
+You can also set `SENTRY_INSTALL_DIR` to override the binary installation directory:
+
+```bash
+curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
+```
+
+### Supported Platforms
+
+{/* GENERATED:START platform-support */}
+
+<table>
+  <thead>
+    <tr>
+      <th>OS</th>
+      <th>Architectures</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>macOS</strong></td>
+      <td>x64, arm64 (Apple Silicon)</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td><strong>Linux</strong></td>
+      <td>x64, arm64</td>
+      <td>Standalone binary requires glibc</td>
+    </tr>
+    <tr>
+      <td><strong>Windows</strong></td>
+      <td>x64</td>
+      <td>Via Git Bash, MSYS2, or WSL</td>
+    </tr>
+  </tbody>
+</table>
+
+{/* GENERATED:END platform-support */}
+
+On Alpine and other musl-based Linux systems, install Node.js and use
+`npm install -g sentry` instead of the standalone installer.
+
+## Homebrew
+
+```bash
+brew install getsentry/tools/sentry
+```
+
+## Package Managers
+
+Install globally with your preferred package manager (the npm packages require **Node.js 20+**; on **22.15+** the built-in `node:sqlite` is used, on 20–22.14 a bundled WASM fallback is used transparently):
+
+<PackageManagerCode
+  npm="npm install -g sentry"
+  pnpm="pnpm add -g sentry"
+  yarn="yarn global add sentry"
+  bun="bun add -g sentry"
+/>
+
+Unlike the install script and Homebrew, package manager installs don't set up shell completions or agent skills. Run `sentry cli setup` once to enable them:
+
+```bash
+sentry cli setup
+```
+
+Or run directly without installing:
+
+<PackageManagerCode
+  npm="npx sentry --help"
+  pnpm="pnpm dlx sentry --help"
+  yarn="yarn dlx sentry --help"
+  bun="bunx sentry --help"
+/>
+
+## Authentication
+
+### OAuth Device Flow (Recommended)
+
+On a fresh installation, the install script starts OAuth login automatically
+when running in an interactive terminal with no detected AI agent or existing
+credentials. Upgrades and non-interactive installations skip this first-login step.
+
+The easiest way to authenticate is via OAuth device flow:
+
+```bash
+sentry auth
+```
+
+You'll be given a URL and a code to enter. Once you authorize the application
+in your browser, the CLI stores the OAuth credentials. When the server provides
+a refresh token, the CLI refreshes the access token automatically. Persist the
+Sentry CLI configuration directory (`$XDG_CONFIG_HOME/sentry/`, defaulting to
+`~/.config/sentry/`, overridable with `SENTRY_CONFIG_DIR`) across runs to keep
+automatic refresh working.
+
+### API Token
+
+Alternatively, you can use an API token directly:
+
+```bash
+sentry auth --token YOUR_SENTRY_API_TOKEN
+```
+
+You can create API tokens in your [Sentry account settings](https://sentry.io/settings/account/api/auth-tokens/).
+
+API tokens are also useful for ephemeral CI jobs and sandboxes that cannot
+persist the CLI configuration directory.
+
+### Check Auth Status
+
+Verify your authentication status:
+
+```bash
+sentry auth status
+```
+
+### Logout
+
+To remove stored credentials:
+
+```bash
+sentry auth logout
+```
+
+## Self-Hosted Sentry
+
+Using a self-hosted Sentry instance? Create a public OAuth application and pass
+its client ID and instance URL when you log in:
+
+```bash
+SENTRY_CLIENT_ID=your-client-id sentry auth login --url https://sentry.example.com
+```
+
+See the [Self-Hosted](../self-hosted/) guide for full setup details.
+
+## Configuration
+
+Credentials are stored in a SQLite database under `$XDG_CONFIG_HOME/sentry/` (defaulting to `~/.config/sentry/`) with restricted file permissions (mode 600) for security. See [Configuration](../configuration/) for environment variables and customization options.
+
+## Next Steps
+
+Once authenticated, you can start using the CLI:
+
+- [Initialize Sentry](../commands/init/) - Set up Sentry in your project with the guided wizard
+- [Organization commands](../commands/org/) - List and view organizations
+- [Project commands](../commands/project/) - Manage projects
+- [Issue commands](../commands/issue/) - Track and manage issues
+- [Event commands](../commands/event/) - Inspect events
+- [API commands](../commands/api/) - Direct API access
+- [Agentic Usage](../agentic-usage/) - Enable AI coding agents to use the CLI

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "100010",
+    "slug": "acme-corp",
+    "status": { "id": "active", "name": "active" },
+    "name": "Acme Corporation",
+    "dateCreated": "2020-01-15T10:00:00.000000Z",
+    "isEarlyAdopter": false,
+    "require2FA": false,
+    "requireEmailVerification": false,
+    "avatar": { "avatarType": "letter_avatar", "avatarUuid": null },
+    "features": ["advanced-search", "discover-basic", "discover-query"]
+  },
+  {
+    "id": "100011",
+    "slug": "widgets-inc",
+    "status": { "id": "active", "name": "active" },
+    "name": "Widgets Inc",
+    "dateCreated": "2021-03-20T14:30:00.000000Z",
+    "isEarlyAdopter": true,
+    "require2FA": false,
+    "requireEmailVerification": false,
+    "avatar": { "avatarType": "letter_avatar", "avatarUuid": null },
+    "features": ["advanced-search", "discover-basic"]
+  }
+]
