@@ -8,7 +8,78 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
-import { ApiNotFoundError, ApiPermissionError, ApiServerError } from "./errors";
+import {
+  ApiClientError,
+  ApiNotFoundError,
+  ApiPermissionError,
+  ApiServerError,
+  ApiValidationError,
+} from "./errors";
+
+describe("validateEvents non-JSON responses", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("classifies the endpoint's empty feature-gate 400 as a client error", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        () => new HttpResponse(null, { status: 400 }),
+      ),
+    );
+    const api = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    await expect(
+      api.validateEvents({ organizationSlug: "test-org" }),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+
+  it.each(["text/plain", "text/html"])(
+    "classifies a 400 %s response as a client error",
+    async (contentType) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          () =>
+            new HttpResponse("Invalid query", {
+              status: 400,
+              headers: { "Content-Type": contentType },
+            }),
+        ),
+      );
+      const api = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+      await expect(
+        api.validateEvents({ organizationSlug: "test-org" }),
+      ).rejects.toBeInstanceOf(ApiValidationError);
+    },
+  );
+
+  it("does not classify a successful HTML response as user input", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        () =>
+          new HttpResponse("<html>Unexpected response</html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+          }),
+      ),
+    );
+    const api = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    const result = api.validateEvents({ organizationSlug: "test-org" });
+    await expect(result).rejects.toThrow(
+      "Expected JSON response but received HTML",
+    );
+    await expect(result).rejects.not.toBeInstanceOf(ApiClientError);
+  });
+});
 
 describe("API bearer token validation", () => {
   it("removes edge padding before sending a request", async () => {

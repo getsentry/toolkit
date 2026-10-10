@@ -973,15 +973,21 @@ export class SentryApiService {
         responseText.includes("<html")
       ) {
         // HTML when expecting JSON usually indicates authentication or routing issues
-        throw new Error(
+        throw createApiError(
           `Expected JSON response but received HTML (${response.status} ${response.statusText}). This may indicate you're not authenticated, the URL is incorrect, or there's a server issue.`,
+          response.status,
+          undefined,
+          responseText,
         );
       }
 
       // Generic non-JSON error
-      throw new Error(
+      throw createApiError(
         `Expected JSON response but received ${contentType || "unknown content type"} ` +
           `(${response.status} ${response.statusText})`,
+        response.status,
+        undefined,
+        responseText,
       );
     }
 
