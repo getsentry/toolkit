@@ -1,4 +1,10 @@
-import { parseSentryLinkHeader } from "@sentry/api";
+import {
+  createSentryClient,
+  listOrganizationProjects,
+  listOrganizationTeams,
+  listOrganizations,
+  parseSentryLinkHeader,
+} from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
 import { z } from "zod";
@@ -299,6 +305,8 @@ type RequestOptions = {
  */
 const RETRYABLE_REQUEST_MAX_RETRIES = 2;
 const RETRYABLE_REQUEST_INITIAL_DELAY_MS = 250;
+const API_MAX_PER_PAGE = 100;
+const MAX_LIST_PAGES = 50;
 
 /**
  * Default cap for returning attachment bytes inline over the MCP transport.
@@ -1010,6 +1018,82 @@ export class SentryApiService {
     return this.parseJsonResponse(response);
   }
 
+  /** Let SDK operations build paths and queries while MCP owns transport and errors. */
+  private sdkClient(expectedPath: string, host: string = this.host) {
+    const origin = new URL(`${this.protocol}://${host}`).origin;
+    return createSentryClient({
+      baseUrl: origin,
+      fetch: async (sdkRequest) => {
+        if (!(sdkRequest instanceof Request)) {
+          throw new ConfigurationError("Unexpected SDK request input");
+        }
+        const url = new URL(sdkRequest.url);
+        if (
+          url.origin !== origin ||
+          url.pathname !== "/api/0".concat(expectedPath) ||
+          sdkRequest.method !== "GET"
+        ) {
+          throw new ConfigurationError(
+            "Unexpected SDK request target or method",
+          );
+        }
+        const path = `${url.pathname.slice("/api/0".length)}${url.search}`;
+        const response = await this.request(
+          path,
+          { method: "GET", signal: sdkRequest.signal },
+          { host },
+        );
+        const contentType = response.headers.get("content-type");
+        if (!contentType?.includes("application/json")) {
+          await this.parseJsonResponse(response);
+        }
+        return response;
+      },
+    }).client;
+  }
+
+  private async sdkListPage<T>(
+    fetchPage: (
+      perPage: number,
+      cursor: string | undefined,
+    ) => Promise<{ data: unknown; response: Response }>,
+    schema: z.ZodType<T[]>,
+    limit: number,
+    initialCursor?: string | null,
+  ): Promise<{ items: T[]; nextCursor: string | null }> {
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > API_MAX_PER_PAGE * MAX_LIST_PAGES
+    ) {
+      throw new ApiValidationError(
+        `limit must be an integer between 1 and ${API_MAX_PER_PAGE * MAX_LIST_PAGES}`,
+      );
+    }
+    const items: T[] = [];
+    const seenCursors = new Set<string>();
+    let cursor = initialCursor ?? undefined;
+    for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+      const perPage = Math.min(API_MAX_PER_PAGE, limit - items.length);
+      const { data, response } = await fetchPage(perPage, cursor);
+      const rows = schema.parse(data);
+      if (rows.length > perPage) {
+        throw new Error("API returned more items than requested");
+      }
+      items.push(...rows);
+      const nextCursor = getNextCursor(response.headers.get("link"));
+      if (items.length >= limit || !nextCursor) {
+        return { items, nextCursor };
+      }
+      if (seenCursors.has(nextCursor) || nextCursor === cursor) {
+        throw new Error("API returned a repeated pagination cursor");
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
+    throw new Error("API pagination exceeded its page limit");
+  }
+
   /**
    * Generates a Sentry issue URL for browser navigation.
    *
@@ -1640,33 +1724,26 @@ export class SentryApiService {
     limit?: number;
     cursor?: string | null;
   }): Promise<{ organizations: OrganizationList; nextCursor: string | null }> {
-    const limit = params?.limit ?? 25;
-
-    // Build query parameters
-    const queryParams = new URLSearchParams();
-    queryParams.set("per_page", String(limit));
-    if (params?.query) {
-      queryParams.set("query", params.query);
-    }
-    if (params?.cursor) {
-      queryParams.set("cursor", params.cursor);
-    }
-    const queryString = queryParams.toString();
-    const path = `/organizations/?${queryString}`;
-
-    let host = undefined;
     // Public SaaS lists across regions on sentry.io; single-tenant instances
-    // must keep organization discovery on their configured host.
-    if (this.isPublicSaas()) {
-      host = "sentry.io";
-    }
-
-    const response = await this.request(path, undefined, { host });
-    const body = await this.parseJsonResponse(response);
-
+    // keep organization discovery on their configured host.
+    const client = this.sdkClient(
+      "/organizations/",
+      this.isPublicSaas() ? "sentry.io" : this.host,
+    );
+    const { items, nextCursor } = await this.sdkListPage(
+      (perPage, cursor) =>
+        listOrganizations({
+          client,
+          query: { per_page: perPage, query: params?.query, cursor },
+          throwOnError: true,
+        }),
+      OrganizationListSchema,
+      params?.limit ?? 25,
+      params?.cursor,
+    );
     return {
-      organizations: OrganizationListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      organizations: items,
+      nextCursor,
     };
   }
 
@@ -1718,24 +1795,23 @@ export class SentryApiService {
     params?: { query?: string; limit?: number; cursor?: string | null },
     opts?: RequestOptions,
   ): Promise<{ teams: TeamList; nextCursor: string | null }> {
-    const queryParams = new URLSearchParams();
-    queryParams.set("per_page", String(params?.limit ?? 25));
-    if (params?.query) {
-      queryParams.set("query", params.query);
-    }
-    if (params?.cursor) {
-      queryParams.set("cursor", params.cursor);
-    }
-    const queryString = queryParams.toString();
     const teamsPath = apiPath`/organizations/${organizationSlug}/teams/`;
-    const path = `${teamsPath}?${queryString}`;
-
-    const response = await this.request(path, undefined, opts);
-    const body = await this.parseJsonResponse(response);
-
+    const client = this.sdkClient(teamsPath, opts?.host);
+    const { items, nextCursor } = await this.sdkListPage(
+      (perPage, cursor) =>
+        listOrganizationTeams({
+          client,
+          path: { organization_id_or_slug: organizationSlug },
+          query: { per_page: perPage, query: params?.query, cursor },
+          throwOnError: true,
+        }),
+      TeamListSchema,
+      params?.limit ?? 25,
+      params?.cursor,
+    );
     return {
-      teams: TeamListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      teams: items,
+      nextCursor,
     };
   }
 
@@ -1786,24 +1862,23 @@ export class SentryApiService {
     params?: { query?: string; limit?: number; cursor?: string | null },
     opts?: RequestOptions,
   ): Promise<{ projects: ProjectList; nextCursor: string | null }> {
-    const queryParams = new URLSearchParams();
-    queryParams.set("per_page", String(params?.limit ?? 25));
-    if (params?.query) {
-      queryParams.set("query", params.query);
-    }
-    if (params?.cursor) {
-      queryParams.set("cursor", params.cursor);
-    }
-    const queryString = queryParams.toString();
     const projectsPath = apiPath`/organizations/${organizationSlug}/projects/`;
-    const path = `${projectsPath}?${queryString}`;
-
-    const response = await this.request(path, undefined, opts);
-    const body = await this.parseJsonResponse(response);
-
+    const client = this.sdkClient(projectsPath, opts?.host);
+    const { items, nextCursor } = await this.sdkListPage(
+      (perPage, cursor) =>
+        listOrganizationProjects({
+          client,
+          path: { organization_id_or_slug: organizationSlug },
+          query: { per_page: perPage, query: params?.query, cursor },
+          throwOnError: true,
+        }),
+      ProjectListSchema,
+      params?.limit ?? 25,
+      params?.cursor,
+    );
     return {
-      projects: ProjectListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      projects: items,
+      nextCursor,
     };
   }
 
