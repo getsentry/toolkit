@@ -62,6 +62,7 @@ import {
   ShortcutHintProvider,
   useInkShortcuts,
 } from "./ink-shortcuts.js";
+import { createSnakeSession, SnakeGame, SnakeInvite } from "./ink-snake.js";
 import { BLOCK_LINE_COUNT, LEARN_SEQUENCE } from "./learn-content.js";
 import { SENTRY_TIPS, type SentryTip } from "./sentry-tips.js";
 import type {
@@ -96,6 +97,10 @@ const COLOR_INFO = "#9C84D4";
 const COLOR_WARN = "#FDB81B";
 const COLOR_ERROR = "#fe4144";
 const COLOR_SUCCESS = "#83da90";
+
+/** Below this height the invite and board crowd out the activity log. */
+const MIN_SNAKE_ROWS = 20;
+
 const ACTIVE_TASK_PULSE_INTERVAL_MS = 600;
 
 const ICON_BY_SEVERITY: Record<LogSeverity, { glyph: string; color?: string }> =
@@ -196,10 +201,39 @@ function AppBody({ store }: AppProps): React.ReactNode {
   );
   const { columns, rows } = useInkFrameSize();
   const [activeTab, setActiveTab] = useState(0);
+  const [snakeSession] = useState(createSnakeSession);
+  // Latest warning/error log id when the game opened; null while closed.
+  const [snakeAlertBaseline, setSnakeAlertBaseline] = useState<number | null>(
+    null,
+  );
 
   const width = getInkFrameWidth(columns);
   const contentHeight = Math.max(5, rows - 4);
   const isWide = width >= 80;
+
+  const canPlaySnake =
+    snapshot.snakeEnabled &&
+    snapshot.layout === "workflow" &&
+    snapshot.prompt === null &&
+    snapshot.outroState === null &&
+    snapshot.summary === null &&
+    activeTab === 0 &&
+    rows >= MIN_SNAKE_ROWS;
+  const latestAlertId = latestAlertLogId(snapshot.logs);
+  const showSnake =
+    snakeAlertBaseline !== null &&
+    snakeAlertBaseline === latestAlertId &&
+    canPlaySnake;
+  // A prompt, a new warning or error, or the end of the run takes the pane
+  // back from the game so the user sees what needs attention.
+  useEffect(() => {
+    if (snakeAlertBaseline !== null && !showSnake) {
+      setSnakeAlertBaseline(null);
+    }
+  }, [showSnake, snakeAlertBaseline]);
+  const closeSnake = useCallback(() => setSnakeAlertBaseline(null), []);
+  const requestCancel = snapshot.requestCancel;
+  const cancelFromSnake = useCallback(() => requestCancel?.(), [requestCancel]);
 
   const tabs = useMemo<FrameTab[]>(
     () => [
@@ -234,13 +268,23 @@ function AppBody({ store }: AppProps): React.ReactNode {
         },
       },
     ];
+    if (canPlaySnake) {
+      bindings.push({
+        key: "g",
+        action: "play snake",
+        priority: 20,
+        match: (input) => input === "g",
+        run: () => setSnakeAlertBaseline(latestAlertId),
+      });
+    }
     return bindings;
-  }, [snapshot.requestCancel, tabs.length]);
+  }, [canPlaySnake, latestAlertId, snapshot.requestCancel, tabs.length]);
   useInkShortcuts("init-app", appShortcuts, {
     isActive:
       snapshot.layout === "workflow" &&
       snapshot.prompt === null &&
-      snapshot.outroState === null,
+      snapshot.outroState === null &&
+      !showSnake,
   });
 
   if (snapshot.outroState?.kind === "success") {
@@ -304,18 +348,51 @@ function AppBody({ store }: AppProps): React.ReactNode {
             flexDirection="row"
             flexGrow={1}
             flexShrink={1}
-            gap={isWide ? 1 : 0}
+            // Two columns read as wide as the one-row gap between sidebar panels.
+            gap={isWide ? 2 : 0}
             overflow="hidden"
           >
-            <Box flexDirection="column" flexGrow={1} overflow="hidden">
-              {activeTab === 0 ? (
-                <ActivityPane
-                  logs={snapshot.logs}
-                  prompt={snapshot.prompt}
-                  spinner={snapshot.spinner}
-                  summary={snapshot.summary}
-                  terminalRows={rows}
-                />
+            <Box
+              flexDirection="column"
+              // The board is sized from this pane, so its own content must not
+              // size the pane. A zero basis ignores the board and hint widths.
+              flexBasis={showSnake ? 0 : undefined}
+              flexGrow={1}
+              overflow="hidden"
+            >
+              {showSnake ? (
+                <Box flexDirection="column" flexGrow={1}>
+                  {snapshot.spinner.active ? (
+                    <SpinnerRow state={snapshot.spinner} />
+                  ) : (
+                    // Holds the spinner rows so the board keeps its size between steps.
+                    <Box height={2} />
+                  )}
+                  <SnakeGame
+                    accent={ACCENT}
+                    muted={MUTED_DIM}
+                    onCancel={cancelFromSnake}
+                    onExit={closeSnake}
+                    session={snakeSession}
+                  />
+                </Box>
+              ) : activeTab === 0 ? (
+                <>
+                  <ActivityPane
+                    logs={snapshot.logs}
+                    prompt={snapshot.prompt}
+                    spinner={snapshot.spinner}
+                    summary={snapshot.summary}
+                    terminalRows={rows}
+                  />
+                  {canPlaySnake ? (
+                    <SnakeInvite
+                      accent={ACCENT}
+                      muted={MUTED_DIM}
+                      session={snakeSession}
+                    />
+                  ) : null}
+                </>
               ) : (
                 <FilesScreen
                   filesRead={snapshot.filesRead}
@@ -355,6 +432,16 @@ function AppBody({ store }: AppProps): React.ReactNode {
   return (
     <InitRenderBoundary errorColor={COLOR_ERROR}>{inner}</InitRenderBoundary>
   );
+}
+
+function latestAlertLogId(logs: LogEntry[]): number {
+  for (let index = logs.length - 1; index >= 0; index--) {
+    const entry = logs[index];
+    if (entry?.severity === "warn" || entry?.severity === "error") {
+      return entry.id;
+    }
+  }
+  return 0;
 }
 
 // ────────────────────────────── Sidebar ───────────────────────────────

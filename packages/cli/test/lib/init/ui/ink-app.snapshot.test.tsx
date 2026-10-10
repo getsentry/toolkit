@@ -1383,3 +1383,123 @@ describe("completion screen", () => {
     expect(text).toContain("Opened Sentry in your browser.");
   });
 });
+
+describe("snake waiting game", () => {
+  async function settledFrame(out: CaptureStream): Promise<string> {
+    await sleep(FRAME_SETTLE_MS);
+    out.settledOutput = out.allOutput();
+    return stripAnsi(out.latestFrame());
+  }
+
+  test("stays hidden when the game is disabled", async () => {
+    const store = new WizardStore();
+    store.startSpinner("Verifying setup...");
+    const out = await renderApp(store, 110, { rows: 32, input: ["g"] });
+    const frame = stripAnsi(out.latestFrame());
+    expect(frame).toContain("Verifying setup...");
+    expect(frame).not.toContain("Snake");
+    expect(frame).not.toContain("Bugs squashed");
+  });
+
+  function renderLive(store: WizardStore, columns = 110, rows = 32) {
+    const out = new CaptureStream(columns, rows);
+    const stdin = makeStdin();
+    const instance = render(createElement(App, { store }), {
+      stdout: out as unknown as NodeJS.WriteStream,
+      stderr: out as unknown as NodeJS.WriteStream,
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      patchConsole: false,
+      exitOnCtrlC: false,
+      // Ink writes no intermediate frames in CI unless forced interactive.
+      interactive: true,
+    });
+    return { instance, out, stdin };
+  }
+
+  async function startGame(
+    columns = 110,
+    rows = 32,
+  ): Promise<
+    ReturnType<typeof renderLive> & {
+      store: WizardStore;
+    }
+  > {
+    const store = new WizardStore({ snakeEnabled: true });
+    store.startSpinner("Verifying setup...");
+    const live = renderLive(store, columns, rows);
+    expect(await settledFrame(live.out)).toContain("to play Snake");
+    live.stdin.push("g");
+    await sleep(20);
+    live.stdin.push("\u001B[A");
+    expect(await settledFrame(live.out)).toContain("Bugs squashed");
+    return { ...live, store };
+  }
+
+  test("a new warning pauses the game and shows the activity log", async () => {
+    const { instance, out, store } = await startGame();
+    try {
+      store.appendLog("warn", "Could not verify setup: app failed to start");
+      const frame = await settledFrame(out);
+      expect(frame).toContain("Could not verify setup");
+      expect(frame).not.toContain("Bugs squashed");
+      expect(frame).toContain("to resume Snake");
+    } finally {
+      instance.unmount();
+    }
+  });
+
+  test("esc pauses the game and offers to resume it", async () => {
+    const { instance, out, stdin } = await startGame();
+    try {
+      stdin.push("\u001B");
+      const frame = await settledFrame(out);
+      expect(frame).not.toContain("Bugs squashed");
+      expect(frame).toContain("to resume Snake");
+    } finally {
+      instance.unmount();
+    }
+  });
+
+  // The sidebar's top border comes first in reading order, so the board's is second.
+  function boardBorder(frame: string): string | undefined {
+    return frame.match(/╭─+╮/g)?.[1];
+  }
+
+  test.each([
+    [80, 20],
+    [160, 50],
+  ])(
+    "keeps the board size and score visible at %i x %i",
+    async (columns, rows) => {
+      const { instance, out } = await startGame(columns, rows);
+      try {
+        const first = await settledFrame(out);
+        await sleep(400);
+        const later = await settledFrame(out);
+        expect(boardBorder(first)).toBeDefined();
+        expect(boardBorder(later)).toBe(boardBorder(first));
+        for (const frame of [first, later]) {
+          expect(frame).toContain("Bugs squashed");
+          expect(frame).toContain("steer");
+          expect(frame).not.toContain("Paused");
+        }
+      } finally {
+        instance.unmount();
+      }
+    },
+  );
+
+  test("draws a distinguishable board without color escapes under NO_COLOR", async () => {
+    vi.stubEnv("NO_COLOR", "1");
+    const { instance, out } = await startGame();
+    try {
+      await settledFrame(out);
+      expect(out.latestFrame()).not.toContain("\x1b[38;2");
+      expect(out.latestFrame()).toContain("@");
+      expect(out.latestFrame()).toContain("*");
+    } finally {
+      instance.unmount();
+      vi.unstubAllEnvs();
+    }
+  });
+});

@@ -204,6 +204,8 @@ export type WizardSnapshot = {
   prompt: ActivePrompt | null;
   /** Index of the currently-displayed Sentry tip in the sidebar. */
   tipIndex: number;
+  /** Offer the waiting-screen Snake game. Off for agents and `SENTRY_INIT_GAME=0`. */
+  snakeEnabled: boolean;
   /** Final structured summary, rendered after the workflow completes. */
   summary: WizardSummary | null;
   /**
@@ -281,6 +283,7 @@ function baseSnapshot(): WizardSnapshot {
     spinner: { active: false, frame: 0, message: "" },
     prompt: null,
     tipIndex: 0,
+    snakeEnabled: false,
     summary: null,
     filesRead: [],
     steps: defaultChecklistSteps(),
