@@ -37,6 +37,8 @@ import type { Env } from "./types";
 import { getClientIp } from "./utils/client-ip";
 import {
   addCorsHeaders,
+  addOAuthPublicClientCorsHeaders,
+  isOAuthPublicClientEndpoint,
   isPublicMetadataEndpoint,
   stripCorsHeaders,
 } from "./utils/cors";
@@ -145,7 +147,12 @@ async function finalizeResponse(
       : {};
   const finalized = isPublicMetadataEndpoint(url.pathname)
     ? addCorsHeaders(responseWithoutMetricHeaders)
-    : stripCorsHeaders(responseWithoutMetricHeaders);
+    : isOAuthPublicClientEndpoint(url.pathname)
+      ? addOAuthPublicClientCorsHeaders(
+          responseWithoutMetricHeaders,
+          request.headers.get("Origin"),
+        )
+      : stripCorsHeaders(responseWithoutMetricHeaders);
 
   const metricOptions = {
     ...responseMetricOptions,
@@ -179,7 +186,10 @@ const wrappedOAuthProvider = {
     // Public metadata gets restrictive CORS; everything else gets a bare 204
     // with no CORS headers so the browser blocks the cross-origin request.
     if (request.method === "OPTIONS") {
-      if (isPublicMetadataEndpoint(url.pathname)) {
+      if (
+        isPublicMetadataEndpoint(url.pathname) ||
+        isOAuthPublicClientEndpoint(url.pathname)
+      ) {
         return finalizeResponse(
           request,
           url,

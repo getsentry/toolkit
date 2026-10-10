@@ -156,7 +156,7 @@ describe("worker entrypoint", () => {
     expect(MockOAuthProvider).not.toHaveBeenCalled();
   });
 
-  it("strips CORS headers from non-public OAuth endpoints", async () => {
+  it("strips CORS headers from non-public OAuth endpoints when there is no Origin", async () => {
     mockOAuthProviderFetch.mockResolvedValueOnce(
       new Response("ok", {
         headers: {
@@ -181,6 +181,67 @@ describe("worker entrypoint", () => {
     expect(response.headers.has("Access-Control-Allow-Headers")).toBe(false);
     expect(response.headers.has("Access-Control-Max-Age")).toBe(false);
     expect(response.headers.has("Access-Control-Expose-Headers")).toBe(false);
+  });
+
+  it("strips CORS headers from non-OAuth-public-client endpoints even with an Origin", async () => {
+    mockOAuthProviderFetch.mockResolvedValueOnce(
+      new Response("ok", {
+        headers: { "Access-Control-Allow-Origin": "https://evil.com" },
+      }),
+    );
+
+    const response = await handler.fetch!(
+      new Request("https://mcp.sentry.dev/oauth/authorize", {
+        headers: { Origin: "https://dash.cloudflare.com" },
+      }),
+      env,
+      ctx,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.has("Access-Control-Allow-Origin")).toBe(false);
+  });
+
+  it("reflects the requesting Origin on the OAuth token exchange endpoint (getsentry/sentry-mcp#999)", async () => {
+    mockOAuthProviderFetch.mockResolvedValueOnce(new Response("ok"));
+
+    const response = await handler.fetch!(
+      new Request("https://mcp.sentry.dev/oauth/token", {
+        method: "POST",
+        headers: { Origin: "https://dash.cloudflare.com" },
+      }),
+      env,
+      ctx,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://dash.cloudflare.com",
+    );
+    expect(response.headers.get("Vary")).toBe("Origin");
+    expect(response.headers.has("Access-Control-Allow-Credentials")).toBe(
+      false,
+    );
+  });
+
+  it("answers cross-origin preflight on the OAuth token exchange endpoint", async () => {
+    const response = await handler.fetch!(
+      new Request("https://mcp.sentry.dev/oauth/token", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://dash.cloudflare.com",
+          "Access-Control-Request-Method": "POST",
+        },
+      }),
+      env,
+      ctx,
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://dash.cloudflare.com",
+    );
+    expect(MockOAuthProvider).not.toHaveBeenCalled();
   });
 
   it("enables Client ID Metadata Documents on the oauth provider", async () => {
