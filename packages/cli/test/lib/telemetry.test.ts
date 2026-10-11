@@ -87,6 +87,15 @@ describe("initSentry", () => {
     const client = initSentry(true);
     expect(client?.getOptions().release).toBe("0.0.0-dev");
   });
+
+  test("includes NodeSystemError integration on Node.js (not bun)", () => {
+    // hasGetSystemErrorMap = !process.versions.bun; on Node.js process.versions.bun
+    // is undefined, so NodeSystemError should be included. This guards against
+    // regressions where the integration is wrongly excluded on Node.js (CLI-3HF).
+    const client = initSentry(true);
+    const integration = client?.getIntegrationByName("NodeSystemError");
+    expect(integration).toBeDefined();
+  });
 });
 
 describe("withTelemetry", () => {

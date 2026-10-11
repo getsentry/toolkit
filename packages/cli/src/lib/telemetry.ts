@@ -429,23 +429,19 @@ const LIBRARY_EXCLUDED_INTEGRATIONS = new Set([
 ]);
 
 /**
- * Check whether `util.getSystemErrorMap` exists at setup time.
+ * Whether `util.getSystemErrorMap` is available at runtime.
+ *
  * Bun does not implement this Node.js API, which the SDK's NodeSystemError
  * integration uses in its `processEvent` hook. When missing, the hook crashes
  * during event processing instead of sending the error report (CLI-K1).
  *
- * Checked once at module load so the integration filter is a simple boolean.
+ * We detect bun via `process.versions.bun` rather than probing `node:util`
+ * directly. In a bun-compiled binary, `_require("node:util")` resolves to the
+ * bundled (build-time) Node.js util, which has `getSystemErrorMap` — even
+ * though bun's own runtime `node:util` does not. Checking the bun version
+ * is always accurate at runtime regardless of how the code was bundled (CLI-3HF).
  */
-const hasGetSystemErrorMap = (() => {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    // Dynamic require to avoid bundler issues — the check only matters at runtime
-    const util = _require("node:util") as Record<string, unknown>;
-    return typeof util.getSystemErrorMap === "function";
-  } catch {
-    return false;
-  }
-})();
+const hasGetSystemErrorMap = !process.versions.bun;
 
 /** Current beforeExit handler, tracked so it can be replaced on re-init */
 let currentBeforeExitHandler: (() => void) | null = null;
