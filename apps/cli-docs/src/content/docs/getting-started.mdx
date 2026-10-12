@@ -55,6 +55,12 @@ You can also set `SENTRY_INSTALL_DIR` to override the binary installation direct
 curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
+Set `SENTRY_INIT=1` to run [`sentry init`](../commands/init/) right after installing. This requires an interactive terminal:
+
+```bash
+curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
+```
+
 ### Windows (PowerShell)
 
 On Windows, install the latest stable release from PowerShell:

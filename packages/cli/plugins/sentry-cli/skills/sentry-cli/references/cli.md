@@ -132,7 +132,7 @@ Configure shell integration
 
 **Flags:**
 - `--install - Install the binary from a temp location to the system path`
-- `--method <value> - Installation method (curl, npm, pnpm, bun, yarn)`
+- `--method <value> - Installation method (curl, brew, npm, pnpm, bun, yarn)`
 - `--channel <value> - Release channel to persist (stable or nightly)`
 - `--no-modify-path - Skip PATH modification`
 - `--no-completions - Skip shell completion installation`

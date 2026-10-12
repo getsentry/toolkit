@@ -104,7 +104,7 @@ const result = execFileSync("id", ["-u", "username"], { encoding: "utf-8", stdio
 
 The full project-structure tree — including the live command/subcommand list and the
 domain API modules — is generated from the route tree and lives in
-[`apps/cli-docs/src/content/docs/contributing.md`](apps/cli-docs/src/content/docs/contributing.md)
+[`apps/cli-docs/src/content/docs/contributing.md`](../../apps/cli-docs/src/content/docs/contributing.md)
 (the `project-structure` block produced by `script/generate-docs-sections.ts`). It is
 kept in sync automatically, so it is **not** duplicated here to avoid drift. For the
 current command list run `ls src/commands/` or `sentry --help`.
@@ -115,12 +115,13 @@ Top-level layout:
   **`src/context.ts`** — dependency-injection context.
 - **`src/commands/`** — one directory per command group (`agent-conversation`,
   `alert`, `auth`, `build`, `cli`, `code-mappings`, `dart-symbol-map`,
-  `dashboard`, `debug-files`, `docs`, `event`, `feedback`, `issue`, `local`,
+  `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,
   `log`, `monitor`, `org`, `platform`, `proguard`, `project`, `react-native`,
   `release`, `replay`, `repo`, `snapshots`, `sourcemap`, `span`, `status`,
   `team`, `trace`, `trial`) plus standalone command files (`api.ts`,
-  `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `schema.ts`,
-  `wasm-split.ts`).
+  `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `mcp.ts`, `schema.ts`,
+  `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
+  `send-envelope.ts`).
 - **`src/lib/`** — shared utilities. Key subtrees: `api/` (domain API modules),
   `db/` (SQLite layer), `dsn/` (DSN detection, with per-language extractors under
   `dsn/languages/`), and `formatters/` (output formatting). See the file-locations
@@ -434,9 +435,9 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 ### Generated Docs & Skills
 
-All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:command-docs` then `generate:skill`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
+All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:banner`, `generate:command-docs`, `generate:skill`, then `generate:docs-sections`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
 
-- **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/commands/`.
+- **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
 - **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write an `Examples:` block in `fullDescription` or a `## Examples` section in a fragment for new commands.
 - Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
