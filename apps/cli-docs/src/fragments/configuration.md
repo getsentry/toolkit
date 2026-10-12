@@ -66,7 +66,7 @@ If you previously used the legacy `sentry-cli` and have a `~/.sentryclirc` file,
 
 ## Persistent Defaults
 
-Use `sentry cli defaults` to set persistent defaults for organization, project, URL, and telemetry. These are stored in the CLI's local database and apply to all commands.
+Use `sentry cli defaults` to set persistent defaults for organization, project, URL, custom headers, CA certificate, telemetry, agent skills, and inline graphics. These are stored in the CLI's local database and apply to all commands.
 
 ```bash
 sentry cli defaults org my-org           # Set default organization
@@ -128,4 +128,4 @@ When installed via the install script, the CLI binary is placed in an XDG-aligne
 
 Older installs placed the binary in `~/.sentry/bin`. Running `sentry cli setup` moves an existing `~/.sentry/bin` binary into the resolved install directory (updating your `PATH` and recorded install metadata to match) and migrates any legacy `~/.sentry` config data (`cli.db`, `config.json`) into the XDG config directory. Both migrations are skipped when a binary or config already exists at the target.
 
-`sentry upgrade` runs `setup` on the new binary, so it migrates too — but conservatively, because upgrade never edits your `PATH`. A legacy `~/.sentry/bin` binary is relocated to the XDG install directory **only when that directory is already on your `PATH`**, so the moved binary stays discoverable. If the XDG directory isn't on `PATH`, upgrade leaves the binary in place (a mislocated binary that vanished from `PATH` would break the command); run `sentry cli setup` explicitly to relocate it and update `PATH`. Legacy config data is migrated on upgrade regardless.
+`sentry cli upgrade` runs `setup` on the new binary, so it migrates too — but conservatively, because upgrade never edits your `PATH`. A legacy `~/.sentry/bin` binary is relocated to the XDG install directory **only when that directory is already on your `PATH`**, so the moved binary stays discoverable. If the XDG directory isn't on `PATH`, upgrade leaves the binary in place (a mislocated binary that vanished from `PATH` would break the command); run `sentry cli setup` explicitly to relocate it and update `PATH`. Legacy config data is migrated on upgrade regardless.

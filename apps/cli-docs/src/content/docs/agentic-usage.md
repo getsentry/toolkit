@@ -11,7 +11,7 @@ The curl installer and Homebrew run `sentry cli setup`, which installs agent ski
 
 This uses the same `~/.agents` convention as [dotagents](https://github.com/getsentry/dotagents), Sentry's first-party tool for installing agent skills. See [Manual Installation](#manual-installation) to add the skill with dotagents yourself.
 
-To skip automatic skill installation, pass `--no-agent-skills` to `sentry cli setup`.
+To skip automatic skill installation, pass `--no-agent-skills` to `sentry cli setup` (or to the install script or `sentry cli upgrade`). The CLI remembers this choice, so later upgrades also skip skills. Run `sentry cli defaults agent-skills on` to turn installation back on.
 
 ## Manual Installation
 

@@ -36,7 +36,6 @@ sentry auth --scope project:read --scope org:read
 sentry auth --scope project:read,event:read
 
 sentry auth --url https://sentry.example.com
-SENTRY_URL=https://sentry.example.com sentry auth
 
 sentry auth --token YOUR_TOKEN --url https://sentry.example.com
 ```

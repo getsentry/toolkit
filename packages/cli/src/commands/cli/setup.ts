@@ -611,7 +611,7 @@ export const setupCommand = buildCommand({
       method: {
         kind: "parsed",
         parse: parseInstallationMethod,
-        brief: "Installation method (curl, npm, pnpm, bun, yarn)",
+        brief: "Installation method (curl, brew, npm, pnpm, bun, yarn)",
         placeholder: "method",
         optional: true,
       },

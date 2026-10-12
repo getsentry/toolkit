@@ -123,17 +123,17 @@ pnpm run bundle
 ## Testing
 
 ```bash
-# Run all tests
+# Run unit tests with coverage (regenerates docs and the SDK first)
 pnpm run test
 
-# Run specific test file
-pnpm run test -- test/path/to/test.ts
+# Run a specific test file (skips the generate steps)
+pnpm exec vitest run test/path/to/test.ts
 
-# Run with watch mode
-pnpm run test -- --watch
+# Run in watch mode
+pnpm exec vitest
 
-# Run with coverage
-pnpm run test -- --coverage
+# Run end-to-end tests
+pnpm run test:e2e
 ```
 
 ## Code Style

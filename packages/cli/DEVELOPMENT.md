@@ -6,7 +6,7 @@
 - [Node.js](https://nodejs.org/) v22.15+ installed
 - [pnpm](https://pnpm.io/) v11.8+ installed
 <!-- GENERATED:END dev-prereq -->
-- A Sentry OAuth application (create one at https://sentry.io/settings/account/api/applications/)
+- A Sentry OAuth application client ID for builds, self-hosted Sentry, or a custom OAuth app (create one at https://sentry.io/settings/account/api/applications/)
 
 ## Setup
 
@@ -16,19 +16,19 @@
 pnpm install
 ```
 
-2. Create a `.env.local` file in the project root:
+2. Optionally, create `packages/cli/.env.local` (see `.env.example`):
 
 ```
 SENTRY_CLIENT_ID=your-sentry-oauth-client-id
 ```
 
-Get the client ID from your Sentry OAuth application settings.
+Dev mode (`pnpm run cli`) falls back to the CLI's public sentry.io client ID when `SENTRY_CLIENT_ID` is unset. Set it to use self-hosted Sentry or your own OAuth app. `pnpm run build` and `pnpm run bundle` require it. Get the client ID from your Sentry OAuth application settings.
 
 **Note:** No client secret is needed - the CLI uses OAuth 2.0 Device Authorization Grant (RFC 8628) which is designed for public clients.
 
 ## Running Locally
 
-Load environment variables from `.env.local` (e.g. via `dotenv` or `export $(cat .env.local | xargs)`), then:
+`pnpm run cli` loads `.env.local` automatically when it exists:
 
 ```bash
 pnpm run cli -- auth login
