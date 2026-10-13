@@ -4,6 +4,9 @@ import type {
   EventsQueryValidation,
   EventsValidationResult,
   SentryApiService,
+  Tag,
+  TraceItemAttribute,
+  TraceItemAttributeContext,
   TraceItemAttributeType,
   TraceItemType,
 } from "../../../api-client";
@@ -593,10 +596,10 @@ export async function fetchCustomAttributes(
     context?: boolean;
   } = {},
 ): Promise<{
-  attributes: Record<string, string>;
+  attributes: Record<string, Tag | TraceItemAttribute>;
   fieldTypes: Record<string, TraceItemAttributeType>;
 }> {
-  const customAttributes: Record<string, string> = {};
+  const customAttributes: Record<string, Tag | TraceItemAttribute> = {};
   const fieldTypes: Record<string, TraceItemAttributeType> = {};
   const normalizedDataset = normalizeEventsDataset(dataset);
   const attributeTimeParams = timeParams ?? { statsPeriod: "14d" };
@@ -617,7 +620,7 @@ export async function fetchCustomAttributes(
 
     for (const tag of tagsResponse) {
       if (tag.key && !tag.key.startsWith("sentry:")) {
-        customAttributes[tag.key] = tag.name || tag.key;
+        customAttributes[tag.key] = { ...tag, name: tag.name || tag.key };
       }
     }
   } else if (normalizedDataset === "profiles") {
@@ -646,7 +649,7 @@ export async function fetchCustomAttributes(
 
     for (const attr of attributesResponse) {
       if (attr.key && !attr.key.startsWith("sentry:")) {
-        customAttributes[attr.key] = attr.name || attr.key;
+        customAttributes[attr.key] = { ...attr, name: attr.name || attr.key };
         // Track field type from the attribute response with validation
         if (attr.type) {
           fieldTypes[attr.key] = attr.type;
@@ -942,6 +945,80 @@ export async function assertEventsSearchIsValid(
 }
 
 /**
+ * Describes an attribute the agent can query, from either the static field config or the
+ * attributes API. `context` carries semantic convention details when available.
+ */
+type AttributeDescriptor = {
+  key: string;
+  name: string;
+  context?: TraceItemAttributeContext;
+};
+
+/**
+ * Convert static `{ key: description }` field config into the same
+ * `{ key: { key, name } }` shape returned by fetchCustomAttributes
+ */
+function toAttributeRecord(
+  fields: Record<string, string>,
+): Record<string, AttributeDescriptor> {
+  return Object.fromEntries(
+    Object.entries(fields).map(([key, name]) => [key, { key, name }]),
+  );
+}
+
+/**
+ * Swap each deprecated key for its replacement key when available,
+ * otherwise remove the deprecated attribute from the available attributes.
+ */
+function resolveAvailableFields(
+  fields: Record<string, AttributeDescriptor>,
+  fieldTypes: Record<string, TraceItemAttributeType>,
+): {
+  available: Map<string, AttributeDescriptor>;
+  replaced: AttributeDescriptor[];
+  updatedFieldTypes: Record<string, TraceItemAttributeType>;
+} {
+  const available = new Map<string, AttributeDescriptor>();
+  const replaced: AttributeDescriptor[] = [];
+
+  for (const [key, field] of Object.entries(fields)) {
+    const attributeDeprecated = field.context?.isDeprecated;
+    const replacementKey =
+      attributeDeprecated && field.context
+        ? field.context.replacementAttribute
+        : undefined;
+    if (attributeDeprecated && !replacementKey) {
+      continue;
+    } else if (attributeDeprecated && replacementKey) {
+      const replacementAttribute = { ...field, key: replacementKey };
+      available.set(replacementKey, replacementAttribute);
+      replaced.push(field);
+      fieldTypes[replacementKey] = fieldTypes[key];
+      delete fieldTypes[key];
+    } else if (!attributeDeprecated && !available.has(key)) {
+      available.set(key, field);
+    }
+  }
+
+  return { available, replaced, updatedFieldTypes: fieldTypes };
+}
+
+/**
+ * Describe a field for the agent with examples is provided.
+ */
+function describeField(field: AttributeDescriptor): string {
+  const { context } = field;
+  const parts: string[] = [];
+
+  parts.push(context?.brief || field.name);
+  if (context?.examples?.length) {
+    parts.push(`Examples: ${context.examples.join(", ")}.`);
+  }
+
+  return parts.join(" ");
+}
+
+/**
  * Create a tool for the agent to query available attributes by dataset
  * The tool is pre-bound with the API service and organization configured for the appropriate region
  */
@@ -1012,45 +1089,65 @@ export function createDatasetAttributesTool(options: {
         );
 
       // Combine all available fields
-      const allFields = {
-        ...BASE_COMMON_FIELDS,
-        ...DATASET_FIELDS[normalizedDataset],
+      const allFields: Record<string, AttributeDescriptor> = {
+        ...toAttributeRecord(BASE_COMMON_FIELDS),
+        ...toAttributeRecord(DATASET_FIELDS[normalizedDataset]),
         ...customAttributes,
       };
-      const fieldCount = Object.keys(allFields).length;
+
+      const {
+        available: availableFields,
+        replaced: replacedFields,
+        updatedFieldTypes,
+      } = resolveAvailableFields(allFields, fieldTypes);
+      const replacedKeys = new Set(replacedFields.map((field) => field.key));
+      const fieldCount = availableFields.size;
 
       const recommendedFields = RECOMMENDED_FIELDS[normalizedDataset];
 
       // Combine field types from both static config and dynamic API
       const allFieldTypes: Record<string, TraceItemAttributeType> = {
-        ...fieldTypes,
+        ...updatedFieldTypes,
       };
       const staticNumericFields =
         NUMERIC_FIELDS[normalizedDataset] || new Set();
       for (const field of staticNumericFields) {
         allFieldTypes[field] = "number";
       }
+      const fieldTypeEntries = Object.entries(allFieldTypes).filter(
+        ([key]) => !replacedKeys.has(key),
+      );
 
       recordAgentToolResultCount(fieldCount);
 
       return `Dataset: ${dataset}
 
 Available Fields (${fieldCount} total):
-${Object.entries(allFields)
+${[...availableFields]
   .slice(0, 50) // Limit to first 50 to avoid overwhelming the agent
-  .map(([key, desc]) => `- ${key}: ${desc}`)
+  .map(([key, field]) => `- ${key}: ${describeField(field)}`)
   .join("\n")}
 ${fieldCount > 50 ? `\n... and ${fieldCount - 50} more fields` : ""}
-
+${
+  replacedFields.length > 0
+    ? `
+Deprecated Fields (do NOT use these, use the replacement instead):
+${replacedFields
+  .slice(0, 30)
+  .map((field) => `- ${field.key} → ${field.context?.replacementAttribute}`)
+  .join("\n")}
+${replacedFields.length > 30 ? `\n... and ${replacedFields.length - 30} more deprecated fields` : ""}`
+    : ""
+}
 Recommended Fields for ${dataset}:
 ${recommendedFields.basic.map((f) => `- ${f}`).join("\n")}
 
 Field Types (CRITICAL for aggregate functions):
-${Object.entries(allFieldTypes)
+${fieldTypeEntries
   .slice(0, 30) // Show more field types since this is critical for aggregate functions
   .map(([key, type]) => `- ${key}: ${type}`)
   .join("\n")}
-${Object.keys(allFieldTypes).length > 30 ? `\n... and ${Object.keys(allFieldTypes).length - 30} more fields` : ""}
+${fieldTypeEntries.length > 30 ? `\n... and ${fieldTypeEntries.length - 30} more fields` : ""}
 
 IMPORTANT: Only use numeric aggregate functions (avg, sum, min, max, percentiles) with numeric fields. Use count() or count_unique() for non-numeric fields.
 

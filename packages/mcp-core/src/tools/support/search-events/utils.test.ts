@@ -585,8 +585,24 @@ describe("fetchCustomAttributes", () => {
 
       expect(result).toEqual({
         attributes: {
-          "span.op": "Operation",
-          "span.duration": "Duration",
+          "span.duration": {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "span.duration",
+            name: "Duration",
+            type: "number",
+          },
+          "span.op": {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "span.op",
+            name: "Operation",
+            type: "string",
+          },
         },
         fieldTypes: {
           "span.op": "string",
@@ -614,8 +630,12 @@ describe("fetchCustomAttributes", () => {
 
       expect(result).toEqual({
         attributes: {
-          browser: "Browser",
-          environment: "Environment",
+          browser: { key: "browser", name: "Browser", totalValues: 10 },
+          environment: {
+            key: "environment",
+            name: "Environment",
+            totalValues: 3,
+          },
         },
         fieldTypes: {},
       });
@@ -663,9 +683,33 @@ describe("fetchCustomAttributes", () => {
 
       expect(result).toEqual({
         attributes: {
-          "metric.name": "Metric Name",
-          "metric.type": "Metric Type",
-          value: "Metric Value",
+          "metric.name": {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "metric.name",
+            name: "Metric Name",
+            type: "string",
+          },
+          "metric.type": {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "metric.type",
+            name: "Metric Type",
+            type: "string",
+          },
+          value: {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "value",
+            name: "Metric Value",
+            type: "number",
+          },
         },
         fieldTypes: {
           "metric.name": "string",
@@ -733,14 +777,160 @@ describe("fetchCustomAttributes", () => {
       }
       expect(result).toEqual({
         attributes: {
-          "tags[type]": "type",
-          "tags[sequence,number]": "sequence",
-          "tags[enabled,boolean]": "enabled",
+          "tags[enabled,boolean]": {
+            attributeSource: {
+              source_type: "user",
+            },
+            context: undefined,
+            key: "tags[enabled,boolean]",
+            name: "enabled",
+            type: "boolean",
+          },
+          "tags[sequence,number]": {
+            attributeSource: {
+              source_type: "user",
+            },
+            context: undefined,
+            key: "tags[sequence,number]",
+            name: "sequence",
+            type: "number",
+          },
+          "tags[type]": {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "tags[type]",
+            name: "type",
+            type: "string",
+          },
         },
         fieldTypes: {
           "tags[type]": "string",
           "tags[sequence,number]": "number",
           "tags[enabled,boolean]": "boolean",
+        },
+      });
+    });
+
+    it("should properly digest and return context when received from the attributes endpoint", async () => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/trace-items/attributes/?expand=context",
+          ({ request }) => {
+            const url = new URL(request.url);
+            const itemType = url.searchParams.get("itemType");
+
+            if (!itemType) {
+              return HttpResponse.json(
+                { detail: "Missing required parameters" },
+                { status: 400 },
+              );
+            }
+
+            return HttpResponse.json([
+              {
+                key: "span.op",
+                name: "Operation",
+                attributeType: "string",
+                attributeSource: { source_type: "sentry" },
+                context: {
+                  isConvention: true,
+                  isDeprecated: false,
+                  brief: "The operation of a span",
+                  examples: ["http.client"],
+                },
+              },
+              {
+                key: "sentry:internal",
+                name: "Internal",
+                attributeType: "string",
+                attributeSource: { source_type: "sentry" },
+                context: {},
+              },
+              {
+                key: "span.duration",
+                name: "Duration",
+                attributeType: "number",
+                attributeSource: { source_type: "sentry" },
+                context: {
+                  isConvention: false,
+                  brief: "The total time taken by the span.",
+                  isDeprecated: false,
+                },
+              },
+              {
+                key: "tags[app_start_type,string]",
+                name: "app_start_type",
+                attributeSource: {
+                  source_type: "user",
+                },
+                attributeType: "string",
+                context: {
+                  isConvention: true,
+                  brief: "Mobile app start variant. Either cold or warm.",
+                  isDeprecated: true,
+                  examples: ["cold"],
+                  replacementAttribute: "app.vitals.start.type",
+                },
+              },
+            ]);
+          },
+        ),
+      );
+
+      const result = await fetchCustomAttributes(
+        apiService,
+        "test-org",
+        "spans",
+        undefined,
+        undefined,
+        { context: true },
+      );
+
+      expect(result).toEqual({
+        attributes: {
+          "span.op": {
+            key: "span.op",
+            name: "Operation",
+            type: "string",
+            attributeSource: { source_type: "sentry" },
+            context: {
+              isConvention: true,
+              isDeprecated: false,
+              brief: "The operation of a span",
+              examples: ["http.client"],
+            },
+          },
+          "span.duration": {
+            key: "span.duration",
+            name: "Duration",
+            type: "number",
+            attributeSource: { source_type: "sentry" },
+            context: {
+              isConvention: false,
+              brief: "The total time taken by the span.",
+              isDeprecated: false,
+            },
+          },
+          "tags[app_start_type,string]": {
+            key: "tags[app_start_type,string]",
+            name: "app_start_type",
+            type: "string",
+            attributeSource: { source_type: "user" },
+            context: {
+              isConvention: true,
+              brief: "Mobile app start variant. Either cold or warm.",
+              isDeprecated: true,
+              examples: ["cold"],
+              replacementAttribute: "app.vitals.start.type",
+            },
+          },
+        },
+        fieldTypes: {
+          "span.op": "string",
+          "span.duration": "number",
+          "tags[app_start_type,string]": "string",
         },
       });
     });
