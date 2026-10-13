@@ -290,8 +290,32 @@ describe("search query helpers", () => {
     );
   });
 
+  it("should detect regex filters as structured Sentry search syntax", () => {
+    expect(
+      looksLikeSentrySearchSyntax(
+        String.raw`message://request took \d+ms//`,
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax(
+        String.raw`!message://worker \d+ ready//`,
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax(
+        String.raw`message://https?://api\.example\.com//`,
+        "logs",
+      ),
+    ).toBe(true);
+  });
+
   it("should ignore common natural language colon patterns", () => {
     expect(looksLikeSentrySearchSyntax("open http://example.com")).toBe(false);
+    expect(looksLikeSentrySearchSyntax("see http://example.com/a/")).toBe(
+      false,
+    );
     expect(looksLikeSentrySearchSyntax("started at 10:30")).toBe(false);
     expect(looksLikeSentrySearchSyntax("Note: show slow spans")).toBe(false);
     expect(looksLikeSentrySearchSyntax("ERROR: service is down")).toBe(false);
@@ -569,6 +593,45 @@ describe("search query helpers", () => {
     );
     expect(isSemanticFilterDowngrade("id:1", 'message:"error 1"')).toBe(true);
   });
+
+  it("detects message regex downgrades of structured filters", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "http.status_code:500",
+        "message://status 500//",
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "user.id:42 severity:error",
+        String.raw`severity:error message://(?i)user 42 failed//`,
+        "logs",
+      ),
+    ).toBe(true);
+
+    expect(
+      isSemanticFilterDowngrade(
+        "http.status_code:500",
+        String.raw`http.status_code:500 message://took \d+ms//`,
+        "logs",
+      ),
+    ).toBe(false);
+
+    // A key:value inside a regex is pattern text, not a kept structured filter.
+    expect(
+      isSemanticFilterDowngrade("custom:foo", "message://custom:foo//", "logs"),
+    ).toBe(true);
+
+    // A quote inside a regex must not hide the filters after it.
+    expect(
+      isSemanticFilterDowngrade(
+        "custom:foo",
+        String.raw`message://it's \d+// message:"*foo*"`,
+        "logs",
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("fetchCustomAttributes", () => {
@@ -762,8 +825,24 @@ describe("fetchCustomAttributes", () => {
 
       expect(result).toEqual({
         attributes: {
-          "span.op": "Operation",
-          "span.duration": "Duration",
+          "span.duration": {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "span.duration",
+            name: "Duration",
+            type: "number",
+          },
+          "span.op": {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "span.op",
+            name: "Operation",
+            type: "string",
+          },
         },
         fieldTypes: {
           "span.op": "string",
@@ -791,8 +870,12 @@ describe("fetchCustomAttributes", () => {
 
       expect(result).toEqual({
         attributes: {
-          browser: "Browser",
-          environment: "Environment",
+          browser: { key: "browser", name: "Browser", totalValues: 10 },
+          environment: {
+            key: "environment",
+            name: "Environment",
+            totalValues: 3,
+          },
         },
         fieldTypes: {},
       });
@@ -840,9 +923,33 @@ describe("fetchCustomAttributes", () => {
 
       expect(result).toEqual({
         attributes: {
-          "metric.name": "Metric Name",
-          "metric.type": "Metric Type",
-          value: "Metric Value",
+          "metric.name": {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "metric.name",
+            name: "Metric Name",
+            type: "string",
+          },
+          "metric.type": {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "metric.type",
+            name: "Metric Type",
+            type: "string",
+          },
+          value: {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "value",
+            name: "Metric Value",
+            type: "number",
+          },
         },
         fieldTypes: {
           "metric.name": "string",
@@ -910,14 +1017,160 @@ describe("fetchCustomAttributes", () => {
       }
       expect(result).toEqual({
         attributes: {
-          "tags[type]": "type",
-          "tags[sequence,number]": "sequence",
-          "tags[enabled,boolean]": "enabled",
+          "tags[enabled,boolean]": {
+            attributeSource: {
+              source_type: "user",
+            },
+            context: undefined,
+            key: "tags[enabled,boolean]",
+            name: "enabled",
+            type: "boolean",
+          },
+          "tags[sequence,number]": {
+            attributeSource: {
+              source_type: "user",
+            },
+            context: undefined,
+            key: "tags[sequence,number]",
+            name: "sequence",
+            type: "number",
+          },
+          "tags[type]": {
+            attributeSource: {
+              source_type: "sentry",
+            },
+            context: undefined,
+            key: "tags[type]",
+            name: "type",
+            type: "string",
+          },
         },
         fieldTypes: {
           "tags[type]": "string",
           "tags[sequence,number]": "number",
           "tags[enabled,boolean]": "boolean",
+        },
+      });
+    });
+
+    it("should properly digest and return context when received from the attributes endpoint", async () => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/trace-items/attributes/?expand=context",
+          ({ request }) => {
+            const url = new URL(request.url);
+            const itemType = url.searchParams.get("itemType");
+
+            if (!itemType) {
+              return HttpResponse.json(
+                { detail: "Missing required parameters" },
+                { status: 400 },
+              );
+            }
+
+            return HttpResponse.json([
+              {
+                key: "span.op",
+                name: "Operation",
+                attributeType: "string",
+                attributeSource: { source_type: "sentry" },
+                context: {
+                  isConvention: true,
+                  isDeprecated: false,
+                  brief: "The operation of a span",
+                  examples: ["http.client"],
+                },
+              },
+              {
+                key: "sentry:internal",
+                name: "Internal",
+                attributeType: "string",
+                attributeSource: { source_type: "sentry" },
+                context: {},
+              },
+              {
+                key: "span.duration",
+                name: "Duration",
+                attributeType: "number",
+                attributeSource: { source_type: "sentry" },
+                context: {
+                  isConvention: false,
+                  brief: "The total time taken by the span.",
+                  isDeprecated: false,
+                },
+              },
+              {
+                key: "tags[app_start_type,string]",
+                name: "app_start_type",
+                attributeSource: {
+                  source_type: "user",
+                },
+                attributeType: "string",
+                context: {
+                  isConvention: true,
+                  brief: "Mobile app start variant. Either cold or warm.",
+                  isDeprecated: true,
+                  examples: ["cold"],
+                  replacementAttribute: "app.vitals.start.type",
+                },
+              },
+            ]);
+          },
+        ),
+      );
+
+      const result = await fetchCustomAttributes(
+        apiService,
+        "test-org",
+        "spans",
+        undefined,
+        undefined,
+        { context: true },
+      );
+
+      expect(result).toEqual({
+        attributes: {
+          "span.op": {
+            key: "span.op",
+            name: "Operation",
+            type: "string",
+            attributeSource: { source_type: "sentry" },
+            context: {
+              isConvention: true,
+              isDeprecated: false,
+              brief: "The operation of a span",
+              examples: ["http.client"],
+            },
+          },
+          "span.duration": {
+            key: "span.duration",
+            name: "Duration",
+            type: "number",
+            attributeSource: { source_type: "sentry" },
+            context: {
+              isConvention: false,
+              brief: "The total time taken by the span.",
+              isDeprecated: false,
+            },
+          },
+          "tags[app_start_type,string]": {
+            key: "tags[app_start_type,string]",
+            name: "app_start_type",
+            type: "string",
+            attributeSource: { source_type: "user" },
+            context: {
+              isConvention: true,
+              brief: "Mobile app start variant. Either cold or warm.",
+              isDeprecated: true,
+              examples: ["cold"],
+              replacementAttribute: "app.vitals.start.type",
+            },
+          },
+        },
+        fieldTypes: {
+          "span.op": "string",
+          "span.duration": "number",
+          "tags[app_start_type,string]": "string",
         },
       });
     });
