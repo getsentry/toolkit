@@ -432,7 +432,9 @@ The chat asks Seer to investigate the issue and generate code changes for
 review. In a terminal, the CLI shows new messages,
 asks Seer's questions, and lets you approve or reject each proposed file
 change. Approval lets Seer continue generating the fix. Completed fixes preview
-all generated diffs; local files are not modified and no pull request is created.
+all generated diffs. Without delivery flags, JSON and non-interactive sessions
+only preview the fix. In a terminal, the CLI then offers Apply locally, Create PR,
+Both, and the default Skip. Cancelling this optional choice also skips delivery.
 
 The organization needs Seer coding access, linked repositories, and code
 mappings. Interactive updates require a signed-in Sentry user. Use
@@ -485,3 +487,39 @@ returns the run ID and resume command because Seer may still be working. Runs
 that fail, cancel, or time out return a nonzero exit status with their JSON result.
 A resumed completed run without patches explains that no code changes were
 produced and offers a new full fix.
+
+### Apply a fix locally or create pull requests
+
+Request delivery explicitly for scripts and agent callers:
+
+```bash
+sentry issue fix my-org/FRONT-123 --run-id <run-id> --apply --json
+sentry issue fix my-org/FRONT-123 --run-id <run-id> --pr --json
+sentry issue fix my-org/FRONT-123 --run-id <run-id> --apply --pr --json
+```
+
+`--apply` validates the entire patch batch against the current Git checkout before
+writing. The checkout's remote must match the patch repository. Target files must
+have no dirty or untracked conflicts; unrelated local changes are preserved.
+Unsupported paths, symlink escapes, metadata/diff mismatches, and patches for
+multiple repositories are refused. The CLI uses `git apply --check` before
+applying and does not commit or push local changes.
+Paths that differ only by case or Unicode normalization are refused to avoid
+ambiguous writes on macOS and Windows.
+
+`--pr` requests a pull request for each affected repository and waits for its
+repository-specific PR state, independently of the chat's completed status.
+Existing completed PRs are reused, and PR creation already in progress is awaited.
+An uncertain create request is never repeated automatically; inspect the run in
+Sentry before retrying.
+
+Delivery requires a completed fix with patches and no pending input. The CLI
+refreshes the pinned chat before writing, verifying that its patches still match
+the reviewed result. A new question or changed patch pauses delivery. Incomplete
+incremental diffs require a merged diff before delivery. Analysis and delivery
+share one timeout budget, and a delivery choice after its deadline
+never starts a mutation.
+
+JSON output remains a single result. Successful local application adds
+`applied_files`; delivery failures add `delivery_errors` and return a nonzero exit
+status while retaining generated diffs, run ID, and any completed PR URLs.

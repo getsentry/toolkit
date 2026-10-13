@@ -195,6 +195,8 @@ Generate and review code changes using Seer AI
 
 **Flags:**
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+- `--apply - Apply the validated patch batch to the current checkout`
+- `--pr - Create or await pull requests for affected repositories`
 - `--instruction <value> - Context for a new fix`
 - `--run-id <value> - Resume this Seer run`
 - `--response <value> - JSON file with input_id and response_data (requires --run-id)`
@@ -209,6 +211,10 @@ sentry issue fix @latest --instruction "Keep the existing API compatible"
 sentry issue fix my-org/FRONT-123 --json
 sentry issue fix my-org/FRONT-123 --run-id <run-id> --json
 sentry issue fix my-org/FRONT-123 --run-id <run-id> --response answer.json --json
+
+sentry issue fix my-org/FRONT-123 --run-id <run-id> --apply --json
+sentry issue fix my-org/FRONT-123 --run-id <run-id> --pr --json
+sentry issue fix my-org/FRONT-123 --run-id <run-id> --apply --pr --json
 ```
 
 ### `sentry issue view <issue...>`

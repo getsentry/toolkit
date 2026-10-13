@@ -1,6 +1,8 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import {
   createSeerBlockRenderer,
+  createSeerFixRenderer,
+  promptSeerDelivery,
   promptSeerInput,
 } from "../../../src/lib/formatters/seer-fix.js";
 const log = vi.hoisted(() => ({ prompt: vi.fn(), info: vi.fn() }));
@@ -101,4 +103,68 @@ test("allows a custom answer for a question and stops on cancellation", async ()
   });
   log.prompt.mockResolvedValueOnce(Symbol("cancel"));
   expect(await promptSeerInput(input, { write: () => {} })).toBeNull();
+});
+
+test("renders preview diffs once and then shows only delivery results", () => {
+  const renderer = createSeerFixRenderer();
+  const result = {
+    run_id: "run-1",
+    status: "COMPLETED",
+    pending_user_input: null,
+    patches: [
+      {
+        repo_name: "private/repo",
+        diff: "--- a/index.ts\n+++ b/index.ts\n@@ -1 +1 @@\n-old\n+private-code\n",
+        patch: {
+          added: 1,
+          removed: 1,
+          path: "index.ts",
+          source_file: "index.ts",
+          target_file: "index.ts",
+          type: "M" as const,
+          hunks: [],
+        },
+      },
+    ],
+    pr_urls: [],
+  };
+  const preview = renderer.render(result);
+  const delivered = renderer.render({
+    ...result,
+    applied_files: ["index.ts"],
+    pr_urls: ["https://github.com/private/repo/pull/1"],
+  });
+  expect(preview).toContain("+private-code");
+  expect(delivered).not.toContain("+private-code");
+  expect(delivered).toContain("index.ts");
+  expect(delivered).toContain("https://github.com/private/repo/pull/1");
+  expect(log.info).not.toHaveBeenCalled();
+});
+test("preserves partial delivery evidence alongside failures", () => {
+  const renderer = createSeerFixRenderer();
+  const output = renderer.render({
+    run_id: "run-1",
+    status: "ERROR",
+    pending_user_input: null,
+    patches: [],
+    pr_urls: ["https://github.com/private/repo/pull/1"],
+    applied_files: ["index.ts"],
+    delivery_errors: ["Second repository failed"],
+  });
+  expect(output).toContain("index.ts");
+  expect(output).toContain("Second repository failed");
+  expect(output).toContain("https://github.com/private/repo/pull/1");
+});
+test("delivery prompt defaults to skip and treats cancellation as skip", async () => {
+  log.prompt.mockResolvedValue(Symbol("cancel"));
+  expect(await promptSeerDelivery()).toEqual({ apply: false, pr: false });
+  expect(log.prompt).toHaveBeenCalledWith(
+    "What would you like to do with this fix?",
+    {
+      type: "select",
+      initial: "Skip",
+      cancel: "symbol",
+      options: ["Apply locally", "Create PR", "Both", "Skip"],
+    },
+  );
 });

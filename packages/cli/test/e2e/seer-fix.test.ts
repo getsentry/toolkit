@@ -3,10 +3,18 @@
  * Sentry's interactive explorer chat/update endpoint contracts.
  */
 
-import { writeFile } from "node:fs/promises";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { join } from "node:path";
+import type { ExplorerFilePatch } from "../../src/types/seer-fix.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { createE2EContext, type E2EContext } from "../fixture.js";
+import {
+  createE2EContext,
+  type E2EContext,
+  getCliCommand,
+  type CliResult,
+} from "../fixture.js";
 import issueFixture from "../fixtures/issue.json";
 import { useTestConfigDir } from "../helpers.js";
 import {
@@ -44,7 +52,7 @@ const QUESTION = {
     ],
   },
 };
-const PATCH = {
+const PATCH: ExplorerFilePatch = {
   repo_name: "example/backend",
   code_url: null,
   diff: "--- a/users.ts\n+++ b/users.ts\n@@ -1 +1 @@\n-return user.name;\n+return user?.name;\n",
@@ -191,6 +199,161 @@ async function responseFile(value: unknown): Promise<string> {
   await writeFile(path, JSON.stringify(value), "utf8");
   return path;
 }
+
+/** Run source or bundled CLI from a real checkout rather than the CLI package. */
+async function runInCheckout(cwd: string, args: string[]): Promise<CliResult> {
+  const cliDir = join(import.meta.dirname, "../..");
+  const [bin, ...commandArgs] = getCliCommand();
+  const require = createRequire(import.meta.url);
+  const resolvedArgs = process.env.SENTRY_CLI_BINARY
+    ? commandArgs
+    : commandArgs.map((arg) => {
+        if (arg === "tsx") {
+          return require.resolve("tsx");
+        }
+        return arg.startsWith("./") || arg === "src/bin.ts"
+          ? join(cliDir, arg)
+          : arg;
+      });
+  const proc = spawn(bin, [...resolvedArgs, ...args], {
+    cwd,
+    env: {
+      ...process.env,
+      SENTRY_AUTH_TOKEN: "",
+      SENTRY_TOKEN: "",
+      SENTRY_CONFIG_DIR: getConfigDir(),
+      SENTRY_URL: mockServer.url,
+      SENTRY_CLI_NO_TELEMETRY: "1",
+      SENTRY_CLI_NO_UPDATE_CHECK: "1",
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  proc.stdout.on("data", (chunk: Buffer) => {
+    stdout += chunk.toString();
+  });
+  proc.stderr.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  const exitCode = await new Promise<number>((resolve, reject) => {
+    proc.once("error", reject);
+    proc.once("close", (code) => resolve(code ?? 1));
+  });
+  return { stdout, stderr, exitCode };
+}
+
+/** Create an isolated matching Git repo; useTestConfigDir removes it after the test. */
+async function checkout(
+  remote = "https://github.com/example/backend.git",
+): Promise<string> {
+  const cwd = join(getConfigDir(), "checkout");
+  await mkdir(cwd);
+  const git = (args: string[]) =>
+    execFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  git(["init"]);
+  git(["config", "core.autocrlf", "false"]);
+  git(["remote", "add", "origin", remote]);
+  await writeFile(join(cwd, "users.ts"), "return user.name;\n", "utf8");
+  await writeFile(join(cwd, "remove.txt"), "remove\n", "utf8");
+  await writeFile(join(cwd, "unrelated.txt"), "baseline\n", "utf8");
+  git(["add", "."]);
+  git([
+    "-c",
+    "user.name=Seer E2E",
+    "-c",
+    "user.email=seer-e2e@example.invalid",
+    "-c",
+    "commit.gpgsign=false",
+    "-c",
+    "core.hooksPath=",
+    "commit",
+    "-m",
+    "fixture baseline",
+  ]);
+  return cwd;
+}
+
+/** Use real backend-shaped patches in completed explorer blocks. */
+function completed(patches: ExplorerFilePatch[] = [PATCH]): Session {
+  return {
+    ...session("completed"),
+    blocks: [
+      {
+        id: "delivery-patches",
+        message: { role: "assistant", content: "Fix ready" },
+        merged_file_patches: patches,
+      },
+    ],
+  };
+}
+
+const ADDED_PATCH: ExplorerFilePatch = {
+  repo_name: "example/backend",
+  code_url: null,
+  diff: "diff --git a/new.txt b/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+new\n",
+  patch: {
+    added: 1,
+    removed: 0,
+    path: "new.txt",
+    source_file: "/dev/null",
+    target_file: "b/new.txt",
+    type: "A",
+    hunks: [
+      {
+        source_start: 0,
+        source_length: 0,
+        target_start: 1,
+        target_length: 1,
+        section_header: "",
+        lines: [
+          {
+            line_type: "+",
+            value: "new",
+            source_line_no: null,
+            target_line_no: 1,
+            diff_line_no: 1,
+          },
+        ],
+      },
+    ],
+  },
+};
+const DELETED_PATCH: ExplorerFilePatch = {
+  repo_name: "example/backend",
+  code_url: null,
+  diff: "diff --git a/remove.txt b/remove.txt\ndeleted file mode 100644\n--- a/remove.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\n",
+  patch: {
+    added: 0,
+    removed: 1,
+    path: "remove.txt",
+    source_file: "a/remove.txt",
+    target_file: "/dev/null",
+    type: "D",
+    hunks: [
+      {
+        source_start: 1,
+        source_length: 1,
+        target_start: 0,
+        target_length: 0,
+        section_header: "",
+        lines: [
+          {
+            line_type: "-",
+            value: "remove",
+            source_line_no: 1,
+            target_line_no: null,
+            diff_line_no: 1,
+          },
+        ],
+      },
+    ],
+  },
+};
 
 describe("sentry issue fix", () => {
   test("starts coding and returns one JSON question result pinned to the UUID", async () => {
@@ -552,5 +715,303 @@ describe("sentry issue fix", () => {
     expect(result.stdout + result.stderr).toContain(RUN_ID);
     expect(mutations()).toHaveLength(1);
     expect(mutations()[0]?.path).toBe(UPDATE.replace(":runId", RUN_ID));
+  });
+});
+
+describe("sentry issue fix delivery", () => {
+  test("JSON preview leaves the checkout unchanged until delivery is requested", async () => {
+    const cwd = await checkout();
+    activeSession = completed();
+    const result = await runInCheckout(cwd, [
+      "issue",
+      "fix",
+      ISSUE,
+      "--run-id",
+      RUN_ID,
+      "--json",
+    ]);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: "COMPLETED",
+      patches: [PATCH],
+      pr_urls: [],
+    });
+    expect(await readFile(join(cwd, "users.ts"), "utf8")).toBe(
+      "return user.name;\n",
+    );
+    expect(mutations()).toEqual([]);
+  });
+  test("applies an entire add/modify/delete batch from a nested checkout and preserves unrelated work", async () => {
+    const cwd = await checkout();
+    await writeFile(join(cwd, "unrelated.txt"), "my local work\n", "utf8");
+    const nested = join(cwd, "nested");
+    await mkdir(nested);
+    activeSession = completed([PATCH, ADDED_PATCH, DELETED_PATCH]);
+
+    const result = await runInCheckout(nested, [
+      "issue",
+      "fix",
+      ISSUE,
+      "--run-id",
+      RUN_ID,
+      "--apply",
+      "--json",
+    ]);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      run_id: RUN_ID,
+      status: "COMPLETED",
+      patches: [PATCH, ADDED_PATCH, DELETED_PATCH],
+      applied_files: ["users.ts", "new.txt", "remove.txt"],
+    });
+    expect(await readFile(join(cwd, "users.ts"), "utf8")).toBe(
+      "return user?.name;\n",
+    );
+    expect(await readFile(join(cwd, "new.txt"), "utf8")).toBe("new\n");
+    await expect(readFile(join(cwd, "remove.txt"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(await readFile(join(cwd, "unrelated.txt"), "utf8")).toBe(
+      "my local work\n",
+    );
+    expect(mutations()).toEqual([]);
+  });
+
+  test.each(["dirty", "mismatch", "unsafe"] as const)(
+    "refuses %s local application, preserves the fix and does not create a PR",
+    async (kind) => {
+      const cwd = await checkout(
+        kind === "mismatch"
+          ? "https://github.com/example/other.git"
+          : undefined,
+      );
+      const before =
+        kind === "dirty" ? "my local changes\n" : "return user.name;\n";
+      await writeFile(join(cwd, "users.ts"), before, "utf8");
+      const outside = join(getConfigDir(), "outside.txt");
+      await writeFile(outside, "keep outside\n", "utf8");
+      const patch =
+        kind === "unsafe"
+          ? { ...PATCH, patch: { ...PATCH.patch, path: "../outside.txt" } }
+          : PATCH;
+      activeSession = completed([patch]);
+
+      const result = await runInCheckout(cwd, [
+        "issue",
+        "fix",
+        ISSUE,
+        "--run-id",
+        RUN_ID,
+        "--apply",
+        "--pr",
+        "--json",
+      ]);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        run_id: RUN_ID,
+        status: "ERROR",
+        patches: [patch],
+        delivery_errors: [expect.any(String)],
+      });
+      expect(await readFile(join(cwd, "users.ts"), "utf8")).toBe(before);
+      expect(await readFile(outside, "utf8")).toBe("keep outside\n");
+      expect(mutations()).toEqual([]);
+    },
+  );
+
+  test("creates one wrapped PR request and polls repository state even when the run is completed", async () => {
+    let reads = 0;
+    chatHandler = () => {
+      reads += 1;
+      const state = completed();
+      if (mutations().length) {
+        state.repo_pr_states = {
+          "example/backend": {
+            repo_name: "example/backend",
+            pr_creation_status: reads < 4 ? "creating" : "completed",
+            pr_url:
+              reads < 4 ? null : "https://github.com/example/backend/pull/42",
+          },
+        };
+      }
+      return { body: { session: state, sentry_run_id: RUN_ID } };
+    };
+    const result = await ctx.run([
+      "issue",
+      "fix",
+      ISSUE,
+      "--run-id",
+      RUN_ID,
+      "--pr",
+      "--json",
+    ]);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: "COMPLETED",
+      patches: [PATCH],
+      pr_urls: ["https://github.com/example/backend/pull/42"],
+    });
+    expect(mutations()).toEqual([
+      {
+        method: "POST",
+        path: UPDATE.replace(":runId", RUN_ID),
+        body: { payload: { type: "create_pr", repo_name: "example/backend" } },
+      },
+    ]);
+    expect(reads).toBeGreaterThanOrEqual(4);
+  });
+
+  test("waits for an existing in-flight PR without creating another one", async () => {
+    let reads = 0;
+    chatHandler = () => {
+      reads += 1;
+      return {
+        body: {
+          sentry_run_id: RUN_ID,
+          session: {
+            ...completed(),
+            repo_pr_states: {
+              "example/backend": {
+                repo_name: "example/backend",
+                pr_creation_status: reads < 3 ? "creating" : "completed",
+                pr_url:
+                  reads < 3
+                    ? null
+                    : "https://github.com/example/backend/pull/42",
+              },
+            },
+          },
+        },
+      };
+    };
+    const result = await ctx.run([
+      "issue",
+      "fix",
+      ISSUE,
+      "--run-id",
+      RUN_ID,
+      "--pr",
+      "--json",
+    ]);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).pr_urls).toEqual([
+      "https://github.com/example/backend/pull/42",
+    ]);
+    expect(mutations()).toEqual([]);
+  });
+
+  test("retains generated diffs and returns a nonzero aggregate when PR creation fails", async () => {
+    chatHandler = () => ({
+      body: {
+        sentry_run_id: RUN_ID,
+        session: {
+          ...completed(),
+          repo_pr_states: mutations().length
+            ? {
+                "example/backend": {
+                  repo_name: "example/backend",
+                  pr_creation_status: "error",
+                  pr_creation_error: "GitHub denied repository access",
+                },
+              }
+            : {},
+        },
+      },
+    });
+    const result = await ctx.run([
+      "issue",
+      "fix",
+      ISSUE,
+      "--run-id",
+      RUN_ID,
+      "--pr",
+      "--json",
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      run_id: RUN_ID,
+      status: "ERROR",
+      patches: [PATCH],
+      delivery_errors: [expect.stringMatching(/GitHub denied/i)],
+    });
+    expect(mutations()).toHaveLength(1);
+  });
+
+  test("does not replay an uncertain create-PR POST after a service error", async () => {
+    activeSession = completed();
+    updateResponse = {
+      status: 503,
+      body: { detail: "Seer temporarily unavailable" },
+    };
+    const result = await ctx.run([
+      "issue",
+      "fix",
+      ISSUE,
+      "--run-id",
+      RUN_ID,
+      "--pr",
+      "--json",
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      run_id: RUN_ID,
+      status: "ERROR",
+      patches: [PATCH],
+      delivery_errors: [expect.any(String)],
+    });
+    expect(mutations()).toHaveLength(1);
+    expect(mutations()[0]?.body).toEqual({
+      payload: { type: "create_pr", repo_name: "example/backend" },
+    });
+  });
+
+  test("does not apply files or create a PR when fresh preflight discovers a pending approval", async () => {
+    const cwd = await checkout();
+    let reads = 0;
+    chatHandler = () => {
+      reads += 1;
+      return {
+        body: {
+          sentry_run_id: RUN_ID,
+          session:
+            reads === 1
+              ? completed()
+              : {
+                  ...completed(),
+                  status: "awaiting_user_input",
+                  pending_user_input: QUESTION,
+                },
+        },
+      };
+    };
+    const result = await runInCheckout(cwd, [
+      "issue",
+      "fix",
+      ISSUE,
+      "--run-id",
+      RUN_ID,
+      "--apply",
+      "--pr",
+      "--json",
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      run_id: RUN_ID,
+      status: "ERROR",
+      patches: [PATCH],
+      pending_user_input: QUESTION,
+    });
+    expect(mutations()).toEqual([]);
+    expect(await readFile(join(cwd, "users.ts"), "utf8")).toBe(
+      "return user.name;\n",
+    );
   });
 });
