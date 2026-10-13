@@ -10,6 +10,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { NuqsAdapter } from "nuqs/adapters/react";
+import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { BrowserRouter } from "react-router";
 import { ThemeProvider } from "@/components/theme-provider.tsx";
 import App from "./App.tsx";
@@ -156,6 +157,9 @@ class ControllableEventSource extends EventTarget {
 
 describe("local receiver to viewer integration", () => {
   beforeEach(() => {
+    // Nuqs shares pending URL updates across mounts. Reset them between tests
+    // while keeping the real browser adapter for history integration coverage.
+    render(<NuqsTestingAdapter>{null}</NuqsTestingAdapter>).unmount();
     window.localStorage.clear();
     window.sessionStorage.clear();
     Object.defineProperty(document, "execCommand", {
@@ -1004,9 +1008,11 @@ describe("local receiver to viewer integration", () => {
       expect(screen.getByTestId("event-list").textContent).not.toContain(
         "/orders",
       );
-      expect(new URLSearchParams(window.location.search).get("q")).toBe(
-        "customers",
-      );
+      await waitFor(() => {
+        expect(new URLSearchParams(window.location.search).get("q")).toBe(
+          "customers",
+        );
+      });
     } finally {
       cleanup();
       await stopReceiver(server);
