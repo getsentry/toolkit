@@ -9,6 +9,8 @@ import {
 } from "../../types/seer-fix.js";
 import type { Writer } from "../../types/index.js";
 import type { ExplorerBlock } from "../../types/seer-fix.js";
+import type { FixDeliveryResult } from "../seer-fix-delivery.js";
+import type { HumanRenderer } from "./output.js";
 import { logger } from "../logger.js";
 import { escapeMarkdownInline, renderMarkdown } from "./markdown.js";
 
@@ -128,5 +130,73 @@ export function createSeerBlockRenderer(
         writer.write(`${renderMarkdown(block.message.content)}\n`);
       }
     }
+  };
+}
+
+export type SeerDeliveryChoice = { apply: boolean; pr: boolean };
+
+/** Delivery is optional; selecting or cancelling the default keeps the fix read-only. */
+export async function promptSeerDelivery(): Promise<SeerDeliveryChoice> {
+  const selection = await logger
+    .withTag("issue.fix")
+    .prompt("What would you like to do with this fix?", {
+      type: "select",
+      initial: "Skip",
+      cancel: "symbol",
+      options: ["Apply locally", "Create PR", "Both", "Skip"],
+    });
+  return {
+    apply: selection === "Apply locally" || selection === "Both",
+    pr: selection === "Create PR" || selection === "Both",
+  };
+}
+
+function formatDeliverySummary(
+  result: FixDeliveryResult,
+  includeContext: boolean,
+): string {
+  const lines: string[] = [];
+  if (includeContext) {
+    lines.push(`# Delivery`, `Status: ${escapeMarkdownInline(result.status)}`);
+  }
+  if (result.applied_files && result.applied_files.length > 0) {
+    lines.push(
+      "Applied locally:",
+      ...result.applied_files.map((path) => `- ${escapeMarkdownInline(path)}`),
+    );
+  }
+  if (includeContext) {
+    for (const url of result.pr_urls) {
+      lines.push(url);
+    }
+  }
+  const errors = result.delivery_errors ?? [];
+  for (const error of errors) {
+    if (includeContext || error !== result.error) {
+      lines.push(`Delivery failed: ${escapeMarkdownInline(error)}`);
+    }
+  }
+  if (includeContext && result.error && !errors.includes(result.error)) {
+    lines.push(escapeMarkdownInline(result.error));
+  }
+  if (includeContext && result.next_action) {
+    lines.push("", result.next_action);
+  }
+  return lines.length > 0 ? renderMarkdown(lines.join("\n\n")) : "";
+}
+
+/** Each invocation previews its diffs once, followed only by delivery summaries. */
+export function createSeerFixRenderer(): HumanRenderer<FixDeliveryResult> {
+  let previewed = false;
+  return {
+    render(result) {
+      if (previewed) {
+        return formatDeliverySummary(result, true);
+      }
+      previewed = true;
+      return [formatSeerFix(result), formatDeliverySummary(result, false)]
+        .filter(Boolean)
+        .join("\n\n");
+    },
   };
 }
