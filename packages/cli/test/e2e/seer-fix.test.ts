@@ -7,6 +7,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { ExplorerFilePatch } from "../../src/types/seer-fix.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
@@ -207,13 +208,17 @@ async function runInCheckout(cwd: string, args: string[]): Promise<CliResult> {
   const require = createRequire(import.meta.url);
   const resolvedArgs = process.env.SENTRY_CLI_BINARY
     ? commandArgs
-    : commandArgs.map((arg) => {
-        if (arg === "tsx") {
-          return require.resolve("tsx");
-        }
-        return arg.startsWith("./") || arg === "src/bin.ts"
-          ? join(cliDir, arg)
-          : arg;
+    : commandArgs.map((arg, index) => {
+        const resolved =
+          arg === "tsx"
+            ? require.resolve("tsx")
+            : arg.startsWith("./") || arg === "src/bin.ts"
+              ? join(cliDir, arg)
+              : arg;
+        // Node's ESM --import loader requires file URLs for Windows drive paths.
+        return commandArgs[index - 1] === "--import"
+          ? pathToFileURL(resolved).href
+          : resolved;
       });
   const proc = spawn(bin, [...resolvedArgs, ...args], {
     cwd,
