@@ -51,7 +51,9 @@ export function buildLocalUiUrl(receiverUrl: string): string {
   const receiver = new URL(receiverUrl);
   assertLoopbackHostForUi(receiver.hostname);
 
-  const streamUrl = new URL("/stream", receiver).toString();
+  const streamUrl = receiver.pathname.endsWith("/stream")
+    ? receiver.toString()
+    : new URL("/stream", receiver).toString();
   const uiUrl = new URL(getLocalUiBaseUrl());
   uiUrl.hash = new URLSearchParams({ stream: streamUrl }).toString();
   return uiUrl.toString();
@@ -68,6 +70,13 @@ export async function openLocalUi(receiverUrl: string): Promise<void> {
   }
   if (opened) {
     logger.info("Opening Sentry Local UI...");
+    return;
+  }
+  const streamUrl = new URL(receiverUrl);
+  if (streamUrl.searchParams.has("cap")) {
+    logger.warn(
+      "Could not open browser. Use sentry local session view <session> --json to retrieve its stream URL.",
+    );
     return;
   }
   logger.warn(`Could not open browser. Visit ${uiUrl}`);

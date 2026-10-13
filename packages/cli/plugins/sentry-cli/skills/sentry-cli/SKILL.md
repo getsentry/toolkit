@@ -743,7 +743,20 @@ Print configuration and verify authentication
 
 Sentry for local development
 
+- `sentry local daemon start` — Start the Local control-plane daemon
+- `sentry local daemon status` — Show Local control-plane status
+- `sentry local daemon stop` — Stop the Local control-plane daemon
+- `sentry local daemon restart` — Restart the Local control-plane daemon
+- `sentry local envelope list <session...>` — List retained envelopes for a Local session
+- `sentry local envelope view <session envelope...>` — View a raw Local envelope
+- `sentry local event list <session...>` — List decoded events for a Local session
+- `sentry local event view <session event...>` — View a decoded Local event
 - `sentry local serve` — Start the local dev server and tail events
+- `sentry local session create <name...>` — Create a Local telemetry session
+- `sentry local session list` — List Local telemetry sessions
+- `sentry local session view <session...>` — View a Local telemetry session
+- `sentry local session close <session...>` — Close a Local telemetry session
+- `sentry local session reset <session...>` — Clear a Local telemetry session
 - `sentry local run <command...>` — Run a command with the local dev server enabled
 
 → Full flags and examples: `references/local.md`

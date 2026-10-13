@@ -12,6 +12,7 @@
  */
 
 import type { Server } from "node:http";
+import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
 import {
@@ -65,7 +66,7 @@ const BUFFER_SIZE = 500;
 const CR_RE = /\r$/;
 
 /** Maximum ingest body size (10 MB). Rejects oversized payloads early. */
-const MAX_BODY_BYTES = 10 * 1024 * 1024;
+export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 
 /**
  * Parse and validate a `--format` value.
@@ -105,6 +106,7 @@ type LocalFlags = {
   readonly format: FormatValue;
   readonly attributes: boolean;
   readonly open: boolean;
+  readonly session?: string;
 };
 
 /**
@@ -144,7 +146,8 @@ type LocalReceiverOptions = {
   uiActions?: boolean;
 };
 
-function isHostedUiOrigin(origin: string | undefined): origin is string {
+/** Whether an origin is the production or preview Local viewer. */
+export function isHostedUiOrigin(origin: string | undefined): origin is string {
   if (!origin) {
     return false;
   }
@@ -197,7 +200,7 @@ function isHostedUiStreamRequest(request: {
  *   suffix (via `?base64` on `/stream`). Spotlight UI clients use the suffix
  *   to pick their decode path, so it must be echoed back or they drop events.
  */
-function buildSSEHandler(
+export function buildSSEHandler(
   stream: {
     writeSSE: (event: {
       id?: string;
@@ -600,6 +603,8 @@ const SSE_MAX_RETRY_MS = 30_000;
 /** Options for consuming an SSE stream. */
 export type ConsumeSSEOptions = {
   url: string;
+  /** A full scoped stream URL, when consuming a daemon-owned session. */
+  streamUrl?: string;
   activeFilters: ReadonlySet<FilterValue>;
   signal: AbortSignal;
   quiet?: boolean;
@@ -638,6 +643,7 @@ async function sleepUnlessAborted(
 export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
   const {
     url,
+    streamUrl,
     activeFilters,
     signal,
     quiet = false,
@@ -652,6 +658,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
   while (!signal.aborted) {
     const result = await attemptSSEConnection({
       url,
+      streamUrl,
       activeFilters,
       signal,
       quiet,
@@ -734,6 +741,7 @@ async function attemptSSEConnection(
 /** Options for a single SSE connection attempt. */
 type ConsumeSSEOnceOptions = {
   url: string;
+  streamUrl?: string;
   activeFilters: ReadonlySet<FilterValue>;
   signal: AbortSignal;
   quiet: boolean;
@@ -766,7 +774,10 @@ async function consumeSSEOnce(opts: ConsumeSSEOnceOptions): Promise<boolean> {
   if (lastEventId) {
     headers["Last-Event-ID"] = lastEventId;
   }
-  const res = await fetch(`${url}/stream`, { headers, signal });
+  const res = await fetch(opts.streamUrl ?? `${url}/stream`, {
+    headers,
+    signal,
+  });
   if (!res.ok) {
     logger.warn(`SSE stream returned HTTP ${res.status}`);
     return false;
@@ -917,6 +928,12 @@ export const serverCommand = buildCommand({
         brief: "Open Sentry Local UI in the browser",
         default: false,
       },
+      session: {
+        kind: "parsed",
+        parse: String,
+        brief: "Create a daemon-owned telemetry session with this label",
+        optional: true,
+      },
     },
     aliases: {
       p: "port",
@@ -933,6 +950,45 @@ export const serverCommand = buildCommand({
     validateOpenHost(flags.open, flags.host);
     const activeFilters = new Set(flags.filter);
     const url = formatLocalServerUrl(flags.host, flags.port);
+
+    if (flags.session) {
+      const { createLocalDaemonSession, retainLocalDaemonSession } =
+        await import("./daemon.js");
+      const session = await createLocalDaemonSession({
+        cwd: this.cwd,
+        host: flags.host,
+        label: flags.session || basename(this.cwd),
+        port: flags.port,
+      });
+      logger.info("Sentry Local telemetry session");
+      logger.info(`  Session: ${bold(session.id)} (${session.label})`);
+      logger.info(
+        `  Capabilities: sentry local session view ${session.id} --json`,
+      );
+      logger.info("Press Ctrl-C to stop.");
+      await openLocalUiIfRequested(flags.open, session.streamUrl);
+
+      const controller = new AbortController();
+      const stop = () => controller.abort();
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
+      try {
+        await consumeSSE({
+          activeFilters,
+          quiet: flags.quiet,
+          showAttributes: flags.attributes,
+          signal: controller.signal,
+          streamUrl: session.streamUrl,
+          url: new URL(session.streamUrl).origin,
+          useJson: flags.format === "json",
+        });
+      } finally {
+        process.removeListener("SIGINT", stop);
+        process.removeListener("SIGTERM", stop);
+        await retainLocalDaemonSession(session.id);
+      }
+      return;
+    }
 
     if (await isServerRunning(url)) {
       logger.info(`Connected to existing server at ${bold(url)}`);

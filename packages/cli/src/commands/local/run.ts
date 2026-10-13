@@ -19,7 +19,7 @@ import {
   spawn,
 } from "node:child_process";
 import type { Server } from "node:http";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
@@ -34,6 +34,10 @@ import {
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
 import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
+import {
+  createLocalDaemonSession,
+  retainLocalDaemonSession,
+} from "./daemon.js";
 import {
   buildApp,
   consumeSSE,
@@ -60,6 +64,7 @@ type RunFlags = {
   readonly format: FormatValue;
   readonly attributes: boolean;
   readonly open: boolean;
+  readonly session?: string;
 };
 
 /** Buffer size for the auto-started background server. */
@@ -160,15 +165,23 @@ function forwardChildOutput(child: ChildProcess, useJson: boolean): void {
  * reached the other server, but nothing was ever printed here. Attaching as
  * an SSE consumer is what `sentry local serve` does in the same situation.
  */
-function attachToExistingServer(
-  url: string,
-  activeFilters: ReadonlySet<FilterValue>,
-  useJson: boolean,
-  showAttributes: boolean,
-): EventTail {
+function attachToExistingServer({
+  activeFilters,
+  showAttributes,
+  streamUrl,
+  url,
+  useJson,
+}: {
+  activeFilters: ReadonlySet<FilterValue>;
+  showAttributes: boolean;
+  streamUrl?: string;
+  url: string;
+  useJson: boolean;
+}): EventTail {
   const ac = new AbortController();
   const tail = consumeSSE({
     url,
+    streamUrl,
     activeFilters,
     signal: ac.signal,
     useJson,
@@ -253,7 +266,12 @@ async function openEventTail({
 
   if (await isServerRunning(url)) {
     logger.info(`Connected to existing server at ${bold(url)}`);
-    return attachToExistingServer(url, activeFilters, useJson, showAttributes);
+    return attachToExistingServer({
+      activeFilters,
+      showAttributes,
+      url,
+      useJson,
+    });
   }
 
   logger.info("No server detected, starting one in the background...");
@@ -273,7 +291,12 @@ async function openEventTail({
     }
     // Something grabbed the port between the probe and the bind.
     logger.warn(`${err.message}; attaching to it instead`);
-    return attachToExistingServer(url, activeFilters, useJson, showAttributes);
+    return attachToExistingServer({
+      activeFilters,
+      showAttributes,
+      url,
+      useJson,
+    });
   }
 }
 
@@ -420,6 +443,12 @@ export const runCommand = buildCommand({
         brief: "Open Sentry Local UI in the browser",
         default: false,
       },
+      session: {
+        kind: "parsed",
+        parse: String,
+        brief: "Create a daemon-owned telemetry session with this label",
+        optional: true,
+      },
     },
     aliases: {
       p: "port",
@@ -446,21 +475,43 @@ export const runCommand = buildCommand({
     }
 
     let url = formatLocalServerUrl(flags.host, flags.port);
+    let daemonSessionId: string | undefined;
+    let daemonIngestUrl: string | undefined;
+    let daemonStreamUrl: string | undefined;
 
     const useJson = flags.format === "json";
     const activeFilters = new Set(flags.filter);
-    const tail = await openEventTail({
-      port: flags.port,
-      host: flags.host,
-      activeFilters,
-      useJson,
-      showAttributes: flags.attributes,
-    });
+    const tail = flags.session
+      ? await (async () => {
+          const session = await createLocalDaemonSession({
+            cwd: this.cwd,
+            host: flags.host,
+            label: flags.session || basename(this.cwd),
+            port: flags.port,
+          });
+          daemonSessionId = session.id;
+          daemonIngestUrl = session.ingestUrl;
+          daemonStreamUrl = session.streamUrl;
+          return attachToExistingServer({
+            activeFilters,
+            showAttributes: flags.attributes,
+            streamUrl: session.streamUrl,
+            url: new URL(session.streamUrl).origin,
+            useJson,
+          });
+        })()
+      : await openEventTail({
+          port: flags.port,
+          host: flags.host,
+          activeFilters,
+          useJson,
+          showAttributes: flags.attributes,
+        });
     url = tail.url;
 
-    await openLocalUiIfRequested(flags.open, url);
+    await openLocalUiIfRequested(flags.open, daemonStreamUrl ?? url);
 
-    const spotlightUrl = `${url}/stream`;
+    const spotlightUrl = daemonIngestUrl ?? `${url}/stream`;
     const wrangler = await injectWranglerSpotlightBinding(
       args,
       spotlightUrl,
@@ -470,7 +521,9 @@ export const runCommand = buildCommand({
       logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
     }
     logger.info(`Starting: ${bold(wrangler.args.join(" "))}`);
-    logger.info(`SENTRY_SPOTLIGHT=${spotlightUrl}`);
+    logger.info(
+      `SENTRY_SPOTLIGHT=${daemonSessionId ? `${new URL(spotlightUrl).origin}/_local/v1/sessions/${daemonSessionId}/stream` : spotlightUrl}`,
+    );
 
     const childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
 
@@ -485,6 +538,9 @@ export const runCommand = buildCommand({
       forwardChildOutput(child, useJson);
     } catch (err) {
       await tail.cleanup();
+      if (daemonSessionId) {
+        await retainLocalDaemonSession(daemonSessionId);
+      }
       throw new CliError(
         `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
         EXIT.GENERAL,
@@ -529,6 +585,9 @@ export const runCommand = buildCommand({
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
       await tail.cleanup();
+      if (daemonSessionId) {
+        await retainLocalDaemonSession(daemonSessionId);
+      }
     }
 
     if (exitCode !== 0) {
