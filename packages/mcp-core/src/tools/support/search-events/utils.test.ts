@@ -290,8 +290,25 @@ describe("search query helpers", () => {
     );
   });
 
+  it("should detect regex filters as structured Sentry search syntax", () => {
+    expect(
+      looksLikeSentrySearchSyntax(String.raw`message://request took \d+ms//`),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax(String.raw`!message://worker \d+ ready//`),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax(
+        String.raw`message://https?://api\.example\.com//`,
+      ),
+    ).toBe(true);
+  });
+
   it("should ignore common natural language colon patterns", () => {
     expect(looksLikeSentrySearchSyntax("open http://example.com")).toBe(false);
+    expect(looksLikeSentrySearchSyntax("see http://example.com/a/")).toBe(
+      false,
+    );
     expect(looksLikeSentrySearchSyntax("started at 10:30")).toBe(false);
     expect(looksLikeSentrySearchSyntax("Note: show slow spans")).toBe(false);
     expect(looksLikeSentrySearchSyntax("ERROR: service is down")).toBe(false);
@@ -391,6 +408,41 @@ describe("search query helpers", () => {
       false,
     );
     expect(isSemanticFilterDowngrade("id:1", 'message:"error 1"')).toBe(true);
+  });
+
+  it("detects message regex downgrades of structured filters", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "http.status_code:500",
+        "message://status 500//",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "user.id:42 severity:error",
+        String.raw`severity:error message://(?i)user 42 failed//`,
+      ),
+    ).toBe(true);
+
+    expect(
+      isSemanticFilterDowngrade(
+        "http.status_code:500",
+        String.raw`http.status_code:500 message://took \d+ms//`,
+      ),
+    ).toBe(false);
+
+    // A key:value inside a regex is pattern text, not a kept structured filter.
+    expect(
+      isSemanticFilterDowngrade("custom:foo", "message://custom:foo//"),
+    ).toBe(true);
+
+    // A quote inside a regex must not hide the filters after it.
+    expect(
+      isSemanticFilterDowngrade(
+        "custom:foo",
+        String.raw`message://it's \d+// message:"*foo*"`,
+      ),
+    ).toBe(true);
   });
 });
 
