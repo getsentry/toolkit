@@ -28,11 +28,18 @@ import {
   CONTROL_PLANE_PREFIX,
   createLocalControlPlane,
 } from "./control-plane.js";
-import { DEFAULT_PORT, isLoopbackHost, tryListen } from "./server.js";
+import {
+  DEFAULT_PORT,
+  isLoopbackHost,
+  PORT_RETRY_TIMEOUT_MS,
+  tryListen,
+} from "./server.js";
 
 export const LOCAL_DAEMON_STATE_FILENAME = "local-control-plane.json";
 export const LOCAL_DAEMON_PROTOCOL_VERSION = 1;
 export const LOCAL_DAEMON_IDLE_GRACE_MS = 30_000;
+/** Listener retries plus time for CLI bootstrap and discovery persistence. */
+const LOCAL_DAEMON_START_TIMEOUT_MS = PORT_RETRY_TIMEOUT_MS + 5_000;
 
 /** Private discovery metadata for the authenticated loopback daemon. */
 export type LocalDaemonState = {
@@ -226,96 +233,162 @@ async function claimDaemonOwnership(
   throw new Error("Timed out waiting for Sentry Local daemon ownership.");
 }
 
-/** Return a usable daemon state, removing stale discovery information first. */
+/** A failed probe is not proof that a live process has relinquished ownership. */
+function isProcessRunning(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ESRCH")
+      return false;
+    logger.debug(
+      "Could not verify Local daemon process; preserving its discovery",
+      error,
+    );
+    return true;
+  }
+}
+
+/** Read a lock's owning PID without interpreting an absent file as ownership. */
+async function readOwnerPid(path: string): Promise<number> {
+  try {
+    return Number(await readFile(path, "utf8"));
+  } catch (error) {
+    logger.debug("Could not read Local startup ownership", error);
+    return 0;
+  }
+}
+
+/** Keep discovery reads non-destructive; daemon startup replaces stale metadata. */
+async function discoverLocalDaemon(
+  waitForResponse = false,
+): Promise<LocalDaemonState | undefined> {
+  const directory = getConfigDir();
+  const state = await readLocalDaemonState(directory);
+  if (!state) return;
+  const responds =
+    state.version === LOCAL_DAEMON_PROTOCOL_VERSION &&
+    (await daemonResponds(state));
+  // A startup or shutdown can replace/remove metadata while the probe is in
+  // flight. Rediscover changed state and never unlink based on a stale snapshot.
+  const current = await readLocalDaemonState(directory);
+  if (!current) return;
+  if (
+    current.pid !== state.pid ||
+    current.token !== state.token ||
+    current.host !== state.host ||
+    current.port !== state.port ||
+    current.version !== state.version
+  ) {
+    return discoverLocalDaemon(waitForResponse);
+  }
+  if (responds) return state;
+  if (isProcessRunning(state.pid)) {
+    if (waitForResponse && state.version === LOCAL_DAEMON_PROTOCOL_VERSION)
+      return;
+    throw new Error(
+      "The Local daemon is still running but did not respond with a compatible identity. Retry the command; its discovery state has been preserved.",
+    );
+  }
+}
+
+/** Return authenticated discovery, preserving unreachable live owners for retries. */
 export async function getRunningLocalDaemon(): Promise<
   LocalDaemonState | undefined
 > {
-  const directory = getConfigDir();
-  const state = await readLocalDaemonState(directory);
-  if (!state) {
-    return;
+  return discoverLocalDaemon();
+}
+
+/** Wait through the listener's complete retry window without erasing live state. */
+async function waitForLocalDaemon(
+  deadline: number,
+  startupError?: () => Error | undefined,
+): Promise<LocalDaemonState | undefined> {
+  while (Date.now() < deadline) {
+    await sleep(125);
+    const error = startupError?.();
+    if (error) throw error;
+    const state = await discoverLocalDaemon(true);
+    if (state) return state;
   }
-  if (
-    state.version !== LOCAL_DAEMON_PROTOCOL_VERSION ||
-    !(await daemonResponds(state))
-  ) {
-    await removeLocalDaemonState(directory);
-    return;
-  }
-  return state;
 }
 
 /** Start the daemon child and wait until its authenticated discovery state is available. */
 export async function ensureLocalDaemon({
   host = "localhost",
   port = DEFAULT_PORT,
-}: {
-  host?: string;
-  port?: number;
-} = {}): Promise<LocalDaemonState> {
-  if (!isLoopbackHost(host)) {
+}: { host?: string; port?: number } = {}): Promise<LocalDaemonState> {
+  if (!isLoopbackHost(host))
     throw new Error("The Local control-plane host must be loopback-only.");
-  }
-  if (port === 0) {
+  if (port === 0)
     throw new Error("The Local control-plane port must be non-zero.");
-  }
   const running = await getRunningLocalDaemon();
-  if (running) {
-    return running;
-  }
+  if (running) return running;
   const directory = getConfigDir();
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  let lock: Awaited<ReturnType<typeof open>> | undefined;
+  let lock: Awaited<ReturnType<typeof open>>;
   try {
     lock = await open(startupLockPath(directory), "wx", 0o600);
   } catch (error) {
-    if (
-      !(error instanceof Error && "code" in error) ||
-      error.code !== "EEXIST"
-    ) {
+    if (!(error instanceof Error && "code" in error && error.code === "EEXIST"))
       throw error;
+    const state = await waitForLocalDaemon(
+      Date.now() + LOCAL_DAEMON_START_TIMEOUT_MS,
+    );
+    if (state) return state;
+    const starter = await readOwnerPid(startupLockPath(directory));
+    const owner = await readOwnerPid(
+      join(directory, "local-control-plane.owner"),
+    );
+    if (isProcessRunning(starter) || isProcessRunning(owner)) {
+      throw new Error(
+        "Local daemon startup is still in progress. Retry the command; the active startup lock has been preserved.",
+      );
     }
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      await sleep(125);
-      const state = await getRunningLocalDaemon();
-      if (state) {
-        return state;
-      }
-    }
-    await removeLocalDaemonState(directory);
     await rm(startupLockPath(directory), { force: true });
     return ensureLocalDaemon({ host, port });
   }
+  let child: ChildProcess | undefined;
+  let ready = false;
   try {
+    await lock.writeFile(String(process.pid), "utf8");
     const runningAfterLock = await getRunningLocalDaemon();
-    if (runningAfterLock) return runningAfterLock;
+    if (runningAfterLock) {
+      ready = true;
+      return runningAfterLock;
+    }
     let startupError: Error | undefined;
-    const child: ChildProcess = spawn(
-      process.execPath,
-      buildLocalDaemonArgs(host, port),
-      {
-        detached: true,
-        env: process.env,
-        stdio: "ignore",
-      },
-    );
+    child = spawn(process.execPath, buildLocalDaemonArgs(host, port), {
+      detached: true,
+      env: process.env,
+      stdio: "ignore",
+    });
     child.once("error", (error) => {
       startupError = error;
     });
+    child.once("exit", (code, signal) => {
+      startupError = new Error(
+        `Local daemon exited before startup (status ${code ?? signal}). Check that the requested port is available.`,
+      );
+    });
     child.unref();
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      await sleep(125);
-      if (startupError) throw startupError;
-      const state = await getRunningLocalDaemon();
-      if (state) {
-        return state;
-      }
+    const state = await waitForLocalDaemon(
+      Date.now() + LOCAL_DAEMON_START_TIMEOUT_MS,
+      () => startupError,
+    );
+    if (state) {
+      ready = true;
+      return state;
     }
+    throw new Error("Timed out while starting the Sentry Local control plane.");
   } finally {
+    if (!ready) child?.kill("SIGTERM");
     await lock.close();
-    await rm(startupLockPath(directory), { force: true });
+    if ((await readOwnerPid(startupLockPath(directory))) === process.pid) {
+      await rm(startupLockPath(directory), { force: true });
+    }
   }
-  throw new Error("Timed out while starting the Sentry Local control plane.");
 }
 
 /** Run the daemon until an explicit control-plane stop request or process signal arrives. */

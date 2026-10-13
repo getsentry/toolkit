@@ -91,7 +91,10 @@ export function createLocalControlPlane({
     }
   };
 
-  app.get("/health", (c) => c.text("OK"));
+  app.get("/health", (c) => {
+    c.header("X-Sentry-Local-Mode", "daemon");
+    return c.text("OK");
+  });
 
   app.use(`${CONTROL_PLANE_PREFIX}/*`, async (c, next) => {
     if (
@@ -134,6 +137,13 @@ export function createLocalControlPlane({
   });
   app.use(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, async (c, next) => {
     const origin = c.req.header("origin") ?? "";
+    const isWrite =
+      c.req.method === "POST" ||
+      (c.req.method === "OPTIONS" &&
+        c.req.header("access-control-request-method") !== "GET");
+    if (isWrite && !isLoopbackBrowserRequest(c.req.raw)) {
+      return c.body(null, 403);
+    }
     if (!isHostedUiOrigin(origin)) {
       return loopbackCors(c, next);
     }

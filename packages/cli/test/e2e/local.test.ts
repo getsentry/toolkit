@@ -269,10 +269,126 @@ describe("Local daemon E2E", () => {
     const eventId = result.stderr.match(/SDK_EVENT:([a-f0-9]{32})/)?.[1];
     expect(eventId, result.stderr).toBeDefined();
     expect(result.stdout).toContain("Local real SDK event");
+    const session = JSON.parse(
+      (await cli("session", "view", "sdk")).stdout,
+    ) as Session;
+    expect(result.stderr).toContain("configured for session");
+    expect(result.stderr).toContain("session view");
+    expect(result.stderr).not.toContain(
+      new URL(session.ingestUrl).pathname.split("/").at(-1),
+    );
     expect((await cli("event", "list", "sdk")).stdout).toContain(eventId);
     expect((await cli("event", "view", "sdk", eventId ?? "")).stdout).toContain(
       "Local real SDK event",
     );
+  }, 30_000);
+
+  test("waits for the port retry window during concurrent daemon startup", async () => {
+    const server = createServer();
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected a TCP address");
+    const pending = Promise.allSettled([
+      createSession("retry-a", address.port),
+      createSession("retry-b", address.port),
+    ]);
+    try {
+      await sleep(6500);
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const results = await pending;
+      if (results.some((result) => result.status === "rejected"))
+        await sleep(5000);
+      expect(results.map((result) => result.status)).toEqual([
+        "fulfilled",
+        "fulfilled",
+      ]);
+      expect(
+        JSON.parse((await cli("session", "list")).stdout).sessions,
+      ).toHaveLength(2);
+    } finally {
+      server.close();
+    }
+  }, 30_000);
+
+  test("reports a failed daemon startup without leaving an owner or late listener", async () => {
+    const server = createServer();
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected a TCP address");
+    try {
+      const result = await cli(
+        "daemon",
+        "start",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(address.port),
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("exited before startup");
+      for (const filename of [
+        "local-control-plane.owner",
+        "local-control-plane.lock",
+      ]) {
+        await expect(
+          readFile(join(getConfigDir(), filename), "utf8"),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await sleep(1000);
+      expect(JSON.parse((await cli("daemon", "status")).stdout)).toEqual({
+        daemon: null,
+      });
+    } finally {
+      server.close();
+    }
+  }, 30_000);
+
+  test("rejects legacy commands before running an app against the managed daemon", async () => {
+    const port = await availablePort();
+    await createSession("managed", port);
+    const result = await runCli(
+      [
+        "local",
+        "run",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--",
+        process.execPath,
+        "-e",
+        "console.error('LEGACY_CHILD_RAN')",
+      ],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+        },
+      },
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--session");
+    expect(result.stderr).not.toContain("LEGACY_CHILD_RAN");
+    const serve = await runCli(
+      ["local", "serve", "--host", "127.0.0.1", "--port", String(port)],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+      },
+    );
+    expect(serve.exitCode).not.toBe(0);
+    expect(serve.stderr).toContain("--session");
   }, 30_000);
 
   test("restarts on the configured port and preserves singleton discovery", async () => {

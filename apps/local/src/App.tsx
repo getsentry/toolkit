@@ -719,6 +719,8 @@ export default function App() {
       getSavedRemoteStream(),
     ),
   );
+  const activeStreamUrl = useRef(streamUrl);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [draftEndpoint, setDraftEndpoint] = useState(streamUrl);
   const [isEditingReceiver, setIsEditingReceiver] = useState(false);
@@ -756,6 +758,9 @@ export default function App() {
   const searchedItems = workspaceItems.filter((item) =>
     matchesSearch(item, searchQuery),
   );
+  const searchedTraces = traces.filter((trace) =>
+    trace.items.some((item) => matchesSearch(item, searchQuery)),
+  );
   const workspaceEmptyState = searchQuery.trim()
     ? {
         title: `No matching ${activeWorkspace.singularLabel}s`,
@@ -764,8 +769,8 @@ export default function App() {
       }
     : activeWorkspace.emptyState;
   const selectedItem =
-    workspaceItems.find((item) => item.id === workspaceQuery.eventId) ??
-    workspaceItems[0];
+    searchedItems.find((item) => item.id === workspaceQuery.eventId) ??
+    searchedItems[0];
   const selectedEventTrace = selectedItem?.metadata?.traceId
     ? traces.find((trace) => trace.id === selectedItem.metadata?.traceId)
     : undefined;
@@ -837,6 +842,8 @@ export default function App() {
   };
 
   const clearItems = () => {
+    isClearingCommandSearch.current = true;
+    setCommandSearchQuery("");
     telemetryStore.clear();
     setLastViewedItemIds({});
     void workspaceQuery.clearWorkspace();
@@ -914,8 +921,18 @@ export default function App() {
       }
       return;
     }
+    if (endpoint.url !== streamUrl) {
+      activeStreamUrl.current = endpoint.url;
+      telemetryStore.clear();
+      setLastViewedItemIds({});
+      fallbackEventId.current = 0;
+      isClearingCommandSearch.current = true;
+      setCommandSearchQuery("");
+      void workspaceQuery.clearWorkspace();
+    }
     setDraftEndpoint(endpoint.url);
     setStreamUrl(endpoint.url);
+    setConnectionAttempt((attempt) => attempt + 1);
     setIsConnectionEnabled(true);
     setIsConnecting(true);
     setConnection("connecting");
@@ -941,7 +958,7 @@ export default function App() {
     let isCurrent = true;
     const source = new EventSource(streamUrl);
     const timeoutId = window.setTimeout(() => {
-      if (!isCurrent) {
+      if (!isCurrent || activeStreamUrl.current !== streamUrl) {
         return;
       }
       isCurrent = false;
@@ -954,7 +971,7 @@ export default function App() {
       );
     }, CONNECTION_TIMEOUT_MS);
     const onEnvelope = (event: Event) => {
-      if (!isCurrent) {
+      if (!isCurrent || activeStreamUrl.current !== streamUrl) {
         return;
       }
       try {
@@ -979,7 +996,7 @@ export default function App() {
 
     source.addEventListener(SENTRY_ENVELOPE_EVENT, onEnvelope);
     source.onopen = () => {
-      if (!isCurrent) {
+      if (!isCurrent || activeStreamUrl.current !== streamUrl) {
         return;
       }
       window.clearTimeout(timeoutId);
@@ -995,7 +1012,7 @@ export default function App() {
       setMessage(undefined);
     };
     source.onerror = () => {
-      if (!isCurrent) {
+      if (!isCurrent || activeStreamUrl.current !== streamUrl) {
         return;
       }
       window.clearTimeout(timeoutId);
@@ -1017,7 +1034,7 @@ export default function App() {
       source.removeEventListener(SENTRY_ENVELOPE_EVENT, onEnvelope);
       source.close();
     };
-  }, [isConnectionEnabled, streamUrl, telemetryStore]);
+  }, [connectionAttempt, isConnectionEnabled, streamUrl, telemetryStore]);
 
   const showConnectionLanding =
     isEditingReceiver ||
@@ -1212,7 +1229,7 @@ export default function App() {
                 </div>
               ) : workspaceView === "traces" ? (
                 <TraceWorkspace
-                  traces={traces}
+                  traces={searchedTraces}
                   selectedTraceId={workspaceQuery.traceId ?? undefined}
                   onSelect={(traceId) => {
                     void workspaceQuery.selectTrace(traceId);

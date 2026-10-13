@@ -30,8 +30,14 @@ export type FlexibleEventData = Record<string, unknown>;
 
 const DEFAULT_MAX_VALUE_LENGTH = 200;
 const DEFAULT_MAX_ARRAY_ITEMS = 20;
-const SENTRY_SEARCH_TOKEN_PATTERN =
-  /(^|\s)!?([A-Za-z_][A-Za-z0-9_.[\],-]*):(?=\S)(?!\/\/)/g;
+// Mirrors regex_value in Sentry's event_search.py grammar, which is what
+// separates a key://pattern// filter from prose like http://example.com.
+const REGEX_FILTER_VALUE_SOURCE = String.raw`\/\/(?!\/\/(?:[\t\n )]|$))[^\n]{1,1024}?\/\/(?=[\t\n )]|$)`;
+const REGEX_FILTER_VALUE_PATTERN = new RegExp(`^${REGEX_FILTER_VALUE_SOURCE}`);
+const SENTRY_SEARCH_TOKEN_PATTERN = new RegExp(
+  String.raw`(^|\s)!?([A-Za-z_][A-Za-z0-9_.[\],-]*):(?=\S)(?:(?!\/\/)|(?=${REGEX_FILTER_VALUE_SOURCE}))`,
+  "g",
+);
 const KNOWN_SENTRY_SEARCH_KEYS = new Set([
   "browser",
   "device",
@@ -122,8 +128,9 @@ export function looksLikeSentrySearchSyntax(query?: string): boolean {
 const FULL_TEXT_SEARCH_KEYS = new Set(["message", "log.body"]);
 
 /**
- * Replace quoted regions with same-length placeholders so colons inside quotes
- * are not treated as filter-key separators (e.g. transaction:"handle message:hello").
+ * Replace quoted regions and regex filter values with same-length placeholders
+ * so colons inside them are not treated as filter-key separators
+ * (e.g. transaction:"handle message:hello" or message://key:\d+//).
  * Length is preserved so offsets still map back to the original query.
  */
 function maskQuotedRegions(query: string): string {
@@ -131,7 +138,17 @@ function maskQuotedRegions(query: string): string {
   let quote: '"' | "'" | null = null;
   let escaped = false;
 
-  for (const char of query) {
+  for (let i = 0; i < query.length; i += 1) {
+    const char = query[i] ?? "";
+    if (!quote && !escaped && char === "/" && query[i - 1] === ":") {
+      const regexValue = query.slice(i).match(REGEX_FILTER_VALUE_PATTERN)?.[0];
+      if (regexValue) {
+        // Keep the // delimiters so the token pattern still sees a regex value.
+        out += `//${regexValue.slice(2, -2).replace(/[\s:"']/g, "x")}//`;
+        i += regexValue.length - 1;
+        continue;
+      }
+    }
     if (escaped) {
       escaped = false;
       out += quote ? "x" : char;
@@ -169,6 +186,10 @@ type SearchFilterOccurrence = {
 };
 
 function normalizeFilterValue(rawValue: string): string {
+  if (REGEX_FILTER_VALUE_PATTERN.test(rawValue)) {
+    return rawValue.slice(2, -2).trim().toLowerCase();
+  }
+
   return rawValue
     .replace(/^['"]|['"]$/g, "")
     .replace(/^\*+|\*+$/g, "")
@@ -178,7 +199,8 @@ function normalizeFilterValue(rawValue: string): string {
 
 /**
  * Read one filter value starting at `valueStart` in the original query.
- * Quoted values keep interior whitespace; unquoted values stop at whitespace.
+ * Quoted and regex values keep interior whitespace; other values stop at
+ * whitespace.
  */
 function readRawFilterValue(
   query: string,
@@ -186,6 +208,13 @@ function readRawFilterValue(
 ): string | undefined {
   if (valueStart >= query.length) {
     return undefined;
+  }
+
+  const regexValue = query
+    .slice(valueStart)
+    .match(REGEX_FILTER_VALUE_PATTERN)?.[0];
+  if (regexValue) {
+    return regexValue;
   }
 
   const first = query[valueStart];

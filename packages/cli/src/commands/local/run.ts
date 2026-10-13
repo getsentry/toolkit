@@ -522,7 +522,9 @@ export const runCommand = buildCommand({
     }
     logger.info(`Starting: ${bold(wrangler.args.join(" "))}`);
     logger.info(
-      `SENTRY_SPOTLIGHT=${daemonSessionId ? `${new URL(spotlightUrl).origin}/_local/v1/sessions/${daemonSessionId}/stream` : spotlightUrl}`,
+      daemonSessionId
+        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use sentry local session view ${daemonSessionId} --json for its ingest URL.`
+        : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
     );
 
     const childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);

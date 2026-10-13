@@ -61,7 +61,7 @@ export function ConnectionLanding({
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {isProbing
-                ? "Checking the default receiver on localhost:8969."
+                ? "Checking the selected receiver."
                 : "Connect this read-only viewer to an event stream."}
             </p>
           </div>

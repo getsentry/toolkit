@@ -474,6 +474,9 @@ const MAX_PORT_RETRIES = 3;
 /** Delay between EADDRINUSE retries in milliseconds. */
 const PORT_RETRY_DELAY_MS = 5000;
 
+/** Maximum time spent waiting between listen attempts. */
+export const PORT_RETRY_TIMEOUT_MS = MAX_PORT_RETRIES * PORT_RETRY_DELAY_MS;
+
 /**
  * Try to start the HTTP server, retrying with backoff on EADDRINUSE.
  *
@@ -542,16 +545,9 @@ export function tryListen(
  * protocol, {@link consumeSSE} reports that when the stream fails to open.
  */
 export async function isServerRunning(url: string): Promise<boolean> {
+  let res: Response;
   try {
-    const res = await fetch(`${url}/health`, {
-      signal: AbortSignal.timeout(2000),
-    });
-    if (!res.ok) {
-      logger.debug(
-        `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`,
-      );
-    }
-    return true;
+    res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
   } catch (err) {
     logger.debug(
       `No existing server at ${url}`,
@@ -559,6 +555,18 @@ export async function isServerRunning(url: string): Promise<boolean> {
     );
     return false;
   }
+  if (res.headers.get("X-Sentry-Local-Mode") === "daemon") {
+    throw new ValidationError(
+      "A Sentry Local daemon is using this port. Add --session <name> or choose another --port.",
+      "session",
+    );
+  }
+  if (!res.ok) {
+    logger.debug(
+      `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`,
+    );
+  }
+  return true;
 }
 
 /** Mutable state for the SSE line parser. */

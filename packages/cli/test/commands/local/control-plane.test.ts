@@ -138,6 +138,35 @@ describe("Local control plane", () => {
     );
   });
 
+  test("rejects remote browser writes through the legacy scoped stream route", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "web", cwd: "/web" });
+    const cap = plane.sessionStore.getCapabilities(session.id).ingest;
+    const path = `/_local/v1/sessions/${session.id}/stream?cap=${cap}&sentry_client=sentry.javascript.browser/10.0`;
+    for (const origin of ["https://example.com", "https://local.sentry.dev"]) {
+      const response = await plane.app.request(path, {
+        method: "POST",
+        headers: { Origin: origin, "Content-Type": "text/plain" },
+        body: '{"event_id":"origin-test"}\n{"type":"event"}\n{"message":"forged"}',
+      });
+      expect(response.status).toBe(403);
+      expect(
+        plane.sessionStore.getBuffer(session.id).read({ all: true }),
+      ).toHaveLength(0);
+      expect(
+        (
+          await plane.app.request(path, {
+            method: "OPTIONS",
+            headers: {
+              Origin: origin,
+              "Access-Control-Request-Method": "POST",
+            },
+          })
+        ).status,
+      ).toBe(403);
+    }
+  });
+
   test("allows subscribers only through the session stream capability", async () => {
     const controlPlane = createLocalControlPlane({
       controlToken: CONTROL_TOKEN,

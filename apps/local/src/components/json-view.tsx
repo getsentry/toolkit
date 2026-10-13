@@ -27,10 +27,15 @@ function formatJson(code: string) {
 
 /** Render JSON with Shiki only after its containing event has been expanded. */
 export function JsonView({ code }: JsonViewProps) {
-  const [html, setHtml] = useState<string>();
+  const [highlighted, setHighlighted] = useState<{
+    source: string;
+    html: string;
+  }>();
   const [copiedText, copyToClipboard] = useCopyToClipboard();
   const formattedCode = formatJson(code);
   const copied = copiedText === code;
+  const html =
+    highlighted?.source === formattedCode ? highlighted.html : undefined;
 
   useEffect(() => {
     let disposed = false;
@@ -48,7 +53,7 @@ export function JsonView({ code }: JsonViewProps) {
       )
       .then((result) => {
         if (!disposed) {
-          setHtml(result);
+          setHighlighted({ source: formattedCode, html: result });
         }
       })
       .catch(() => {

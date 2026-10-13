@@ -29,6 +29,12 @@ The daemon stores its discovery token under `SENTRY_CONFIG_DIR` in an owner-only
 state file. It binds only to localhost, 127.0.0.1, or ::1 and uses a nonzero port.
 A second daemon cannot replace the running daemon for that config directory.
 Restart preserves its configured host and port and clears all in-memory data.
+A temporarily unreachable live daemon keeps its discovery state for retries.
+Startup waits through the listener retry window and preserves active startup locks.
+
+When a managed daemon owns the requested port, plain `local run` and `local serve`
+require `--session <name>` or a different `--port`; they cannot use its protected
+receiver as a legacy `/stream` endpoint.
 
 ## Browser viewer
 

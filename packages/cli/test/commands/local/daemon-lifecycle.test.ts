@@ -5,13 +5,17 @@ import { createServer } from "node:http";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { useTestConfigDir } from "../../helpers.js";
 import {
+  readLocalDaemonState,
   getRunningLocalDaemon,
   writeLocalDaemonState,
   runLocalDaemonForeground,
 } from "../../../src/commands/local/daemon.js";
 
 const getConfigDir = useTestConfigDir("local-daemon-lifecycle-");
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("Local daemon discovery", () => {
   test("rejects stale state when another service answers the public health endpoint", async () => {
@@ -19,6 +23,9 @@ describe("Local daemon discovery", () => {
       "fetch",
       (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
     );
+    vi.spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("owner exited"), { code: "ESRCH" });
+    });
     const server = createServer((request, response) => {
       response.statusCode = request.url === "/health" ? 200 : 404;
       response.end("OK");
@@ -44,6 +51,84 @@ describe("Local daemon discovery", () => {
         server.closeAllConnections();
       });
     }
+  });
+
+  test("preserves live daemon discovery after a failed probe and recovers on retry", async () => {
+    const state = {
+      host: "127.0.0.1",
+      port: 8969,
+      pid: process.pid,
+      token: "live",
+      version: 1,
+    };
+    await writeLocalDaemonState(getConfigDir(), state);
+    const probe = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("temporarily unavailable"))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sessions: [] }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", probe);
+    await expect(getRunningLocalDaemon()).rejects.toThrow("still running");
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(state);
+    await expect(getRunningLocalDaemon()).resolves.toEqual(state);
+  });
+
+  test("preserves discovery when the process existence check is permission denied", async () => {
+    const state = {
+      host: "127.0.0.1",
+      port: 8969,
+      pid: 42,
+      token: "protected",
+      version: 1,
+    };
+    await writeLocalDaemonState(getConfigDir(), state);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("unreachable")));
+    vi.spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("permission denied"), { code: "EPERM" });
+    });
+    await expect(getRunningLocalDaemon()).rejects.toThrow("still running");
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(state);
+  });
+
+  test("rediscovering a dead snapshot does not erase a replacement daemon", async () => {
+    const stale = {
+      host: "127.0.0.1",
+      port: 8969,
+      pid: 42,
+      token: "old",
+      version: 1,
+    };
+    const replacement = { ...stale, pid: process.pid, token: "replacement" };
+    const realKill = process.kill;
+    vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (pid === stale.pid)
+        throw Object.assign(new Error("owner exited"), { code: "ESRCH" });
+      return realKill(pid, signal);
+    });
+    let finishProbe: ((response: Response) => void) | undefined;
+    const probe = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            finishProbe = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sessions: [] }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", probe);
+    await writeLocalDaemonState(getConfigDir(), stale);
+    const pending = getRunningLocalDaemon();
+    await expect.poll(() => probe.mock.calls.length).toBe(1);
+    await writeLocalDaemonState(getConfigDir(), replacement);
+    if (!finishProbe) throw new Error("Missing deferred probe");
+    finishProbe(new Response("wrong service", { status: 404 }));
+    await expect(pending).resolves.toEqual(replacement);
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(
+      replacement,
+    );
   });
 
   test("rejects non-loopback discovery without making a request", async () => {

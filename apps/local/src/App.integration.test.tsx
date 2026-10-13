@@ -1013,6 +1013,126 @@ describe("local receiver to viewer integration", () => {
     }
   });
 
+  test("keeps event detail within the active search filter", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      await sendEnvelope(port, "GET /unmatched-first");
+      await sendEnvelope(port, "GET /matching-second");
+      renderViewer(port, "/?q=matching-second");
+      await screen.findByText("Connected to local receiver");
+      await screen.findByLabelText("View transaction event");
+      await waitFor(() => {
+        expect(screen.getByTestId("event-detail").textContent).toContain(
+          "/matching-second",
+        );
+        expect(screen.getByTestId("event-detail").textContent).not.toContain(
+          "/unmatched-first",
+        );
+      });
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
+  test("clearing events also clears the global search for subsequent events", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      await sendEnvelope(port, "GET /old-search");
+      renderViewer(port, "/?q=old-search");
+      await screen.findByText("Connected to local receiver");
+      await screen.findByLabelText("View transaction event");
+      fireEvent.click(screen.getByRole("button", { name: "Clear events" }));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      });
+      expect(new URLSearchParams(window.location.search).get("q")).toBeNull();
+      await sendEnvelope(port, "GET /new-event");
+      await screen.findByLabelText("View transaction event");
+      expect(screen.getByTestId("event-detail").textContent).toContain(
+        "/new-event",
+      );
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
+  test("filters trace groups with global search while retaining their full waterfall", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      await sendEnvelope(port, "GET /alpha", { traceId: "trace-alpha" });
+      await sendEnvelope(port, "GET /beta", {
+        traceId: "trace-beta",
+        spanId: "beta-span",
+      });
+      await sendEnvelope(port, "GET /related", {
+        traceId: "trace-beta",
+        spanId: "related-span",
+      });
+      renderViewer(port, "/traces?q=beta");
+      await screen.findByText("Connected to local receiver");
+      await screen.findByRole("button", { name: "View trace GET /beta" });
+      expect(
+        screen.queryByRole("button", { name: "View trace GET /alpha" }),
+      ).toBeNull();
+      expect(screen.getByLabelText("Trace waterfall").textContent).toContain(
+        "/related",
+      );
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
+  test("switching receivers isolates telemetry and selection from the previous stream", async () => {
+    const first = await startReceiver();
+    const second = await startReceiver();
+    try {
+      await sendEnvelope(first.port, "GET /session-a");
+      await sendEnvelope(second.port, "GET /session-b");
+      renderViewer(first.port);
+      await screen.findByText("Connected to local receiver");
+      await screen.findByLabelText("View transaction event");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Change receiver connection" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+      await screen.findByText("Connected to local receiver");
+      expect(screen.getByTestId("event-list").textContent).toContain(
+        "/session-a",
+      );
+      expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
+        1,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Change receiver connection" }),
+      );
+      fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+        target: { value: `http://127.0.0.1:${second.port}/stream` },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+      await waitFor(() => {
+        expect(screen.getByTestId("event-list").textContent).toContain(
+          "/session-b",
+        );
+        expect(screen.getByTestId("event-list").textContent).not.toContain(
+          "/session-a",
+        );
+      });
+      expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
+        1,
+      );
+      expect(screen.getByTestId("event-detail").textContent).toContain(
+        "/session-b",
+      );
+    } finally {
+      cleanup();
+      await stopReceiver(first.server);
+      await stopReceiver(second.server);
+    }
+  });
+
   test("hydrates a shareable Explorer route and selected event from the URL", async () => {
     const { server, port } = await startReceiver();
 
