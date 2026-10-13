@@ -44,10 +44,10 @@ export function isErrorEvent(item: LocalFeedItem) {
 
 export function isAiEvent(item: LocalFeedItem) {
   const metadata = getMetadata(item);
-  return (
-    `${item.type} ${metadata.operation ?? ""} ${metadata.origin ?? ""}`
-      .toLowerCase()
-      .match(/ai|gen_ai|llm/) !== null
+  return [item.type, metadata.operation, metadata.origin].some(
+    (value) =>
+      value !== undefined &&
+      /(?:^|[.\s:_-])(?:ai|gen_ai|llm)(?:$|[.\s:_-])/i.test(value),
   );
 }
 

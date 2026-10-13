@@ -26,6 +26,7 @@ export type EventMetadata = {
   method?: string;
   route?: string;
   statusCode?: number;
+  spanStatus?: string;
   durationMs?: number;
   traceId?: string;
   spanId?: string;
@@ -69,7 +70,11 @@ function getRoute(url: string | undefined): string | undefined {
   }
 }
 
-function getEventMetadata(payload: unknown, type: string): EventMetadata {
+/** Derive display metadata from this payload without inheriting its parent event. */
+export function getEventMetadata(
+  payload: unknown,
+  type: string,
+): EventMetadata {
   const event = isRecord(payload) ? payload : {};
   const transaction = getString(event.transaction);
   const description = getString(event.description);
@@ -107,6 +112,7 @@ function getEventMetadata(payload: unknown, type: string): EventMetadata {
     statusCode:
       getNumber(request.status_code) ??
       getNumber(data["http.response.status_code"]),
+    spanStatus: getString(trace.status) ?? getString(event.status),
     durationMs,
     traceId: getString(trace.trace_id) ?? getString(event.trace_id),
     spanId: getString(trace.span_id) ?? getString(event.span_id),

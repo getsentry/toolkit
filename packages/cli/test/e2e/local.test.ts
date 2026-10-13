@@ -280,6 +280,38 @@ describe("Local daemon E2E", () => {
     ).toContain("worker event");
   }, 30_000);
 
+  test("queries SDK event IDs from item headers and payloads", async () => {
+    const session = await createSession("sdk IDs", await availablePort());
+    for (const [itemHeader, payload] of [
+      [{ type: "event", event_id: "item-event" }, { message: "item ID event" }],
+      [
+        { type: "transaction" },
+        { event_id: "payload-event", transaction: "payload ID transaction" },
+      ],
+    ]) {
+      const response = await fetch(session.ingestUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-sentry-envelope" },
+        body: [{ sdk: { name: "sentry.node" } }, itemHeader, payload]
+          .map((value) => JSON.stringify(value))
+          .join("\n"),
+      });
+      expect(response.status).toBe(204);
+    }
+    const listed = await cli("event", "list", session.id);
+    expect(listed.exitCode, listed.stderr).toBe(0);
+    expect(
+      JSON.parse(listed.stdout)
+        .events.map((event: { eventId: string }) => event.eventId)
+        .sort(),
+    ).toEqual(["item-event", "payload-event"]);
+    for (const eventId of ["item-event", "payload-event"]) {
+      const viewed = await cli("event", "view", session.id, eventId);
+      expect(viewed.exitCode, viewed.stderr).toBe(0);
+      expect(JSON.parse(viewed.stdout).eventId).toBe(eventId);
+    }
+  }, 30_000);
+
   test("views telemetry using quoted and split multi-word session names", async () => {
     const session = await createSession("My App", await availablePort());
     const eventId = "d".repeat(32);

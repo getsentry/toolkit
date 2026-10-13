@@ -57,13 +57,40 @@ function isLoopbackBrowserRequest(request: Request): boolean {
   return origin === null || LOOPBACK_ORIGIN_RE.test(origin);
 }
 
+/** Only nonempty string IDs from event-bearing envelope fields are lookup keys. */
+function eventIdFrom(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const id = (value as Record<string, unknown>).event_id;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
 function eventSummary(parsed: {
   envelope: [Record<string, unknown>, unknown[]];
 }): { envelopeId: string; eventId: string; itemTypes: string[] } {
   const [header, items] = parsed.envelope;
+  const itemEventId = items.flatMap((item) => {
+    if (
+      !Array.isArray(item) ||
+      typeof item[0] !== "object" ||
+      item[0] === null
+    ) {
+      return [];
+    }
+    const type = (item[0] as Record<string, unknown>).type;
+    if (type !== "event" && type !== "transaction") {
+      return [];
+    }
+    const id = eventIdFrom(item[0]) ?? eventIdFrom(item[1]);
+    return id ? [id] : [];
+  })[0];
   return {
     envelopeId: String(header.__spotlight_envelope_id ?? ""),
-    eventId: String(header.event_id ?? header.__spotlight_envelope_id ?? ""),
+    eventId:
+      eventIdFrom(header) ??
+      itemEventId ??
+      String(header.__spotlight_envelope_id ?? ""),
     itemTypes: items.map((item) =>
       Array.isArray(item) && typeof item[0] === "object" && item[0]
         ? String((item[0] as { type?: unknown }).type ?? "unknown")

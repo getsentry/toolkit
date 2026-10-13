@@ -47,11 +47,12 @@ function flattenSpans(spans: TraceSpan[], depth = 0): PositionedSpan[] {
 }
 
 function isFailingSpan(span: TraceSpan): boolean {
-  const { level, statusCode } = span.item.metadata ?? {};
+  const { level, statusCode, spanStatus } = span.metadata;
   return (
     level === "error" ||
     level === "fatal" ||
-    (statusCode !== undefined && statusCode >= 500)
+    (statusCode !== undefined && statusCode >= 500) ||
+    (spanStatus !== undefined && spanStatus !== "ok")
   );
 }
 

@@ -1039,7 +1039,9 @@ export default function App() {
   const showConnectionLanding =
     isEditingReceiver ||
     (!hasRetainedItems &&
-      (connection === "connecting" || connection === "failed"));
+      (connection === "connecting" ||
+        connection === "failed" ||
+        connection === "closed"));
   const isReceiverUnavailable =
     connection !== "connected" && !isConnecting && !hasRetainedItems;
   const canSearch = hasRetainedItems && !isEditingReceiver;

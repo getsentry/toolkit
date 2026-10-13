@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  isAiEvent,
   workspaceForItem,
   workspaceFromPath,
   workspacePath,
@@ -33,4 +34,35 @@ describe("workspace routes", () => {
     expect(workspaceFromPath("/not-a-workspace")).toBe("live");
     expect(workspacePath("traces")).toBe("/traces");
   });
+});
+
+describe("AI classification", () => {
+  test.each(["queue.wait", "auto.http.aiohttp", "email.send"])(
+    "keeps ordinary %s telemetry in traces",
+    (value) => {
+      const item = {
+        id: "span",
+        type: "span",
+        text: "{}",
+        metadata: { title: "work", operation: value, origin: value },
+      };
+      expect(isAiEvent(item)).toBe(false);
+      expect(workspaceForItem(item)).toBe("traces");
+    },
+  );
+  test.each([
+    "ai.chat",
+    "gen_ai.invoke_agent",
+    "llm.generate",
+    "auto.ai.openai",
+  ])("recognizes the AI namespace in %s", (value) =>
+    expect(
+      isAiEvent({
+        id: "span",
+        type: "span",
+        text: "{}",
+        metadata: { title: "Prompt", operation: value },
+      }),
+    ).toBe(true),
+  );
 });

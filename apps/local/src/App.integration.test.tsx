@@ -855,6 +855,9 @@ describe("local receiver to viewer integration", () => {
       );
       expect(fetchMock.mock.calls[1]?.[1]).toEqual({ method: "POST" });
       await waitFor(() => expect(scopedSource?.closed).toBe(true));
+      await screen.findByRole("heading", { name: "Connect a receiver" });
+      expect(screen.queryByText("Waiting for events")).toBeNull();
+      expect(screen.getByLabelText("Receiver endpoint")).not.toBeNull();
       await waitFor(() =>
         expect(
           screen.queryAllByLabelText("Connected to local receiver"),
@@ -1515,13 +1518,15 @@ describe("local receiver to viewer integration", () => {
     }
   });
 
-  test("shows a trace waterfall for a transaction with child spans", async () => {
+  test("styles failing spans using their own telemetry", async () => {
     const { server, port } = await startReceiver();
 
     try {
       renderViewer(port);
       await screen.findByText("Connected to local receiver");
       await sendEnvelope(port, "GET /waterfall", {
+        level: "error",
+        statusCode: 500,
         operation: "http.server",
         spanId: "root-span",
         traceId: "waterfall-trace",
@@ -1539,6 +1544,7 @@ describe("local receiver to viewer integration", () => {
             span_id: "http-span",
             parent_span_id: "root-span",
             op: "http.client",
+            data: { "http.response.status_code": 503 },
             description: "GET https://inventory.test/items/42",
             start_timestamp: 1_699_999_999.995,
             timestamp: 1_699_999_999.998,
@@ -1565,7 +1571,15 @@ describe("local receiver to viewer integration", () => {
       expect(
         screen.getByRole("cell", { name: "Duration 4.00ms" }),
       ).not.toBeNull();
-      expect(screen.getByTestId("waterfall-bar-db-span")).not.toBeNull();
+      expect(screen.getByTestId("waterfall-bar-root-span").className).toContain(
+        "bg-red-500",
+      );
+      expect(
+        screen.getByTestId("waterfall-bar-db-span").className,
+      ).not.toContain("bg-red-500");
+      expect(screen.getByTestId("waterfall-bar-http-span").className).toContain(
+        "bg-red-500",
+      );
     } finally {
       cleanup();
       await stopReceiver(server);

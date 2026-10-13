@@ -27,7 +27,9 @@ be unique for name-based queries; ambiguous names return HTTP 409 with guidance
 to use the session ID.
 Session lookup commands accept names quoted or as separate words. For `event view` and
 `envelope view`, the final argument is the telemetry ID; preceding arguments
-form the session name.
+form the session name. Event lookup uses the Sentry event ID from the envelope
+header, event/transaction item header, or payload, in that order; envelopes
+without an event ID retain their generated envelope ID as the lookup key.
 
 The daemon stores its discovery token under `SENTRY_CONFIG_DIR` in an owner-only
 state file. It binds only to localhost, 127.0.0.1, or ::1 and uses a nonzero port.
@@ -60,7 +62,11 @@ receiver data. Remote HTTPS streams stay read-only.
 
 Search and view navigation remain available for retained telemetry after a
 receiver disconnects or a session closes, including raw-only envelopes. A trace
-search with no matches explains how to change or clear the filter.
+search with no matches explains how to change or clear the filter. Closing an
+empty session returns to the receiver picker. Waterfall failure styling uses
+each span's own level, HTTP status, and SDK span status; a failed transaction does not mark healthy child
+spans as failures. The AI workspace matches AI namespaces (`ai`, `gen_ai`,
+`llm`), including dotted origins, rather than substrings of ordinary operations.
 
 ## Verification
 

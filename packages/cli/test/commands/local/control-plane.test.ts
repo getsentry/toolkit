@@ -256,6 +256,58 @@ describe("Local control plane", () => {
     expect(viewed.status).toBe(200);
   });
 
+  test.each([
+    [
+      { sdk: { name: "sentry.node" } },
+      { type: "event", event_id: "item-id" },
+      { event_id: "payload-id" },
+      "item-id",
+    ],
+    [{}, { type: "transaction" }, { event_id: "payload-id" }, "payload-id"],
+    [
+      { event_id: "header-id" },
+      { type: "event", event_id: "item-id" },
+      { event_id: "payload-id" },
+      "header-id",
+    ],
+  ])(
+    "indexes SDK item IDs with envelope-header precedence",
+    async (header, item, payload, eventId) => {
+      const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+      const session = plane.sessionStore.create({ label: "sdk", cwd: "/sdk" });
+      const { ingest } = plane.sessionStore.getCapabilities(session.id);
+      const response = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/ingest/${ingest}`,
+        {
+          method: "POST",
+          body: [header, item, payload]
+            .map((value) => JSON.stringify(value))
+            .join("\n"),
+        },
+      );
+      expect(response.status).toBe(204);
+      const listed = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/events`,
+        { headers: controlHeaders() },
+      );
+      await expect(listed.json()).resolves.toMatchObject({
+        events: [{ eventId }],
+      });
+      const viewed = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/events/${eventId}`,
+        { headers: controlHeaders() },
+      );
+      expect(viewed.status).toBe(200);
+      const data = await viewed.json();
+      expect(data.envelopeId).toBeTruthy();
+      const raw = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/envelopes/${data.envelopeId}`,
+        { headers: controlHeaders() },
+      );
+      expect(raw.status).toBe(200);
+    },
+  );
+
   test("permits browser preflight only from a loopback development origin", async () => {
     const controlPlane = createLocalControlPlane({
       controlToken: CONTROL_TOKEN,

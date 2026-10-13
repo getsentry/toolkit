@@ -1,4 +1,8 @@
-import type { LocalFeedItem } from "./spotlight.js";
+import {
+  getEventMetadata,
+  type EventMetadata,
+  type LocalFeedItem,
+} from "./spotlight.js";
 import { isErrorEvent } from "./workspace.js";
 
 export type TraceSpan = {
@@ -10,6 +14,7 @@ export type TraceSpan = {
   endTimestamp?: number;
   durationMs?: number;
   item: LocalFeedItem;
+  metadata: EventMetadata;
   children: TraceSpan[];
 };
 
@@ -91,6 +96,7 @@ function getPayloadSpan(
     endTimestamp,
     durationMs: getDurationMs(startTimestamp, endTimestamp),
     item,
+    metadata: item.metadata ?? getEventMetadata(payload, item.type),
     children: [],
   };
 }
@@ -122,6 +128,7 @@ function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
         endTimestamp,
         durationMs: getDurationMs(startTimestamp, endTimestamp),
         item,
+        metadata: getEventMetadata(value, "span"),
         children: [],
       },
     ];
