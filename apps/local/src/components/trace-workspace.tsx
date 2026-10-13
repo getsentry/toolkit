@@ -2,6 +2,7 @@ import type { TraceGroup } from "../lib/trace-model";
 import { TraceWaterfall } from "./trace-waterfall";
 
 type TraceWorkspaceProps = {
+  emptyState?: { title: string; description: string };
   onSelect: (traceId: string) => void;
   selectedTraceId?: string;
   traces: TraceGroup[];
@@ -20,6 +21,11 @@ function formatDuration(durationMs: number | undefined) {
 }
 
 export function TraceWorkspace({
+  emptyState = {
+    title: "No traces captured",
+    description:
+      "Transactions and spans from your receiver will appear here as a single trace.",
+  },
   onSelect,
   selectedTraceId,
   traces,
@@ -35,11 +41,10 @@ export function TraceWorkspace({
       >
         <div className="max-w-sm text-center">
           <h1 className="text-lg font-semibold text-foreground">
-            No traces captured
+            {emptyState.title}
           </h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Transactions and spans from your receiver will appear here as a
-            single trace.
+            {emptyState.description}
           </p>
         </div>
       </section>

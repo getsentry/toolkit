@@ -316,8 +316,9 @@ const envelopeViewCommand = buildCommand({
   },
   auth: false,
   async *func(_flags, ...parts: string[]) {
-    const [session, envelope] = parts;
-    if (!(session && envelope) || parts.length !== 2) {
+    const session = parts.slice(0, -1).join(" ").trim();
+    const envelope = parts.at(-1);
+    if (!(session && envelope)) {
       throw new ValidationError(
         "Provide a session and envelope ID.",
         "envelope",
@@ -371,8 +372,9 @@ const eventViewCommand = buildCommand({
   },
   auth: false,
   async *func(_flags, ...parts: string[]) {
-    const [session, event] = parts;
-    if (!(session && event) || parts.length !== 2) {
+    const session = parts.slice(0, -1).join(" ").trim();
+    const event = parts.at(-1);
+    if (!(session && event)) {
       throw new ValidationError("Provide a session and event ID.", "event");
     }
     yield new CommandOutput(

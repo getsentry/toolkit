@@ -1042,8 +1042,7 @@ export default function App() {
       (connection === "connecting" || connection === "failed"));
   const isReceiverUnavailable =
     connection !== "connected" && !isConnecting && !hasRetainedItems;
-  const canSearch =
-    connection === "connected" && items.length > 0 && !isEditingReceiver;
+  const canSearch = hasRetainedItems && !isEditingReceiver;
   const commandNavigation: CommandNavigationItem[] = workspaceNavigation.map(
     ({ icon, id, label }) => ({ icon, id, label }),
   );
@@ -1229,6 +1228,7 @@ export default function App() {
                 </div>
               ) : workspaceView === "traces" ? (
                 <TraceWorkspace
+                  emptyState={workspaceEmptyState}
                   traces={searchedTraces}
                   selectedTraceId={workspaceQuery.traceId ?? undefined}
                   onSelect={(traceId) => {

@@ -893,6 +893,118 @@ describe("local receiver to viewer integration", () => {
       screen.getByRole("heading", { name: "Raw envelope" }),
     ).not.toBeNull();
     expect(screen.queryByLabelText("Receiver endpoint")).toBeNull();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Search events" })[0]!,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Search events and views"), {
+      target: { value: "unmatched-envelope" },
+    });
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get("q")).toBe(
+        "unmatched-envelope",
+      ),
+    );
+    expect(screen.getByTestId("event-list").textContent).toContain(
+      "No matching envelopes",
+    );
+  });
+
+  test.each(["failed", "closed"])(
+    "keeps retained search usable after the receiver is %s",
+    async (state) => {
+      ControllableEventSource.instances = [];
+      vi.stubGlobal("EventSource", ControllableEventSource);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response(null, { status: 204 })),
+      );
+      renderBareViewer();
+      await act(async () =>
+        ControllableEventSource.instances[0]?.onopen?.(new Event("open")),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Change receiver" }));
+      fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+        target: {
+          value:
+            "http://127.0.0.1:8969/_local/v1/sessions/retained/stream?cap=read",
+        },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+      const source = ControllableEventSource.instances[1];
+      await act(async () => {
+        source?.onopen?.(new Event("open"));
+        for (const transaction of ["GET /alpha", "GET /beta"]) {
+          source?.dispatchEvent(
+            new MessageEvent(SENTRY_CONTENT_TYPE, {
+              data: JSON.stringify([
+                {},
+                [[{ type: "transaction" }, { transaction }]],
+              ]),
+              lastEventId: transaction,
+            }),
+          );
+        }
+      });
+      await waitFor(() =>
+        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
+          2,
+        ),
+      );
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "Search events" })[0]!,
+      );
+      fireEvent.change(screen.getByPlaceholderText("Search events and views"), {
+        target: { value: "alpha" },
+      });
+      await waitFor(() =>
+        expect(new URLSearchParams(window.location.search).get("q")).toBe(
+          "alpha",
+        ),
+      );
+      fireEvent.keyDown(
+        screen.getByPlaceholderText("Search events and views"),
+        { key: "Escape" },
+      );
+      if (state === "closed") {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Close telemetry session" }),
+        );
+        await waitFor(() => expect(source?.closed).toBe(true));
+      } else {
+        await act(async () => source?.onerror?.(new Event("error")));
+      }
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "Search events" })[0]!,
+      );
+      fireEvent.change(screen.getByPlaceholderText("Search events and views"), {
+        target: { value: "" },
+      });
+      await waitFor(() => {
+        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
+          2,
+        );
+        expect(new URLSearchParams(window.location.search).get("q")).toBeNull();
+      });
+    },
+  );
+
+  test("distinguishes empty trace searches from a receiver with no traces", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      await sendEnvelope(port, "GET /alpha", { traceId: "trace-alpha" });
+      renderViewer(port, "/traces?q=missing");
+      await screen.findByText("Connected to local receiver");
+      await screen.findByRole("heading", { name: "No matching traces" });
+      expect(screen.queryByText("No traces captured")).toBeNull();
+      expect(
+        screen.getByText(
+          "Try a different search term or clear the search to see everything in this view.",
+        ),
+      ).not.toBeNull();
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
   });
 
   test("omits redundant type pills from dedicated Errors and Envelopes lists", async () => {

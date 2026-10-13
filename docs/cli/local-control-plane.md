@@ -24,6 +24,9 @@ the URL path so SDK transports that omit query parameters still deliver events.
 Treat those URLs as credentials.
 Use `--clientId <key>` to make session creation idempotent for retries. Names must
 be unique for name-based queries; use the session ID when a name is ambiguous.
+Session lookup commands accept names quoted or as separate words. For `event view` and
+`envelope view`, the final argument is the telemetry ID; preceding arguments
+form the session name.
 
 The daemon stores its discovery token under `SENTRY_CONFIG_DIR` in an owner-only
 state file. It binds only to localhost, 127.0.0.1, or ::1 and uses a nonzero port.
@@ -47,6 +50,10 @@ that hosting project to use Toolkit and `apps/local` as its root directory.
 A loopback-served viewer can reset and close its scoped session. The hosted viewer
 can read the stream and clear its own displayed feed; it cannot mutate retained
 receiver data. Remote HTTPS streams stay read-only.
+
+Search and view navigation remain available for retained telemetry after a
+receiver disconnects or a session closes, including raw-only envelopes. A trace
+search with no matches explains how to change or clear the filter.
 
 ## Verification
 

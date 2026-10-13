@@ -179,6 +179,35 @@ describe("Local daemon E2E", () => {
     ).toContain("worker event");
   }, 30_000);
 
+  test("views telemetry using quoted and split multi-word session names", async () => {
+    const session = await createSession("My App", await availablePort());
+    const eventId = "d".repeat(32);
+    await ingest(session, eventId, "multi-word session event");
+    const listed = await cli("event", "list", "My", "App");
+    expect(listed.exitCode, listed.stderr).toBe(0);
+    const { events } = JSON.parse(listed.stdout) as {
+      events: { envelopeId: string }[];
+    };
+    const envelopeId = events[0]?.envelopeId;
+    expect(envelopeId).toBeDefined();
+    for (const parts of [["My App"], ["My", "App"]]) {
+      const event = await cli("event", "view", ...parts, eventId);
+      expect(event.exitCode, event.stderr).toBe(0);
+      expect(event.stdout).toContain("multi-word session event");
+      const raw = await cli("envelope", "view", ...parts, envelopeId!);
+      expect(raw.exitCode, raw.stderr).toBe(0);
+      const envelope = JSON.parse(raw.stdout) as { data: string };
+      expect(Buffer.from(envelope.data, "base64").toString()).toContain(
+        "multi-word session event",
+      );
+    }
+    for (const command of ["event", "envelope"]) {
+      const missingId = await cli(command, "view", session.id);
+      expect(missingId.exitCode).not.toBe(0);
+      expect(missingId.stderr).toContain(`Provide a session and ${command} ID`);
+    }
+  }, 30_000);
+
   test("retains a wrapped application's session and injects scoped SDK URLs", async () => {
     const port = await availablePort();
     const script = join(getConfigDir(), "app.cjs");
