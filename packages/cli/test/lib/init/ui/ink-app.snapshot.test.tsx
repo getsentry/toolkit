@@ -1117,6 +1117,35 @@ describe("Ink App snapshot", () => {
     expect(resolve).toHaveBeenCalledWith("web");
   });
 
+  test.each([false, true])(
+    "typing a typo filters and confirms the matching entity (standalone=%s)",
+    async (standalone) => {
+      const store = new WizardStore({ bannerRows: [] });
+      const resolve = vi.fn();
+      store.setPrompt({
+        kind: "select",
+        message: "Choose a project",
+        filterable: true,
+        options: [
+          { value: "backend", label: "Backend" },
+          { value: "frontend", label: "Frontend" },
+        ],
+        initialIndex: 0,
+        resolve,
+      });
+
+      const output = await renderApp(store, 80, {
+        standalone,
+        input: ["\u001b[200~fronend\u001b[201~\r"],
+      });
+      const frame = stripAnsi(output.latestFrame());
+      expect(frame).toContain("/fronend 1 of 2");
+      expect(frame).toContain("Frontend");
+      expect(frame).not.toContain("Backend");
+      expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
+    },
+  );
+
   test("zero matches cannot be confirmed and Backspace restores matches", async () => {
     const store = new WizardStore({ bannerRows: [] });
     const resolve = vi.fn();
@@ -1381,17 +1410,17 @@ describe("Ink App snapshot", () => {
       filterable: true,
       options: Array.from({ length: 20 }, (_, index) => ({
         value: `team-${index}`,
-        label: `Team ${index}`,
+        label: `${index < 11 ? "Frontend" : "Backend"} ${index}`,
       })),
       initialIndex: 0,
       resolve: ignorePromptResolution,
     });
     const output = await renderApp(store, 40, {
       rows: 24,
-      input: ["team-1", DOWN_ARROW],
+      input: ["frontend", DOWN_ARROW],
     });
     const frame = stripFinalLineBreak(stripAnsi(output.latestFrame()));
-    expect(frame).toContain("/team-1");
+    expect(frame).toContain("/frontend");
     expect(frame).toContain("11 of 20");
     expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(24);
     expect(frame.split(LINE_SPLIT_RE).every((line) => line.length <= 40)).toBe(
@@ -1421,8 +1450,8 @@ describe("Ink App snapshot", () => {
         message: "Which team should own this project?",
         filterable: true,
         options: Array.from({ length: optionCount }, (_, index) => ({
-          value: `team-${index}`,
-          label: `Team ${index}`,
+          value: index === 0 ? "frontend" : `team-${index}`,
+          label: index === 0 ? "Frontend" : `Team ${index}`,
         })),
         initialIndex: 0,
         resolve: ignorePromptResolution,
@@ -1431,9 +1460,9 @@ describe("Ink App snapshot", () => {
       let initialFilterRow = -1;
       for (const { input, status } of [
         { input: [], status: "type to filter" },
-        { input: ["team-0"], status: `/team-0 1 of ${optionCount}` },
-        { input: ["team-0x"], status: `/team-0x 0 of ${optionCount}` },
-        { input: ["team-0x", "\u001b"], status: "type to filter" },
+        { input: ["fronend"], status: `/fronend 1 of ${optionCount}` },
+        { input: ["missing"], status: `/missing 0 of ${optionCount}` },
+        { input: ["missing", "\u001b"], status: "type to filter" },
       ]) {
         const output = await renderApp(store, 40, {
           rows: 24,

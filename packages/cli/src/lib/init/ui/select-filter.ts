@@ -1,6 +1,7 @@
 /** Text filtering and editing for entity selection prompts. */
 
 import { stripAnsi } from "../../formatters/plain-detect.js";
+import { fuzzyMatch } from "../../fuzzy.js";
 import type { SelectOption } from "./types.js";
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, {
@@ -8,7 +9,7 @@ const graphemeSegmenter = new Intl.Segmenter(undefined, {
 });
 const NON_PRINTABLE_INPUT = /[\p{Cc}\p{Zl}\p{Zp}]/gu;
 
-/** Match names, slugs, and visible hints without changing the option order. */
+/** Fuzzy-match names, slugs, and visible hints without changing the option order. */
 export function filterSelectOptions<T extends SelectOption<string>>(
   options: readonly T[],
   query: string,
@@ -17,13 +18,13 @@ export function filterSelectOptions<T extends SelectOption<string>>(
     return options;
   }
 
-  const needle = query.toLowerCase();
-  return options.filter(
-    (option) =>
-      option.label.toLowerCase().includes(needle) ||
-      option.value.toLowerCase().includes(needle) ||
-      option.hint?.toLowerCase().includes(needle),
-  );
+  return options.filter((option) => {
+    const candidates = [option.label, option.value];
+    if (option.hint) {
+      candidates.push(option.hint);
+    }
+    return fuzzyMatch(query, candidates).length > 0;
+  });
 }
 
 /** Keep pasted input on one line and prevent terminal sequences in the filter. */

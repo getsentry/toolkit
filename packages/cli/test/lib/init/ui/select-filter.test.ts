@@ -30,12 +30,32 @@ describe("filterSelectOptions", () => {
     expect(filterSelectOptions(options, "missing")).toEqual([]);
   });
 
+  test.each([
+    { field: "label", query: "BAKEND", expected: options[1] },
+    { field: "value", query: "fronted-web", expected: options[0] },
+    { field: "hint", query: "Pythn", expected: options[1] },
+  ])("tolerates typos in the $field", ({ query, expected }) => {
+    expect(filterSelectOptions(options, query)).toEqual([expected]);
+  });
+
+  test("missing or empty hints do not create unrelated fuzzy matches", () => {
+    expect(
+      filterSelectOptions(
+        [
+          { value: "frontend", label: "Web client" },
+          { value: "backend", label: "API server", hint: "" },
+        ],
+        "zz",
+      ),
+    ).toEqual([]);
+  });
+
   test("an empty filter restores every original option", () => {
     fcAssert(
       property(
         array(record({ value: string(), label: string(), hint: string() })),
         (generatedOptions) => {
-          expect(filterSelectOptions(generatedOptions, "")).toEqual(
+          expect(filterSelectOptions(generatedOptions, "")).toBe(
             generatedOptions,
           );
         },
@@ -44,22 +64,19 @@ describe("filterSelectOptions", () => {
     );
   });
 
-  test("extending a query can only remove matches and preserves their order", () => {
+  test("matches are original options in their original order without duplicates", () => {
     fcAssert(
       property(
         array(record({ value: string(), label: string(), hint: string() })),
         string(),
-        string(),
-        (generatedOptions, query, suffix) => {
+        (generatedOptions, query) => {
           const matches = filterSelectOptions(generatedOptions, query);
-          const narrowerMatches = filterSelectOptions(
-            generatedOptions,
-            query + suffix,
-          );
-          const narrowerSet = new Set(narrowerMatches);
-          expect(narrowerMatches).toEqual(
-            matches.filter((option) => narrowerSet.has(option)),
-          );
+          let previousIndex = -1;
+          for (const match of matches) {
+            const index = generatedOptions.indexOf(match);
+            expect(index).toBeGreaterThan(previousIndex);
+            previousIndex = index;
+          }
         },
       ),
       { numRuns: DEFAULT_NUM_RUNS },

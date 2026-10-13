@@ -7,7 +7,7 @@ The Sentry CLI includes several features designed to streamline your workflow, e
 
 ## Interactive Selection
 
-When the CLI asks you to choose an organization or project, type to filter the loaded options by name or slug. The filter appears as `/text` below the list and ignores case. Use arrow keys to navigate, Enter to select, and Backspace to edit. Esc clears the filter before cancelling; Ctrl+C cancels immediately. The same controls work in the organization, team, and monorepo app selectors in `sentry init`.
+When the CLI asks you to choose an organization or project, type to filter the loaded options by name or slug. The filter appears as `/text` below the list. Matching ignores case and tolerates small typos. Use arrow keys to navigate, Enter to select, and Backspace to edit. Esc clears the filter before cancelling; Ctrl+C cancels immediately. The same controls work in the organization, team, and monorepo app selectors in `sentry init`.
 
 ## DSN Auto-Detection
 
