@@ -599,14 +599,12 @@ describe("search query helpers", () => {
       isSemanticFilterDowngrade(
         "http.status_code:500",
         "message://status 500//",
-        "logs",
       ),
     ).toBe(true);
     expect(
       isSemanticFilterDowngrade(
         "user.id:42 severity:error",
         String.raw`severity:error message://(?i)user 42 failed//`,
-        "logs",
       ),
     ).toBe(true);
 
@@ -614,13 +612,12 @@ describe("search query helpers", () => {
       isSemanticFilterDowngrade(
         "http.status_code:500",
         String.raw`http.status_code:500 message://took \d+ms//`,
-        "logs",
       ),
     ).toBe(false);
 
     // A key:value inside a regex is pattern text, not a kept structured filter.
     expect(
-      isSemanticFilterDowngrade("custom:foo", "message://custom:foo//", "logs"),
+      isSemanticFilterDowngrade("custom:foo", "message://custom:foo//"),
     ).toBe(true);
 
     // A quote inside a regex must not hide the filters after it.
@@ -628,6 +625,39 @@ describe("search query helpers", () => {
       isSemanticFilterDowngrade(
         "custom:foo",
         String.raw`message://it's \d+// message:"*foo*"`,
+      ),
+    ).toBe(true);
+  });
+
+  it("detects regex downgrades of structured filters on datasets other than logs", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "http.status_code:500",
+        "message://status 500//",
+        "errors",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "span.op:db",
+        "span.description://db query//",
+        "spans",
+      ),
+    ).toBe(false);
+  });
+
+  it("detects message regex downgrades when the value casing differs", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "transaction:CheckoutFlow",
+        "message://(?i)CheckoutFlow//",
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "user.email:Foo@example.com",
+        "message://Foo@example.com// severity:error",
         "logs",
       ),
     ).toBe(true);

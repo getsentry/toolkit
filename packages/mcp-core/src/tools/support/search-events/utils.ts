@@ -284,14 +284,13 @@ function readRawFilterValue(
  * boundaries. Values are normalized for comparison (strip wrapping quotes and
  * leading/trailing wildcards).
  */
-function searchFilterOccurrences(
-  query: string,
-  dataset?: SearchSyntaxDataset,
-): SearchFilterOccurrence[] {
+function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
   const occurrences: SearchFilterOccurrence[] = [];
   const masked = maskQuotedRegions(query);
 
-  for (const match of masked.matchAll(searchTokenPattern(dataset))) {
+  // Read key://pattern// on every dataset: outside logs it is a literal match,
+  // so a structured filter rewritten into one is still a downgrade.
+  for (const match of masked.matchAll(SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN)) {
     const key = (match.groups?.regexKey ?? match.groups?.key)?.toLowerCase();
     if (!key || match.index === undefined) {
       continue;
@@ -326,20 +325,14 @@ function searchFilterOccurrences(
   return occurrences;
 }
 
-function structuredFilterOccurrences(
-  query: string,
-  dataset?: SearchSyntaxDataset,
-): SearchFilterOccurrence[] {
-  return searchFilterOccurrences(query, dataset).filter(
+function structuredFilterOccurrences(query: string): SearchFilterOccurrence[] {
+  return searchFilterOccurrences(query).filter(
     (occurrence) => !FULL_TEXT_SEARCH_KEYS.has(occurrence.key),
   );
 }
 
-function fullTextFilterValues(
-  query: string,
-  dataset?: SearchSyntaxDataset,
-): string[] {
-  return searchFilterOccurrences(query, dataset)
+function fullTextFilterValues(query: string): string[] {
+  return searchFilterOccurrences(query)
     .filter((occurrence) => FULL_TEXT_SEARCH_KEYS.has(occurrence.key))
     .map((occurrence) => occurrence.value);
 }
@@ -373,7 +366,12 @@ function containsAsWholeToken(haystack: string, needle: string): boolean {
 }
 
 function isRelatedFilterValue(left: string, right: string): boolean {
-  return containsAsWholeToken(left, right) || containsAsWholeToken(right, left);
+  const lowerLeft = left.toLowerCase();
+  const lowerRight = right.toLowerCase();
+  return (
+    containsAsWholeToken(lowerLeft, lowerRight) ||
+    containsAsWholeToken(lowerRight, lowerLeft)
+  );
 }
 
 /**
@@ -407,17 +405,15 @@ function unmatchedStructuredFilters(
 function isRegexFilterDowngrade(
   originalQuery: string,
   repairedQuery: string,
-  dataset?: SearchSyntaxDataset,
 ): boolean {
-  const originalRegexFilters = searchFilterOccurrences(
-    originalQuery,
-    dataset,
-  ).filter((occurrence) => occurrence.regex);
+  const originalRegexFilters = searchFilterOccurrences(originalQuery).filter(
+    (occurrence) => occurrence.regex,
+  );
   if (originalRegexFilters.length === 0) {
     return false;
   }
 
-  const repairedFilters = searchFilterOccurrences(repairedQuery, dataset);
+  const repairedFilters = searchFilterOccurrences(repairedQuery);
   const maskedRepairedQuery = maskQuotedRegions(repairedQuery);
   return unmatchedStructuredFilters(originalRegexFilters, repairedFilters).some(
     (filter) =>
@@ -429,10 +425,7 @@ function isRegexFilterDowngrade(
         (repaired) =>
           repaired.key === filter.key ||
           (FULL_TEXT_SEARCH_KEYS.has(repaired.key) &&
-            isRelatedFilterValue(
-              filter.value.toLowerCase(),
-              repaired.value.toLowerCase(),
-            )),
+            isRelatedFilterValue(filter.value, repaired.value)),
       ),
   );
 }
@@ -456,16 +449,19 @@ export function isSemanticFilterDowngrade(
     return false;
   }
 
-  if (isRegexFilterDowngrade(originalQuery, repairedQuery, dataset)) {
+  if (
+    dataset === "logs" &&
+    isRegexFilterDowngrade(originalQuery, repairedQuery)
+  ) {
     return true;
   }
 
-  const originalFilters = structuredFilterOccurrences(originalQuery, dataset);
+  const originalFilters = structuredFilterOccurrences(originalQuery);
   if (originalFilters.length === 0) {
     return false;
   }
 
-  const repairedFilters = structuredFilterOccurrences(repairedQuery, dataset);
+  const repairedFilters = structuredFilterOccurrences(repairedQuery);
   const droppedFilters = unmatchedStructuredFilters(
     originalFilters,
     repairedFilters,
@@ -474,7 +470,7 @@ export function isSemanticFilterDowngrade(
     return false;
   }
 
-  const repairedFullTextValues = fullTextFilterValues(repairedQuery, dataset);
+  const repairedFullTextValues = fullTextFilterValues(repairedQuery);
   if (repairedFullTextValues.length === 0) {
     // Renames keep values on non-full-text attributes and do not need this guard.
     return false;
