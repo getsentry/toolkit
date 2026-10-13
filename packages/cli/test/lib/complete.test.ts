@@ -15,6 +15,7 @@ import {
   completeProjectSlugs,
   getCompletions,
 } from "../../src/lib/complete.js";
+import { setAuthToken } from "../../src/lib/db/auth.js";
 import { setProjectAliases } from "../../src/lib/db/project-aliases.js";
 import { setCachedProject } from "../../src/lib/db/project-cache.js";
 import {
@@ -366,5 +367,14 @@ describe("completeAliases", () => {
     // "a" is exact match, "abc" is prefix match, "b" is fuzzy match
     expect(result[0].value).toBe("a"); // exact match first
     expect(result.some((c) => c.value === "abc")).toBe(true); // prefix match
+  });
+});
+
+test("completes organization prefixes for issue fix", async () => {
+  await setAuthToken("completion-fix-test-token");
+  await seedOrgs([{ slug: "fix-org", name: "Fix Organization" }]);
+  expect(getCompletions(["issue", "fix"], "fix")).toContainEqual({
+    value: "fix-org/",
+    description: "Fix Organization",
   });
 });

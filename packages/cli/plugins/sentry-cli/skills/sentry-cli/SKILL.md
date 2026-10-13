@@ -412,6 +412,7 @@ Manage Sentry issues
 - `sentry issue events <issue>` — List events for a specific issue
 - `sentry issue explain <issue...>` — Analyze one or more issues using Seer AI
 - `sentry issue plan <issue>` — Generate a solution plan using Seer AI
+- `sentry issue fix <issue>` — Generate and review code changes using Seer AI
 - `sentry issue view <issue...>` — View details of one or more issues
 - `sentry issue resolve <issue>` — Mark an issue as resolved
 - `sentry issue unresolve <issue>` — Reopen a resolved issue

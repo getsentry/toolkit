@@ -189,6 +189,28 @@ sentry issue plan 123456789
 sentry issue plan 123456789 --force
 ```
 
+### `sentry issue fix <issue>`
+
+Generate and review code changes using Seer AI
+
+**Flags:**
+- `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+- `--instruction <value> - Context for a new fix`
+- `--run-id <value> - Resume this Seer run`
+- `--response <value> - JSON file with input_id and response_data (requires --run-id)`
+- `--timeout <value> - Maximum wait in seconds - (default: "360")`
+
+**Examples:**
+
+```bash
+sentry issue fix my-org/FRONT-123
+sentry issue fix @latest --instruction "Keep the existing API compatible"
+
+sentry issue fix my-org/FRONT-123 --json
+sentry issue fix my-org/FRONT-123 --run-id <run-id> --json
+sentry issue fix my-org/FRONT-123 --run-id <run-id> --response answer.json --json
+```
+
 ### `sentry issue view <issue...>`
 
 View details of one or more issues

@@ -418,3 +418,70 @@ is also accepted. The organization's “Let Members Delete Events” setting doe
 not restrict unlinking on updated Sentry versions.
 
 Granting a token more scopes does not override project-access policy.
+
+### Generate and review a fix
+
+Use Seer to generate code changes and preview their diffs:
+
+```bash
+sentry issue fix my-org/FRONT-123
+sentry issue fix @latest --instruction "Keep the existing API compatible"
+```
+
+The chat asks Seer to investigate the issue and generate code changes for
+review. In a terminal, the CLI shows new messages,
+asks Seer's questions, and lets you approve or reject each proposed file
+change. Approval lets Seer continue generating the fix. Completed fixes preview
+all generated diffs; local files are not modified and no pull request is created.
+
+The organization needs Seer coding access, linked repositories, and code
+mappings. Interactive updates require a signed-in Sentry user. Use
+`sentry auth login` if a token has no associated user identity.
+
+Each invocation starts a new interactive Seer chat. Use `--run-id` to resume a
+specific chat. The issue argument resolves the organization and provides context
+for new chats; the explicit run ID selects the chat when resuming.
+`--instruction` supplies context for a new run and cannot be combined with
+`--run-id`. `--fresh` also refreshes issue resolution; run polling always fetches
+fresh state.
+
+### Resume a fix from JSON output
+
+JSON output and sessions without a terminal never prompt. A paused result
+contains `run_id`, `status`, `pending_user_input`, `patches`, `pr_urls`, and a
+`next_action` hint. Supply the returned run ID to continue that exact run:
+
+```bash
+sentry issue fix my-org/FRONT-123 --json
+sentry issue fix my-org/FRONT-123 --run-id <run-id> --json
+sentry issue fix my-org/FRONT-123 --run-id <run-id> --response answer.json --json
+```
+
+For `ask_user_question`, `answer.json` contains one answer for each question:
+
+```json
+{"input_id":"<pending-input-id>","response_data":{"answers":["Keep the current behavior"]}}
+```
+
+For `file_change_approval`, include one boolean for each proposed patch:
+
+```json
+{"input_id":"<pending-input-id>","response_data":{"decisions":[true,false]}}
+```
+
+The CLI validates the input ID, response type, and answer count against the
+current pending input before submitting. `--response` requires `--run-id`.
+Seer questions and file change approvals work in the CLI. Browser-session
+permission elevation (`agent_write_approval`), provider reconnection, and unknown
+input types pause with guidance to continue in Sentry. Permission elevation
+requires the browser approval flow before the run can continue. The handoff
+hint links directly to the selected chat, preserving its run ID. The CLI never
+answers these requests automatically.
+
+The default automated wait is six minutes. Change it with `--timeout <seconds>`.
+A terminal prompt stays open until you respond or cancel; an answer entered
+after the deadline is not submitted. A timeout
+returns the run ID and resume command because Seer may still be working. Runs
+that fail, cancel, or time out return a nonzero exit status with their JSON result.
+A resumed completed run without patches explains that no code changes were
+produced and offers a new full fix.

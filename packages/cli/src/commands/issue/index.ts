@@ -1,6 +1,7 @@
 import { buildRouteMap } from "../../lib/route-map.js";
 import { archiveCommand } from "./archive.js";
 import { eventsCommand } from "./events.js";
+import { fixCommand } from "./fix.js";
 import { explainCommand } from "./explain.js";
 import { linkCommand } from "./link.js";
 import { listCommand } from "./list.js";
@@ -17,6 +18,7 @@ export const issueRoute = buildRouteMap({
     events: eventsCommand,
     explain: explainCommand,
     plan: planCommand,
+    fix: fixCommand,
     view: viewCommand,
     resolve: resolveCommand,
     unresolve: unresolveCommand,
@@ -38,13 +40,14 @@ export const issueRoute = buildRouteMap({
       "  view       View details of one or more issues\n" +
       "  explain    Analyze one or more issues using Seer AI\n" +
       "  plan       Generate a solution plan using Seer AI\n" +
+      "  fix        Generate and review code changes using Seer AI\n" +
       "  resolve    Mark an issue as resolved (optionally in a release)\n" +
       "  unresolve  Reopen a resolved issue (alias: reopen)\n" +
       "  archive    Archive/ignore an issue (alias: ignore)\n" +
       "  merge      Merge 2+ issues into a single group\n" +
       "  link       Link an existing external issue\n" +
       "  unlink     Remove an external issue link\n\n" +
-      "Magic selectors (available for view, events, explain, plan, resolve, unresolve, archive):\n" +
+      "Magic selectors (available for view, events, explain, plan, fix, resolve, unresolve, archive):\n" +
       "  @latest          Most recent unresolved issue\n" +
       "  @most_frequent   Issue with the highest event frequency\n\n" +
       "Examples:\n" +

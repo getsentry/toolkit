@@ -584,6 +584,8 @@ type RetryContext = {
   fullUrl: string;
   credential: CredentialContext;
   validatedRedirects: boolean;
+  retry: boolean;
+  bypassCache: boolean;
 };
 
 async function fetchWithRetry({
@@ -593,6 +595,8 @@ async function fetchWithRetry({
   fullUrl,
   credential,
   validatedRedirects,
+  retry,
+  bypassCache,
 }: RetryContext): Promise<Response> {
   const issuedAt =
     credential.issuedAt ??
@@ -619,12 +623,19 @@ async function fetchWithRetry({
   const attemptFactory = await buildAttemptFactory(input, init);
   const timeoutMs = resolveTimeoutMs(fullUrl);
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const isLastAttempt = attempt === MAX_RETRIES;
+  // A 307/308 would resend the mutation body even when retries are disabled.
+  // Require callers to inspect an unexpected redirect before resubmitting.
+  const attemptInitPolicy = retry ? undefined : { redirect: "error" as const };
+
+  const maxRetries = retry ? MAX_RETRIES : 0;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const isLastAttempt = attempt === maxRetries;
     const { input: attemptInput, init: attemptInit } = attemptFactory();
     const result = await executeAttempt({
       input: attemptInput,
-      init: attemptInit,
+      init: attemptInitPolicy
+        ? { ...attemptInit, ...attemptInitPolicy }
+        : attemptInit,
       headers,
       credential: effectiveCredential,
       isLastAttempt,
@@ -633,15 +644,18 @@ async function fetchWithRetry({
     });
 
     if (result.action === "done") {
-      cacheResponse(
-        {
-          method,
-          fullUrl,
-          requestHeaders: { authorization: headers.get("Authorization") ?? "" },
-          identity: credential.identity,
-        },
-        result.response,
-      );
+      if (!bypassCache)
+        cacheResponse(
+          {
+            method,
+            fullUrl,
+            requestHeaders: {
+              authorization: headers.get("Authorization") ?? "",
+            },
+            identity: credential.identity,
+          },
+          result.response,
+        );
       await invalidateAfterMutation(
         method,
         fullUrl,
@@ -687,6 +701,10 @@ async function fetchWithRetry({
 type AuthenticatedFetchOptions = {
   credential?: CredentialContext;
   validatedRedirects?: boolean;
+  /** Set false when a mutation must not be replayed after an uncertain response. */
+  retry?: boolean;
+  /** Bypass both cache lookup and storage for live state polling. */
+  bypassCache?: boolean;
 };
 
 function createAuthenticatedFetch(
@@ -729,14 +747,15 @@ function createAuthenticatedFetch(
         }
         // A synthetic HTTP cache response has no validated final-origin or
         // credential provenance. Discovery must obtain both from the network.
-        const cached = options.validatedRedirects
-          ? undefined
-          : await tryCacheHit(
-              method,
-              fullUrl,
-              authHeaders(credential.token),
-              credential.identity,
-            );
+        const cached =
+          options.validatedRedirects || options.bypassCache
+            ? undefined
+            : await tryCacheHit(
+                method,
+                fullUrl,
+                authHeaders(credential.token),
+                credential.identity,
+              );
         if (cached) {
           span.setAttribute("http.response.status_code", cached.status);
           log.debug(
@@ -752,6 +771,8 @@ function createAuthenticatedFetch(
           fullUrl,
           credential,
           validatedRedirects: options.validatedRedirects === true,
+          retry: options.retry !== false,
+          bypassCache: options.bypassCache === true,
         });
         span.setAttribute("http.response.status_code", response.status);
         if (!response.ok) {
@@ -1001,7 +1022,12 @@ let cachedFetch: typeof fetch | null = null;
 function getAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): typeof fetch {
-  if (options.credential || options.validatedRedirects) {
+  if (
+    options.credential ||
+    options.validatedRedirects ||
+    options.retry === false ||
+    options.bypassCache
+  ) {
     return createAuthenticatedFetch(options) as unknown as typeof fetch;
   }
   if (!cachedFetch) {

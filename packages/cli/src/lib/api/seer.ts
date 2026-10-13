@@ -12,6 +12,13 @@ import {
   type AutofixState,
 } from "../../types/seer.js";
 
+import {
+  type ExplorerSession,
+  ExplorerResponseSchema,
+  type UserInputResponse,
+} from "../../types/seer-fix.js";
+
+import { buildIssueUrl } from "../sentry-urls.js";
 import { resolveOrgRegion } from "../region.js";
 
 import { apiRequestToRegion } from "./infrastructure.js";
@@ -97,6 +104,7 @@ export async function triggerRootCauseAnalysis(
 export async function getAutofixState(
   orgSlug: string,
   issueId: string,
+  options: { bypassCache?: boolean; signal?: AbortSignal } = {},
 ): Promise<AutofixState | null> {
   const regionUrl = await resolveOrgRegion(orgSlug);
 
@@ -106,6 +114,7 @@ export async function getAutofixState(
     {
       params: EXPLORER_MODE_PARAMS,
       schema: AutofixResponseSchema,
+      ...options,
     },
   );
 
@@ -154,4 +163,77 @@ export async function triggerSolutionPlanning(
     },
   );
   return data;
+}
+
+/** Start an interactive chat; the autofix kickoff disables interactive tools. */
+export async function triggerIssueFix(
+  orgSlug: string,
+  issueId: string,
+  options: { instruction?: string; signal?: AbortSignal } = {},
+): Promise<{ run_id?: number; sentry_run_id?: string | null }> {
+  const regionUrl = await resolveOrgRegion(orgSlug);
+  const query = [
+    `Investigate Sentry issue ${orgSlug}/${issueId}. Explain the root cause, propose a fix, and generate code changes for review.`,
+    "Ask clarifying questions and request approvals as needed. Stop after generating code changes so the user can review them.",
+    "Do not create pull requests, commit changes, or push branches.",
+    ...(options.instruction === undefined
+      ? []
+      : [`Additional instructions from the user: ${options.instruction}`]),
+  ].join("\n\n");
+  const { data } = await apiRequestToRegion<{
+    run_id?: number;
+    sentry_run_id?: string | null;
+  }>(
+    regionUrl,
+    `/organizations/${encodeURIComponent(orgSlug)}/seer/explorer-chat/`,
+    {
+      method: "POST",
+      retry: false,
+      signal: options.signal,
+      body: {
+        query,
+        on_page_context: `Sentry issue: ${orgSlug}/${issueId}\nIssue URL: ${buildIssueUrl(orgSlug, issueId)}`,
+      },
+    },
+  );
+  return data;
+}
+
+/** Read a specific run, never the issue's mutable current-run pointer. */
+export async function getSeerExplorerState(
+  orgSlug: string,
+  runId: string | number,
+  options: { signal?: AbortSignal } = {},
+): Promise<ExplorerSession | null> {
+  const regionUrl = await resolveOrgRegion(orgSlug);
+  const { data } = await apiRequestToRegion(
+    regionUrl,
+    `/organizations/${encodeURIComponent(orgSlug)}/seer/explorer-chat/${encodeURIComponent(String(runId))}/`,
+    { schema: ExplorerResponseSchema, bypassCache: true, ...options },
+  );
+  if (!data.session) {
+    return null;
+  }
+  data.session.status = normalizeAgentStatus(data.session.status);
+  return data.session;
+}
+
+/** Submit exactly one structured answer. Uncertain POSTs must never be replayed. */
+export async function respondToSeerUserInput(
+  orgSlug: string,
+  runId: string | number,
+  response: UserInputResponse,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  const regionUrl = await resolveOrgRegion(orgSlug);
+  await apiRequestToRegion(
+    regionUrl,
+    `/organizations/${encodeURIComponent(orgSlug)}/seer/explorer-update/${encodeURIComponent(String(runId))}/`,
+    {
+      method: "POST",
+      retry: false,
+      signal: options.signal,
+      body: { payload: { type: "user_input_response", ...response } },
+    },
+  );
 }

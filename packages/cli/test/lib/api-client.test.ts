@@ -1885,12 +1885,17 @@ describe("getLogs", () => {
     // Should have made 2 separate requests
     expect(capturedUrls).toHaveLength(2);
 
-    // First batch: 100 IDs
-    const url1 = new URL(capturedUrls[0]);
+    // Both batches run concurrently, so network arrival order is unspecified.
+    const orderedUrls = [...capturedUrls].sort(
+      (a, b) =>
+        Number(new URL(b).searchParams.get("per_page")) -
+        Number(new URL(a).searchParams.get("per_page")),
+    );
+    const url1 = new URL(orderedUrls[0]);
     expect(url1.searchParams.get("per_page")).toBe(String(API_MAX_PER_PAGE));
 
     // Second batch: 50 IDs
-    const url2 = new URL(capturedUrls[1]);
+    const url2 = new URL(orderedUrls[1]);
     expect(url2.searchParams.get("per_page")).toBe("50");
 
     // Results from both batches should be flattened

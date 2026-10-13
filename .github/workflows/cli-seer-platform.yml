@@ -1,0 +1,50 @@
+name: Seer CLI platforms
+
+on:
+  pull_request:
+    paths:
+      - "packages/cli/**"
+      - "packages/toolkit-core/**"
+      - "packages/mcp-core/**"
+      - "packages/mcp-server/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".github/workflows/cli-seer-platform.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seer-fix:
+    name: Seer fix (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    env:
+      TZ: UTC
+      SENTRY_CLIENT_ID: test-client-id
+      SENTRY_CLI_NO_TELEMETRY: "1"
+      SENTRY_CLI_NO_UPDATE_CHECK: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build CLI bundle
+        run: pnpm --filter sentry run bundle
+      - name: Test source Seer flow and patch safety
+        run: pnpm --filter sentry exec vitest run seer-fix seer-patch sentry-client.request-policy --maxWorkers=2
+      - name: Test bundled CLI Seer flow
+        env:
+          SENTRY_CLI_BINARY: ${{ github.workspace }}/packages/cli/dist/bin.cjs
+        run: pnpm --filter sentry exec vitest run test/e2e/seer-fix.test.ts --maxWorkers=1
