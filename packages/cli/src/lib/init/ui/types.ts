@@ -124,6 +124,8 @@ export type SelectOptions<T extends string> = {
   footer?: PromptDetail;
   /** Choices presented to the user in display order. */
   options: SelectOption<T>[];
+  /** Allow typing to filter entity choices by label, value, or hint. Defaults to false. */
+  filterable?: boolean;
   /** Initially highlighted value. Defaults to the first option. */
   initialValue?: T;
 };

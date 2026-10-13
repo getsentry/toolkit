@@ -22,6 +22,7 @@ import {
 import {
   App,
   formatFeedbackBanner,
+  SelectPicker,
 } from "../../../../src/lib/init/ui/ink-app.js";
 import { WizardStore } from "../../../../src/lib/init/ui/wizard-store.js";
 
@@ -110,11 +111,16 @@ function makeStdin(): Readable {
 async function renderApp(
   store: WizardStore,
   columns: number,
-  options: { rows?: number; input?: string[] } = {},
+  options: { rows?: number; input?: string[]; standalone?: boolean } = {},
 ): Promise<CaptureStream> {
   const out = new CaptureStream(columns, options.rows ?? 40);
   const stdin = makeStdin();
-  const instance = render(createElement(App, { store }), {
+  const prompt = store.getSnapshot().prompt;
+  const component =
+    options.standalone && prompt?.kind === "select"
+      ? createElement(SelectPicker, { prompt })
+      : createElement(App, { store });
+  const instance = render(component, {
     stdout: out as unknown as NodeJS.WriteStream,
     stderr: out as unknown as NodeJS.WriteStream,
     stdin: stdin as unknown as NodeJS.ReadStream,
@@ -123,7 +129,8 @@ async function renderApp(
   });
   for (const input of options.input ?? []) {
     stdin.push(input);
-    await sleep(20);
+    // Ink buffers bare Esc for 20ms to distinguish it from escape sequences.
+    await sleep(input === "\u001b" ? FRAME_SETTLE_MS : 20);
   }
   await sleep(FRAME_SETTLE_MS);
   out.settledOutput = out.allOutput();
@@ -1082,6 +1089,339 @@ describe("Ink App snapshot", () => {
     expect(frame).toContain("cancel");
     expect(frame).not.toContain("switch tab");
   });
+
+  test("typing filters entity names and slugs and confirms the visible choice", async () => {
+    const store = new WizardStore({ bannerRows: [], layout: "intro" });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose an organization",
+      filterable: true,
+      options: [
+        { value: "backend", label: "Backend" },
+        { value: "front-admin", label: "Administration", hint: "front-admin" },
+        { value: "web", label: "Frontend" },
+      ],
+      initialIndex: 0,
+      resolve,
+    });
+
+    const output = await renderApp(store, 120, {
+      input: ["FRONT", DOWN_ARROW, "\r"],
+    });
+    const frame = stripAnsi(output.latestFrame());
+    expect(frame).toContain("/FRONT");
+    expect(frame).toContain("2 of 3");
+    expect(frame).toContain("Administration");
+    expect(frame).not.toContain("Backend");
+    expect(resolve).toHaveBeenCalledWith("web");
+  });
+
+  test("zero matches cannot be confirmed and Backspace restores matches", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose a team",
+      filterable: true,
+      options: [{ value: "frontend", label: "Web team", hint: "Frontend" }],
+      initialIndex: 0,
+      resolve,
+    });
+
+    const output = new CaptureStream(120);
+    const stdin = makeStdin();
+    const instance = render(createElement(App, { store }), {
+      // CI defaults to non-interactive output, which skips intermediate frames.
+      interactive: true,
+      stdout: output as unknown as NodeJS.WriteStream,
+      stderr: output as unknown as NodeJS.WriteStream,
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      patchConsole: false,
+      exitOnCtrlC: false,
+    });
+    try {
+      stdin.push("frontz");
+      // Observe the empty state before later input can coalesce its render.
+      await vi.waitFor(() => {
+        expect(stripAnsi(output.latestFrame())).toContain("No matches");
+      });
+
+      stdin.push(`${DOWN_ARROW}\r`);
+      await instance.waitUntilRenderFlush();
+      expect(resolve).not.toHaveBeenCalled();
+
+      stdin.push("\u007f\r");
+      await vi.waitFor(() => {
+        expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
+        expect(stripAnsi(output.latestFrame())).toContain("/front 1 of 1");
+      });
+    } finally {
+      instance.unmount();
+      await instance.waitUntilExit();
+    }
+  });
+
+  test.each([
+    {
+      action: "confirms the first filtered option",
+      navigation: "",
+      standalone: false,
+      expected: "frontend-a",
+    },
+    {
+      action: "wraps up to the last filtered option",
+      navigation: "\u001b[A",
+      standalone: true,
+      expected: "frontend-b",
+    },
+    {
+      action: "wraps down within the filtered options",
+      navigation: DOWN_ARROW.repeat(2),
+      standalone: true,
+      expected: "frontend-a",
+    },
+  ])(
+    "same-chunk paste and Enter $action",
+    async ({ navigation, standalone, expected }) => {
+      const store = new WizardStore({ bannerRows: [] });
+      const resolve = vi.fn();
+      store.setPrompt({
+        kind: "select",
+        message: "Choose a project",
+        filterable: true,
+        options: [
+          { value: "backend", label: "Backend" },
+          { value: "frontend-a", label: "Frontend A" },
+          { value: "frontend-b", label: "Frontend B" },
+        ],
+        initialIndex: 0,
+        resolve,
+      });
+
+      const output = await renderApp(store, 80, {
+        standalone,
+        input: [`\u001b[200~front\u001b[201~${navigation}\r`],
+      });
+      expect(stripAnsi(output.latestFrame())).toContain("/front 2 of 3");
+      expect(resolve).toHaveBeenCalledExactlyOnceWith(expected);
+    },
+  );
+
+  test("same-chunk paste and Enter cannot confirm a filter with no matches", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose an organization",
+      filterable: true,
+      options: [{ value: "backend", label: "Backend" }],
+      initialIndex: 0,
+      resolve,
+    });
+
+    const output = await renderApp(store, 80, {
+      input: ["\u001b[200~missing\u001b[201~\r"],
+    });
+    expect(stripAnsi(output.latestFrame())).toContain("No matches");
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  test("same-chunk Backspace and Enter confirm a restored filter match", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose a team",
+      filterable: true,
+      options: [
+        { value: "backend", label: "Backend" },
+        { value: "frontend", label: "Frontend" },
+      ],
+      initialIndex: 0,
+      resolve,
+    });
+
+    const output = await renderApp(store, 80, {
+      input: ["\u001b[200~frontz\u001b[201~\u007f\r"],
+    });
+    expect(stripAnsi(output.latestFrame())).toContain("/front 1 of 2");
+    expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
+  });
+
+  test("Esc clears the filter before cancelling, while Ctrl+C cancels directly", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose a team",
+      filterable: true,
+      options: [{ value: "frontend", label: "Frontend" }],
+      initialIndex: 0,
+      resolve,
+    });
+    const cleared = await renderApp(store, 120, { input: ["front", "\u001b"] });
+    expect(stripAnsi(cleared.latestFrame())).toContain("type to filter");
+    expect(resolve).not.toHaveBeenCalled();
+
+    await renderApp(store, 120, { input: ["front", "\u001b", "\u001b"] });
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(null);
+    resolve.mockClear();
+    await renderApp(store, 120, { input: ["front", "\u0003"] });
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(null);
+  });
+
+  test("successive entity prompts reset their filter and initial selection", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolveTeam = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose an organization",
+      filterable: true,
+      options: [{ value: "frontend", label: "Frontend" }],
+      initialIndex: 0,
+      resolve: () =>
+        store.setPrompt({
+          kind: "select",
+          message: "Choose a team",
+          filterable: true,
+          options: [
+            { value: "backend", label: "Backend" },
+            { value: "mobile", label: "Mobile" },
+          ],
+          initialIndex: 1,
+          resolve: resolveTeam,
+        }),
+    });
+    const output = await renderApp(store, 120, {
+      input: ["front", "\r", "\r"],
+    });
+    expect(stripAnsi(output.latestFrame())).toContain("type to filter");
+    expect(stripAnsi(output.latestFrame())).not.toContain("/front");
+    expect(resolveTeam).toHaveBeenCalledExactlyOnceWith("mobile");
+  });
+
+  test("action menus ignore typed text", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose an action",
+      options: [{ value: "continue", label: "Continue" }],
+      initialIndex: 0,
+      resolve,
+    });
+    const output = await renderApp(store, 120, { input: ["xyz", "\r"] });
+    expect(stripAnsi(output.latestFrame())).not.toContain("type to filter");
+    expect(stripAnsi(output.latestFrame())).not.toContain("/xyz");
+    expect(resolve).toHaveBeenCalledExactlyOnceWith("continue");
+  });
+
+  test("the compact project picker filters with the same keyboard controls", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Select a project:",
+      filterable: true,
+      options: [
+        { value: "backend", label: "Backend" },
+        { value: "frontend-web", label: "Web", hint: "frontend-web" },
+      ],
+      initialIndex: 0,
+      resolve,
+    });
+    const output = await renderApp(store, 80, {
+      standalone: true,
+      input: ["front", "\r"],
+    });
+    expect(stripAnsi(output.latestFrame())).toContain("/front");
+    expect(stripAnsi(output.latestFrame())).toContain("1 of 2");
+    expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend-web");
+  });
+
+  test("filterable lists keep the query inside a narrow terminal", async () => {
+    const store = new WizardStore({
+      bannerRows: FULL_BANNER_LINES,
+      layout: "intro",
+    });
+    store.setPrompt({
+      kind: "select",
+      message: "Choose a team",
+      filterable: true,
+      options: Array.from({ length: 20 }, (_, index) => ({
+        value: `team-${index}`,
+        label: `Team ${index}`,
+      })),
+      initialIndex: 0,
+      resolve: ignorePromptResolution,
+    });
+    const output = await renderApp(store, 40, {
+      rows: 24,
+      input: ["team-1", DOWN_ARROW],
+    });
+    const frame = stripFinalLineBreak(stripAnsi(output.latestFrame()));
+    expect(frame).toContain("/team-1");
+    expect(frame).toContain("11 of 20");
+    expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(24);
+    expect(frame.split(LINE_SPLIT_RE).every((line) => line.length <= 40)).toBe(
+      true,
+    );
+  });
+
+  test.each([
+    { layout: "intro" as const, standalone: false, optionCount: 1 },
+    { layout: "intro" as const, standalone: false, optionCount: 3 },
+    { layout: "intro" as const, standalone: false, optionCount: 20 },
+    { layout: "standard" as const, standalone: false, optionCount: 1 },
+    { layout: "standard" as const, standalone: false, optionCount: 3 },
+    { layout: "standard" as const, standalone: false, optionCount: 20 },
+    { layout: "standard" as const, standalone: true, optionCount: 1 },
+    { layout: "standard" as const, standalone: true, optionCount: 3 },
+    { layout: "standard" as const, standalone: true, optionCount: 20 },
+  ])(
+    "keeps the filter row fixed with $optionCount options (layout=$layout, standalone=$standalone)",
+    async ({ layout, standalone, optionCount }) => {
+      const store = new WizardStore({
+        bannerRows: FULL_BANNER_LINES,
+        ...(layout === "intro" ? { layout } : {}),
+      });
+      store.setPrompt({
+        kind: "select",
+        message: "Which team should own this project?",
+        filterable: true,
+        options: Array.from({ length: optionCount }, (_, index) => ({
+          value: `team-${index}`,
+          label: `Team ${index}`,
+        })),
+        initialIndex: 0,
+        resolve: ignorePromptResolution,
+      });
+
+      let initialFilterRow = -1;
+      for (const { input, status } of [
+        { input: [], status: "type to filter" },
+        { input: ["team-0"], status: `/team-0 1 of ${optionCount}` },
+        { input: ["team-0x"], status: `/team-0x 0 of ${optionCount}` },
+        { input: ["team-0x", "\u001b"], status: "type to filter" },
+      ]) {
+        const output = await renderApp(store, 40, {
+          rows: 24,
+          standalone,
+          input,
+        });
+        const frame = stripFinalLineBreak(stripAnsi(output.latestFrame()));
+        const lines = frame.split(LINE_SPLIT_RE);
+        const filterRow = lines.findIndex((line) => line.includes(status));
+        expect(filterRow).toBeGreaterThanOrEqual(0);
+        if (initialFilterRow === -1) {
+          initialFilterRow = filterRow;
+        }
+        expect(filterRow).toBe(initialFilterRow);
+        expect(lines.length).toBeLessThanOrEqual(24);
+      }
+    },
+  );
 
   test("long select prompts only render options that fit the terminal", async () => {
     const store = new WizardStore({

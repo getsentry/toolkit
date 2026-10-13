@@ -63,6 +63,11 @@ import {
   useInkShortcuts,
 } from "./ink-shortcuts.js";
 import { BLOCK_LINE_COUNT, LEARN_SEQUENCE } from "./learn-content.js";
+import {
+  filterSelectOptions,
+  removeLastFilterCharacter,
+  sanitizeSelectFilterInput,
+} from "./select-filter.js";
 import { SENTRY_TIPS, type SentryTip } from "./sentry-tips.js";
 import type {
   CompletionActions,
@@ -2215,6 +2220,7 @@ function SelectPromptHeader({
   footer,
   isOptionWindowed,
   highlighted,
+  minTitleRows,
   promptTitle,
   totalCount,
   visiblePromptDetails,
@@ -2225,6 +2231,7 @@ function SelectPromptHeader({
   footer?: PromptDetail;
   isOptionWindowed: boolean;
   highlighted: number;
+  minTitleRows?: number;
   promptTitle: string;
   totalCount: number;
   visiblePromptDetails: PromptDetail[];
@@ -2248,7 +2255,12 @@ function SelectPromptHeader({
   if (alignment === "center") {
     return (
       <Box flexDirection="column" marginBottom={compact ? 0 : 1} width="100%">
-        <Box gap={1} justifyContent="center" width="100%">
+        <Box
+          gap={1}
+          justifyContent="center"
+          minHeight={minTitleRows}
+          width="100%"
+        >
           <Text bold>{promptTitle}</Text>
           {position}
         </Box>
@@ -2259,7 +2271,7 @@ function SelectPromptHeader({
 
   return (
     <Box flexDirection="column" marginBottom={compact ? 0 : 1}>
-      <Box>
+      <Box minHeight={minTitleRows}>
         <Box flexShrink={0} width={3}>
           <Text bold color={ACCENT}>
             {ICONS.diamondOpen}
@@ -2283,6 +2295,7 @@ function SelectPromptArea({
   prompt: Extract<ActivePrompt, { kind: "select" }>;
 }): React.ReactNode {
   const { columns, rows } = useInkFrameSize();
+  const reservedRows = occupiedRows + (prompt.filterable ? 1 : 0);
   const hasStructuredCopy =
     (prompt.details?.length ?? 0) > 0 || prompt.footer !== undefined;
   if (alignment === "start" && hasStructuredCopy) {
@@ -2290,7 +2303,7 @@ function SelectPromptArea({
       alignment,
       details: prompt.details ?? [],
       footer: prompt.footer,
-      occupiedRows,
+      occupiedRows: reservedRows,
       optionCount: prompt.options.length,
       promptTitle: prompt.message,
       terminalColumns: columns,
@@ -2324,7 +2337,7 @@ function SelectPromptArea({
     terminalRows: rows,
     alignment,
     kind: prompt.kind,
-    occupiedRows,
+    occupiedRows: reservedRows,
     messageRows,
   });
   const optionLimit = Math.max(1, optionCapacity);
@@ -2462,17 +2475,52 @@ function SelectPrompt({
   const centeredOptionsWidth = centeredLayout
     ? Math.min(centeredLayout.width, getPromptContentWidth(columns, alignment))
     : undefined;
-  const totalCount = prompt.options.length;
-  const [highlighted, setHighlighted] = useState<number>(() =>
-    Math.min(Math.max(prompt.initialIndex, 0), Math.max(0, totalCount - 1)),
+  const initialHighlighted = Math.min(
+    Math.max(prompt.initialIndex, 0),
+    Math.max(0, prompt.options.length - 1),
   );
+  const [selection, setSelection] = useState({
+    prompt,
+    query: "",
+    highlighted: initialHighlighted,
+  });
+  const selectionRef = useRef(selection);
+  // Ink can deliver paste and Enter before React commits the next render.
+  const updateSelection = useCallback(
+    (update: (state: typeof selection) => typeof selection) => {
+      const next = update(selectionRef.current);
+      selectionRef.current = next;
+      setSelection(next);
+    },
+    [],
+  );
+  // Successive wizard prompts can replace each other without unmounting.
+  if (selection.prompt !== prompt) {
+    const next = { prompt, query: "", highlighted: initialHighlighted };
+    selectionRef.current = next;
+    setSelection(next);
+  }
+  const { query, highlighted } = selection;
+  const filteredOptions = filterSelectOptions(prompt.options, query);
+  const totalCount = filteredOptions.length;
   const [windowStart, windowEnd] = getOptionWindow(
     totalCount,
     highlighted,
     maxVisibleOptions,
   );
-  const visibleOptions = prompt.options.slice(windowStart, windowEnd);
+  const visibleOptions = filteredOptions.slice(windowStart, windowEnd);
   const isWindowed = visibleOptions.length < totalCount;
+  // Keep the title's height when filtering removes its window position counter.
+  const minTitleRows =
+    prompt.filterable && prompt.options.length > maxVisibleOptions
+      ? getPromptMessageRows({
+          message: promptTitle,
+          terminalColumns: columns,
+          alignment,
+          kind: "select",
+          totalCount: prompt.options.length,
+        })
+      : undefined;
 
   const shortcuts = useMemo<ShortcutBinding[]>(
     () => [
@@ -2482,11 +2530,20 @@ function SelectPrompt({
         priority: 40,
         match: (_input, key) => key.upArrow || key.downArrow,
         run: (_input, key) => {
-          if (key.upArrow) {
-            setHighlighted((idx) => (idx === 0 ? totalCount - 1 : idx - 1));
-            return;
-          }
-          setHighlighted((idx) => (idx + 1) % totalCount);
+          updateSelection((state) => {
+            const count = filterSelectOptions(
+              prompt.options,
+              state.query,
+            ).length;
+            if (count === 0) {
+              return state;
+            }
+            return {
+              ...state,
+              highlighted:
+                (state.highlighted + (key.upArrow ? count - 1 : 1)) % count,
+            };
+          });
         },
       },
       ...(detailShortcut ? [detailShortcut] : []),
@@ -2496,7 +2553,10 @@ function SelectPrompt({
         priority: 42,
         match: (_input, key) => key.return,
         run: () => {
-          const current = prompt.options[highlighted];
+          const state = selectionRef.current;
+          const current = filterSelectOptions(prompt.options, state.query)[
+            state.highlighted
+          ];
           if (current) {
             prompt.resolve(current.value);
           }
@@ -2504,13 +2564,58 @@ function SelectPrompt({
       },
       {
         key: "esc",
-        action: "cancel",
+        action: query ? "clear filter" : "cancel",
         priority: 43,
         match: (input, key) => key.escape || (key.ctrl && input === "c"),
-        run: () => prompt.resolve(null),
+        run: (input, key) => {
+          if (key.ctrl && input === "c") {
+            prompt.resolve(null);
+          } else if (selectionRef.current.query) {
+            updateSelection((state) => ({
+              ...state,
+              query: "",
+              highlighted: 0,
+            }));
+          } else {
+            prompt.resolve(null);
+          }
+        },
       },
+      ...(prompt.filterable
+        ? ([
+            {
+              key: "backspace",
+              action: "delete",
+              showInFooter: false,
+              match: (_input, key) => key.backspace || key.delete,
+              run: () => {
+                updateSelection((state) => ({
+                  ...state,
+                  query: removeLastFilterCharacter(state.query),
+                  highlighted: 0,
+                }));
+              },
+            },
+            {
+              key: "type",
+              action: "filter",
+              showInFooter: false,
+              match: (input, key) =>
+                !(key.ctrl || key.meta || key.tab) &&
+                sanitizeSelectFilterInput(input).length > 0,
+              run: (input) => {
+                const text = sanitizeSelectFilterInput(input);
+                updateSelection((state) => ({
+                  ...state,
+                  query: state.query + text,
+                  highlighted: 0,
+                }));
+              },
+            },
+          ] satisfies ShortcutBinding[])
+        : []),
     ],
-    [detailShortcut, highlighted, prompt, totalCount],
+    [detailShortcut, prompt, query, updateSelection],
   );
   useInkShortcuts("select-prompt", shortcuts);
 
@@ -2528,31 +2633,103 @@ function SelectPrompt({
         footer={prompt.footer}
         highlighted={highlighted}
         isOptionWindowed={isWindowed}
+        minTitleRows={minTitleRows}
         promptTitle={promptTitle}
         totalCount={totalCount}
         visiblePromptDetails={visiblePromptDetails}
       />
       <Box
         justifyContent={isCentered ? "center" : "flex-start"}
+        minHeight={Math.min(prompt.options.length, maxVisibleOptions)}
         width={promptWidth}
       >
-        <Box flexDirection="column" width={centeredOptionsWidth}>
-          {visibleOptions.map((option, visibleIndex) => {
-            const idx = windowStart + visibleIndex;
-            const isCursor = idx === highlighted;
-            return (
-              <SelectPromptOptionRow
-                centered={isCentered}
-                centeredLabelWidth={centeredLayout?.labelWidth}
-                isCursor={isCursor}
-                key={option.value}
-                option={option}
-              />
-            );
-          })}
-        </Box>
+        {totalCount === 0 ? (
+          <Text color={MUTED} wrap="truncate">
+            No matches
+          </Text>
+        ) : (
+          <Box flexDirection="column" width={centeredOptionsWidth}>
+            {visibleOptions.map((option, visibleIndex) => {
+              const idx = windowStart + visibleIndex;
+              const isCursor = idx === highlighted;
+              return (
+                <SelectPromptOptionRow
+                  centered={isCentered}
+                  centeredLabelWidth={centeredLayout?.labelWidth}
+                  isCursor={isCursor}
+                  key={option.value}
+                  option={option}
+                  query={query}
+                />
+              );
+            })}
+          </Box>
+        )}
       </Box>
+      {prompt.filterable ? (
+        <SelectFilterStatus
+          centered={isCentered}
+          matches={totalCount}
+          query={query}
+          total={prompt.options.length}
+        />
+      ) : null}
     </Box>
+  );
+}
+
+function SelectFilterStatus({
+  centered,
+  matches,
+  query,
+  total,
+}: {
+  centered: boolean;
+  matches: number;
+  query: string;
+  total: number;
+}): React.ReactNode {
+  const color = query ? ACCENT : MUTED;
+  return (
+    <Box
+      gap={1}
+      height={1}
+      justifyContent={centered ? "center" : "flex-start"}
+      overflow="hidden"
+      paddingLeft={centered ? 0 : 3}
+      width="100%"
+    >
+      <Box flexShrink={1}>
+        <Text color={color} wrap="truncate">
+          {query ? `/${query}` : "type to filter"}
+        </Text>
+      </Box>
+      {query ? (
+        <Box flexShrink={0}>
+          <Text color={MUTED}>{`${matches} of ${total}`}</Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+}
+
+function SelectOptionText({
+  text,
+  query,
+}: {
+  text: string;
+  query: string;
+}): React.ReactNode {
+  const start = query ? text.toLowerCase().indexOf(query.toLowerCase()) : -1;
+  if (start === -1) {
+    return text;
+  }
+  return (
+    <>
+      {text.slice(0, start)}
+      <Text color={ACCENT}>{text.slice(start, start + query.length)}</Text>
+      {text.slice(start + query.length)}
+    </>
   );
 }
 
@@ -2561,11 +2738,13 @@ function SelectPromptOptionRow({
   centeredLabelWidth,
   isCursor,
   option,
+  query,
 }: {
   centered: boolean;
   centeredLabelWidth?: number;
   isCursor: boolean;
   option: SelectPromptOptionData;
+  query: string;
 }): React.ReactNode {
   if (centered) {
     return (
@@ -2574,10 +2753,15 @@ function SelectPromptOptionRow({
           <Text color={ACCENT}>{isCursor ? ICONS.triangleRight : " "}</Text>
         </Box>
         <Box flexShrink={0} width={centeredLabelWidth}>
-          <Text bold={isCursor}>{option.label}</Text>
+          <Text bold={isCursor}>
+            <SelectOptionText query={query} text={option.label} />
+          </Text>
         </Box>
         {option.hint !== undefined && option.hint !== "" ? (
-          <Text color={MUTED}> {option.hint}</Text>
+          <Text color={MUTED}>
+            {" "}
+            <SelectOptionText query={query} text={option.hint} />
+          </Text>
         ) : null}
       </Box>
     );
@@ -2587,9 +2771,14 @@ function SelectPromptOptionRow({
       <Box flexShrink={0} width={3}>
         <Text color={ACCENT}>{isCursor ? ICONS.triangleRight : " "}</Text>
       </Box>
-      <Text bold={isCursor}>{option.label}</Text>
+      <Text bold={isCursor}>
+        <SelectOptionText query={query} text={option.label} />
+      </Text>
       {option.hint !== undefined && option.hint !== "" ? (
-        <Text color={MUTED}> {option.hint}</Text>
+        <Text color={MUTED}>
+          {" "}
+          <SelectOptionText query={query} text={option.hint} />
+        </Text>
       ) : null}
     </Box>
   );
@@ -3008,6 +3197,30 @@ function MultiSelectPromptOptionRow({
       ) : null}
     </Box>
   );
+}
+
+/** Compact entity picker for commands outside the full-screen init wizard. */
+export function SelectPicker({
+  prompt,
+}: {
+  prompt: Extract<ActivePrompt, { kind: "select" }>;
+}): React.ReactNode {
+  return (
+    <ShortcutHintProvider>
+      <Box flexDirection="column">
+        <SelectPromptArea alignment="start" occupiedRows={0} prompt={prompt} />
+        <ShortcutFooter color={MUTED_DIM} />
+      </Box>
+    </ShortcutHintProvider>
+  );
+}
+
+/** Mount the compact picker with the sidecar's own Ink and React instances. */
+export function mountSelectPrompt(
+  prompt: Extract<ActivePrompt, { kind: "select" }>,
+  options: Parameters<typeof mountApp>[1],
+): ReturnType<typeof mountApp> {
+  return inkRender(createElement(SelectPicker, { prompt }), options);
 }
 
 /**

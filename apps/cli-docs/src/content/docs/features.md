@@ -5,6 +5,10 @@ description: Advanced features of the Sentry CLI
 
 The Sentry CLI includes several features designed to streamline your workflow, especially in complex project setups.
 
+## Interactive Selection
+
+When the CLI asks you to choose an organization or project, type to filter the loaded options by name or slug. The filter appears as `/text` below the list and ignores case. Use arrow keys to navigate, Enter to select, and Backspace to edit. Esc clears the filter before cancelling; Ctrl+C cancels immediately. The same controls work in the organization, team, and monorepo app selectors in `sentry init`.
+
 ## DSN Auto-Detection
 
 The CLI automatically detects your Sentry project from your codebase, eliminating the need to specify the target for every command. DSN detection is one part of the [resolution priority chain](./configuration/#resolution-priority) — it runs after checking for explicit arguments, environment variables, and `.sentryclirc` config files.
