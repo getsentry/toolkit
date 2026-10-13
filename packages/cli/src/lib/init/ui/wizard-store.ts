@@ -124,6 +124,8 @@ export type ActivePrompt =
       footer?: PromptDetail;
       /** Choices presented to the user in display order. */
       options: PromptOption[];
+      /** Allow typing to filter this list of entities. Defaults to false. */
+      filterable?: boolean;
       /** Zero-based option index highlighted when the prompt mounts. */
       initialIndex: number;
       /** Completes the prompt with a value, or `null` on cancellation. */

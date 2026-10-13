@@ -10,6 +10,44 @@ function controlHeaders() {
 }
 
 describe("Local control plane", () => {
+  test("reports ambiguous session names with ID guidance across control routes", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const one = plane.sessionStore.create({ label: "My App", cwd: "/one" });
+    plane.sessionStore.create({ label: "My App", cwd: "/two" });
+    for (const [method, suffix] of [
+      ["GET", ""],
+      ["GET", "/events"],
+      ["GET", "/envelopes"],
+      ["GET", "/events/id"],
+      ["GET", "/envelopes/id"],
+      ["POST", "/close"],
+      ["POST", "/reset"],
+    ]) {
+      const response = await plane.app.request(
+        `/_local/v1/sessions/My%20App${suffix}`,
+        { method, headers: controlHeaders() },
+      );
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error: 'Local session name "My App" is ambiguous; use its session ID.',
+      });
+    }
+    expect(
+      (
+        await plane.app.request(`/_local/v1/sessions/${one.id}`, {
+          headers: controlHeaders(),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await plane.app.request("/_local/v1/sessions/missing", {
+          headers: controlHeaders(),
+        })
+      ).status,
+    ).toBe(404);
+  });
+
   test("creates isolated sessions through its authenticated control API", async () => {
     const controlPlane = createLocalControlPlane({
       controlToken: CONTROL_TOKEN,

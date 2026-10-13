@@ -42,6 +42,16 @@ export type CreateLocalSessionInput = {
   readonly cwd: string;
 };
 
+/** A label matches multiple sessions; callers must select an explicit ID. */
+export class AmbiguousLocalSessionError extends Error {
+  constructor(reference: string) {
+    super(
+      `Local session name "${reference}" is ambiguous; use its session ID.`,
+    );
+    this.name = "AmbiguousLocalSessionError";
+  }
+}
+
 /** In-memory session lifecycle and access to isolated telemetry buffers. */
 export type LocalSessionStore = {
   create: (input: CreateLocalSessionInput) => LocalSession;
@@ -88,9 +98,7 @@ export function createLocalSessionStore({
       throw new Error(`Local session "${reference}" was not found.`);
     }
     if (matches.length > 1) {
-      throw new Error(
-        `Local session name "${reference}" is ambiguous; use its session ID.`,
-      );
+      throw new AmbiguousLocalSessionError(reference);
     }
     const [match] = matches;
     if (!match) {

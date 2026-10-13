@@ -25,6 +25,7 @@ import { streamSSE } from "hono/streaming";
 import type { SentryContext } from "../../context.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import { ValidationError } from "../../lib/errors.js";
+import { redactCredentialText } from "../../lib/credential-redaction.js";
 import { bold } from "../../lib/formatters/colors.js";
 import type { FilterValue, FormatValue } from "../../lib/formatters/local.js";
 import {
@@ -689,7 +690,9 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
       // `/health` answered but `/stream` never opened, so nothing will ever
       // be printed. Say so — `local run` keeps the child process going, and
       // without this it just looks like events stopped arriving.
-      logger.warn(`Could not attach to the event stream at ${url}/stream`);
+      logger.warn(
+        `Could not attach to the event stream at ${redactCredentialText(streamUrl ?? `${url}/stream`)}`,
+      );
       return;
     }
     // Reset backoff after a successful connection that later dropped,

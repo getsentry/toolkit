@@ -179,55 +179,110 @@ export function buildLocalDaemonArgs(host: string, port: number): string[] {
   ];
 }
 
-/** Hold exclusive daemon ownership until shutdown; recover locks from dead processes. */
-async function claimDaemonOwnership(
+/** Serialize ownership creation, stale recovery and release across processes. */
+async function withDaemonOwnershipGuard<T>(
   directory: string,
-): Promise<() => Promise<void>> {
-  const path = join(directory, "local-control-plane.owner");
+  action: () => Promise<T>,
+): Promise<T> {
+  const path = join(directory, "local-control-plane.owner.guard");
   for (let attempt = 0; attempt < 40; attempt += 1) {
+    let guard: Awaited<ReturnType<typeof open>>;
     try {
-      const lock = await open(path, "wx", 0o600);
-      try {
-        await lock.writeFile(String(process.pid), "utf8");
-      } finally {
-        await lock.close();
-      }
-      return async () => {
-        const owner = await readFile(path, "utf8").catch((error: unknown) => {
-          logger.debug("Could not read Local daemon ownership", error);
-          return "";
-        });
-        if (owner === String(process.pid)) await rm(path, { force: true });
-      };
+      guard = await open(path, "wx", 0o600);
     } catch (error) {
       if (
         !(error instanceof Error && "code" in error && error.code === "EEXIST")
       )
         throw error;
-    }
-    const owner = Number(await readFile(path, "utf8"));
-    if (Number.isInteger(owner) && owner > 0) {
-      try {
-        process.kill(owner, 0);
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          "code" in error &&
-          error.code === "ESRCH"
-        ) {
-          await rm(path, { force: true });
-          continue;
-        }
-        throw error;
+      const pid = await readOwnerPid(path);
+      if (Number.isInteger(pid) && pid > 0 && !isProcessRunning(pid)) {
+        // Automatic unlink could erase a replacement guard. An interrupted
+        // short critical section requires explicit cleanup, not stale recovery.
+        throw new Error(
+          `Local daemon ownership arbitration was interrupted. After confirming its process has stopped, remove ${path} and retry.`,
+        );
       }
-      throw new Error(
-        "The Sentry Local control-plane daemon is already running.",
-      );
-    }
-    if (Date.now() - (await stat(path)).mtimeMs > 5000) {
-      await rm(path, { force: true });
+      await sleep(125);
       continue;
     }
+    try {
+      await guard.writeFile(String(process.pid), "utf8");
+      return await action();
+    } finally {
+      await guard.close();
+      await rm(path, { force: true });
+    }
+  }
+  throw new Error(
+    "Timed out waiting for Local daemon ownership arbitration; active ownership has been preserved.",
+  );
+}
+
+/** Hold exclusive daemon ownership until shutdown; recover locks from dead processes. */
+export async function claimDaemonOwnership(
+  directory: string,
+): Promise<() => Promise<void>> {
+  const path = join(directory, "local-control-plane.owner");
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const release = await withDaemonOwnershipGuard(directory, async () => {
+      try {
+        const lock = await open(path, "wx", 0o600);
+        try {
+          await lock.writeFile(String(process.pid), "utf8");
+        } finally {
+          await lock.close();
+        }
+        return () =>
+          withDaemonOwnershipGuard(directory, async () => {
+            if ((await readOwnerPid(path)) === process.pid)
+              await rm(path, { force: true });
+          });
+      } catch (error) {
+        if (
+          !(
+            error instanceof Error &&
+            "code" in error &&
+            error.code === "EEXIST"
+          )
+        )
+          throw error;
+      }
+      try {
+        const ownerText = await readFile(path, "utf8");
+        const owner = Number(ownerText);
+        const snapshot = await stat(path);
+        const validPid = Number.isInteger(owner) && owner > 0;
+        if (validPid && isProcessRunning(owner)) {
+          throw new Error(
+            "The Sentry Local control-plane daemon is already running.",
+          );
+        }
+        if (validPid || Date.now() - snapshot.mtimeMs > 5000) {
+          const currentText = await readFile(path, "utf8");
+          const current = await stat(path);
+          if (
+            currentText === ownerText &&
+            current.ino === snapshot.ino &&
+            current.dev === snapshot.dev &&
+            current.mtimeMs === snapshot.mtimeMs &&
+            (!validPid || !isProcessRunning(owner))
+          ) {
+            await rm(path, { force: true });
+          }
+        }
+      } catch (error) {
+        if (
+          !(
+            error instanceof Error &&
+            "code" in error &&
+            error.code === "ENOENT"
+          )
+        )
+          throw error;
+      }
+      return undefined;
+    });
+    if (release) return release;
     await sleep(125);
   }
   throw new Error("Timed out waiting for Sentry Local daemon ownership.");
@@ -255,8 +310,10 @@ async function readOwnerPid(path: string): Promise<number> {
   try {
     return Number(await readFile(path, "utf8"));
   } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return 0;
     logger.debug("Could not read Local startup ownership", error);
-    return 0;
+    throw error;
   }
 }
 
@@ -298,6 +355,28 @@ export async function getRunningLocalDaemon(): Promise<
   LocalDaemonState | undefined
 > {
   return discoverLocalDaemon();
+}
+
+/** Wait for the stopped daemon to relinquish state and ownership, even while its PID lives. */
+export async function waitForLocalDaemonShutdown(
+  state: LocalDaemonState,
+): Promise<void> {
+  const directory = getConfigDir();
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const current = await readLocalDaemonState(directory);
+    const owner = await readOwnerPid(
+      join(directory, "local-control-plane.owner"),
+    );
+    const ownsState =
+      current?.pid === state.pid && current.token === state.token;
+    if ((!ownsState && owner !== state.pid) || !isProcessRunning(state.pid))
+      return;
+    await sleep(125);
+  }
+  throw new Error(
+    "Timed out waiting for the Local daemon to stop. Its discovery state has been preserved.",
+  );
 }
 
 /** Wait through the listener's complete retry window without erasing live state. */

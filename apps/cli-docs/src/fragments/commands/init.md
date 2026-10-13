@@ -4,6 +4,8 @@
 
 **Authentication:** Interactive runs start the OAuth login flow automatically when credentials are missing or the stored session has expired. Non-interactive and CI runs must authenticate before running `sentry init`.
 
+In organization, team, and monorepo app selectors, type to filter the loaded choices by name or slug. The filter appears as `/text` below the list. Matching ignores case and tolerates small typos. Use arrow keys to navigate, Enter to select, and Backspace to edit. Esc clears an active filter; with no filter, Esc cancels. Ctrl+C always cancels.
+
 ## Examples
 
 ```bash

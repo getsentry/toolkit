@@ -1,7 +1,6 @@
 /** Local control-plane management and agent query commands. */
 
 import { basename } from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { CliError, ValidationError } from "../../lib/errors.js";
@@ -12,8 +11,11 @@ import {
   getRunningLocalDaemon,
   requestLocalDaemon,
   runLocalDaemonForeground,
+  waitForLocalDaemonShutdown,
 } from "./daemon.js";
 import { parsePort } from "./server.js";
+import { logger } from "../../lib/logger.js";
+import { redactCredentialText } from "../../lib/credential-redaction.js";
 
 type DaemonFlags = {
   readonly foreground: boolean;
@@ -53,8 +55,19 @@ async function controlJson(
   const state = await ensureLocalDaemon(options);
   const response = await requestLocalDaemon(state, path, init);
   if (!response.ok) {
+    const body: unknown = await response.json().catch((error: unknown) => {
+      logger.debug("Could not read Local control-plane error details", error);
+      return undefined;
+    });
+    const detail =
+      typeof body === "object" &&
+      body !== null &&
+      "error" in body &&
+      typeof body.error === "string"
+        ? ` ${redactCredentialText(body.error)}`
+        : "";
     throw new CliError(
-      `Sentry Local control plane request failed with HTTP ${response.status}.`,
+      `Sentry Local control plane request failed with HTTP ${response.status}.${detail}`,
       1,
     );
   }
@@ -145,11 +158,28 @@ const daemonRestartCommand = buildCommand({
   async *func() {
     const state = await getRunningLocalDaemon();
     if (state) {
-      await requestLocalDaemon(state, "/daemon/stop", { method: "POST" });
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        if (!(await getRunningLocalDaemon())) break;
-        await sleep(125);
+      const response = await requestLocalDaemon(state, "/daemon/stop", {
+        method: "POST",
+        signal: AbortSignal.timeout(5_000),
+      }).catch((error: unknown) => {
+        if (
+          error instanceof Error &&
+          (error.name === "TimeoutError" || error.name === "AbortError")
+        ) {
+          throw new CliError(
+            "Timed out requesting Local daemon shutdown; its discovery state has been preserved.",
+            1,
+          );
+        }
+        throw error;
+      });
+      if (!response.ok) {
+        throw new CliError(
+          `Could not stop the Local daemon for restart (HTTP ${response.status}).`,
+          1,
+        );
       }
+      await waitForLocalDaemonShutdown(state);
     }
     yield new CommandOutput(
       publicDaemonState(

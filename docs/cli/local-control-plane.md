@@ -23,7 +23,8 @@ capabilities for SDK ingestion and viewer reads. The ingest capability lives in
 the URL path so SDK transports that omit query parameters still deliver events.
 Treat those URLs as credentials.
 Use `--clientId <key>` to make session creation idempotent for retries. Names must
-be unique for name-based queries; use the session ID when a name is ambiguous.
+be unique for name-based queries; ambiguous names return HTTP 409 with guidance
+to use the session ID.
 Session lookup commands accept names quoted or as separate words. For `event view` and
 `envelope view`, the final argument is the telemetry ID; preceding arguments
 form the session name.
@@ -32,7 +33,13 @@ The daemon stores its discovery token under `SENTRY_CONFIG_DIR` in an owner-only
 state file. It binds only to localhost, 127.0.0.1, or ::1 and uses a nonzero port.
 A second daemon cannot replace the running daemon for that config directory.
 Restart preserves its configured host and port and clears all in-memory data.
+It waits for the previous daemon to release its state and ownership; a rejected
+stop or shutdown timeout reports an error while preserving discovery.
 A temporarily unreachable live daemon keeps its discovery state for retries.
+A short ownership guard serializes claiming, stale recovery and release. If a
+process dies during that critical section, startup preserves the guard and reports
+its path; confirm the owning process has stopped before removing the guard and
+retrying.
 Startup waits through the listener retry window and preserves active startup locks.
 
 When a managed daemon owns the requested port, plain `local run` and `local serve`

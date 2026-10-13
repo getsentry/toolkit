@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { describe, expect, test, vi } from "vitest";
 import {
   buildApp,
+  consumeSSE,
   feedSSELine,
   isServerRunning,
   parsePort,
@@ -76,6 +77,34 @@ function interceptShutdownSignal() {
     },
   };
 }
+
+test("reports the scoped SSE endpoint without leaking its capability on initial attach failure", async () => {
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(null, { status: 401 }));
+  const writes: string[] = [];
+  const spy = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation((chunk: string | Uint8Array) => {
+      writes.push(chunk.toString());
+      return true;
+    });
+  try {
+    await consumeSSE({
+      url: "http://127.0.0.1:8969",
+      streamUrl:
+        "http://127.0.0.1:8969/_local/v1/sessions/session-id/stream?cap=fixture-secret",
+      activeFilters: new Set(),
+      signal: new AbortController().signal,
+    });
+  } finally {
+    globalThis.fetch = savedFetch;
+    spy.mockRestore();
+  }
+  expect(writes.join("")).toContain("/_local/v1/sessions/session-id/stream");
+  expect(writes.join("")).not.toContain("fixture-secret");
+});
 
 describe("parsePort", () => {
   test("parses valid port numbers", () => {

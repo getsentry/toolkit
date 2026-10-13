@@ -9,6 +9,7 @@ import { Buffer } from "node:buffer";
 import { pushToSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
+import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
@@ -16,6 +17,7 @@ import { buildSSEHandler, isHostedUiOrigin, MAX_BODY_BYTES } from "./server.js";
 import { logger } from "../../lib/logger.js";
 import {
   createLocalSessionStore,
+  AmbiguousLocalSessionError,
   type LocalSessionStore,
 } from "./session-store.js";
 
@@ -86,6 +88,11 @@ export function createLocalControlPlane({
       sessionStore.resolve(reference);
       return true;
     } catch (error) {
+      if (error instanceof AmbiguousLocalSessionError) {
+        throw new HTTPException(409, {
+          res: Response.json({ error: error.message }, { status: 409 }),
+        });
+      }
       logger.debug("Local session was not found", error);
       return false;
     }

@@ -1,6 +1,8 @@
 /** Real CLI process coverage for daemon discovery, isolated telemetry and leases. */
 import { createServer } from "node:net";
-import { readFile, stat } from "node:fs/promises";
+import { createServer as createHttpServer } from "node:http";
+import { rmSync } from "node:fs";
+import { readFile, stat, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
@@ -82,6 +84,105 @@ afterEach(async () => {
 });
 
 describe("Local daemon E2E", () => {
+  test.each(["delayed", "rejected", "never", "hung"])(
+    "restart handles %s shutdown without reporting the old daemon as restarted",
+    async (mode) => {
+      const token = "restart-fixture";
+      let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+      const statePath = join(getConfigDir(), "local-control-plane.json");
+      const ownerPath = join(getConfigDir(), "local-control-plane.owner");
+      const server = createHttpServer((request, response) => {
+        if (request.url?.endsWith("/daemon/stop")) {
+          if (mode === "hung") return;
+          response.statusCode = mode === "rejected" ? 401 : 202;
+          response.end();
+          if (mode === "delayed") {
+            setImmediate(() => {
+              server.close();
+              server.closeAllConnections();
+            });
+            cleanupTimer = setTimeout(() => {
+              rmSync(statePath, { force: true });
+              rmSync(ownerPath, { force: true });
+            }, 350);
+          }
+        } else {
+          response.setHeader("Content-Type", "application/json");
+          response.end(JSON.stringify({ sessions: [] }));
+        }
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
+      );
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Expected TCP address");
+      const before = {
+        host: "127.0.0.1",
+        port: address.port,
+        pid: process.pid,
+        token,
+        version: 1,
+      };
+      await writeFile(statePath, JSON.stringify(before));
+      await writeFile(ownerPath, String(process.pid));
+      try {
+        const result = await cli("daemon", "restart");
+        if (mode === "delayed") {
+          expect(result.exitCode, result.stderr).toBe(0);
+          expect(JSON.parse(result.stdout)).toMatchObject({
+            host: before.host,
+            port: before.port,
+          });
+          const after = JSON.parse(await readFile(statePath, "utf8")) as {
+            pid: number;
+          };
+          expect(after.pid).not.toBe(before.pid);
+        } else {
+          expect(result.exitCode).not.toBe(0);
+          expect(result.stderr).toContain(
+            mode === "rejected" ? "HTTP 401" : "Timed out",
+          );
+          expect(JSON.parse(await readFile(statePath, "utf8"))).toEqual(before);
+        }
+      } finally {
+        if (cleanupTimer) clearTimeout(cleanupTimer);
+        if (server.listening)
+          await new Promise<void>((resolve) => {
+            server.close(() => resolve());
+            server.closeAllConnections();
+          });
+        const remaining = await readFile(statePath, "utf8").catch(() => "null");
+        const current = JSON.parse(remaining) as {
+          pid?: number;
+          token?: string;
+        } | null;
+        if (current?.pid === before.pid && current.token === before.token) {
+          await rm(statePath, { force: true });
+          await rm(ownerPath, { force: true });
+        }
+      }
+    },
+    30_000,
+  );
+
+  test("surfaces duplicate session name guidance through the CLI", async () => {
+    const port = await availablePort();
+    const first = await createSession("duplicate", port);
+    await createSession("duplicate", port);
+    for (const parts of [
+      ["session", "view"],
+      ["session", "close"],
+      ["event", "list"],
+      ["envelope", "list"],
+    ]) {
+      const result = await cli(...parts, "duplicate");
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("ambiguous; use its session ID");
+    }
+    expect((await cli("session", "view", first.id)).exitCode).toBe(0);
+  }, 30_000);
+
   test("isolates sessions and capabilities, queries retained telemetry and clears only one session", async () => {
     const port = await availablePort();
     const [web, worker] = await Promise.all([
