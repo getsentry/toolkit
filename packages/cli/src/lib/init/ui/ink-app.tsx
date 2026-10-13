@@ -2589,11 +2589,16 @@ function SelectPrompt({
               showInFooter: false,
               match: (_input, key) => key.backspace || key.delete,
               run: () => {
-                updateSelection((state) => ({
-                  ...state,
-                  query: removeLastFilterCharacter(state.query),
-                  highlighted: 0,
-                }));
+                updateSelection((state) => {
+                  if (!state.query) {
+                    return state;
+                  }
+                  return {
+                    ...state,
+                    query: removeLastFilterCharacter(state.query),
+                    highlighted: 0,
+                  };
+                });
               },
             },
             {

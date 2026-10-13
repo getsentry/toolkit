@@ -1249,6 +1249,36 @@ describe("Ink App snapshot", () => {
     expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
   });
 
+  test.each([
+    { key: "Backspace", input: "\u007f", standalone: false },
+    { key: "Delete", input: "\u001b[3~", standalone: true },
+  ])(
+    "$key preserves the selection when the filter is empty",
+    async ({ input, standalone }) => {
+      const store = new WizardStore({ bannerRows: [] });
+      const resolve = vi.fn();
+      store.setPrompt({
+        kind: "select",
+        message: "Choose a project",
+        filterable: true,
+        options: [
+          { value: "backend", label: "Backend" },
+          { value: "frontend", label: "Frontend" },
+          { value: "worker", label: "Worker" },
+        ],
+        initialIndex: 1,
+        resolve,
+      });
+
+      const output = await renderApp(store, 80, {
+        standalone,
+        input: [`${DOWN_ARROW}${input}\r`],
+      });
+      expect(stripAnsi(output.latestFrame())).toContain("type to filter");
+      expect(resolve).toHaveBeenCalledExactlyOnceWith("worker");
+    },
+  );
+
   test("Esc clears the filter before cancelling, while Ctrl+C cancels directly", async () => {
     const store = new WizardStore({ bannerRows: [] });
     const resolve = vi.fn();
