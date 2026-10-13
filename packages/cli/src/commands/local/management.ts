@@ -8,6 +8,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import {
   ensureLocalDaemon,
+  type LocalDaemonState,
   getRunningLocalDaemon,
   requestLocalDaemon,
   runLocalDaemonForeground,
@@ -29,23 +30,47 @@ type SessionFlags = {
 };
 type ControlResult = Record<string, unknown>;
 
-function publicDaemonState(state: {
-  host: string;
-  pid: number;
-  port: number;
-  version: number;
-}): ControlResult {
-  return {
-    host: state.host,
-    pid: state.pid,
-    port: state.port,
-    version: state.version,
-  };
+function publicDaemonState({
+  host,
+  pid,
+  port,
+  version,
+}: LocalDaemonState): ControlResult {
+  return { host, pid, port, version };
 }
 
 function formatHuman(data: ControlResult): string {
   return JSON.stringify(data, null, 2);
 }
+
+const CONTROL_COMMAND_DEFAULTS = {
+  auth: false,
+  output: { human: formatHuman },
+} as const;
+
+const DAEMON_CONNECTION_FLAGS = {
+  host: {
+    kind: "parsed",
+    parse: String,
+    brief: "Loopback host",
+    default: "localhost",
+  },
+  port: {
+    kind: "parsed",
+    parse: parsePort,
+    brief: "Control-plane port",
+    default: "8969",
+  },
+} as const;
+
+const SESSION_REFERENCE_POSITIONAL = {
+  kind: "array",
+  parameter: {
+    brief: "Session ID or unique name",
+    parse: String,
+    placeholder: "session",
+  },
+} as const;
 
 async function controlJson(
   path: string,
@@ -87,7 +112,7 @@ function singleReference(parts: string[]): string {
 
 const daemonStartCommand = buildCommand({
   docs: { brief: "Start the Local control-plane daemon" },
-  output: { human: formatHuman },
+  ...CONTROL_COMMAND_DEFAULTS,
   parameters: {
     flags: {
       foreground: {
@@ -95,21 +120,9 @@ const daemonStartCommand = buildCommand({
         brief: "Run in the foreground",
         default: false,
       },
-      host: {
-        kind: "parsed",
-        parse: String,
-        brief: "Loopback host",
-        default: "localhost",
-      },
-      port: {
-        kind: "parsed",
-        parse: parsePort,
-        brief: "Control-plane port",
-        default: "8969",
-      },
+      ...DAEMON_CONNECTION_FLAGS,
     },
   },
-  auth: false,
   async *func(flags: DaemonFlags) {
     if (flags.foreground) {
       await runLocalDaemonForeground(flags);
@@ -121,9 +134,8 @@ const daemonStartCommand = buildCommand({
 
 const daemonStatusCommand = buildCommand({
   docs: { brief: "Show Local control-plane status" },
-  output: { human: formatHuman },
+  ...CONTROL_COMMAND_DEFAULTS,
   parameters: { flags: {} },
-  auth: false,
   async *func() {
     const daemon = await getRunningLocalDaemon();
     yield new CommandOutput({
@@ -134,9 +146,8 @@ const daemonStatusCommand = buildCommand({
 
 const daemonStopCommand = buildCommand({
   docs: { brief: "Stop the Local control-plane daemon" },
-  output: { human: formatHuman },
+  ...CONTROL_COMMAND_DEFAULTS,
   parameters: { flags: {} },
-  auth: false,
   async *func() {
     const state = await getRunningLocalDaemon();
     if (!state) {
@@ -152,9 +163,8 @@ const daemonStopCommand = buildCommand({
 
 const daemonRestartCommand = buildCommand({
   docs: { brief: "Restart the Local control-plane daemon" },
-  output: { human: formatHuman },
+  ...CONTROL_COMMAND_DEFAULTS,
   parameters: { flags: {} },
-  auth: false,
   async *func() {
     const state = await getRunningLocalDaemon();
     if (state) {
@@ -193,7 +203,7 @@ const daemonRestartCommand = buildCommand({
 
 const sessionCreateCommand = buildCommand({
   docs: { brief: "Create a Local telemetry session" },
-  output: { human: formatHuman },
+  ...CONTROL_COMMAND_DEFAULTS,
   parameters: {
     flags: {
       clientId: {
@@ -202,18 +212,7 @@ const sessionCreateCommand = buildCommand({
         brief: "Idempotency key for retried agent session creation",
         optional: true,
       },
-      host: {
-        kind: "parsed",
-        parse: String,
-        brief: "Loopback host",
-        default: "localhost",
-      },
-      port: {
-        kind: "parsed",
-        parse: parsePort,
-        brief: "Control-plane port",
-        default: "8969",
-      },
+      ...DAEMON_CONNECTION_FLAGS,
     },
     positional: {
       kind: "array",
@@ -224,7 +223,6 @@ const sessionCreateCommand = buildCommand({
       },
     },
   },
-  auth: false,
   async *func(this: SentryContext, flags: SessionFlags, ...parts: string[]) {
     const label = parts.join(" ").trim() || basename(this.cwd);
     yield new CommandOutput(
@@ -247,173 +245,67 @@ const sessionCreateCommand = buildCommand({
 
 const sessionListCommand = buildCommand({
   docs: { brief: "List Local telemetry sessions" },
-  output: { human: formatHuman },
+  ...CONTROL_COMMAND_DEFAULTS,
   parameters: { flags: {} },
-  auth: false,
   async *func() {
     yield new CommandOutput(await controlJson("/sessions"));
   },
 });
 
-const sessionViewCommand = buildCommand({
-  docs: { brief: "View a Local telemetry session" },
-  output: { human: formatHuman },
-  parameters: {
-    flags: {},
-    positional: {
-      kind: "array",
-      parameter: {
-        brief: "Session ID or unique name",
-        parse: String,
-        placeholder: "session",
-      },
-    },
-  },
-  auth: false,
-  async *func(_flags, ...parts: string[]) {
-    yield new CommandOutput(
-      await controlJson(
-        `/sessions/${encodeURIComponent(singleReference(parts))}`,
-      ),
-    );
-  },
-});
-
-function buildSessionMutationCommand(action: "close" | "reset", brief: string) {
+/** Commands that target one session share argument parsing and URL construction. */
+function buildSessionCommand(
+  brief: string,
+  suffix = "",
+  method: "GET" | "POST" = "GET",
+): ReturnType<typeof buildCommand> {
   return buildCommand({
+    ...CONTROL_COMMAND_DEFAULTS,
     docs: { brief },
-    output: { human: formatHuman },
-    parameters: {
-      flags: {},
-      positional: {
-        kind: "array",
-        parameter: {
-          brief: "Session ID or unique name",
-          parse: String,
-          placeholder: "session",
-        },
-      },
-    },
-    auth: false,
+    parameters: { flags: {}, positional: SESSION_REFERENCE_POSITIONAL },
     async *func(_flags, ...parts: string[]) {
       yield new CommandOutput(
         await controlJson(
-          `/sessions/${encodeURIComponent(singleReference(parts))}/${action}`,
-          { method: "POST" },
+          `/sessions/${encodeURIComponent(singleReference(parts))}${suffix}`,
+          { method },
         ),
       );
     },
   });
 }
 
-const envelopeListCommand = buildCommand({
-  docs: { brief: "List retained envelopes for a Local session" },
-  output: { human: formatHuman },
-  parameters: {
-    flags: {},
-    positional: {
-      kind: "array",
-      parameter: {
-        brief: "Session ID or unique name",
-        parse: String,
-        placeholder: "session",
+/** Event and envelope lookup both use the final argument as the telemetry ID. */
+function buildTelemetryViewCommand(
+  kind: "event" | "envelope",
+  brief: string,
+): ReturnType<typeof buildCommand> {
+  return buildCommand({
+    ...CONTROL_COMMAND_DEFAULTS,
+    docs: { brief },
+    parameters: {
+      flags: {},
+      positional: {
+        kind: "array",
+        parameter: {
+          brief: `Session and ${kind} ID`,
+          parse: String,
+          placeholder: `session ${kind}`,
+        },
       },
     },
-  },
-  auth: false,
-  async *func(_flags, ...parts: string[]) {
-    yield new CommandOutput(
-      await controlJson(
-        `/sessions/${encodeURIComponent(singleReference(parts))}/envelopes`,
-      ),
-    );
-  },
-});
-
-const envelopeViewCommand = buildCommand({
-  docs: { brief: "View a raw Local envelope" },
-  output: { human: formatHuman },
-  parameters: {
-    flags: {},
-    positional: {
-      kind: "array",
-      parameter: {
-        brief: "Session and envelope ID",
-        parse: String,
-        placeholder: "session envelope",
-      },
-    },
-  },
-  auth: false,
-  async *func(_flags, ...parts: string[]) {
-    const session = parts.slice(0, -1).join(" ").trim();
-    const envelope = parts.at(-1);
-    if (!(session && envelope)) {
-      throw new ValidationError(
-        "Provide a session and envelope ID.",
-        "envelope",
+    async *func(_flags, ...parts: string[]) {
+      const session = parts.slice(0, -1).join(" ").trim();
+      const id = parts.at(-1);
+      if (!(session && id)) {
+        throw new ValidationError(`Provide a session and ${kind} ID.`, kind);
+      }
+      yield new CommandOutput(
+        await controlJson(
+          `/sessions/${encodeURIComponent(session)}/${kind}s/${encodeURIComponent(id)}`,
+        ),
       );
-    }
-    yield new CommandOutput(
-      await controlJson(
-        `/sessions/${encodeURIComponent(session)}/envelopes/${encodeURIComponent(envelope)}`,
-      ),
-    );
-  },
-});
-
-const eventListCommand = buildCommand({
-  docs: { brief: "List decoded events for a Local session" },
-  output: { human: formatHuman },
-  parameters: {
-    flags: {},
-    positional: {
-      kind: "array",
-      parameter: {
-        brief: "Session ID or unique name",
-        parse: String,
-        placeholder: "session",
-      },
     },
-  },
-  auth: false,
-  async *func(_flags, ...parts: string[]) {
-    yield new CommandOutput(
-      await controlJson(
-        `/sessions/${encodeURIComponent(singleReference(parts))}/events`,
-      ),
-    );
-  },
-});
-
-const eventViewCommand = buildCommand({
-  docs: { brief: "View a decoded Local event" },
-  output: { human: formatHuman },
-  parameters: {
-    flags: {},
-    positional: {
-      kind: "array",
-      parameter: {
-        brief: "Session and event ID",
-        parse: String,
-        placeholder: "session event",
-      },
-    },
-  },
-  auth: false,
-  async *func(_flags, ...parts: string[]) {
-    const session = parts.slice(0, -1).join(" ").trim();
-    const event = parts.at(-1);
-    if (!(session && event)) {
-      throw new ValidationError("Provide a session and event ID.", "event");
-    }
-    yield new CommandOutput(
-      await controlJson(
-        `/sessions/${encodeURIComponent(session)}/events/${encodeURIComponent(event)}`,
-      ),
-    );
-  },
-});
+  });
+}
 
 export const daemonRoute = buildRouteMap({
   routes: {
@@ -429,26 +321,40 @@ export const sessionRoute = buildRouteMap({
   routes: {
     create: sessionCreateCommand,
     list: sessionListCommand,
-    view: sessionViewCommand,
-    close: buildSessionMutationCommand(
-      "close",
+    view: buildSessionCommand("View a Local telemetry session"),
+    close: buildSessionCommand(
       "Close a Local telemetry session",
+      "/close",
+      "POST",
     ),
-    reset: buildSessionMutationCommand(
-      "reset",
+    reset: buildSessionCommand(
       "Clear a Local telemetry session",
+      "/reset",
+      "POST",
     ),
   },
   defaultCommand: "list",
   docs: { brief: "Manage Local telemetry sessions" },
 });
 export const envelopeRoute = buildRouteMap({
-  routes: { list: envelopeListCommand, view: envelopeViewCommand },
+  routes: {
+    list: buildSessionCommand(
+      "List retained envelopes for a Local session",
+      "/envelopes",
+    ),
+    view: buildTelemetryViewCommand("envelope", "View a raw Local envelope"),
+  },
   defaultCommand: "list",
   docs: { brief: "Query Local envelopes" },
 });
 export const eventRoute = buildRouteMap({
-  routes: { list: eventListCommand, view: eventViewCommand },
+  routes: {
+    list: buildSessionCommand(
+      "List decoded events for a Local session",
+      "/events",
+    ),
+    view: buildTelemetryViewCommand("event", "View a decoded Local event"),
+  },
   defaultCommand: "list",
   docs: { brief: "Query Local decoded events" },
 });
