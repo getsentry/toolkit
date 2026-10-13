@@ -9,7 +9,7 @@
 const LOCAL_INGEST_CAPABILITY =
   /(\/_local\/v1\/sessions\/[^/?#\s"'\\]+\/ingest\/)[A-Za-z0-9_-]+/g;
 const LOCAL_SCOPED_QUERY =
-  /\/_local\/v1\/sessions\/[^/?#\s"'\\]+\/(?:stream|ui\/(?:reset|close))\?[^#\s"'\\]*/g;
+  /\/_local\/v1\/sessions\/[^/?#\s"'\\]+\/(?:stream|ui\/(?:reset|close|retention))\?[^#\s"'\\]*/g;
 
 const INVALID_BEARER_HEADER_START =
   /(\bHeaders\.(?:set|append):[ \t]*)(\\*["'])Bearer[ \t]+/gi;

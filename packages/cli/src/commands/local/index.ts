@@ -27,7 +27,7 @@ export const localRoute = buildRouteMap({
       "  serve      Start the server and tail events (default)\n" +
       "  run        Run a command with SENTRY_SPOTLIGHT auto-injected\n" +
       "  daemon     Manage the shared telemetry daemon\n" +
-      "  session    Create, inspect, reset, and close sessions\n" +
+      "  session    Create, inspect, configure, reset, and close sessions\n" +
       "  event      Query decoded session events\n" +
       "  envelope   Query raw session envelopes",
   },

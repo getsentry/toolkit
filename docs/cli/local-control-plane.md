@@ -48,6 +48,32 @@ When a managed daemon owns the requested port, plain `local run` and `local serv
 require `--session <name>` or a different `--port`; they cannot use its protected
 receiver as a legacy `/stream` endpoint.
 
+## Envelope retention
+
+Each session or plain receiver retains 500 envelopes by default. Set a limit from
+1 to 50,000 with `--max-envelopes` on `local session create`, `local run`, or
+`local serve`, for example:
+
+```sh
+sentry local run --session web --max-envelopes 1000 -- npm run dev
+sentry local session retention web --max-envelopes 2000
+sentry local session retention web --json
+```
+
+Increasing the limit preserves existing envelopes, their IDs, and active streams;
+previously evicted envelopes cannot be recovered. Lowering below the retained count
+is rejected without changing any data. Clear envelopes first to reduce that limit.
+Changing capacity does not reset the session's three-hour lifecycle retention.
+An explicit limit also configures an existing plain receiver; ordinary attachment
+preserves its current setting. Older receivers that cannot apply the flag report an
+error. Retrying session creation with the same client ID preserves its original settings.
+
+The viewer follows the receiver's envelope limit and retains every decoded item
+inside each retained envelope. Its Retention limit control can update a locally
+served receiver or scoped session at runtime without replacing the connection.
+Hosted viewers display the setting but cannot change it. CLI changes also update
+connected viewers.
+
 ## Browser viewer
 
 The independently served viewer lives in `apps/local`. Run

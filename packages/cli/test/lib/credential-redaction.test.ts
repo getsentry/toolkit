@@ -19,6 +19,7 @@ describe("credential redaction", () => {
       "/stream?cap=[REDACTED]&cap=[REDACTED]",
     ],
     ["/ui/reset?cap=SYNTHETIC_read-cap", "/ui/reset?cap=[REDACTED]"],
+    ["/ui/retention?cap=SYNTHETIC_read-cap", "/ui/retention?cap=[REDACTED]"],
     ["/ui/close?cap=SYNTHETIC_read-cap", "/ui/close?cap=[REDACTED]"],
   ])(
     "redacts Local URL capabilities in diagnostics: %s",

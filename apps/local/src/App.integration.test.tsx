@@ -13,6 +13,7 @@ import { NuqsAdapter } from "nuqs/adapters/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { BrowserRouter } from "react-router";
 import { ThemeProvider } from "@/components/theme-provider.tsx";
+import { createLocalRetentionBuffer } from "../../../packages/cli/src/commands/local/retention-buffer.ts";
 import App from "./App.tsx";
 import { LocalWorkspaceRoute } from "./routes/local-workspace-route.tsx";
 import {
@@ -793,6 +794,253 @@ describe("local receiver to viewer integration", () => {
 
     await waitFor(() => expect(clearButton.disabled).toBe(true));
   });
+
+  test("preserves undecodable raw envelopes and clears their stale alert with the feed", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 204 })),
+    );
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0];
+    await act(async () => {
+      source?.onopen?.(new Event("open"));
+      source?.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: "undecodable",
+          lastEventId: "raw-broken",
+        }),
+      );
+    });
+    await screen.findByText("Received an event that could not be decoded.");
+    const clear = screen.getByRole("button", {
+      name: "Clear events",
+    }) as HTMLButtonElement;
+    expect(clear.disabled).toBe(false);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open envelopes view" }),
+    );
+    await screen.findByLabelText("View envelope event");
+    fireEvent.click(clear);
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Received an event that could not be decoded."),
+      ).toBeNull(),
+    );
+    expect(clear.disabled).toBe(true);
+  });
+
+  test("replays more than 500 retained envelopes and applies a real runtime update", async () => {
+    const retention = createLocalRetentionBuffer(1000);
+    const receiver = await tryListen(
+      buildApp(retention.buffer, { uiActions: true, retention }),
+      0,
+      "127.0.0.1",
+    );
+    try {
+      // Initial metadata must precede replay, otherwise the viewer's default clips history.
+      for (let index = 0; index < 501; index++)
+        await sendEnvelope(receiver.port, `retained-${index}`);
+      renderViewer(receiver.port, "/explorer/events");
+      await screen.findByText(
+        /Retention limit: 1,000 envelopes · 501 displayed/,
+        {},
+        { timeout: 10000 },
+      );
+      fireEvent.click(screen.getByText(/Retention limit: 1,000 envelopes/));
+      fireEvent.change(screen.getByLabelText("Retention limit"), {
+        target: { value: "2000" },
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Apply retention limit" }),
+      );
+      await screen.findByText(
+        /Retention limit: 2,000 envelopes · 501 displayed/,
+      );
+      expect(retention.getSettings()).toEqual({
+        maxEnvelopes: 2000,
+        retainedEnvelopes: 501,
+      });
+      await sendEnvelope(receiver.port, "after-growth");
+      await screen.findByText(
+        /Retention limit: 2,000 envelopes · 502 displayed/,
+      );
+    } finally {
+      cleanup();
+      await stopReceiver(receiver.server);
+    }
+  }, 20000);
+
+  test("updates live retention without clearing events or replacing the stream", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ maxEnvelopes: 1000, retainedEnvelopes: 2 }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0];
+    await act(async () => source?.onopen?.(new Event("open")));
+    await act(async () => {
+      source?.dispatchEvent(
+        new MessageEvent("sentry.local.retention", {
+          data: JSON.stringify({ maxEnvelopes: 500 }),
+        }),
+      );
+      for (const id of ["one", "two"])
+        source?.dispatchEvent(
+          new MessageEvent(SENTRY_CONTENT_TYPE, {
+            data: JSON.stringify([
+              {},
+              [[{ type: "event" }, { message: `retained ${id}` }]],
+            ]),
+            lastEventId: id,
+          }),
+        );
+    });
+    fireEvent.click(await screen.findByText(/Retention limit: 500 envelopes/));
+    fireEvent.change(screen.getByLabelText("Retention limit"), {
+      target: { value: "1" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply retention limit" }),
+    );
+    await screen.findByText(
+      /Cannot lower the limit below 2 displayed envelopes/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Retention limit"), {
+      target: { value: "1000" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply retention limit" }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await act(async () =>
+      source?.dispatchEvent(
+        new MessageEvent("sentry.local.retention", {
+          data: JSON.stringify({ maxEnvelopes: 1000 }),
+        }),
+      ),
+    );
+    await screen.findByText(/Retention limit: 1,000 envelopes/);
+    expect(
+      screen.getAllByRole("button", { name: "View event event" }),
+    ).toHaveLength(2);
+    expect(source?.closed).toBe(false);
+    expect(ControllableEventSource.instances).toHaveLength(1);
+  });
+
+  test("requires reconnection before changing a disconnected receiver's retention", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0];
+    await act(async () => {
+      source?.onopen?.(new Event("open"));
+      source?.dispatchEvent(
+        new MessageEvent("sentry.local.retention", {
+          data: '{"maxEnvelopes":1000}',
+        }),
+      );
+      source?.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([
+            {},
+            [[{ type: "event" }, { message: "kept" }]],
+          ]),
+          lastEventId: "kept",
+        }),
+      );
+      source?.onerror?.(new Event("error"));
+    });
+    fireEvent.click(
+      await screen.findByText(/Retention limit: 1,000 envelopes/),
+    );
+    await screen.findByText("Reconnect to this receiver to change retention.");
+    expect(
+      screen.queryByRole("button", { name: "Apply retention limit" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "View event event" }),
+    ).not.toBeNull();
+  });
+
+  test.each([false, true])(
+    "ignores delayed retention responses after newer metadata (switch receiver: %s)",
+    async (switchReceiver) => {
+      ControllableEventSource.instances = [];
+      vi.stubGlobal("EventSource", ControllableEventSource);
+      let respond!: (response: Response) => void;
+      const pending = new Promise<Response>((resolve) => {
+        respond = resolve;
+      });
+      const fetchMock = vi.fn().mockReturnValue(pending);
+      vi.stubGlobal("fetch", fetchMock);
+      renderBareViewer();
+      let source = ControllableEventSource.instances[0];
+      await act(async () => {
+        source?.onopen?.(new Event("open"));
+        source?.dispatchEvent(
+          new MessageEvent("sentry.local.retention", {
+            data: '{"maxEnvelopes":500}',
+          }),
+        );
+      });
+      fireEvent.click(
+        await screen.findByText(/Retention limit: 500 envelopes/),
+      );
+      fireEvent.change(screen.getByLabelText("Retention limit"), {
+        target: { value: "1" },
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Apply retention limit" }),
+      );
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      if (switchReceiver) {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Change receiver" }),
+        );
+        fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+          target: { value: "http://127.0.0.1:8970/stream" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+        source = ControllableEventSource.instances[1];
+      }
+      await act(async () => {
+        source?.onopen?.(new Event("open"));
+        source?.dispatchEvent(
+          new MessageEvent("sentry.local.retention", {
+            data: '{"maxEnvelopes":1000}',
+          }),
+        );
+        respond(new Response('{"maxEnvelopes":1}', { status: 200 }));
+        await pending;
+      });
+      await screen.findByText(/Retention limit: 1,000 envelopes/);
+      await act(async () => {
+        for (const id of ["one", "two"])
+          source?.dispatchEvent(
+            new MessageEvent(SENTRY_CONTENT_TYPE, {
+              data: JSON.stringify([
+                {},
+                [[{ type: "event" }, { message: id }]],
+              ]),
+              lastEventId: id,
+            }),
+          );
+      });
+      expect(
+        screen.getAllByRole("button", { name: "View event event" }),
+      ).toHaveLength(2);
+    },
+  );
 
   test.each([204, 403])(
     "handles scoped reset HTTP %s and closes a telemetry session",

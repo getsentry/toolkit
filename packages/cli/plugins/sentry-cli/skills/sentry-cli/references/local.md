@@ -60,6 +60,7 @@ Start the local dev server and tail events
 - `-F, --format <value> - Output format: human (default) or json (NDJSON on stdout) - (default: "human")`
 - `-a, --attributes - Show a grouped attribute table (user vs SDK) under each transaction`
 - `--open - Open Sentry Local UI in the browser`
+- `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
 - `--session <value> - Create a daemon-owned telemetry session with this label`
 
 ### `sentry local session create <name...>`
@@ -70,6 +71,14 @@ Create a Local telemetry session
 - `--clientId <value> - Idempotency key for retried agent session creation`
 - `--host <value> - Loopback host - (default: "localhost")`
 - `--port <value> - Control-plane port - (default: "8969")`
+- `--max-envelopes <value> - Maximum envelopes retained by this receiver or session - (default: "500")`
+
+### `sentry local session retention <session...>`
+
+View or change session envelope retention
+
+**Flags:**
+- `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
 
 ### `sentry local session list`
 
@@ -100,6 +109,7 @@ Run a command with the local dev server enabled
 - `-F, --format <value> - Output format: human (default) or json (NDJSON on stdout) - (default: "human")`
 - `-a, --attributes - Include selected event attributes in output`
 - `--open - Open Sentry Local UI in the browser`
+- `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
 - `--session <value> - Create a daemon-owned telemetry session with this label`
 
 **Examples:**

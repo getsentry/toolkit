@@ -1,3 +1,9 @@
+import { RetentionSettings } from "./components/retention-settings.tsx";
+import {
+  DEFAULT_MAX_ENVELOPES,
+  isValidMaxEnvelopes,
+  LOCAL_RETENTION_EVENT,
+} from "../../../packages/cli/src/commands/local/retention-limits.ts";
 import {
   Check,
   ChevronLeft,
@@ -727,6 +733,8 @@ export default function App() {
   const [isConnectionEnabled, setIsConnectionEnabled] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState<string>();
+  const [retentionLimit, setRetentionLimit] = useState(DEFAULT_MAX_ENVELOPES);
+  const [hasRetentionSettings, setHasRetentionSettings] = useState(false);
   const [telemetryStore] = useState(() => createLocalTelemetryStore());
   const telemetry = useSyncExternalStore(
     telemetryStore.subscribe,
@@ -845,6 +853,7 @@ export default function App() {
     isClearingCommandSearch.current = true;
     setCommandSearchQuery("");
     telemetryStore.clear();
+    setMessage(undefined);
     setLastViewedItemIds({});
     void workspaceQuery.clearWorkspace();
 
@@ -904,6 +913,9 @@ export default function App() {
   };
 
   const currentEndpoint = parseStreamEndpoint(streamUrl);
+  const canEditRetention =
+    currentEndpoint?.kind === "loopback" &&
+    isLoopbackHost(window.location.hostname);
   const hasScopedSession =
     currentEndpoint?.kind === "loopback" &&
     isLoopbackHost(window.location.hostname) &&
@@ -924,6 +936,9 @@ export default function App() {
     if (endpoint.url !== streamUrl) {
       activeStreamUrl.current = endpoint.url;
       telemetryStore.clear();
+      telemetryStore.setLimit(DEFAULT_MAX_ENVELOPES);
+      setRetentionLimit(DEFAULT_MAX_ENVELOPES);
+      setHasRetentionSettings(false);
       setLastViewedItemIds({});
       fallbackEventId.current = 0;
       isClearingCommandSearch.current = true;
@@ -956,7 +971,31 @@ export default function App() {
     }
 
     let isCurrent = true;
-    const source = new EventSource(streamUrl);
+    const requestUrl = new URL(streamUrl);
+    if (parseStreamEndpoint(streamUrl)?.kind === "loopback")
+      requestUrl.searchParams.set("retention", "1");
+    const source = new EventSource(requestUrl.toString());
+    const onRetention = (event: Event) => {
+      if (!isCurrent || activeStreamUrl.current !== streamUrl) return;
+      try {
+        const settings: unknown = JSON.parse(
+          (event as MessageEvent<string>).data,
+        );
+        if (
+          typeof settings === "object" &&
+          settings !== null &&
+          "maxEnvelopes" in settings &&
+          isValidMaxEnvelopes(settings.maxEnvelopes)
+        ) {
+          telemetryStore.setLimit(settings.maxEnvelopes);
+          setRetentionLimit(settings.maxEnvelopes);
+          setHasRetentionSettings(true);
+        }
+      } catch {
+        /* Ignore malformed optional metadata from external receivers. */
+      }
+    };
+    source.addEventListener(LOCAL_RETENTION_EVENT, onRetention);
     const timeoutId = window.setTimeout(() => {
       if (!isCurrent || activeStreamUrl.current !== streamUrl) {
         return;
@@ -974,22 +1013,25 @@ export default function App() {
       if (!isCurrent || activeStreamUrl.current !== streamUrl) {
         return;
       }
+      const messageEvent = event as MessageEvent<string>;
+      const eventId =
+        messageEvent.lastEventId || `event-${fallbackEventId.current++}`;
+      const rawEnvelope: LocalFeedItem = {
+        id: eventId,
+        type: "envelope",
+        timestamp: Date.now(),
+        text: messageEvent.data,
+        payload: messageEvent.data,
+        metadata: { title: `Envelope ${eventId.slice(-8)}` },
+      };
       try {
-        const messageEvent = event as MessageEvent<string>;
-        const eventId =
-          messageEvent.lastEventId || `event-${fallbackEventId.current++}`;
-        telemetryStore.recordEnvelope({
-          id: eventId,
-          type: "envelope",
-          timestamp: Date.now(),
-          text: messageEvent.data,
-          payload: messageEvent.data,
-          metadata: { title: `Envelope ${eventId.slice(-8)}` },
-        });
-        const decoded = decodeEnvelope(messageEvent.data, eventId);
-        telemetryStore.append(decoded);
+        telemetryStore.recordEnvelope(
+          rawEnvelope,
+          decodeEnvelope(messageEvent.data, eventId),
+        );
         setMessage(undefined);
       } catch {
+        telemetryStore.recordEnvelope(rawEnvelope, []);
         setMessage("Received an event that could not be decoded.");
       }
     };
@@ -1032,6 +1074,7 @@ export default function App() {
       isCurrent = false;
       window.clearTimeout(timeoutId);
       source.removeEventListener(SENTRY_ENVELOPE_EVENT, onEnvelope);
+      source.removeEventListener(LOCAL_RETENTION_EVENT, onRetention);
       source.close();
     };
   }, [connectionAttempt, isConnectionEnabled, streamUrl, telemetryStore]);
@@ -1179,6 +1222,20 @@ export default function App() {
               className="flex min-h-0 flex-1 flex-col"
               aria-label="Local Sentry events"
             >
+              {hasRetentionSettings ? (
+                <RetentionSettings
+                  key={streamUrl}
+                  limit={retentionLimit}
+                  count={telemetry.envelopes.length}
+                  streamUrl={streamUrl}
+                  editable={canEditRetention && connection === "connected"}
+                  unavailableReason={
+                    canEditRetention && connection !== "connected"
+                      ? "Reconnect to this receiver to change retention."
+                      : undefined
+                  }
+                />
+              ) : null}
               {connectionError &&
               connection === "failed" &&
               hasRetainedItems ? (

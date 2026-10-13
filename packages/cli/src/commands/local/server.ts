@@ -45,6 +45,15 @@ import {
   validateOpenHost,
 } from "./ui.js";
 
+import {
+  createLocalRetentionBuffer,
+  type LocalRetentionBuffer,
+  OPTIONAL_MAX_ENVELOPES_FLAG,
+  RetentionLimitError,
+  validateMaxEnvelopes,
+} from "./retention-buffer.js";
+import { LOCAL_RETENTION_EVENT } from "./retention-limits.js";
+
 /** Default port for the local dev server. */
 export const DEFAULT_PORT = 8969;
 
@@ -108,6 +117,7 @@ type LocalFlags = {
   readonly attributes: boolean;
   readonly open: boolean;
   readonly session?: string;
+  readonly "max-envelopes"?: number;
 };
 
 /**
@@ -145,6 +155,7 @@ export function isLoopbackHost(host: string): boolean {
 type LocalReceiverOptions = {
   /** Enables stateful UI routes only when the receiver itself is loopback-bound. */
   uiActions?: boolean;
+  retention?: LocalRetentionBuffer;
 };
 
 /** Whether an origin is the production or preview Local viewer. */
@@ -248,7 +259,7 @@ export function buildSSEHandler(
 
 export function buildApp(
   spotlightBuffer: ReturnType<typeof createSpotlightBuffer>,
-  { uiActions = false }: LocalReceiverOptions = {},
+  { uiActions = false, retention }: LocalReceiverOptions = {},
 ): Hono {
   const app = new Hono();
 
@@ -323,9 +334,34 @@ export function buildApp(
       ? c.json({
           actions: { clear: true, envelope: true },
           retention: "session",
+          ...retention?.getSettings(),
         })
       : c.body(null, 403),
   );
+
+  app.post("/retention", async (c) => {
+    const origin = c.req.header("origin");
+    if (
+      !uiActions ||
+      !retention ||
+      (origin && !LOCALHOST_ORIGIN_RE.test(origin))
+    )
+      return c.body(null, 403);
+    const input: unknown = await c.req.json().catch(() => undefined);
+    const value =
+      typeof input === "object" && input !== null && "maxEnvelopes" in input
+        ? input.maxEnvelopes
+        : undefined;
+    try {
+      validateMaxEnvelopes(value);
+      retention.resize(value);
+      return c.json(retention.getSettings());
+    } catch (error) {
+      if (error instanceof RetentionLimitError)
+        return c.json({ error: error.message }, error.status);
+      throw error;
+    }
+  });
 
   app.delete("/clear", (c) => {
     if (!uiActions) {
@@ -424,11 +460,31 @@ export function buildApp(
     return streamSSE(c, async (stream) => {
       const lastEventId = c.req.header("Last-Event-ID");
       const onEnvelope = buildSSEHandler(stream, useBase64);
+      const sendSettings = (settings: {
+        maxEnvelopes: number;
+        retainedEnvelopes: number;
+      }) => {
+        void stream
+          .writeSSE({
+            event: LOCAL_RETENTION_EVENT,
+            data: JSON.stringify(settings),
+          })
+          .catch((error) =>
+            logger.debug("Local retention stream closed", error),
+          );
+      };
+      const unsubscribeSettings =
+        retention && c.req.query("retention") === "1"
+          ? retention.subscribeSettings(sendSettings)
+          : () => {};
+      if (retention && c.req.query("retention") === "1")
+        sendSettings(retention.getSettings());
       const readerId = spotlightBuffer.subscribe(onEnvelope, lastEventId);
 
       await new Promise<void>((resolve) => {
         stream.onAbort(() => {
           spotlightBuffer.unsubscribe(readerId);
+          unsubscribeSettings();
           resolve();
         });
       });
@@ -568,6 +624,51 @@ export async function isServerRunning(url: string): Promise<boolean> {
     );
   }
   return true;
+}
+
+/** Apply only an explicitly requested limit when attaching to an existing receiver. */
+export async function configureExistingRetention(
+  url: string,
+  maxEnvelopes?: number,
+): Promise<void> {
+  if (maxEnvelopes === undefined) return;
+  validateMaxEnvelopes(maxEnvelopes);
+  let response: Response;
+  try {
+    response = await fetch(`${url}/retention`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ maxEnvelopes }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    throw new ValidationError(
+      "Could not configure retention on the existing receiver. Start a receiver with --max-envelopes on another port.",
+      "max-envelopes",
+    );
+  }
+  const body: unknown = await response.json().catch(() => undefined);
+  if (!response.ok) {
+    const detail =
+      typeof body === "object" &&
+      body !== null &&
+      "error" in body &&
+      typeof body.error === "string"
+        ? body.error
+        : "The existing receiver does not support retention changes; choose another port.";
+    throw new ValidationError(redactCredentialText(detail), "max-envelopes");
+  }
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("maxEnvelopes" in body) ||
+    body.maxEnvelopes !== maxEnvelopes
+  ) {
+    throw new ValidationError(
+      "The existing receiver did not confirm the requested retention limit; choose another port.",
+      "max-envelopes",
+    );
+  }
 }
 
 /** Mutable state for the SSE line parser. */
@@ -939,6 +1040,7 @@ export const serverCommand = buildCommand({
         brief: "Open Sentry Local UI in the browser",
         default: false,
       },
+      "max-envelopes": OPTIONAL_MAX_ENVELOPES_FLAG,
       session: {
         kind: "parsed",
         parse: String,
@@ -966,6 +1068,7 @@ export const serverCommand = buildCommand({
       const { createLocalDaemonSession, retainLocalDaemonSession } =
         await import("./daemon.js");
       const session = await createLocalDaemonSession({
+        maxEnvelopes: flags["max-envelopes"],
         cwd: this.cwd,
         host: flags.host,
         label: flags.session || basename(this.cwd),
@@ -1002,6 +1105,7 @@ export const serverCommand = buildCommand({
     }
 
     if (await isServerRunning(url)) {
+      await configureExistingRetention(url, flags["max-envelopes"]);
       logger.info(`Connected to existing server at ${bold(url)}`);
       await openLocalUiIfRequested(flags.open, url);
       if (activeFilters.size > 0) {
@@ -1035,7 +1139,10 @@ export const serverCommand = buildCommand({
       return;
     }
 
-    const buffer = createSpotlightBuffer(BUFFER_SIZE);
+    const retention = createLocalRetentionBuffer(
+      flags["max-envelopes"] ?? BUFFER_SIZE,
+    );
+    const buffer = retention.buffer;
     const useJson = flags.format === "json";
 
     if (!flags.quiet) {
@@ -1057,7 +1164,10 @@ export const serverCommand = buildCommand({
       });
     }
 
-    const app = buildApp(buffer, { uiActions: isLoopbackHost(flags.host) });
+    const app = buildApp(buffer, {
+      uiActions: isLoopbackHost(flags.host),
+      retention,
+    });
 
     const { server, port: boundPort } = await tryListen(
       app,

@@ -14,6 +14,28 @@ function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
 }
 
 describe("LocalTelemetryStore", () => {
+  test("retains every decoded item in the retained envelopes and grows without clearing", () => {
+    const store = createLocalTelemetryStore({ limit: 2 });
+    const raw = (id: string) => item({ id, type: "envelope" });
+    store.recordEnvelope(raw("one"), [
+      item({ id: "one:0" }),
+      item({ id: "one:1" }),
+      item({ id: "one:2" }),
+    ]);
+    store.recordEnvelope(raw("two"), [item({ id: "two:0" })]);
+    expect(store.getSnapshot().items).toHaveLength(4);
+    store.setLimit(3);
+    expect(store.getSnapshot().items).toHaveLength(4);
+    store.recordEnvelope(raw("three"), [item({ id: "three:0" })]);
+    expect(store.getSnapshot().envelopes).toHaveLength(3);
+    store.recordEnvelope(raw("four"), [item({ id: "four:0" })]);
+    expect(store.getSnapshot().items.map((entry) => entry.id)).toEqual([
+      "two:0",
+      "three:0",
+      "four:0",
+    ]);
+  });
+
   test("indexes a bounded session by its observability view", () => {
     const store = createLocalTelemetryStore({ limit: 3 });
 

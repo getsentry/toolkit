@@ -1,3 +1,7 @@
+import {
+  DEFAULT_MAX_ENVELOPES,
+  isValidMaxEnvelopes,
+} from "../../../../packages/cli/src/commands/local/retention-limits.ts";
 import type { LocalFeedItem } from "./spotlight.ts";
 import { isAiEvent, isErrorEvent } from "./workspace.ts";
 
@@ -16,7 +20,11 @@ export type LocalTelemetrySnapshot = {
 
 export type LocalTelemetryStore = {
   append: (items: readonly LocalFeedItem[]) => void;
-  recordEnvelope: (envelope: LocalFeedItem) => void;
+  recordEnvelope: (
+    envelope: LocalFeedItem,
+    items?: readonly LocalFeedItem[],
+  ) => void;
+  setLimit: (limit: number) => void;
   clear: () => void;
   getSnapshot: () => LocalTelemetrySnapshot;
   subscribe: (listener: () => void) => () => void;
@@ -66,9 +74,12 @@ function buildSnapshot(
  * It intentionally has no browser persistence: restarting a receiver starts a new session.
  */
 export function createLocalTelemetryStore({
-  limit = 500,
+  limit = DEFAULT_MAX_ENVELOPES,
 }: { limit?: number } = {}): LocalTelemetryStore {
+  if (!isValidMaxEnvelopes(limit))
+    throw new Error("Invalid envelope retention limit.");
   let snapshot = EMPTY_SNAPSHOT;
+  const envelopeItems = new Map<string, readonly LocalFeedItem[]>();
   const listeners = new Set<() => void>();
 
   function publish(items: LocalFeedItem[], envelopes = snapshot.envelopes) {
@@ -98,13 +109,29 @@ export function createLocalTelemetryStore({
 
       publish([...snapshot.items, ...newItems].slice(-limit));
     },
-    recordEnvelope(envelope) {
+    setLimit(value) {
+      if (!isValidMaxEnvelopes(value))
+        throw new Error("Invalid envelope retention limit.");
+      limit = value;
+    },
+    recordEnvelope(envelope, decoded) {
       if (snapshot.envelopes.some((item) => item.id === envelope.id)) {
         return;
       }
-      publish(snapshot.items, [...snapshot.envelopes, envelope].slice(-limit));
+      if (decoded) envelopeItems.set(envelope.id, decoded);
+      const envelopes = [...snapshot.envelopes, envelope].slice(-limit);
+      const retainedIds = new Set(envelopes.map((item) => item.id));
+      for (const id of envelopeItems.keys())
+        if (!retainedIds.has(id)) envelopeItems.delete(id);
+      publish(
+        decoded
+          ? envelopes.flatMap((item) => [...(envelopeItems.get(item.id) ?? [])])
+          : snapshot.items,
+        envelopes,
+      );
     },
     clear() {
+      envelopeItems.clear();
       if (snapshot.items.length > 0 || snapshot.envelopes.length > 0) {
         publish([], []);
       }

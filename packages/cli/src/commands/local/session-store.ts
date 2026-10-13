@@ -6,10 +6,16 @@
 
 import { randomBytes } from "node:crypto";
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import {
+  createLocalRetentionBuffer,
+  type LocalRetentionBuffer,
+  validateMaxEnvelopes,
+} from "./retention-buffer.js";
+import { DEFAULT_MAX_ENVELOPES } from "./retention-limits.js";
 import { uuidv7 } from "uuidv7";
 
 /** Maximum number of envelopes retained by an individual Local session. */
-export const SESSION_BUFFER_SIZE = 500;
+export const SESSION_BUFFER_SIZE = DEFAULT_MAX_ENVELOPES;
 
 /** Retained sessions remain queryable for three hours after closing. */
 export const SESSION_RETENTION_MS = 3 * 60 * 60 * 1000;
@@ -27,10 +33,12 @@ export type LocalSession = {
   readonly lastActivityAt: number;
   readonly state: LocalSessionState;
   readonly expiresAt?: number;
+  readonly maxEnvelopes: number;
 };
 
 type StoredSession = LocalSession & {
   buffer: ReturnType<typeof createSpotlightBuffer>;
+  retention: LocalRetentionBuffer;
   ingestCapability: string;
   streamCapability: string;
 };
@@ -40,6 +48,7 @@ export type CreateLocalSessionInput = {
   readonly clientId?: string;
   readonly label: string;
   readonly cwd: string;
+  readonly maxEnvelopes?: number;
 };
 
 /** A label matches multiple sessions; callers must select an explicit ID. */
@@ -55,6 +64,8 @@ export class AmbiguousLocalSessionError extends Error {
 /** In-memory session lifecycle and access to isolated telemetry buffers. */
 export type LocalSessionStore = {
   create: (input: CreateLocalSessionInput) => LocalSession;
+  setMaxEnvelopes: (reference: string, value: number) => LocalSession;
+  getRetention: (reference: string) => LocalRetentionBuffer;
   close: (reference: string) => LocalSession;
   getCapabilities: (reference: string) => {
     ingest: string;
@@ -70,6 +81,7 @@ export type LocalSessionStore = {
 function toPublicSession(session: StoredSession): LocalSession {
   const {
     buffer: _buffer,
+    retention: _retention,
     ingestCapability: _ingestCapability,
     streamCapability: _streamCapability,
     ...publicSession
@@ -119,12 +131,14 @@ export function createLocalSessionStore({
   };
 
   return {
-    create({ clientId, label, cwd }) {
+    create({ clientId, label, cwd, maxEnvelopes = DEFAULT_MAX_ENVELOPES }) {
+      validateMaxEnvelopes(maxEnvelopes);
       const existingId = clientId ? clientSessions.get(clientId) : undefined;
       if (existingId) {
         return toPublicSession(resolveStored(existingId));
       }
       const timestamp = now();
+      const retention = createLocalRetentionBuffer(maxEnvelopes);
       const session: StoredSession = {
         id: uuidv7(),
         clientId,
@@ -133,7 +147,9 @@ export function createLocalSessionStore({
         createdAt: timestamp,
         lastActivityAt: timestamp,
         state: "open",
-        buffer: createSpotlightBuffer(SESSION_BUFFER_SIZE),
+        buffer: retention.buffer,
+        retention,
+        maxEnvelopes,
         ingestCapability: randomBytes(24).toString("base64url"),
         streamCapability: randomBytes(24).toString("base64url"),
       };
@@ -142,6 +158,14 @@ export function createLocalSessionStore({
         clientSessions.set(clientId, session.id);
       }
       return toPublicSession(session);
+    },
+    getRetention(reference) {
+      return resolveStored(reference).retention;
+    },
+    setMaxEnvelopes(reference, value) {
+      const session = resolveStored(reference);
+      session.retention.resize(value);
+      return toPublicSession(update(session, { maxEnvelopes: value }));
     },
     close(reference) {
       const timestamp = now();

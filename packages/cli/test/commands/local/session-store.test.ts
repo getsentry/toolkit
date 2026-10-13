@@ -1,7 +1,78 @@
-import { describe, expect, test } from "vitest";
+import { pushToSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { describe, expect, test, vi } from "vitest";
 import { createLocalSessionStore } from "../../../src/commands/local/session-store.js";
 
 describe("LocalSessionStore", () => {
+  test("grows retention without losing envelopes, IDs or live subscribers", () => {
+    const store = createLocalSessionStore();
+    const session = store.create({
+      label: "web",
+      cwd: "/web",
+      maxEnvelopes: 2,
+    });
+    const buffer = store.getBuffer(session.id);
+    const messages: string[] = [];
+    const reader = buffer.subscribe((container) =>
+      messages.push(container.getData().toString()),
+    );
+    function ingest(id: string) {
+      pushToSpotlightBuffer({
+        spotlightBuffer: buffer,
+        contentType: "application/x-sentry-envelope",
+        body: Buffer.from(
+          `{"event_id":"${id}"}\n{"type":"event"}\n{"message":"${id}"}`,
+        ),
+      });
+      buffer.stream(reader);
+    }
+    ingest("one");
+    ingest("two");
+    const retained = buffer.read({ all: true });
+    expect(store.resolve(session.id).maxEnvelopes).toBe(2);
+    store.setMaxEnvelopes(session.id, 4);
+    expect(store.getBuffer(session.id)).toBe(buffer);
+    expect(buffer.read({ all: true })).toEqual(retained);
+    ingest("three");
+    ingest("four");
+    expect(buffer.read({ all: true })).toHaveLength(4);
+    expect(messages).toHaveLength(4);
+    expect(() => store.setMaxEnvelopes(session.id, 3)).toThrow(
+      /retained envelopes/,
+    );
+    expect(buffer.read({ all: true })).toHaveLength(4);
+    buffer.clear();
+    store.setMaxEnvelopes(session.id, 1);
+    ingest("five");
+    ingest("six");
+    expect(buffer.read({ all: true })).toHaveLength(1);
+    expect(messages).toHaveLength(6);
+    buffer.unsubscribe(reader);
+  });
+
+  test("keeps original arrival times when resizing", () => {
+    const store = createLocalSessionStore();
+    const session = store.create({
+      label: "timed",
+      cwd: "/timed",
+      maxEnvelopes: 2,
+    });
+    const buffer = store.getBuffer(session.id);
+    const time = vi.spyOn(Date, "now").mockReturnValue(1000);
+    try {
+      pushToSpotlightBuffer({
+        spotlightBuffer: buffer,
+        contentType: "application/x-sentry-envelope",
+        body: Buffer.from('{"event_id":"old"}\n{"type":"event"}\n{}'),
+      });
+      time.mockReturnValue(61001);
+      store.setMaxEnvelopes(session.id, 4);
+      expect(buffer.read({ timeWindow: 60 })).toHaveLength(0);
+      expect(buffer.read({ all: true })).toHaveLength(1);
+    } finally {
+      time.mockRestore();
+    }
+  });
+
   test("creates isolated sessions with stable IDs and readable labels", () => {
     const store = createLocalSessionStore({ now: () => 1000 });
 

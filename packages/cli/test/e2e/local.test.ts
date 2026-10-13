@@ -47,7 +47,11 @@ async function availablePort(): Promise<number> {
   return address.port;
 }
 
-async function createSession(label: string, port: number): Promise<Session> {
+async function createSession(
+  label: string,
+  port: number,
+  maxEnvelopes?: number,
+): Promise<Session> {
   const result = await cli(
     "session",
     "create",
@@ -56,6 +60,9 @@ async function createSession(label: string, port: number): Promise<Session> {
     "127.0.0.1",
     "--port",
     String(port),
+    ...(maxEnvelopes === undefined
+      ? []
+      : ["--max-envelopes", String(maxEnvelopes)]),
   );
   expect(result.exitCode, result.stderr).toBe(0);
   return JSON.parse(result.stdout) as Session;
@@ -280,6 +287,103 @@ describe("Local daemon E2E", () => {
     ).toContain("worker event");
   }, 30_000);
 
+  test("configures retention and grows a live session without losing history or replaying duplicates", async () => {
+    const session = await createSession("limits", await availablePort(), 2);
+    await ingest(session, "one", "one");
+    await ingest(session, "two", "two");
+    const before = JSON.parse(
+      (await cli("event", "list", session.id)).stdout,
+    ).events;
+    const streamUrl = new URL(session.streamUrl);
+    streamUrl.searchParams.set("retention", "1");
+    const response = await fetch(streamUrl, {
+      signal: AbortSignal.timeout(30000),
+    });
+    const reader = response.body!.getReader();
+    let text = "";
+    async function until(marker: string) {
+      while (!text.includes(marker)) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error("Stream closed");
+        text += new TextDecoder().decode(chunk.value);
+      }
+    }
+    try {
+      await until('"message":"two"');
+      const grown = await cli(
+        "session",
+        "retention",
+        session.id,
+        "--max-envelopes",
+        "4",
+      );
+      expect(grown.exitCode, grown.stderr).toBe(0);
+      expect(JSON.parse(grown.stdout)).toMatchObject({
+        maxEnvelopes: 4,
+        retainedEnvelopes: 2,
+      });
+      await until('"maxEnvelopes":4');
+      await ingest(session, "three", "three");
+      await ingest(session, "four", "four");
+      await until('"message":"four"');
+      expect(text.match(/"message":"one"/g)).toHaveLength(1);
+      const after = JSON.parse(
+        (await cli("event", "list", session.id)).stdout,
+      ).events;
+      expect(after).toHaveLength(4);
+      for (const event of before) expect(after).toContainEqual(event);
+      const rejected = await cli(
+        "session",
+        "retention",
+        session.id,
+        "--max-envelopes",
+        "3",
+      );
+      expect(rejected.exitCode).not.toBe(0);
+      expect(rejected.stderr).toContain("4 retained envelopes");
+      const uiUrl = new URL(session.streamUrl);
+      uiUrl.pathname = uiUrl.pathname.replace(/stream$/, "ui/retention");
+      const updated = await fetch(uiUrl, {
+        method: "POST",
+        headers: {
+          Origin: "http://localhost:5173",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ maxEnvelopes: 6 }),
+      });
+      expect(updated.status).toBe(200);
+      await until('"maxEnvelopes":6');
+      expect(
+        JSON.parse((await cli("event", "list", session.id)).stdout).events,
+      ).toHaveLength(4);
+      const reset = new URL(session.streamUrl);
+      reset.pathname = reset.pathname.replace(/stream$/, "ui/reset");
+      expect((await fetch(reset, { method: "POST" })).status).toBe(204);
+      expect(
+        (await cli("session", "retention", session.id, "--max-envelopes", "1"))
+          .exitCode,
+      ).toBe(0);
+      await ingest(session, "five", "five");
+      await ingest(session, "six", "six");
+      expect(
+        JSON.parse((await cli("event", "list", session.id)).stdout).events,
+      ).toMatchObject([{ eventId: "six" }]);
+    } finally {
+      await reader.cancel();
+    }
+    for (const value of ["0", "1.5", "50001"]) {
+      const invalid = await cli(
+        "session",
+        "create",
+        "invalid",
+        "--max-envelopes",
+        value,
+      );
+      expect(invalid.exitCode).not.toBe(0);
+      expect(invalid.stderr).toContain("Retention limit must be an integer");
+    }
+  }, 30_000);
+
   test("queries SDK event IDs from item headers and payloads", async () => {
     const session = await createSession("sdk IDs", await availablePort());
     for (const [itemHeader, payload] of [
@@ -360,6 +464,8 @@ describe("Local daemon E2E", () => {
         "run",
         "--session",
         "wrapped",
+        "--max-envelopes",
+        "1000",
         "--host",
         "127.0.0.1",
         "--port",
@@ -384,7 +490,7 @@ describe("Local daemon E2E", () => {
     expect(result.stdout).toContain("wrapped app");
     const listed = await cli("session", "list");
     expect(JSON.parse(listed.stdout)).toMatchObject({
-      sessions: [{ label: "wrapped", state: "retained" }],
+      sessions: [{ label: "wrapped", state: "retained", maxEnvelopes: 1000 }],
     });
     expect(
       (await cli("event", "view", "wrapped", "c".repeat(32))).stdout,
@@ -568,6 +674,85 @@ describe("Local daemon E2E", () => {
 });
 
 describe("Local foreground commands", () => {
+  test("run configures a plain receiver and explicit attachment preserves retained envelopes", async () => {
+    const { createLocalRetentionBuffer } =
+      await import("../../src/commands/local/retention-buffer.js");
+    const { buildApp, tryListen } =
+      await import("../../src/commands/local/server.js");
+    const retention = createLocalRetentionBuffer(2);
+    const receiver = await tryListen(
+      buildApp(retention.buffer, { uiActions: true, retention }),
+      0,
+      "127.0.0.1",
+    );
+    const script = join(getConfigDir(), "legacy-app.cjs");
+    await writeFile(
+      script,
+      `fetch(new URL('/capabilities',process.env.SENTRY_SPOTLIGHT)).then(r=>r.json()).then(settings=>{console.log('limit='+settings.maxEnvelopes);if(settings.maxEnvelopes!==1000)process.exitCode=2;});`,
+    );
+    try {
+      await fetch(`http://127.0.0.1:${receiver.port}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-sentry-envelope" },
+        body: '{}\n{"type":"event"}\n{"message":"preserved"}',
+      });
+      const before = retention.buffer.read({ all: true });
+      for (const explicit of [true, false]) {
+        const result = await runCli(
+          [
+            "local",
+            "run",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            String(receiver.port),
+            ...(explicit ? ["--max-envelopes", "1000"] : []),
+            "--",
+            process.execPath,
+            script,
+          ],
+          {
+            env: {
+              SENTRY_CONFIG_DIR: getConfigDir(),
+              SENTRY_CLI_NO_TELEMETRY: "1",
+            },
+          },
+        );
+        expect(result.exitCode, result.stderr).toBe(0);
+        expect(result.stdout).toContain("limit=1000");
+        expect(retention.buffer.read({ all: true })).toEqual(before);
+      }
+      const created = await runCli(
+        [
+          "local",
+          "run",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(await availablePort()),
+          "--max-envelopes",
+          "1000",
+          "--",
+          process.execPath,
+          script,
+        ],
+        {
+          env: {
+            SENTRY_CONFIG_DIR: getConfigDir(),
+            SENTRY_CLI_NO_TELEMETRY: "1",
+          },
+        },
+      );
+      expect(created.exitCode, created.stderr).toBe(0);
+      expect(created.stdout).toContain("limit=1000");
+    } finally {
+      receiver.server.closeAllConnections();
+      await new Promise<void>((resolve) =>
+        receiver.server.close(() => resolve()),
+      );
+    }
+  }, 30000);
+
   test("serve consumes the scoped stream and a second foreground daemon cannot replace discovery", async () => {
     const { spawn } = await import("node:child_process");
     const { getCliCommand } = await import("../fixture.js");
@@ -600,6 +785,8 @@ describe("Local foreground commands", () => {
         "serve",
         "--session",
         "serve-e2e",
+        "--max-envelopes",
+        "1500",
         "--format",
         "json",
       ],
@@ -648,6 +835,9 @@ describe("Local foreground commands", () => {
       const scoped = JSON.parse(
         (await cli("session", "view", id)).stdout,
       ) as Session;
+      expect(
+        JSON.parse((await cli("session", "retention", id)).stdout).maxEnvelopes,
+      ).toBe(1500);
       await ingest(scoped, "e".repeat(32), "serve session");
       await expect
         .poll(() => stdout, { timeout: 5000 })

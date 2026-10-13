@@ -10,6 +10,39 @@ function controlHeaders() {
 }
 
 describe("Local control plane", () => {
+  test("validates retention settings and keeps scoped mutation loopback-only", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const created = await plane.app.request("/_local/v1/sessions", {
+      method: "POST",
+      headers: controlHeaders(),
+      body: JSON.stringify({ label: "web", cwd: "/web", maxEnvelopes: 1000 }),
+    });
+    const session = await created.json();
+    expect(session.maxEnvelopes).toBe(1000);
+    const path = `/_local/v1/sessions/${session.id}/ui/retention?cap=${plane.sessionStore.getCapabilities(session.id).stream}`;
+    for (const origin of ["https://local.sentry.dev", "https://example.com"]) {
+      const result = await plane.app.request(path, {
+        method: "POST",
+        headers: { Origin: origin },
+        body: JSON.stringify({ maxEnvelopes: 2000 }),
+      });
+      expect(result.status).toBe(403);
+    }
+    const result = await plane.app.request(path, {
+      method: "POST",
+      headers: { Origin: "http://localhost:5173" },
+      body: JSON.stringify({ maxEnvelopes: 2000 }),
+    });
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({ maxEnvelopes: 2000 });
+    const invalid = await plane.app.request(path, {
+      method: "POST",
+      body: JSON.stringify({ maxEnvelopes: 0 }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(plane.sessionStore.resolve(session.id).maxEnvelopes).toBe(2000);
+  });
+
   test("reports ambiguous session names with ID guidance across control routes", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
     const one = plane.sessionStore.create({ label: "My App", cwd: "/one" });

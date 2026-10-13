@@ -20,7 +20,6 @@ import {
 } from "node:child_process";
 import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
@@ -44,6 +43,7 @@ import {
   DEFAULT_PORT,
   isLoopbackHost,
   isServerRunning,
+  configureExistingRetention,
   parseFilter,
   parseFormat,
   parsePort,
@@ -55,6 +55,11 @@ import {
   validateOpenHost,
 } from "./ui.js";
 
+import {
+  createLocalRetentionBuffer,
+  OPTIONAL_MAX_ENVELOPES_FLAG,
+} from "./retention-buffer.js";
+
 type RunFlags = {
   readonly port: number;
   readonly host: string;
@@ -65,6 +70,7 @@ type RunFlags = {
   readonly attributes: boolean;
   readonly open: boolean;
   readonly session?: string;
+  readonly "max-envelopes"?: number;
 };
 
 /** Buffer size for the auto-started background server. */
@@ -140,6 +146,7 @@ type EventTailOptions = {
   activeFilters: ReadonlySet<FilterValue>;
   useJson: boolean;
   showAttributes: boolean;
+  maxEnvelopes?: number;
 };
 
 /** Keep stdout exclusively for NDJSON when an agent requests JSON output. */
@@ -213,9 +220,11 @@ async function startBackgroundServer({
   activeFilters,
   useJson,
   showAttributes,
+  maxEnvelopes,
 }: EventTailOptions): Promise<EventTail> {
-  const buffer = createSpotlightBuffer(BUFFER_SIZE);
-  const app = buildApp(buffer, { uiActions: isLoopbackHost(host) });
+  const retention = createLocalRetentionBuffer(maxEnvelopes);
+  const buffer = retention.buffer;
+  const app = buildApp(buffer, { uiActions: isLoopbackHost(host), retention });
   const { server, port: boundPort } = await tryListen(app, port, host);
   const url = formatLocalServerUrl(host, boundPort);
 
@@ -261,10 +270,12 @@ async function openEventTail({
   activeFilters,
   useJson,
   showAttributes,
+  maxEnvelopes,
 }: EventTailOptions): Promise<EventTail> {
   const url = formatLocalServerUrl(host, port);
 
   if (await isServerRunning(url)) {
+    await configureExistingRetention(url, maxEnvelopes);
     logger.info(`Connected to existing server at ${bold(url)}`);
     return attachToExistingServer({
       activeFilters,
@@ -277,6 +288,7 @@ async function openEventTail({
   logger.info("No server detected, starting one in the background...");
   try {
     const bg = await startBackgroundServer({
+      maxEnvelopes,
       port,
       host,
       activeFilters,
@@ -289,6 +301,7 @@ async function openEventTail({
     if (!(err instanceof ValidationError && err.field === "port")) {
       throw err;
     }
+    await configureExistingRetention(url, maxEnvelopes);
     // Something grabbed the port between the probe and the bind.
     logger.warn(`${err.message}; attaching to it instead`);
     return attachToExistingServer({
@@ -443,6 +456,7 @@ export const runCommand = buildCommand({
         brief: "Open Sentry Local UI in the browser",
         default: false,
       },
+      "max-envelopes": OPTIONAL_MAX_ENVELOPES_FLAG,
       session: {
         kind: "parsed",
         parse: String,
@@ -484,6 +498,7 @@ export const runCommand = buildCommand({
     const tail = flags.session
       ? await (async () => {
           const session = await createLocalDaemonSession({
+            maxEnvelopes: flags["max-envelopes"],
             cwd: this.cwd,
             host: flags.host,
             label: flags.session || basename(this.cwd),
@@ -501,6 +516,7 @@ export const runCommand = buildCommand({
           });
         })()
       : await openEventTail({
+          maxEnvelopes: flags["max-envelopes"],
           port: flags.port,
           host: flags.host,
           activeFilters,
@@ -650,8 +666,12 @@ async function* runWithVerify(
   cwd: string,
   commandSource: string,
 ): AsyncGenerator<never, void, unknown> {
-  const buffer = createSpotlightBuffer(BUFFER_SIZE);
-  const app = buildApp(buffer, { uiActions: isLoopbackHost(flags.host) });
+  const retention = createLocalRetentionBuffer(flags["max-envelopes"]);
+  const buffer = retention.buffer;
+  const app = buildApp(buffer, {
+    uiActions: isLoopbackHost(flags.host),
+    retention,
+  });
   const { server, port: boundPort } = await tryListen(
     app,
     flags.port,

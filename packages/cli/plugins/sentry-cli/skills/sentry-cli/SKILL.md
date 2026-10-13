@@ -753,6 +753,7 @@ Sentry for local development
 - `sentry local event view <session event...>` — View a decoded Local event
 - `sentry local serve` — Start the local dev server and tail events
 - `sentry local session create <name...>` — Create a Local telemetry session
+- `sentry local session retention <session...>` — View or change session envelope retention
 - `sentry local session list` — List Local telemetry sessions
 - `sentry local session view <session...>` — View a Local telemetry session
 - `sentry local session close <session...>` — Close a Local telemetry session

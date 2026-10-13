@@ -21,11 +21,17 @@ import {
   type LocalSessionStore,
 } from "./session-store.js";
 
+import { LOCAL_RETENTION_EVENT } from "./retention-limits.js";
+import {
+  RetentionLimitError,
+  validateMaxEnvelopes,
+} from "./retention-buffer.js";
+
 export const CONTROL_PLANE_PREFIX = "/_local/v1";
 const LOOPBACK_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 const SESSION_UI_ACTION_RE =
-  /^\/_local\/v1\/sessions\/[^/]+\/ui\/(reset|close)$/;
+  /^\/_local\/v1\/sessions\/[^/]+\/ui\/(reset|close|retention)$/;
 const SESSION_INGEST_RE = /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+$/;
 const SESSION_STREAM_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
@@ -206,6 +212,7 @@ export function createLocalControlPlane({
     `${CONTROL_PLANE_PREFIX}/sessions/:id/ui/*`,
     cors({
       allowMethods: ["POST", "OPTIONS"],
+      allowHeaders: ["Content-Type"],
       origin: (origin) => (LOOPBACK_ORIGIN_RE.test(origin) ? origin : null),
     }),
   );
@@ -245,12 +252,22 @@ export function createLocalControlPlane({
     ) {
       return c.json({ error: "label and cwd are required." }, 400);
     }
-    const { clientId, label, cwd } = input as {
+    const { clientId, label, cwd, maxEnvelopes } = input as {
       clientId?: string;
       label: string;
       cwd: string;
+      maxEnvelopes?: number;
     };
-    const session = sessionStore.create({ clientId, label, cwd });
+    if (maxEnvelopes !== undefined) {
+      try {
+        validateMaxEnvelopes(maxEnvelopes);
+      } catch (error) {
+        if (error instanceof RetentionLimitError)
+          return c.json({ error: error.message }, error.status);
+        throw error;
+      }
+    }
+    const session = sessionStore.create({ clientId, label, cwd, maxEnvelopes });
     const capabilities = sessionStore.getCapabilities(session.id);
     const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}`;
     return c.json(
@@ -318,6 +335,25 @@ export function createLocalControlPlane({
       return c.body(null, 401);
     }
     return streamSSE(c, async (stream) => {
+      const retention = sessionStore.getRetention(c.req.param("id"));
+      const sendSettings = (
+        settings: ReturnType<typeof retention.getSettings>,
+      ) => {
+        void stream
+          .writeSSE({
+            event: LOCAL_RETENTION_EVENT,
+            data: JSON.stringify(settings),
+          })
+          .catch((error) =>
+            logger.debug("Local retention stream closed", error),
+          );
+      };
+      const unsubscribeSettings =
+        c.req.query("retention") === "1"
+          ? retention.subscribeSettings(sendSettings)
+          : () => {};
+      if (c.req.query("retention") === "1")
+        sendSettings(retention.getSettings());
       const readerId = buffer.subscribe(
         buildSSEHandler(stream, c.req.query("base64") !== undefined),
         c.req.header("Last-Event-ID"),
@@ -325,11 +361,39 @@ export function createLocalControlPlane({
       await new Promise<void>((resolve) => {
         stream.onAbort(() => {
           buffer.unsubscribe(readerId);
+          unsubscribeSettings();
           resolve();
         });
       });
     });
   });
+
+  const updateRetention = async (c: Context) => {
+    const input: unknown = await c.req.json().catch(() => undefined);
+    const value =
+      typeof input === "object" && input !== null && "maxEnvelopes" in input
+        ? input.maxEnvelopes
+        : undefined;
+    try {
+      validateMaxEnvelopes(value);
+      sessionStore.setMaxEnvelopes(c.req.param("id") ?? "", value);
+      return c.json(
+        sessionStore.getRetention(c.req.param("id") ?? "").getSettings(),
+      );
+    } catch (error) {
+      if (error instanceof RetentionLimitError)
+        return c.json({ error: error.message }, error.status);
+      throw error;
+    }
+  };
+  app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, (c) =>
+    sessionExists(c.req.param("id"))
+      ? c.json(sessionStore.getRetention(c.req.param("id")).getSettings())
+      : c.body(null, 404),
+  );
+  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, (c) =>
+    sessionExists(c.req.param("id")) ? updateRetention(c) : c.body(null, 404),
+  );
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/reset`, (c) => {
     if (!sessionExists(c.req.param("id"))) {
@@ -346,7 +410,7 @@ export function createLocalControlPlane({
     return c.json(sessionStore.close(c.req.param("id")));
   });
 
-  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/ui/:action`, (c) => {
+  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/ui/:action`, async (c) => {
     if (!(isSessionUiAction(c.req.path) && sessionExists(c.req.param("id")))) {
       return c.body(null, 404);
     }
@@ -359,6 +423,7 @@ export function createLocalControlPlane({
     ) {
       return c.body(null, 401);
     }
+    if (c.req.param("action") === "retention") return updateRetention(c);
     if (c.req.param("action") === "reset") {
       sessionStore.getBuffer(c.req.param("id")).clear();
       return c.body(null, 204);

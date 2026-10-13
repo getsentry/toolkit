@@ -18,12 +18,18 @@ import { parsePort } from "./server.js";
 import { logger } from "../../lib/logger.js";
 import { redactCredentialText } from "../../lib/credential-redaction.js";
 
+import {
+  MAX_ENVELOPES_FLAG,
+  OPTIONAL_MAX_ENVELOPES_FLAG,
+} from "./retention-buffer.js";
+
 type DaemonFlags = {
   readonly foreground: boolean;
   readonly host: string;
   readonly port: number;
 };
 type SessionFlags = {
+  readonly "max-envelopes": number;
   readonly clientId?: string;
   readonly host: string;
   readonly port: number;
@@ -213,6 +219,7 @@ const sessionCreateCommand = buildCommand({
         optional: true,
       },
       ...DAEMON_CONNECTION_FLAGS,
+      "max-envelopes": MAX_ENVELOPES_FLAG,
     },
     positional: {
       kind: "array",
@@ -233,6 +240,7 @@ const sessionCreateCommand = buildCommand({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             clientId: flags.clientId,
+            maxEnvelopes: flags["max-envelopes"],
             label,
             cwd: this.cwd,
           }),
@@ -307,6 +315,34 @@ function buildTelemetryViewCommand(
   });
 }
 
+const sessionRetentionCommand = buildCommand({
+  ...CONTROL_COMMAND_DEFAULTS,
+  docs: { brief: "View or change session envelope retention" },
+  parameters: {
+    flags: { "max-envelopes": OPTIONAL_MAX_ENVELOPES_FLAG },
+    positional: SESSION_REFERENCE_POSITIONAL,
+  },
+  async *func(
+    flags: { readonly "max-envelopes"?: number },
+    ...parts: string[]
+  ) {
+    const path = `/sessions/${encodeURIComponent(singleReference(parts))}/retention`;
+    const value = flags["max-envelopes"];
+    yield new CommandOutput(
+      await controlJson(
+        path,
+        value === undefined
+          ? {}
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ maxEnvelopes: value }),
+            },
+      ),
+    );
+  },
+});
+
 export const daemonRoute = buildRouteMap({
   routes: {
     start: daemonStartCommand,
@@ -320,6 +356,7 @@ export const daemonRoute = buildRouteMap({
 export const sessionRoute = buildRouteMap({
   routes: {
     create: sessionCreateCommand,
+    retention: sessionRetentionCommand,
     list: sessionListCommand,
     view: buildSessionCommand("View a Local telemetry session"),
     close: buildSessionCommand(
