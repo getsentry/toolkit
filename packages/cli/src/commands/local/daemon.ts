@@ -223,30 +223,30 @@ export async function claimDaemonOwnership(
   directory: string,
 ): Promise<() => Promise<void>> {
   const path = join(directory, "local-control-plane.owner");
+  const tryClaim = async () => {
+    let lock: Awaited<ReturnType<typeof open>>;
+    try {
+      lock = await open(path, "wx", 0o600);
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "EEXIST")
+        return undefined;
+      throw error;
+    }
+    try {
+      await lock.writeFile(String(process.pid), "utf8");
+    } finally {
+      await lock.close();
+    }
+    return () =>
+      withDaemonOwnershipGuard(directory, async () => {
+        if ((await readOwnerPid(path)) === process.pid)
+          await rm(path, { force: true });
+      });
+  };
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const release = await withDaemonOwnershipGuard(directory, async () => {
-      try {
-        const lock = await open(path, "wx", 0o600);
-        try {
-          await lock.writeFile(String(process.pid), "utf8");
-        } finally {
-          await lock.close();
-        }
-        return () =>
-          withDaemonOwnershipGuard(directory, async () => {
-            if ((await readOwnerPid(path)) === process.pid)
-              await rm(path, { force: true });
-          });
-      } catch (error) {
-        if (
-          !(
-            error instanceof Error &&
-            "code" in error &&
-            error.code === "EEXIST"
-          )
-        )
-          throw error;
-      }
+      const claimed = await tryClaim();
+      if (claimed) return claimed;
       try {
         const ownerText = await readFile(path, "utf8");
         const owner = Number(ownerText);
@@ -268,6 +268,8 @@ export async function claimDaemonOwnership(
             (!validPid || !isProcessRunning(owner))
           ) {
             await rm(path, { force: true });
+            // Claim while the guard is still held, even on the final recovery attempt.
+            return tryClaim();
           }
         }
       } catch (error) {
@@ -279,6 +281,7 @@ export async function claimDaemonOwnership(
           )
         )
           throw error;
+        return tryClaim();
       }
       return undefined;
     });

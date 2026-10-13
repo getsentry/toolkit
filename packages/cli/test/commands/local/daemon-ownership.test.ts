@@ -32,6 +32,44 @@ describe("Local daemon ownership", () => {
     },
   );
 
+  test("claims an invalid owner that expires on the last recovery inspection", async () => {
+    const fs =
+      await vi.importActual<typeof import("node:fs/promises")>(
+        "node:fs/promises",
+      );
+    const directory = getConfigDir();
+    await mkdir(directory, { recursive: true });
+    const owner = join(directory, "local-control-plane.owner");
+    await writeFile(owner, "");
+    const snapshot = await fs.stat(owner);
+    let inspection = 0;
+    // Hold the invalid file inside its grace period until the retry boundary.
+    vi.spyOn(Date, "now").mockImplementation(
+      () => snapshot.mtimeMs + (++inspection < 40 ? 5000 : 5001),
+    );
+    const release = await claimDaemonOwnership(directory);
+    try {
+      expect(await fs.readFile(owner, "utf8")).toBe(String(process.pid));
+    } finally {
+      await release();
+    }
+  });
+
+  test("preserves a recent invalid owner while its grace period has not elapsed", async () => {
+    const fs =
+      await vi.importActual<typeof import("node:fs/promises")>(
+        "node:fs/promises",
+      );
+    const directory = getConfigDir();
+    await mkdir(directory, { recursive: true });
+    const owner = join(directory, "local-control-plane.owner");
+    await writeFile(owner, "");
+    const snapshot = await fs.stat(owner);
+    vi.spyOn(Date, "now").mockReturnValue(snapshot.mtimeMs + 5000);
+    await expect(claimDaemonOwnership(directory)).rejects.toThrow(/Timed out/);
+    expect(await fs.readFile(owner, "utf8")).toBe("");
+  });
+
   test("preserves a replacement live owner when its old snapshot is dead", async () => {
     const directory = getConfigDir();
     await mkdir(directory, { recursive: true });

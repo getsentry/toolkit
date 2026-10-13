@@ -2,7 +2,7 @@
 import { createServer } from "node:net";
 import { createServer as createHttpServer } from "node:http";
 import { rmSync } from "node:fs";
-import { readFile, stat, rm, writeFile } from "node:fs/promises";
+import { readFile, stat, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
@@ -550,6 +550,31 @@ describe("Local daemon E2E", () => {
       "Local real SDK event",
     );
   }, 30_000);
+
+  test("recovers an expired incomplete owner and preserves live singleton ownership", async () => {
+    const owner = join(getConfigDir(), "local-control-plane.owner");
+    await writeFile(owner, "");
+    const expired = new Date(Date.now() - 6000);
+    await utimes(owner, expired, expired);
+    const first = await createSession("reclaimed-owner", await availablePort());
+    const pid = await readFile(owner, "utf8");
+    expect(Number(pid)).toBeGreaterThan(0);
+    await createSession("same-owner", await availablePort());
+    expect(await readFile(owner, "utf8")).toBe(pid);
+    await ingest(first, "owner-recovery", "recovered receiver");
+    expect(
+      JSON.parse((await cli("event", "list", first.id)).stdout),
+    ).toMatchObject({
+      events: [{ eventId: "owner-recovery" }],
+    });
+    expect(
+      (await cli("event", "view", first.id, "owner-recovery")).stdout,
+    ).toContain("recovered receiver");
+    await cli("daemon", "stop");
+    await expect(readFile(owner, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  }, 30000);
 
   test("waits for the port retry window during concurrent daemon startup", async () => {
     const server = createServer();

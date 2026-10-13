@@ -43,6 +43,8 @@ process dies during that critical section, startup preserves the guard and repor
 its path; confirm the owning process has stopped before removing the guard and
 retrying.
 Startup waits through the listener retry window and preserves active startup locks.
+Incomplete owner files receive a five-second grace period. Once safely reclaimed,
+ownership is claimed under the same guard, including on the final retry.
 
 When a managed daemon owns the requested port, plain `local run` and `local serve`
 require `--session <name>` or a different `--port`; they cannot use its protected
