@@ -159,8 +159,17 @@ Instead of using `span.op` patterns, use `has:` queries for more flexible attrib
 - Gauge examples: `avg(value,cpu.usage,gauge,percent)`, `max(value,cpu.usage,gauge,percent)`
 - Distribution examples: `p75(value,http.request.duration,distribution,millisecond)`, `p95(value,http.request.duration,distribution,millisecond)`
 
+#### Conditional Aggregates (`_if`)
+Spans, logs, and metrics append `_if` to an aggregate and take a backtick-wrapped search filter as the first argument. The remaining arguments match the base function.
+
+- Spans: ``count_if(`span.op:db`)``, ``count_if(`span.duration:>100`)``, ``avg_if(`span.duration:<=100`,span.duration)``, ``p95_if(`has:db.statement`,span.duration)``
+- Logs: ``count_if(`severity:error`)``, ``avg_if(`severity:error`,severity_number)``
+- Metrics: ``sum_if(`environment:production`,value,request_count,counter,-)``, ``p95_if(`release:1.2.3`,value,http.request.duration,distribution,millisecond)``
+
+The same form applies to `count_unique_if`, `sum_if`, `min_if`, `max_if`, percentile `_if` functions, and metric `per_second_if` / `per_minute_if`.
+
 #### Errors-Specific Functions
-- `count_if(field,equals,value)` - Conditional count
+- `count_if(field,equals,value)` - Conditional count, e.g. `count_if(error.handled,equals,false)`. This three-argument form is errors-only
 - `last_seen()` - Most recent timestamp
 - `eps()` - Events per second rate
 
