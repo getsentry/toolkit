@@ -29,7 +29,8 @@ describe("Local control plane", () => {
       streamUrl: string;
     };
     expect(session.label).toBe("web");
-    expect(session.ingestUrl).toContain(`/${session.id}/stream?cap=`);
+    expect(session.ingestUrl).toContain(`/${session.id}/ingest/`);
+    expect(new URL(session.ingestUrl).search).toBe("");
     expect(session.streamUrl).toContain(`/${session.id}/stream?cap=`);
     expect(session.ingestUrl).not.toBe(session.streamUrl);
 
@@ -75,10 +76,66 @@ describe("Local control plane", () => {
     ).toHaveLength(1);
 
     const rejected = await controlPlane.app.request(
-      session.ingestUrl.replace(/cap=[^&]+/, "cap=wrong"),
+      session.ingestUrl.replace(/\/ingest\/[^/]+$/, "/ingest/wrong"),
       { method: "POST", body: envelope },
     );
     expect(rejected.status).toBe(401);
+  });
+
+  test("protects pathname ingestion from read capabilities and remote browser writes", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({
+      label: "sdk",
+      cwd: "/work/sdk",
+    });
+    const caps = plane.sessionStore.getCapabilities(session.id);
+    const path = `/_local/v1/sessions/${session.id}/ingest`;
+    expect(
+      (await plane.app.request(`${path}/${caps.stream}`, { method: "POST" }))
+        .status,
+    ).toBe(401);
+    expect(
+      (
+        await plane.app.request(`${path}/wrong?cap=${caps.ingest}`, {
+          method: "POST",
+        })
+      ).status,
+    ).toBe(401);
+    expect((await plane.app.request(`${path}/${caps.ingest}`)).status).toBe(
+      401,
+    );
+    for (const origin of ["https://local.sentry.dev", "https://example.com"]) {
+      expect(
+        (
+          await plane.app.request(`${path}/${caps.ingest}`, {
+            method: "POST",
+            headers: { Origin: origin },
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await plane.app.request(`${path}/${caps.ingest}`, {
+            method: "OPTIONS",
+            headers: {
+              Origin: origin,
+              "Access-Control-Request-Method": "POST",
+            },
+          })
+        ).status,
+      ).toBe(403);
+    }
+    const preflight = await plane.app.request(`${path}/${caps.ingest}`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:5173",
+        "Access-Control-Request-Method": "POST",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:5173",
+    );
   });
 
   test("allows subscribers only through the session stream capability", async () => {

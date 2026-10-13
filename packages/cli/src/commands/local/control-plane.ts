@@ -7,7 +7,7 @@
 
 import { Buffer } from "node:buffer";
 import { pushToSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
@@ -24,6 +24,7 @@ const LOOPBACK_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 const SESSION_UI_ACTION_RE =
   /^\/_local\/v1\/sessions\/[^/]+\/ui\/(reset|close)$/;
+const SESSION_INGEST_RE = /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+$/;
 const SESSION_STREAM_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
 /** Authenticated HTTP application and its in-memory session registry. */
@@ -93,7 +94,12 @@ export function createLocalControlPlane({
   app.get("/health", (c) => c.text("OK"));
 
   app.use(`${CONTROL_PLANE_PREFIX}/*`, async (c, next) => {
-    if (SESSION_STREAM_RE.test(c.req.path) || isSessionUiAction(c.req.path)) {
+    if (
+      SESSION_STREAM_RE.test(c.req.path) ||
+      ((c.req.method === "POST" || c.req.method === "OPTIONS") &&
+        SESSION_INGEST_RE.test(c.req.path)) ||
+      isSessionUiAction(c.req.path)
+    ) {
       await next();
       return;
     }
@@ -112,6 +118,15 @@ export function createLocalControlPlane({
     allowMethods: ["GET", "POST", "OPTIONS"],
     origin: (origin) => (LOOPBACK_ORIGIN_RE.test(origin) ? origin : null),
   });
+  app.use(
+    `${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap`,
+    async (c, next) => {
+      if (!isLoopbackBrowserRequest(c.req.raw)) {
+        return c.body(null, 403);
+      }
+      return loopbackCors(c, next);
+    },
+  );
   const hostedCors = cors({
     allowHeaders: ["Last-Event-ID"],
     allowMethods: ["GET", "OPTIONS"],
@@ -162,11 +177,11 @@ export function createLocalControlPlane({
     }
     const session = sessionStore.resolve(c.req.param("id"));
     const capabilities = sessionStore.getCapabilities(session.id);
-    const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}/stream`;
+    const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}`;
     return c.json({
       ...session,
-      ingestUrl: `${baseUrl}${path}?cap=${capabilities.ingest}`,
-      streamUrl: `${baseUrl}${path}?cap=${capabilities.stream}`,
+      ingestUrl: `${baseUrl}${path}/ingest/${capabilities.ingest}`,
+      streamUrl: `${baseUrl}${path}/stream?cap=${capabilities.stream}`,
     });
   });
 
@@ -193,23 +208,26 @@ export function createLocalControlPlane({
     };
     const session = sessionStore.create({ clientId, label, cwd });
     const capabilities = sessionStore.getCapabilities(session.id);
-    const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}/stream`;
+    const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}`;
     return c.json(
       {
         ...session,
-        ingestUrl: `${baseUrl}${path}?cap=${capabilities.ingest}`,
-        streamUrl: `${baseUrl}${path}?cap=${capabilities.stream}`,
+        ingestUrl: `${baseUrl}${path}/ingest/${capabilities.ingest}`,
+        streamUrl: `${baseUrl}${path}/stream?cap=${capabilities.stream}`,
       },
       201,
     );
   });
 
-  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, async (c) => {
-    if (!sessionExists(c.req.param("id"))) {
+  // Node SDK Spotlight transports send pathname only, so the ingest capability
+  // must live in the path. Keep query-based ingestion for existing raw clients.
+  const ingest = async (c: Context) => {
+    const reference = c.req.param("id") ?? "";
+    if (!sessionExists(reference)) {
       return c.body(null, 404);
     }
-    const capabilities = sessionStore.getCapabilities(c.req.param("id"));
-    if (c.req.query("cap") !== capabilities.ingest) {
+    const capabilities = sessionStore.getCapabilities(reference);
+    if ((c.req.param("cap") ?? c.req.query("cap")) !== capabilities.ingest) {
       return c.body(null, 401);
     }
 
@@ -232,7 +250,7 @@ export function createLocalControlPlane({
       c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
       c.req.header("origin");
     pushToSpotlightBuffer({
-      spotlightBuffer: sessionStore.getBuffer(c.req.param("id")),
+      spotlightBuffer: sessionStore.getBuffer(reference),
       body,
       contentType: browserBeacon
         ? SENTRY_CONTENT_TYPE
@@ -240,9 +258,11 @@ export function createLocalControlPlane({
       encoding,
       userAgent: c.req.header("user-agent"),
     });
-    sessionStore.recordActivity(c.req.param("id"));
+    sessionStore.recordActivity(reference);
     return c.body(null, 204);
-  });
+  };
+  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap`, ingest);
+  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, ingest);
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, (c) => {
     if (!sessionExists(c.req.param("id"))) {

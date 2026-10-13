@@ -19,7 +19,9 @@ sentry local daemon stop
 ```
 
 `local session create <name> --json` returns distinct `ingestUrl` and `streamUrl`
-capabilities for SDK ingestion and viewer reads. Treat those URLs as credentials.
+capabilities for SDK ingestion and viewer reads. The ingest capability lives in
+the URL path so SDK transports that omit query parameters still deliver events.
+Treat those URLs as credentials.
 Use `--clientId <key>` to make session creation idempotent for retries. Names must
 be unique for name-based queries; use the session ID when a name is ambiguous.
 
@@ -45,7 +47,7 @@ receiver data. Remote HTTPS streams stay read-only.
 `pnpm --filter sentry test:e2e` builds the npm bundle and runs the CLI process
 suite. `test/e2e/local.test.ts` covers concurrent startup, session isolation,
 capability checks, retained queries, scoped browser controls, wrapped applications,
-restart, and singleton ownership. The Local workflow repeats these tests against
+real Sentry Node SDK ingestion, restart, and singleton ownership. The Local workflow repeats these tests against
 npm and native binaries on Linux, macOS, and Windows.
 
 `pnpm --filter local test` includes viewer tests with a real receiver and SSE

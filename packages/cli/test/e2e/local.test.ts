@@ -229,6 +229,52 @@ describe("Local daemon E2E", () => {
     ).toContain("wrapped app");
   }, 30_000);
 
+  test("captures telemetry from the real Sentry Node SDK through the injected URL", async () => {
+    const port = await availablePort();
+    const result = await runCli(
+      [
+        "local",
+        "run",
+        "--session",
+        "sdk",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--format",
+        "json",
+        "--",
+        process.execPath,
+        "--input-type=module",
+        "-e",
+        `import * as Sentry from '@sentry/node';
+        Sentry.init({enableLogs: true, tracesSampleRate: 1});
+        const id = Sentry.captureException(new Error('Local real SDK event'));
+        console.error('SDK_EVENT:' + id);
+        await Sentry.flush(2000);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await Sentry.close(1000);`,
+      ],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+          SENTRY_DSN: "",
+        },
+      },
+    );
+    expect(result.exitCode, result.stderr).toBe(0);
+    const eventId = result.stderr.match(/SDK_EVENT:([a-f0-9]{32})/)?.[1];
+    expect(eventId, result.stderr).toBeDefined();
+    expect(result.stdout).toContain("Local real SDK event");
+    expect((await cli("event", "list", "sdk")).stdout).toContain(eventId);
+    expect((await cli("event", "view", "sdk", eventId ?? "")).stdout).toContain(
+      "Local real SDK event",
+    );
+  }, 30_000);
+
   test("restarts on the configured port and preserves singleton discovery", async () => {
     const port = await availablePort();
     await createSession("restart", port);
