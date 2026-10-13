@@ -9,7 +9,7 @@
 
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "@stricli/core";
 import { zipSync } from "fflate";
@@ -21,6 +21,11 @@ import * as chunkUpload from "../../../src/lib/api/chunk-upload.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as debugFilesApi from "../../../src/lib/api/debug-files.js";
 import { useTestConfigDir } from "../../helpers.js";
+
+vi.mock("node:os", async (importOriginal) => {
+  const os = await importOriginal<typeof import("node:os")>();
+  return { ...os, homedir: vi.fn(os.homedir) };
+});
 
 useTestConfigDir("debug-files-upload-");
 
@@ -39,6 +44,8 @@ let savedEnv: Record<string, string | undefined>;
 
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "df-upload-test-"));
+  // DerivedData scans must stay inside the fixture, including on macOS.
+  vi.mocked(homedir).mockReturnValue(tempDir);
   savedEnv = {
     SENTRY_ORG: process.env.SENTRY_ORG,
     SENTRY_PROJECT: process.env.SENTRY_PROJECT,

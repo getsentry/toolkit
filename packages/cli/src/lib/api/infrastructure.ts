@@ -200,6 +200,12 @@ export type ApiRequestOptions<T = unknown> = {
   credential?: CredentialContext;
   /** Manually validate each redirect before forwarding credentials. */
   validatedRedirects?: boolean;
+  /** Disable retries for mutations whose outcome cannot safely be replayed. */
+  retry?: boolean;
+  /** Always read state from the upstream, without storing a cache response. */
+  bypassCache?: boolean;
+  /** Bound the request by the caller's operation deadline. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -590,8 +596,16 @@ export async function apiRequestToRegion<T>(
     schema,
     credential,
     validatedRedirects,
+    retry,
+    bypassCache,
+    signal,
   } = options;
-  const config = getSdkConfig(regionUrl, { credential, validatedRedirects });
+  const config = getSdkConfig(regionUrl, {
+    credential,
+    validatedRedirects,
+    retry,
+    bypassCache,
+  });
 
   const endpointWithParams = appendSearchParams(endpoint, params);
   const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
@@ -614,6 +628,7 @@ export async function apiRequestToRegion<T>(
     method,
     headers,
     body: requestBody,
+    signal,
   });
 
   if (!response.ok) {

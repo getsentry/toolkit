@@ -8,6 +8,9 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { normalizeAgentStatus } from "../../src/lib/api/seer.js";
 import {
   getAutofixState,
+  getSeerExplorerState,
+  respondToSeerUserInput,
+  triggerIssueFix,
   triggerRootCauseAnalysis,
   triggerSolutionPlanning,
 } from "../../src/lib/api-client.js";
@@ -384,5 +387,87 @@ describe("normalizeAgentStatus", () => {
 
   test("uppercases unknown statuses", () => {
     expect(normalizeAgentStatus("some_new_status")).toBe("SOME_NEW_STATUS");
+  });
+});
+
+describe("interactive issue fixes", () => {
+  const runId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+  test("starts a fix through code changes with the supplied instruction", async () => {
+    let body: unknown;
+    let url = "";
+    globalThis.fetch = async (input, init) => {
+      const request = new Request(input, init);
+      url = request.url;
+      body = await request.json();
+      return new Response(JSON.stringify({ sentry_run_id: runId }), {
+        status: 202,
+      });
+    };
+    await triggerIssueFix("test-org", "12345", {
+      instruction: "Keep the public API",
+    });
+    expect(url).toContain("/organizations/test-org/seer/explorer-chat/");
+    expect(body).toMatchObject({
+      query: expect.stringContaining("test-org/12345"),
+      on_page_context: expect.stringContaining("test-org/12345"),
+    });
+    expect(body).toMatchObject({
+      query: expect.stringContaining("Keep the public API"),
+    });
+    expect(body).toMatchObject({
+      query: expect.stringContaining("Do not create pull requests"),
+    });
+  });
+  test("reads the pinned session and normalizes its status", async () => {
+    let url = "";
+    globalThis.fetch = async (input, init) => {
+      url = new Request(input, init).url;
+      return new Response(
+        JSON.stringify({
+          session: {
+            status: "awaiting_user_input",
+            blocks: [],
+            pending_user_input: {
+              id: "q1",
+              input_type: "ask_user_question",
+              data: {
+                questions: [{ question: "Which behavior?", options: [] }],
+              },
+            },
+          },
+          sentry_run_id: runId,
+        }),
+      );
+    };
+    const state = await getSeerExplorerState("test-org", runId);
+    expect(url).toContain(
+      `/organizations/test-org/seer/explorer-chat/${runId}/`,
+    );
+    expect(state?.status).toBe("WAITING_FOR_USER_RESPONSE");
+    expect(state?.pending_user_input?.id).toBe("q1");
+  });
+  test("wraps a structured answer in the explorer update payload", async () => {
+    let body: unknown;
+    let url = "";
+    globalThis.fetch = async (input, init) => {
+      const request = new Request(input, init);
+      url = request.url;
+      body = await request.json();
+      return new Response(JSON.stringify({ success: true }));
+    };
+    await respondToSeerUserInput("test-org", runId, {
+      input_id: "q1",
+      response_data: { answers: ["Keep behavior"] },
+    });
+    expect(url).toContain(
+      `/organizations/test-org/seer/explorer-update/${runId}/`,
+    );
+    expect(body).toEqual({
+      payload: {
+        type: "user_input_response",
+        input_id: "q1",
+        response_data: { answers: ["Keep behavior"] },
+      },
+    });
   });
 });

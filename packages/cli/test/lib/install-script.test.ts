@@ -666,6 +666,11 @@ process.exitCode = result.status ?? 1;
 
   test("directs musl users to the npm package before downloading a glibc binary", () => {
     writeFileSync(
+      join(binDir, "uname"),
+      "#!/bin/sh\ncase \"$1\" in -s) printf 'Linux\\n';; -m) printf 'x86_64\\n';; esac\n",
+      { mode: 0o700 },
+    );
+    writeFileSync(
       join(binDir, "ldd"),
       "#!/bin/sh\nprintf 'musl libc (x86_64)\\n'\n",
       {

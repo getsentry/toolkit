@@ -183,6 +183,9 @@ export {
 } from "./api/repositories.js";
 export {
   getAutofixState,
+  getSeerExplorerState,
+  triggerIssueFix,
+  respondToSeerUserInput,
   triggerRootCauseAnalysis,
   triggerSolutionPlanning,
 } from "./api/seer.js";
