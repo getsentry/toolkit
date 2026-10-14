@@ -10,6 +10,19 @@ import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
 import { ApiNotFoundError, ApiPermissionError, ApiServerError } from "./errors";
 
+// Many tests in this file replace `globalThis.fetch` directly. Snapshot and
+// restore it around every test so a mock never leaks into later tests that
+// rely on MSW interception.
+let savedFetch: typeof globalThis.fetch;
+
+beforeEach(() => {
+  savedFetch = globalThis.fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = savedFetch;
+});
+
 describe("API bearer token validation", () => {
   it("removes edge padding before sending a request", async () => {
     let authorization: string | null = null;
@@ -2419,16 +2432,12 @@ describe("API query builders", () => {
         accessToken: "test-token",
       });
 
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        headers: {
-          get: (key: string) =>
-            key === "content-type" ? "application/json" : null,
-        },
-        json: () => Promise.resolve({ detail: "Not Found" }),
-        text: () => Promise.resolve(JSON.stringify({ detail: "Not Found" })),
-      });
+      mswServer.use(
+        http.get(
+          "https://sentry.example.com/api/0/organizations/test-org/events/validate/",
+          () => HttpResponse.json({ detail: "Not Found" }, { status: 404 }),
+        ),
+      );
 
       const result = await apiService.validateEvents({
         organizationSlug: "test-org",
