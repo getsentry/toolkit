@@ -2412,6 +2412,34 @@ describe("API query builders", () => {
       expect(params.getAll("environment")).toEqual(["production", "staging"]);
       expect(requestOptions?.method).toBeUndefined();
     });
+
+    it("returns null when the validate endpoint is unavailable (404)", async () => {
+      const apiService = new SentryApiService({
+        host: "sentry.example.com",
+        accessToken: "test-token",
+      });
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        headers: {
+          get: (key: string) =>
+            key === "content-type" ? "application/json" : null,
+        },
+        json: () => Promise.resolve({ detail: "Not Found" }),
+        text: () => Promise.resolve(JSON.stringify({ detail: "Not Found" })),
+      });
+
+      const result = await apiService.validateEvents({
+        organizationSlug: "test-org",
+        dataset: "spans",
+        fields: ["span.duration"],
+        query: "",
+        orderby: ["-span.duration"],
+      });
+
+      expect(result).toBeNull();
+    });
   });
 
   describe("Web URL builders", () => {

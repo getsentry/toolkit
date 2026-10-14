@@ -1000,18 +1000,24 @@ export async function runSearchEvents(
     environment: environment ?? undefined,
     ...timeParams,
   });
-  recordEventsSearchValidationTelemetry({
-    attempt: 0,
-    validation: lastValidation,
-  });
 
-  if (!lastValidation.valid) {
-    const formatted = formatEventsValidationResults(lastValidation);
-    throw new UserInputError(
-      formatted
-        ? `Search validation failed:\n${formatted}`
-        : "Search validation failed.",
-    );
+  // `null` means the target deployment does not expose the validation
+  // endpoint (e.g. older self-hosted Sentry). Skip the gate and run the
+  // search directly instead of failing with a misleading 404.
+  if (lastValidation !== null) {
+    recordEventsSearchValidationTelemetry({
+      attempt: 0,
+      validation: lastValidation,
+    });
+
+    if (!lastValidation.valid) {
+      const formatted = formatEventsValidationResults(lastValidation);
+      throw new UserInputError(
+        formatted
+          ? `Search validation failed:\n${formatted}`
+          : "Search validation failed.",
+      );
+    }
   }
 
   const finalRequestFields = buildRequestFields(dataset, fields);

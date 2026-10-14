@@ -3875,7 +3875,7 @@ export class SentryApiService {
       end?: string;
     },
     opts?: RequestOptions,
-  ): Promise<EventsValidationResult> {
+  ): Promise<EventsValidationResult | null> {
     const queryParams = new URLSearchParams();
     queryParams.set("dataset", normalizeEventsDataset(dataset));
     if (project) {
@@ -3900,12 +3900,20 @@ export class SentryApiService {
       queryParams.append("orderby", value);
     }
 
+    // The events validation endpoint was added to Sentry in mid-2026 and is
+    // absent on older deployments (notably self-hosted instances before that
+    // release). A 404 therefore means "validation is not supported here"
+    // rather than a bad request, so return `null` and let callers skip the
+    // validation gate instead of failing the whole search.
     const response = await this.request(
       apiPath`/organizations/${organizationSlug}/events/validate/` +
         `?${queryParams.toString()}`,
       undefined,
-      { ...opts, allowStatuses: [400] },
+      { ...opts, allowStatuses: [400, 404] },
     );
+    if (response.status === 404) {
+      return null;
+    }
     const body = await this.parseJsonResponse(response);
     return EventsValidationResponseSchema.parse(body);
   }
