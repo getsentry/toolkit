@@ -389,10 +389,16 @@ async function waitForLocalDaemon(
 ): Promise<LocalDaemonState | undefined> {
   while (Date.now() < deadline) {
     await sleep(125);
-    const error = startupError?.();
-    if (error) throw error;
     const state = await discoverLocalDaemon(true);
     if (state) return state;
+    const error = startupError?.();
+    if (error) {
+      const owner = await readOwnerPid(
+        join(getConfigDir(), "local-control-plane.owner"),
+      );
+      // A foreground owner can win after our spawn decision but still be binding.
+      if (!isProcessRunning(owner)) throw error;
+    }
   }
 }
 
@@ -441,20 +447,26 @@ export async function ensureLocalDaemon({
       return runningAfterLock;
     }
     let startupError: Error | undefined;
-    child = spawn(process.execPath, buildLocalDaemonArgs(host, port), {
-      detached: true,
-      env: process.env,
-      stdio: "ignore",
-    });
-    child.once("error", (error) => {
-      startupError = error;
-    });
-    child.once("exit", (code, signal) => {
-      startupError = new Error(
-        `Local daemon exited before startup (status ${code ?? signal}). Check that the requested port is available.`,
-      );
-    });
-    child.unref();
+    const owner = await readOwnerPid(
+      join(directory, "local-control-plane.owner"),
+    );
+    if (!isProcessRunning(owner)) {
+      child = spawn(process.execPath, buildLocalDaemonArgs(host, port), {
+        detached: true,
+        env: process.env,
+        stdio: "ignore",
+      });
+      child.once("error", (error) => {
+        startupError = error;
+      });
+      child.once("exit", (code, signal) => {
+        startupError = new Error(
+          `Local daemon exited before startup (status ${code ?? signal}). Check that the requested port is available.`,
+        );
+      });
+      child.unref();
+    }
+
     const state = await waitForLocalDaemon(
       Date.now() + LOCAL_DAEMON_START_TIMEOUT_MS,
       () => startupError,

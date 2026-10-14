@@ -43,6 +43,9 @@ process dies during that critical section, startup preserves the guard and repor
 its path; confirm the owning process has stopped before removing the guard and
 retrying.
 Startup waits through the listener retry window and preserves active startup locks.
+Concurrent foreground and managed starts join the same daemon: session creation
+waits for a live foreground owner to publish authenticated discovery, even if a
+competing child exits before that owner finishes binding.
 Incomplete owner files receive a five-second grace period. Once safely reclaimed,
 ownership is claimed under the same guard, including on the final retry.
 

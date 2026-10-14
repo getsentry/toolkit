@@ -576,6 +576,98 @@ describe("Local daemon E2E", () => {
     });
   }, 30000);
 
+  test("attaches to a foreground daemon that owns startup before discovery is published", async () => {
+    const { spawn } = await import("node:child_process");
+    const { getCliCommand } = await import("../fixture.js");
+    const reserve = createServer();
+    await new Promise<void>((resolve) =>
+      reserve.listen(0, "127.0.0.1", resolve),
+    );
+    const address = reserve.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected TCP address");
+    const [executable, ...prefix] = getCliCommand();
+    if (!executable) throw new Error("Missing CLI executable");
+    const foreground = spawn(
+      executable,
+      [
+        ...prefix,
+        "local",
+        "daemon",
+        "start",
+        "--foreground",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(address.port),
+      ],
+      {
+        cwd: join(import.meta.dirname, "../.."),
+        env: {
+          ...process.env,
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
+    let stderr = "";
+    foreground.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    const closed = new Promise<void>((resolve, reject) => {
+      foreground.once("close", () => resolve());
+      foreground.once("error", reject);
+    });
+    let pending: ReturnType<typeof cli> | undefined;
+    try {
+      const owner = join(getConfigDir(), "local-control-plane.owner");
+      await expect
+        .poll(
+          async () => Number(await readFile(owner, "utf8").catch(() => "0")),
+          { timeout: 10000 },
+        )
+        .toBe(foreground.pid);
+      await expect(
+        readFile(join(getConfigDir(), "local-control-plane.json"), "utf8"),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      pending = cli(
+        "session",
+        "create",
+        "foreground-race",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(address.port),
+      );
+      // Keep foreground startup inside the real listener retry window while the client joins it.
+      await sleep(6500);
+      await new Promise<void>((resolve) => reserve.close(() => resolve()));
+      const result = await pending;
+      expect(result.exitCode, result.stderr).toBe(0);
+      const session = JSON.parse(result.stdout) as Session;
+      const state = JSON.parse(
+        await readFile(
+          join(getConfigDir(), "local-control-plane.json"),
+          "utf8",
+        ),
+      ) as { pid: number };
+      expect(state.pid, stderr).toBe(foreground.pid);
+      await ingest(session, "foreground-owner", "foreground capture");
+      expect(
+        (await cli("event", "view", session.id, "foreground-owner")).stdout,
+      ).toContain("foreground capture");
+    } finally {
+      reserve.close();
+      await cli("daemon", "stop");
+      foreground.kill("SIGTERM");
+      await closed;
+      await pending;
+    }
+  }, 30000);
+
   test("waits for the port retry window during concurrent daemon startup", async () => {
     const server = createServer();
     await new Promise<void>((resolve) =>
