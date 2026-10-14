@@ -478,6 +478,12 @@ export const runCommand = buildCommand({
     if (flags.open && flags.verify) {
       throw new ValidationError("--open cannot be used with --verify.", "open");
     }
+    if (flags.session !== undefined && flags.verify) {
+      throw new ValidationError(
+        "--session cannot be used with --verify.",
+        "session",
+      );
+    }
     validateOpenHost(flags.open, flags.host);
 
     const stripped = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;

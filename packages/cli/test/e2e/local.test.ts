@@ -791,6 +791,43 @@ describe("Local daemon E2E", () => {
 });
 
 describe("Local foreground commands", () => {
+  test("rejects verification with a retained session before running the application", async () => {
+    const marker = join(getConfigDir(), "verify-session-child-ran");
+    const script = join(getConfigDir(), "verify-session-child.cjs");
+    await writeFile(
+      script,
+      `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran");`,
+    );
+    const result = await runCli(
+      [
+        "local",
+        "run",
+        "--session",
+        "verification",
+        "--verify",
+        "--",
+        process.execPath,
+        script,
+      ],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+      },
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--session cannot be used with --verify.");
+    await expect(readFile(marker, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(JSON.parse((await cli("daemon", "status")).stdout)).toEqual({
+      daemon: null,
+    });
+  });
+
   test("run configures a plain receiver and explicit attachment preserves retained envelopes", async () => {
     const { createLocalRetentionBuffer } =
       await import("../../src/commands/local/retention-buffer.js");

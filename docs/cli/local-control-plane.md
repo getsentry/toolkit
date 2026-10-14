@@ -18,6 +18,10 @@ sentry local daemon status
 sentry local daemon stop
 ```
 
+`local run --verify` uses an ephemeral receiver and cannot be combined with
+`--session` or `--open`. Invalid combinations are rejected before a receiver or
+application is started. Omit `--verify` to capture into a retained daemon session.
+
 `local session create <name> --json` returns distinct `ingestUrl` and `streamUrl`
 capabilities for SDK ingestion and viewer reads. The ingest capability lives in
 the URL path so SDK transports that omit query parameters still deliver events.
