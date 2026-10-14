@@ -19,7 +19,6 @@ export type LocalTelemetrySnapshot = {
 };
 
 export type LocalTelemetryStore = {
-  append: (items: readonly LocalFeedItem[]) => void;
   recordEnvelope: (
     envelope: LocalFeedItem,
     items?: readonly LocalFeedItem[],
@@ -90,43 +89,22 @@ export function createLocalTelemetryStore({
   }
 
   return {
-    append(incoming) {
-      if (incoming.length === 0) {
-        return;
-      }
-
-      const knownIds = new Set(snapshot.items.map((item) => item.id));
-      const newItems = incoming.filter((item) => {
-        if (knownIds.has(item.id)) {
-          return false;
-        }
-        knownIds.add(item.id);
-        return true;
-      });
-      if (newItems.length === 0) {
-        return;
-      }
-
-      publish([...snapshot.items, ...newItems].slice(-limit));
-    },
     setLimit(value) {
       if (!isValidMaxEnvelopes(value))
         throw new Error("Invalid envelope retention limit.");
       limit = value;
     },
-    recordEnvelope(envelope, decoded) {
+    recordEnvelope(envelope, decoded = []) {
       if (snapshot.envelopes.some((item) => item.id === envelope.id)) {
         return;
       }
-      if (decoded) envelopeItems.set(envelope.id, decoded);
+      envelopeItems.set(envelope.id, decoded);
       const envelopes = [...snapshot.envelopes, envelope].slice(-limit);
       const retainedIds = new Set(envelopes.map((item) => item.id));
       for (const id of envelopeItems.keys())
         if (!retainedIds.has(id)) envelopeItems.delete(id);
       publish(
-        decoded
-          ? envelopes.flatMap((item) => [...(envelopeItems.get(item.id) ?? [])])
-          : snapshot.items,
+        envelopes.flatMap((item) => [...(envelopeItems.get(item.id) ?? [])]),
         envelopes,
       );
     },

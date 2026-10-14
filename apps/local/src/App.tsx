@@ -725,7 +725,7 @@ export default function App() {
       getSavedRemoteStream(),
     ),
   );
-  const activeStreamUrl = useRef(streamUrl);
+  const connectionGeneration = useRef(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [draftEndpoint, setDraftEndpoint] = useState(streamUrl);
@@ -872,12 +872,14 @@ export default function App() {
       clearUrl.pathname = "/clear";
       clearUrl.search = "";
     }
+    const generation = connectionGeneration.current;
     void fetch(clearUrl, { method: scopedSession ? "POST" : "DELETE" })
       .then((response) => {
         if (!response.ok)
           throw new Error(`Session reset failed with HTTP ${response.status}`);
       })
       .catch(() => {
+        if (connectionGeneration.current !== generation) return;
         setMessage(
           "Cleared this viewer, but the receiver could not clear its retained session.",
         );
@@ -897,8 +899,10 @@ export default function App() {
       return;
     }
     closeUrl.pathname = closeUrl.pathname.replace(/\/stream$/, "/ui/close");
+    const generation = connectionGeneration.current;
     void fetch(closeUrl, { method: "POST" })
       .then((response) => {
+        if (connectionGeneration.current !== generation) return;
         if (!response.ok) {
           throw new Error(`Session close failed with HTTP ${response.status}`);
         }
@@ -909,7 +913,10 @@ export default function App() {
           "Telemetry session closed. Retained events remain available for three hours.",
         );
       })
-      .catch(() => setMessage("Could not close this telemetry session."));
+      .catch(() => {
+        if (connectionGeneration.current !== generation) return;
+        setMessage("Could not close this telemetry session.");
+      });
   };
 
   const currentEndpoint = parseStreamEndpoint(streamUrl);
@@ -933,8 +940,8 @@ export default function App() {
       }
       return;
     }
+    connectionGeneration.current += 1;
     if (endpoint.url !== streamUrl) {
-      activeStreamUrl.current = endpoint.url;
       telemetryStore.clear();
       telemetryStore.setLimit(DEFAULT_MAX_ENVELOPES);
       setRetentionLimit(DEFAULT_MAX_ENVELOPES);
@@ -971,12 +978,16 @@ export default function App() {
     }
 
     let isCurrent = true;
+    const generation = connectionGeneration.current;
+    function isActiveConnection(): boolean {
+      return isCurrent && connectionGeneration.current === generation;
+    }
     const requestUrl = new URL(streamUrl);
     if (parseStreamEndpoint(streamUrl)?.kind === "loopback")
       requestUrl.searchParams.set("retention", "1");
     const source = new EventSource(requestUrl.toString());
     const onRetention = (event: Event) => {
-      if (!isCurrent || activeStreamUrl.current !== streamUrl) return;
+      if (!isActiveConnection()) return;
       try {
         const settings: unknown = JSON.parse(
           (event as MessageEvent<string>).data,
@@ -997,7 +1008,7 @@ export default function App() {
     };
     source.addEventListener(LOCAL_RETENTION_EVENT, onRetention);
     const timeoutId = window.setTimeout(() => {
-      if (!isCurrent || activeStreamUrl.current !== streamUrl) {
+      if (!isActiveConnection()) {
         return;
       }
       isCurrent = false;
@@ -1010,7 +1021,7 @@ export default function App() {
       );
     }, CONNECTION_TIMEOUT_MS);
     const onEnvelope = (event: Event) => {
-      if (!isCurrent || activeStreamUrl.current !== streamUrl) {
+      if (!isActiveConnection()) {
         return;
       }
       const messageEvent = event as MessageEvent<string>;
@@ -1038,7 +1049,7 @@ export default function App() {
 
     source.addEventListener(SENTRY_ENVELOPE_EVENT, onEnvelope);
     source.onopen = () => {
-      if (!isCurrent || activeStreamUrl.current !== streamUrl) {
+      if (!isActiveConnection()) {
         return;
       }
       window.clearTimeout(timeoutId);
@@ -1054,7 +1065,7 @@ export default function App() {
       setMessage(undefined);
     };
     source.onerror = () => {
-      if (!isCurrent || activeStreamUrl.current !== streamUrl) {
+      if (!isActiveConnection()) {
         return;
       }
       window.clearTimeout(timeoutId);

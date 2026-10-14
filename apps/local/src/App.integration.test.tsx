@@ -1042,6 +1042,95 @@ describe("local receiver to viewer integration", () => {
     },
   );
 
+  test.each(["close success", "close error", "clear error"])(
+    "ignores stale %s after switching away and back to the same receiver",
+    async (action) => {
+      ControllableEventSource.instances = [];
+      vi.stubGlobal("EventSource", ControllableEventSource);
+      let respond!: (response: Response) => void;
+      const pending = new Promise<Response>((resolve) => {
+        respond = resolve;
+      });
+      const fetchMock = vi.fn().mockReturnValue(pending);
+      vi.stubGlobal("fetch", fetchMock);
+      renderBareViewer();
+      await act(async () =>
+        ControllableEventSource.instances[0]?.onopen?.(new Event("open")),
+      );
+      async function connect(url: string) {
+        fireEvent.click(
+          screen.getAllByRole("button", { name: /^Change receiver/ })[0]!,
+        );
+        fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+          target: { value: url },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+        const source = ControllableEventSource.instances.at(-1)!;
+        await act(async () => source.onopen?.(new Event("open")));
+        return source;
+      }
+      const firstUrl =
+        "http://127.0.0.1:8969/_local/v1/sessions/first/stream?cap=read";
+      const first = await connect(firstUrl);
+      await act(async () =>
+        first.dispatchEvent(
+          new MessageEvent(SENTRY_CONTENT_TYPE, {
+            data: JSON.stringify([
+              {},
+              [[{ type: "event" }, { message: "old event" }]],
+            ]),
+            lastEventId: "old-event",
+          }),
+        ),
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name:
+            action === "clear error"
+              ? "Clear events"
+              : "Close telemetry session",
+        }),
+      );
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      await connect("http://127.0.0.1:8970/stream");
+      const current = await connect(firstUrl);
+      await act(async () => {
+        respond(
+          new Response(null, {
+            status: action === "close success" ? 204 : 403,
+          }),
+        );
+        await pending;
+      });
+      expect(current.closed).toBe(false);
+      expect(
+        screen.queryByText("Could not close this telemetry session."),
+      ).toBeNull();
+      expect(
+        screen.queryByText(
+          "Cleared this viewer, but the receiver could not clear its retained session.",
+        ),
+      ).toBeNull();
+      await act(async () =>
+        current.dispatchEvent(
+          new MessageEvent(SENTRY_CONTENT_TYPE, {
+            data: JSON.stringify([
+              {},
+              [[{ type: "event" }, { message: "new event" }]],
+            ]),
+            lastEventId: "new-event",
+          }),
+        ),
+      );
+      expect(
+        await screen.findByRole("button", { name: "View event event" }),
+      ).not.toBeNull();
+      expect(
+        screen.queryByRole("heading", { name: "Connect a receiver" }),
+      ).toBeNull();
+    },
+  );
+
   test.each([204, 403])(
     "handles scoped reset HTTP %s and closes a telemetry session",
     async (resetStatus) => {

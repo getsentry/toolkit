@@ -1,8 +1,10 @@
+import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
+export { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
+
 export const SENTRY_ENVELOPE_EVENT = "application/x-sentry-envelope";
 export const STREAM_STORAGE_KEY = "sentry.local.stream-url";
 export const REMOTE_STREAM_STORAGE_KEY = "sentry.local.remote-stream-url";
 export const DEFAULT_STREAM_URL = "http://localhost:8969/stream";
-const MAX_FEED_ITEMS = 500;
 
 export type StreamEndpointKind = "loopback" | "remote";
 
@@ -149,16 +151,6 @@ function getItemTimestamp(payload: unknown): number | string | undefined {
     : undefined;
 }
 
-/** Whether a host permits loopback receiver controls. */
-export function isLoopbackHost(hostname: string): boolean {
-  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  return (
-    normalized === "localhost" ||
-    normalized === "127.0.0.1" ||
-    normalized === "::1"
-  );
-}
-
 /** Normalize an explicit connection target and classify its persistence policy. */
 export function parseStreamEndpoint(
   stream: string | null,
@@ -283,13 +275,4 @@ export function decodeEnvelope(data: string, eventId: string): LocalFeedItem[] {
       metadata: getEventMetadata(payload, type),
     }));
   });
-}
-
-/** Append received items while keeping the in-memory UI feed bounded. */
-export function appendBounded(
-  existing: readonly LocalFeedItem[],
-  incoming: readonly LocalFeedItem[],
-  limit = MAX_FEED_ITEMS,
-): LocalFeedItem[] {
-  return [...existing, ...incoming].slice(-limit);
 }

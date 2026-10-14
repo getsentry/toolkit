@@ -32,6 +32,7 @@ import {
   formatEnvelopeLinesJson,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
+import { DEFAULT_MAX_ENVELOPES } from "./retention-limits.js";
 import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
@@ -74,7 +75,7 @@ type RunFlags = {
 };
 
 /** Buffer size for the auto-started background server. */
-export const BUFFER_SIZE = 500;
+export const BUFFER_SIZE = DEFAULT_MAX_ENVELOPES;
 
 /**
  * Client-side env var prefixes that frameworks inline into browser bundles

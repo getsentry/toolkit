@@ -39,11 +39,31 @@ function getSpanPosition(
   return { left: `${left}%`, width: `${width}%` };
 }
 
-function flattenSpans(spans: TraceSpan[], depth = 0): PositionedSpan[] {
-  return spans.flatMap((span, index) => [
-    { span, depth, isLastChild: index === spans.length - 1 },
-    ...flattenSpans(span.children, depth + 1),
-  ]);
+function flattenSpans(spans: TraceSpan[]): PositionedSpan[] {
+  const pending: PositionedSpan[] = spans
+    .map((span, index) => ({
+      span,
+      depth: 0,
+      isLastChild: index === spans.length - 1,
+    }))
+    .reverse();
+  const positioned: PositionedSpan[] = [];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) break;
+    positioned.push(current);
+    const children = current.span.children;
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      const child = children[index];
+      if (child)
+        pending.push({
+          span: child,
+          depth: current.depth + 1,
+          isLastChild: index === children.length - 1,
+        });
+    }
+  }
+  return positioned;
 }
 
 function isFailingSpan(span: TraceSpan): boolean {

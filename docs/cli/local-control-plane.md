@@ -97,6 +97,9 @@ A loopback-served viewer can reset and close its scoped session. The hosted view
 can read the stream and clear its own displayed feed; it cannot mutate retained
 receiver data. Remote HTTPS streams stay read-only.
 
+Switching or reconnecting a receiver isolates pending actions and stream callbacks
+from earlier connections, including when returning to the same receiver URL.
+
 Search and view navigation remain available for retained telemetry after a
 receiver disconnects or a session closes, including raw-only envelopes. A trace
 search with no matches explains how to change or clear the filter. Closing an

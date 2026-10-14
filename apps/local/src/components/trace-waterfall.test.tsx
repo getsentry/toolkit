@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 import { cleanup, render, screen } from "@testing-library/react";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { buildTraceGroups } from "@/lib/trace-model.ts";
@@ -61,3 +62,38 @@ test.each(["internal_error", "error"])(
     );
   },
 );
+
+test("renders a deeply nested valid span chain without overflowing the stack", () => {
+  const count = 4000;
+  const items = decodeEnvelope(
+    JSON.stringify([
+      {},
+      [
+        [
+          { type: "transaction" },
+          {
+            transaction: "deep trace",
+            start_timestamp: 0,
+            timestamp: count + 1,
+            contexts: { trace: { trace_id: "deep", span_id: "root" } },
+            spans: Array.from({ length: count }, (_, index) => ({
+              span_id: `span-${index}`,
+              parent_span_id: index === 0 ? "root" : `span-${index - 1}`,
+              description: `deep-${index}`,
+              start_timestamp: index,
+              timestamp: index + 1,
+            })),
+          },
+        ],
+      ],
+    ]),
+    "deep-envelope",
+  );
+  const trace = buildTraceGroups(items)[0];
+  if (!trace) throw new Error("Expected deep trace");
+  const markup = renderToStaticMarkup(<TraceWaterfall trace={trace} />);
+  expect(markup).toContain(`waterfall-bar-span-${count - 1}`);
+  expect(markup.indexOf("deep-0")).toBeLessThan(
+    markup.indexOf(`deep-${count - 1}`),
+  );
+});

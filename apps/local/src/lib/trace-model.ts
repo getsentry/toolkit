@@ -166,23 +166,23 @@ function sortByTimestamp<T extends { startTimestamp?: number }>(
 }
 
 function updateTraceTiming(trace: MutableTraceGroup): void {
-  const timestamps = trace.items
-    .flatMap((item) => [getTimestamp(item.timestamp)])
-    .concat(
-      [...trace.spanMap.values()].flatMap((span) => [
-        span.startTimestamp,
-        span.endTimestamp,
-      ]),
-    )
-    .filter((timestamp): timestamp is number => timestamp !== undefined);
-
-  if (timestamps.length === 0) {
-    return;
+  let start = Infinity;
+  let end = -Infinity;
+  function includeTimestamp(timestamp: number | undefined): void {
+    if (timestamp === undefined) return;
+    start = Math.min(start, timestamp);
+    end = Math.max(end, timestamp);
   }
-
-  trace.startTimestamp = Math.min(...timestamps);
-  trace.endTimestamp = Math.max(...timestamps);
-  trace.durationMs = getDurationMs(trace.startTimestamp, trace.endTimestamp);
+  for (const item of trace.items)
+    includeTimestamp(getTimestamp(item.timestamp));
+  for (const span of trace.spanMap.values()) {
+    includeTimestamp(span.startTimestamp);
+    includeTimestamp(span.endTimestamp);
+  }
+  if (start === Infinity) return;
+  trace.startTimestamp = start;
+  trace.endTimestamp = end;
+  trace.durationMs = getDurationMs(start, end);
 }
 
 /** Build a small, read-only trace model once for every view in Local. */
@@ -226,11 +226,11 @@ export function buildTraceGroups(
     for (const childSpan of getChildSpans(item.payload, item)) {
       trace.spanMap.set(childSpan.id, childSpan);
     }
-    updateTraceTiming(trace);
   }
 
   return [...traces.values()]
     .map((trace) => {
+      updateTraceTiming(trace);
       const spans = sortByTimestamp([...trace.spanMap.values()]);
       const roots: TraceSpan[] = [];
       for (const span of spans) {

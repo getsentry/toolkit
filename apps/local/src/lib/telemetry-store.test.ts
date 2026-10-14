@@ -39,7 +39,7 @@ describe("LocalTelemetryStore", () => {
   test("indexes a bounded session by its observability view", () => {
     const store = createLocalTelemetryStore({ limit: 3 });
 
-    store.append([
+    const entries = [
       item({ id: "transaction:0", type: "transaction" }),
       item({
         id: "error:0",
@@ -48,7 +48,12 @@ describe("LocalTelemetryStore", () => {
       }),
       item({ id: "log:0", type: "log" }),
       item({ id: "feedback:0", type: "user_report" }),
-    ]);
+    ];
+    for (const entry of entries)
+      store.recordEnvelope(
+        item({ id: `envelope-${entry.id}`, type: "envelope" }),
+        [entry],
+      );
 
     const snapshot = store.getSnapshot();
     expect(snapshot.items.map((entry) => entry.id)).toEqual([
@@ -62,11 +67,13 @@ describe("LocalTelemetryStore", () => {
     expect(snapshot.traces).toEqual([]);
   });
 
-  test("deduplicates replayed envelope items and clears derived indexes", () => {
+  test("deduplicates replayed envelopes and clears derived indexes", () => {
     const store = createLocalTelemetryStore();
     const transaction = item({ id: "transaction:0", type: "transaction" });
 
-    store.append([transaction, transaction]);
+    const envelope = item({ id: "envelope-1", type: "envelope" });
+    store.recordEnvelope(envelope, [transaction]);
+    store.recordEnvelope(envelope, [transaction]);
     expect(store.getSnapshot().items).toHaveLength(1);
     expect(store.getSnapshot().traces).toEqual([transaction]);
 

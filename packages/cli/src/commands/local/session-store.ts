@@ -14,9 +14,6 @@ import {
 import { DEFAULT_MAX_ENVELOPES } from "./retention-limits.js";
 import { uuidv7 } from "uuidv7";
 
-/** Maximum number of envelopes retained by an individual Local session. */
-export const SESSION_BUFFER_SIZE = DEFAULT_MAX_ENVELOPES;
-
 /** Retained sessions remain queryable for three hours after closing. */
 export const SESSION_RETENTION_MS = 3 * 60 * 60 * 1000;
 

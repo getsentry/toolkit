@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import {
-  appendBounded,
   DEFAULT_STREAM_URL,
   decodeEnvelope,
   parseStreamEndpoint,
@@ -223,21 +222,5 @@ describe("decodeEnvelope", () => {
     expect(() => decodeEnvelope("not json", "event-1")).toThrow(
       "Invalid Sentry envelope",
     );
-  });
-});
-
-describe("appendBounded", () => {
-  test("keeps the newest 500 items", () => {
-    const entries = Array.from({ length: 501 }, (_, index) => ({
-      id: String(index),
-      type: "transaction",
-      text: String(index),
-    }));
-
-    const result = appendBounded([], entries);
-
-    expect(result).toHaveLength(500);
-    expect(result[0]?.id).toBe("1");
-    expect(result.at(-1)?.id).toBe("500");
   });
 });

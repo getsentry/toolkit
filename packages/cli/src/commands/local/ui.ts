@@ -1,3 +1,4 @@
+import { isLoopbackHost, normalizeLocalHostname } from "./loopback.js";
 import { openBrowser } from "../../lib/browser.js";
 import { getCliEnvironment } from "../../lib/constants.js";
 import { ValidationError } from "../../lib/errors.js";
@@ -6,14 +7,7 @@ import { logger } from "../../lib/logger.js";
 const DEVELOPMENT_UI_URL = "http://localhost:5173";
 const PRODUCTION_UI_URL = "https://local.sentry.dev";
 
-function normalizeHostname(host: string): string {
-  return host.replace(/^\[|\]$/g, "").toLowerCase();
-}
-
-/** Whether a host is safe for the browser-only local UI connection. */
-export function isLoopbackHost(host: string): boolean {
-  return ["localhost", "127.0.0.1", "::1"].includes(normalizeHostname(host));
-}
+export { isLoopbackHost } from "./loopback.js";
 
 /** Reject a host that the browser-only UI cannot safely reach. */
 export function assertLoopbackHostForUi(host: string): void {
@@ -34,7 +28,7 @@ export function validateOpenHost(requested: boolean, host: string): void {
 
 /** Format an HTTP origin, including the brackets required for IPv6 URLs. */
 export function formatLocalServerUrl(host: string, port: number): string {
-  const normalized = normalizeHostname(host);
+  const normalized = normalizeLocalHostname(host);
   const urlHost = normalized.includes(":") ? `[${normalized}]` : normalized;
   return `http://${urlHost}:${port}`;
 }

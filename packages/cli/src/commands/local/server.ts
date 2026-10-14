@@ -1,3 +1,4 @@
+import { isLoopbackHost } from "./loopback.js";
 /**
  * sentry local serve
  *
@@ -68,9 +69,6 @@ export const DEFAULT_PORT = 8969;
  * receiving envelopes.
  */
 export const SERVER_IDENTIFIER = "spotlight-by-sentry";
-
-/** Buffer size: how many recent envelopes to retain for late subscribers. */
-const BUFFER_SIZE = 500;
 
 /** Trailing carriage return — stripped from SSE lines. */
 const CR_RE = /\r$/;
@@ -143,14 +141,7 @@ const LOCALHOST_ORIGIN_RE =
 const LOCAL_UI_ORIGIN = "https://local.sentry.dev";
 const LOCAL_UI_PREVIEW_HOST_RE = /^sentry-local-git-[a-z0-9-]+\.sentry\.dev$/;
 
-export function isLoopbackHost(host: string): boolean {
-  const normalized = host.replace(/^\[|\]$/g, "").toLowerCase();
-  return (
-    normalized === "localhost" ||
-    normalized === "127.0.0.1" ||
-    normalized === "::1"
-  );
-}
+export { isLoopbackHost } from "./loopback.js";
 
 type LocalReceiverOptions = {
   /** Enables stateful UI routes only when the receiver itself is loopback-bound. */
@@ -1139,9 +1130,7 @@ export const serverCommand = buildCommand({
       return;
     }
 
-    const retention = createLocalRetentionBuffer(
-      flags["max-envelopes"] ?? BUFFER_SIZE,
-    );
+    const retention = createLocalRetentionBuffer(flags["max-envelopes"]);
     const buffer = retention.buffer;
     const useJson = flags.format === "json";
 

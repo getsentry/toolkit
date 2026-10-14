@@ -14,6 +14,62 @@ function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
 }
 
 describe("buildTraceGroups", () => {
+  test("reads trace timing in linear work for a long single trace", () => {
+    let timestampReads = 0;
+    const entries: LocalFeedItem[] = Array.from(
+      { length: 1000 },
+      (_, index) => ({
+        id: String(index),
+        type: "log",
+        text: "{}",
+        payload: {},
+        metadata: { title: "log", traceId: "busy-trace" },
+        get timestamp() {
+          timestampReads += 1;
+          return index;
+        },
+      }),
+    );
+    const [trace] = buildTraceGroups(entries);
+    expect(trace).toMatchObject({
+      itemCount: 1000,
+      logCount: 1000,
+      startTimestamp: 0,
+      endTimestamp: 999,
+      durationMs: 999000,
+    });
+    expect(timestampReads).toBeLessThanOrEqual(entries.length * 2);
+  });
+
+  test("handles timing for a valid transaction with many child spans without argument overflow", () => {
+    const spans = Array.from({ length: 70000 }, (_, index) => ({
+      span_id: String(index),
+      parent_span_id: "root",
+      start_timestamp: index,
+      timestamp: index + 1,
+    }));
+    const [trace] = buildTraceGroups([
+      item({
+        metadata: { title: "large transaction", traceId: "large-trace" },
+        payload: {
+          contexts: { trace: { span_id: "root" } },
+          start_timestamp: 0,
+          timestamp: 70000,
+          spans,
+        },
+      }),
+    ]);
+    expect(trace).toMatchObject({
+      startTimestamp: 0,
+      endTimestamp: 70000,
+      durationMs: 70000000,
+      itemCount: 1,
+    });
+    expect(trace?.spans).toHaveLength(70001);
+    expect(trace?.roots).toHaveLength(1);
+    expect(trace?.roots[0]?.children).toHaveLength(70000);
+  });
+
   test("uses a transaction ID as the trace fallback used by routing", () => {
     expect(
       traceIdForItem(
