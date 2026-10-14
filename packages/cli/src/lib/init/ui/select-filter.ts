@@ -23,7 +23,7 @@ export function filterSelectOptions<T extends SelectOption<string>>(
     if (option.hint) {
       candidates.push(option.hint);
     }
-    return fuzzyMatch(query, candidates).length > 0;
+    return fuzzyMatch(query, candidates, { mode: "search" }).length > 0;
   });
 }
 

@@ -9,6 +9,8 @@ The Sentry CLI includes several features designed to streamline your workflow, e
 
 When the CLI asks you to choose an organization or project, type to filter the loaded options by name or slug. The filter appears as `/text` below the list. Matching ignores case and tolerates small typos. Use arrow keys to navigate, Enter to select, and Backspace to edit. Esc clears the filter before cancelling; Ctrl+C cancels immediately. The same controls work in the organization, team, and monorepo app selectors in `sentry init`.
 
+Selectors and shell completion tolerate typos in unfinished prefixes: `frone` can find `frontend-web`. Queries with one or two characters match literal text only, so `ap` finds `api` but `zz` does not find `ui`.
+
 ## DSN Auto-Detection
 
 The CLI automatically detects your Sentry project from your codebase, eliminating the need to specify the target for every command. DSN detection is one part of the [resolution priority chain](./configuration/#resolution-priority) — it runs after checking for explicit arguments, environment variables, and `.sentryclirc` config files.

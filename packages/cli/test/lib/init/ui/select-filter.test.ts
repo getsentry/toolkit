@@ -50,6 +50,26 @@ describe("filterSelectOptions", () => {
     ).toEqual([]);
   });
 
+  test("short queries only match literal parts of the options", () => {
+    const candidates = ["UI", "Go", "DB", "pizza"].map((value) => ({
+      value,
+      label: value,
+    }));
+
+    expect(filterSelectOptions(candidates, "zz")).toEqual([candidates[3]]);
+  });
+
+  test("keeps a matching option visible while typing a prefix with a typo", () => {
+    const candidates = [
+      { value: "frontend-web", label: "Frontend web" },
+      { value: "backend", label: "Backend" },
+    ];
+
+    for (const query of ["fron", "frone", "fronen", "fronend", "fronend-w"]) {
+      expect(filterSelectOptions(candidates, query)).toEqual([candidates[0]]);
+    }
+  });
+
   test("an empty filter restores every original option", () => {
     fcAssert(
       property(

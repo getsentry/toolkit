@@ -152,6 +152,44 @@ describe("fuzzyMatch: unit tests", () => {
   });
 });
 
+describe("fuzzyMatch: search mode", () => {
+  test.each(["frone", "froont", "frnt"])(
+    "matches an unfinished prefix with an edit: %s",
+    (query) => {
+      expect(fuzzyMatch(query, ["frontend-web"], { mode: "search" })).toEqual([
+        "frontend-web",
+      ]);
+    },
+  );
+
+  test("preserves full-name typos while allowing incomplete typo prefixes", () => {
+    expect(fuzzyMatch("isseu", ["issue"], { mode: "search" })).toEqual([
+      "issue",
+    ]);
+    expect(fuzzyMatch("frone", ["frontend-web"])).toEqual([]);
+    expect(fuzzyMatch("frone", ["frontend-web"], { mode: "search" })).toEqual([
+      "frontend-web",
+    ]);
+  });
+
+  test("ranks literal matches before typo prefixes and respects the result limit", () => {
+    const candidates = ["frnntend-web", "team-frontend", "frontend", "front"];
+    const expected = ["front", "frontend", "team-frontend", "frnntend-web"];
+    expect(fuzzyMatch("FRONT", candidates, { mode: "search" })).toEqual(
+      expected,
+    );
+    expect(
+      fuzzyMatch("FRONT", candidates, { mode: "search", maxResults: 2 }),
+    ).toEqual(expected.slice(0, 2));
+  });
+
+  test("keeps typo prefixes anchored to the beginning of a candidate", () => {
+    expect(
+      fuzzyMatch("frone", ["team-frontend-web"], { mode: "search" }),
+    ).toEqual([]);
+  });
+});
+
 describe("property: fuzzyMatch", () => {
   test("exact candidate is always in the result", () => {
     const candidatesArb = array(shortStringArb, {
