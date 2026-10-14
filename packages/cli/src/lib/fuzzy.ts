@@ -19,7 +19,12 @@ export function levenshtein(a: string, b: string): number {
   return editDistance(a, b);
 }
 
-/** Reuse one distance table for the whole candidate and any allowed prefixes. */
+/**
+ * Return the full-string edit distance, allowing a smaller distance to a
+ * non-empty prefix of `b` when it is within `prefixThreshold`.
+ *
+ * Omit `prefixThreshold` to compare only the complete strings.
+ */
 function editDistance(a: string, b: string, prefixThreshold?: number): number {
   const m = a.length;
   const n = b.length;
