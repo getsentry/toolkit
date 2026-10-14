@@ -267,6 +267,7 @@ export function createLocalControlPlane({
         throw error;
       }
     }
+    sessionStore.pruneExpired();
     const session = sessionStore.create({ clientId, label, cwd, maxEnvelopes });
     const capabilities = sessionStore.getCapabilities(session.id);
     const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}`;

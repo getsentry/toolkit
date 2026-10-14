@@ -2,6 +2,10 @@ import { request } from "node:http";
 import { describe, expect, test } from "vitest";
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { tryListen } from "../../../src/commands/local/server.js";
+import {
+  createLocalSessionStore,
+  SESSION_RETENTION_MS,
+} from "../../../src/commands/local/session-store.js";
 
 const CONTROL_TOKEN = "control-token";
 
@@ -10,6 +14,64 @@ function controlHeaders() {
 }
 
 describe("Local control plane", () => {
+  test("replaces expired clientId sessions with usable fresh capabilities on creation", async () => {
+    let now = 1000;
+    const sessionStore = createLocalSessionStore({ now: () => now });
+    const plane = createLocalControlPlane({
+      controlToken: CONTROL_TOKEN,
+      sessionStore,
+    });
+    const create = () =>
+      plane.app.request("/_local/v1/sessions", {
+        method: "POST",
+        headers: controlHeaders(),
+        body: JSON.stringify({
+          clientId: "retry-key",
+          label: "web",
+          cwd: "/web",
+        }),
+      });
+    const first = await (await create()).json();
+    sessionStore.close(first.id);
+    now += SESSION_RETENTION_MS - 1;
+    expect(await (await create()).json()).toMatchObject({
+      id: first.id,
+      state: "retained",
+    });
+    now += 1;
+    const response = await create();
+    expect(response.status).toBe(201);
+    const replacement = await response.json();
+    expect(replacement.id).not.toBe(first.id);
+    expect(replacement.state).toBe("open");
+    expect(replacement.ingestUrl).not.toBe(first.ingestUrl);
+    expect(replacement.streamUrl).not.toBe(first.streamUrl);
+    const ingested = await plane.app.request(replacement.ingestUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-sentry-envelope" },
+      body: '{}\n{"type":"event"}\n{"event_id":"fresh","message":"fresh capture"}',
+    });
+    expect(ingested.status).toBe(204);
+    expect(
+      sessionStore.getBuffer(replacement.id).read({ all: true }),
+    ).toHaveLength(1);
+    expect(
+      (
+        await plane.app.request(`/_local/v1/sessions/${replacement.id}`, {
+          headers: controlHeaders(),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await plane.app.request(`/_local/v1/sessions/${first.id}`, {
+          headers: controlHeaders(),
+        })
+      ).status,
+    ).toBe(404);
+    expect(sessionStore.list()).toHaveLength(1);
+  });
+
   test("validates retention settings and keeps scoped mutation loopback-only", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
     const created = await plane.app.request("/_local/v1/sessions", {

@@ -3,7 +3,7 @@
 `local run --session <name>` and `local serve --session <name>` capture into an
 isolated session owned by a background, loopback-only daemon. The foreground
 command retains its session when it exits. Closed sessions remain queryable for
-three hours after the last activity; each retains at most 500 envelopes. All
+three hours after the last activity; each retains 500 envelopes by default. All
 telemetry disappears when the daemon stops.
 
 ```sh
@@ -26,8 +26,9 @@ application is started. Omit `--verify` to capture into a retained daemon sessio
 capabilities for SDK ingestion and viewer reads. The ingest capability lives in
 the URL path so SDK transports that omit query parameters still deliver events.
 Treat those URLs as credentials.
-Use `--clientId <key>` to make session creation idempotent for retries. Names must
-be unique for name-based queries; ambiguous names return HTTP 409 with guidance
+Use `--clientId <key>` to make session creation idempotent for retries. Once a
+retained session expires, reusing its key creates a fresh session with new capabilities.
+Names must be unique for name-based queries; ambiguous names return HTTP 409 with guidance
 to use the session ID.
 Session lookup commands accept names quoted or as separate words. For `event view` and
 `envelope view`, the final argument is the telemetry ID; preceding arguments
@@ -39,8 +40,9 @@ The daemon stores its discovery token under `SENTRY_CONFIG_DIR` in an owner-only
 state file. It binds only to localhost, 127.0.0.1, or ::1 and uses a nonzero port.
 A second daemon cannot replace the running daemon for that config directory.
 Restart preserves its configured host and port and clears all in-memory data.
-It waits for the previous daemon to release its state and ownership; a rejected
-stop or shutdown timeout reports an error while preserving discovery.
+Both stop and restart wait for the previous daemon to release its state and ownership
+before reporting success; a rejected stop or shutdown timeout reports an error while
+preserving discovery.
 A temporarily unreachable live daemon keeps its discovery state for retries.
 A short ownership guard serializes claiming, stale recovery and release. If a
 process dies during that critical section, startup preserves the guard and reports

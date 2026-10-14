@@ -116,6 +116,32 @@ function singleReference(parts: string[]): string {
   return reference;
 }
 
+/** Request shutdown and confirm discovery and ownership have been released. */
+async function stopLocalDaemon(state: LocalDaemonState): Promise<void> {
+  const response = await requestLocalDaemon(state, "/daemon/stop", {
+    method: "POST",
+    signal: AbortSignal.timeout(5_000),
+  }).catch((error: unknown) => {
+    if (
+      error instanceof Error &&
+      (error.name === "TimeoutError" || error.name === "AbortError")
+    ) {
+      throw new CliError(
+        "Timed out requesting Local daemon shutdown; its discovery state has been preserved.",
+        1,
+      );
+    }
+    throw error;
+  });
+  if (!response.ok) {
+    throw new CliError(
+      `Could not stop the Local daemon (HTTP ${response.status}).`,
+      1,
+    );
+  }
+  await waitForLocalDaemonShutdown(state);
+}
+
 const daemonStartCommand = buildCommand({
   docs: { brief: "Start the Local control-plane daemon" },
   ...CONTROL_COMMAND_DEFAULTS,
@@ -160,10 +186,8 @@ const daemonStopCommand = buildCommand({
       yield new CommandOutput({ stopped: false, reason: "not running" });
       return;
     }
-    const response = await requestLocalDaemon(state, "/daemon/stop", {
-      method: "POST",
-    });
-    yield new CommandOutput({ stopped: response.ok });
+    await stopLocalDaemon(state);
+    yield new CommandOutput({ stopped: true });
   },
 });
 
@@ -174,28 +198,7 @@ const daemonRestartCommand = buildCommand({
   async *func() {
     const state = await getRunningLocalDaemon();
     if (state) {
-      const response = await requestLocalDaemon(state, "/daemon/stop", {
-        method: "POST",
-        signal: AbortSignal.timeout(5_000),
-      }).catch((error: unknown) => {
-        if (
-          error instanceof Error &&
-          (error.name === "TimeoutError" || error.name === "AbortError")
-        ) {
-          throw new CliError(
-            "Timed out requesting Local daemon shutdown; its discovery state has been preserved.",
-            1,
-          );
-        }
-        throw error;
-      });
-      if (!response.ok) {
-        throw new CliError(
-          `Could not stop the Local daemon for restart (HTTP ${response.status}).`,
-          1,
-        );
-      }
-      await waitForLocalDaemonShutdown(state);
+      await stopLocalDaemon(state);
     }
     yield new CommandOutput(
       publicDaemonState(

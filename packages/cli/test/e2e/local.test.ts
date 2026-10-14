@@ -91,9 +91,16 @@ afterEach(async () => {
 });
 
 describe("Local daemon E2E", () => {
-  test.each(["delayed", "rejected", "never", "hung"])(
-    "restart handles %s shutdown without reporting the old daemon as restarted",
-    async (mode) => {
+  test.each(
+    ["stop", "restart"].flatMap((command) =>
+      ["delayed", "rejected", "never", "hung"].map((mode) => ({
+        command,
+        mode,
+      })),
+    ),
+  )(
+    "$command handles $mode shutdown without reporting completion early",
+    async ({ command, mode }) => {
       const token = "restart-fixture";
       let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
       const statePath = join(getConfigDir(), "local-control-plane.json");
@@ -134,17 +141,27 @@ describe("Local daemon E2E", () => {
       await writeFile(statePath, JSON.stringify(before));
       await writeFile(ownerPath, String(process.pid));
       try {
-        const result = await cli("daemon", "restart");
+        const result = await cli("daemon", command);
         if (mode === "delayed") {
           expect(result.exitCode, result.stderr).toBe(0);
-          expect(JSON.parse(result.stdout)).toMatchObject({
-            host: before.host,
-            port: before.port,
-          });
-          const after = JSON.parse(await readFile(statePath, "utf8")) as {
-            pid: number;
-          };
-          expect(after.pid).not.toBe(before.pid);
+          if (command === "restart") {
+            expect(JSON.parse(result.stdout)).toMatchObject({
+              host: before.host,
+              port: before.port,
+            });
+            const after = JSON.parse(await readFile(statePath, "utf8")) as {
+              pid: number;
+            };
+            expect(after.pid).not.toBe(before.pid);
+          } else {
+            expect(JSON.parse(result.stdout)).toEqual({ stopped: true });
+            await expect(readFile(statePath, "utf8")).rejects.toMatchObject({
+              code: "ENOENT",
+            });
+            await expect(readFile(ownerPath, "utf8")).rejects.toMatchObject({
+              code: "ENOENT",
+            });
+          }
         } else {
           expect(result.exitCode).not.toBe(0);
           expect(result.stderr).toContain(
