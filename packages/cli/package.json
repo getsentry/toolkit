@@ -92,13 +92,13 @@
     "ci:policy": "pnpm run check:patches && pnpm run check:deps && pnpm run check:errors && pnpm run check:fragments && pnpm run check:docs-sections && pnpm run check:env-coverage && pnpm run check:stale-refs"
   },
   "devDependencies": {
-    "@sentry/mcp-server": "workspace:*",
     "@anthropic-ai/sdk": "^0.39.0",
     "@clack/prompts": "0.11.0",
     "@hono/node-server": "^2.0.10",
     "@mastra/client-js": "^1.38.0",
     "@sentry/api": "^0.337.0",
     "@sentry/core": "10.63.0",
+    "@sentry/mcp-server": "workspace:*",
     "@sentry/node": "10.65.0",
     "@sentry/node-core": "10.63.0",
     "@sentry/sqlish": "^1.0.1",
@@ -114,6 +114,7 @@
     "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19.2.17",
     "@types/semver": "^7.7.1",
+    "@types/yauzl": "3.4.0",
     "@vitest/coverage-v8": "^4.1.11",
     "binpatch": "^0.4.2",
     "chalk": "^5.6.2",
@@ -148,6 +149,7 @@
     "uuidv7": "^1.2.1",
     "valibot": "^1.4.2",
     "vitest": "^4.1.11",
-    "wrap-ansi": "^10.0.0"
+    "wrap-ansi": "^10.0.0",
+    "yauzl": "3.4.0"
   }
 }
