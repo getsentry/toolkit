@@ -225,6 +225,51 @@ describeEval("search-events-agent-attributes-with-context", {
             !/(?<!sentry\.)environment:/.test(value),
         },
       },
+      {
+        // deviceMemory and device.memory both look like a match by name, but
+        // only device.memory has a brief describing the device's total memory
+        input:
+          "What is the average estimated total memory capacity of devices across spans in the last 7 days?",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("avg(device.memory)") &&
+            !value.some(
+              (field) =>
+                typeof field === "string" && field.includes("deviceMemory"),
+            ),
+        },
+      },
+      {
+        // device.model and device.model_id are near-identical names, but only
+        // device.model_id's brief describes the exact hardware revision
+        input:
+          "Count spans grouped by the device's internal hardware revision over the last 7 days",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("device.model_id") &&
+            !value.includes("device.model"),
+        },
+      },
     ];
   },
   task: async (input) => {

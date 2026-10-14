@@ -255,5 +255,29 @@
     "key": "custom.feature_flag",
     "name": "custom.feature_flag",
     "context": {}
+  },
+  {
+    "key": "device.model",
+    "name": "device.model",
+    "context": {
+      "isConvention": true,
+      "brief": "The model name of the device.",
+      "isDeprecated": false,
+      "examples": [
+        "iPhone 15 Pro"
+      ]
+    }
+  },
+  {
+    "key": "device.model_id",
+    "name": "device.model_id",
+    "context": {
+      "isConvention": true,
+      "brief": "An internal hardware revision to identify the device exactly.",
+      "isDeprecated": false,
+      "examples": [
+        "iPhone16,1"
+      ]
+    }
   }
 ]
