@@ -83,6 +83,34 @@ jobs:
       - name: Check generated files
         run: git diff --exit-code
 
+  cli-asset-catalog:
+    name: CLI asset catalog (macOS arm64)
+    needs: discover-projects
+    if: contains(fromJSON(needs.discover-projects.outputs.matrix).include.*.name, 'sentry')
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
+      SENTRY_AUTH_TOKEN: ""
+      SENTRY_TOKEN: ""
+      SENTRY_CLI_NO_TELEMETRY: "1"
+      FOSSILIZE_SIGN: "n"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION_22 }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter sentry run build -- --target darwin-arm64
+      - name: Test real catalogs and the embedded decoder
+        env:
+          SENTRY_CAR_TEST_BINARY: ${{ github.workspace }}/packages/cli/dist-bin/sentry-darwin-arm64
+        run: pnpm --filter sentry exec vitest run test/lib/build/car-extract.integration.test.ts --printConsoleTrace
+
   project:
     name: ${{ matrix.name }}
     needs: discover-projects
