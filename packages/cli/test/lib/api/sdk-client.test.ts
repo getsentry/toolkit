@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { SentryApiError } from "@sentry/api";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   getOrgSentryClient,
@@ -8,6 +9,7 @@ import { listTeams, listTeamsPaginated } from "../../../src/lib/api/teams.js";
 import { getAuthConfig, setAuthToken } from "../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { withEnv } from "../../../src/lib/env.js";
+import { ApiError, AuthError, EXIT } from "../../../src/lib/errors.js";
 import { resetAuthenticatedFetch } from "../../../src/lib/sentry-client.js";
 import {
   resetHostScopingState,
@@ -182,21 +184,126 @@ describe("invocation API client", () => {
     ]);
   });
 
-  test("keeps the shared CLI error mapping for bound team calls", async () => {
+  test.each([listTeams, listTeamsPaginated])(
+    "keeps the shared CLI error mapping for %s",
+    async (list) => {
+      const detail = "You are missing the required scope team:read.";
+      globalThis.fetch = vi.fn(async () =>
+        Response.json({ detail }, { status: 403, statusText: "Forbidden" }),
+      );
+
+      await withEnv({ ...process.env }, async () => {
+        await expect(list(ORG)).rejects.toMatchObject({
+          status: 403,
+          exitCode: EXIT.API,
+          message: "Failed to list teams: 403 Forbidden",
+          detail: expect.stringContaining("--scope team:read"),
+          enriched403: true,
+        });
+      });
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test("only adapts SDK errors when the call opts into CLI error mapping", async () => {
     const detail = "You are missing the required scope team:read.";
     globalThis.fetch = vi.fn(async () =>
-      Response.json({ detail }, { status: 403, statusText: "Forbidden" }),
+      Response.json({ detail }, { status: 403 }),
     );
 
     await withEnv({ ...process.env }, async () => {
-      await expect(listTeams(ORG)).rejects.toMatchObject({
-        status: 403,
-        message: "Failed to list teams: 403 Forbidden",
-        detail: expect.stringContaining("--scope team:read"),
-        enriched403: true,
+      const result = await getSentryClient(REGION).listOrganizationTeams({
+        path: TEAM_PATH,
+      });
+
+      expect(result.error).toBeInstanceOf(SentryApiError);
+      expect(result.error).toMatchObject({ status: 403, body: { detail } });
+      expect(result.response?.status).toBe(403);
+    });
+  });
+
+  test("keeps network guidance when SDK pagination fails before a response", async () => {
+    await withEnv({ ...process.env }, async () => {
+      getSentryClient(REGION).client.setConfig({
+        fetch: async () => {
+          throw new TypeError("fetch failed");
+        },
+      });
+
+      await expect(listTeamsPaginated(ORG)).rejects.toMatchObject({
+        name: "ApiError",
+        status: 0,
+        exitCode: EXIT.API,
+        message: "Failed to list teams: Network error",
+        detail: expect.stringContaining("Cause: fetch failed"),
       });
     });
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([new AuthError("expired"), new ApiError("Transport failed", 503)])(
+    "preserves %s from the transport during SDK pagination",
+    async (error) => {
+      await withEnv({ ...process.env }, async () => {
+        getSentryClient(REGION).client.setConfig({
+          fetch: async () => {
+            throw error;
+          },
+        });
+
+        await expect(listTeamsPaginated(ORG)).rejects.toBe(error);
+      });
+    },
+  );
+
+  test("does not reclassify invalid success JSON as a network error", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response("not json", {
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    await withEnv({ ...process.env }, async () => {
+      await expect(listTeamsPaginated(ORG)).rejects.toBeInstanceOf(SyntaxError);
+    });
+  });
+
+  test("preserves custom response validation errors during SDK pagination", async () => {
+    const error = new Error("Response failed application validation");
+    globalThis.fetch = vi.fn(async () => Response.json([]));
+
+    await withEnv({ ...process.env }, async () => {
+      getSentryClient(REGION).client.setConfig({
+        responseValidator: async () => {
+          throw error;
+        },
+      });
+
+      await expect(listTeamsPaginated(ORG)).rejects.toBe(error);
+    });
+  });
+
+  test("uses the client's invocation for pagination error guidance", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({ detail: "Missing team:read scope" }, { status: 403 }),
+    );
+    const sentry = withEnv(
+      {
+        ...process.env,
+        SENTRY_AUTH_TOKEN: "example-env-token",
+        SENTRY_FORCE_ENV_TOKEN: "1",
+      },
+      () => getSentryClient(REGION),
+    );
+
+    await expect(
+      sentry.fetchPage.listOrganizationTeams({
+        path: TEAM_PATH,
+        meta: { errorContext: "Failed to list teams" },
+      }),
+    ).rejects.toMatchObject({
+      detail: expect.stringContaining("Your SENTRY_AUTH_TOKEN token"),
+    });
   });
 
   test("keeps CLI pagination cursors and the HTTP response", async () => {
