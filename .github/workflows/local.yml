@@ -1,0 +1,59 @@
+name: Local E2E
+
+on:
+  pull_request:
+    paths:
+      - "apps/local/**"
+      - "packages/cli/src/commands/local/**"
+      - "packages/cli/test/commands/local/**"
+      - "packages/cli/test/e2e/local.test.ts"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/local.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local:
+    name: Local (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            binary: sentry-linux-x64
+          - os: macos-latest
+            binary: sentry-darwin-arm64
+          - os: windows-latest
+            binary: sentry-windows-x64.exe
+    env:
+      SENTRY_CLIENT_ID: test-client-id
+      SENTRY_CLI_NO_TELEMETRY: "1"
+      FOSSILIZE_SIGN: "n"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22.23.1"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Viewer integration tests
+        run: pnpm --filter local test
+      - name: Bundle the CLI
+        run: pnpm --filter sentry bundle
+      - name: NPM daemon E2E
+        env:
+          SENTRY_CLI_BINARY: ${{ github.workspace }}/packages/cli/dist/bin.cjs
+        run: pnpm --filter sentry exec vitest run test/e2e/local.test.ts
+      - name: Build native CLI
+        run: pnpm --filter sentry build
+      - name: Native daemon E2E
+        env:
+          SENTRY_CLI_BINARY: ${{ github.workspace }}/packages/cli/dist-bin/${{ matrix.binary }}
+        run: pnpm --filter sentry exec vitest run test/e2e/local.test.ts

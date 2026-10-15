@@ -6,9 +6,6 @@ It uses the same Swift reader and Objective-C exception wrapper. The new
 entry point loads CoreUI explicitly and calls the reader in a child process.
 There is no TypeScript parser for the undocumented `.car` format.
 
-The imported code is copyright 2008–2025 Functional Software, Inc. dba Sentry,
-under [FSL-1.1-MIT](https://github.com/getsentry/sentry-cli/blob/c596fcddd616867b6c6cdfa11f9853dc889a585a/LICENSE).
-
 ## Build and run
 
 On macOS arm64 with the Xcode command-line tools:
@@ -30,6 +27,8 @@ and 26.
 `script/build.ts` compiles and embeds the helper in the macOS arm64 standalone
 binary. A failed native build always fails the binary build. Other targets
 and the npm package do not ship this helper.
+Builds that include `darwin-arm64`, including `build:all`, require a macOS
+arm64 host and the Swift toolchain.
 
 At upload time the TypeScript boundary stages catalogs and decoded images on
 disk, validates the native manifest and output files, and streams them into

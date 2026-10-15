@@ -11,6 +11,4 @@ The catalogs come from `getsentry/sentry-cli` commit
   Git blob: `86bbc641ac1676a88265487f6dc00f54b195a2f6` (820,632 bytes).
 
 The archives contain only the real catalogs needed by these tests; the app
-binaries, signatures, and provisioning profiles are omitted. The fixtures are
-copyright 2008–2025 Functional Software, Inc. dba Sentry, under
-[FSL-1.1-MIT](https://github.com/getsentry/sentry-cli/blob/c596fcddd616867b6c6cdfa11f9853dc889a585a/LICENSE).
+binaries, signatures, and provisioning profiles are omitted.

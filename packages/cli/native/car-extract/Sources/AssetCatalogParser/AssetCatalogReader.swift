@@ -1,6 +1,4 @@
-// Copyright 2008-2025 Functional Software, Inc. dba Sentry
 // Ported from getsentry/sentry-cli at c596fcddd616867b6c6cdfa11f9853dc889a585a.
-// FSL-1.1-MIT; see ../../README.md for the upstream source and license.
 import CoreGraphics
 import CryptoKit
 import Foundation
@@ -242,7 +240,8 @@ enum AssetUtil {
                 }
             }
 
-            let idiomValue = key.getUInt(forKey: "themeIdiom")
+            // perform() exposes scalar zero as a nil object pointer; zero means universal.
+            let idiomValue = key.getUInt(forKey: "themeIdiom") ?? 0
             let colorSpaceID = rendition.getUInt(forKey: "colorSpaceID")
             let scaleValue = key.getUInt(forKey: "themeScale")
 

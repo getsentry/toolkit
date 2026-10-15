@@ -42,6 +42,9 @@ function assertParsedAssets(
   ) as AssetCatalogEntry[];
   expect(assets.length).toBeGreaterThan(1);
   expect(assets).toContainEqual(
+    expect.objectContaining({ idiom: "universal" }),
+  );
+  expect(assets).toContainEqual(
     expect.objectContaining({ imageId: "", vector: false }),
   );
   const images = Object.keys(entries).filter(
