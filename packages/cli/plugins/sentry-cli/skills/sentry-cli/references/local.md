@@ -171,4 +171,4 @@ sentry local daemon status
 sentry local daemon stop
 ```
 
-All commands also support `--help`, `--log-level`, and `--verbose` flags.
+All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

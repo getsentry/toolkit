@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: Start a local Sentry MCP server
 requires:
   bins: ["sentry"]
-  auth: true
+  auth: false
 ---
 
 # Mcp Commands
