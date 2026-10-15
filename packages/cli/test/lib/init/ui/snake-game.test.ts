@@ -11,6 +11,7 @@ import {
   createSnake,
   pauseSnake,
   renderSnake,
+  resizeEndedRun,
   resizeSnake,
   type SnakeDirection,
   type SnakeState,
@@ -265,5 +266,31 @@ describe("resizeSnake", () => {
 
   test("returns the same state when the size does not change", () => {
     expect(resizeSnake(snake, snake.width, snake.height)).toBe(snake);
+  });
+});
+
+describe("resizeEndedRun", () => {
+  const snake = playing({ score: 4 });
+
+  test("is true when a resize starts a started run over", () => {
+    expect(resizeEndedRun(snake, createSnake(2, 4, firstFreeCell))).toBe(true);
+    expect(
+      resizeEndedRun(pauseSnake(snake), createSnake(2, 4, firstFreeCell)),
+    ).toBe(true);
+  });
+
+  test("is true when a resize leaves no cell for food", () => {
+    expect(resizeEndedRun(snake, { ...snake, status: "over" })).toBe(true);
+  });
+
+  test("is false when the run survives the resize", () => {
+    expect(resizeEndedRun(snake, pauseSnake(snake))).toBe(false);
+  });
+
+  test("is false for a run that never started or already ended", () => {
+    const ready = createSnake(10, 6, firstFreeCell);
+    expect(resizeEndedRun(ready, createSnake(2, 4, firstFreeCell))).toBe(false);
+    const over: SnakeState = { ...snake, status: "over" };
+    expect(resizeEndedRun(over, createSnake(2, 4, firstFreeCell))).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import {
   DEFAULT_SNAKE_PALETTE,
   pauseSnake,
   renderSnake,
+  resizeEndedRun,
   resizeSnake,
   type SnakeDirection,
   type SnakeState,
@@ -121,12 +122,18 @@ function SnakeBoard({
   width,
 }: SnakeGameProps & { height: number; width: number }): React.ReactNode {
   const [, redraw] = useReducer((frame: number) => frame + 1, 0);
-  session.state = session.state
-    ? resizeSnake(session.state, width, height)
+  const previous = session.state;
+  session.state = previous
+    ? resizeSnake(previous, width, height)
     : createSnake(width, height);
   const state = session.state;
   const onGameOverRef = useRef(onGameOver);
   onGameOverRef.current = onGameOver;
+  // A resize to the same size returns the same state, so a re-render cannot
+  // report one run twice.
+  if (previous && resizeEndedRun(previous, state)) {
+    onGameOver?.(previous.score);
+  }
 
   const apply = useCallback(
     (update: (current: SnakeState) => SnakeState) => {

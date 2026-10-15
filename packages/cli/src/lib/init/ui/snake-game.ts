@@ -228,6 +228,18 @@ export function resizeSnake(
     : { ...resized, food: null, status: "over" };
 }
 
+/**
+ * Whether `resizeSnake` ended a started run: it starts over when the snake no
+ * longer fits, and ends the run when no cell is left for food.
+ */
+export function resizeEndedRun(
+  previous: SnakeState,
+  resized: SnakeState,
+): boolean {
+  const started = previous.status === "playing" || previous.status === "paused";
+  return started && (resized.status === "ready" || resized.status === "over");
+}
+
 function placeFood(state: SnakeState, random: RandomSource): SnakePoint | null {
   const occupied = new Set(state.body.map((part) => pointKey(part)));
   const free = state.width * state.height - occupied.size;
