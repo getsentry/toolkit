@@ -754,3 +754,123 @@ describe.each(["external", "inline"] as const)(
     );
   },
 );
+
+describe("injectDirectory — Bun bundles", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "sentry-inject-bun-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Bun writes debug IDs as 32 uppercase hex chars without dashes. */
+  const BUN_ID = "4A4E3AAA85FF848F64756E2164756E21";
+  const CANONICAL_ID = "4a4e3aaa-85ff-848f-6475-6e2164756e21";
+
+  /** Shape of `bun build --target=bun --format=cjs --sourcemap=external`. */
+  const BUN_CJS =
+    '// @bun @bun-cjs\n(function(exports, require, module, __filename, __dirname) {// hello.ts\nconsole.log("hi");\n})\n';
+  const BUN_MAPPINGS = ";;AAAA,QAAQ,IAAI;";
+
+  function writeBunPair(js: string, map: Record<string, unknown> = {}) {
+    const jsPath = join(dir, "hello.js");
+    const mapPath = `${jsPath}.map`;
+    writeFileSync(jsPath, js);
+    writeFileSync(
+      mapPath,
+      JSON.stringify({
+        version: 3,
+        sources: ["../hello.ts"],
+        mappings: BUN_MAPPINGS,
+        ...map,
+      }),
+    );
+    return { jsPath, mapPath };
+  }
+
+  test("reuses Bun's undashed debug ID instead of minting a second one", async () => {
+    const { jsPath, mapPath } = writeBunPair(
+      `${BUN_CJS}\n//# debugId=${BUN_ID}\n`,
+      { debugId: BUN_ID },
+    );
+
+    const dryRun = await injectDirectory(dir, { dryRun: true });
+    expect(dryRun[0]).toMatchObject({ debugId: CANONICAL_ID, injected: true });
+
+    const results = await injectDirectory(dir);
+    expect(results[0]).toMatchObject({ debugId: CANONICAL_ID, injected: true });
+
+    const js = readFileSync(jsPath, "utf-8");
+    expect(js.match(/\/\/# debugId=/g)).toHaveLength(1);
+    expect(js).toContain(`//# debugId=${BUN_ID}`);
+    expect(js).toContain(getDebugIdSnippet(CANONICAL_ID));
+    const map = JSON.parse(readFileSync(mapPath, "utf-8"));
+    expect(map.debug_id).toBe(CANONICAL_ID);
+    expect(map.debugId).toBe(CANONICAL_ID);
+
+    const before = [readFileSync(jsPath), readFileSync(mapPath)];
+    const again = await injectDirectory(dir);
+    expect(again[0]).toMatchObject({ debugId: CANONICAL_ID, injected: false });
+    expect([readFileSync(jsPath), readFileSync(mapPath)]).toEqual(before);
+  });
+
+  test("adopts an undashed debug ID carried only by the map", async () => {
+    writeBunPair(BUN_CJS, { debugId: BUN_ID });
+
+    const results = await injectDirectory(dir);
+
+    expect(results[0]).toMatchObject({ debugId: CANONICAL_ID, injected: true });
+  });
+
+  test.each([
+    ["ESM", "", "// @bun\n"],
+    ["CJS", "", "// @bun @bun-cjs\n"],
+    ["hashbang + CJS", "#!/usr/bin/env bun\n", "// @bun @bun-cjs\n"],
+  ])(
+    "keeps the %s `// @bun` pragma above the snippet",
+    async (_, hashbang, pragma) => {
+      const header = `${hashbang}${pragma}`;
+      const body = BUN_CJS.slice(BUN_CJS.indexOf("\n") + 1);
+      const { jsPath, mapPath } = writeBunPair(`${header}${body}`);
+
+      const results = await injectDirectory(dir);
+      const debugId = results[0]?.debugId ?? "";
+
+      const js = readFileSync(jsPath, "utf-8");
+      const headerLines = header.split("\n").length - 1;
+      expect(js.startsWith(header)).toBe(true);
+      expect(js.split("\n")[headerLines]).toBe(getDebugIdSnippet(debugId));
+      expect(js).toContain(`\n${body}`);
+      // The snippet line is inserted after the header lines' mappings.
+      const lines = BUN_MAPPINGS.split(";");
+      lines.splice(headerLines, 0, "");
+      expect(JSON.parse(readFileSync(mapPath, "utf-8")).mappings).toBe(
+        lines.join(";"),
+      );
+    },
+  );
+
+  test("keeps the `// @bun` pragma above the snippet with an inline map", async () => {
+    const jsPath = join(dir, "inline.js");
+    const map = { version: 3, sources: ["a.ts"], mappings: ";AAAA" };
+    const b64 = Buffer.from(JSON.stringify(map)).toString("base64");
+    writeFileSync(
+      jsPath,
+      `// @bun\nconsole.log(1);\n//# sourceMappingURL=data:application/json;base64,${b64}\n`,
+    );
+
+    const results = await injectDirectory(dir);
+    const debugId = results[0]?.debugId ?? "";
+
+    const lines = readFileSync(jsPath, "utf-8").split("\n");
+    expect(lines[0]).toBe("// @bun");
+    expect(lines[1]).toBe(getDebugIdSnippet(debugId));
+    const uploaded = JSON.parse(
+      (results[0]?.injectedMapContent ?? Buffer.alloc(0)).toString(),
+    );
+    expect(uploaded.mappings).toBe(";;AAAA");
+  });
+});
