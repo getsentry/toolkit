@@ -1,3 +1,4 @@
+import { SessionSwitcher } from "./components/session-switcher.tsx";
 // @vitest-environment-options {"url":"https://local.sentry.dev"}
 import { createServer } from "node:net";
 import { EventSource as NodeEventSource } from "eventsource";
@@ -309,7 +310,7 @@ test("pasting a plain receiver discovers active sessions and waits for newly sta
     ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Change receiver connection",
+        name: "Add receiver",
         exact: true,
       }),
     );
@@ -400,7 +401,7 @@ test("reconnecting a plain receiver after daemon restart never selects a stale d
     await second.ingest(current, "/after-restart");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Change receiver connection",
+        name: "Add receiver",
         exact: true,
       }),
     );
@@ -456,3 +457,45 @@ test("a CLI viewer query link discovers both runs and does not override the sele
     await daemon.stop();
   }
 }, 15_000);
+
+test("a session lifecycle refresh immediately replaces a stale Running badge with Retained", async () => {
+  const daemon = await startDaemon();
+  try {
+    const session = await daemon.create("close-preview");
+    const view = render(
+      <SessionSwitcher
+        directoryUrl={session.directoryUrl}
+        streamUrl={session.streamUrl}
+        onSelect={() => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Session", exact: true })
+          .textContent,
+      ).toContain("Running"),
+    );
+    const response = await fetch(
+      `http://127.0.0.1:${daemon.port}/_local/v1/sessions/${session.id}/close`,
+      { method: "POST", headers },
+    );
+    expect(response.ok).toBe(true);
+    view.rerender(
+      <SessionSwitcher
+        directoryUrl={session.directoryUrl}
+        streamUrl={session.streamUrl}
+        onSelect={() => {}}
+        refreshKey="closed"
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Session", exact: true })
+          .textContent,
+      ).toContain("Retained"),
+    );
+  } finally {
+    cleanup();
+    await daemon.stop();
+  }
+});

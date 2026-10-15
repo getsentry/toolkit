@@ -22,8 +22,12 @@ export function SessionSwitcher({
   streamUrl,
   onSelect,
   selectInitialSession = false,
+  refreshKey,
+  onRetainedSession,
 }: {
   selectInitialSession?: boolean;
+  refreshKey?: string;
+  onRetainedSession?: (streamUrl: string) => void;
   directoryUrl: string;
   streamUrl: string;
   onSelect: (streamUrl: string) => void;
@@ -67,13 +71,16 @@ export function SessionSwitcher({
       controller?.abort();
       clearTimeout(timer);
     };
-  }, [directoryUrl, refresh]);
+  }, [directoryUrl, refresh, refreshKey]);
   useEffect(() => {
     // Only the daemon-wide /stream entry point selects an initial run. Expiring
     // or closing a selected scoped session must never silently change feeds.
     if (selectInitialSession && sessions[0]) onSelect(sessions[0].streamUrl);
   }, [selectInitialSession, sessions, onSelect]);
   const current = sessions.find((s) => s.streamUrl === streamUrl);
+  useEffect(() => {
+    if (current?.state === "retained") onRetainedSession?.(streamUrl);
+  }, [current?.state, streamUrl, onRetainedSession]);
   return (
     <section
       aria-label="Local sessions"

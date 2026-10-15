@@ -1,4 +1,12 @@
-import { ChevronDown, Moon, Sun, Settings, Trash2, X } from "lucide-react";
+import {
+  ChevronDown,
+  Moon,
+  Sun,
+  Settings,
+  Trash2,
+  X,
+  Radio,
+} from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import type { ConnectionPresentation } from "@/lib/presentation.ts";
@@ -10,6 +18,8 @@ type ReceiverControlsProps = {
   onClear: () => void;
   onOpenSettings?: (trigger: HTMLButtonElement) => void;
   onCloseSession?: () => void;
+  isClosingSession?: boolean;
+  onAddReceiver?: (trigger: HTMLButtonElement) => void;
   showStatusRole?: boolean;
 };
 
@@ -21,6 +31,8 @@ export function ReceiverControls({
   onClear,
   onOpenSettings,
   onCloseSession,
+  isClosingSession = false,
+  onAddReceiver,
   showStatusRole = true,
 }: ReceiverControlsProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -130,6 +142,23 @@ export function ReceiverControls({
             {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
             Use {isDark ? "light" : "dark"} mode
           </button>
+          {onAddReceiver ? (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-2 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                const trigger =
+                  rootRef.current?.querySelector<HTMLButtonElement>(
+                    'button[aria-label="Receiver options"]',
+                  );
+                if (trigger) onAddReceiver(trigger);
+                setIsOpen(false);
+              }}
+            >
+              <Radio className="size-4" aria-hidden="true" />
+              Add receiver
+            </button>
+          ) : null}
           {onOpenSettings ? (
             <button
               type="button"
@@ -162,7 +191,8 @@ export function ReceiverControls({
           {onCloseSession ? (
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-2 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+              disabled={isClosingSession}
+              className="flex w-full items-center gap-2 px-2 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
               onClick={() => {
                 onCloseSession();
                 setIsOpen(false);

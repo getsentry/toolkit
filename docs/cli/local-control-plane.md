@@ -95,6 +95,29 @@ that hosting project to use Toolkit and `apps/local` as its root directory.
 
 The Settings dialog also offers Light, Dark, and System appearance options.
 The choice applies immediately and persists in the browser across reloads.
+Settings also remains accessible from the connection landing without an active receiver.
+
+### Receiver connections
+
+**Add receiver** opens a modal over the current feed. Close it with its close
+button, Escape, or an outside click; focus returns to its trigger. The background
+is blocked while Add receiver or Settings is open. Both dialogs scroll within
+the viewport. Adding a receiver checks its stream before replacing a healthy
+feed. A failed or cancelled attempt keeps the existing connection and events.
+
+**Past connections**, below the connection form, lists successful receivers for
+this browser tab and survives reloads. Choose one to reconnect without pasting
+its address, or use its remove button to forget the entry. Local entries use the
+plain `/stream` address so reconnecting discovers available sessions without
+saving session capabilities in the list. Remote URLs stay in tab session storage;
+query credentials are omitted from their displayed labels. No history entry is
+created for a failed connection.
+
+Closing a session stops capture and keeps already displayed events available
+for inspection and search. A status card offers **Reconnect** to replay retained
+data. When no events are displayed, the landing explains that capture stopped and
+offers **Reconnect to session**, another endpoint, and past connections. Closing
+is guarded against duplicate requests and times out if the receiver does not respond.
 
 ### Switching sessions
 
@@ -145,8 +168,8 @@ Open Settings with the sidebar gear (or Session settings in the mobile receiver
 menu) to view retention for the selected session. A locally served viewer can
 change the limit at runtime with validation; increases preserve captured data,
 and lowering it below the retained count is rejected until enough data is cleared.
-Settings are read-only in the hosted viewer; use the CLI to change retention there.
-The sidebar keeps Change receiver on its own row, with Settings at the left and
+Retention is read-only in the hosted viewer; use the CLI to change it there.
+The sidebar keeps Add receiver on its own row, with Settings at the left and
 Clear/Close icons at the right beneath it. Icon tooltips also work with keyboard focus.
 
 A loopback-served viewer can reset and close its scoped session. The hosted viewer
