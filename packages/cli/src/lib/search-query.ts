@@ -39,6 +39,19 @@ const log = logger.withTag("search-query");
  */
 const INVALID_INLIST_KEYS = new Set(["is", "has"]);
 
+/**
+ * Filter keys whose values scope *which* issues match but which the Sentry
+ * issues-list endpoint does NOT apply to its per-group seen-stats
+ * (`count`, `userCount`, `firstSeen`, `lastSeen`).
+ *
+ * A query filtering on one of these returns the groups matching the filter,
+ * but the displayed counts remain period-wide totals across every value of the
+ * key — e.g. `release:"X"` restricts the result set yet the counts still cover
+ * all releases. Callers must be told so they don't attribute the numbers to the
+ * filter. See getsentry/cli#1518.
+ */
+const COUNT_UNSCOPED_FILTER_KEYS = new Set(["release"]);
+
 // ---------------------------------------------------------------------------
 // AST → string serialization
 // ---------------------------------------------------------------------------
@@ -472,6 +485,64 @@ function handleOr(
       "Search syntax: https://docs.sentry.io/concepts/search/",
     "query",
   );
+}
+
+/**
+ * Collect the count-unscoped filter keys (see {@link COUNT_UNSCOPED_FILTER_KEYS})
+ * present in a query, recursing into parenthesized groups.
+ */
+function collectUnscopedCountKeys(
+  nodes: SearchNode[],
+  found: Set<string>,
+): void {
+  for (const node of nodes) {
+    if (node.type === "paren_group") {
+      collectUnscopedCountKeys(node.inner, found);
+      continue;
+    }
+    if (
+      node.type === "text_filter" ||
+      node.type === "text_in_filter" ||
+      node.type === "comparison_filter"
+    ) {
+      const key = node.key.toLowerCase();
+      if (COUNT_UNSCOPED_FILTER_KEYS.has(key)) {
+        found.add(key);
+      }
+    }
+  }
+}
+
+/**
+ * Return the filter keys in `query` whose values restrict which issues match
+ * but are NOT reflected in the issues-list endpoint's seen-stats
+ * (`count`, `userCount`, `firstSeen`, `lastSeen`). See getsentry/cli#1518.
+ *
+ * Used to warn callers that a release-scoped `issue list` reports period-wide
+ * counts, not counts matching the filter. Returns an empty array when the
+ * query is absent, unparseable, or contains no such keys.
+ *
+ * @param query - Raw `--query` value, or `undefined`
+ * @returns Lower-cased matching keys (e.g. `["release"]`), deduplicated
+ */
+export function unscopedCountFilterKeys(query: string | undefined): string[] {
+  if (!query) {
+    return [];
+  }
+  let nodes: SearchNode[];
+  try {
+    nodes = parse(normalizeQuery(query));
+  } catch (error) {
+    // Unparseable query has no keys we can detect; the API will reject it with
+    // a proper 400. Nothing actionable here — just skip the count-scope check.
+    log.debug(
+      `Skipping count-scope check for unparseable query: ${String(error)}`,
+    );
+    return [];
+  }
+  const found = new Set<string>();
+  collectUnscopedCountKeys(nodes, found);
+  return [...found];
 }
 
 // ---------------------------------------------------------------------------

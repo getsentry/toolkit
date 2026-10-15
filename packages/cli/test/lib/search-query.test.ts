@@ -12,7 +12,11 @@
 
 import { describe, expect, test } from "vitest";
 import { ValidationError } from "../../src/lib/errors.js";
-import { __testing, sanitizeQuery } from "../../src/lib/search-query.js";
+import {
+  __testing,
+  sanitizeQuery,
+  unscopedCountFilterKeys,
+} from "../../src/lib/search-query.js";
 
 const { normalizeQuery, transformUnquoted } = __testing;
 
@@ -682,5 +686,58 @@ describe("sanitizeQuery: normalization integration", () => {
   test("unfixable malformed query passes through to API", () => {
     const result = sanitizeQuery("((( broken");
     expect(result).toBe("((( broken");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// unscopedCountFilterKeys (#1518)
+// ---------------------------------------------------------------------------
+
+describe("unscopedCountFilterKeys", () => {
+  test("returns empty for undefined or empty query", () => {
+    expect(unscopedCountFilterKeys(undefined)).toEqual([]);
+    expect(unscopedCountFilterKeys("")).toEqual([]);
+  });
+
+  test("returns empty when no count-unscoped filter is present", () => {
+    expect(unscopedCountFilterKeys("is:unresolved level:error")).toEqual([]);
+  });
+
+  test("detects a release: filter", () => {
+    expect(unscopedCountFilterKeys('release:"1.0.0"')).toEqual(["release"]);
+  });
+
+  test("detects release: alongside other terms", () => {
+    expect(unscopedCountFilterKeys('release:"1.0.0" is:unresolved')).toEqual([
+      "release",
+    ]);
+  });
+
+  test("detects release: in an in-list filter", () => {
+    expect(unscopedCountFilterKeys("release:[1.0.0,2.0.0]")).toEqual([
+      "release",
+    ]);
+  });
+
+  test("is case-insensitive on the key", () => {
+    expect(unscopedCountFilterKeys("Release:1.0.0")).toEqual(["release"]);
+  });
+
+  test("detects release: inside a parenthesized group", () => {
+    expect(unscopedCountFilterKeys("(release:1.0.0)")).toEqual(["release"]);
+  });
+
+  test("deduplicates repeated keys", () => {
+    expect(unscopedCountFilterKeys("release:1.0.0 release:2.0.0")).toEqual([
+      "release",
+    ]);
+  });
+
+  test("does not match free text that merely contains 'release'", () => {
+    expect(unscopedCountFilterKeys("release notes")).toEqual([]);
+  });
+
+  test("returns empty for an unparseable query", () => {
+    expect(unscopedCountFilterKeys("((( broken")).toEqual([]);
   });
 });
