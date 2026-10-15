@@ -86,39 +86,61 @@ function Install-SentryCli {
     throw $Message
   }
 
-  # Returns the HTTP status code for a URL without throwing on 4xx/5xx.
-  function Get-HttpStatus([string]$Uri) {
-    try {
-      $response = Invoke-WebRequest -UseBasicParsing -Uri $Uri -TimeoutSec 30
+  # Returns the HTTP status of a failed web request, or 0 without a response.
+  function Get-ErrorStatus($ErrorRecord) {
+    $response = $ErrorRecord.Exception.Response
+    if ($null -ne $response -and $null -ne $response.StatusCode) {
       return [int]$response.StatusCode
+    }
+    return 0
+  }
+
+  # Fetch release metadata (download URLs and checksums) from Sentry's release
+  # registry. Returns $null when the registry is unreachable or returns
+  # something unusable; stops when a pinned version does not exist.
+  function Get-RegistryRelease([string]$Path) {
+    try {
+      $metadata = Invoke-RestMethod -UseBasicParsing -TimeoutSec 10 `
+        -Uri "https://release-registry.services.sentry.io/apps/sentry/$Path"
     } catch {
-      $response = $_.Exception.Response
-      if ($null -ne $response -and $null -ne $response.StatusCode) {
-        return [int]$response.StatusCode
+      if ((Get-ErrorStatus $_) -eq 404 -and $Path -ne 'latest') {
+        Stop-Install "Unknown Sentry CLI version: $Path"
       }
-      return 0
+      Write-Verbose "Release registry lookup failed: $_"
+      return $null
+    }
+    $registryVersion = "$($metadata.version)"
+    if ($Path -eq 'latest' -and $registryVersion -notmatch '^\d+\.\d+\.\d+$') { return $null }
+    if ($Path -ne 'latest' -and $registryVersion -ne $Path) { return $null }
+    return $metadata
+  }
+
+  # Returns @{ Url; Sha256 } for one registry file entry, or $null.
+  function Get-RegistryFile($Metadata, [string]$Name) {
+    $entry = $Metadata.files.PSObject.Properties[$Name]
+    if ($null -eq $entry -or "$($entry.Value.url)" -notmatch '^https://') { return $null }
+    return @{ Url = "$($entry.Value.url)"; Sha256 = "$($entry.Value.checksums.'sha256-hex')" }
+  }
+
+  # Usage: Assert-Sha256 <file> <expected-hex>; a missing checksum is a no-op.
+  function Assert-Sha256([string]$Path, [string]$Expected) {
+    if (-not $Expected) { return }
+    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+    if ($actual -ne $Expected.ToLowerInvariant()) {
+      Stop-Install "Checksum mismatch for $asset ${version}: expected $Expected, got $actual"
     }
   }
 
-  # Resolve the latest stable version: release registry first, then the newest
-  # `cli@x.y.z` Toolkit release, then the legacy getsentry/cli repository.
-  function Resolve-LatestVersion {
-    try {
-      $metadata = Invoke-RestMethod -UseBasicParsing -TimeoutSec 10 `
-        -Uri 'https://release-registry.services.sentry.io/apps/sentry/latest'
-      if ("$($metadata.version)" -match '^\d+\.\d+\.\d+$') {
-        return "$($metadata.version)"
-      }
-    } catch {
-      Write-Verbose "Release registry lookup failed: $_"
-    }
-
-    Write-Host "Could not resolve latest version from Sentry's release registry. Trying GitHub..." -ForegroundColor DarkGray
+  # Registry outage fallback: the newest `cli@x.y.z` Toolkit release.
+  function Find-LatestToolkitVersion {
     # GitHub may have many pages of MCP releases before its newest CLI release.
     for ($page = 1; $page -le 20; $page++) {
       try {
+        # Windows PowerShell 5.1 emits a JSON array as one object; piping
+        # through ForEach-Object flattens it so an empty page has no items.
         $releases = @(Invoke-RestMethod -UseBasicParsing -TimeoutSec 30 `
-          -Uri "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=$page")
+          -Uri "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=$page" |
+          ForEach-Object { $_ })
       } catch {
         Stop-Install 'Failed to list Toolkit releases'
       }
@@ -128,15 +150,6 @@ function Install-SentryCli {
           return "$($release.tag_name)".Substring(4)
         }
       }
-    }
-
-    try {
-      $legacy = Invoke-RestMethod -UseBasicParsing -TimeoutSec 30 `
-        -Uri 'https://api.github.com/repos/getsentry/cli/releases/latest'
-      $tag = "$($legacy.tag_name)" -replace '^v', ''
-      if ($tag -match '^\d+\.\d+\.\d+$') { return $tag }
-    } catch {
-      Write-Verbose "Legacy release lookup failed: $_"
     }
     Stop-Install "Failed to fetch latest stable version from Sentry's release registry and GitHub. Retry or set SENTRY_VERSION to install a specific version."
   }
@@ -194,47 +207,62 @@ function Install-SentryCli {
   }
   $state.Arch = 'x64'
 
+  # Sentry's release registry is the source of truth for versions, download
+  # URLs (including legacy getsentry/cli releases), and checksums. GitHub is
+  # only a fallback for registry outages.
   $state.Step = 'resolve-version'
   if ($env:SENTRY_VERSION -eq 'nightly') {
     Stop-Install 'The PowerShell installer only installs stable releases. Install stable, then run: sentry cli upgrade nightly'
   }
+  $registryPath = 'latest'
+  $version = ''
   if ($env:SENTRY_VERSION) {
     $version = $env:SENTRY_VERSION -replace '^cli@', '' -replace '^v', ''
+    $state.Version = $version
+    if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+      Stop-Install "Invalid release version: $version"
+    }
+    $registryPath = $version
+  }
+
+  $asset = 'sentry-windows-x64.exe'
+  $metadata = Get-RegistryRelease $registryPath
+  if ($null -ne $metadata) {
+    $version = "$($metadata.version)"
+    $gz = Get-RegistryFile $metadata "$asset.gz"
+    $raw = Get-RegistryFile $metadata $asset
+    if ($null -eq $gz -and $null -eq $raw) {
+      Stop-Install "Sentry CLI $version has no $asset build"
+    }
   } else {
-    $version = Resolve-LatestVersion
+    Write-Host "Could not resolve $registryPath from Sentry's release registry. Trying GitHub..." -ForegroundColor DarkGray
+    if (-not $version) { $version = Find-LatestToolkitVersion }
+    $base = "https://github.com/getsentry/toolkit/releases/download/cli@$version/$asset"
+    $gz = @{ Url = "$base.gz"; Sha256 = '' }
+    $raw = @{ Url = $base; Sha256 = '' }
+    Write-Warning 'GitHub fallback downloads are not checksum-verified.'
   }
   $state.Version = $version
-  if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
-    Stop-Install "Invalid release version: $version"
-  }
-
-  # Fall back to legacy only when GitHub confirms the exact Toolkit tag is absent.
-  $state.Step = 'gh-version'
-  $toolkitStatus = Get-HttpStatus "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%40$version"
-  if ($toolkitStatus -eq 200) {
-    $releaseRepo = 'getsentry/toolkit'
-    $releaseTag = "cli@$version"
-  } elseif ($toolkitStatus -eq 404) {
-    $legacyStatus = Get-HttpStatus "https://api.github.com/repos/getsentry/cli/releases/tags/$version"
-    if ($legacyStatus -ne 200) {
-      Stop-Install "Legacy CLI release unavailable (HTTP $legacyStatus)"
-    }
-    $releaseRepo = 'getsentry/cli'
-    $releaseTag = $version
-  } else {
-    Stop-Install "Toolkit release check failed (HTTP $toolkitStatus)"
-  }
 
   $state.Step = 'download'
-  $url = "https://github.com/$releaseRepo/releases/download/$releaseTag/sentry-windows-x64.exe"
   $tmpBinary = Join-Path ([System.IO.Path]::GetTempPath()) "sentry-install-$([guid]::NewGuid().ToString('N')).exe"
   $tmpArchive = "$tmpBinary.gz"
 
   Write-Host "Downloading sentry v$version..." -ForegroundColor DarkGray
   try {
-    # Prefer the gzip asset (~60% smaller); fall back to the raw binary.
-    try {
-      Invoke-WebRequest -UseBasicParsing -Uri "$url.gz" -OutFile $tmpArchive
+    # Prefer the gzip asset (~60% smaller); fall back to the raw binary when it
+    # is missing. A checksum mismatch is fatal, never a reason to fall back.
+    $downloaded = $false
+    if ($null -ne $gz) {
+      try {
+        Invoke-WebRequest -UseBasicParsing -Uri $gz.Url -OutFile $tmpArchive
+        $downloaded = $true
+      } catch {
+        Write-Verbose "Compressed download failed, trying raw binary: $_"
+      }
+    }
+    if ($downloaded) {
+      Assert-Sha256 $tmpArchive $gz.Sha256
       $source = [System.IO.File]::OpenRead($tmpArchive)
       try {
         $gzip = New-Object System.IO.Compression.GZipStream($source, [System.IO.Compression.CompressionMode]::Decompress)
@@ -243,12 +271,19 @@ function Install-SentryCli {
       } finally {
         $source.Dispose()
       }
-    } catch {
-      Write-Verbose "Compressed download failed, trying raw binary: $_"
-      Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $tmpBinary
+    } elseif ($null -ne $raw) {
+      try {
+        Invoke-WebRequest -UseBasicParsing -Uri $raw.Url -OutFile $tmpBinary
+      } catch {
+        Stop-Install "Failed to download $($raw.Url)"
+      }
+      Assert-Sha256 $tmpBinary $raw.Sha256
+    } else {
+      Stop-Install "Failed to download $($gz.Url)"
     }
   } catch {
-    Stop-Install "Failed to download $url"
+    Remove-Item -LiteralPath $tmpBinary -Force -ErrorAction SilentlyContinue
+    throw
   } finally {
     Remove-Item -LiteralPath $tmpArchive -Force -ErrorAction SilentlyContinue
   }

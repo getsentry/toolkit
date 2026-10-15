@@ -8,7 +8,6 @@
 
 import { spawnSync } from "node:child_process";
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -21,6 +20,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import {
+  applyScenario,
+  INSTALL_SCENARIOS,
+  LATEST_VERSION,
+  type ServedAsset,
+  toolkitDownload,
+} from "./install-scenarios.js";
 
 const installScript = join(import.meta.dirname, "..", "..", "install.ps1");
 const hasPwsh =
@@ -56,19 +62,20 @@ function New-HttpError([int]$Status) {
 function Invoke-RestMethod {
   param([string]$Uri, [switch]$UseBasicParsing, [int]$TimeoutSec)
   Write-Record 'urls' $Uri
-  if ($Uri -eq 'https://release-registry.services.sentry.io/apps/sentry/latest') {
-    if ($env:SENTRY_TEST_REGISTRY_FAIL -eq '1') { throw (New-HttpError 503) }
-    return ($env:SENTRY_TEST_REGISTRY_RESPONSE | ConvertFrom-Json)
+  if ($Uri -like 'https://release-registry.services.sentry.io/apps/sentry/*') {
+    $status = [int]$env:SENTRY_TEST_REGISTRY_STATUS
+    if ($status -ne 200) { throw (New-HttpError $status) }
+    $version = $Uri.Split('/')[-1]
+    if ($version -eq 'latest') { $version = $env:SENTRY_TEST_LATEST_VERSION }
+    $body = (Get-Content -Raw -LiteralPath $env:SENTRY_TEST_REGISTRY_BODY).Replace('__VERSION__', $version)
+    return ($body | ConvertFrom-Json)
   }
   if ($Uri -like 'https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=*') {
     $page = $Uri.Split('=')[-1]
     $file = [Environment]::GetEnvironmentVariable("SENTRY_TEST_RELEASES_PAGE_$page")
-    if ($file) { return (Get-Content -Raw -LiteralPath $file | ConvertFrom-Json) }
+    # Like Windows PowerShell 5.1, emit each JSON array as a single object.
+    if ($file) { return ,(Get-Content -Raw -LiteralPath $file | ConvertFrom-Json -NoEnumerate) }
     return ,@()
-  }
-  if ($Uri -eq 'https://api.github.com/repos/getsentry/cli/releases/latest') {
-    if ($env:SENTRY_TEST_GITHUB_FAIL -eq '1') { throw (New-HttpError 503) }
-    return ($env:SENTRY_TEST_GITHUB_RESPONSE | ConvertFrom-Json)
   }
   throw "Unexpected Invoke-RestMethod $Uri"
 }
@@ -76,29 +83,18 @@ function Invoke-WebRequest {
   param([string]$Uri, [string]$OutFile, [switch]$UseBasicParsing, [int]$TimeoutSec,
     [string]$Method, $Headers, [string]$ContentType, $Body)
   Write-Record 'urls' $Uri
-  if ($Uri -like 'https://api.github.com/repos/getsentry/toolkit/releases/tags/*') {
-    $status = [int]$env:SENTRY_TEST_TOOLKIT_STATUS
-    if ($status -ne 200) { throw (New-HttpError $status) }
-    return [pscustomobject]@{ StatusCode = 200 }
-  }
-  if ($Uri -like 'https://api.github.com/repos/getsentry/cli/releases/tags/*') {
-    $status = [int]$env:SENTRY_TEST_LEGACY_STATUS
-    if ($status -ne 200) { throw (New-HttpError $status) }
-    return [pscustomobject]@{ StatusCode = 200 }
+  if ($Uri -like 'https://github.com/*/releases/download/*.gz') {
+    if ($env:SENTRY_TEST_GZ_MISSING -eq '1') { throw (New-HttpError 404) }
+    Copy-Item -LiteralPath $env:SENTRY_TEST_GZ_FILE -Destination $OutFile
+    # The installer decompresses into the existing path; pre-create it
+    # executable so the fake binary can run on POSIX test hosts.
+    $target = $OutFile.Substring(0, $OutFile.Length - 3)
+    New-Item -ItemType File -Path $target -Force | Out-Null
+    chmod +x $target
+    return
   }
   if ($Uri -like 'https://github.com/*/releases/download/*') {
-    Write-Record 'download-urls' $Uri
-    if ($Uri.EndsWith('.gz')) {
-      if ($env:SENTRY_TEST_GZ_MISSING -eq '1') { throw (New-HttpError 404) }
-      Copy-Item -LiteralPath $env:SENTRY_TEST_FAKE_GZ -Destination $OutFile
-      # The installer decompresses into the existing path; pre-create it
-      # executable so the fake binary can run on POSIX test hosts.
-      $target = $OutFile.Substring(0, $OutFile.Length - 3)
-      New-Item -ItemType File -Path $target -Force | Out-Null
-      chmod +x $target
-      return
-    }
-    Copy-Item -LiteralPath $env:SENTRY_TEST_FAKE_BINARY -Destination $OutFile
+    Copy-Item -LiteralPath $env:SENTRY_TEST_RAW_FILE -Destination $OutFile
     chmod +x $OutFile
     return
   }
@@ -106,6 +102,13 @@ function Invoke-WebRequest {
 }
 Get-Content -Raw -LiteralPath $env:SENTRY_TEST_INSTALL_SCRIPT | Invoke-Expression
 `;
+
+const asset = "sentry-windows-x64.exe";
+const served: ServedAsset = {
+  name: asset,
+  gz: gzipSync(downloadedExecutable),
+  raw: downloadedExecutable,
+};
 
 describe.skipIf(!hasPwsh)("PowerShell install script", () => {
   let testDir: string;
@@ -120,12 +123,6 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     harnessPath = join(testDir, "harness.ps1");
     writeFileSync(harnessPath, harness);
 
-    const fakeBinary = join(testDir, "fake-binary");
-    writeFileSync(fakeBinary, downloadedExecutable);
-    chmodSync(fakeBinary, 0o755);
-    const fakeGz = join(testDir, "fake-binary.gz");
-    writeFileSync(fakeGz, gzipSync(downloadedExecutable));
-
     env = {
       PATH: process.env.PATH,
       HOME: join(testDir, "home"),
@@ -137,13 +134,14 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
       SENTRY_CLI_NO_TELEMETRY: "1",
       SENTRY_TEST_DIR: testDir,
       SENTRY_TEST_INSTALL_SCRIPT: installScript,
-      SENTRY_TEST_FAKE_BINARY: fakeBinary,
-      SENTRY_TEST_FAKE_GZ: fakeGz,
-      SENTRY_TEST_REGISTRY_RESPONSE: '{"version":"0.47.0"}',
-      SENTRY_TEST_TOOLKIT_STATUS: "200",
-      SENTRY_TEST_LEGACY_STATUS: "200",
       GITHUB_PATH: join(testDir, "github-path"),
     };
+    applyScenario(
+      { ...INSTALL_SCENARIOS[0], name: "default" },
+      served,
+      testDir,
+      env,
+    );
   });
 
   afterEach(() => {
@@ -165,13 +163,35 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
       : [];
   }
 
-  test("installs the latest stable release from the release registry", () => {
+  test.each(INSTALL_SCENARIOS)("$name", (scenario) => {
+    applyScenario(scenario, served, testDir, env);
+
+    const result = run();
+
+    const output = result.stdout + result.stderr;
+    if (scenario.ok) {
+      expect(result.status, output).toBe(0);
+      expect(existsSync(join(installDir, "sentry.exe"))).toBe(true);
+    } else {
+      expect(result.status, output).not.toBe(0);
+      expect(recorded("setup-args")).toEqual([]);
+    }
+    for (const expected of scenario.output ?? []) {
+      expect(output).toContain(expected);
+    }
+    expect(recorded("urls")).toEqual(scenario.requests(asset));
+    expect(
+      readdirSync(testDir).filter((name) => name.startsWith("sentry-install-")),
+    ).toEqual([]);
+  });
+
+  test("hands off to setup and puts the install dir on PATH", () => {
     const result = run();
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("download-urls")).toEqual([
-      "https://github.com/getsentry/toolkit/releases/download/cli@0.47.0/sentry-windows-x64.exe.gz",
-    ]);
+    expect(recorded("urls").at(-1)).toBe(
+      toolkitDownload(LATEST_VERSION, `${asset}.gz`),
+    );
     expect(recorded("setup-args")).toEqual([
       "cli",
       "setup",
@@ -185,65 +205,6 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     expect(recorded("setup-install-dir")).toEqual([installDir]);
     expect(recorded("setup-path")[0]?.startsWith(`${installDir}:`)).toBe(true);
     expect(recorded("github-path")).toEqual([installDir]);
-    expect(existsSync(join(installDir, "sentry.exe"))).toBe(true);
-    expect(
-      readdirSync(testDir).filter((name) => name.startsWith("sentry-install-")),
-    ).toEqual([]);
-  });
-
-  test("falls back to the newest stable Toolkit CLI release on GitHub", () => {
-    env.SENTRY_TEST_REGISTRY_FAIL = "1";
-    const page1 = join(testDir, "page-1.json");
-    writeFileSync(
-      page1,
-      JSON.stringify([
-        { tag_name: "mcp@1.2.3", prerelease: false },
-        { tag_name: "cli@0.48.0", prerelease: true },
-      ]),
-    );
-    const page2 = join(testDir, "page-2.json");
-    writeFileSync(
-      page2,
-      JSON.stringify([{ tag_name: "cli@0.46.0", prerelease: false }]),
-    );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = page1;
-    env.SENTRY_TEST_RELEASES_PAGE_2 = page2;
-
-    const result = run();
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(result.stdout).toContain("Trying GitHub");
-    expect(recorded("download-urls")).toEqual([
-      "https://github.com/getsentry/toolkit/releases/download/cli@0.46.0/sentry-windows-x64.exe.gz",
-    ]);
-  });
-
-  test("installs a pinned version from the legacy repository", () => {
-    env.SENTRY_VERSION = "v0.42.2";
-    env.SENTRY_TEST_TOOLKIT_STATUS = "404";
-
-    const result = run();
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("urls")).not.toContain(
-      "https://release-registry.services.sentry.io/apps/sentry/latest",
-    );
-    expect(recorded("download-urls")).toEqual([
-      "https://github.com/getsentry/cli/releases/download/0.42.2/sentry-windows-x64.exe.gz",
-    ]);
-  });
-
-  test("falls back to the uncompressed binary", () => {
-    env.SENTRY_TEST_GZ_MISSING = "1";
-
-    const result = run();
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("download-urls")).toEqual([
-      "https://github.com/getsentry/toolkit/releases/download/cli@0.47.0/sentry-windows-x64.exe.gz",
-      "https://github.com/getsentry/toolkit/releases/download/cli@0.47.0/sentry-windows-x64.exe",
-    ]);
-    expect(existsSync(join(installDir, "sentry.exe"))).toBe(true);
   });
 
   test("runs sentry init with the installed binary when SENTRY_INIT=1", () => {
