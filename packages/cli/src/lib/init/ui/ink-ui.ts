@@ -422,6 +422,8 @@ export async function selectWithFilter(
 /**
  * Run the standalone Snake game until the player quits. Ink handles the
  * alternate screen and restores it on exit and on SIGINT/SIGTERM.
+ *
+ * @param onGameOver - Called with the final score when a game ends
  */
 export async function runSnakeGame(
   onGameOver?: (score: number) => void,

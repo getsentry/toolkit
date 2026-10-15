@@ -31,4 +31,4 @@ Play Snake in your terminal
 sentry games snake
 ```
 
-All commands also support `--help`, `--log-level`, and `--verbose` flags.
+All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
