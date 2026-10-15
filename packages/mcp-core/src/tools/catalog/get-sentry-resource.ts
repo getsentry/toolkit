@@ -13,7 +13,11 @@ import {
   resolveScopedOrganizationSlug,
   resolveScopedProjectSlug,
 } from "../../internal/url-scope";
-import { ParamOrganizationSlug } from "../../schema";
+import {
+  ParamEventId,
+  ParamOrganizationSlug,
+  ParamPackageNames,
+} from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId } from "../../utils/slug-validation";
@@ -457,6 +461,7 @@ export default defineTool({
       "",
       `Supports ${supportedResources}`,
       "Trace lookups return a condensed overview by default.",
+      "For installed package versions recorded with an exact event, pass packageNames with an event URL or resourceType='event'.",
       "",
       "Agent Conversations: A conversation is a set of spans sharing the same gen_ai.conversation.id. Use resourceType='ai_conversation' with a conversation ID, or pass a Sentry conversation URL, to fetch the transcript/details. To discover or list conversations, use search_agent_conversations. Conversations are NOT issues — do not use search_issues for conversation queries.",
       "",
@@ -510,6 +515,7 @@ export default defineTool({
       ),
 
     organizationSlug: ParamOrganizationSlug.optional(),
+    packageNames: ParamPackageNames.optional(),
   },
 
   annotations: {
@@ -527,6 +533,16 @@ export default defineTool({
         params.organizationSlug ?? context.constraints.organizationSlug,
       projectSlug: context.constraints.projectSlug,
     });
+
+    if (
+      params.packageNames &&
+      (resolved.type !== "event" ||
+        !ParamEventId.safeParse(resolved.eventId).success)
+    ) {
+      throw new UserInputError(
+        "`packageNames` requires an event URL or resourceType='event' with a 32-character hexadecimal event ID.",
+      );
+    }
 
     const resourceContext = { "resource.type": resolved.type };
     setTags(resourceContext);
@@ -566,6 +582,7 @@ export default defineTool({
       case "event":
         return getIssueDetails.handler(
           {
+            packageNames: params.packageNames,
             organizationSlug: resolved.organizationSlug,
             issueId: resolved.issueId,
             eventId: resolved.eventId,
