@@ -298,6 +298,11 @@ function Install-SentryCli {
         Stop-Install 'Cannot find installed sentry binary'
       }
       & $installedBinary init
+      if ($LASTEXITCODE -ne 0) {
+        # Like the bash installer, report wizard failures to the caller but not
+        # to installer telemetry: init errors are not installation failures.
+        throw "sentry init failed with exit code $LASTEXITCODE"
+      }
     }
   } finally {
     $env:SENTRY_INSTALL_DIR = $previousInstallDir

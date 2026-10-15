@@ -39,6 +39,7 @@ if [[ "$1" == "cli" && "$2" == "setup" ]]; then
 fi
 printf '%s\\n' "$@" >> "$SENTRY_TEST_DIR/post-args"
 printf '%s\\n' "$0" >> "$SENTRY_TEST_DIR/post-binary"
+exit "\${SENTRY_TEST_POST_EXIT:-0}"
 `;
 
 // Mocks for the cmdlets the installer uses, followed by the iex invocation.
@@ -253,6 +254,19 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("post-args")).toEqual(["init"]);
     expect(recorded("post-binary")).toEqual([join(installDir, "sentry.exe")]);
+  });
+
+  test("fails when sentry init fails", () => {
+    env.SENTRY_INIT = "1";
+    env.SENTRY_TEST_POST_EXIT = "7";
+
+    const result = run();
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      "sentry init failed with exit code 7",
+    );
+    expect(recorded("post-args")).toEqual(["init"]);
   });
 
   test("leaves PATH alone when SENTRY_NO_MODIFY_PATH=1", () => {
