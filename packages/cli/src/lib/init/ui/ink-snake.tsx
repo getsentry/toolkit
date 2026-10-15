@@ -7,6 +7,7 @@ import {
   DEFAULT_SNAKE_PALETTE,
   pauseSnake,
   renderSnake,
+  resizeEndedRun,
   resizeSnake,
   type SnakeDirection,
   type SnakeState,
@@ -81,6 +82,8 @@ type SnakeGameProps = {
   muted: string;
   onCancel: () => void;
   onExit: () => void;
+  /** Called once with the final score when a run ends. */
+  onGameOver?: (score: number) => void;
   session: SnakeSession;
 };
 
@@ -114,26 +117,39 @@ function SnakeBoard({
   muted,
   onCancel,
   onExit,
+  onGameOver,
   session,
   width,
 }: SnakeGameProps & { height: number; width: number }): React.ReactNode {
   const [, redraw] = useReducer((frame: number) => frame + 1, 0);
-  session.state = session.state
-    ? resizeSnake(session.state, width, height)
+  const previous = session.state;
+  session.state = previous
+    ? resizeSnake(previous, width, height)
     : createSnake(width, height);
   const state = session.state;
+  const onGameOverRef = useRef(onGameOver);
+  onGameOverRef.current = onGameOver;
+  // A resize to the same size returns the same state, so a re-render cannot
+  // report one run twice.
+  if (previous && resizeEndedRun(previous, state)) {
+    onGameOver?.(previous.score);
+  }
 
   const apply = useCallback(
     (update: (current: SnakeState) => SnakeState) => {
       if (!session.state) {
         return;
       }
-      const next = update(session.state);
-      if (next === session.state) {
+      const current = session.state;
+      const next = update(current);
+      if (next === current) {
         return;
       }
       session.state = next;
       session.best = Math.max(session.best, next.score);
+      if (next.status === "over" && current.status !== "over") {
+        onGameOverRef.current?.(next.score);
+      }
       redraw();
     },
     [session],
