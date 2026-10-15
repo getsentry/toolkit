@@ -312,13 +312,22 @@ function isProcessRunning(pid: number): boolean {
 
 /** Read a lock's owning PID without interpreting an absent file as ownership. */
 async function readOwnerPid(path: string): Promise<number> {
-  try {
-    return Number(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      return 0;
-    logger.debug("Could not read Local startup ownership", error);
-    throw error;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return Number(await readFile(path, "utf8"));
+    } catch (error) {
+      if (error instanceof Error && "code" in error) {
+        if (error.code === "ENOENT") return 0;
+        // Windows may briefly deny reads while the previous owner removes its
+        // file. Retry without interpreting an unreadable owner as absent.
+        if (error.code === "EPERM" && attempt < 4) {
+          await sleep(125);
+          continue;
+        }
+      }
+      logger.debug("Could not read Local startup ownership", error);
+      throw error;
+    }
   }
 }
 
