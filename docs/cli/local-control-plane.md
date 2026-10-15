@@ -22,8 +22,8 @@ sentry local daemon stop
 `--session` or `--open`. Invalid combinations are rejected before a receiver or
 application is started. Omit `--verify` to capture into a retained daemon session.
 
-`local session create <name> --json` returns distinct `ingestUrl` and `streamUrl`
-capabilities for SDK ingestion and viewer reads. The ingest capability lives in
+`local session create <name> --json` returns distinct `ingestUrl`, `streamUrl`, and `directoryUrl`
+capabilities for SDK ingestion, single-session streaming, and browser session discovery. The ingest capability lives in
 the URL path so SDK transports that omit query parameters still deliver events.
 Treat those URLs as credentials.
 Use `--clientId <key>` to make session creation idempotent for retries. Once a
@@ -93,6 +93,31 @@ The independently served viewer lives in `apps/local`. Run
 CLI builds use <https://local.sentry.dev/>; publishing the migrated app requires
 that hosting project to use Toolkit and `apps/local` as its root directory.
 
+### Switching sessions
+
+Run either command with `--session <name> --open` to open a viewer with a Session
+picker. It works in the local development viewer and on <https://local.sentry.dev/>.
+The picker lists running and retained sessions from that daemon, including sessions
+created after the viewer opens. It refreshes every five seconds; Refresh sessions
+updates it immediately. Labels include the working directory and a short session ID
+to distinguish runs with the same name. Picking a session replaces only the viewer's
+feed, searches, and selection; the daemon retains every session's captured data.
+Switching back replays its retained envelopes. Retention follows the selected session.
+A failed refresh leaves the current feed readable. Expired sessions leave the list;
+the viewer keeps already displayed telemetry and does not silently switch runs.
+
+Discovery requires the separate `directoryUrl` capability returned by session create
+and session view. `--open` passes it alongside the initial stream in the URL fragment,
+which is removed after startup and is never sent to the hosting server. The directory
+is kept only in tab session storage, so reloads can retain the picker. The capability
+allows discovery of all sessions and their stream capabilities on this daemon; treat
+it as a credential. It does not grant ingestion or the CLI control API, and expires
+when the daemon stops. By themselves, existing scoped stream links do not grant sibling discovery.
+An older CLI/daemon or a plain receiver can still connect without a picker; reopen
+with an updated CLI and daemon to enable discovery. An already-running older daemon
+needs a restart after upgrading; restarting clears its in-memory telemetry. One picker
+covers one daemon, not receivers on other ports or computers.
+
 A loopback-served viewer can reset and close its scoped session. The hosted viewer
 can read the stream and clear its own displayed feed; it cannot mutate retained
 receiver data. Remote HTTPS streams stay read-only.
@@ -112,7 +137,7 @@ spans as failures. The AI workspace matches AI namespaces (`ai`, `gen_ai`,
 
 `pnpm --filter sentry test:e2e` builds the npm bundle and runs the CLI process
 suite. `test/e2e/local.test.ts` covers concurrent startup, session isolation,
-capability checks, retained queries, scoped browser controls, wrapped applications,
+capability checks, hosted-origin session discovery and isolated stream switching, retained queries, scoped browser controls, wrapped applications,
 real Sentry Node SDK ingestion, restart, and singleton ownership. The Local workflow repeats these tests against
 npm and native binaries on Linux, macOS, and Windows.
 

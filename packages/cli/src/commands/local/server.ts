@@ -1071,7 +1071,11 @@ export const serverCommand = buildCommand({
         `  Capabilities: sentry local session view ${session.id} --json`,
       );
       logger.info("Press Ctrl-C to stop.");
-      await openLocalUiIfRequested(flags.open, session.streamUrl);
+      await openLocalUiIfRequested(
+        flags.open,
+        session.streamUrl,
+        session.directoryUrl,
+      );
 
       const controller = new AbortController();
       const stop = () => controller.abort();

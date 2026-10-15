@@ -6,6 +6,7 @@ import {
   getLocalUiBaseUrl,
   openLocalUi,
 } from "../../../src/commands/local/ui.js";
+import { logger } from "../../../src/lib/logger.js";
 import { openBrowser } from "../../../src/lib/browser.js";
 
 vi.mock("../../../src/lib/browser.js", () => ({
@@ -13,6 +14,40 @@ vi.mock("../../../src/lib/browser.js", () => ({
 }));
 
 describe("local UI URLs", () => {
+  test("never logs a directory capability when a browser launch fails", async () => {
+    vi.mocked(openBrowser).mockResolvedValueOnce(false);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      await openLocalUi(
+        "http://localhost:8969/stream",
+        "http://localhost:8969/_local/v1/ui/sessions?cap=directory-secret",
+      );
+      expect(
+        warn.mock.calls.map((call) => String(call[0])).join("\n"),
+      ).not.toContain("directory-secret");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("keeps browser session discovery in the fragment alongside its scoped stream", () => {
+    const stream =
+      "http://localhost:8969/_local/v1/sessions/web/stream?cap=stream-secret";
+    const directory =
+      "http://localhost:8969/_local/v1/ui/sessions?cap=directory-secret";
+    const url = new URL(buildLocalUiUrl(stream, directory));
+    expect(url.search).toBe("");
+    const fragment = new URLSearchParams(url.hash.slice(1));
+    expect(fragment.get("stream")).toBe(stream);
+    expect(fragment.get("directory")).toBe(directory);
+    expect(() =>
+      buildLocalUiUrl(
+        stream,
+        "http://localhost:9999/_local/v1/ui/sessions?cap=other",
+      ),
+    ).toThrow();
+  });
+
   test("uses the Vite UI in development", () => {
     expect(getLocalUiBaseUrl("development")).toBe("http://localhost:5173");
   });

@@ -14,6 +14,7 @@ type Session = {
   id: string;
   ingestUrl: string;
   streamUrl: string;
+  directoryUrl: string;
 };
 
 const fetch = (globalThis as { __originalFetch: typeof globalThis.fetch })
@@ -91,6 +92,92 @@ afterEach(async () => {
 });
 
 describe("Local daemon E2E", () => {
+  test("hosted session discovery switches isolated streams and preserves retained sessions", async () => {
+    const port = await availablePort();
+    const web = await createSession("web", port);
+    const worker = await createSession("worker", port);
+    await ingest(web, "web-id", "web-only");
+    await ingest(worker, "worker-id", "worker-only");
+    const origin = { Origin: "https://local.sentry.dev" };
+    const response = await fetch(web.directoryUrl, { headers: origin });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://local.sentry.dev",
+    );
+    const directory = (await response.json()) as {
+      sessions: {
+        id: string;
+        label: string;
+        state: string;
+        streamUrl: string;
+      }[];
+    };
+    expect(directory.sessions).toHaveLength(2);
+    expect(JSON.stringify(directory)).not.toContain("ingestUrl");
+    for (const [id, expected, excluded] of [
+      [web.id, "web-only", "worker-only"],
+      [worker.id, "worker-only", "web-only"],
+      [web.id, "web-only", "worker-only"],
+    ]) {
+      const session = directory.sessions.find((s) => s.id === id)!;
+      const stream = await fetch(session.streamUrl, {
+        headers: origin,
+        signal: AbortSignal.timeout(5000),
+      });
+      const reader = stream.body!.getReader();
+      try {
+        let text = "";
+        while (!text.includes(expected!)) {
+          const chunk = await reader.read();
+          if (chunk.done) throw new Error("Stream closed");
+          text += new TextDecoder().decode(chunk.value);
+        }
+        expect(text).not.toContain(excluded!);
+      } finally {
+        await reader.cancel();
+      }
+    }
+    const wrong = new URL(web.directoryUrl);
+    wrong.searchParams.set(
+      "cap",
+      new URL(web.streamUrl).searchParams.get("cap")!,
+    );
+    expect((await fetch(wrong, { headers: origin })).status).toBe(401);
+    const preflight = await fetch(web.directoryUrl, {
+      method: "OPTIONS",
+      headers: {
+        ...origin,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Private-Network": "true",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Private-Network")).toBe(
+      "true",
+    );
+    expect(
+      (
+        await fetch(web.directoryUrl, {
+          headers: { Origin: "https://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await fetch(web.directoryUrl, { method: "POST", headers: origin }))
+        .status,
+    ).toBe(403);
+    expect((await cli("session", "close", worker.id)).exitCode).toBe(0);
+    const refreshed = (await (
+      await fetch(web.directoryUrl, { headers: origin })
+    ).json()) as typeof directory;
+    expect(refreshed.sessions.find((s) => s.id === worker.id)?.state).toBe(
+      "retained",
+    );
+    expect(
+      JSON.parse((await cli("event", "list", worker.id)).stdout).events,
+    ).toHaveLength(1);
+  }, 30_000);
+
   test.each(
     ["stop", "restart"].flatMap((command) =>
       ["delayed", "rejected", "never", "hung"].map((mode) => ({

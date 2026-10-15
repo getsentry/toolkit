@@ -62,6 +62,8 @@ export type LocalDaemonSession = {
   readonly ingestUrl: string;
   readonly label: string;
   readonly streamUrl: string;
+  /** Older daemon versions do not advertise browser discovery. */
+  readonly directoryUrl?: string;
 };
 
 function statePath(directory: string): string {

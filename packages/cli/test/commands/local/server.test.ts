@@ -38,6 +38,7 @@ type ServeFunc = (
     format: "human" | "json";
     attributes: boolean;
     open: boolean;
+    session?: string;
   },
 ) => Promise<void>;
 
@@ -141,6 +142,56 @@ describe("sentry local serve --open", () => {
     attributes: false,
     open: true,
   };
+
+  test("scoped serve opens the viewer with explicit session discovery", async () => {
+    const daemon = await import("../../../src/commands/local/daemon.js");
+    const { server, port } = await tryListen(
+      buildApp(createSpotlightBuffer(5)),
+      0,
+      "127.0.0.1",
+    );
+    const streamUrl = `http://127.0.0.1:${port}/stream`;
+    const directoryUrl = `http://127.0.0.1:${port}/_local/v1/ui/sessions?cap=directory-secret`;
+    const create = vi
+      .spyOn(daemon, "createLocalDaemonSession")
+      .mockResolvedValue({
+        id: "web",
+        cwd: "/web",
+        label: "web",
+        streamUrl,
+        ingestUrl: streamUrl,
+        directoryUrl,
+      });
+    const retain = vi
+      .spyOn(daemon, "retainLocalDaemonSession")
+      .mockResolvedValue(undefined);
+    const signal = interceptShutdownSignal();
+    const opener = vi.mocked(openBrowser);
+    opener.mockClear();
+    const func = (await serverCommand.loader()) as unknown as ServeFunc;
+    try {
+      const command = func.call(
+        { cwd: "/web" },
+        { ...flags, port, session: "web" },
+      );
+      await vi.waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
+      signal.trigger();
+      await command;
+      const url = new URL(opener.mock.calls[0]![0]);
+      expect(new URLSearchParams(url.hash.slice(1)).get("directory")).toBe(
+        directoryUrl,
+      );
+      expect(url.search).toBe("");
+    } finally {
+      signal.restore();
+      create.mockRestore();
+      retain.mockRestore();
+      await new Promise<void>((r) => {
+        server.close(() => r());
+        server.closeAllConnections();
+      });
+    }
+  });
 
   test("opens the UI after starting an owned receiver", async () => {
     const signal = interceptShutdownSignal();

@@ -5,6 +5,7 @@
  * its bearer-protected API while SDKs receive only scoped ingestion URLs.
  */
 
+import { randomBytes } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { pushToSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { type Context, Hono } from "hono";
@@ -33,6 +34,7 @@ const LOOPBACK_ORIGIN_RE =
 const SESSION_UI_ACTION_RE =
   /^\/_local\/v1\/sessions\/[^/]+\/ui\/(reset|close|retention)$/;
 const SESSION_INGEST_RE = /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+$/;
+const VIEWER_SESSIONS_PATH = "/_local/v1/ui/sessions";
 const SESSION_STREAM_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
 /** Authenticated HTTP application and its in-memory session registry. */
@@ -115,6 +117,10 @@ export function createLocalControlPlane({
 }: CreateLocalControlPlaneOptions): LocalControlPlane {
   const app = new Hono();
   const baseUrl = formatLocalServerUrl(host, port);
+  // Separate opt-in capability: a scoped stream never grants sibling discovery.
+  // This token dies with the daemon and never authorizes the control API.
+  const viewerCapability = randomBytes(24).toString("base64url");
+  const directoryUrl = `${baseUrl}${VIEWER_SESSIONS_PATH}?cap=${viewerCapability}`;
   const sessionExists = (reference: string): boolean => {
     sessionStore.pruneExpired();
     try {
@@ -138,6 +144,7 @@ export function createLocalControlPlane({
 
   app.use(`${CONTROL_PLANE_PREFIX}/*`, async (c, next) => {
     if (
+      c.req.path === VIEWER_SESSIONS_PATH ||
       SESSION_STREAM_RE.test(c.req.path) ||
       ((c.req.method === "POST" || c.req.method === "OPTIONS") &&
         SESSION_INGEST_RE.test(c.req.path)) ||
@@ -175,39 +182,56 @@ export function createLocalControlPlane({
     allowMethods: ["GET", "OPTIONS"],
     origin: (origin) => (isHostedUiOrigin(origin) ? origin : null),
   });
-  app.use(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, async (c, next) => {
-    const origin = c.req.header("origin") ?? "";
-    const isWrite =
-      c.req.method === "POST" ||
-      (c.req.method === "OPTIONS" &&
-        c.req.header("access-control-request-method") !== "GET");
-    if (isWrite && !isLoopbackBrowserRequest(c.req.raw)) {
-      return c.body(null, 403);
-    }
-    if (!isHostedUiOrigin(origin)) {
-      return loopbackCors(c, next);
-    }
-    if (c.req.method === "OPTIONS") {
-      if (c.req.header("access-control-request-method") !== "GET") {
+  for (const path of [
+    `${CONTROL_PLANE_PREFIX}/sessions/:id/stream`,
+    VIEWER_SESSIONS_PATH,
+  ])
+    app.use(path, async (c, next) => {
+      if (c.req.path === VIEWER_SESSIONS_PATH) {
+        if (
+          (c.req.method !== "GET" && c.req.method !== "OPTIONS") ||
+          (c.req.method === "OPTIONS" &&
+            c.req.header("access-control-request-method") !== "GET")
+        )
+          return c.body(null, 403);
+        if (
+          !isLoopbackBrowserRequest(c.req.raw) &&
+          !isHostedUiOrigin(c.req.header("origin") ?? "")
+        )
+          return c.body(null, 403);
+      }
+      const origin = c.req.header("origin") ?? "";
+      const isWrite =
+        c.req.method === "POST" ||
+        (c.req.method === "OPTIONS" &&
+          c.req.header("access-control-request-method") !== "GET");
+      if (isWrite && !isLoopbackBrowserRequest(c.req.raw)) {
         return c.body(null, 403);
       }
-      c.header("Access-Control-Allow-Origin", origin);
-      c.header("Access-Control-Allow-Methods", "GET, OPTIONS");
-      c.header("Access-Control-Allow-Headers", "Last-Event-ID");
-      if (c.req.header("access-control-request-private-network") === "true") {
-        c.header("Access-Control-Allow-Private-Network", "true");
+      if (!isHostedUiOrigin(origin)) {
+        return loopbackCors(c, next);
       }
-      c.header(
-        "Vary",
-        "Origin, Access-Control-Request-Headers, Access-Control-Request-Private-Network",
-      );
-      return c.body(null, 204);
-    }
-    if (c.req.method !== "GET") {
-      return c.body(null, 403);
-    }
-    return hostedCors(c, next);
-  });
+      if (c.req.method === "OPTIONS") {
+        if (c.req.header("access-control-request-method") !== "GET") {
+          return c.body(null, 403);
+        }
+        c.header("Access-Control-Allow-Origin", origin);
+        c.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+        c.header("Access-Control-Allow-Headers", "Last-Event-ID");
+        if (c.req.header("access-control-request-private-network") === "true") {
+          c.header("Access-Control-Allow-Private-Network", "true");
+        }
+        c.header(
+          "Vary",
+          "Origin, Access-Control-Request-Headers, Access-Control-Request-Private-Network",
+        );
+        return c.body(null, 204);
+      }
+      if (c.req.method !== "GET") {
+        return c.body(null, 403);
+      }
+      return hostedCors(c, next);
+    });
   app.use(
     `${CONTROL_PLANE_PREFIX}/sessions/:id/ui/*`,
     cors({
@@ -216,6 +240,24 @@ export function createLocalControlPlane({
       origin: (origin) => (LOOPBACK_ORIGIN_RE.test(origin) ? origin : null),
     }),
   );
+
+  app.get(VIEWER_SESSIONS_PATH, (c) => {
+    if (c.req.query("cap") !== viewerCapability) return c.body(null, 401);
+    sessionStore.pruneExpired();
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      sessions: sessionStore
+        .list()
+        .map(({ id, label, cwd, state, createdAt }) => ({
+          id,
+          label,
+          cwd,
+          state,
+          createdAt,
+          streamUrl: `${baseUrl}${CONTROL_PLANE_PREFIX}/sessions/${id}/stream?cap=${sessionStore.getCapabilities(id).stream}`,
+        })),
+    });
+  });
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions`, (c) => {
     sessionStore.pruneExpired();
@@ -231,6 +273,7 @@ export function createLocalControlPlane({
     const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}`;
     return c.json({
       ...session,
+      directoryUrl,
       ingestUrl: `${baseUrl}${path}/ingest/${capabilities.ingest}`,
       streamUrl: `${baseUrl}${path}/stream?cap=${capabilities.stream}`,
     });
@@ -274,6 +317,7 @@ export function createLocalControlPlane({
     return c.json(
       {
         ...session,
+        directoryUrl,
         ingestUrl: `${baseUrl}${path}/ingest/${capabilities.ingest}`,
         streamUrl: `${baseUrl}${path}/stream?cap=${capabilities.stream}`,
       },

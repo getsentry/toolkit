@@ -1,3 +1,8 @@
+import { SessionSwitcher } from "./components/session-switcher.tsx";
+import {
+  getInitialSessionDirectory,
+  parseSessionDirectoryUrl,
+} from "./lib/session-directory.ts";
 import { RetentionSettings } from "./components/retention-settings.tsx";
 import {
   DEFAULT_MAX_ENVELOPES,
@@ -725,6 +730,8 @@ export default function App() {
       getSavedRemoteStream(),
     ),
   );
+  const [directoryUrl] = useState(() => getInitialSessionDirectory(streamUrl));
+  const activeDirectoryUrl = parseSessionDirectoryUrl(directoryUrl, streamUrl);
   const connectionGeneration = useRef(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -928,8 +935,8 @@ export default function App() {
     isLoopbackHost(window.location.hostname) &&
     isScopedSessionStream(new URL(currentEndpoint.url).pathname);
 
-  const connectToDraft = () => {
-    const endpoint = parseStreamEndpoint(draftEndpoint);
+  const connectToEndpoint = (nextStreamUrl: string) => {
+    const endpoint = parseStreamEndpoint(nextStreamUrl);
     if (!endpoint) {
       setConnectionError(
         "Enter a loopback stream or an HTTPS remote stream ending in /stream.",
@@ -1233,6 +1240,14 @@ export default function App() {
               className="flex min-h-0 flex-1 flex-col"
               aria-label="Local Sentry events"
             >
+              {activeDirectoryUrl ? (
+                <SessionSwitcher
+                  key={activeDirectoryUrl}
+                  directoryUrl={activeDirectoryUrl}
+                  streamUrl={streamUrl}
+                  onSelect={connectToEndpoint}
+                />
+              ) : null}
               {hasRetentionSettings ? (
                 <RetentionSettings
                   key={streamUrl}
@@ -1279,7 +1294,7 @@ export default function App() {
                   error={connectionError}
                   isConnecting={isConnecting}
                   onEndpointChange={setDraftEndpoint}
-                  onConnect={connectToDraft}
+                  onConnect={() => connectToEndpoint(draftEndpoint)}
                 />
               ) : !hasRetainedItems ? (
                 <div className="flex flex-1 flex-col items-center justify-center border border-dashed border-border bg-muted/40 px-4 text-center">

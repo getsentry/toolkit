@@ -14,6 +14,101 @@ function controlHeaders() {
 }
 
 describe("Local control plane", () => {
+  test("discovers sibling streams only with the explicit browser directory capability", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const create = async (label: string) =>
+      (
+        await plane.app.request("/_local/v1/sessions", {
+          method: "POST",
+          headers: controlHeaders(),
+          body: JSON.stringify({ label, cwd: `/${label}` }),
+        })
+      ).json();
+    const web = await create("web");
+    const worker = await create("worker");
+    expect(web.directoryUrl).toEqual(expect.any(String));
+    const directoryCap = new URL(web.directoryUrl).searchParams.get("cap");
+    expect(
+      (
+        await plane.app.request("/_local/v1/sessions", {
+          headers: { Authorization: `Bearer ${directoryCap}` },
+        })
+      ).status,
+    ).toBe(401);
+    for (const cap of [
+      "",
+      CONTROL_TOKEN,
+      new URL(web.streamUrl).searchParams.get("cap")!,
+      new URL(web.ingestUrl).pathname.split("/").at(-1)!,
+    ]) {
+      const url = new URL(web.directoryUrl);
+      url.searchParams.set("cap", cap);
+      expect((await plane.app.request(url.toString())).status).toBe(401);
+    }
+    const response = await plane.app.request(web.directoryUrl, {
+      headers: { Origin: "https://local.sentry.dev" },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://local.sentry.dev",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    const body = await response.json();
+    expect(body.sessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: web.id,
+          label: "web",
+          state: "open",
+          streamUrl: web.streamUrl,
+        }),
+        expect.objectContaining({
+          id: worker.id,
+          label: "worker",
+          state: "open",
+          streamUrl: worker.streamUrl,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(body)).not.toContain("ingestUrl");
+    expect(JSON.stringify(body)).not.toContain(CONTROL_TOKEN);
+    expect(
+      (
+        await plane.app.request(web.directoryUrl, {
+          headers: { Origin: "https://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    const preflight = await plane.app.request(web.directoryUrl, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://local.sentry.dev",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Private-Network": "true",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Private-Network")).toBe(
+      "true",
+    );
+    expect(
+      (
+        await plane.app.request(web.directoryUrl, {
+          method: "POST",
+          headers: { Origin: "https://local.sentry.dev" },
+        })
+      ).status,
+    ).toBe(403);
+    plane.sessionStore.close(worker.id);
+    expect(
+      (await (await plane.app.request(web.directoryUrl)).json()).sessions,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: worker.id, state: "retained" }),
+      ]),
+    );
+  });
+
   test("replaces expired clientId sessions with usable fresh capabilities on creation", async () => {
     let now = 1000;
     const sessionStore = createLocalSessionStore({ now: () => now });
