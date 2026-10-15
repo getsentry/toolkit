@@ -1263,7 +1263,6 @@ export function createDatasetAttributesTool(options: {
         replaced: replacedFields,
         updatedFieldTypes,
       } = resolveAvailableFields(allFields, fieldTypes);
-      const replacedKeys = new Set(replacedFields.map((field) => field.key));
       const fieldCount = availableFields.size;
 
       const recommendedFields = RECOMMENDED_FIELDS[normalizedDataset];
@@ -1277,9 +1276,6 @@ export function createDatasetAttributesTool(options: {
       for (const field of staticNumericFields) {
         allFieldTypes[field] = "number";
       }
-      const fieldTypeEntries = Object.entries(allFieldTypes).filter(
-        ([key]) => !replacedKeys.has(key),
-      );
 
       recordAgentToolResultCount(fieldCount);
 
@@ -1296,7 +1292,7 @@ export function createDatasetAttributesTool(options: {
       const fieldsList = pageFields
         .map(
           ([key, field]) =>
-            `- ${key} (${allFieldTypes[key]}): ${describeField(field)}`,
+            `- ${key}${allFieldTypes[key] ? ` (${allFieldTypes[key]})` : ""}: ${describeField(field)}`,
         )
         .join("\n");
       const nextPageHint =

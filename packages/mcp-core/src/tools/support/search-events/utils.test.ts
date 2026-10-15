@@ -731,9 +731,8 @@ describe("datasetAttributes tool pagination", () => {
 
     expect(result).toMatch(/showing 51-\d+\):/);
     expect(result).toContain(
-      "- device.memory: The estimated total memory capacity of the device.",
+      "- device.memory (number): The estimated total memory capacity of the device.",
     );
-    expect(result).toContain("- device.memory: number");
     expect(result).not.toContain("- span.op:");
     expect(result).not.toContain("offset:");
     expect(result).not.toContain("EXAMPLE QUERIES");
