@@ -15,9 +15,9 @@ import {
   ChevronRight,
   Copy,
   Menu,
-  Plug,
-  Eraser,
-  CircleStop,
+  Radio,
+  Trash2,
+  X,
   Search,
   Terminal,
 } from "lucide-react";
@@ -516,35 +516,20 @@ function WorkspaceSidebar({
   onSelect,
   onToggle,
 }: WorkspaceSidebarProps) {
-  const receiverActions = [
-    {
-      label: "Change receiver",
-      accessibleLabel: "Change receiver connection",
-      Icon: Plug,
-      onClick: onChangeReceiver,
-      disabled: false,
-      destructive: false,
-      separate: false,
-    },
+  const sessionActions = [
     {
       label: "Clear events",
-      accessibleLabel: "Clear events",
-      Icon: Eraser,
+      Icon: Trash2,
       onClick: onClear,
       disabled: retainedItemCount === 0,
-      destructive: true,
-      separate: false,
     },
     ...(onCloseSession
       ? [
           {
-            label: "Close session",
-            accessibleLabel: "Close telemetry session",
-            Icon: CircleStop,
+            label: "Close telemetry session",
+            Icon: X,
             onClick: onCloseSession,
             disabled: false,
-            destructive: true,
-            separate: true,
           },
         ]
       : []),
@@ -691,37 +676,36 @@ function WorkspaceSidebar({
         aria-label="Receiver actions"
         className="shrink-0 space-y-1 border-t border-border p-2"
       >
-        {receiverActions.map(
-          ({
-            label,
-            accessibleLabel,
-            Icon,
-            onClick,
-            disabled,
-            destructive,
-            separate,
-          }) => (
-            <div
-              key={accessibleLabel}
-              className={
-                separate ? "mt-1 border-t border-border pt-1" : undefined
-              }
+        <Button
+          type="button"
+          variant={collapsed ? "ghost" : "outline"}
+          aria-label="Change receiver connection"
+          title={collapsed ? "Change receiver" : undefined}
+          onClick={onChangeReceiver}
+          className={`h-9 w-full font-normal text-muted-foreground hover:text-foreground ${collapsed ? "px-0" : "gap-2 px-2"}`}
+        >
+          <Radio className="size-4 shrink-0" aria-hidden="true" />
+          {!collapsed ? <span>Change receiver</span> : null}
+        </Button>
+        <div
+          className={`flex gap-1 ${collapsed ? "flex-col" : "justify-end pt-1"}`}
+        >
+          {sessionActions.map(({ label, Icon, onClick, disabled }) => (
+            <Button
+              key={label}
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={label}
+              title={label}
+              disabled={disabled}
+              onClick={onClick}
+              className={`text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${collapsed ? "w-full" : ""}`}
             >
-              <Button
-                type="button"
-                variant="ghost"
-                aria-label={accessibleLabel}
-                title={collapsed ? label : undefined}
-                disabled={disabled}
-                onClick={onClick}
-                className={`h-9 w-full font-normal ${collapsed ? "justify-center px-0" : "justify-start gap-2.5 px-2"} ${destructive ? "text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <Icon className="size-4 shrink-0" aria-hidden="true" />
-                {!collapsed ? <span>{label}</span> : null}
-              </Button>
-            </div>
-          ),
-        )}
+              <Icon className="size-4 shrink-0" aria-hidden="true" />
+            </Button>
+          ))}
+        </div>
       </div>
     </aside>
   );
