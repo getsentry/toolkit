@@ -1,0 +1,58 @@
+name: Install Scripts
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/install-scripts.yml"
+      - "packages/cli/install.ps1"
+  pull_request:
+    paths:
+      - ".github/workflows/install-scripts.yml"
+      - "packages/cli/install.ps1"
+
+jobs:
+  windows-powershell:
+    name: ${{ matrix.shell }} installs ${{ matrix.version || 'latest' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # pwsh is PowerShell 7; powershell is the Windows PowerShell 5.1 that
+        # ships with Windows. `version` empty means latest stable.
+        shell: [pwsh, powershell]
+        version: [""]
+        include:
+          # A legacy getsentry/cli release, resolved through the registry.
+          - shell: pwsh
+            version: "0.42.2"
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    env:
+      SENTRY_CLI_NO_TELEMETRY: "1"
+      SENTRY_VERSION: ${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install through Invoke-Expression
+        run: |
+          $env:SENTRY_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'sentry-bin'
+          Get-Content -Raw -LiteralPath packages/cli/install.ps1 | Invoke-Expression
+          $installed = & (Join-Path $env:SENTRY_INSTALL_DIR 'sentry.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw "sentry --version exited with $LASTEXITCODE" }
+          if ($env:SENTRY_VERSION -and "$installed".Trim() -ne $env:SENTRY_VERSION) {
+            throw "Installed $installed, expected $env:SENTRY_VERSION"
+          }
+          "Installed sentry $installed"
+
+      - name: Find sentry on PATH in a later step
+        run: |
+          $command = Get-Command sentry -ErrorAction Stop
+          "Resolved $($command.Source)"
+          sentry --version
+          if ($LASTEXITCODE -ne 0) { throw "sentry --version exited with $LASTEXITCODE" }
