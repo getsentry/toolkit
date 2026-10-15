@@ -55,6 +55,26 @@ You can also set `SENTRY_INSTALL_DIR` to override the binary installation direct
 curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
+### Windows (PowerShell)
+
+On Windows, install the latest stable release from PowerShell:
+
+```powershell
+irm https://cli.sentry.dev/install.ps1 | iex
+```
+
+The PowerShell installer adds the install directory to your user `PATH`. It
+reads the same `SENTRY_VERSION`, `SENTRY_INSTALL_DIR`, and `SENTRY_INIT`
+environment variables as the install script. Set `SENTRY_NO_MODIFY_PATH=1` to
+leave `PATH` unchanged:
+
+```powershell
+$env:SENTRY_VERSION = "0.42.2"; irm https://cli.sentry.dev/install.ps1 | iex
+```
+
+It installs stable releases only. To switch to nightly afterwards, run
+`sentry cli upgrade nightly`.
+
 ### Supported Platforms
 
 {/* GENERATED:START platform-support */}
@@ -81,7 +101,7 @@ curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin"
     <tr>
       <td><strong>Windows</strong></td>
       <td>x64</td>
-      <td>Via Git Bash, MSYS2, or WSL</td>
+      <td>Via PowerShell, Git Bash, MSYS2, or WSL</td>
     </tr>
   </tbody>
 </table>

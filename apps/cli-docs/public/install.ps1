@@ -1,0 +1,1 @@
+../../../packages/cli/install.ps1
