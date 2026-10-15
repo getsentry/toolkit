@@ -86,12 +86,20 @@ async function startDaemon(now = Date.now, preferredPort = 0) {
       }),
   };
 }
-function renderSession(session: { streamUrl: string; directoryUrl?: string }) {
+function renderSession(
+  session: { streamUrl: string; directoryUrl?: string },
+  fromQuery = false,
+) {
   window.history.replaceState(
     null,
     "",
-    `/#${new URLSearchParams({ stream: session.streamUrl, ...(session.directoryUrl ? { directory: session.directoryUrl } : {}) })}`,
+    fromQuery
+      ? `/?${new URLSearchParams({ url: session.streamUrl })}`
+      : `/#${new URLSearchParams({ stream: session.streamUrl, ...(session.directoryUrl ? { directory: session.directoryUrl } : {}) })}`,
   );
+  return renderViewer();
+}
+function renderViewer() {
   return render(
     <ThemeProvider attribute="class" defaultTheme="light">
       <NuqsAdapter>
@@ -412,5 +420,39 @@ test("reconnecting a plain receiver after daemon restart never selects a stale d
     cleanup();
     if (second) await second.stop();
     else await first.stop();
+  }
+}, 15_000);
+
+test("a CLI viewer query link discovers both runs and does not override the selected session after reload", async () => {
+  const daemon = await startDaemon();
+  try {
+    const web = await daemon.create("web");
+    const worker = await daemon.create("worker");
+    await daemon.ingest(web, "/link-web");
+    await daemon.ingest(worker, "/link-worker");
+    window.localStorage.setItem(
+      "sentry.local.stream-url",
+      "http://127.0.0.1:1/stream",
+    );
+    renderSession(
+      { streamUrl: new URL("/stream", web.streamUrl).toString() },
+      true,
+    );
+    await screen.findAllByText("/link-web");
+    expect(window.location.search).toBe("");
+    await selectSession("worker");
+    await screen.findAllByText("/link-worker");
+    expect(window.location.search).toBe("");
+    cleanup();
+    renderViewer();
+    await screen.findAllByText("/link-worker");
+    expect(screen.queryByText("/link-web")).toBeNull();
+    expect(
+      screen.getByRole("combobox", { name: "Session", exact: true })
+        .textContent,
+    ).toContain("worker");
+  } finally {
+    cleanup();
+    await daemon.stop();
   }
 }, 15_000);

@@ -26,6 +26,7 @@ import { detectDevCommand } from "../../lib/dev-script.js";
 import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
+  printLocalViewerHint,
   type FilterValue,
   type FormatValue,
   formatEnvelopeLines,
@@ -533,6 +534,7 @@ export const runCommand = buildCommand({
           showAttributes: flags.attributes,
         });
     url = tail.url;
+    printLocalViewerHint(url, useJson);
 
     await openLocalUiIfRequested(
       flags.open,
@@ -692,6 +694,7 @@ async function* runWithVerify(
   );
   const url = formatLocalServerUrl(flags.host, boundPort);
   logger.info(`Verify server listening on ${bold(url)}`);
+  printLocalViewerHint(url, flags.format === "json");
 
   const spotlightUrl = `${url}/stream`;
 

@@ -95,6 +95,20 @@ that hosting project to use Toolkit and `apps/local` as its root directory.
 
 ### Switching sessions
 
+Human-readable `local run` and `local serve` output prints a **View events at**
+link with the receiver's actual port, for example:
+
+```text
+View events at https://local.sentry.dev/?url=http%3A%2F%2Flocalhost%3A8969%2Fstream
+```
+
+Session create/view and daemon start/status summaries include the same link.
+It opens the hosted viewer and connects to the plain receiver address, so named
+sessions appear in the picker automatically. The public `url` query accepts only
+credential-free loopback `/stream` addresses; session capabilities still use the
+existing fragment connection flow. The viewer consumes the query at startup so
+reloading keeps the selected session. JSON and NDJSON output stay unchanged.
+
 Connect to the daemon's plain `http://127.0.0.1:8969/stream` endpoint (using its
 actual host and port) to discover running sessions automatically. The viewer
 selects the first running session and fills the Session picker. If no sessions

@@ -4,6 +4,7 @@ import {
   buildLocalUiUrl,
   formatLocalServerUrl,
   getLocalUiBaseUrl,
+  getLocalUiConnectionUrl,
   openLocalUi,
 } from "../../../src/commands/local/ui.js";
 import { logger } from "../../../src/lib/logger.js";
@@ -14,6 +15,22 @@ vi.mock("../../../src/lib/browser.js", () => ({
 }));
 
 describe("local UI URLs", () => {
+  test("builds a hosted connection link with the actual receiver port and no session capabilities", () => {
+    const url = new URL(
+      getLocalUiConnectionUrl(
+        "http://127.0.0.1:9012/_local/v1/sessions/web/stream?cap=stream-secret",
+      )!,
+    );
+    expect(url.origin).toBe("https://local.sentry.dev");
+    expect(url.searchParams.get("url")).toBe("http://127.0.0.1:9012/stream");
+    expect(url.toString()).not.toContain("stream-secret");
+    expect(
+      new URL(getLocalUiConnectionUrl("http://[::1]:9012")!).searchParams.get(
+        "url",
+      ),
+    ).toBe("http://[::1]:9012/stream");
+    expect(getLocalUiConnectionUrl("http://0.0.0.0:9012")).toBeUndefined();
+  });
   test("never logs a directory capability when a browser launch fails", async () => {
     vi.mocked(openBrowser).mockResolvedValueOnce(false);
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});

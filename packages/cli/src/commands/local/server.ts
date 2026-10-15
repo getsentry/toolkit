@@ -32,6 +32,7 @@ import type { FilterValue, FormatValue } from "../../lib/formatters/local.js";
 import {
   FILTER_VALUES,
   FORMAT_VALUES,
+  printLocalViewerHint,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
   formatItem,
@@ -1066,6 +1067,7 @@ export const serverCommand = buildCommand({
         port: flags.port,
       });
       logger.info("Sentry Local telemetry session");
+      printLocalViewerHint(session.streamUrl, flags.format === "json");
       logger.info(`  Session: ${bold(session.id)} (${session.label})`);
       logger.info(
         `  Capabilities: sentry local session view ${session.id} --json`,
@@ -1102,6 +1104,7 @@ export const serverCommand = buildCommand({
     if (await isServerRunning(url)) {
       await configureExistingRetention(url, flags["max-envelopes"]);
       logger.info(`Connected to existing server at ${bold(url)}`);
+      printLocalViewerHint(url, flags.format === "json");
       await openLocalUiIfRequested(flags.open, url);
       if (activeFilters.size > 0) {
         logger.info(`Filtering: ${[...activeFilters].join(", ")}`);
@@ -1170,6 +1173,7 @@ export const serverCommand = buildCommand({
 
     const listenUrl = formatLocalServerUrl(flags.host, boundPort);
     logger.info("Sentry Local Dev Server");
+    printLocalViewerHint(listenUrl, useJson);
     logger.info(`  Ingest: ${bold(`${listenUrl}/stream`)}`);
     logger.info(`  Events: ${bold(`${listenUrl}/stream`)} (SSE)`);
     logger.info("");

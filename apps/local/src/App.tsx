@@ -778,6 +778,7 @@ export default function App() {
       window.location.hash,
       getSavedStream(),
       getSavedRemoteStream(),
+      window.location.search,
     ),
   );
   const [directoryUrl, setDirectoryUrl] = useState(() =>
@@ -1037,12 +1038,11 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (window.location.hash) {
-      window.history.replaceState(
-        null,
-        "",
-        `${window.location.pathname}${window.location.search}`,
-      );
+    const url = new URL(window.location.href);
+    if (url.hash || url.searchParams.has("url")) {
+      url.hash = "";
+      url.searchParams.delete("url");
+      window.history.replaceState(null, "", `${url.pathname}${url.search}`);
     }
   }, []);
 

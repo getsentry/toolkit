@@ -6,6 +6,7 @@ import {
   getPreferredStreamUrl,
   resolveInitialStreamUrl,
   getStreamUrlFromHash,
+  getStreamUrlFromQuery,
   getStreamUrlFromStorage,
 } from "./spotlight.js";
 
@@ -73,6 +74,24 @@ describe("getStreamUrlFromHash", () => {
         "http://127.0.0.1:8969/stream",
       ),
     ).toBe("http://localhost:9000/stream");
+  });
+
+  test("accepts a plain loopback url query over saved connections without accepting credentials or remote targets", () => {
+    const query = `?${new URLSearchParams({ url: "http://localhost:9012/stream" })}`;
+    expect(getStreamUrlFromQuery(query)).toBe("http://localhost:9012/stream");
+    expect(
+      resolveInitialStreamUrl("", "http://localhost:8969/stream", null, query),
+    ).toBe("http://localhost:9012/stream");
+    for (const target of [
+      "https://evil.example/stream",
+      "http://user:password@localhost:9012/stream",
+      "http://localhost:9012/_local/v1/sessions/web/stream?cap=secret",
+      "http://localhost:9012/stream?token=secret",
+    ]) {
+      expect(
+        getStreamUrlFromQuery(`?${new URLSearchParams({ url: target })}`),
+      ).toBeUndefined();
+    }
   });
 
   test("uses CLI pairing, saved endpoints, then the default in priority order", () => {

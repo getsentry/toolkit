@@ -7,8 +7,9 @@
 
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
+import { logger } from "../../../src/lib/logger.js";
 import { Hono } from "hono";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   buildApp,
   consumeSSE,
@@ -134,6 +135,22 @@ describe("parsePort", () => {
 });
 
 describe("sentry local serve --open", () => {
+  let info: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    info = vi.spyOn(logger, "info").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    info.mockRestore();
+  });
+  function expectViewerHint() {
+    const hints = info.mock.calls
+      .map((c) => String(c[0]))
+      .filter((line) => line.startsWith("View events at "));
+    expect(hints).toHaveLength(1);
+    const url = new URL(hints[0]!.slice("View events at ".length));
+    expect(url.origin).toBe("https://local.sentry.dev");
+    expect(new URL(url.searchParams.get("url")!).pathname).toBe("/stream");
+  }
   const flags = {
     host: "127.0.0.1",
     quiet: true,
@@ -177,6 +194,7 @@ describe("sentry local serve --open", () => {
       await vi.waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
       signal.trigger();
       await command;
+      expectViewerHint();
       const url = new URL(opener.mock.calls[0]![0]);
       expect(new URLSearchParams(url.hash.slice(1)).get("directory")).toBe(
         directoryUrl,
@@ -204,6 +222,7 @@ describe("sentry local serve --open", () => {
       await vi.waitFor(() => expect(openBrowserMock).toHaveBeenCalledTimes(1));
       signal.trigger();
       await command;
+      expectViewerHint();
     } finally {
       signal.restore();
     }
@@ -238,6 +257,7 @@ describe("sentry local serve --open", () => {
       await vi.waitFor(() => expect(openBrowserMock).toHaveBeenCalledTimes(1));
       signal.trigger();
       await command;
+      expectViewerHint();
     } finally {
       signal.restore();
       globalThis.fetch = savedFetch;

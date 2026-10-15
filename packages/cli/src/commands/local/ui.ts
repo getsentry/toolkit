@@ -74,6 +74,30 @@ export function buildLocalUiUrl(
   return uiUrl.toString();
 }
 
+/** A shareable hosted-viewer link contains only the daemon's plain address. */
+export function getLocalUiConnectionUrl(
+  receiverUrl: string,
+): string | undefined {
+  try {
+    const receiver = new URL(receiverUrl);
+    if (
+      !isLoopbackHost(receiver.hostname) ||
+      receiver.username ||
+      receiver.password ||
+      !["http:", "https:"].includes(receiver.protocol)
+    )
+      return;
+    const ui = new URL(PRODUCTION_UI_URL);
+    ui.searchParams.set("url", new URL("/stream", receiver).toString());
+    return ui.toString();
+  } catch {
+    logger.debug(
+      "Skipping Local viewer hint because the receiver URL is invalid.",
+    );
+    return;
+  }
+}
+
 /** Open the independently served local UI without affecting capture on failure. */
 export async function openLocalUi(
   receiverUrl: string,

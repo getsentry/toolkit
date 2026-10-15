@@ -92,6 +92,47 @@ afterEach(async () => {
 });
 
 describe("Local daemon E2E", () => {
+  test("human session and daemon summaries advertise a plain viewer link without changing JSON", async () => {
+    const port = await availablePort();
+    const env = {
+      SENTRY_CONFIG_DIR: getConfigDir(),
+      SENTRY_CLI_NO_TELEMETRY: "1",
+      SENTRY_AUTH_TOKEN: "",
+      SENTRY_TOKEN: "",
+    };
+    const created = await runCli(
+      [
+        "local",
+        "session",
+        "create",
+        "viewer-link",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+      ],
+      { env },
+    );
+    expect(created.exitCode, created.stderr).toBe(0);
+    for (const result of [
+      created,
+      await runCli(["local", "session", "view", "viewer-link"], { env }),
+      await runCli(["local", "daemon", "status"], { env }),
+    ]) {
+      expect(result.exitCode, result.stderr).toBe(0);
+      const link = result.stdout.match(/View events at (https:\/\/\S+)/)?.[1];
+      expect(link).toBeTruthy();
+      const url = new URL(link!);
+      expect(url.origin).toBe("https://local.sentry.dev");
+      expect(url.searchParams.get("url")).toBe(
+        `http://127.0.0.1:${port}/stream`,
+      );
+    }
+    const json = await cli("session", "view", "viewer-link");
+    expect(json.stdout).not.toContain("View events at");
+    expect(JSON.parse(json.stdout).label).toBe("viewer-link");
+  }, 30_000);
+
   test("hosted session discovery switches isolated streams and preserves retained sessions", async () => {
     const port = await availablePort();
     const web = await createSession("web", port);
