@@ -142,6 +142,12 @@ describe("parseEndpointQuery", () => {
 });
 
 describe("findEndpointsByPath", () => {
+  test("preserves SDK operation names for endpoints with optional arguments", () => {
+    const matches = findEndpointsByPath("/api/0/organizations/", "GET");
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.fn).toBe("listOrganizations");
+  });
+
   test("matches a concrete org slug against {organization_id_or_slug}", () => {
     const matches = findEndpointsByPath(
       "/api/0/organizations/acme/issues/",
