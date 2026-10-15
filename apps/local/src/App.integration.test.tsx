@@ -838,6 +838,69 @@ describe("local receiver to viewer integration", () => {
     expect(window.localStorage.getItem(STREAM_STORAGE_KEY)).toBeNull();
   });
 
+  test("editing a failed landing clears its stale connection error without reconnecting", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    await act(async () => source.onerror?.(new Event("error")));
+    await screen.findByRole("alert", { name: "Receiver connection error" });
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: "http://127.0.0.1:8970/stream" },
+    });
+    expect(
+      screen.queryByRole("alert", { name: "Receiver connection error" }),
+    ).toBeNull();
+    expect(ControllableEventSource.instances).toHaveLength(1);
+    await act(async () => source.onerror?.(new Event("error")));
+    expect(
+      screen.queryByRole("alert", { name: "Receiver connection error" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    await openLatestReceiver();
+    await screen.findByText("Connected to local receiver");
+  });
+
+  test("editing a replacement keeps the disconnected feed's error after closing the modal", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    await act(async () => {
+      source.onopen?.(new Event("open"));
+      source.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([
+            {},
+            [[{ type: "event" }, { message: "kept event" }]],
+          ]),
+          lastEventId: "kept",
+        }),
+      );
+      source.onerror?.(new Event("error"));
+    });
+    await screen.findByRole("heading", {
+      name: "Receiver disconnected",
+      exact: true,
+    });
+    const error =
+      "Could not connect to the default receiver. Start it with the command below or enter another endpoint.";
+    expect(screen.getByText(error)).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add receiver", exact: true }),
+    );
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: "http://127.0.0.1:8970/stream" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    expect(screen.getByText(error)).not.toBeNull();
+    expect(screen.getByTestId("event-detail").textContent).toContain(
+      "kept event",
+    );
+  });
+
   test("keeps endpoint validation visible after a failed receiver has been stopped", async () => {
     ControllableEventSource.instances = [];
     vi.stubGlobal("EventSource", ControllableEventSource);

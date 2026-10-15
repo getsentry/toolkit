@@ -1123,6 +1123,7 @@ export default function App() {
     onEndpointChange: (value: string) => {
       setDraftEndpoint(value);
       setReceiverError(undefined);
+      if (!isEditingReceiver) setConnectionError(undefined);
       cancelReceiverAttempt();
       if (
         !isEditingReceiver &&
