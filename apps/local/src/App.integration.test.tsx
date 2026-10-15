@@ -78,6 +78,8 @@ async function stopReceiver(
 ) {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
+    // Node 22 can otherwise wait for old SSE/probe keep-alive sockets during teardown.
+    server.closeAllConnections();
   });
 }
 
