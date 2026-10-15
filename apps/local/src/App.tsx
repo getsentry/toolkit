@@ -1137,7 +1137,14 @@ export default function App() {
         setConnection("missing");
       }
     },
-    onConnect: () => connectReceiver(draftEndpoint),
+    onConnect: () =>
+      connectReceiver(
+        // The form hides local session capabilities. Retrying its unchanged
+        // address must keep the selected run rather than rediscovering one.
+        !isEditingReceiver && draftEndpoint === receiverAddress(streamUrl)
+          ? streamUrl
+          : draftEndpoint,
+      ),
     recentConnections,
     onReconnect: connectReceiver,
     onForget: (url: string) =>

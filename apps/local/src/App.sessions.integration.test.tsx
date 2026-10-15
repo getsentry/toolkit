@@ -424,6 +424,50 @@ test("reconnecting a plain receiver after daemon restart never selects a stale d
   }
 }, 15_000);
 
+test("retrying a failed CLI-selected stream keeps that session instead of discovering another run", async () => {
+  const daemon = await startDaemon(() => 1_700_000_000_000);
+  try {
+    const web = await daemon.create("web");
+    const worker = await daemon.create("worker");
+    await daemon.ingest(web, "/retry-web");
+    await daemon.ingest(worker, "/retry-worker");
+    let failInitialStream = true;
+    vi.stubGlobal(
+      "EventSource",
+      class extends NodeEventSource {
+        constructor(url: string) {
+          super(url, {
+            fetch: (input, init) => {
+              if (
+                failInitialStream &&
+                new URL(url).pathname === new URL(worker.streamUrl).pathname
+              ) {
+                failInitialStream = false;
+                return Promise.resolve(new Response(null, { status: 503 }));
+              }
+              return fetch(input, init);
+            },
+          });
+        }
+      },
+    );
+    renderSession(worker);
+    await screen.findByRole("alert", { name: "Receiver connection error" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    await screen.findAllByText("/retry-worker");
+    expect(screen.queryByText("/retry-web")).toBeNull();
+    expect(
+      screen.getByRole("combobox", { name: "Session", exact: true })
+        .textContent,
+    ).toContain("worker");
+  } finally {
+    cleanup();
+    await daemon.stop();
+  }
+}, 15_000);
+
 test("a CLI viewer query link discovers both runs and does not override the selected session after reload", async () => {
   const daemon = await startDaemon();
   try {
