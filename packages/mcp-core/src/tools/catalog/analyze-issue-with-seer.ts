@@ -128,6 +128,25 @@ export default defineTool({
     }
 
     let output = `# Seer Analysis for Issue ${parsedIssueId}\n\n`;
+    const runIdArg =
+      params.runId !== undefined ? `, runId=${params.runId}` : "";
+    const retryCall = params.issueUrl
+      ? `analyze_issue_with_seer(issueUrl="${params.issueUrl}"${runIdArg})`
+      : `analyze_issue_with_seer(organizationSlug="${orgSlug}", issueId="${parsedIssueId}"${runIdArg})`;
+    // Sentry only exposes an issue's current run, and a newer run can replace
+    // the requested one while this tool polls.
+    const runMismatch = (currentRunId: number | undefined): string | null => {
+      if (params.runId === undefined || currentRunId === params.runId) {
+        return null;
+      }
+      return (
+        `No analysis found for Run ID ${params.runId}.\n` +
+        (currentRunId === undefined
+          ? `The issue has no Seer analysis yet.\n`
+          : `The issue's current analysis is Run ID ${currentRunId}.\n`) +
+        `Sentry only exposes an issue's current run, so call again without runId to work with that run instead.\n`
+      );
+    };
 
     // Step 1: Check if analysis already exists
     let autofixState = await retryWithBackoff(
@@ -148,17 +167,9 @@ export default defineTool({
       },
     );
 
-    if (params.runId !== undefined) {
-      const currentRunId = autofixState.autofix?.run_id;
-      if (currentRunId !== params.runId) {
-        output += `No analysis found for Run ID ${params.runId}.\n`;
-        output +=
-          currentRunId === undefined
-            ? `The issue has no Seer analysis yet.\n`
-            : `The issue's current analysis is Run ID ${currentRunId}.\n`;
-        output += `Sentry only exposes an issue's current run, so call again without runId to work with that run instead.\n`;
-        return output;
-      }
+    const initialMismatch = runMismatch(autofixState.autofix?.run_id);
+    if (initialMismatch) {
+      return output + initialMismatch;
     }
 
     // Step 2: Start analysis if none exists
@@ -226,11 +237,14 @@ export default defineTool({
       if (!autofixState.autofix) {
         output += `Error: Analysis state lost. Please try again by running:\n`;
         output += `\`\`\`\n`;
-        output += params.issueUrl
-          ? `analyze_issue_with_seer(issueUrl="${params.issueUrl}")`
-          : `analyze_issue_with_seer(organizationSlug="${orgSlug}", issueId="${parsedIssueId}")`;
+        output += retryCall;
         output += `\n\`\`\`\n`;
         return output;
+      }
+
+      const pollMismatch = runMismatch(autofixState.autofix.run_id);
+      if (pollMismatch) {
+        return output + pollMismatch;
       }
 
       const status = autofixState.autofix.status;
@@ -297,9 +311,7 @@ export default defineTool({
           output += `Error: ${error instanceof Error ? error.message : String(error)}\n\n`;
           output += `You can check the status later by running the same command again:\n`;
           output += `\`\`\`\n`;
-          output += params.issueUrl
-            ? `analyze_issue_with_seer(issueUrl="${params.issueUrl}")`
-            : `analyze_issue_with_seer(organizationSlug="${orgSlug}", issueId="${parsedIssueId}")`;
+          output += retryCall;
           output += `\n\`\`\`\n`;
           return output;
         }
@@ -326,9 +338,7 @@ export default defineTool({
 
     output += `\nYou can check the status later by running the same command again:\n`;
     output += `\`\`\`\n`;
-    output += params.issueUrl
-      ? `analyze_issue_with_seer(issueUrl="${params.issueUrl}")`
-      : `analyze_issue_with_seer(organizationSlug="${orgSlug}", issueId="${parsedIssueId}")`;
+    output += retryCall;
     output += `\n\`\`\`\n`;
 
     return output;
