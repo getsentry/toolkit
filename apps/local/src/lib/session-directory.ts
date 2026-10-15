@@ -45,10 +45,14 @@ export function getInitialSessionDirectory(
   } catch {
     /* Storage may be disabled. */
   }
-  return parseSessionDirectoryUrl(
+  const directory = parseSessionDirectoryUrl(
     fragment.has("directory") ? fragment.get("directory") : saved,
     streamUrl,
   );
+  // The startup effect removes the fragment before discovery can finish. Save
+  // its validated capability now so an early reload cannot lose the picker.
+  if (directory && fragment.has("directory")) saveSessionDirectory(directory);
+  return directory;
 }
 
 export function saveSessionDirectory(directoryUrl: string): void {

@@ -22,6 +22,7 @@ import {
   type LocalSessionStore,
 } from "./session-store.js";
 
+import { LOCAL_DIRECTORY_EVENT } from "./viewer-protocol.js";
 import { LOCAL_RETENTION_EVENT } from "./retention-limits.js";
 import {
   RetentionLimitError,
@@ -185,9 +186,10 @@ export function createLocalControlPlane({
   for (const path of [
     `${CONTROL_PLANE_PREFIX}/sessions/:id/stream`,
     VIEWER_SESSIONS_PATH,
+    "/stream",
   ])
     app.use(path, async (c, next) => {
-      if (c.req.path === VIEWER_SESSIONS_PATH) {
+      if (c.req.path === VIEWER_SESSIONS_PATH || c.req.path === "/stream") {
         if (
           (c.req.method !== "GET" && c.req.method !== "OPTIONS") ||
           (c.req.method === "OPTIONS" &&
@@ -241,10 +243,32 @@ export function createLocalControlPlane({
     }),
   );
 
+  // Choosing the daemon-wide entry point opts into discovering its sessions.
+  // Browser origins remain restricted; scoped streams never emit this metadata.
+  app.get("/stream", (c) => {
+    const response = streamSSE(c, async (stream) => {
+      await stream.writeSSE({
+        event: LOCAL_DIRECTORY_EVENT,
+        data: JSON.stringify({
+          directoryUrl: new URL(
+            `${VIEWER_SESSIONS_PATH}?cap=${viewerCapability}`,
+            c.req.url,
+          ).toString(),
+        }),
+      });
+      await new Promise<void>((resolve) => stream.onAbort(resolve));
+    });
+    c.header("Cache-Control", "no-store");
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  });
+
   app.get(VIEWER_SESSIONS_PATH, (c) => {
     if (c.req.query("cap") !== viewerCapability) return c.body(null, 401);
     sessionStore.pruneExpired();
     c.header("Cache-Control", "no-store");
+    // Stay on the exact loopback origin the viewer chose (localhost/127.0.0.1/::1).
+    const viewerBaseUrl = new URL(c.req.url).origin;
     return c.json({
       sessions: sessionStore
         .list()
@@ -254,7 +278,7 @@ export function createLocalControlPlane({
           cwd,
           state,
           createdAt,
-          streamUrl: `${baseUrl}${CONTROL_PLANE_PREFIX}/sessions/${id}/stream?cap=${sessionStore.getCapabilities(id).stream}`,
+          streamUrl: `${viewerBaseUrl}${CONTROL_PLANE_PREFIX}/sessions/${id}/stream?cap=${sessionStore.getCapabilities(id).stream}`,
         })),
     });
   });

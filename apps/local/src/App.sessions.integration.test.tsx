@@ -23,9 +23,11 @@ import {
 import App from "./App.tsx";
 
 const headers = { Authorization: "Bearer session-switcher-test" };
-async function startDaemon(now = Date.now) {
+async function startDaemon(now = Date.now, preferredPort = 0) {
   const reservation = createServer();
-  await new Promise<void>((r) => reservation.listen(0, "127.0.0.1", r));
+  await new Promise<void>((r) =>
+    reservation.listen(preferredPort, "127.0.0.1", r),
+  );
   const address = reservation.address();
   if (!address || typeof address === "string")
     throw new Error("Expected TCP address");
@@ -73,6 +75,7 @@ async function startDaemon(now = Date.now) {
     ).toBe(204);
   };
   return {
+    port,
     plane,
     create,
     ingest,
@@ -151,8 +154,12 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     await selectSession("worker");
     await screen.findAllByText("/worker-job");
     expect(screen.queryByText("/web-request")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Settings", exact: true }),
+    );
     await screen.findByText(/Retention limit: 1,000 envelopes/);
     expect(screen.queryByLabelText("Retention limit")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
     await daemon.ingest(web, "/web-after-switch");
     await daemon.ingest(worker, "/worker-after-switch");
     await screen.findAllByText("/worker-after-switch");
@@ -278,3 +285,132 @@ test("expired sessions disappear without clearing already displayed telemetry", 
     await daemon.stop();
   }
 });
+
+test("pasting a plain receiver discovers active sessions and waits for newly started runs", async () => {
+  const daemon = await startDaemon();
+  try {
+    const web = await daemon.create("web");
+    const worker = await daemon.create("worker");
+    await daemon.ingest(web, "/plain-web");
+    await daemon.ingest(worker, "/plain-worker");
+    const stream = new URL("/stream", web.streamUrl).toString();
+    renderSession({ streamUrl: web.streamUrl });
+    await screen.findAllByText("/plain-web");
+    expect(
+      screen.queryByRole("combobox", { name: "Session", exact: true }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Change receiver connection",
+        exact: true,
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: stream },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    await screen.findByRole("combobox", { name: "Session", exact: true });
+    await selectSession("worker");
+    await screen.findAllByText("/plain-worker");
+    expect(screen.queryByText("/plain-web")).toBeNull();
+    expect(
+      screen.getByRole("combobox", { name: "Session", exact: true })
+        .textContent,
+    ).toContain("worker");
+    expect(screen.queryByText(/Retention limit:/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Settings", exact: true }),
+    );
+    await screen.findByRole("dialog", { name: "Settings", exact: true });
+    await screen.findByText(/Retention limit: 500 envelopes/);
+    expect(screen.queryByLabelText("Retention limit")).toBeNull();
+    await screen.findByText(
+      "Change retention from a locally served viewer or the CLI.",
+    );
+  } finally {
+    cleanup();
+    await daemon.stop();
+  }
+}, 15_000);
+
+test("an empty receiver discovers the first session when it starts without reconnecting manually", async () => {
+  let now = Date.now();
+  const daemon = await startDaemon(() => now);
+  try {
+    const reservation = await daemon.create("expired");
+    daemon.plane.sessionStore.close(reservation.id);
+    now += SESSION_RETENTION_MS + 1;
+    daemon.plane.sessionStore.pruneExpired();
+    renderSession({
+      streamUrl: new URL("/stream", reservation.streamUrl).toString(),
+    });
+    await screen.findByRole("combobox", { name: "Session", exact: true });
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "Session", exact: true }),
+    );
+    await screen.findByText("No sessions available.");
+    const web = await daemon.create("new-run");
+    await daemon.ingest(web, "/late-start");
+    fireEvent.keyDown(
+      screen.getByRole("combobox", { name: "Search sessions", exact: true }),
+      { key: "Escape" },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Refresh sessions" }));
+    await screen.findAllByText("/late-start");
+  } finally {
+    cleanup();
+    await daemon.stop();
+  }
+}, 15_000);
+
+test("reconnecting a plain receiver after daemon restart never selects a stale directory entry", async () => {
+  const first = await startDaemon();
+  let second: Awaited<ReturnType<typeof startDaemon>> | undefined;
+  try {
+    const old = await first.create("old-run");
+    await first.ingest(old, "/before-restart");
+    renderSession(old);
+    await screen.findAllByText("/before-restart");
+    await screen.findByRole("combobox", { name: "Session", exact: true });
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "Session", exact: true }),
+    );
+    await screen.findByRole("option", { name: /^old-run ·/ });
+    fireEvent.keyDown(
+      screen.getByRole("combobox", { name: "Search sessions", exact: true }),
+      { key: "Escape" },
+    );
+    await first.stop();
+    await screen.findByRole("status", {
+      name: "Receiver unavailable",
+      exact: true,
+    });
+    second = await startDaemon(Date.now, first.port);
+    const current = await second.create("current-run");
+    await second.ingest(current, "/after-restart");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Change receiver connection",
+        exact: true,
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: `http://127.0.0.1:${first.port}/stream` },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    await screen.findAllByText("/after-restart");
+    expect(screen.queryByText("/before-restart")).toBeNull();
+    expect(
+      screen.getByRole("combobox", { name: "Session", exact: true })
+        .textContent,
+    ).toContain("current-run");
+  } finally {
+    cleanup();
+    if (second) await second.stop();
+    else await first.stop();
+  }
+}, 15_000);

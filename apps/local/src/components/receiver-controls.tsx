@@ -1,4 +1,4 @@
-import { ChevronDown, Moon, Sun, Trash2, X } from "lucide-react";
+import { ChevronDown, Moon, Sun, Settings, Trash2, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import type { ConnectionPresentation } from "@/lib/presentation.ts";
@@ -8,6 +8,7 @@ type ReceiverControlsProps = {
   connection: ConnectionPresentation;
   retainedItemCount: number;
   onClear: () => void;
+  onOpenSettings?: (trigger: HTMLButtonElement) => void;
   onCloseSession?: () => void;
   showStatusRole?: boolean;
 };
@@ -18,6 +19,7 @@ export function ReceiverControls({
   connection,
   retainedItemCount,
   onClear,
+  onOpenSettings,
   onCloseSession,
   showStatusRole = true,
 }: ReceiverControlsProps) {
@@ -128,6 +130,23 @@ export function ReceiverControls({
             {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
             Use {isDark ? "light" : "dark"} mode
           </button>
+          {onOpenSettings ? (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-2 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                const trigger =
+                  rootRef.current?.querySelector<HTMLButtonElement>(
+                    'button[aria-label="Receiver options"]',
+                  );
+                if (trigger) onOpenSettings(trigger);
+                setIsOpen(false);
+              }}
+            >
+              <Settings className="size-4" aria-hidden="true" />
+              Session settings
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={retainedItemCount === 0}

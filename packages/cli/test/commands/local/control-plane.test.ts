@@ -14,6 +14,64 @@ function controlHeaders() {
 }
 
 describe("Local control plane", () => {
+  test("a plain stream bootstraps discovery for trusted viewers without a control token", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "web", cwd: "/web" });
+    const controller = new AbortController();
+    // The daemon may advertise localhost while the user connects via 127.0.0.1.
+    const response = await plane.app.request("http://127.0.0.1:8969/stream", {
+      headers: { Origin: "https://local.sentry.dev" },
+      signal: controller.signal,
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://local.sentry.dev",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    const reader = response.body!.getReader();
+    try {
+      const chunk = new TextDecoder().decode((await reader.read()).value);
+      expect(chunk).toContain("event: sentry.local.directory");
+      const data = JSON.parse(chunk.match(/data: (.+)/)![1]!);
+      expect(new URL(data.directoryUrl).pathname).toBe(
+        "/_local/v1/ui/sessions",
+      );
+      expect(new URL(data.directoryUrl).origin).toBe("http://127.0.0.1:8969");
+      const listing = await plane.app.request(data.directoryUrl);
+      expect(listing.status).toBe(200);
+      const directory = await listing.json();
+      expect(directory.sessions[0].id).toBe(session.id);
+      expect(new URL(directory.sessions[0].streamUrl).origin).toBe(
+        "http://127.0.0.1:8969",
+      );
+      expect(chunk).not.toContain(CONTROL_TOKEN);
+    } finally {
+      controller.abort();
+      await reader.cancel();
+    }
+    for (const headers of [
+      { Origin: "https://evil.example" },
+      { Origin: "http://local.sentry.dev.evil.example" },
+    ])
+      expect((await plane.app.request("/stream", { headers })).status).toBe(
+        403,
+      );
+    expect(
+      (await plane.app.request("/stream", { method: "POST" })).status,
+    ).toBe(403);
+    const preflight = await plane.app.request("/stream", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://local.sentry.dev",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Private-Network": "true",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Private-Network")).toBe(
+      "true",
+    );
+  });
   test("discovers sibling streams only with the explicit browser directory capability", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
     const create = async (label: string) =>

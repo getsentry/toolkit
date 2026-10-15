@@ -95,8 +95,12 @@ that hosting project to use Toolkit and `apps/local` as its root directory.
 
 ### Switching sessions
 
-Run either command with `--session <name> --open` to open a viewer with a Session
-picker. It works in the local development viewer and on <https://local.sentry.dev/>.
+Connect to the daemon's plain `http://127.0.0.1:8969/stream` endpoint (using its
+actual host and port) to discover running sessions automatically. The viewer
+selects the first running session and fills the Session picker. If no sessions
+exist yet, it waits and discovers them as they start. This works in the local
+development viewer and on <https://local.sentry.dev/>. Alternatively, run either
+command with `--session <name> --open` to start on that specific session.
 The picker lists running and retained sessions from that daemon, including sessions
 created after the viewer opens. It refreshes every five seconds; Refresh sessions
 updates it immediately. Labels include the working directory and a short session ID
@@ -106,8 +110,10 @@ Switching back replays its retained envelopes. Retention follows the selected se
 A failed refresh leaves the current feed readable. Expired sessions leave the list;
 the viewer keeps already displayed telemetry and does not silently switch runs.
 
-Discovery requires the separate `directoryUrl` capability returned by session create
-and session view. `--open` passes it alongside the initial stream in the URL fragment,
+The daemon-wide `/stream` emits discovery metadata to loopback viewers and the
+trusted hosted Local origins. Other browser origins cannot read it. Discovery
+uses a separate `directoryUrl` capability, also returned by session create and
+session view. `--open` passes it alongside the initial stream in the URL fragment,
 which is removed after startup and is never sent to the hosting server. The directory
 is kept only in tab session storage, so reloads can retain the picker. The capability
 allows discovery of all sessions and their stream capabilities on this daemon; treat
@@ -117,6 +123,14 @@ An older CLI/daemon or a plain receiver can still connect without a picker; reop
 with an updated CLI and daemon to enable discovery. An already-running older daemon
 needs a restart after upgrading; restarting clears its in-memory telemetry. One picker
 covers one daemon, not receivers on other ports or computers.
+
+Open Settings with the sidebar gear (or Session settings in the mobile receiver
+menu) to view retention for the selected session. A locally served viewer can
+change the limit at runtime with validation; increases preserve captured data,
+and lowering it below the retained count is rejected until enough data is cleared.
+Settings are read-only in the hosted viewer; use the CLI to change retention there.
+The sidebar keeps Change receiver on its own row, with Settings at the left and
+Clear/Close icons at the right beneath it. Icon tooltips also work with keyboard focus.
 
 A loopback-served viewer can reset and close its scoped session. The hosted viewer
 can read the stream and clear its own displayed feed; it cannot mutate retained

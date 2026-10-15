@@ -3,7 +3,6 @@ import {
   parseSessionDirectoryUrl,
   parseViewerSessions,
   getInitialSessionDirectory,
-  saveSessionDirectory,
 } from "./session-directory.ts";
 const stream =
   "http://127.0.0.1:8969/_local/v1/sessions/web/stream?cap=web-secret";
@@ -56,10 +55,20 @@ test("explicit discovery is tab-scoped and cannot follow a saved directory to an
     `/#${new URLSearchParams({ stream, directory })}`,
   );
   expect(getInitialSessionDirectory(stream)).toBe(directory);
-  saveSessionDirectory(directory);
   window.history.replaceState(null, "", "/");
   expect(getInitialSessionDirectory(stream)).toBe(directory);
   expect(
     getInitialSessionDirectory(stream.replace(":8969", ":9999")),
   ).toBeUndefined();
+});
+
+test("invalid fragment discovery is never persisted", () => {
+  window.history.replaceState(
+    null,
+    "",
+    `/#${new URLSearchParams({ directory: directory.replace(":8969", ":9999") })}`,
+  );
+  expect(getInitialSessionDirectory(stream)).toBeUndefined();
+  window.history.replaceState(null, "", "/");
+  expect(getInitialSessionDirectory(stream)).toBeUndefined();
 });

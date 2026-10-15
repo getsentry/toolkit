@@ -99,7 +99,52 @@ describe("Local daemon E2E", () => {
     await ingest(web, "web-id", "web-only");
     await ingest(worker, "worker-id", "worker-only");
     const origin = { Origin: "https://local.sentry.dev" };
-    const response = await fetch(web.directoryUrl, { headers: origin });
+    // A user only needs the daemon address; /stream supplies discovery metadata.
+    const bootstrap = await fetch(`http://127.0.0.1:${port}/stream`, {
+      headers: origin,
+      signal: AbortSignal.timeout(5000),
+    });
+    expect(bootstrap.status).toBe(200);
+    expect(bootstrap.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://local.sentry.dev",
+    );
+    const bootstrapReader = bootstrap.body!.getReader();
+    let directoryUrl: string;
+    try {
+      let text = "";
+      while (!text.includes("\n\n")) {
+        const chunk = await bootstrapReader.read();
+        if (chunk.done) throw new Error("Bootstrap stream closed");
+        text += new TextDecoder().decode(chunk.value);
+      }
+      expect(text).toContain("event: sentry.local.directory");
+      directoryUrl = (
+        JSON.parse(text.match(/data: (.+)/)![1]!) as { directoryUrl: string }
+      ).directoryUrl;
+    } finally {
+      await bootstrapReader.cancel();
+    }
+    expect(directoryUrl).toBe(web.directoryUrl);
+    expect(
+      (
+        await fetch(`http://127.0.0.1:${port}/stream`, {
+          headers: { Origin: "https://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    const bootstrapPreflight = await fetch(`http://127.0.0.1:${port}/stream`, {
+      method: "OPTIONS",
+      headers: {
+        ...origin,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Private-Network": "true",
+      },
+    });
+    expect(bootstrapPreflight.status).toBe(204);
+    expect(
+      bootstrapPreflight.headers.get("Access-Control-Allow-Private-Network"),
+    ).toBe("true");
+    const response = await fetch(directoryUrl, { headers: origin });
     expect(response.status).toBe(200);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
       "https://local.sentry.dev",

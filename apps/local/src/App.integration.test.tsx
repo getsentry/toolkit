@@ -843,12 +843,14 @@ describe("local receiver to viewer integration", () => {
       for (let index = 0; index < 501; index++)
         await sendEnvelope(receiver.port, `retained-${index}`);
       renderViewer(receiver.port, "/explorer/events");
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Settings", exact: true }),
+      );
       await screen.findByText(
         /Retention limit: 1,000 envelopes · 501 displayed/,
         {},
         { timeout: 10000 },
       );
-      fireEvent.click(screen.getByText(/Retention limit: 1,000 envelopes/));
       fireEvent.change(screen.getByLabelText("Retention limit"), {
         target: { value: "2000" },
       });
@@ -904,7 +906,9 @@ describe("local receiver to viewer integration", () => {
           }),
         );
     });
-    fireEvent.click(await screen.findByText(/Retention limit: 500 envelopes/));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Settings", exact: true }),
+    );
     fireEvent.change(screen.getByLabelText("Retention limit"), {
       target: { value: "1" },
     });
@@ -930,6 +934,19 @@ describe("local receiver to viewer integration", () => {
       ),
     );
     await screen.findByText(/Retention limit: 1,000 envelopes/);
+    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Settings", exact: true }),
+      ),
+    );
+    const clearButton = screen.getByRole("button", {
+      name: "Clear events",
+      exact: true,
+    });
+    fireEvent.focus(clearButton);
+    await screen.findByRole("tooltip", { name: "Clear events", exact: true });
+    fireEvent.blur(clearButton);
     expect(
       screen.getAllByRole("button", { name: "View event event" }),
     ).toHaveLength(2);
@@ -961,12 +978,13 @@ describe("local receiver to viewer integration", () => {
       source?.onerror?.(new Event("error"));
     });
     fireEvent.click(
-      await screen.findByText(/Retention limit: 1,000 envelopes/),
+      await screen.findByRole("button", { name: "Settings", exact: true }),
     );
     await screen.findByText("Reconnect to this receiver to change retention.");
     expect(
       screen.queryByRole("button", { name: "Apply retention limit" }),
     ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
     expect(
       screen.getByRole("button", { name: "View event event" }),
     ).not.toBeNull();
@@ -994,7 +1012,7 @@ describe("local receiver to viewer integration", () => {
         );
       });
       fireEvent.click(
-        await screen.findByText(/Retention limit: 500 envelopes/),
+        await screen.findByRole("button", { name: "Settings", exact: true }),
       );
       fireEvent.change(screen.getByLabelText("Retention limit"), {
         target: { value: "1" },
@@ -1004,6 +1022,9 @@ describe("local receiver to viewer integration", () => {
       );
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
       if (switchReceiver) {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Close", exact: true }),
+        );
         fireEvent.click(
           screen.getByRole("button", { name: "Change receiver" }),
         );
@@ -1023,7 +1044,14 @@ describe("local receiver to viewer integration", () => {
         respond(new Response('{"maxEnvelopes":1}', { status: 200 }));
         await pending;
       });
+      if (switchReceiver)
+        fireEvent.click(
+          await screen.findByRole("button", { name: "Settings", exact: true }),
+        );
       await screen.findByText(/Retention limit: 1,000 envelopes/);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Close", exact: true }),
+      );
       await act(async () => {
         for (const id of ["one", "two"])
           source?.dispatchEvent(

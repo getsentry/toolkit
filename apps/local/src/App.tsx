@@ -2,8 +2,10 @@ import { SessionSwitcher } from "./components/session-switcher.tsx";
 import {
   getInitialSessionDirectory,
   parseSessionDirectoryUrl,
+  saveSessionDirectory,
 } from "./lib/session-directory.ts";
-import { RetentionSettings } from "./components/retention-settings.tsx";
+import { LocalSettings } from "./components/local-settings.tsx";
+import { LOCAL_DIRECTORY_EVENT } from "../../../packages/cli/src/commands/local/viewer-protocol.ts";
 import {
   DEFAULT_MAX_ENVELOPES,
   isValidMaxEnvelopes,
@@ -16,6 +18,7 @@ import {
   Copy,
   Menu,
   Radio,
+  Settings,
   Trash2,
   X,
   Search,
@@ -46,6 +49,12 @@ import { TraceWorkspace } from "@/components/trace-workspace.tsx";
 import { TraceWaterfall } from "@/components/trace-waterfall.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.tsx";
 import {
   getConnectionPresentation,
   type ConnectionPresentation,
@@ -496,6 +505,7 @@ type WorkspaceSidebarProps = {
   onClear: () => void;
   onCloseSession?: () => void;
   onChangeReceiver: () => void;
+  onOpenSettings: (trigger: HTMLButtonElement) => void;
   onOpenCommand: (trigger: HTMLButtonElement) => void;
   onSelect: (view: WorkspaceView) => void;
   onToggle: () => void;
@@ -512,6 +522,7 @@ function WorkspaceSidebar({
   onClear,
   onCloseSession,
   onChangeReceiver,
+  onOpenSettings,
   onOpenCommand,
   onSelect,
   onToggle,
@@ -671,38 +682,77 @@ function WorkspaceSidebar({
           </div>
         ))}
       </nav>
-      <div
-        role="group"
-        aria-label="Receiver actions"
-        className={`flex shrink-0 gap-1 border-t border-border p-2 ${collapsed ? "flex-col" : "items-center"}`}
-      >
-        <Button
-          type="button"
-          variant={collapsed ? "ghost" : "outline"}
-          aria-label="Change receiver connection"
-          title="Change receiver"
-          onClick={onChangeReceiver}
-          className={`h-9 min-w-0 font-normal text-muted-foreground hover:text-foreground ${collapsed ? "w-full px-0" : "flex-1 gap-2 px-2"}`}
+      <TooltipProvider delayDuration={300}>
+        <div
+          role="group"
+          aria-label="Receiver actions"
+          className="shrink-0 space-y-1 border-t border-border p-2"
         >
-          <Radio className="size-4 shrink-0" aria-hidden="true" />
-          {!collapsed ? <span>Change</span> : null}
-        </Button>
-        {sessionActions.map(({ label, Icon, onClick, disabled }) => (
-          <Button
-            key={label}
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={label}
-            title={label}
-            disabled={disabled}
-            onClick={onClick}
-            className={`text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${collapsed ? "w-full" : ""}`}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={collapsed ? "ghost" : "outline"}
+                aria-label="Change receiver connection"
+                onClick={onChangeReceiver}
+                className={`h-9 w-full font-normal text-muted-foreground hover:text-foreground ${collapsed ? "px-0" : "gap-2 px-2"}`}
+              >
+                <Radio className="size-4 shrink-0" aria-hidden="true" />
+                {!collapsed ? <span>Change receiver</span> : null}
+              </Button>
+            </TooltipTrigger>
+            {collapsed ? (
+              <TooltipContent side="right">Change receiver</TooltipContent>
+            ) : null}
+          </Tooltip>
+          <div
+            className={`flex gap-1 ${collapsed ? "flex-col" : "items-center"}`}
           >
-            <Icon className="size-4 shrink-0" aria-hidden="true" />
-          </Button>
-        ))}
-      </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Settings"
+                  onClick={(event) => onOpenSettings(event.currentTarget)}
+                  className={`text-muted-foreground ${collapsed ? "w-full" : ""}`}
+                >
+                  <Settings className="size-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side={collapsed ? "right" : "top"}>
+                Settings
+              </TooltipContent>
+            </Tooltip>
+            {!collapsed ? <span className="flex-1" /> : null}
+            {sessionActions.map(({ label, Icon, onClick, disabled }) => (
+              <Tooltip key={label}>
+                <TooltipTrigger asChild>
+                  <span className={collapsed ? "flex w-full" : "inline-flex"}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={label}
+                      disabled={disabled}
+                      onClick={onClick}
+                      className={`text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${collapsed ? "w-full" : ""}`}
+                    >
+                      <Icon className="size-4 shrink-0" aria-hidden="true" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side={collapsed ? "right" : "top"}>
+                  {label === "Close telemetry session"
+                    ? "Close session"
+                    : label}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </div>
+      </TooltipProvider>
     </aside>
   );
 }
@@ -730,7 +780,9 @@ export default function App() {
       getSavedRemoteStream(),
     ),
   );
-  const [directoryUrl] = useState(() => getInitialSessionDirectory(streamUrl));
+  const [directoryUrl, setDirectoryUrl] = useState(() =>
+    getInitialSessionDirectory(streamUrl),
+  );
   const activeDirectoryUrl = parseSessionDirectoryUrl(directoryUrl, streamUrl);
   const connectionGeneration = useRef(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
@@ -758,6 +810,12 @@ export default function App() {
   );
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const openSettings = (trigger: HTMLButtonElement) => {
+    settingsTriggerRef.current = trigger;
+    setIsSettingsOpen(true);
+  };
   const [message, setMessage] = useState<string | undefined>();
   const fallbackEventId = useRef(0);
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
@@ -948,6 +1006,15 @@ export default function App() {
       return;
     }
     connectionGeneration.current += 1;
+    setIsSettingsOpen(false);
+    if (
+      endpoint.kind === "loopback" &&
+      new URL(endpoint.url).pathname === "/stream"
+    ) {
+      // A reconnect can target a new daemon on the same port. Wait for its
+      // metadata rather than auto-selecting an entry from the old directory.
+      setDirectoryUrl(undefined);
+    }
     if (endpoint.url !== streamUrl) {
       telemetryStore.clear();
       telemetryStore.setLimit(DEFAULT_MAX_ENVELOPES);
@@ -1013,6 +1080,36 @@ export default function App() {
         /* Ignore malformed optional metadata from external receivers. */
       }
     };
+    const onDirectory = (event: Event) => {
+      if (!isActiveConnection()) return;
+      const endpoint = parseStreamEndpoint(streamUrl);
+      if (
+        endpoint?.kind !== "loopback" ||
+        new URL(endpoint.url).pathname !== "/stream"
+      )
+        return;
+      try {
+        const value: unknown = JSON.parse((event as MessageEvent<string>).data);
+        if (
+          value &&
+          typeof value === "object" &&
+          "directoryUrl" in value &&
+          typeof value.directoryUrl === "string"
+        ) {
+          const directory = parseSessionDirectoryUrl(
+            value.directoryUrl,
+            streamUrl,
+          );
+          if (directory) {
+            saveSessionDirectory(directory);
+            setDirectoryUrl(directory);
+          }
+        }
+      } catch {
+        /* Optional metadata from legacy/external receivers may be malformed. */
+      }
+    };
+    source.addEventListener(LOCAL_DIRECTORY_EVENT, onDirectory);
     source.addEventListener(LOCAL_RETENTION_EVENT, onRetention);
     const timeoutId = window.setTimeout(() => {
       if (!isActiveConnection()) {
@@ -1093,6 +1190,7 @@ export default function App() {
       window.clearTimeout(timeoutId);
       source.removeEventListener(SENTRY_ENVELOPE_EVENT, onEnvelope);
       source.removeEventListener(LOCAL_RETENTION_EVENT, onRetention);
+      source.removeEventListener(LOCAL_DIRECTORY_EVENT, onDirectory);
       source.close();
     };
   }, [connectionAttempt, isConnectionEnabled, streamUrl, telemetryStore]);
@@ -1122,6 +1220,22 @@ export default function App() {
 
   return (
     <main className="h-dvh overflow-hidden bg-background">
+      <LocalSettings
+        key={streamUrl}
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        triggerRef={settingsTriggerRef}
+        streamUrl={streamUrl}
+        supported={hasRetentionSettings}
+        limit={retentionLimit}
+        count={telemetry.envelopes.length}
+        editable={canEditRetention && connection === "connected"}
+        unavailableReason={
+          canEditRetention && connection !== "connected"
+            ? "Reconnect to this receiver to change retention."
+            : undefined
+        }
+      />
       <div
         data-testid="app-shell"
         className="mx-auto flex h-full w-full max-w-none"
@@ -1138,6 +1252,7 @@ export default function App() {
             onClear={clearItems}
             onCloseSession={hasScopedSession ? closeScopedSession : undefined}
             onChangeReceiver={() => setIsEditingReceiver(true)}
+            onOpenSettings={openSettings}
             onOpenCommand={openCommand}
             onSelect={selectWorkspace}
             onToggle={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
@@ -1199,6 +1314,7 @@ export default function App() {
                 onCloseSession={
                   hasScopedSession ? closeScopedSession : undefined
                 }
+                onOpenSettings={openSettings}
                 showStatusRole={false}
               />
             </div>
@@ -1245,21 +1361,11 @@ export default function App() {
                   key={activeDirectoryUrl}
                   directoryUrl={activeDirectoryUrl}
                   streamUrl={streamUrl}
-                  onSelect={connectToEndpoint}
-                />
-              ) : null}
-              {hasRetentionSettings ? (
-                <RetentionSettings
-                  key={streamUrl}
-                  limit={retentionLimit}
-                  count={telemetry.envelopes.length}
-                  streamUrl={streamUrl}
-                  editable={canEditRetention && connection === "connected"}
-                  unavailableReason={
-                    canEditRetention && connection !== "connected"
-                      ? "Reconnect to this receiver to change retention."
-                      : undefined
+                  selectInitialSession={
+                    currentEndpoint?.kind === "loopback" &&
+                    new URL(currentEndpoint.url).pathname === "/stream"
                   }
+                  onSelect={connectToEndpoint}
                 />
               ) : null}
               {connectionError &&

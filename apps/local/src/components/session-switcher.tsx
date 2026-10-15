@@ -13,7 +13,6 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
 import {
   parseViewerSessions,
-  saveSessionDirectory,
   type ViewerSession,
 } from "../lib/session-directory.ts";
 
@@ -22,7 +21,9 @@ export function SessionSwitcher({
   directoryUrl,
   streamUrl,
   onSelect,
+  selectInitialSession = false,
 }: {
+  selectInitialSession?: boolean;
   directoryUrl: string;
   streamUrl: string;
   onSelect: (streamUrl: string) => void;
@@ -53,7 +54,6 @@ export function SessionSwitcher({
         setSessions(next);
         setLoaded(true);
         setError(false);
-        saveSessionDirectory(directoryUrl);
       } catch {
         if (active) setError(true);
       } finally {
@@ -68,6 +68,11 @@ export function SessionSwitcher({
       clearTimeout(timer);
     };
   }, [directoryUrl, refresh]);
+  useEffect(() => {
+    // Only the daemon-wide /stream entry point selects an initial run. Expiring
+    // or closing a selected scoped session must never silently change feeds.
+    if (selectInitialSession && sessions[0]) onSelect(sessions[0].streamUrl);
+  }, [selectInitialSession, sessions, onSelect]);
   const current = sessions.find((s) => s.streamUrl === streamUrl);
   return (
     <section
