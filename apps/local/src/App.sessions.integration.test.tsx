@@ -101,6 +101,16 @@ function renderSession(session: { streamUrl: string; directoryUrl?: string }) {
     </ThemeProvider>,
   );
 }
+async function selectSession(label: string) {
+  if (!screen.queryByRole("listbox"))
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "Session", exact: true }),
+    );
+  fireEvent.click(
+    await screen.findByRole("option", { name: new RegExp(`^${label} ·`) }),
+  );
+}
+
 beforeEach(() => {
   render(<NuqsTestingAdapter>{null}</NuqsTestingAdapter>).unmount();
   window.localStorage.clear();
@@ -138,7 +148,7 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     const picker = await screen.findByRole("combobox", { name: "Session" });
     expect(window.location.hash).toBe("");
     expect(screen.queryByText("/worker-job")).toBeNull();
-    fireEvent.change(picker, { target: { value: worker.id } });
+    await selectSession("worker");
     await screen.findAllByText("/worker-job");
     expect(screen.queryByText("/web-request")).toBeNull();
     await screen.findByText(/Retention limit: 1,000 envelopes/);
@@ -147,20 +157,43 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     await daemon.ingest(worker, "/worker-after-switch");
     await screen.findAllByText("/worker-after-switch");
     expect(screen.queryByText("/web-after-switch")).toBeNull();
-    fireEvent.change(picker, { target: { value: web.id } });
+    await selectSession("web");
     await screen.findAllByText("/web-after-switch");
     await screen.findAllByText("/web-request");
     expect(screen.queryByText("/worker-job")).toBeNull();
     const api = await daemon.create("api");
+    fireEvent.click(picker);
     await screen.findByRole(
       "option",
       { name: /api.*Running/ },
       { timeout: 7000 },
     );
+    const search = screen.getByRole("combobox", {
+      name: "Search sessions",
+      exact: true,
+    });
+    fireEvent.change(search, { target: { value: "api" } });
+    await waitFor(() =>
+      expect(screen.queryByRole("option", { name: /^worker ·/ })).toBeNull(),
+    );
+    fireEvent.keyDown(search, { key: "Enter" });
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(picker));
+    expect(
+      screen.getByRole("combobox", { name: "Session", exact: true })
+        .textContent,
+    ).toContain("api");
     daemon.plane.sessionStore.close(worker.id);
     fireEvent.click(screen.getByRole("button", { name: "Refresh sessions" }));
+    fireEvent.click(picker);
     await screen.findByRole("option", { name: /worker.*Retained/ });
-    fireEvent.change(picker, { target: { value: worker.id } });
+    fireEvent.keyDown(
+      screen.getByRole("combobox", { name: "Search sessions", exact: true }),
+      { key: "Escape" },
+    );
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(picker));
+    await selectSession("worker");
     await screen.findAllByText("/worker-job");
     await screen.findAllByText("/worker-after-switch");
     expect(
@@ -225,11 +258,18 @@ test("expired sessions disappear without clearing already displayed telemetry", 
     await daemon.ingest(web, "/retained-in-viewer");
     renderSession(web);
     await screen.findAllByText("/retained-in-viewer");
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "Session", exact: true }),
+    );
     await screen.findByRole("option", { name: /web.*Running/ });
+    await selectSession("web");
     daemon.plane.sessionStore.close(web.id);
     now += SESSION_RETENTION_MS;
     fireEvent.click(screen.getByRole("button", { name: "Refresh sessions" }));
-    await screen.findByRole("option", { name: "No sessions available" });
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "Session", exact: true }),
+    );
+    await screen.findByText("No sessions available.");
     expect(screen.getAllByText("/retained-in-viewer").length).toBeGreaterThan(
       0,
     );
