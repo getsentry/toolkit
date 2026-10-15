@@ -1,10 +1,7 @@
 /** Existing issue-tracker links through Sentry's native integrations. */
-import {
-  deleteOrganizationIssueIntegration,
-  type ExternalIssueLinkResponse,
-  type IssueIntegrationsResponse,
-  listOrganizationIssueIntegrations,
-  updateOrganizationIssueIntegration,
+import type {
+  ExternalIssueLinkResponse,
+  IssueIntegrationsResponse,
 } from "@sentry/api";
 import {
   vExternalIssueLinkResponse,
@@ -13,7 +10,7 @@ import {
 import { safeParse } from "valibot";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
-import { getSdkConfig } from "../sentry-client.js";
+import { getSentryClient } from "../sentry-api-client.js";
 import { parseHttpUrl } from "../utils.js";
 import {
   API_MAX_PER_PAGE,
@@ -203,11 +200,10 @@ async function listIntegrations(
   orgSlug: string,
   issueId: string,
 ): Promise<NativeIntegration[]> {
-  const config = getSdkConfig(await resolveOrgRegion(orgSlug));
+  const sentry = getSentryClient(await resolveOrgRegion(orgSlug));
   return fetchAllPages(
     async (cursor) => {
-      const result = await listOrganizationIssueIntegrations({
-        ...config,
+      const result = await sentry.listOrganizationIssueIntegrations({
         path: { organization_id_or_slug: orgSlug, issue_id: issueId },
         query: { cursor, per_page: API_MAX_PER_PAGE },
       });
@@ -356,8 +352,8 @@ export async function resolveNativeIssueLink(options: {
 export async function linkNativeIssue(
   prepared: PreparedNativeIssueLink,
 ): Promise<{ link: NativeIssueLink; changed: boolean }> {
-  const result = await updateOrganizationIssueIntegration({
-    ...getSdkConfig(prepared.regionUrl),
+  const sentry = getSentryClient(prepared.regionUrl);
+  const result = await sentry.updateOrganizationIssueIntegration({
     path: {
       organization_id_or_slug: prepared.orgSlug,
       issue_id: prepared.issueId,
@@ -402,8 +398,8 @@ export async function unlinkNativeIssueLink(
       "External issue link ID must be a safe positive integer.",
     );
   }
-  const result = await deleteOrganizationIssueIntegration({
-    ...getSdkConfig(await resolveOrgRegion(orgSlug)),
+  const sentry = getSentryClient(await resolveOrgRegion(orgSlug));
+  const result = await sentry.deleteOrganizationIssueIntegration({
     path: {
       organization_id_or_slug: orgSlug,
       issue_id: issueId,

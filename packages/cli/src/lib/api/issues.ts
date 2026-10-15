@@ -5,7 +5,6 @@
  */
 
 import type { ListOrganizationIssuesData } from "@sentry/api";
-import { listOrganizationIssues } from "@sentry/api";
 
 import type { SentryIssue } from "../../types/index.js";
 import type { IssueSubstatus } from "../../types/sentry.js";
@@ -25,7 +24,7 @@ import {
   API_MAX_PER_PAGE,
   apiRequest,
   apiRequestToRegion,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   unwrapPaginatedResult,
@@ -164,10 +163,9 @@ export async function listIssuesPaginated(
     projects === undefined && projectSlug ? `project:${projectSlug}` : "";
   const fullQuery = [projectFilter, options.query].filter(Boolean).join(" ");
 
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await listOrganizationIssues({
-    ...config,
+  const result = await sentry.listOrganizationIssues({
     path: { organization_id_or_slug: orgSlug },
     query: {
       project: projects,

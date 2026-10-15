@@ -6,22 +6,12 @@
  * - Metric alerts: threshold-based rules that trigger on metric queries (org-wide)
  */
 
-import {
-  createOrganizationProjectDetector,
-  createOrganizationWorkflow,
-  deleteOrganizationDetector,
-  getOrganizationDetector,
-  getOrganizationWorkflow,
-  listOrganizationDetectors,
-  updateOrganizationDetector,
-  updateOrganizationWorkflow,
-} from "@sentry/api";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
   apiRequestToRegion,
   apiRequestToRegionNoContent,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   type PaginatedResponse,
   parseLinkHeader,
   unwrapPaginatedResult,
@@ -276,9 +266,8 @@ export async function getIssueAlertWorkflowDocument(
   orgSlug: string,
   workflowId: string,
 ): Promise<Record<string, unknown>> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await getOrganizationWorkflow({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.getOrganizationWorkflow({
     path: {
       organization_id_or_slug: orgSlug,
       workflow_id: Number(workflowId),
@@ -301,9 +290,8 @@ export async function resolveErrorDetectorId(
   orgSlug: string,
   projectSlug: string,
 ): Promise<number> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await listOrganizationDetectors({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.listOrganizationDetectors({
     path: { organization_id_or_slug: orgSlug },
     query: { project: [projectSlug], query: "type:error" },
   });
@@ -386,9 +374,8 @@ export async function listMetricAlertsPaginated(
   orgSlug: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<MetricAlertRule[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await listOrganizationDetectors({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.listOrganizationDetectors({
     path: { organization_id_or_slug: orgSlug },
     query: {
       query: METRIC_DETECTOR_QUERY,
@@ -428,9 +415,8 @@ export async function getMetricAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<MetricAlertRule> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await getOrganizationDetector({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.getOrganizationDetector({
     // The SDK types detector_id as number, but detector IDs are opaque strings
     // the API accepts verbatim; pass the string through the string-keyed path.
     path: {
@@ -490,9 +476,8 @@ export async function updateIssueAlertRule(
   workflowId: string,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await updateOrganizationWorkflow({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.updateOrganizationWorkflow({
     path: {
       organization_id_or_slug: orgSlug,
       workflow_id: Number(workflowId),
@@ -500,7 +485,7 @@ export async function updateIssueAlertRule(
     // The SDK types conditions/actions as `unknown[]`; the CLI supplies the
     // workflow-native body as a plain record, so cast into the typed arg.
     body: body as unknown as Parameters<
-      typeof updateOrganizationWorkflow
+      typeof sentry.updateOrganizationWorkflow
     >[0]["body"],
   });
   return unwrapResult<Record<string, unknown>>(
@@ -520,14 +505,13 @@ export async function createIssueAlertRule(
   orgSlug: string,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await createOrganizationWorkflow({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.createOrganizationWorkflow({
     path: { organization_id_or_slug: orgSlug },
     // The SDK types conditions/actions as `unknown[]`; the CLI supplies the
     // workflow-native body as a plain record, so cast into the typed arg.
     body: body as unknown as Parameters<
-      typeof createOrganizationWorkflow
+      typeof sentry.createOrganizationWorkflow
     >[0]["body"],
   });
   return unwrapResult<Record<string, unknown>>(
@@ -668,9 +652,8 @@ export async function deleteMetricAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await deleteOrganizationDetector({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.deleteOrganizationDetector({
     // Detector IDs are opaque strings the API accepts verbatim; the SDK types
     // detector_id as number, so pass the string through the string-keyed path.
     path: {
@@ -711,9 +694,8 @@ export async function putMetricAlertRule(
   ruleId: string,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await updateOrganizationDetector({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.updateOrganizationDetector({
     path: {
       organization_id_or_slug: orgSlug,
       detector_id: ruleId,
@@ -725,7 +707,7 @@ export async function putMetricAlertRule(
     // dataSources/conditions; the CLI supplies the camelCase document the
     // endpoint's CamelSnakeSerializer expects, so cast into the typed arg.
     body: buildDetectorBody(body) as unknown as Parameters<
-      typeof updateOrganizationDetector
+      typeof sentry.updateOrganizationDetector
     >[0]["body"],
   });
   return unwrapResult<Record<string, unknown>>(
@@ -745,15 +727,14 @@ export async function createMetricAlertRule(
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const projectSlug = resolveDetectorProject(body);
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await createOrganizationProjectDetector({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.createOrganizationProjectDetector({
     path: {
       organization_id_or_slug: orgSlug,
       project_id_or_slug: projectSlug,
     },
     body: buildDetectorBody(body) as unknown as Parameters<
-      typeof createOrganizationProjectDetector
+      typeof sentry.createOrganizationProjectDetector
     >[0]["body"],
   });
   return unwrapResult<Record<string, unknown>>(

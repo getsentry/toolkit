@@ -3,15 +3,9 @@
  * App callbacks and search URIs come only from the installed component schema.
  */
 
-import {
-  deleteOrganizationIssueExternalIssue,
-  executeSentryAppInstallationExternalIssueAction,
-  type GroupExternalIssueResponse,
-  getSentryAppInstallationExternalRequestOptions,
-  type ListOrganizationSentryAppInstallationsResponse,
-  listOrganizationIssueExternalIssues,
-  listOrganizationSentryAppComponents,
-  listOrganizationSentryAppInstallations,
+import type {
+  GroupExternalIssueResponse,
+  ListOrganizationSentryAppInstallationsResponse,
 } from "@sentry/api";
 import {
   vGroupExternalIssueResponse,
@@ -34,7 +28,8 @@ import {
 } from "valibot";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
-import { getControlSiloUrl, getSdkConfig } from "../sentry-client.js";
+import { getSentryClient } from "../sentry-api-client.js";
+import { getControlSiloUrl } from "../sentry-client.js";
 import { isAllDigits, parseHttpUrl } from "../utils.js";
 import {
   fetchAllPages,
@@ -194,11 +189,10 @@ export async function listAppIssueLinks(
   issueId: string,
 ): Promise<AppIssueLink[]> {
   requireIssueTarget(orgSlug, issueId);
-  const config = getSdkConfig(await resolveOrgRegion(orgSlug));
+  const sentry = getSentryClient(await resolveOrgRegion(orgSlug));
   return fetchAllPages(
     async (cursor) => {
-      const result = await listOrganizationIssueExternalIssues({
-        ...config,
+      const result = await sentry.listOrganizationIssueExternalIssues({
         path: { organization_id_or_slug: orgSlug, issue_id: issueId },
         query: { cursor },
       });
@@ -247,11 +241,10 @@ async function resolveInstallation(
   orgSlug: string,
   appSlug: string,
 ): Promise<AppInstallation> {
-  const config = getSdkConfig(getControlSiloUrl());
+  const sentry = getSentryClient(getControlSiloUrl());
   const installations = await fetchAllPages(
     async (cursor) => {
-      const result = await listOrganizationSentryAppInstallations({
-        ...config,
+      const result = await sentry.listOrganizationSentryAppInstallations({
         path: { organization_id_or_slug: orgSlug },
         query: { cursor },
       });
@@ -285,11 +278,10 @@ async function getLinkForm(
   orgSlug: string,
   installation: AppInstallation,
 ): Promise<LinkForm> {
-  const config = getSdkConfig(getControlSiloUrl());
+  const sentry = getSentryClient(getControlSiloUrl());
   const components = await fetchAllPages(
     async (cursor) => {
-      const result = await listOrganizationSentryAppComponents({
-        ...config,
+      const result = await sentry.listOrganizationSentryAppComponents({
         path: { organization_id_or_slug: orgSlug },
         query: { filter: "issue-link", cursor },
       });
@@ -349,8 +341,8 @@ async function getChoices({
   const dependentData = Object.fromEntries(
     (field.depends_on ?? []).map((name) => [name, values[name]]),
   );
-  const result = await getSentryAppInstallationExternalRequestOptions({
-    ...getSdkConfig(getControlSiloUrl()),
+  const sentry = getSentryClient(getControlSiloUrl());
+  const result = await sentry.getSentryAppInstallationExternalRequestOptions({
     path: { uuid: installationUuid },
     query: {
       uri: field.uri,
@@ -677,8 +669,8 @@ export async function resolveAppIssueLink(
 export async function linkAppIssue(
   prepared: PreparedAppIssueLink,
 ): Promise<{ link: AppIssueLink; changed: boolean }> {
-  const result = await executeSentryAppInstallationExternalIssueAction({
-    ...getSdkConfig(getControlSiloUrl()),
+  const sentry = getSentryClient(getControlSiloUrl());
+  const result = await sentry.executeSentryAppInstallationExternalIssueAction({
     path: { uuid: prepared.installationUuid },
     query: {
       expectedExternalIssueUrl: prepared.existing?.webUrl ?? prepared.url,
@@ -709,8 +701,8 @@ export async function unlinkAppIssueLink(
     );
   }
   requireIssueTarget(orgSlug, issueId);
-  const result = await deleteOrganizationIssueExternalIssue({
-    ...getSdkConfig(await resolveOrgRegion(orgSlug)),
+  const sentry = getSentryClient(await resolveOrgRegion(orgSlug));
+  const result = await sentry.deleteOrganizationIssueExternalIssue({
     path: {
       organization_id_or_slug: orgSlug,
       issue_id: issueId,

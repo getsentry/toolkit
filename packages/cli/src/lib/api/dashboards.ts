@@ -5,12 +5,6 @@
  * query functions for rendering dashboard widgets with actual data.
  */
 
-import {
-  createOrganizationDashboard,
-  getOrganizationDashboard,
-  listOrganizationDashboards,
-  updateOrganizationDashboard,
-} from "@sentry/api";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 
@@ -42,7 +36,7 @@ import { resolveOrgRegion } from "../region.js";
 
 import {
   apiRequestToRegion,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   ORG_FANOUT_CONCURRENCY,
   type PaginatedResponse,
   parseLinkHeader,
@@ -64,10 +58,9 @@ export async function listDashboardsPaginated(
   orgSlug: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<DashboardListItem[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await listOrganizationDashboards({
-    ...config,
+  const result = await sentry.listOrganizationDashboards({
     path: { organization_id_or_slug: orgSlug },
     query: { per_page: options.perPage, cursor: options.cursor },
   });
@@ -89,10 +82,9 @@ export async function getDashboard(
   orgSlug: string,
   dashboardId: string,
 ): Promise<DashboardDetail> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await getOrganizationDashboard({
-    ...config,
+  const result = await sentry.getOrganizationDashboard({
     path: {
       organization_id_or_slug: orgSlug,
       dashboard_id: dashboardId as unknown as number,
@@ -116,13 +108,12 @@ export async function createDashboard(
   orgSlug: string,
   body: { title: string; widgets?: DashboardWidget[]; projects?: number[] },
 ): Promise<DashboardDetail> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await createOrganizationDashboard({
-    ...config,
+  const result = await sentry.createOrganizationDashboard({
     path: { organization_id_or_slug: orgSlug },
     body: body as unknown as Parameters<
-      typeof createOrganizationDashboard
+      typeof sentry.createOrganizationDashboard
     >[0]["body"],
   });
 
@@ -149,16 +140,15 @@ export async function updateDashboard(
     period?: string | null;
   },
 ): Promise<DashboardDetail> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await updateOrganizationDashboard({
-    ...config,
+  const result = await sentry.updateOrganizationDashboard({
     path: {
       organization_id_or_slug: orgSlug,
       dashboard_id: dashboardId as unknown as number,
     },
     body: body as unknown as Parameters<
-      typeof updateOrganizationDashboard
+      typeof sentry.updateOrganizationDashboard
     >[0]["body"],
   });
 

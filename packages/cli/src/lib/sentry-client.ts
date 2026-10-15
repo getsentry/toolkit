@@ -1,11 +1,8 @@
 /**
  * Sentry API Client Configuration
  *
- * Provides request configuration for @sentry/api SDK functions,
- * including authentication, retry logic, timeout, and multi-region support.
- *
- * Instead of managing client instances, we pass configuration per-request
- * through the SDK function options (baseUrl, fetch, headers).
+ * Provides the shared transport for authentication, retry, timeout, caching,
+ * and multi-region requests, used by SDK clients and raw requests.
  */
 
 import { setTimeout as sleepMs } from "node:timers/promises";

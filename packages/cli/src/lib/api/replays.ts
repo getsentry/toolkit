@@ -4,10 +4,7 @@
  * Functions for listing and retrieving Session Replays.
  */
 
-import {
-  type ListProjectReplayRecordingSegmentsResponse,
-  listProjectReplayRecordingSegments,
-} from "@sentry/api";
+import type { ListProjectReplayRecordingSegmentsResponse } from "@sentry/api";
 import { vListProjectReplayRecordingSegmentsResponse } from "@sentry/api/valibot";
 import { type GenericSchema, safeParse } from "valibot";
 import {
@@ -28,7 +25,7 @@ import { resolveOrgRegion } from "../region.js";
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   paginate,
@@ -354,9 +351,8 @@ async function fetchReplayRecordingSegmentsPage(
   options: FetchReplayRecordingSegmentsPageOptions,
 ): Promise<PaginatedResponse<ListProjectReplayRecordingSegmentsResponse>> {
   const { cursor, orgSlug, projectSlugOrId, replayId } = options;
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await listProjectReplayRecordingSegments({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.listProjectReplayRecordingSegments({
     path: {
       organization_id_or_slug: orgSlug,
       project_id_or_slug: projectSlugOrId,
