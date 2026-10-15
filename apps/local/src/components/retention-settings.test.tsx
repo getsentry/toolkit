@@ -78,5 +78,57 @@ test("reports a receiver-side retention race without claiming a successful save"
     ),
     expect.objectContaining({ body: '{"maxEnvelopes":8}' }),
   );
-  expect(screen.getByText(/Retention limit: 500 envelopes/)).not.toBeNull();
+  expect(
+    (screen.getByLabelText("Retention limit") as HTMLInputElement).value,
+  ).toBe("8");
+  expect(screen.getByText("8 envelopes currently retained.")).not.toBeNull();
 });
+
+test.each([0, 1, 8])(
+  "describes %i retained envelopes separately from the editable limit",
+  (count) => {
+    render(
+      <RetentionSettings
+        limit={500}
+        count={count}
+        streamUrl="http://127.0.0.1:8969/stream"
+        editable
+      />,
+    );
+    expect(
+      screen.getByText(
+        `${count} ${count === 1 ? "envelope" : "envelopes"} currently retained.`,
+      ),
+    ).not.toBeNull();
+    expect(
+      (
+        screen.getByRole("spinbutton", {
+          name: "Retention limit",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("500");
+    expect(screen.queryByText(/displayed/)).toBeNull();
+  },
+);
+
+test.each([1, 1000])(
+  "keeps capacity %i visible when the viewer cannot edit retention",
+  (limit) => {
+    render(
+      <RetentionSettings
+        limit={limit}
+        count={8}
+        streamUrl="http://127.0.0.1:8969/stream"
+        editable={false}
+      />,
+    );
+    expect(screen.getByText("Retention limit")).not.toBeNull();
+    expect(
+      screen.getByText(
+        `${limit.toLocaleString()} ${limit === 1 ? "envelope" : "envelopes"}`,
+      ),
+    ).not.toBeNull();
+    expect(screen.getByText("8 envelopes currently retained.")).not.toBeNull();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+  },
+);

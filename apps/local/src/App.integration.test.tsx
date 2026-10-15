@@ -1125,7 +1125,7 @@ describe("local receiver to viewer integration", () => {
         await screen.findByRole("button", { name: "Settings", exact: true }),
       );
       await screen.findByText(
-        /Retention limit: 1,000 envelopes · 501 displayed/,
+        /501 envelopes currently retained/,
         {},
         { timeout: 10000 },
       );
@@ -1135,17 +1135,22 @@ describe("local receiver to viewer integration", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "Apply retention limit" }),
       );
-      await screen.findByText(
-        /Retention limit: 2,000 envelopes · 501 displayed/,
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText("Retention limit") as HTMLInputElement).value,
+        ).toBe("2000"),
       );
-      expect(retention.getSettings()).toEqual({
-        maxEnvelopes: 2000,
-        retainedEnvelopes: 501,
-      });
+      expect(
+        screen.getByText(/501 envelopes currently retained/),
+      ).not.toBeNull();
+      await waitFor(() =>
+        expect(retention.getSettings()).toEqual({
+          maxEnvelopes: 2000,
+          retainedEnvelopes: 501,
+        }),
+      );
       await sendEnvelope(receiver.port, "after-growth");
-      await screen.findByText(
-        /Retention limit: 2,000 envelopes · 502 displayed/,
-      );
+      await screen.findByText(/502 envelopes currently retained/);
     } finally {
       cleanup();
       await stopReceiver(receiver.server);
@@ -1194,7 +1199,7 @@ describe("local receiver to viewer integration", () => {
       screen.getByRole("button", { name: "Apply retention limit" }),
     );
     await screen.findByText(
-      /Cannot lower the limit below 2 displayed envelopes/,
+      /Cannot lower the limit below 2 retained envelopes/,
     );
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Retention limit"), {
@@ -1211,7 +1216,11 @@ describe("local receiver to viewer integration", () => {
         }),
       ),
     );
-    await screen.findByText(/Retention limit: 1,000 envelopes/);
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Retention limit") as HTMLInputElement).value,
+      ).toBe("1000"),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -1324,7 +1333,11 @@ describe("local receiver to viewer integration", () => {
         fireEvent.click(
           await screen.findByRole("button", { name: "Settings", exact: true }),
         );
-      await screen.findByText(/Retention limit: 1,000 envelopes/);
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText("Retention limit") as HTMLInputElement).value,
+        ).toBe("1000"),
+      );
       fireEvent.click(
         screen.getByRole("button", { name: "Close", exact: true }),
       );

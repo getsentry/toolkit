@@ -166,7 +166,7 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     fireEvent.click(
       screen.getByRole("button", { name: "Settings", exact: true }),
     );
-    await screen.findByText(/Retention limit: 1,000 envelopes/);
+    await screen.findByText(/1,000 envelopes/);
     expect(screen.queryByLabelText("Retention limit")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
     await daemon.ingest(web, "/web-after-switch");
@@ -328,12 +328,12 @@ test("pasting a plain receiver discovers active sessions and waits for newly sta
       screen.getByRole("combobox", { name: "Session", exact: true })
         .textContent,
     ).toContain("worker");
-    expect(screen.queryByText(/Retention limit:/)).toBeNull();
+    expect(screen.queryByText("Retention limit")).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Settings", exact: true }),
     );
     await screen.findByRole("dialog", { name: "Settings", exact: true });
-    await screen.findByText(/Retention limit: 500 envelopes/);
+    await screen.findByText(/500 envelopes/);
     expect(screen.queryByLabelText("Retention limit")).toBeNull();
     await screen.findByText(
       "Change retention from a locally served viewer or the CLI.",

@@ -33,7 +33,7 @@ export function RetentionSettings({
       v.check((value: number) => isValidMaxEnvelopes(value), invalidLimit),
       v.check(
         (value) => value >= count,
-        `Cannot lower the limit below ${count} displayed envelopes. Clear envelopes first.`,
+        `Cannot lower the limit below ${count.toLocaleString()} retained ${count === 1 ? "envelope" : "envelopes"}. Clear envelopes first.`,
       ),
     ),
   });
@@ -92,8 +92,8 @@ export function RetentionSettings({
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Retention limit: {limit.toLocaleString()} envelopes ·{" "}
-        {count.toLocaleString()} displayed
+        {count.toLocaleString()} {count === 1 ? "envelope" : "envelopes"}{" "}
+        currently retained.
       </p>
       {editable ? (
         <form noValidate onSubmit={save} className="space-y-4">
@@ -138,10 +138,18 @@ export function RetentionSettings({
           </div>
         </form>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          {unavailableReason ??
-            "Change retention from a locally served viewer or the CLI."}
-        </p>
+        <div className="space-y-2">
+          <dl className="flex items-center justify-between gap-4 text-sm">
+            <dt>Retention limit</dt>
+            <dd>
+              {limit.toLocaleString()} {limit === 1 ? "envelope" : "envelopes"}
+            </dd>
+          </dl>
+          <p className="text-sm text-muted-foreground">
+            {unavailableReason ??
+              "Change retention from a locally served viewer or the CLI."}
+          </p>
+        </div>
       )}
     </div>
   );
