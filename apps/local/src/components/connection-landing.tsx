@@ -85,8 +85,7 @@ export function ConnectionForm({
           </p>
         ) : null}
         <p className="text-xs leading-5 text-muted-foreground">
-          Use your local receiver's plain /stream address to discover its
-          sessions, or enter an HTTPS stream.
+          Paste a local /stream address or an HTTPS stream URL.
         </p>
       </form>
       {recentConnections.length ? (
@@ -101,16 +100,12 @@ export function ConnectionForm({
             />
             Past connections
           </h3>
-          <p className="text-xs text-muted-foreground">
-            Recent receivers in this tab. Reconnect to discover available
-            sessions.
-          </p>
           <TooltipProvider delayDuration={300}>
-            <ul className="max-h-48 space-y-1 overflow-y-auto">
+            <ul className="max-h-40 space-y-0.5 overflow-y-auto">
               {recentConnections.map((url) => (
                 <li
                   key={url}
-                  className="flex min-w-0 items-center gap-1 rounded-md border bg-background"
+                  className="flex min-w-0 items-center gap-1 rounded-md hover:bg-muted/60"
                 >
                   <Button
                     variant="ghost"
@@ -191,7 +186,7 @@ export function ConnectionLanding({
       aria-labelledby={titleId}
       className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto bg-muted/10 px-4 py-8 sm:p-8"
     >
-      <div className="my-auto w-full max-w-xl space-y-5 rounded-lg border bg-card p-5 shadow-sm sm:p-6">
+      <div className="my-auto w-full max-w-lg space-y-6 rounded-xl border bg-card p-5 shadow-sm sm:p-7">
         <div className="flex items-start gap-3">
           <div
             role={isProbing ? "status" : undefined}
@@ -211,22 +206,19 @@ export function ConnectionLanding({
             )}
           </div>
           <div>
-            <p className="text-xs font-semibold tracking-wide text-primary uppercase">
-              Sentry Local
-            </p>
-            <h2 id={titleId} className="mt-1 text-xl font-semibold">
+            <h2 id={titleId} className="text-lg font-semibold tracking-tight">
               {isProbing
-                ? "Looking for Sentry Local"
+                ? "Connecting to receiver"
                 : closed
                   ? "Session closed"
                   : "Connect a receiver"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {isProbing
-                ? "Checking the selected receiver."
+                ? "Establishing a connection…"
                 : closed
-                  ? "Capture has stopped. Retained events remain available for up to three hours. Reconnect to inspect them or choose another receiver below."
-                  : "Connect this viewer to a local receiver or an HTTPS event stream."}
+                  ? "Events remain available for up to 3 hours."
+                  : "Inspect events from your local development sessions."}
             </p>
           </div>
         </div>

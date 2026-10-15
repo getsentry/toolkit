@@ -13,28 +13,31 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("validates retention with an accessible field error before sending mutations", async () => {
-  const fetch = vi.fn();
-  vi.stubGlobal("fetch", fetch);
-  render(
-    <RetentionSettings
-      limit={500}
-      count={8}
-      streamUrl="http://127.0.0.1:8969/stream"
-      editable
-    />,
-  );
-  const input = screen.getByLabelText("Retention limit");
-  fireEvent.change(input, { target: { value: "1.5" } });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Apply retention limit" }),
-  );
-  expect((await screen.findByRole("alert")).textContent).toContain(
-    "Enter an integer between 1 and 50,000",
-  );
-  expect(input.getAttribute("aria-invalid")).toBe("true");
-  expect(fetch).not.toHaveBeenCalled();
-});
+test.each(["0", "1.5", "50001", ""])(
+  "rejects invalid retention %s before sending mutations",
+  async (value) => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    render(
+      <RetentionSettings
+        limit={500}
+        count={8}
+        streamUrl="http://127.0.0.1:8969/stream"
+        editable
+      />,
+    );
+    const input = screen.getByLabelText("Retention limit");
+    fireEvent.change(input, { target: { value } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply retention limit" }),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Enter an integer between 1 and 50,000",
+    );
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(fetch).not.toHaveBeenCalled();
+  },
+);
 
 test("reports a receiver-side retention race without claiming a successful save", async () => {
   const fetch = vi.fn().mockResolvedValue(

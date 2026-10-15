@@ -90,9 +90,9 @@ async function buildSdkFunctionMap(): Promise<Map<string, string>> {
   const js = await readFile(`${pkgDir}/index.js`, "utf-8");
   const results = new Map<string, string>();
 
-  // Match: var NAME = (options...) => (options...client ?? client).METHOD({
+  // Optional options use a rest tuple in newer generated SDKs.
   const funcPattern =
-    /var (\w+) = \(options\S*\) => \(options\S*client \?\? client\)\.(\w+)\(/g;
+    /var (\w+) = \((?:\.\.\.\[)?options\S*\) => \(options\S*client \?\? client\)\.(\w+)\(/g;
   // Match: url: "..."
   const urlPattern = /url: "([^"]+)"/g;
 

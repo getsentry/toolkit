@@ -405,8 +405,8 @@ importers:
         specifier: ^1.38.0
         version: 1.46.0(ai@6.0.230(zod@4.6.5))(express@5.2.1)(zod@4.6.5)
       '@sentry/api':
-        specifier: ^0.337.0
-        version: 0.337.0(valibot@1.4.2(typescript@5.9.3))(zod@4.6.5)
+        specifier: ^0.356.0
+        version: 0.356.0(valibot@1.4.2(typescript@5.9.3))(zod@4.6.5)
       '@sentry/core':
         specifier: 10.63.0
         version: 10.63.0(patch_hash=e663994979ff877a26ab6d4dea5968fbaee4ccdfdeb85623983535a572678940)
@@ -458,6 +458,9 @@ importers:
       '@types/semver':
         specifier: ^7.7.1
         version: 7.8.0
+      '@types/yauzl':
+        specifier: 3.4.0
+        version: 3.4.0
       '@vitest/coverage-v8':
         specifier: ^4.1.11
         version: 4.1.11(vitest@4.1.11)
@@ -563,6 +566,9 @@ importers:
       wrap-ansi:
         specifier: ^10.0.0
         version: 10.0.1
+      yauzl:
+        specifier: 3.4.0
+        version: 3.4.0
 
   packages/mcp-cloudflare:
     dependencies:
@@ -4174,6 +4180,18 @@ packages:
       zod:
         optional: true
 
+  '@sentry/api@0.356.0':
+    resolution: {integrity: sha512-IYgEOAwDH5WXqzpxgOphYFKTBR1ALf4HK5cLl0RtIHvGIA8PgYu79a43Q6zmBf04up2XsDt9/xkuvIWgA/Eo6Q==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      valibot: '*'
+      zod: ^3.24.0
+    peerDependenciesMeta:
+      valibot:
+        optional: true
+      zod:
+        optional: true
+
   '@sentry/astro@10.75.0':
     resolution: {integrity: sha512-Tel6BrjdC8v3GnpBlFBEwrEChUJey/T4hkTOHeJqtpTGxG0oVWCN8nCQvu5TQKkIvj5ndp+UqhPKvnfLY8RL9Q==}
     engines: {node: '>=18.19.1'}
@@ -4929,6 +4947,9 @@ packages:
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
+
+  '@types/yauzl@3.4.0':
+    resolution: {integrity: sha512-NRPn5w6h8dhcnmx3YIRQcqMywY/+nND/uOkJessedcrowO3C0AssHp3tMJpxKAwOhFOo0OV1y9VtsC5hbKKBAw==}
 
   '@uidotdev/usehooks@2.4.1':
     resolution: {integrity: sha512-1I+RwWyS+kdv3Mv0Vmc+p0dPYH0DTRAo04HLyXReYBL9AeseDWUJyi4THuksBJcu9F0Pih69Ak150VDnqbVnXg==}
@@ -12124,7 +12145,7 @@ snapshots:
       valibot: 1.4.2(typescript@5.9.3)
       zod: 4.4.3
 
-  '@sentry/api@0.337.0(valibot@1.4.2(typescript@5.9.3))(zod@4.6.5)':
+  '@sentry/api@0.356.0(valibot@1.4.2(typescript@5.9.3))(zod@4.6.5)':
     optionalDependencies:
       valibot: 1.4.2(typescript@5.9.3)
       zod: 4.6.5
@@ -12942,6 +12963,10 @@ snapshots:
   '@types/unist@2.0.11': {}
 
   '@types/unist@3.0.3': {}
+
+  '@types/yauzl@3.4.0':
+    dependencies:
+      '@types/node': 22.20.3
 
   '@uidotdev/usehooks@2.4.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:

@@ -35,8 +35,7 @@ export function ReceiverDialog({
         <DialogHeader>
           <DialogTitle>Add receiver</DialogTitle>
           <DialogDescription>
-            Connect another receiver. Your current feed stays available until
-            the new connection succeeds.
+            Your current feed stays open while you connect.
           </DialogDescription>
         </DialogHeader>
         <ConnectionForm {...form} />

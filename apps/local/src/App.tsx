@@ -1,3 +1,6 @@
+import { ExceptionOverview } from "./components/exception-overview.tsx";
+import { getEventExceptions } from "./lib/exceptions.ts";
+import { CliLogo } from "./components/cli-logo.tsx";
 import { useReceiverProbe } from "./lib/use-receiver-probe.ts";
 import { ReceiverDialog } from "./components/receiver-dialog.tsx";
 import {
@@ -215,7 +218,9 @@ function EventEntry({
               </Badge>
             ) : null}
             <span className="truncate font-mono text-sm">
-              {metadata.route ?? metadata.title}
+              {item.type === "event"
+                ? metadata.title
+                : (metadata.route ?? metadata.title)}
             </span>
           </div>
           <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
@@ -298,6 +303,8 @@ function WorkspaceEmptyState({
 }
 
 function EventDetail({ item, trace }: EventDetailProps) {
+  const exceptions =
+    item.type === "event" ? getEventExceptions(item.payload) : [];
   const [tab, setTab] = useState<DetailTab>("overview");
   const [copiedField, setCopiedField] = useState<string>();
   const [, copyToClipboard] = useCopyToClipboard();
@@ -308,6 +315,9 @@ function EventDetail({ item, trace }: EventDetailProps) {
     {
       label: "Details",
       fields: [
+        ...(metadata.message
+          ? [{ label: "Message", value: metadata.message }]
+          : []),
         ...(metadata.statusCode !== undefined
           ? [{ label: "Status", value: String(metadata.statusCode) }]
           : []),
@@ -356,12 +366,12 @@ function EventDetail({ item, trace }: EventDetailProps) {
       aria-label="Event detail"
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-3">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2 sm:h-11 sm:flex-nowrap sm:py-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <Badge>{metadata.operation ?? item.type}</Badge>
           <span className="truncate font-mono text-sm">{metadata.title}</span>
         </div>
-        <div className="flex h-full shrink-0 items-center gap-3">
+        <div className="flex h-8 w-full shrink-0 items-center justify-between gap-3 sm:h-full sm:w-auto">
           <div
             role="tablist"
             aria-label="Event detail view"
@@ -405,7 +415,10 @@ function EventDetail({ item, trace }: EventDetailProps) {
           role="tabpanel"
           className="min-h-0 flex-1 overflow-auto p-3 sm:p-4"
         >
-          <div className="w-full">
+          <div className="w-full space-y-4">
+            {exceptions.length > 0 ? (
+              <ExceptionOverview exceptions={exceptions} />
+            ) : null}
             {hasDetailFields ? (
               <table
                 aria-label="Event details"
@@ -468,11 +481,11 @@ function EventDetail({ item, trace }: EventDetailProps) {
                   )}
                 </tbody>
               </table>
-            ) : (
+            ) : exceptions.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No additional event details.
               </p>
-            )}
+            ) : null}
             {copiedField ? (
               <span
                 role="status"
@@ -558,7 +571,7 @@ function WorkspaceSidebar({
   const statusLabel = connection.label.replace(" to local receiver", "");
   const statusDotClass =
     connection.tone === "success"
-      ? "bg-emerald-500 shadow-[0_0_10px_oklch(0.72_0.19_160)]"
+      ? "bg-emerald-500"
       : connection.tone === "warning"
         ? "bg-amber-500"
         : "bg-muted-foreground";
@@ -573,20 +586,7 @@ function WorkspaceSidebar({
       <div className="flex h-11 items-center border-b border-border px-3">
         {!collapsed ? (
           <>
-            <img
-              className="h-5 w-auto dark:hidden"
-              src="/sentry-cli-light.svg"
-              alt="Sentry CLI"
-              width="117"
-              height="20"
-            />
-            <img
-              className="hidden h-5 w-auto dark:block"
-              src="/sentry-cli.svg"
-              alt=""
-              width="117"
-              height="20"
-            />
+            <CliLogo />
           </>
         ) : null}
         <button
@@ -1382,20 +1382,7 @@ export default function App() {
                 className="flex min-w-0 flex-1 items-center"
                 aria-label="Sentry CLI"
               >
-                <img
-                  className="h-5 w-auto dark:hidden"
-                  src="/sentry-cli-light.svg"
-                  alt="Sentry CLI"
-                  width="117"
-                  height="20"
-                />
-                <img
-                  className="hidden h-5 w-auto dark:block"
-                  src="/sentry-cli.svg"
-                  alt=""
-                  width="117"
-                  height="20"
-                />
+                <CliLogo />
               </div>
               <TooltipProvider delayDuration={300}>
                 <Tooltip>
@@ -1513,17 +1500,17 @@ export default function App() {
               (isClosedSession || connection === "failed") ? (
                 <div
                   role="status"
-                  className="m-3 flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-3"
+                  className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b bg-muted/20 px-4 py-2"
                 >
                   <div className="min-w-0 flex-1">
-                    <h2 className="text-sm font-medium">
+                    <h2 className="text-xs font-medium">
                       {isClosedSession
                         ? "Session closed"
                         : "Receiver disconnected"}
                     </h2>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {isClosedSession
-                        ? "Capture has stopped. You can keep inspecting these events or reconnect to retained data for up to three hours."
+                        ? "Events remain available for up to 3 hours."
                         : connectionError}
                     </p>
                     {isClosedSession &&
@@ -1536,7 +1523,8 @@ export default function App() {
                   </div>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
+                    className="h-8 px-3 text-xs"
                     disabled={isConnecting}
                     aria-busy={isConnecting}
                     onClick={() => connectToEndpoint(streamUrl)}
@@ -1593,10 +1581,10 @@ export default function App() {
                   }}
                 />
               ) : (
-                <div className="flex min-h-0 flex-1 overflow-hidden bg-card">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card md:flex-row">
                   <aside
                     aria-labelledby="event-list-heading"
-                    className="flex min-h-0 w-80 shrink-0 flex-col border-r border-border bg-muted/30"
+                    className="flex h-44 min-h-0 w-full shrink-0 flex-col border-b border-border bg-muted/30 md:h-auto md:w-80 md:border-r md:border-b-0"
                   >
                     <div className="shrink-0 border-b border-border px-3 py-2">
                       <div className="flex items-center justify-between gap-2">

@@ -123,11 +123,11 @@ Uses the official MCP SDK (`@modelcontextprotocol/sdk`) to ensure compatibility:
 ```typescript
 const server = new Server({
   name: "sentry-mcp",
-  version: "1.0.0"
+  version: "1.0.0",
 });
 
 server.setRequestHandler(ListToolsRequestSchema, () => ({
-  tools: TOOL_DEFINITIONS
+  tools: TOOL_DEFINITIONS,
 }));
 ```
 
@@ -176,13 +176,13 @@ Centralized client with method-specific implementations:
 
 ```typescript
 class SentryApiService {
-  constructor(private config: { host: string; accessToken: string })
-  
+  constructor(private config: { host: string; accessToken: string });
+
   // Resource-specific methods
   issues = {
     list: (params) => this.fetch("/issues/", params),
-    get: (params) => this.fetch(`/issues/${id}/`)
-  }
+    get: (params) => this.fetch(`/issues/${id}/`),
+  };
 }
 ```
 
@@ -294,12 +294,14 @@ Execute actions and retrieve data:
 Some tools (the dataset search tools like `search_errors`/`search_traces`, and `search_issues`) implement a two-tier agent pattern:
 
 ### Tier 1: Calling Agent (Claude/Cursor)
+
 - Decides when to use search tools
 - Provides natural language queries
 - Handles errors and retries
 - Interprets results for the user
 
 ### Tier 2: Embedded Agent (GPT-5)
+
 - Lives inside the MCP tool
 - Translates natural language to Sentry query syntax
 - Has its own tools for field discovery
@@ -329,6 +331,7 @@ Some tools (the dataset search tools like `search_errors`/`search_traces`, and `
 ### Design Rationale
 
 This pattern is used when:
+
 - Query languages are complex (Sentry's search syntax)
 - Available fields vary by context (project-specific attributes)
 - Semantic understanding is required ("yesterday" → timeRange)

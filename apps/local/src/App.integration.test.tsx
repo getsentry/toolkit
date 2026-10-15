@@ -15,6 +15,7 @@ import { BrowserRouter } from "react-router";
 import { ThemeProvider } from "@/components/theme-provider.tsx";
 import { createLocalRetentionBuffer } from "../../../packages/cli/src/commands/local/retention-buffer.ts";
 import App from "./App.tsx";
+import { sdkException } from "./test-fixtures/sdk-exception.ts";
 import { LocalWorkspaceRoute } from "./routes/local-workspace-route.tsx";
 import {
   REMOTE_STREAM_STORAGE_KEY,
@@ -392,6 +393,143 @@ describe("local receiver to viewer integration", () => {
     expect(ControllableEventSource.instances[1]?.closed).toBe(false);
   });
 
+  test("shows SDK exception titles, causes and stacks in Overview without losing JSON", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      renderViewer(port, "/errors");
+      await screen.findByText("Connected to local receiver");
+      const response = await fetch(`http://127.0.0.1:${port}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: ["{}", '{"type":"event"}', JSON.stringify(sdkException)].join(
+          "\n",
+        ),
+      });
+      expect(response.status).toBe(204);
+      const row = await screen.findByRole("button", {
+        name: "View event event",
+      });
+      expect(row.textContent).toContain(
+        "TypeError: Cannot read properties of undefined (reading 'total')",
+      );
+      expect(row.textContent).not.toContain("/checkout");
+      const detail = screen.getByTestId("event-detail");
+      await waitFor(() => expect(detail.textContent).toContain("submitOrder"));
+      expect(detail.textContent).toContain("/app/checkout.ts:42:17");
+      expect(detail.textContent).toContain(
+        'throw new TypeError("Checkout failed");',
+      );
+      expect(detail.textContent).toContain("Caused by");
+      expect(detail.textContent).toContain(
+        "Error: Payment gateway unavailable",
+      );
+      expect(detail.textContent).toContain("/app/gateway.ts:15:8");
+      expect(detail.textContent).not.toContain("No additional event details.");
+      const frames = screen.getAllByRole("list", { name: "Stack frames" });
+      expect(frames[0]?.textContent?.indexOf("submitOrder")).toBeLessThan(
+        frames[0]!.textContent!.indexOf("runMain"),
+      );
+      fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("highlighted-json").textContent).toContain(
+          '"exception"',
+        ),
+      );
+      expect(
+        JSON.parse(screen.getByTestId("highlighted-json").textContent!),
+      ).toEqual({ ...sdkException, type: "event" });
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
+  test("shows message-only SDK errors in the title and Overview", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      renderViewer(port, "/errors");
+      await screen.findByText("Connected to local receiver");
+      await fetch(`http://127.0.0.1:${port}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: [
+          "{}",
+          '{"type":"event"}',
+          JSON.stringify({
+            level: "error",
+            message: "Checkout rejected",
+            transaction: "POST /checkout",
+            request: { url: "https://example.test/checkout" },
+          }),
+        ].join("\n"),
+      });
+      const row = await screen.findByRole("button", {
+        name: "View event event",
+      });
+      expect(row.textContent).toContain("Checkout rejected");
+      const detail = screen.getByTestId("event-detail");
+      expect(detail.textContent).toContain("Message");
+      expect(detail.textContent).toContain("Checkout rejected");
+      expect(detail.textContent).not.toContain("No additional event details.");
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
+  test("System appearance follows live device changes while explicit choices stay fixed", async () => {
+    let prefersDark = false;
+    const listeners = new Set<(event: MediaQueryListEvent) => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() {
+        return prefersDark;
+      },
+      media: query,
+      addListener: (listener: (event: MediaQueryListEvent) => void) =>
+        listeners.add(listener),
+      removeListener: (listener: (event: MediaQueryListEvent) => void) =>
+        listeners.delete(listener),
+    }));
+    const changeSystemTheme = async (dark: boolean) => {
+      prefersDark = dark;
+      await act(async () => {
+        const event = Object.assign(new Event("change"), {
+          matches: dark,
+          media: "(prefers-color-scheme: dark)",
+        }) as MediaQueryListEvent;
+        for (const listener of listeners) listener(event);
+      });
+    };
+    window.localStorage.setItem("theme", "system");
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderViewer(8969);
+    await act(async () =>
+      ControllableEventSource.instances[0]?.onopen?.(new Event("open")),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Settings", exact: true }),
+    );
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+    expect(screen.getByText("System appearance: Light")).not.toBeNull();
+    await changeSystemTheme(true);
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(screen.getByText("System appearance: Dark")).not.toBeNull();
+    await changeSystemTheme(false);
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Dark", exact: true }));
+    await changeSystemTheme(true);
+    await changeSystemTheme(false);
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "System", exact: true }),
+    );
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+    expect(ControllableEventSource.instances).toHaveLength(1);
+    expect(ControllableEventSource.instances[0]?.closed).toBe(false);
+    expect(window.localStorage.getItem("theme")).toBe("system");
+  });
+
   test("keeps the selected live transaction open in the detail pane", async () => {
     const { server, port } = await startReceiver();
 
@@ -518,7 +656,7 @@ describe("local receiver to viewer integration", () => {
       screen.queryByRole("searchbox", { name: "Search events" }),
     ).toBeNull();
     expect(screen.queryByLabelText("Workspace navigation")).toBeNull();
-    expect(screen.getByText("Looking for Sentry Local")).not.toBeNull();
+    expect(screen.getByText("Connecting to receiver")).not.toBeNull();
     expect(
       screen.getByRole("status", { name: "Checking receiver" }),
     ).not.toBeNull();
@@ -533,9 +671,7 @@ describe("local receiver to viewer integration", () => {
     expect(connectButton.disabled).toBe(false);
     expect(connectButton.getAttribute("aria-busy")).toBe("false");
     expect(
-      screen.getByText(
-        "Use your local receiver's plain /stream address to discover its sessions, or enter an HTTPS stream.",
-      ),
+      screen.getByText("Paste a local /stream address or an HTTPS stream URL."),
     ).not.toBeNull();
     expect(
       screen.getByRole("button", { name: "Copy local serve command" }),

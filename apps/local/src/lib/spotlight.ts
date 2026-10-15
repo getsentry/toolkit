@@ -1,3 +1,4 @@
+import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 export { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 
@@ -24,6 +25,7 @@ export type LocalFeedItem = {
 
 export type EventMetadata = {
   title: string;
+  message?: string;
   level?: string;
   method?: string;
   route?: string;
@@ -78,6 +80,8 @@ export function getEventMetadata(
   type: string,
 ): EventMetadata {
   const event = isRecord(payload) ? payload : {};
+  const exception =
+    type === "event" ? getEventExceptions(payload)[0] : undefined;
   const transaction = getString(event.transaction);
   const description = getString(event.description);
   const message =
@@ -107,7 +111,18 @@ export function getEventMetadata(
       : undefined;
 
   return {
-    title: transaction ?? description ?? message ?? route ?? type,
+    title:
+      (exception?.type || exception?.value
+        ? formatExceptionTitle(exception)
+        : undefined) ??
+      (type === "event" ? message : undefined) ??
+      transaction ??
+      description ??
+      message ??
+      route ??
+      (exception ? formatExceptionTitle(exception) : undefined) ??
+      type,
+    ...(type === "event" && message ? { message } : {}),
     level: getString(event.level),
     method,
     route,

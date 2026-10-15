@@ -36,7 +36,7 @@ export function LocalSettings({
   triggerRef,
   ...retention
 }: Props) {
-  const { theme, setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme } = useTheme();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -51,11 +51,18 @@ export function LocalSettings({
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Customize viewer appearance and manage session retention.
+            Appearance and session retention.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <p className="text-sm font-medium">Appearance</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-medium">Appearance</p>
+            {theme === "system" && resolvedTheme ? (
+              <p aria-live="polite" className="text-xs text-muted-foreground">
+                System appearance: {resolvedTheme === "dark" ? "Dark" : "Light"}
+              </p>
+            ) : null}
+          </div>
           <div
             role="group"
             aria-label="Color theme"

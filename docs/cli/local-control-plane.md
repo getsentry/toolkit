@@ -95,7 +95,13 @@ that hosting project to use Toolkit and `apps/local` as its root directory.
 
 The Settings dialog also offers Light, Dark, and System appearance options.
 The choice applies immediately and persists in the browser across reloads.
+System follows the browser's `prefers-color-scheme` preference, including live
+changes; the dialog shows its resolved Light or Dark appearance. An explicit
+Light or Dark choice overrides it until System is selected again.
 Settings also remains accessible from the connection landing without an active receiver.
+
+On narrow screens, the event or trace list stacks above its inspector. Mobile
+receiver actions open the same Settings and Add receiver dialogs as the sidebar.
 
 ### Receiver connections
 
@@ -114,7 +120,7 @@ query credentials are omitted from their displayed labels. No history entry is
 created for a failed connection.
 
 Closing a session stops capture and keeps already displayed events available
-for inspection and search. A status card offers **Reconnect** to replay retained
+for inspection and search. A compact status row offers **Reconnect** to replay retained
 data. When no events are displayed, the landing explains that capture stopped and
 offers **Reconnect to session**, another endpoint, and past connections. Closing
 is guarded against duplicate requests and times out if the receiver does not respond.
@@ -175,6 +181,12 @@ Clear/Close icons at the right beneath it. Icon tooltips also work with keyboard
 A loopback-served viewer can reset and close its scoped session. The hosted viewer
 can read the stream and clear its own displayed feed; it cannot mutate retained
 receiver data. Remote HTTPS streams stay read-only.
+
+Exception event titles use the current SDK exception type and message, including
+when the event carries a request transaction name. Overview shows the current
+exception, its causes, and stack frames with function names, source locations, and
+captured source lines. Frames appear most recent first; the JSON tab preserves the
+complete original payload.
 
 Switching or reconnecting a receiver isolates pending actions and stream callbacks
 from earlier connections, including when returning to the same receiver URL.

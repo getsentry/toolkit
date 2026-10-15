@@ -116,8 +116,8 @@ export function RetentionSettings({
               id="retention-help"
               className="text-xs leading-relaxed text-muted-foreground"
             >
-              Maximum envelopes kept in this session. Existing envelopes stay
-              available. A lower limit requires clearing enough envelopes first.
+              Maximum envelopes to keep. To set a limit below the retained
+              count, clear events first.
             </p>
             {error ? (
               <p

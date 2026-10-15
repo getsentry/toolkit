@@ -206,8 +206,7 @@ export function SessionSwitcher({
       </Button>
       {error ? (
         <p role="status" className="w-full text-xs text-muted-foreground">
-          Could not refresh sessions. The selected feed is unchanged. Retry with
-          Refresh sessions.
+          Could not refresh sessions. Your current feed is still available.
         </p>
       ) : null}
     </section>
