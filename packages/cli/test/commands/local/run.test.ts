@@ -67,6 +67,7 @@ type RunFunc = (
     attributes?: boolean;
     filter?: ("error" | "transaction" | "log" | "ai")[];
     open?: boolean;
+    session?: string;
   },
   ...args: string[]
 ) => Promise<void>;
@@ -209,6 +210,27 @@ describe("sentry local run", () => {
     ).rejects.toMatchObject({
       field: "open",
       message: "--open cannot be used with --verify.",
+    });
+  });
+
+  test("rejects --session with --verify before starting a receiver", async () => {
+    const func = (await runCommand.loader()) as unknown as RunFunc;
+
+    await expect(
+      func.call(
+        makeContext(),
+        {
+          port: 0,
+          host: "localhost",
+          verify: true,
+          timeout: 0,
+          session: "verification",
+        },
+        "true",
+      ),
+    ).rejects.toMatchObject({
+      field: "session",
+      message: "--session cannot be used with --verify.",
     });
   });
 

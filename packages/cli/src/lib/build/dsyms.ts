@@ -11,6 +11,7 @@ import {
 } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { openPromise } from "yauzl";
+import { crc32 } from "../crc32.js";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 
@@ -132,6 +133,18 @@ async function extractDsymZip(zipPath: string, destDir: string): Promise<void> {
         const source = await zip.openReadStreamPromise(entry);
         await pipeline(
           source,
+          async function* (chunks: AsyncIterable<Uint8Array>) {
+            // yauzl checks sizes, but never CRCs. Validate before the wrapper
+            // can replace the checksum and hide corrupted symbol contents.
+            let checksum = 0;
+            for await (const chunk of chunks) {
+              checksum = crc32(chunk, checksum);
+              yield chunk;
+            }
+            if (checksum !== entry.crc32) {
+              throw new ValidationError("Invalid checksum in dSYM ZIP", "dsym");
+            }
+          },
           createWriteStream(target, { flags: "wx", mode: 0o600 }),
         );
       }

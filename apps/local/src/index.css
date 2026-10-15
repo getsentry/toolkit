@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(0.985 0.002 285);
+  --foreground: oklch(0.18 0.02 285);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 285);
+  --primary: oklch(0.56 0.25 292);
+  --primary-foreground: oklch(0.99 0.005 285);
+  --secondary: oklch(0.95 0.015 285);
+  --secondary-foreground: oklch(0.3 0.025 285);
+  --muted: oklch(0.95 0.012 285);
+  --muted-foreground: oklch(0.48 0.02 285);
+  --accent: oklch(0.94 0.02 285);
+  --accent-foreground: oklch(0.25 0.025 285);
+  --destructive: oklch(0.59 0.22 25);
+  --border: oklch(0.9 0.012 285);
+  --input: oklch(0.9 0.012 285);
+  --ring: oklch(0.56 0.25 292);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.16 0.018 285);
+  --foreground: oklch(0.96 0.008 285);
+  --card: oklch(0.2 0.018 285);
+  --card-foreground: oklch(0.96 0.008 285);
+  --primary: oklch(0.72 0.22 292);
+  --primary-foreground: oklch(0.2 0.018 285);
+  --secondary: oklch(0.27 0.02 285);
+  --secondary-foreground: oklch(0.95 0.008 285);
+  --muted: oklch(0.25 0.018 285);
+  --muted-foreground: oklch(0.7 0.018 285);
+  --accent: oklch(0.3 0.022 285);
+  --accent-foreground: oklch(0.96 0.008 285);
+  --destructive: oklch(0.7 0.2 25);
+  --border: oklch(0.31 0.018 285);
+  --input: oklch(0.31 0.018 285);
+  --ring: oklch(0.72 0.22 292);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply bg-background;
+  }
+
+  body {
+    @apply min-w-80 bg-background text-foreground antialiased;
+  }
+}
+
+@layer components {
+  .json-view pre {
+    @apply m-0 break-words bg-transparent p-0 font-mono text-inherit whitespace-pre-wrap;
+  }
+
+  .json-view .shiki {
+    background-color: transparent !important;
+    padding: 0 !important;
+  }
+
+  .json-view .shiki span {
+    color: var(--shiki-light);
+  }
+
+  .dark .json-view .shiki span {
+    color: var(--shiki-dark);
+  }
+}

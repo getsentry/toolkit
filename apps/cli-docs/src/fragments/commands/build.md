@@ -20,12 +20,14 @@ sentry build download 1234567890 --json
   upload. **Sentry SaaS only.**
 - `--dsym` attaches debug symbols to a **single IPA** upload. Repeat the flag
   for multiple inputs: each may be a `.dSYM` bundle, a directory of bundles,
-  or a ZIP of either. Symlinks, unsafe ZIP paths, empty bundles, and duplicate
-  bundle names are rejected. IPA and dSYM contents are streamed from disk.
-- iOS caveat: `Assets.car` asset catalogs are **not** parsed into per-asset
-  images (that required native macOS frameworks), so the server sees the raw
-  `.car` rather than a per-image breakdown. XCArchive symlinks and Unix file
-  permissions are preserved.
+  or a ZIP of either. Symlinks, unsafe ZIP paths, checksum mismatches, empty
+  bundles, and duplicate bundle names are rejected. IPA and dSYM contents are
+  streamed from disk.
+- The **macOS arm64 standalone binary** expands iOS `.car` asset catalogs with
+  CoreUI on macOS 13, 14, 15, and 26. It adds the legacy `ParsedAssets/` manifest
+  and decoded images for per-asset size analysis and image optimization insights.
+  Other runtimes, or failed extractions, upload the original catalogs unchanged.
+  XCArchive symlinks and Unix file permissions are preserved.
 - Multiple paths may be uploaded at once; the command exits non-zero if any
   build fails to upload.
 - Git metadata (commit, branch, PR number, repo) is **auto-collected in CI**

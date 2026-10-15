@@ -109,6 +109,48 @@ describe("collectDsymEntries", () => {
     expect((await collect([path]))[0]?.relPath).toBe(ZIP_SYMBOL_PATH);
   });
 
+  test("rejects corrupted stored symbol bytes instead of masking them with a new checksum", async () => {
+    const bytes = Buffer.from(
+      zipSync({ [ZIP_SYMBOL_PATH]: strToU8("symbols") }, { level: 0 }),
+    );
+    // Change one payload byte without changing its length or either ZIP checksum.
+    const dataOffset = 30 + bytes.readUInt16LE(26) + bytes.readUInt16LE(28);
+    bytes[dataOffset] = 0x58;
+    await expect(collect([await zip(bytes)])).rejects.toThrow(
+      "Invalid checksum in dSYM ZIP",
+    );
+  });
+
+  test.each([0, 6] as const)(
+    "rejects an incorrect central-directory checksum with compression level %s",
+    async (level) => {
+      const bytes = Buffer.from(
+        zipSync({ [ZIP_SYMBOL_PATH]: strToU8("symbols") }, { level }),
+      );
+      // The generated ZIP has no comment; its EOCD points to the real entry.
+      const directoryOffset = bytes.readUInt32LE(bytes.length - 6);
+      expect(bytes.readUInt32LE(directoryOffset + 16)).not.toBe(0);
+      bytes.writeUInt32LE(0, directoryOffset + 16);
+      await expect(collect([await zip(bytes)])).rejects.toThrow(
+        "Invalid checksum in dSYM ZIP",
+      );
+    },
+  );
+
+  test.each([0, 6] as const)(
+    "accepts a valid multi-chunk symbol entry with compression level %s",
+    async (level) => {
+      const symbols = strToU8("symbols".repeat(24_000));
+      const path = await zip(
+        zipSync({ [ZIP_SYMBOL_PATH]: symbols }, { level }),
+      );
+      const entries = await collect([path]);
+      expect(await readFile(entries[0]!.sourcePath)).toEqual(
+        Buffer.from(symbols),
+      );
+    },
+  );
+
   test("rejects ZIP symlinks instead of converting them to files", async () => {
     const path = await zip(
       zipSync({ [ZIP_SYMBOL_PATH]: [strToU8("/secret"), SYMLINK_OPTIONS] }),

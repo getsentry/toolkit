@@ -476,24 +476,30 @@ describe("normalizeIpa", () => {
     ).toEqual(strToU8("binary"));
   });
 
-  test.each([false, true])(
-    "cleans up staged dSYM files when extraction fails: %s",
-    async (unsafe) => {
+  test.each(["valid", "traversal", "checksum"])(
+    "cleans up staging after dSYM extraction: %s",
+    async (scenario) => {
       const src = writeTmpFile("app.ipa", fakeIpaBytes());
-      const dsym = writeTmpFile(
-        "dsyms.zip",
+      const bytes = Buffer.from(
         zipSync({
           "App.dSYM/symbols": strToU8("symbols"),
-          ...(unsafe ? { "../escape": strToU8("unsafe") } : {}),
+          ...(scenario === "traversal"
+            ? { "../escape": strToU8("unsafe") }
+            : {}),
         }),
       );
+      if (scenario === "checksum") {
+        const directoryOffset = bytes.readUInt32LE(bytes.length - 6);
+        bytes.writeUInt32LE(0, directoryOffset + 16);
+      }
+      const dsym = writeTmpFile("dsyms.zip", bytes);
       const stagingRoot = makeTmpDir("build-staging-");
       vi.stubEnv("TMPDIR", stagingRoot);
       try {
         const output = join(stagingRoot, "normalized.zip");
-        if (unsafe) {
+        if (scenario !== "valid") {
           await expect(normalizeIpa(src, output, null, [dsym])).rejects.toThrow(
-            /unsafe/i,
+            scenario === "checksum" ? /checksum/i : /unsafe/i,
           );
         } else {
           await normalizeIpa(src, output, null, [dsym]);
@@ -504,7 +510,7 @@ describe("normalizeIpa", () => {
           ).toEqual(strToU8("symbols"));
         }
         expect(readdirSync(stagingRoot)).toEqual(
-          unsafe ? [] : ["normalized.zip"],
+          scenario === "valid" ? ["normalized.zip"] : [],
         );
       } finally {
         vi.unstubAllEnvs();

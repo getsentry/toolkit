@@ -8,7 +8,103 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
-import { ApiNotFoundError, ApiPermissionError, ApiServerError } from "./errors";
+import {
+  ApiNotFoundError,
+  ApiPermissionError,
+  ApiServerError,
+  ApiValidationError,
+} from "./errors";
+import { z } from "zod";
+
+describe("validateEvents error bodies", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("retains structured validation results on HTTP 400", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        () =>
+          HttpResponse.json(
+            {
+              valid: false,
+              projects: [
+                {
+                  valid: false,
+                  error: "At least one valid project is required to query",
+                },
+              ],
+              dataset: [],
+              environment: [],
+              field: [],
+              orderby: [],
+              query: { valid: true, error: null, fields: [] },
+            },
+            { status: 400 },
+          ),
+      ),
+    );
+    const api = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    await expect(
+      api.validateEvents({ organizationSlug: "test-org" }),
+    ).resolves.toMatchObject({
+      valid: false,
+      projects: [
+        {
+          valid: false,
+          error: "At least one valid project is required to query",
+        },
+      ],
+    });
+  });
+
+  it.each([{}, { valid: false, detail: "Unexpected validation shape" }])(
+    "keeps malformed HTTP 400 validation results reportable: %j",
+    async (body) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          () => HttpResponse.json(body, { status: 400 }),
+        ),
+      );
+      const api = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+      await expect(
+        api.validateEvents({ organizationSlug: "test-org" }),
+      ).rejects.toBeInstanceOf(z.ZodError);
+    },
+  );
+
+  it.each([400, 200])(
+    "preserves error classification for HTTP %i",
+    async (status) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          () => HttpResponse.json({ detail: "Invalid query" }, { status }),
+        ),
+      );
+      const api = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+      const result = api.validateEvents({ organizationSlug: "test-org" });
+      if (status === 400) {
+        await expect(result).rejects.toBeInstanceOf(ApiValidationError);
+        await expect(result).rejects.toMatchObject({
+          status: 400,
+          detail: "Invalid query",
+        });
+      } else {
+        await expect(result).rejects.toBeInstanceOf(z.ZodError);
+      }
+    },
+  );
+});
 
 describe("API bearer token validation", () => {
   it("removes edge padding before sending a request", async () => {

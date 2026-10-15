@@ -905,6 +905,30 @@ describe("tryFuzzyProjectRecovery", () => {
     }
   });
 
+  test("keeps short submitted project names ambiguous", async () => {
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    globalThis.fetch = mockListProjects({
+      "test-org": ["go-api", "db"],
+    });
+
+    const result = await tryFuzzyProjectRecovery("go", [{ slug: "test-org" }]);
+
+    expect(result.kind).toBe("suggestions");
+  });
+
+  test("does not recover a submitted project name from a typo in its prefix", async () => {
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    globalThis.fetch = mockListProjects({
+      "test-org": ["frontend-web"],
+    });
+
+    const result = await tryFuzzyProjectRecovery("frone", [
+      { slug: "test-org" },
+    ]);
+
+    expect(result.kind).toBe("none");
+  });
+
   test("returns 'none' when no similar projects exist", async () => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockListProjects({
