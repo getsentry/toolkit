@@ -16,6 +16,9 @@ export interface FormatIssueResultsParams {
   issues: Issue[];
   organizationSlug: string;
   projectSlugOrId?: string;
+  // the already-resolved numeric project ID, for the search link's `project` param -- a slug
+  // there would leave the Sentry frontend unable to select the project (see #1340)
+  projectId?: string;
   query?: string | null;
   regionUrl?: string;
   host?: string;
@@ -35,6 +38,7 @@ export function formatIssueResults(params: FormatIssueResultsParams): string {
     issues,
     organizationSlug,
     projectSlugOrId,
+    projectId,
     query,
     regionUrl,
     host,
@@ -85,12 +89,13 @@ export function formatIssueResults(params: FormatIssueResultsParams): string {
     return output;
   }
 
-  // Generate search URL for viewing results
+  // Generate search URL for viewing results. Use the resolved ID, not the display slug: the
+  // Sentry frontend parses this param as numeric and drops a slug silently.
   const searchUrl = getIssuesSearchUrl(
     resolvedHost,
     organizationSlug,
     query,
-    projectSlugOrId,
+    projectId ?? projectSlugOrId,
     resolvedProtocol,
   );
 
