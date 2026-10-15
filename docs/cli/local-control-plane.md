@@ -93,6 +93,9 @@ The independently served viewer lives in `apps/local`. Run
 CLI builds use <https://local.sentry.dev/>; publishing the migrated app requires
 that hosting project to use Toolkit and `apps/local` as its root directory.
 
+The Settings dialog also offers Light, Dark, and System appearance options.
+The choice applies immediately and persists in the browser across reloads.
+
 ### Switching sessions
 
 Human-readable `local run` and `local serve` output prints a **View events at**

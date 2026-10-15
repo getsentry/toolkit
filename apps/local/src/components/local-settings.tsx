@@ -1,4 +1,7 @@
 import type { RefObject } from "react";
+import { Monitor, Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
+import { Button } from "./ui/button.tsx";
 import { RetentionSettings } from "./retention-settings.tsx";
 import {
   Dialog,
@@ -7,6 +10,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog.tsx";
+
+const THEME_OPTIONS = [
+  { value: "light", label: "Light", Icon: Sun },
+  { value: "dark", label: "Dark", Icon: Moon },
+  { value: "system", label: "System", Icon: Monitor },
+] as const;
 
 type Props = {
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -27,6 +36,7 @@ export function LocalSettings({
   triggerRef,
   ...retention
 }: Props) {
+  const { theme, setTheme } = useTheme();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -40,16 +50,40 @@ export function LocalSettings({
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Manage retention for the selected session.
+            Customize viewer appearance and manage session retention.
           </DialogDescription>
         </DialogHeader>
-        {supported ? (
-          <RetentionSettings {...retention} />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            This receiver does not provide retention settings.
-          </p>
-        )}
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Appearance</p>
+          <div
+            role="group"
+            aria-label="Color theme"
+            className="grid grid-cols-3 gap-2"
+          >
+            {THEME_OPTIONS.map(({ value, label, Icon }) => (
+              <Button
+                key={value}
+                type="button"
+                className="min-w-0 gap-1 px-1 sm:gap-2 sm:px-4"
+                variant={theme === value ? "default" : "outline"}
+                aria-pressed={theme === value}
+                onClick={() => setTheme(value)}
+              >
+                <Icon className="size-4" aria-hidden="true" />
+                {label}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="border-t pt-4">
+          {supported ? (
+            <RetentionSettings {...retention} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              This receiver does not provide retention settings.
+            </p>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

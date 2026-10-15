@@ -186,6 +186,56 @@ describe("local receiver to viewer integration", () => {
     window.history.replaceState(null, "", "/");
   });
 
+  test("Settings changes and persists the viewer theme without reconnecting the receiver", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderViewer(8969);
+    await act(async () =>
+      ControllableEventSource.instances.at(-1)?.onopen?.(new Event("open")),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Settings", exact: true }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dark", exact: true }));
+    await waitFor(() =>
+      expect(document.documentElement.classList.contains("dark")).toBe(true),
+    );
+    expect(window.localStorage.getItem("theme")).toBe("dark");
+    expect(ControllableEventSource.instances).toHaveLength(1);
+    expect(ControllableEventSource.instances[0]?.closed).toBe(false);
+
+    cleanup();
+    renderViewer(8969);
+    await act(async () =>
+      ControllableEventSource.instances.at(-1)?.onopen?.(new Event("open")),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Settings", exact: true }),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Dark", exact: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Light", exact: true }));
+    await waitFor(() =>
+      expect(document.documentElement.classList.contains("light")).toBe(true),
+    );
+    expect(window.localStorage.getItem("theme")).toBe("light");
+    fireEvent.click(
+      screen.getByRole("button", { name: "System", exact: true }),
+    );
+    expect(window.localStorage.getItem("theme")).toBe("system");
+    expect(
+      screen
+        .getByRole("button", { name: "System", exact: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+    expect(ControllableEventSource.instances).toHaveLength(2);
+    expect(ControllableEventSource.instances[1]?.closed).toBe(false);
+  });
+
   test("keeps the selected live transaction open in the detail pane", async () => {
     const { server, port } = await startReceiver();
 
