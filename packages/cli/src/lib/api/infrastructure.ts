@@ -222,11 +222,20 @@ export function throwApiError(
   response: Response | undefined,
   context: string,
 ): never {
+  throw createApiError(error, response, context);
+}
+
+/** Build the same CLI error for result unwrapping and SDK pagination. */
+function createApiError(
+  error: unknown,
+  response: Response | undefined,
+  context: string,
+): ApiError {
   // Network-level failure: no HTTP response received (DNS, timeout, ECONNREFUSED, etc.)
   if (!response) {
     const cause =
       error instanceof Error ? error.message : stringifyUnknown(error);
-    throw new ApiError(
+    return new ApiError(
       `${context}: Network error`,
       0,
       `Unable to reach Sentry API. Cause: ${cause}\n\n  Check your internet connection and try again.`,
@@ -251,7 +260,7 @@ export function throwApiError(
     : stringifyUnknown(error);
 
   const is403 = status === 403;
-  throw new ApiError(
+  return new ApiError(
     `${context}: ${status} ${response.statusText ?? "Unknown"}`,
     status,
     enrichDetail(status, detail, hasUsableDetail),
@@ -379,6 +388,20 @@ const sentryClients = new WeakMap<
   Map<string, SentryClient>
 >();
 
+/** Read the explicit CLI error context for calls that use SDK pagination. */
+function getSdkErrorContext(options: object): string | undefined {
+  if (
+    "meta" in options &&
+    options.meta !== null &&
+    typeof options.meta === "object" &&
+    "errorContext" in options.meta &&
+    typeof options.meta.errorContext === "string"
+  ) {
+    return options.meta.errorContext;
+  }
+  return undefined;
+}
+
 /**
  * Reuse one SDK client for this invocation, deployment, and auth context.
  * The transport selects credentials per request so OAuth refresh never
@@ -409,6 +432,19 @@ export function getSentryClient(baseUrl: string): SentryClient {
     ...config,
     fetch: (input, init) => withEnv(env, () => config.fetch(input, init)),
   });
+  sentry.client.interceptors.error.use((error, response, _request, options) =>
+    withEnv(env, () => {
+      const context = getSdkErrorContext(options);
+      if (
+        context === undefined ||
+        error instanceof AuthError ||
+        error instanceof ApiError
+      ) {
+        return error;
+      }
+      return createApiError(error, response, context);
+    }),
+  );
   clients.set(key, sentry);
   return sentry;
 }

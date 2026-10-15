@@ -14,7 +14,6 @@ import { logger } from "../logger.js";
 import {
   getOrgSentryClient,
   type PaginatedResponse,
-  unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
 
@@ -46,15 +45,14 @@ export async function listTeamsPaginated(
 ): Promise<PaginatedResponse<SentryTeam[]>> {
   const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await sentry.listOrganizationTeams({
-    path: { organization_id_or_slug: orgSlug },
-    query: {
-      cursor: options.cursor,
-      per_page: options.perPage ?? 25,
-    } as { cursor?: string; per_page?: number },
-  });
-
-  return unwrapPaginatedResult<SentryTeam[]>(result, "Failed to list teams");
+  return sentry.fetchPage.listOrganizationTeams(
+    {
+      path: { organization_id_or_slug: orgSlug },
+      query: { per_page: options.perPage ?? 25 },
+      meta: { errorContext: "Failed to list teams" },
+    },
+    options.cursor,
+  );
 }
 
 /**
