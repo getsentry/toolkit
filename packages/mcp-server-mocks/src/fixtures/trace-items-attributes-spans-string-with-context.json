@@ -257,26 +257,26 @@
     "context": {}
   },
   {
-    "key": "device.model",
-    "name": "device.model",
+    "key": "kiosk.firmware",
+    "name": "kiosk.firmware",
     "context": {
       "isConvention": true,
-      "brief": "The model name of the device.",
+      "brief": "The firmware revision currently installed and running on the kiosk.",
       "isDeprecated": false,
       "examples": [
-        "iPhone 15 Pro"
+        "4.1.3"
       ]
     }
   },
   {
-    "key": "device.model_id",
-    "name": "device.model_id",
+    "key": "kiosk.firmware_revision",
+    "name": "kiosk.firmware_revision",
     "context": {
       "isConvention": true,
-      "brief": "An internal hardware revision to identify the device exactly.",
+      "brief": "The firmware revision downloaded and staged for the kiosk's next update. It is not installed until the kiosk restarts.",
       "isDeprecated": false,
       "examples": [
-        "iPhone16,1"
+        "4.2.0"
       ]
     }
   }

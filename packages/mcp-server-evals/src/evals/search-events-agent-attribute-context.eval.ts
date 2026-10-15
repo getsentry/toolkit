@@ -107,6 +107,29 @@ describeEval("search-events-agent-attributes-without-context", {
             !value.includes("sentry.environment"),
         },
       },
+      {
+        // kiosk.firmware and kiosk.firmware_revision are made-up attributes, so
+        // the agent has no prior knowledge of either. Without briefs it can
+        // only match on the name, and kiosk.firmware_revision matches
+        // "firmware revision"
+        input:
+          "Count spans grouped by the kiosk's installed firmware revision over the last 7 days",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("kiosk.firmware_revision") &&
+            !value.includes("kiosk.firmware"),
+        },
+      },
     ];
   },
   task: async (input) => {
@@ -250,10 +273,11 @@ describeEval("search-events-agent-attributes-with-context", {
         },
       },
       {
-        // device.model and device.model_id are near-identical names, but only
-        // device.model_id's brief describes the exact hardware revision
+        // kiosk.firmware_revision matches "firmware revision" by name, but its
+        // brief says it is the staged revision. Only kiosk.firmware's brief
+        // describes the installed firmware
         input:
-          "Count spans grouped by the device's internal hardware revision over the last 7 days",
+          "Count spans grouped by the kiosk's installed firmware revision over the last 7 days",
         expectedTools: [
           {
             name: "datasetAttributes",
@@ -266,8 +290,8 @@ describeEval("search-events-agent-attributes-with-context", {
           dataset: "spans",
           fields: (value: unknown) =>
             Array.isArray(value) &&
-            value.includes("device.model_id") &&
-            !value.includes("device.model"),
+            value.includes("kiosk.firmware") &&
+            !value.includes("kiosk.firmware_revision"),
         },
       },
     ];
