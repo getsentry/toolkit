@@ -390,8 +390,8 @@ importers:
         specifier: ^1.38.0
         version: 1.46.0(ai@6.0.230(zod@4.6.5))(express@5.2.1)(zod@4.6.5)
       '@sentry/api':
-        specifier: ^0.337.0
-        version: 0.337.0(valibot@1.4.2(typescript@5.9.3))(zod@4.6.5)
+        specifier: ^0.356.0
+        version: 0.356.0(valibot@1.4.2(typescript@5.9.3))(zod@4.6.5)
       '@sentry/core':
         specifier: 10.63.0
         version: 10.63.0(patch_hash=e663994979ff877a26ab6d4dea5968fbaee4ccdfdeb85623983535a572678940)
@@ -3944,6 +3944,18 @@ packages:
 
   '@sentry/api@0.337.0':
     resolution: {integrity: sha512-/U7MU4TEhRxrSDWbbTbCIhIp2FOjw18tU9m4oz/PpzIrBKiB8QPk4YDpW5hGeOXZGjsNVQMBg8Vgxzs16PUjMw==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      valibot: '*'
+      zod: ^3.24.0
+    peerDependenciesMeta:
+      valibot:
+        optional: true
+      zod:
+        optional: true
+
+  '@sentry/api@0.356.0':
+    resolution: {integrity: sha512-IYgEOAwDH5WXqzpxgOphYFKTBR1ALf4HK5cLl0RtIHvGIA8PgYu79a43Q6zmBf04up2XsDt9/xkuvIWgA/Eo6Q==}
     engines: {node: '>=22'}
     peerDependencies:
       valibot: '*'
@@ -11742,7 +11754,7 @@ snapshots:
       valibot: 1.4.2(typescript@5.9.3)
       zod: 4.4.3
 
-  '@sentry/api@0.337.0(valibot@1.4.2(typescript@5.9.3))(zod@4.6.5)':
+  '@sentry/api@0.356.0(valibot@1.4.2(typescript@5.9.3))(zod@4.6.5)':
     optionalDependencies:
       valibot: 1.4.2(typescript@5.9.3)
       zod: 4.6.5

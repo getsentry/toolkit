@@ -75,6 +75,10 @@ export async function listRepositoriesPaginated(
     "Failed to list repositories",
   );
 
+  if (!result.response) {
+    throw new ApiError("Repository list returned no HTTP response", 0);
+  }
+
   if (!Array.isArray(paginated.data)) {
     throw new ApiError(
       "Failed to list repositories: unexpected response format",
