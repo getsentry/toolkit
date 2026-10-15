@@ -15,11 +15,11 @@ import {
   ChevronRight,
   Copy,
   Menu,
-  Radio,
+  Plug,
+  Eraser,
+  CircleStop,
   Search,
   Terminal,
-  Trash2,
-  X,
 } from "lucide-react";
 import {
   Fragment,
@@ -45,6 +45,7 @@ import { ReceiverControls } from "@/components/receiver-controls.tsx";
 import { TraceWorkspace } from "@/components/trace-workspace.tsx";
 import { TraceWaterfall } from "@/components/trace-waterfall.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
+import { Button } from "@/components/ui/button.tsx";
 import {
   getConnectionPresentation,
   type ConnectionPresentation,
@@ -515,6 +516,39 @@ function WorkspaceSidebar({
   onSelect,
   onToggle,
 }: WorkspaceSidebarProps) {
+  const receiverActions = [
+    {
+      label: "Change receiver",
+      accessibleLabel: "Change receiver connection",
+      Icon: Plug,
+      onClick: onChangeReceiver,
+      disabled: false,
+      destructive: false,
+      separate: false,
+    },
+    {
+      label: "Clear events",
+      accessibleLabel: "Clear events",
+      Icon: Eraser,
+      onClick: onClear,
+      disabled: retainedItemCount === 0,
+      destructive: true,
+      separate: false,
+    },
+    ...(onCloseSession
+      ? [
+          {
+            label: "Close session",
+            accessibleLabel: "Close telemetry session",
+            Icon: CircleStop,
+            onClick: onCloseSession,
+            disabled: false,
+            destructive: true,
+            separate: true,
+          },
+        ]
+      : []),
+  ];
   const statusLabel = connection.label.replace(" to local receiver", "");
   const statusDotClass =
     connection.tone === "success"
@@ -652,56 +686,42 @@ function WorkspaceSidebar({
           </div>
         ))}
       </nav>
-      <div className="shrink-0 border-t border-border p-2">
-        <div
-          className={
-            collapsed
-              ? "space-y-1"
-              : `grid ${onCloseSession ? "grid-cols-3" : "grid-cols-2"} gap-1`
-          }
-        >
-          <button
-            type="button"
-            aria-label="Change receiver connection"
-            title={collapsed ? "Change receiver connection" : undefined}
-            className={`flex h-8 w-full items-center rounded-md text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              collapsed ? "justify-center px-0" : "justify-center gap-1.5 px-2"
-            }`}
-            onClick={onChangeReceiver}
-          >
-            <Radio className="size-3.5 shrink-0" aria-hidden="true" />
-            {!collapsed ? <span>Change</span> : null}
-          </button>
-          <button
-            type="button"
-            aria-label="Clear events"
-            title={collapsed ? "Clear events" : undefined}
-            disabled={retainedItemCount === 0}
-            className={`flex h-8 w-full items-center rounded-md text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${
-              collapsed ? "justify-center px-0" : "justify-center gap-1.5 px-2"
-            }`}
-            onClick={onClear}
-          >
-            <Trash2 className="size-3.5 shrink-0" aria-hidden="true" />
-            {!collapsed ? <span>Clear</span> : null}
-          </button>
-          {onCloseSession ? (
-            <button
-              type="button"
-              aria-label="Close telemetry session"
-              title={collapsed ? "Close telemetry session" : undefined}
-              className={`flex h-8 w-full items-center rounded-md text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                collapsed
-                  ? "justify-center px-0"
-                  : "justify-center gap-1.5 px-2"
-              }`}
-              onClick={onCloseSession}
+      <div
+        role="group"
+        aria-label="Receiver actions"
+        className="shrink-0 space-y-1 border-t border-border p-2"
+      >
+        {receiverActions.map(
+          ({
+            label,
+            accessibleLabel,
+            Icon,
+            onClick,
+            disabled,
+            destructive,
+            separate,
+          }) => (
+            <div
+              key={accessibleLabel}
+              className={
+                separate ? "mt-1 border-t border-border pt-1" : undefined
+              }
             >
-              <X className="size-3.5 shrink-0" aria-hidden="true" />
-              {!collapsed ? <span>Close</span> : null}
-            </button>
-          ) : null}
-        </div>
+              <Button
+                type="button"
+                variant="ghost"
+                aria-label={accessibleLabel}
+                title={collapsed ? label : undefined}
+                disabled={disabled}
+                onClick={onClick}
+                className={`h-9 w-full font-normal ${collapsed ? "justify-center px-0" : "justify-start gap-2.5 px-2"} ${destructive ? "text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <Icon className="size-4 shrink-0" aria-hidden="true" />
+                {!collapsed ? <span>{label}</span> : null}
+              </Button>
+            </div>
+          ),
+        )}
       </div>
     </aside>
   );
