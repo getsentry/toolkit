@@ -674,38 +674,34 @@ function WorkspaceSidebar({
       <div
         role="group"
         aria-label="Receiver actions"
-        className="shrink-0 space-y-1 border-t border-border p-2"
+        className={`flex shrink-0 gap-1 border-t border-border p-2 ${collapsed ? "flex-col" : "items-center"}`}
       >
         <Button
           type="button"
           variant={collapsed ? "ghost" : "outline"}
           aria-label="Change receiver connection"
-          title={collapsed ? "Change receiver" : undefined}
+          title="Change receiver"
           onClick={onChangeReceiver}
-          className={`h-9 w-full font-normal text-muted-foreground hover:text-foreground ${collapsed ? "px-0" : "gap-2 px-2"}`}
+          className={`h-9 min-w-0 font-normal text-muted-foreground hover:text-foreground ${collapsed ? "w-full px-0" : "flex-1 gap-2 px-2"}`}
         >
           <Radio className="size-4 shrink-0" aria-hidden="true" />
-          {!collapsed ? <span>Change receiver</span> : null}
+          {!collapsed ? <span>Change</span> : null}
         </Button>
-        <div
-          className={`flex gap-1 ${collapsed ? "flex-col" : "justify-end pt-1"}`}
-        >
-          {sessionActions.map(({ label, Icon, onClick, disabled }) => (
-            <Button
-              key={label}
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={label}
-              title={label}
-              disabled={disabled}
-              onClick={onClick}
-              className={`text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${collapsed ? "w-full" : ""}`}
-            >
-              <Icon className="size-4 shrink-0" aria-hidden="true" />
-            </Button>
-          ))}
-        </div>
+        {sessionActions.map(({ label, Icon, onClick, disabled }) => (
+          <Button
+            key={label}
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={label}
+            title={label}
+            disabled={disabled}
+            onClick={onClick}
+            className={`text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${collapsed ? "w-full" : ""}`}
+          >
+            <Icon className="size-4 shrink-0" aria-hidden="true" />
+          </Button>
+        ))}
       </div>
     </aside>
   );
