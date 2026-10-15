@@ -113,13 +113,32 @@ function backoffDelay(attempt: number): number {
   return Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
 }
 
-/** Check if an error is a user-initiated abort */
-function isUserAbort(error: unknown, signal?: AbortSignal | null): boolean {
-  return (
-    error instanceof DOMException &&
-    error.name === "AbortError" &&
-    Boolean(signal?.aborted)
-  );
+/** Stop this caller's wait without cancelling work shared with other requests. */
+async function waitForCaller<T>(
+  pending: Promise<T>,
+  signal: AbortSignal | undefined | null,
+): Promise<T> {
+  if (!signal) {
+    return pending;
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    pending.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
 }
 
 /**
@@ -215,6 +234,7 @@ function prepareHeaders(
 async function handleUnauthorized(
   headers: Headers,
   credential: CredentialContext,
+  signal: AbortSignal | undefined | null,
 ): Promise<boolean> {
   if (headers.get(RETRY_MARKER_HEADER)) {
     return false;
@@ -225,15 +245,18 @@ async function handleUnauthorized(
   // no refresh token), `refreshed` is false and the 401 propagates.
   let newToken: string;
   try {
-    const result = await refreshToken({
-      force: true,
-      expectedCredential: credential,
-    });
+    signal?.throwIfAborted();
+    const result = await waitForCaller(
+      refreshToken({ force: true, expectedCredential: credential }),
+      signal,
+    );
+    signal?.throwIfAborted();
     if (!result.refreshed) {
       return false;
     }
     newToken = result.token;
   } catch (error) {
+    signal?.throwIfAborted();
     if (error instanceof MalformedAuthTokenError) {
       throw error;
     }
@@ -246,21 +269,6 @@ async function handleUnauthorized(
   headers.set("Authorization", formatAuthHeader(newToken));
   headers.set(RETRY_MARKER_HEADER, "1");
   return true;
-}
-
-/** Link an external abort signal to an AbortController */
-function linkAbortSignal(
-  signal: AbortSignal | undefined | null,
-  controller: AbortController,
-): void {
-  if (!signal) {
-    return;
-  }
-  if (signal.aborted) {
-    controller.abort();
-    return;
-  }
-  signal.addEventListener("abort", () => controller.abort(), { once: true });
 }
 
 /** Resolve the per-request timeout for a URL via {@link ENDPOINT_TIMEOUT_OVERRIDES}. */
@@ -303,12 +311,28 @@ async function fetchWithTimeout({
   timeoutMs,
 }: FetchWithTimeoutArgs): Promise<Response> {
   const controller = new AbortController();
+  const signal =
+    externalSignal && typeof AbortSignal.any === "function"
+      ? AbortSignal.any([externalSignal, controller.signal])
+      : controller.signal;
+  const forwardAbort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal && signal === controller.signal) {
+    // Node 20.0–20.2 has no AbortSignal.any. Keep forwarding after headers so
+    // caller cancellation can still stop consumption of the response body.
+    externalSignal.addEventListener("abort", forwardAbort, {
+      once: true,
+      signal: controller.signal,
+    });
+    if (externalSignal.aborted) {
+      forwardAbort();
+    }
+  }
+  let receivedResponse = false;
   let timedOut = false;
   const timeout = setTimeout(() => {
-    timedOut = true;
+    timedOut = !signal.aborted;
     controller.abort();
   }, timeoutMs);
-  linkAbortSignal(externalSignal, controller);
 
   try {
     // Spread custom TLS options (CA certs for corporate proxies).
@@ -319,13 +343,19 @@ async function fetchWithTimeout({
       warnIfSaasWithEnvCa(extractFullUrl(input));
     }
 
-    return await fetch(input, {
+    signal.throwIfAborted();
+    const response = await fetch(input, {
       ...init,
       headers,
-      signal: controller.signal,
+      signal,
       ...customTls,
     });
+    receivedResponse = true;
+    return response;
   } catch (error) {
+    if (!timedOut) {
+      externalSignal?.throwIfAborted();
+    }
     if (timedOut) {
       const tagged = (
         error instanceof Error ? error : new Error(String(error))
@@ -337,6 +367,9 @@ async function fetchWithTimeout({
     throw error;
   } finally {
     clearTimeout(timeout);
+    if (!receivedResponse) {
+      externalSignal?.removeEventListener("abort", forwardAbort);
+    }
   }
 }
 
@@ -356,9 +389,19 @@ async function handleResponse(
   headers: Headers,
   credential: CredentialContext,
   isLastAttempt: boolean,
+  signal: AbortSignal | undefined | null,
 ): Promise<AttemptResult> {
+  if (signal?.aborted) {
+    return { action: "done", response };
+  }
   if (response.status === 401 && !isLastAttempt) {
-    const refreshed = await handleUnauthorized(headers, credential);
+    let refreshed: boolean;
+    try {
+      refreshed = await handleUnauthorized(headers, credential, signal);
+    } catch (error) {
+      await cancelResponseBody(response);
+      throw error;
+    }
     if (refreshed) {
       await cancelResponseBody(response);
       return { action: "retry" };
@@ -388,8 +431,8 @@ function handleFetchError(
   if (error instanceof HostScopeError) {
     return { action: "throw", error };
   }
-  if (isUserAbort(error, signal)) {
-    return { action: "throw", error };
+  if (signal?.aborted && !isInternalTimeout(error)) {
+    return { action: "throw", error: signal.reason };
   }
 
   // TLS certificate errors are deterministic — don't retry
@@ -584,6 +627,7 @@ type RetryContext = {
   fullUrl: string;
   credential: CredentialContext;
   validatedRedirects: boolean;
+  signal: AbortSignal | undefined | null;
 };
 
 async function fetchWithRetry({
@@ -593,7 +637,9 @@ async function fetchWithRetry({
   fullUrl,
   credential,
   validatedRedirects,
+  signal,
 }: RetryContext): Promise<Response> {
+  signal?.throwIfAborted();
   const issuedAt =
     credential.issuedAt ??
     (credential.expiresAt
@@ -609,8 +655,12 @@ async function fetchWithRetry({
           REFRESH_THRESHOLD)),
   );
   const refreshed = shouldRefresh
-    ? await refreshToken({ expectedCredential: credential })
+    ? await waitForCaller(
+        refreshToken({ expectedCredential: credential }),
+        signal,
+      )
     : { token: credential.token };
+  signal?.throwIfAborted();
   const effectiveCredential: CredentialContext = Object.freeze({
     ...credential,
     token: refreshed.token,
@@ -620,6 +670,7 @@ async function fetchWithRetry({
   const timeoutMs = resolveTimeoutMs(fullUrl);
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    signal?.throwIfAborted();
     const isLastAttempt = attempt === MAX_RETRIES;
     const { input: attemptInput, init: attemptInit } = attemptFactory();
     const result = await executeAttempt({
@@ -630,24 +681,33 @@ async function fetchWithRetry({
       isLastAttempt,
       timeoutMs,
       validatedRedirects,
+      signal,
     });
 
     if (result.action === "done") {
-      cacheResponse(
-        {
-          method,
-          fullUrl,
-          requestHeaders: { authorization: headers.get("Authorization") ?? "" },
-          identity: credential.identity,
-        },
-        result.response,
-      );
+      if (!signal?.aborted) {
+        cacheResponse(
+          {
+            method,
+            fullUrl,
+            requestHeaders: {
+              authorization: headers.get("Authorization") ?? "",
+            },
+            identity: credential.identity,
+          },
+          result.response,
+        );
+      }
       await invalidateAfterMutation(
         method,
         fullUrl,
         result.response,
         credential.identity,
       );
+      if (signal?.aborted) {
+        await cancelResponseBody(result.response);
+        signal.throwIfAborted();
+      }
       return result.response;
     }
     if (result.action === "throw") {
@@ -658,7 +718,12 @@ async function fetchWithRetry({
     log.debug(
       `${method} ${new URL(fullUrl).pathname} → retry ${attempt + 1}/${MAX_RETRIES} after ${delay}ms`,
     );
-    await sleepMs(delay);
+    try {
+      await sleepMs(delay, undefined, { signal: signal ?? undefined });
+    } catch (error) {
+      signal?.throwIfAborted();
+      throw error;
+    }
   }
 
   // Unreachable: the last attempt always returns 'done' or 'throw'
@@ -682,6 +747,9 @@ async function fetchWithRetry({
  * all skipped. On a miss or for non-GET methods, the full authenticated flow runs
  * and successful GET responses are stored in the cache afterward.
  *
+ * The caller's signal cancels this request and its retry waits. Shared OAuth
+ * refresh continues for other callers; cancellation does not undo server effects.
+ *
  * @returns A fetch-compatible function for use with @sentry/api SDK functions
  */
 type AuthenticatedFetchOptions = {
@@ -696,6 +764,12 @@ function createAuthenticatedFetch(
     input: Request | string | URL,
     init?: RequestInit,
   ): Promise<Response> {
+    const signal =
+      init?.signal !== undefined
+        ? init.signal
+        : input instanceof Request
+          ? input.signal
+          : undefined;
     // Reset cache-hit age so it reflects only this request's outcome.
     // Commands read it after their primary API call to show cache-age hints.
     clearLastCacheHitAge();
@@ -715,6 +789,7 @@ function createAuthenticatedFetch(
       `${method} ${urlPath}`,
       "http.client",
       async (span) => {
+        signal?.throwIfAborted();
         const fullUrl = extractFullUrl(input);
         const startTime = performance.now();
 
@@ -722,7 +797,8 @@ function createAuthenticatedFetch(
         // Uses current token (no refresh) so lookups are fast but Vary-correct.
         const credential = options.credential ?? getCredentialContext();
         if (!credential) {
-          await refreshToken();
+          await waitForCaller(refreshToken(), signal);
+          signal?.throwIfAborted();
           throw new Error(
             "Authentication state was not available after refresh",
           );
@@ -737,6 +813,7 @@ function createAuthenticatedFetch(
               authHeaders(credential.token),
               credential.identity,
             );
+        signal?.throwIfAborted();
         if (cached) {
           span.setAttribute("http.response.status_code", cached.status);
           log.debug(
@@ -752,6 +829,7 @@ function createAuthenticatedFetch(
           fullUrl,
           credential,
           validatedRedirects: options.validatedRedirects === true,
+          signal,
         });
         span.setAttribute("http.response.status_code", response.status);
         if (!response.ok) {
@@ -778,6 +856,7 @@ type ExecuteAttemptArgs = {
   isLastAttempt: boolean;
   timeoutMs: number;
   validatedRedirects: boolean;
+  signal: AbortSignal | undefined | null;
 };
 
 async function cancelResponseBody(response: Response): Promise<void> {
@@ -901,6 +980,7 @@ async function fetchFollowingValidatedRedirects({
   headers,
   credential,
   timeoutMs,
+  signal,
 }: Omit<
   ExecuteAttemptArgs,
   "isLastAttempt" | "validatedRedirects"
@@ -913,6 +993,7 @@ async function fetchFollowingValidatedRedirects({
     requestHeaders: Headers,
     hops: number,
   ): Promise<Response> {
+    signal?.throwIfAborted();
     if (!isRequestOriginTrustedForContext(request, credential)) {
       throw new HostScopeError(
         "Credentials",
@@ -924,7 +1005,7 @@ async function fetchFollowingValidatedRedirects({
       input: request.clone() as unknown as Request,
       init: { headers: requestHeaders, redirect: "manual" },
       headers: requestHeaders,
-      externalSignal: init?.signal ?? original.signal,
+      externalSignal: signal,
       timeoutMs,
     });
     if (!isRedirectStatus(response.status)) {
@@ -968,6 +1049,7 @@ async function executeAttempt({
   isLastAttempt,
   timeoutMs,
   validatedRedirects,
+  signal,
 }: ExecuteAttemptArgs): Promise<AttemptResult> {
   try {
     const response = validatedRedirects
@@ -977,17 +1059,18 @@ async function executeAttempt({
           headers,
           credential,
           timeoutMs,
+          signal,
         })
       : await fetchWithTimeout({
           input,
           init,
           headers,
-          externalSignal: init?.signal,
+          externalSignal: signal,
           timeoutMs,
         });
-    return handleResponse(response, headers, credential, isLastAttempt);
+    return handleResponse(response, headers, credential, isLastAttempt, signal);
   } catch (error) {
-    return handleFetchError(error, init?.signal, isLastAttempt);
+    return handleFetchError(error, signal, isLastAttempt);
   }
 }
 
