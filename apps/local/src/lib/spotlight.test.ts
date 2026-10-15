@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { sdkException } from "../test-fixtures/sdk-exception.ts";
 import {
   DEFAULT_STREAM_URL,
   decodeEnvelope,
@@ -91,6 +92,67 @@ describe("getStreamUrlFromHash", () => {
 });
 
 describe("decodeEnvelope", () => {
+  test("uses the current SDK exception as the title ahead of its request transaction", () => {
+    const [item] = decodeEnvelope(
+      JSON.stringify([{}, [[{ type: "event" }, sdkException]]]),
+      "sdk-error",
+    );
+    expect(item?.metadata?.title).toBe(
+      "TypeError: Cannot read properties of undefined (reading 'total')",
+    );
+    expect(item?.payload).toEqual(sdkException);
+  });
+
+  test.each([
+    [{ type: "TypeError" }, "TypeError"],
+    [{ value: "Request rejected" }, "Request rejected"],
+    [
+      { stacktrace: { frames: [{ filename: "/app/task.ts" }] } },
+      "Fallback message",
+    ],
+    [{ type: 42, value: [] }, "Fallback message"],
+  ])(
+    "keeps useful titles for partial SDK exceptions: %j",
+    (exception, title) => {
+      const [item] = decodeEnvelope(
+        JSON.stringify([
+          {},
+          [
+            [
+              { type: "event" },
+              {
+                message: "Fallback message",
+                exception: { values: [exception] },
+              },
+            ],
+          ],
+        ]),
+        "partial-error",
+      );
+      expect(item?.metadata?.title).toBe(title);
+    },
+  );
+
+  test("keeps a message-only error title ahead of its request transaction", () => {
+    const [item] = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "event" },
+            {
+              level: "error",
+              message: "Checkout rejected",
+              transaction: "POST /checkout",
+            },
+          ],
+        ],
+      ]),
+      "message-error",
+    );
+    expect(item?.metadata?.title).toBe("Checkout rejected");
+  });
+
   test("unpacks batched span and log items from the Local receiver", () => {
     expect(
       decodeEnvelope(
