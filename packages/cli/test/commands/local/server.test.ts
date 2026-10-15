@@ -6,10 +6,13 @@
  */
 
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { Hono } from "hono";
 import { describe, expect, test, vi } from "vitest";
 import {
   buildApp,
+  consumeSSE,
+  configureExistingRetention,
   feedSSELine,
   isServerRunning,
   parsePort,
@@ -76,6 +79,34 @@ function interceptShutdownSignal() {
     },
   };
 }
+
+test("reports the scoped SSE endpoint without leaking its capability on initial attach failure", async () => {
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(null, { status: 401 }));
+  const writes: string[] = [];
+  const spy = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation((chunk: string | Uint8Array) => {
+      writes.push(chunk.toString());
+      return true;
+    });
+  try {
+    await consumeSSE({
+      url: "http://127.0.0.1:8969",
+      streamUrl:
+        "http://127.0.0.1:8969/_local/v1/sessions/session-id/stream?cap=fixture-secret",
+      activeFilters: new Set(),
+      signal: new AbortController().signal,
+    });
+  } finally {
+    globalThis.fetch = savedFetch;
+    spy.mockRestore();
+  }
+  expect(writes.join("")).toContain("/_local/v1/sessions/session-id/stream");
+  expect(writes.join("")).not.toContain("fixture-secret");
+});
 
 describe("parsePort", () => {
   test("parses valid port numbers", () => {
@@ -318,6 +349,56 @@ async function readFirstSSEEvent(streamPath: string): Promise<string> {
 }
 
 describe("buildApp", () => {
+  test("changes legacy retention only when explicit and preserves history on rejected decreases", async () => {
+    const retention = createLocalRetentionBuffer(2);
+    const app = buildApp(retention.buffer, { uiActions: true, retention });
+    await app.request("/stream", {
+      method: "POST",
+      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+      body: TEST_ENVELOPE,
+    });
+    const retained = retention.buffer.read({ all: true });
+    for (const origin of ["https://example.com", "https://local.sentry.dev"]) {
+      expect(
+        (
+          await app.request("/retention", {
+            method: "POST",
+            headers: { Origin: origin },
+            body: '{"maxEnvelopes":1000}',
+          })
+        ).status,
+      ).toBe(403);
+    }
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
+      app.request(new URL(url).pathname, init),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await configureExistingRetention("http://127.0.0.1:8969");
+      expect(fetchMock).not.toHaveBeenCalled();
+      await configureExistingRetention("http://127.0.0.1:8969", 1000);
+      expect(retention.getSettings().maxEnvelopes).toBe(1000);
+      expect(retention.buffer.read({ all: true })).toEqual(retained);
+      await expect(
+        configureExistingRetention("http://127.0.0.1:8969", 0),
+      ).rejects.toThrow(/integer/);
+      fetchMock.mockImplementation(
+        async () => new Response("{}", { status: 200 }),
+      );
+      await expect(
+        configureExistingRetention("http://127.0.0.1:8969", 2000),
+      ).rejects.toThrow(/did not confirm/);
+      fetchMock.mockImplementation(
+        async () => new Response(null, { status: 404 }),
+      );
+      await expect(
+        configureExistingRetention("http://127.0.0.1:8969", 2000),
+      ).rejects.toThrow(/does not support/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("health endpoint returns OK", async () => {
     const buffer = createSpotlightBuffer(10);
     const app = buildApp(buffer);

@@ -19,8 +19,7 @@ import {
   spawn,
 } from "node:child_process";
 import type { Server } from "node:http";
-import { resolve } from "node:path";
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
@@ -33,13 +32,19 @@ import {
   formatEnvelopeLinesJson,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
+import { DEFAULT_MAX_ENVELOPES } from "./retention-limits.js";
 import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
+import {
+  createLocalDaemonSession,
+  retainLocalDaemonSession,
+} from "./daemon.js";
 import {
   buildApp,
   consumeSSE,
   DEFAULT_PORT,
   isLoopbackHost,
   isServerRunning,
+  configureExistingRetention,
   parseFilter,
   parseFormat,
   parsePort,
@@ -51,6 +56,11 @@ import {
   validateOpenHost,
 } from "./ui.js";
 
+import {
+  createLocalRetentionBuffer,
+  OPTIONAL_MAX_ENVELOPES_FLAG,
+} from "./retention-buffer.js";
+
 type RunFlags = {
   readonly port: number;
   readonly host: string;
@@ -60,10 +70,12 @@ type RunFlags = {
   readonly format: FormatValue;
   readonly attributes: boolean;
   readonly open: boolean;
+  readonly session?: string;
+  readonly "max-envelopes"?: number;
 };
 
 /** Buffer size for the auto-started background server. */
-export const BUFFER_SIZE = 500;
+export const BUFFER_SIZE = DEFAULT_MAX_ENVELOPES;
 
 /**
  * Client-side env var prefixes that frameworks inline into browser bundles
@@ -135,6 +147,7 @@ type EventTailOptions = {
   activeFilters: ReadonlySet<FilterValue>;
   useJson: boolean;
   showAttributes: boolean;
+  maxEnvelopes?: number;
 };
 
 /** Keep stdout exclusively for NDJSON when an agent requests JSON output. */
@@ -160,15 +173,23 @@ function forwardChildOutput(child: ChildProcess, useJson: boolean): void {
  * reached the other server, but nothing was ever printed here. Attaching as
  * an SSE consumer is what `sentry local serve` does in the same situation.
  */
-function attachToExistingServer(
-  url: string,
-  activeFilters: ReadonlySet<FilterValue>,
-  useJson: boolean,
-  showAttributes: boolean,
-): EventTail {
+function attachToExistingServer({
+  activeFilters,
+  showAttributes,
+  streamUrl,
+  url,
+  useJson,
+}: {
+  activeFilters: ReadonlySet<FilterValue>;
+  showAttributes: boolean;
+  streamUrl?: string;
+  url: string;
+  useJson: boolean;
+}): EventTail {
   const ac = new AbortController();
   const tail = consumeSSE({
     url,
+    streamUrl,
     activeFilters,
     signal: ac.signal,
     useJson,
@@ -200,9 +221,11 @@ async function startBackgroundServer({
   activeFilters,
   useJson,
   showAttributes,
+  maxEnvelopes,
 }: EventTailOptions): Promise<EventTail> {
-  const buffer = createSpotlightBuffer(BUFFER_SIZE);
-  const app = buildApp(buffer, { uiActions: isLoopbackHost(host) });
+  const retention = createLocalRetentionBuffer(maxEnvelopes);
+  const buffer = retention.buffer;
+  const app = buildApp(buffer, { uiActions: isLoopbackHost(host), retention });
   const { server, port: boundPort } = await tryListen(app, port, host);
   const url = formatLocalServerUrl(host, boundPort);
 
@@ -248,17 +271,25 @@ async function openEventTail({
   activeFilters,
   useJson,
   showAttributes,
+  maxEnvelopes,
 }: EventTailOptions): Promise<EventTail> {
   const url = formatLocalServerUrl(host, port);
 
   if (await isServerRunning(url)) {
+    await configureExistingRetention(url, maxEnvelopes);
     logger.info(`Connected to existing server at ${bold(url)}`);
-    return attachToExistingServer(url, activeFilters, useJson, showAttributes);
+    return attachToExistingServer({
+      activeFilters,
+      showAttributes,
+      url,
+      useJson,
+    });
   }
 
   logger.info("No server detected, starting one in the background...");
   try {
     const bg = await startBackgroundServer({
+      maxEnvelopes,
       port,
       host,
       activeFilters,
@@ -271,9 +302,15 @@ async function openEventTail({
     if (!(err instanceof ValidationError && err.field === "port")) {
       throw err;
     }
+    await configureExistingRetention(url, maxEnvelopes);
     // Something grabbed the port between the probe and the bind.
     logger.warn(`${err.message}; attaching to it instead`);
-    return attachToExistingServer(url, activeFilters, useJson, showAttributes);
+    return attachToExistingServer({
+      activeFilters,
+      showAttributes,
+      url,
+      useJson,
+    });
   }
 }
 
@@ -420,6 +457,13 @@ export const runCommand = buildCommand({
         brief: "Open Sentry Local UI in the browser",
         default: false,
       },
+      "max-envelopes": OPTIONAL_MAX_ENVELOPES_FLAG,
+      session: {
+        kind: "parsed",
+        parse: String,
+        brief: "Create a daemon-owned telemetry session with this label",
+        optional: true,
+      },
     },
     aliases: {
       p: "port",
@@ -435,6 +479,12 @@ export const runCommand = buildCommand({
     if (flags.open && flags.verify) {
       throw new ValidationError("--open cannot be used with --verify.", "open");
     }
+    if (flags.session !== undefined && flags.verify) {
+      throw new ValidationError(
+        "--session cannot be used with --verify.",
+        "session",
+      );
+    }
     validateOpenHost(flags.open, flags.host);
 
     const stripped = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
@@ -446,21 +496,45 @@ export const runCommand = buildCommand({
     }
 
     let url = formatLocalServerUrl(flags.host, flags.port);
+    let daemonSessionId: string | undefined;
+    let daemonIngestUrl: string | undefined;
+    let daemonStreamUrl: string | undefined;
 
     const useJson = flags.format === "json";
     const activeFilters = new Set(flags.filter);
-    const tail = await openEventTail({
-      port: flags.port,
-      host: flags.host,
-      activeFilters,
-      useJson,
-      showAttributes: flags.attributes,
-    });
+    const tail = flags.session
+      ? await (async () => {
+          const session = await createLocalDaemonSession({
+            maxEnvelopes: flags["max-envelopes"],
+            cwd: this.cwd,
+            host: flags.host,
+            label: flags.session || basename(this.cwd),
+            port: flags.port,
+          });
+          daemonSessionId = session.id;
+          daemonIngestUrl = session.ingestUrl;
+          daemonStreamUrl = session.streamUrl;
+          return attachToExistingServer({
+            activeFilters,
+            showAttributes: flags.attributes,
+            streamUrl: session.streamUrl,
+            url: new URL(session.streamUrl).origin,
+            useJson,
+          });
+        })()
+      : await openEventTail({
+          maxEnvelopes: flags["max-envelopes"],
+          port: flags.port,
+          host: flags.host,
+          activeFilters,
+          useJson,
+          showAttributes: flags.attributes,
+        });
     url = tail.url;
 
-    await openLocalUiIfRequested(flags.open, url);
+    await openLocalUiIfRequested(flags.open, daemonStreamUrl ?? url);
 
-    const spotlightUrl = `${url}/stream`;
+    const spotlightUrl = daemonIngestUrl ?? `${url}/stream`;
     const wrangler = await injectWranglerSpotlightBinding(
       args,
       spotlightUrl,
@@ -470,7 +544,11 @@ export const runCommand = buildCommand({
       logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
     }
     logger.info(`Starting: ${bold(wrangler.args.join(" "))}`);
-    logger.info(`SENTRY_SPOTLIGHT=${spotlightUrl}`);
+    logger.info(
+      daemonSessionId
+        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use sentry local session view ${daemonSessionId} --json for its ingest URL.`
+        : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
+    );
 
     const childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
 
@@ -485,6 +563,9 @@ export const runCommand = buildCommand({
       forwardChildOutput(child, useJson);
     } catch (err) {
       await tail.cleanup();
+      if (daemonSessionId) {
+        await retainLocalDaemonSession(daemonSessionId);
+      }
       throw new CliError(
         `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
         EXIT.GENERAL,
@@ -529,6 +610,9 @@ export const runCommand = buildCommand({
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
       await tail.cleanup();
+      if (daemonSessionId) {
+        await retainLocalDaemonSession(daemonSessionId);
+      }
     }
 
     if (exitCode !== 0) {
@@ -589,8 +673,12 @@ async function* runWithVerify(
   cwd: string,
   commandSource: string,
 ): AsyncGenerator<never, void, unknown> {
-  const buffer = createSpotlightBuffer(BUFFER_SIZE);
-  const app = buildApp(buffer, { uiActions: isLoopbackHost(flags.host) });
+  const retention = createLocalRetentionBuffer(flags["max-envelopes"]);
+  const buffer = retention.buffer;
+  const app = buildApp(buffer, {
+    uiActions: isLoopbackHost(flags.host),
+    retention,
+  });
   const { server, port: boundPort } = await tryListen(
     app,
     flags.port,

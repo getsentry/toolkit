@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "node:test";
@@ -174,7 +174,7 @@ describe("workspace CI selection", () => {
     assert.doesNotMatch(workflow, /matrix\.name == 'sentry-cli-docs'/);
     assert.match(
       workflow,
-      /needs: \[discover-projects, install, quality, project, npm-runtime\]/,
+      /needs:\s*\[\s*discover-projects,\s*install,\s*quality,\s*project,\s*npm-runtime,\s*cli-asset-catalog,?\s*\]/,
     );
     assert.match(
       workflow,
@@ -200,6 +200,58 @@ describe("workspace CI selection", () => {
     assert.match(workflow, /name: Verify coverage/);
     assert.match(workflow, /if: always\(\)/);
     assert.doesNotMatch(workflow.split("\njobs:", 1)[0], /paths(?:-ignore)?:/);
+  });
+
+  it("requires native asset-catalog success when selected and a skip otherwise", () => {
+    const workflow = readFileSync(
+      resolve(root, ".github/workflows/test.yml"),
+      "utf8",
+    );
+    const gate = workflow.split("\n  test:\n")[1];
+    assert.ok(gate);
+    assert.match(
+      gate,
+      /ASSET_CATALOG_RESULT: \$\{\{ needs\.cli-asset-catalog\.result \}\}/,
+    );
+    assert.match(
+      gate,
+      /ASSET_CATALOG_SELECTED: \$\{\{ contains\(fromJSON\(needs\.discover-projects\.outputs\.matrix\)\.include\.\*\.name, 'sentry'\) \}\}/,
+    );
+    const script = gate.split("        run: |\n")[1];
+    assert.ok(script);
+
+    for (const [selected, nativeResult, count, passes] of [
+      [true, "success", "1", true],
+      [true, "failure", "1", false],
+      [true, "cancelled", "1", false],
+      [true, "skipped", "1", false],
+      [false, "skipped", "1", true],
+      [false, "success", "1", false],
+      [false, "failure", "1", false],
+      [false, "cancelled", "1", false],
+      [false, "skipped", "0", true],
+    ]) {
+      const result = spawnSync("bash", ["-euc", script], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          DISCOVER_RESULT: "success",
+          INSTALL_RESULT: "success",
+          QUALITY_RESULT: "success",
+          PROJECT_COUNT: count,
+          PROJECT_RESULT: count === "0" ? "skipped" : "success",
+          RUNTIME_COUNT: count,
+          RUNTIME_RESULT: count === "0" ? "skipped" : "success",
+          ASSET_CATALOG_RESULT: nativeResult,
+          ASSET_CATALOG_SELECTED: String(selected),
+        },
+      });
+      assert.equal(
+        result.status,
+        passes ? 0 : 1,
+        `selected=${selected}, native=${nativeResult}, projects=${count}`,
+      );
+    }
   });
 
   it("requires safe metadata and a single owner of each specialized role", () => {

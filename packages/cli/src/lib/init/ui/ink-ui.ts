@@ -249,15 +249,8 @@ function openFreshTtyForInk(): ReadStream | null {
   }
 }
 
-/**
- * Async factory for `InkUI`. Imports `ink`, `react`, and the local
- * `App` component lazily, mounts the React tree, and returns the
- * bridge instance. Throws if Ink can't be loaded (e.g. missing peer
- * deps).
- */
-export async function createInkUI(
-  opts: CreateInkUIOptions = {},
-): Promise<InkUI> {
+/** Load the self-contained Ink sidecar without importing React into the CLI bundle. */
+async function loadInkApp(): Promise<typeof import("./ink-app.js")> {
   // Import the Ink App sidecar. Three runtime contexts:
   //
   // 1. Node SEA binary: the sidecar is embedded as a SEA asset.
@@ -321,6 +314,115 @@ export async function createInkUI(
     }
   }
 
+  return app;
+}
+
+/** Build the same select prompt for the wizard and inline entity pickers. */
+function createSelectPrompt(
+  opts: SelectOptions<string>,
+  resolve: (value: string | null) => void,
+): Extract<ActivePrompt, { kind: "select" }> {
+  return {
+    kind: "select",
+    message: stripAnsi(opts.message),
+    ...(opts.details
+      ? {
+          details: opts.details.map((detail) => ({
+            ...detail,
+            text: stripAnsi(detail.text),
+          })),
+        }
+      : {}),
+    ...(opts.footer
+      ? { footer: { ...opts.footer, text: stripAnsi(opts.footer.text) } }
+      : {}),
+    options: opts.options.map((option) => ({
+      value: option.value,
+      label: option.label,
+      ...(option.hint ? { hint: option.hint } : {}),
+    })),
+    initialIndex:
+      opts.initialValue !== undefined
+        ? Math.max(
+            0,
+            opts.options.findIndex(
+              (option) => option.value === opts.initialValue,
+            ),
+          )
+        : 0,
+    filterable: opts.filterable,
+    resolve,
+  };
+}
+
+/**
+ * Show an inline entity picker using the wizard's filterable select control.
+ * Loads the sidecar lazily and releases terminal resources after selection.
+ *
+ * @param opts - Choices, prompt copy, and initial selection. Filtering is always enabled.
+ * @returns The selected value, or `null` on cancellation or exit without a choice.
+ * @throws Propagates loading, rendering, and terminal cleanup failures.
+ */
+export async function selectWithFilter(
+  opts: SelectOptions<string>,
+): Promise<string | null> {
+  const app = await loadInkApp();
+  const freshStdin = openFreshTtyForInk();
+  const stdin = freshStdin ?? process.stdin;
+  const wasRaw = stdin.isRaw ?? false;
+  let instance: InkInstance | undefined;
+  let resolveSelection!: (value: string | null) => void;
+  const selection = new Promise<string | null>((resolve) => {
+    resolveSelection = resolve;
+  });
+  const cancel = () => resolveSelection(null);
+  process.once("SIGINT", cancel);
+  try {
+    instance = app.mountSelectPrompt(
+      createSelectPrompt({ ...opts, filterable: true }, resolveSelection),
+      { stdin, exitOnCtrlC: false, patchConsole: false },
+    );
+    // Surface renderer failures instead of waiting forever for a selection.
+    return await Promise.race([
+      selection,
+      instance.waitUntilExit().then(() => null),
+    ]);
+  } finally {
+    process.removeListener("SIGINT", cancel);
+    // Each resource must be released even if an earlier cleanup step fails.
+    try {
+      instance?.clear();
+    } finally {
+      try {
+        instance?.unmount();
+        await instance?.waitUntilExit();
+      } finally {
+        try {
+          stdin.setRawMode?.(wasRaw);
+        } finally {
+          if (freshStdin) {
+            try {
+              freshStdin.pause();
+            } finally {
+              freshStdin.destroy();
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Async factory for `InkUI`. Imports `ink`, `react`, and the local
+ * `App` component lazily, mounts the React tree, and returns the
+ * bridge instance. Throws if Ink can't be loaded (e.g. missing peer
+ * deps).
+ */
+export async function createInkUI(
+  opts: CreateInkUIOptions = {},
+): Promise<InkUI> {
+  const app = await loadInkApp();
   const store = new WizardStore({
     cliVersion: CLI_VERSION,
     // Seed with the full banner; IntroScreen re-fits it to the live terminal
@@ -706,15 +808,6 @@ export class InkUI implements WizardUI {
 
   select<T extends string>(opts: SelectOptions<T>): Promise<T | Cancelled> {
     return this.waitForPrompt<T | Cancelled>("select", (resolve) => {
-      const initialIndex =
-        opts.initialValue !== undefined
-          ? Math.max(
-              0,
-              opts.options.findIndex(
-                (option) => option.value === opts.initialValue,
-              ),
-            )
-          : 0;
       let settled = false;
       this.activePromptCancel = () => {
         if (settled) {
@@ -725,43 +818,17 @@ export class InkUI implements WizardUI {
         this.activePromptCancel = undefined;
         resolve(CANCELLED);
       };
-      const prompt: Extract<ActivePrompt, { kind: "select" }> = {
-        kind: "select",
-        message: stripAnsi(opts.message),
-        ...(opts.details
-          ? {
-              details: opts.details.map((detail) => ({
-                ...detail,
-                text: stripAnsi(detail.text),
-              })),
-            }
-          : {}),
-        ...(opts.footer
-          ? {
-              footer: {
-                ...opts.footer,
-                text: stripAnsi(opts.footer.text),
-              },
-            }
-          : {}),
-        options: opts.options.map((option) => ({
-          value: option.value,
-          label: option.label,
-          ...(option.hint ? { hint: option.hint } : {}),
-        })),
-        initialIndex,
-        resolve: (value) => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          this.completePrompt(
-            prompt,
-            value === null ? CANCELLED : (value as T),
-            resolve,
-          );
-        },
-      };
+      const prompt = createSelectPrompt(opts, (value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.completePrompt(
+          prompt,
+          value === null ? CANCELLED : (value as T),
+          resolve,
+        );
+      });
       this.store.setPrompt(prompt);
     });
   }

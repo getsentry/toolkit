@@ -69,7 +69,7 @@ sentry local --open
 sentry local run --open -- npm run dev
 ```
 
-The `--open` flag requires a loopback `--host` (localhost, 127.0.0.1, or ::1). The UI is read-only — it reads the SSE stream but cannot ingest or clear data. Session data stays in memory for the duration of the server; nothing is sent to sentry.io unless a DSN is configured.
+The `--open` flag requires a loopback `--host` (localhost, 127.0.0.1, or ::1). The hosted UI reads the SSE stream without changing retained receiver data. A loopback-served viewer can clear a receiver and reset or close a scoped daemon session. Session data stays in memory for the duration of the server; nothing is sent to sentry.io unless a DSN is configured.
 
 ## Endpoints
 
@@ -185,3 +185,27 @@ curl -i http://127.0.0.1:3030/api/broken
 
 The final request intentionally returns HTTP 500. The fixture is for local
 experimentation only; do not run it with production credentials.
+
+## Daemon-owned sessions
+
+Use `--session <name>` to capture into the shared loopback daemon and retain data
+after your foreground command exits. Sessions keep up to 500 envelopes for three
+hours after closing and subsequent ingestion. Stopping or restarting the daemon
+clears all sessions.
+
+```bash
+sentry local run --session web -- npm run dev
+sentry local serve --session worker
+sentry local session list --json
+sentry local event list web --json
+sentry local event view web <event-id> --json
+sentry local envelope list web --json
+sentry local session reset web
+sentry local session close web
+sentry local daemon status
+sentry local daemon stop
+```
+
+`local session create <name> --json` returns separate SDK ingest and viewer read
+capability URLs. Keep these URLs private. `--clientId <key>` makes retried session
+creation idempotent. Use the session ID when multiple sessions share a label.

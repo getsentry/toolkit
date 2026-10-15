@@ -350,7 +350,7 @@ type UpdateClientKeyRequest = {
   browserSdkVersion?: string;
   dynamicSdkLoaderOptions?: ClientKeyDynamicSdkLoaderOptions;
 };
-export type TraceItemAttributeType = "string" | "number" | "boolean";
+export type TraceItemAttributeType = "string" | "number" | "boolean" | "array";
 export type TraceItemAttributeSourceType = "sentry" | "user";
 
 export type TraceItemAttributeSource = {
@@ -416,7 +416,12 @@ export type EventsValidationResult = {
   orderby: EventsAttributeValidationResult[];
 };
 
-const TraceItemAttributeTypeSchema = z.enum(["string", "number", "boolean"]);
+const TraceItemAttributeTypeSchema = z.enum([
+  "string",
+  "number",
+  "boolean",
+  "array",
+]);
 const TraceItemAttributeSourceSchema = z.object({
   source_type: z.enum(["sentry", "user"]),
   is_transformed_alias: z.boolean().optional(),
@@ -3907,6 +3912,18 @@ export class SentryApiService {
       { ...opts, allowStatuses: [400] },
     );
     const body = await this.parseJsonResponse(response);
+    // ParseError responses use a detail envelope instead of validation results.
+    // Keep malformed validation results reportable, even when their status is 400.
+    if (
+      response.status === 400 &&
+      body &&
+      typeof body === "object" &&
+      !("valid" in body) &&
+      "detail" in body &&
+      typeof body.detail === "string"
+    ) {
+      throw createApiError(body.detail, 400, body.detail, body);
+    }
     return EventsValidationResponseSchema.parse(body);
   }
 

@@ -480,6 +480,7 @@ async function resolveImplicitTeam(
 
   const selected = await ui.select<string>({
     message: "Which team should own this project?",
+    filterable: true,
     options: candidateTeams.map((team) => ({
       value: team.slug,
       label: team.slug,
@@ -573,6 +574,7 @@ async function resolveOrgSlug(
 
   const selected = await ui.select<string>({
     message: "Which organization should the project be created in?",
+    filterable: true,
     options: orgs.map((org) => ({
       value: org.slug,
       label: org.name,

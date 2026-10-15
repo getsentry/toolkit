@@ -1808,7 +1808,7 @@ function canPromptForTarget(override?: boolean): boolean {
 }
 
 /**
- * Prompt the user (consola) to pick a value from a list, returning the selected
+ * Prompt the user to filter and pick a value from a list, returning the selected
  * value or `null` if cancelled. A single-element list is auto-selected without
  * prompting.
  */
@@ -1820,9 +1820,8 @@ async function promptSelect(
   if (options.length === 1 && sole) {
     return sole.value;
   }
-  const response = await log.prompt(message, { type: "select", options });
-  // consola returns Symbol(clack:cancel) on Ctrl+C — a truthy non-string.
-  return typeof response === "string" ? response : null;
+  const { selectWithFilter } = await import("./init/ui/ink-ui.js");
+  return selectWithFilter({ message, options });
 }
 
 /**

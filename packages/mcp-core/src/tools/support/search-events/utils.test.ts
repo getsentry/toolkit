@@ -291,11 +291,212 @@ describe("search query helpers", () => {
     );
   });
 
+  it("should detect regex filters as structured Sentry search syntax", () => {
+    expect(
+      looksLikeSentrySearchSyntax(
+        String.raw`message://request took \d+ms//`,
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax(
+        String.raw`!message://worker \d+ ready//`,
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax(
+        String.raw`message://https?://api\.example\.com//`,
+        "logs",
+      ),
+    ).toBe(true);
+  });
+
   it("should ignore common natural language colon patterns", () => {
     expect(looksLikeSentrySearchSyntax("open http://example.com")).toBe(false);
+    expect(looksLikeSentrySearchSyntax("see http://example.com/a/")).toBe(
+      false,
+    );
     expect(looksLikeSentrySearchSyntax("started at 10:30")).toBe(false);
     expect(looksLikeSentrySearchSyntax("Note: show slow spans")).toBe(false);
     expect(looksLikeSentrySearchSyntax("ERROR: service is down")).toBe(false);
+  });
+
+  it("should detect regex filters in logs queries", () => {
+    expect(looksLikeSentrySearchSyntax("message://^Timeout//", "logs")).toBe(
+      true,
+    );
+    expect(
+      looksLikeSentrySearchSyntax("message://^Timeout after \\d+ms//", "logs"),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax("!message://(?i)healthcheck//", "logs"),
+    ).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax("open http://example.com/a//b", "logs"),
+    ).toBe(false);
+  });
+
+  it("does not treat URLs as regex filters when they end in a regex terminator", () => {
+    const queries = [
+      "errors from https://example.com/a// in checkout",
+      "requests to (http://example.com//)",
+      "uploads to s3://bucket and https://example.com//",
+      "errors from HTTP://example.com/a// in checkout",
+    ];
+
+    const results = queries.map((query) =>
+      looksLikeSentrySearchSyntax(query, "logs"),
+    );
+
+    expect(results).toEqual([false, false, false, false]);
+  });
+
+  it("allows rewriting natural language log queries that contain URLs", () => {
+    const query = "errors from https://example.com/a// in checkout";
+
+    const downgrade = isSemanticFilterDowngrade(
+      query,
+      'message:"*example.com/a*"',
+      "logs",
+    );
+
+    expect(downgrade).toBe(false);
+  });
+
+  it("should detect regex filters inside parentheses and on Sentry's other key shapes", () => {
+    expect(looksLikeSentrySearchSyntax("(message://a b//)", "logs")).toBe(true);
+    expect(
+      looksLikeSentrySearchSyntax("tags[App:Region]://^us-//", "logs"),
+    ).toBe(true);
+    expect(looksLikeSentrySearchSyntax("flags[Feature:X]://y//", "logs")).toBe(
+      true,
+    );
+    expect(
+      looksLikeSentrySearchSyntax("tags[foo, string]://a b//", "logs"),
+    ).toBe(true);
+    expect(looksLikeSentrySearchSyntax('"mykey"://a b//', "logs")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("arr[*]://a b//", "logs")).toBe(true);
+    expect(looksLikeSentrySearchSyntax('"Note"message://a b//', "logs")).toBe(
+      true,
+    );
+    expect(looksLikeSentrySearchSyntax("(level:error)", "logs")).toBe(false);
+  });
+
+  it("should not treat regex filters as search syntax outside logs", () => {
+    expect(looksLikeSentrySearchSyntax("message://^Timeout//")).toBe(false);
+    expect(
+      looksLikeSentrySearchSyntax("span.description://^GET \\/api//", "spans"),
+    ).toBe(false);
+    expect(looksLikeSentrySearchSyntax("message://^Timeout//", "errors")).toBe(
+      false,
+    );
+  });
+
+  it("detects regex filters rewritten into plain or wildcard filters", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "message://^Timeout//",
+        'message:"*Timeout*"',
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "message://can't connect to \\w+//",
+        "message:*connect*",
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "custom://^order-\\d+$// level:error",
+        'level:error message:"*order-*"',
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "custom://^order-\\d+$//",
+        "custom:order-*",
+        "logs",
+      ),
+    ).toBe(true);
+
+    expect(
+      isSemanticFilterDowngrade(
+        "message://^Timeout//",
+        "message://^Timeout// severity:error",
+        "logs",
+      ),
+    ).toBe(false);
+    expect(
+      isSemanticFilterDowngrade(
+        "custom://^order-\\d+$//",
+        "tags[custom]://^order-\\d+$//",
+        "logs",
+      ),
+    ).toBe(false);
+  });
+
+  it("detects regex filter downgrades inside parentheses and on colon keys", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "severity:error (message://^Timeout after \\d+ms//)",
+        'severity:error message:"*Timeout after*"',
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "tags[sentry:user]://^id \\d+//",
+        "tags[sentry:user]://^id//",
+        "logs",
+      ),
+    ).toBe(true);
+  });
+
+  it("detects regex filters rewritten into wildcards on array, quoted, and spaced keys", () => {
+    expect(
+      isSemanticFilterDowngrade("arr[*]://^a b//", "arr[*]:*a*", "logs"),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade('"mykey"://^a b//', '"mykey":*a*', "logs"),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "tags[x, string]://^a b//",
+        'tags[x, string]:"*a*"',
+        "logs",
+      ),
+    ).toBe(true);
+  });
+
+  it("detects regex filters whose pattern changed case", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "message://^Timeout//",
+        "message://^timeout//",
+        "logs",
+      ),
+    ).toBe(true);
+  });
+
+  it("allows rewriting regex filters outside logs", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "span.description://^GET \\/api\\/\\d+//",
+        'span.description:"GET /api/*"',
+        "spans",
+      ),
+    ).toBe(false);
+    expect(
+      isSemanticFilterDowngrade(
+        "message://^Timeout//",
+        'message:"*Timeout*"',
+        "errors",
+      ),
+    ).toBe(false);
   });
 
   it("detects message full-text downgrades but allows real field renames", () => {
@@ -392,6 +593,75 @@ describe("search query helpers", () => {
       false,
     );
     expect(isSemanticFilterDowngrade("id:1", 'message:"error 1"')).toBe(true);
+  });
+
+  it("detects message regex downgrades of structured filters", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "http.status_code:500",
+        "message://status 500//",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "user.id:42 severity:error",
+        String.raw`severity:error message://(?i)user 42 failed//`,
+      ),
+    ).toBe(true);
+
+    expect(
+      isSemanticFilterDowngrade(
+        "http.status_code:500",
+        String.raw`http.status_code:500 message://took \d+ms//`,
+      ),
+    ).toBe(false);
+
+    // A key:value inside a regex is pattern text, not a kept structured filter.
+    expect(
+      isSemanticFilterDowngrade("custom:foo", "message://custom:foo//"),
+    ).toBe(true);
+
+    // A quote inside a regex must not hide the filters after it.
+    expect(
+      isSemanticFilterDowngrade(
+        "custom:foo",
+        String.raw`message://it's \d+// message:"*foo*"`,
+      ),
+    ).toBe(true);
+  });
+
+  it("detects regex downgrades of structured filters on datasets other than logs", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "http.status_code:500",
+        "message://status 500//",
+        "errors",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "span.op:db",
+        "span.description://db query//",
+        "spans",
+      ),
+    ).toBe(false);
+  });
+
+  it("detects message regex downgrades when the value casing differs", () => {
+    expect(
+      isSemanticFilterDowngrade(
+        "transaction:CheckoutFlow",
+        "message://(?i)CheckoutFlow//",
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "user.email:Foo@example.com",
+        "message://Foo@example.com// severity:error",
+        "logs",
+      ),
+    ).toBe(true);
   });
 });
 
