@@ -126,6 +126,60 @@ describe("formatIssueOutput", () => {
     expect(output).not.toContain("`Fixes 123456`");
   });
 
+  it("does not throw and omits Occurred At when dateCreated is missing", () => {
+    const output = formatIssueOutput({
+      organizationSlug: "sentry-mcp-evals",
+      issue: {
+        id: "123456",
+        shortId: "CLOUDFLARE-MCP-1",
+        title: "Retry job failed",
+        count: "1",
+        userCount: 1,
+        status: "unresolved",
+        project: {
+          name: "cloudflare-mcp",
+          slug: "cloudflare-mcp",
+        },
+      } as Issue,
+      event: new EventBuilder("javascript")
+        .withId("event-1")
+        .withDateCreated(undefined)
+        .build(),
+      apiService: {
+        getIssueUrl: () => "https://sentry.example/issues/CLOUDFLARE-MCP-1",
+      } as unknown as SentryApiService,
+    });
+
+    expect(output).not.toContain("**Occurred At**");
+  });
+
+  it("does not throw and omits Occurred At when dateCreated is an invalid date string", () => {
+    const output = formatIssueOutput({
+      organizationSlug: "sentry-mcp-evals",
+      issue: {
+        id: "123456",
+        shortId: "CLOUDFLARE-MCP-2",
+        title: "Retry job failed",
+        count: "1",
+        userCount: 1,
+        status: "unresolved",
+        project: {
+          name: "cloudflare-mcp",
+          slug: "cloudflare-mcp",
+        },
+      } as Issue,
+      event: new EventBuilder("javascript")
+        .withId("event-2")
+        .withDateCreated("not-a-date")
+        .build(),
+      apiService: {
+        getIssueUrl: () => "https://sentry.example/issues/CLOUDFLARE-MCP-2",
+      } as unknown as SentryApiService,
+    });
+
+    expect(output).not.toContain("**Occurred At**");
+  });
+
   it("does not use Seer provenance tags as fallback summary text", () => {
     const output = formatIssueOutput({
       organizationSlug: "sentry-mcp-evals",

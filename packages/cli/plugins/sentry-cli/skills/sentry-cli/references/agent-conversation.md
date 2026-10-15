@@ -18,6 +18,7 @@ List recent agent conversations
 **Flags:**
 - `-n, --limit <value> - Number of conversations (1-1000) - (default: "25")`
 - `-q, --query <value> - Any matching span selects its conversation; totals include all spans in selected projects and time range`
+- `-s, --sort <value> - One conversation field; prefix - for descending (default: -conversation.age; ID breaks ties)`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
@@ -62,6 +63,12 @@ sentry agent-conversation list my-project
 
 # Show more, last 24 hours
 sentry agent-conversation list --limit 50 --period 24h
+
+# Sort by highest error count
+sentry agent-conversation list --sort -conversation.errors
+
+# Sort by lowest total cost
+sentry agent-conversation list --sort conversation.totalCost
 
 # Find conversations with errors
 sentry agent-conversation list -q "conversation.errors:>0"

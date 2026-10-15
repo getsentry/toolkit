@@ -350,12 +350,21 @@ type UpdateClientKeyRequest = {
   browserSdkVersion?: string;
   dynamicSdkLoaderOptions?: ClientKeyDynamicSdkLoaderOptions;
 };
-export type TraceItemAttributeType = "string" | "number" | "boolean";
+export type TraceItemAttributeType = "string" | "number" | "boolean" | "array";
 export type TraceItemAttributeSourceType = "sentry" | "user";
 
 export type TraceItemAttributeSource = {
   source_type: TraceItemAttributeSourceType;
   is_transformed_alias?: boolean;
+};
+
+export type TraceItemAttributeContext = {
+  isConvention?: boolean;
+  brief?: string;
+  isDeprecated?: boolean;
+  details?: string[];
+  examples?: Array<string | boolean | number>;
+  replacementAttribute?: string;
 };
 
 export type TraceItemAttribute = {
@@ -364,6 +373,7 @@ export type TraceItemAttribute = {
   type: TraceItemAttributeType;
   attributeSource: TraceItemAttributeSource;
   secondaryAliases?: string[];
+  context?: TraceItemAttributeContext;
 };
 
 export type TraceItemAttributeValidationResult = {
@@ -406,7 +416,7 @@ export type EventsValidationResult = {
   orderby: EventsAttributeValidationResult[];
 };
 
-const TraceItemAttributeTypeSchema = z.enum(["string", "number", "boolean"]);
+const TraceItemAttributeTypeSchema = z.enum(["string", "number", "boolean", "array"]);
 const TraceItemAttributeSourceSchema = z.object({
   source_type: z.enum(["sentry", "user"]),
   is_transformed_alias: z.boolean().optional(),
@@ -483,6 +493,15 @@ const EventsValidationResponseSchema = z
   })
   .transform((result): EventsValidationResult => result);
 
+const TraceItemAttributeContextSchema = z.object({
+  isConvention: z.boolean().optional(),
+  brief: z.string().optional(),
+  isDeprecated: z.boolean().optional(),
+  examples: z.array(z.union([z.string(), z.boolean(), z.number()])).optional(),
+  replacementAttribute: z.string().optional(),
+  details: z.array(z.string()).optional(),
+});
+
 const TraceItemAttributeSchema = z
   .object({
     key: z.string(),
@@ -490,14 +509,23 @@ const TraceItemAttributeSchema = z
     attributeType: TraceItemAttributeTypeSchema,
     attributeSource: TraceItemAttributeSourceSchema,
     secondaryAliases: z.array(z.string()).optional(),
+    context: TraceItemAttributeContextSchema.optional(),
   })
   .transform(
-    ({ key, name, attributeType, attributeSource, secondaryAliases }) => ({
+    ({
+      key,
+      name,
+      attributeType,
+      attributeSource,
+      secondaryAliases,
+      context,
+    }) => ({
       key,
       name,
       type: attributeType,
       attributeSource,
-      ...(secondaryAliases ? { secondaryAliases } : {}),
+      ...(secondaryAliases && { secondaryAliases }),
+      context,
     }),
   );
 
@@ -3885,6 +3913,18 @@ export class SentryApiService {
       { ...opts, allowStatuses: [400] },
     );
     const body = await this.parseJsonResponse(response);
+    // ParseError responses use a detail envelope instead of validation results.
+    // Keep malformed validation results reportable, even when their status is 400.
+    if (
+      response.status === 400 &&
+      body &&
+      typeof body === "object" &&
+      !("valid" in body) &&
+      "detail" in body &&
+      typeof body.detail === "string"
+    ) {
+      throw createApiError(body.detail, 400, body.detail, body);
+    }
     return EventsValidationResponseSchema.parse(body);
   }
 

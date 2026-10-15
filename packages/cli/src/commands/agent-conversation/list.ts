@@ -17,6 +17,8 @@ import { formatConversationTable } from "../../lib/formatters/conversation.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
+  appendQueryHint,
+  appendSortHint,
   buildListCommand,
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
@@ -43,9 +45,31 @@ import {
   ConversationListItemSchema,
 } from "../../types/conversation.js";
 
+const CONVERSATION_SORT_FIELDS = [
+  "conversation.age",
+  "conversation.timeSpan",
+  "conversation.generationDuration",
+  "conversation.errors",
+  "conversation.llmCalls",
+  "conversation.toolCalls",
+  "conversation.toolErrors",
+  "conversation.inputTokens",
+  "conversation.outputTokens",
+  "conversation.totalTokens",
+  "conversation.totalCost",
+] as const;
+
+type ConversationSortField = (typeof CONVERSATION_SORT_FIELDS)[number];
+type ConversationSort = ConversationSortField | `-${ConversationSortField}`;
+
+const CONVERSATION_SORT_VALUES = CONVERSATION_SORT_FIELDS.flatMap(
+  (field): ConversationSort[] => [field, `-${field}`],
+);
+
 type ListFlags = {
   readonly limit: number;
   readonly query?: string;
+  readonly sort?: ConversationSort;
   readonly period: TimeRange;
   readonly json: boolean;
   readonly cursor?: string;
@@ -106,6 +130,9 @@ export const listCommand = buildListCommand("agent-conversation", {
     brief: "List recent agent conversations",
     fullDescription:
       "List recent agent conversations from Sentry projects.\n\n" +
+      "Sort by one canonical conversation.* field. Prefix the field with - for descending order. " +
+      "The default is -conversation.age, and conversation ID ascending breaks ties. " +
+      "conversation.timeSpan measures elapsed time; conversation.generationDuration sums model call duration.\n\n" +
       "Target patterns:\n" +
       "  sentry agent-conversation list              # Auto-detect organization\n" +
       "  sentry agent-conversation list <org>/       # All projects in an organization\n" +
@@ -132,6 +159,14 @@ export const listCommand = buildListCommand("agent-conversation", {
       {
         description: "Show more, last 24 hours",
         command: "sentry agent-conversation list --limit 50 --period 24h",
+      },
+      {
+        description: "Sort by highest error count",
+        command: "sentry agent-conversation list --sort -conversation.errors",
+      },
+      {
+        description: "Sort by lowest total cost",
+        command: "sentry agent-conversation list --sort conversation.totalCost",
       },
       {
         description: "Find conversations with errors",
@@ -179,12 +214,20 @@ export const listCommand = buildListCommand("agent-conversation", {
           "Any matching span selects its conversation; totals include all spans in selected projects and time range",
         optional: true,
       },
+      sort: {
+        kind: "enum",
+        values: CONVERSATION_SORT_VALUES,
+        brief:
+          "One conversation field; prefix - for descending (default: -conversation.age; ID breaks ties)",
+        optional: true,
+      },
       period: LIST_PERIOD_FLAG,
     },
     aliases: {
       ...PERIOD_ALIASES,
       n: "limit",
       q: "query",
+      s: "sort",
     },
   },
   async *func(this: SentryContext, flags: ListFlags, target?: string) {
@@ -202,6 +245,7 @@ export const listCommand = buildListCommand("agent-conversation", {
 
     const contextKey = buildPaginationContextKey("agent-conversation", scope, {
       q: flags.query,
+      sort: flags.sort,
       period: serializeTimeRange(flags.period),
     });
     const { cursor, direction } = resolveCursor(
@@ -220,6 +264,7 @@ export const listCommand = buildListCommand("agent-conversation", {
       () =>
         listConversations(org, {
           query: flags.query,
+          sort: flags.sort,
           limit: flags.limit,
           cursor,
           project: projectId === undefined ? undefined : String(projectId),
@@ -241,9 +286,8 @@ export const listCommand = buildListCommand("agent-conversation", {
     });
 
     const parts: string[] = [];
-    if (flags.query) {
-      parts.push(`-q "${flags.query}"`);
-    }
+    appendQueryHint(parts, flags.query);
+    appendSortHint(parts, flags.sort);
     appendPeriodHint(parts, flags.period, DEFAULT_PERIOD);
     const flagSuffix = parts.length > 0 ? ` ${parts.join(" ")}` : "";
 

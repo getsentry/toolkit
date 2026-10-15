@@ -128,6 +128,9 @@ sentry log list --follow
 
 # Filter logs by severity
 sentry log list --query "severity:error"
+
+# Match a regular expression on a string attribute (logs only)
+sentry log list --query 'message://^Timeout after \d+ms//'
 ```
 
 #### Capture Events Locally (Spotlight)
@@ -339,6 +342,7 @@ When querying the Events API (directly or via `sentry api`), valid dataset value
 - **Specifying org/project when not needed**: Auto-detection resolves org/project from `.sentryclirc` config files, DSNs, env vars, and directory names. Let it work first — only add `<org>/<project>` if the CLI says it can't detect the target or detects the wrong one.
 - **Manually discovering the project before running a command**: Don't list the orgs you belong to, then list every project in each, to match the local checkout to a project — the CLI already does exactly this resolution internally on each command. Skip the fan-out and run the command directly; correct the target afterwards only if the output shows the wrong org/project.
 - **Confusing `--query` syntax**: The `--query` flag uses Sentry search syntax (e.g., `is:unresolved`, `assigned:me`), not free text search.
+- **Quoting a log regex**: Log search supports regular expressions as `key://pattern//` (RE2, case-sensitive, `(?i)` to ignore case, `!key://pattern//` to negate). Don't wrap it in quotes — `message:"//...//"` is a literal match. Prefer `*wildcards*` for plain substrings.
 - **Not using `--web`**: View commands support `-w`/`--web` to open the resource in the browser — useful for sharing links.
 - **Fetching API schemas instead of using the CLI**: Prefer `sentry schema` to browse the API and `sentry api` to make requests — the CLI handles authentication and endpoint resolution, so there's rarely a need to download OpenAPI specs separately.
 - **Fetching Sentry docs externally**: Use `sentry docs "your question"` to query Sentry's documentation from the CLI — this returns concise answers with source links, without needing to fetch or parse documentation pages.
@@ -743,7 +747,21 @@ Print configuration and verify authentication
 
 Sentry for local development
 
+- `sentry local daemon start` — Start the Local control-plane daemon
+- `sentry local daemon status` — Show Local control-plane status
+- `sentry local daemon stop` — Stop the Local control-plane daemon
+- `sentry local daemon restart` — Restart the Local control-plane daemon
+- `sentry local envelope list <session...>` — List retained envelopes for a Local session
+- `sentry local envelope view <session envelope...>` — View a raw Local envelope
+- `sentry local event list <session...>` — List decoded events for a Local session
+- `sentry local event view <session event...>` — View a decoded Local event
 - `sentry local serve` — Start the local dev server and tail events
+- `sentry local session create <name...>` — Create a Local telemetry session
+- `sentry local session retention <session...>` — View or change session envelope retention
+- `sentry local session list` — List Local telemetry sessions
+- `sentry local session view <session...>` — View a Local telemetry session
+- `sentry local session close <session...>` — Close a Local telemetry session
+- `sentry local session reset <session...>` — Clear a Local telemetry session
 - `sentry local run <command...>` — Run a command with the local dev server enabled
 
 → Full flags and examples: `references/local.md`

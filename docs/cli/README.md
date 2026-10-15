@@ -31,3 +31,5 @@ and depends on generated CLI documentation. The root
 [coding guidelines](../contributing/coding-guidelines.md) and
 [quality checks](../contributing/quality-checks.md) apply alongside the CLI's
 own rules.
+
+- [Local daemon and browser viewer](local-control-plane.md) — scoped telemetry sessions and viewer development.

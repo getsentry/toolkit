@@ -162,8 +162,10 @@ export const uploadCommand = buildCommand({
       "is normalized into a deterministic ZIP and uploaded via the " +
       "chunk-upload + assemble protocol.\n\n" +
       "Supported formats: Android APK/AAB, iOS XCArchive (a directory) and IPA. " +
-      "Note: iOS Assets.car asset catalogs are not parsed into per-asset " +
-      "images. This feature only works with Sentry SaaS.\n\n" +
+      "The macOS arm64 standalone binary expands iOS asset catalogs into " +
+      "per-asset images and metadata with CoreUI. Other runtimes, or failed " +
+      "extractions, upload the original catalogs unchanged. " +
+      "This feature only works with Sentry SaaS.\n\n" +
       "Usage:\n" +
       "  sentry build upload ./app-release.apk\n" +
       "  sentry build upload ./MyApp.xcarchive\n" +
