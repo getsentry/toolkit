@@ -719,6 +719,12 @@ describe("unscopedCountFilterKeys", () => {
     ]);
   });
 
+  test("detects release: in a regex filter", () => {
+    expect(unscopedCountFilterKeys("release://1\\.0\\..*//")).toEqual([
+      "release",
+    ]);
+  });
+
   test("is case-insensitive on the key", () => {
     expect(unscopedCountFilterKeys("Release:1.0.0")).toEqual(["release"]);
   });

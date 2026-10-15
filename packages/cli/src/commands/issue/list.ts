@@ -276,13 +276,22 @@ function countsShown(json: boolean, fields?: string[]): boolean {
   return !(json && shouldCollapseForFields(fields, LIFETIME_FIELDS));
 }
 
-/** Whether a scoped-count refetch applies to the current flags. */
+/** Whether the issue ordering depends on `count`/`userCount`. */
+function sortUsesCounts(sort: ListFlags["sort"]): boolean {
+  return sort === "freq" || sort === "user";
+}
+
+/**
+ * Whether a scoped-count refetch applies to the current flags: the query must
+ * filter on a count-unscoped key, and the counts must either be displayed or
+ * drive the `freq`/`user` ordering.
+ */
 function shouldScopeCounts(
-  flags: Pick<ListFlags, "query" | "json" | "fields">,
+  flags: Pick<ListFlags, "query" | "json" | "fields" | "sort">,
 ): boolean {
   return Boolean(
     flags.query &&
-    countsShown(flags.json, flags.fields) &&
+    (countsShown(flags.json, flags.fields) || sortUsesCounts(flags.sort)) &&
     unscopedCountFilterKeys(flags.query).length > 0,
   );
 }
@@ -377,10 +386,7 @@ async function applyScopedCounts(
     );
 
     // Re-rank when the ordering follows the counts we just corrected.
-    if (
-      overwriteScopedCounts(groups) &&
-      (flags.sort === "freq" || flags.sort === "user")
-    ) {
+    if (overwriteScopedCounts(groups) && sortUsesCounts(flags.sort)) {
       const cmp = getComparator(flags.sort);
       result.items.sort(cmp);
       rows.sort((a, b) => cmp(a.issue, b.issue));

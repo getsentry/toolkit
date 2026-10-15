@@ -503,7 +503,8 @@ function collectUnscopedCountKeys(
     if (
       node.type === "text_filter" ||
       node.type === "text_in_filter" ||
-      node.type === "comparison_filter"
+      node.type === "comparison_filter" ||
+      node.type === "regex_filter"
     ) {
       const key = node.key.toLowerCase();
       if (COUNT_UNSCOPED_FILTER_KEYS.has(key)) {

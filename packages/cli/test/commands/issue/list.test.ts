@@ -895,7 +895,10 @@ describe("issue list: scoped counts via events endpoint (#1518)", () => {
     expect(output.data[0].userCount).toBe(5);
   });
 
-  test("--sort freq re-ranks by scoped counts", async () => {
+  test.each([
+    { label: "with counts shown", fields: undefined },
+    { label: "when --fields omits counts", fields: ["id", "title"] },
+  ])("--sort freq re-ranks by scoped counts $label", async ({ fields }) => {
     // List endpoint orders by unscoped counts: A (100) before B (50).
     const issues = [
       mockIssue({ id: "A", shortId: "AAA-1", count: "100", userCount: 100 }),
@@ -939,6 +942,7 @@ describe("issue list: scoped counts via events endpoint (#1518)", () => {
       sort: "freq",
       period: parsePeriod("90d"),
       json: true,
+      fields,
       query: 'release:"1.0.0"',
     });
 
