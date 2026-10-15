@@ -52,7 +52,7 @@ Fired for every `grant_type=refresh_token` request. Splits by `app.access.refres
 Attributes:
 
 - `app.access.refresh.outcome` — see above
-- `app.client.family` — bucketed User-Agent (`claude-code`, `cursor`, `codex`, `copilot`, `claude-desktop`, `opencode`, `reactor-netty`, `java-http-client`, `go-http-client`, `python`, `bun`, `node`, `other`, `unknown`)
+- `app.client.family` — bucketed User-Agent (`claude-code`, `cursor`, `codex`, `copilot`, `claude`, `opencode`, `reactor-netty`, `java-http-client`, `go-http-client`, `python`, `bun`, `node`, `other`, `unknown`)
 - `app.access.grant.shape` — currently always `refreshable`
 - `app.access.grant.age_bucket` — elapsed time since the MCP grant was created (`lt_1h`, `1h_6h`, `6h_1d`, `1d_7d`, `7d_14d`, `14d_30d`, `gte_30d`, `future`, `unknown`)
 - `app.access.upstream.expires_in_bucket` — remaining time before the original upstream Sentry expiry (`expired`, `lt_1h`, `1h_1d`, `1d_7d`, `7d_14d`, `14d_30d`, `gte_30d`, `unknown`)
