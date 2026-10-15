@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { extname, join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { strToU8, unzipSync, zipSync } from "fflate";
@@ -24,7 +24,59 @@ const FIXTURES = fileURLToPath(
 );
 const CATALOG_PATH = "Products/Applications/DemoApp.app/Assets.car";
 const PARSED_PATH = "ParsedAssets/Products/Applications/DemoApp.app";
-const state = { directory: "", helper: "" };
+const state = { directory: "", helper: "", universalArchive: "" };
+const CATALOG_IDIOMS = ["phone", "universal"] as const;
+type CatalogIdiom = (typeof CATALOG_IDIOMS)[number];
+
+/** Compile an explicitly universal image so the zero-idiom regression has known input. */
+async function compileUniversalCatalog(directory: string): Promise<string> {
+  const xcassets = join(directory, "Universal.xcassets");
+  const imageset = join(xcassets, "Universal.imageset");
+  const archive = join(directory, "Universal.xcarchive");
+  const compiled = join(archive, "Products/Applications/DemoApp.app");
+  await mkdir(imageset, { recursive: true });
+  await mkdir(compiled, { recursive: true });
+  const info = { author: "xcode", version: 1 };
+  await writeFile(join(xcassets, "Contents.json"), JSON.stringify({ info }));
+  await writeFile(
+    join(imageset, "Contents.json"),
+    JSON.stringify({
+      images: [{ idiom: "universal", scale: "1x", filename: "universal.png" }],
+      info,
+    }),
+  );
+  // A valid 10x10 PNG; actool produces the real binary catalog from this image.
+  await writeFile(
+    join(imageset, "universal.png"),
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFElEQVR4nGM4IafxnxjMMKqQvgoBIgzNFQJIdHQAAAAASUVORK5CYII=",
+      "base64",
+    ),
+  );
+  await run(
+    "xcrun",
+    [
+      "actool",
+      xcassets,
+      "--compile",
+      compiled,
+      "--platform",
+      "iphoneos",
+      "--minimum-deployment-target",
+      "15.0",
+      "--output-format",
+      "human-readable-text",
+    ],
+    { timeout: 60_000 },
+  );
+  return archive;
+}
+
+function catalogArchive(idiom: CatalogIdiom): string {
+  return idiom === "phone"
+    ? join(FIXTURES, "archive.xcarchive")
+    : state.universalArchive;
+}
 
 async function manifest(path: string): Promise<AssetCatalogEntry[]> {
   return JSON.parse(await readFile(path, "utf8")) as AssetCatalogEntry[];
@@ -33,6 +85,7 @@ async function manifest(path: string): Promise<AssetCatalogEntry[]> {
 function assertParsedAssets(
   entries: Record<string, Uint8Array>,
   archiveName: string,
+  expectedIdiom: CatalogIdiom,
 ): void {
   const prefix = `${archiveName}/${PARSED_PATH}`;
   const manifestBytes = entries[`${prefix}/Assets.json`];
@@ -42,7 +95,7 @@ function assertParsedAssets(
   ) as AssetCatalogEntry[];
   expect(assets.length).toBeGreaterThan(1);
   expect(assets).toContainEqual(
-    expect.objectContaining({ idiom: "universal" }),
+    expect.objectContaining({ idiom: expectedIdiom }),
   );
   expect(assets).toContainEqual(
     expect.objectContaining({ imageId: "", vector: false }),
@@ -79,6 +132,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
     beforeAll(async () => {
       state.directory = await mkdtemp(join(tmpdir(), "car-integration-"));
       state.helper = buildCarExtract();
+      state.universalArchive = await compileUniversalCatalog(state.directory);
     }, 120_000);
     afterAll(async () => {
       if (state.directory) {
@@ -119,41 +173,49 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
       }
     }, 30_000);
 
-    test("expands the real build-upload XCArchive fixture and keeps repeated uploads identical", async () => {
-      const source = join(FIXTURES, "archive.xcarchive");
-      const first = join(state.directory, "first.zip");
-      const second = join(state.directory, "second.zip");
-      await normalizeBuildDirectory(source, first, null);
-      await normalizeBuildDirectory(source, second, null);
-      const firstBytes = await readFile(first);
-      expect(firstBytes).toEqual(await readFile(second));
-      const entries = unzipSync(firstBytes);
-      assertParsedAssets(entries, "archive.xcarchive");
-      expect(entries[`archive.xcarchive/${CATALOG_PATH}`]).toEqual(
-        new Uint8Array(await readFile(join(source, CATALOG_PATH))),
-      );
-    }, 60_000);
+    test.each(CATALOG_IDIOMS)(
+      "expands the %s XCArchive catalog and keeps repeated uploads identical",
+      async (idiom) => {
+        const source = catalogArchive(idiom);
+        const first = join(state.directory, `${idiom}-first.zip`);
+        const second = join(state.directory, `${idiom}-second.zip`);
+        await normalizeBuildDirectory(source, first, null);
+        await normalizeBuildDirectory(source, second, null);
+        const firstBytes = await readFile(first);
+        expect(firstBytes).toEqual(await readFile(second));
+        const entries = unzipSync(firstBytes);
+        assertParsedAssets(entries, basename(source), idiom);
+        expect(entries[`${basename(source)}/${CATALOG_PATH}`]).toEqual(
+          new Uint8Array(await readFile(join(source, CATALOG_PATH))),
+        );
+      },
+      60_000,
+    );
 
-    test("expands an IPA carrying the real legacy catalog", async () => {
-      const source = join(state.directory, "Demo.ipa");
-      const catalog = await readFile(
-        join(FIXTURES, "archive.xcarchive", CATALOG_PATH),
-      );
-      await writeFile(
-        source,
-        zipSync({
-          "Payload/DemoApp.app/Info.plist": strToU8("<plist/>"),
-          "Payload/DemoApp.app/Assets.car": catalog,
-        }),
-      );
-      const output = join(state.directory, "ipa.zip");
-      await normalizeIpa(source, output, null);
-      const entries = unzipSync(await readFile(output));
-      assertParsedAssets(entries, "archive.xcarchive");
-      expect(entries[`archive.xcarchive/${CATALOG_PATH}`]).toEqual(
-        new Uint8Array(catalog),
-      );
-    }, 30_000);
+    test.each(CATALOG_IDIOMS)(
+      "expands an IPA carrying the %s catalog",
+      async (idiom) => {
+        const source = join(state.directory, `Demo-${idiom}.ipa`);
+        const catalog = await readFile(
+          join(catalogArchive(idiom), CATALOG_PATH),
+        );
+        await writeFile(
+          source,
+          zipSync({
+            "Payload/DemoApp.app/Info.plist": strToU8("<plist/>"),
+            "Payload/DemoApp.app/Assets.car": catalog,
+          }),
+        );
+        const output = join(state.directory, `ipa-${idiom}.zip`);
+        await normalizeIpa(source, output, null);
+        const entries = unzipSync(await readFile(output));
+        assertParsedAssets(entries, "archive.xcarchive", idiom);
+        expect(entries[`archive.xcarchive/${CATALOG_PATH}`]).toEqual(
+          new Uint8Array(catalog),
+        );
+      },
+      30_000,
+    );
 
     test("keeps a corrupt real catalog nonfatal", async () => {
       const catalog = join(state.directory, "broken.car");
@@ -166,15 +228,17 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
       expect(await extractAssetCatalogImages(CATALOG_PATH, catalog)).toBeNull();
     }, 30_000);
 
-    test.runIf(Boolean(process.env.SENTRY_CAR_TEST_BINARY))(
-      "uploads decoded images through the helper embedded in the standalone binary",
-      async () => {
+    test
+      .runIf(Boolean(process.env.SENTRY_CAR_TEST_BINARY))
+      .each(CATALOG_IDIOMS)(
+      "uploads %s images through the helper embedded in the standalone binary",
+      async (idiom) => {
         const binary = process.env.SENTRY_CAR_TEST_BINARY;
         if (!binary) {
           throw new Error("Missing native test binary");
         }
-        const source = join(state.directory, "Embedded.xcarchive");
-        await cp(join(FIXTURES, "archive.xcarchive"), source, {
+        const source = join(state.directory, `Embedded-${idiom}.xcarchive`);
+        await cp(catalogArchive(idiom), source, {
           recursive: true,
         });
         await writeFile(join(source, "Info.plist"), "<plist/>");
@@ -267,7 +331,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
             throw new Error("Missing fixture server address");
           }
           fixtureState.origin = `http://127.0.0.1:${address.port}`;
-          const home = join(state.directory, "binary-home");
+          const home = join(state.directory, `binary-home-${idiom}`);
           await mkdir(home);
           const result = await run(
             binary,
@@ -307,7 +371,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
           if (!bytes) {
             throw new Error("Binary did not upload a build chunk");
           }
-          assertParsedAssets(unzipSync(bytes), "Embedded.xcarchive");
+          assertParsedAssets(unzipSync(bytes), basename(source), idiom);
         } finally {
           await new Promise<void>((resolve, reject) =>
             server.close((error) => (error ? reject(error) : resolve())),

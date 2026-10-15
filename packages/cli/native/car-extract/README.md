@@ -48,3 +48,5 @@ The macOS CI job builds the standalone binary and runs
 copied from the legacy repository. It verifies manifests, real image bytes,
 node-association filenames, XCArchive and IPA output, repeat-upload stability,
 and extraction through the helper embedded in the standalone binary.
+The suite also uses Xcode's `actool` to compile an explicitly universal image
+set, covering the zero-idiom case alongside the phone-specific legacy catalog.
