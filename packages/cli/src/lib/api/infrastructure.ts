@@ -9,9 +9,11 @@
 import { promisify } from "node:util";
 import { zstdCompress as zstdCompressCb } from "node:zlib";
 import {
+  createSentryClient,
   parseSentryLinkHeader,
   type SdkResult,
   SentryApiError,
+  type SentryClient,
 } from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
@@ -22,9 +24,11 @@ import { extractRequiredScopes } from "../api-scope.js";
 import {
   type CredentialContext,
   getActiveEnvVarName,
+  getCredentialContext,
   isEnvTokenActive,
 } from "../db/auth.js";
-import { getEnv } from "../env.js";
+import { getDbPath } from "../db/index.js";
+import { getEnv, withEnv } from "../env.js";
 import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
@@ -370,10 +374,53 @@ export function appendSearchParams(
   return `${endpoint}${separator}${searchParams.toString()}`;
 }
 
+const sentryClients = new WeakMap<
+  NodeJS.ProcessEnv,
+  Map<string, SentryClient>
+>();
+
 /**
- * Get SDK config for an organization's region.
- * Resolves the org's region URL and returns the config.
+ * Reuse one SDK client for this invocation, deployment, and auth context.
+ * The transport selects credentials per request so OAuth refresh never
+ * leaves the client holding an old access token.
  */
+export function getSentryClient(baseUrl: string): SentryClient {
+  const env = getEnv();
+  let clients = sentryClients.get(env);
+  if (!clients) {
+    clients = new Map();
+    sentryClients.set(env, clients);
+  }
+
+  const credential = getCredentialContext();
+  const config = getSdkConfig(baseUrl);
+  const key = JSON.stringify([
+    getDbPath(),
+    credential?.identity ?? null,
+    credential?.host ?? null,
+    config.baseUrl,
+  ]);
+  const existing = clients.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const sentry = createSentryClient({
+    ...config,
+    fetch: (input, init) => withEnv(env, () => config.fetch(input, init)),
+  });
+  clients.set(key, sentry);
+  return sentry;
+}
+
+/** Resolve existing CLI region metadata before selecting its shared client. */
+export async function getOrgSentryClient(
+  orgSlug: string,
+): Promise<SentryClient> {
+  return getSentryClient(await resolveOrgRegion(orgSlug));
+}
+
+/** Get standalone-call configuration for an organization's region. */
 export async function getOrgSdkConfig(orgSlug: string) {
   const regionUrl = await resolveOrgRegion(orgSlug);
   return getSdkConfig(regionUrl);
