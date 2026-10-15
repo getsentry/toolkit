@@ -139,13 +139,16 @@ function SnakeBoard({
     [session],
   );
 
+  const tickMs = snakeTickMs(state);
+  // Keyed on the body, not the whole state: a queued turn must not restart
+  // the pending step, or steering stalls the snake.
   useEffect(() => {
     if (state.status !== "playing") {
       return;
     }
-    const timer = setTimeout(() => apply(stepSnake), snakeTickMs(state));
+    const timer = setTimeout(() => apply(stepSnake), tickMs);
     return () => clearTimeout(timer);
-  }, [apply, state]);
+  }, [apply, state.status, state.body, tickMs]);
 
   useEffect(
     () => () => {
