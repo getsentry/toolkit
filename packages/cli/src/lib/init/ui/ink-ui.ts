@@ -241,7 +241,7 @@ import inkAppPath from "./ink-app.tsx" with { type: "file" };
  * to `process.stdin` in that case, which works on Node but is
  * broken in Bun-compiled binaries (see module docstring).
  */
-function openFreshTtyForInk(): ReadStream | null {
+export function openFreshTtyForInk(): ReadStream | null {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const fd = openSync("/dev/tty", "r");
@@ -251,8 +251,11 @@ function openFreshTtyForInk(): ReadStream | null {
   }
 }
 
-/** Load the self-contained Ink sidecar without importing React into the CLI bundle. */
-async function loadInkApp(): Promise<typeof import("./ink-app.js")> {
+/**
+ * Load the Ink sidecar bundle for the current runtime context. Both the init
+ * wizard and `sentry games` mount their UI through it.
+ */
+export async function loadInkSidecar(): Promise<typeof import("./ink-app.js")> {
   // Import the Ink App sidecar. Three runtime contexts:
   //
   // 1. Node SEA binary: the sidecar is embedded as a SEA asset.
@@ -368,7 +371,7 @@ function createSelectPrompt(
 export async function selectWithFilter(
   opts: SelectOptions<string>,
 ): Promise<string | null> {
-  const app = await loadInkApp();
+  const app = await loadInkSidecar();
   const freshStdin = openFreshTtyForInk();
   const stdin = freshStdin ?? process.stdin;
   const wasRaw = stdin.isRaw ?? false;
@@ -416,15 +419,44 @@ export async function selectWithFilter(
 }
 
 /**
- * Async factory for `InkUI`. Imports `ink`, `react`, and the local
- * `App` component lazily, mounts the React tree, and returns the
- * bridge instance. Throws if Ink can't be loaded (e.g. missing peer
- * deps).
+ * Run the standalone Snake game until the player quits. Ink handles the
+ * alternate screen and restores it on exit and on SIGINT/SIGTERM.
+ */
+export async function runSnakeGame(): Promise<void> {
+  const app = await loadInkSidecar();
+  const freshStdin = openFreshTtyForInk();
+  try {
+    const instance = app.mountSnakeGame({
+      // Ctrl+C is routed through the game's own shortcut so it exits cleanly.
+      exitOnCtrlC: false,
+      patchConsole: false,
+      ...(freshStdin ? { stdin: freshStdin } : {}),
+    });
+    await instance.waitUntilExit();
+  } finally {
+    if (freshStdin) {
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- best-effort terminal restore
+      try {
+        freshStdin.setRawMode(false);
+        freshStdin.pause();
+        freshStdin.destroy();
+      } catch {
+        // stream already torn down
+      }
+    }
+  }
+}
+
+/**
+ * Async factory for `InkUI`. Loads the Ink sidecar, mounts the React tree,
+ * and returns the bridge instance. Throws if Ink can't be loaded (e.g.
+ * missing peer deps).
  */
 export async function createInkUI(
   opts: CreateInkUIOptions = {},
 ): Promise<InkUI> {
-  const app = await loadInkApp();
+  const app = await loadInkSidecar();
+
   const store = new WizardStore({
     cliVersion: CLI_VERSION,
     // Seed with the full banner; IntroScreen re-fits it to the live terminal

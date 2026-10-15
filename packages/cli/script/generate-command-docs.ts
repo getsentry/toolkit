@@ -236,15 +236,29 @@ function generatePage(route: RouteInfo): string {
   }
 
   // Global flags footer
-  lines.push(
-    "All commands support `--json` for machine-readable output and `--fields` to select specific JSON fields.",
-  );
-  lines.push("");
+  const jsonFooter = formatJsonFooter(route);
+  if (jsonFooter) {
+    lines.push(jsonFooter);
+    lines.push("");
+  }
 
   // End marker
   lines.push(GENERATED_END_MARKER);
 
   return lines.join("\n");
+}
+
+/** Footer for the JSON flags; empty when no command in the route accepts them. */
+function formatJsonFooter(route: RouteInfo): string {
+  const accepted = (name: string) =>
+    route.commands.some((cmd) => cmd.flags.some((f) => f.name === name));
+  if (accepted("json") && accepted("fields")) {
+    return "All commands support `--json` for machine-readable output and `--fields` to select specific JSON fields.";
+  }
+  if (accepted("json")) {
+    return "All commands support `--json` for machine-readable output.";
+  }
+  return "";
 }
 
 /** Known acronyms that should be fully uppercased in titles */

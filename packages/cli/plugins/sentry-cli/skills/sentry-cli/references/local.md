@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: Sentry for local development
 requires:
   bins: ["sentry"]
-  auth: true
+  auth: false
 ---
 
 # Local Commands
@@ -171,4 +171,4 @@ sentry local daemon status
 sentry local daemon stop
 ```
 
-All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
+All commands also support `--help`, `--log-level`, and `--verbose` flags.

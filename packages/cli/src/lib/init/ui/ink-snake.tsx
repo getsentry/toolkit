@@ -77,6 +77,7 @@ const STATUS_HINT: Record<SnakeStatus, string> = {
 
 type SnakeGameProps = {
   accent: string;
+  exitAction?: string;
   muted: string;
   onCancel: () => void;
   onExit: () => void;
@@ -108,6 +109,7 @@ export function SnakeGame(props: SnakeGameProps): React.ReactNode {
 
 function SnakeBoard({
   accent,
+  exitAction = "back to setup",
   height,
   muted,
   onCancel,
@@ -192,7 +194,7 @@ function SnakeBoard({
       },
       {
         key: "esc",
-        action: "back to setup",
+        action: exitAction,
         priority: 40,
         match: (input, key) => key.escape || input === "q",
         run: () => {
@@ -202,7 +204,7 @@ function SnakeBoard({
         },
       },
     ],
-    [apply, height, onCancel, onExit, width],
+    [apply, exitAction, height, onCancel, onExit, width],
   );
   useInkShortcuts("snake-game", bindings);
 
