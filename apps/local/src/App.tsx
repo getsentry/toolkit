@@ -801,6 +801,7 @@ export default function App() {
   const [draftEndpoint, setDraftEndpoint] = useState(() =>
     receiverAddress(streamUrl),
   );
+  const receiverEndpointEdited = useRef(false);
   const [recentConnections, setRecentConnections] = useState(
     readConnectionHistory,
   );
@@ -857,6 +858,7 @@ export default function App() {
   const openReceiverDialog = (trigger: HTMLButtonElement) => {
     receiverTriggerRef.current = trigger;
     setDraftEndpoint(receiverAddress(streamUrl));
+    receiverEndpointEdited.current = false;
     setReceiverDialogOpen(true);
   };
   useEffect(
@@ -1086,6 +1088,7 @@ export default function App() {
       void workspaceQuery.clearWorkspace();
     }
     setDraftEndpoint(receiverAddress(endpoint.url));
+    receiverEndpointEdited.current = false;
     setStreamUrl(endpoint.url);
     setConnectionAttempt((attempt) => attempt + 1);
     setIsConnectionEnabled(true);
@@ -1122,6 +1125,7 @@ export default function App() {
     isConnecting: isConnecting || isAddingReceiver,
     onEndpointChange: (value: string) => {
       setDraftEndpoint(value);
+      receiverEndpointEdited.current = true;
       setReceiverError(undefined);
       if (!isEditingReceiver) setConnectionError(undefined);
       cancelReceiverAttempt();
@@ -1141,7 +1145,9 @@ export default function App() {
       connectReceiver(
         // The form hides local session capabilities. Retrying its unchanged
         // address must keep the selected run rather than rediscovering one.
-        !isEditingReceiver && draftEndpoint === receiverAddress(streamUrl)
+        // An explicitly edited address can re-pair after a daemon restart.
+        !receiverEndpointEdited.current &&
+          draftEndpoint === receiverAddress(streamUrl)
           ? streamUrl
           : draftEndpoint,
       ),

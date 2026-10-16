@@ -314,6 +314,10 @@ test("pasting a plain receiver discovers active sessions and waits for newly sta
         exact: true,
       }),
     );
+    // The prefilled display address is identical; clear it to make this an explicit edit.
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: "" },
+    });
     fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
       target: { value: stream },
     });
@@ -405,6 +409,9 @@ test("reconnecting a plain receiver after daemon restart never selects a stale d
         exact: true,
       }),
     );
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: "" },
+    });
     fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
       target: { value: `http://127.0.0.1:${first.port}/stream` },
     });

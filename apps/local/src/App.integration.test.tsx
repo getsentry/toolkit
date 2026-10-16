@@ -863,6 +863,77 @@ describe("local receiver to viewer integration", () => {
     await screen.findByText("Connected to local receiver");
   });
 
+  test("unchanged Add receiver retries a disconnected scoped session without losing its events or selection", async () => {
+    const stream =
+      "http://127.0.0.1:8969/_local/v1/sessions/selected-run/stream?cap=session-test";
+    const requestedStreams: string[] = [];
+    ControllableEventSource.instances = [];
+    vi.stubGlobal(
+      "EventSource",
+      class extends ControllableEventSource {
+        constructor(url: string) {
+          super(url);
+          requestedStreams.push(url);
+        }
+      },
+    );
+    window.localStorage.setItem(STREAM_STORAGE_KEY, stream);
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    await act(async () => {
+      source.onopen?.(new Event("open"));
+      source.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([
+            {},
+            [
+              [
+                { type: "event" },
+                { message: "kept scoped event", level: "error" },
+              ],
+            ],
+          ]),
+          lastEventId: "kept-scoped",
+        }),
+      );
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open errors view", exact: true }),
+    );
+    await screen.findByRole("heading", { name: "Errors", exact: true });
+    fireEvent.click(screen.getByRole("tab", { name: "JSON", exact: true }));
+    await act(async () => source.onerror?.(new Event("error")));
+    await screen.findByRole("heading", {
+      name: "Receiver disconnected",
+      exact: true,
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add receiver", exact: true }),
+    );
+    expect(
+      (screen.getByLabelText("Receiver endpoint") as HTMLInputElement).value,
+    ).toBe("http://127.0.0.1:8969/stream");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    await openLatestReceiver();
+    await screen.findByText("Connected to local receiver");
+    expect(
+      screen.getByRole("heading", { name: "Errors", exact: true }),
+    ).not.toBeNull();
+    expect(screen.getByTestId("event-detail").textContent).toContain(
+      "kept scoped event",
+    );
+    expect(
+      screen
+        .getByRole("tab", { name: "JSON", exact: true })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    const reconnected = new URL(requestedStreams.at(-1)!);
+    expect(reconnected.pathname).toBe(new URL(stream).pathname);
+    expect(reconnected.searchParams.get("cap")).toBe("session-test");
+  });
+
   test("editing a replacement keeps the disconnected feed's error after closing the modal", async () => {
     ControllableEventSource.instances = [];
     vi.stubGlobal("EventSource", ControllableEventSource);
