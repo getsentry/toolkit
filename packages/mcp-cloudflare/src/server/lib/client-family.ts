@@ -15,9 +15,6 @@ export function resolveClientFamily(
   if (ua.startsWith("cursor/")) return "cursor";
   if (ua.startsWith("copilot/")) return "copilot";
   if (ua.startsWith("opencode/")) return "opencode";
-  // `Claude-User` is Anthropic's generic agent for user-directed requests
-  // from its hosted Claude apps, so it doesn't identify a specific app
-  // (e.g. Desktop vs. claude.ai vs. routines).
   if (ua.startsWith("claude-user")) return "claude";
   if (ua.includes("codex")) return "codex";
 
@@ -38,8 +35,7 @@ export function resolveClientFamily(
 }
 
 // Resolver for DCR-registered `client_name` values. Order matters:
-// check "claude code" before "claude" so Claude Code doesn't bucket as
-// generic Claude.
+// "claude code" must match before "claude".
 export function resolveClientFamilyFromName(
   name: string | null | undefined,
 ): string {
