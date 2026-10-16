@@ -24,7 +24,7 @@ import {
   SENTRY_CLI_DSN,
 } from "./constants.js";
 import { getCustomCaCerts } from "./custom-ca.js";
-import { getTelemetryPreference } from "./db/defaults.js";
+import { getOnOffPreference } from "./db/defaults.js";
 import { isReadonlyError, tryRepairAndRetry } from "./db/schema.js";
 import {
   type AgentInfo,
@@ -139,7 +139,7 @@ export function computeTelemetryEffective(): TelemetryEffective {
 
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const pref = getTelemetryPreference();
+    const pref = getOnOffPreference("telemetry");
     if (pref !== undefined) {
       return { enabled: pref, source: "preference" };
     }

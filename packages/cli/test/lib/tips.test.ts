@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { setTipsPreference } from "../../src/lib/db/defaults.js";
+import { setOnOffPreference } from "../../src/lib/db/defaults.js";
 import { setEnv } from "../../src/lib/env.js";
 import {
   applyTipsPreference,
@@ -39,25 +39,25 @@ describe("tipsSuppressed", () => {
   });
 
   test("suppresses tips when the stored preference is off", () => {
-    setTipsPreference(false);
+    setOnOffPreference("tips", false);
     expect(tipsSuppressed()).toBe(true);
   });
 
   test("shows tips when the stored preference is on", () => {
-    setTipsPreference(true);
+    setOnOffPreference("tips", true);
     expect(tipsSuppressed()).toBe(false);
   });
 
   test("memoizes per env until the cache is reset", () => {
     expect(tipsSuppressed()).toBe(false);
-    setTipsPreference(false);
+    setOnOffPreference("tips", false);
     expect(tipsSuppressed()).toBe(false);
     resetTipsCache();
     expect(tipsSuppressed()).toBe(true);
   });
 
   test("truthy SENTRY_DISABLE_TIPS wins over the stored preference", () => {
-    setTipsPreference(true);
+    setOnOffPreference("tips", true);
     for (const val of ["1", "true", "yes"]) {
       setTipsEnv(val);
       expect(tipsSuppressed()).toBe(true);
@@ -67,10 +67,10 @@ describe("tipsSuppressed", () => {
   test("falsy SENTRY_DISABLE_TIPS falls through to the stored preference", () => {
     for (const val of ["0", "false", ""]) {
       setTipsEnv(val);
-      setTipsPreference(null);
+      setOnOffPreference("tips", null);
       resetTipsCache();
       expect(tipsSuppressed()).toBe(false);
-      setTipsPreference(false);
+      setOnOffPreference("tips", false);
       resetTipsCache();
       expect(tipsSuppressed()).toBe(true);
     }

@@ -11,7 +11,7 @@
  * @module
  */
 
-import { getTipsPreference } from "./db/defaults.js";
+import { getOnOffPreference } from "./db/defaults.js";
 import { getEnv } from "./env.js";
 import { isTruthyEnv } from "./formatters/plain-detect.js";
 
@@ -49,7 +49,7 @@ export function tipsSuppressed(): boolean {
   const envVal = env[TIPS_DISABLE_ENV_VAR];
   const suppressed =
     (envVal !== undefined && isTruthyEnv(envVal)) ||
-    getTipsPreference() === false;
+    getOnOffPreference("tips") === false;
   tipsCache.byEnv.set(env, suppressed);
   return suppressed;
 }

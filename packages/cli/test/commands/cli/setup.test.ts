@@ -45,8 +45,8 @@ import { app } from "../../../src/app.js";
 import type { SentryContext } from "../../../src/context.js";
 import { getAuthConfig, setAuthToken } from "../../../src/lib/db/auth.js";
 import {
-  getAgentSkillsPreference,
-  setAgentSkillsPreference,
+  getOnOffPreference,
+  setOnOffPreference,
 } from "../../../src/lib/db/defaults.js";
 import {
   clearInstallInfo,
@@ -938,7 +938,7 @@ describe("sentry cli setup", () => {
     beforeEach(() => {
       // Reset the persisted preference — the config DB is shared across tests
       // in this file, so a prior --no-agent-skills run would otherwise leak.
-      setAgentSkillsPreference(null);
+      setOnOffPreference("agent-skills", null);
       originalFetch = globalThis.fetch;
       mockFetch(
         async () =>
@@ -948,7 +948,7 @@ describe("sentry cli setup", () => {
 
     afterEach(() => {
       globalThis.fetch = originalFetch;
-      setAgentSkillsPreference(null);
+      setOnOffPreference("agent-skills", null);
     });
 
     test("installs agent skills when Claude Code is detected", async () => {
@@ -1123,12 +1123,12 @@ describe("sentry cli setup", () => {
         context,
       );
 
-      expect(getAgentSkillsPreference()).toBe(false);
+      expect(getOnOffPreference("agent-skills")).toBe(false);
     });
 
     test("honors a persisted opt-out without the flag (upgrade scenario)", async () => {
       // Simulate a prior `--no-agent-skills` run having stored the preference.
-      setAgentSkillsPreference(false);
+      setOnOffPreference("agent-skills", false);
       mkdirSync(join(testDir, ".claude"), { recursive: true });
 
       const { context, getOutput, restore } = createMockContext({

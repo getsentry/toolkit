@@ -19,26 +19,22 @@ import { readCaCertFile } from "../../lib/custom-ca.js";
 import { parseCustomHeaders } from "../../lib/custom-headers.js";
 import {
   clearAllDefaults,
+  getOnOffPreference,
+  ON_OFF_PREFERENCES,
+  type OnOffPreference,
+  setOnOffPreference,
   type DefaultsState,
-  getAgentSkillsPreference,
   getAllDefaults,
   getDefaultCaCert,
   getDefaultHeaders,
   getDefaultOrganization,
   getDefaultProject,
   getDefaultUrl,
-  getGraphicsPreference,
-  getTelemetryPreference,
-  getTipsPreference,
-  setAgentSkillsPreference,
   setDefaultCaCert,
   setDefaultHeaders,
   setDefaultOrganization,
   setDefaultProject,
   setDefaultUrl,
-  setGraphicsPreference,
-  setTelemetryPreference,
-  setTipsPreference,
 } from "../../lib/db/defaults.js";
 import { ValidationError } from "../../lib/errors.js";
 import { formatDefaultsResult } from "../../lib/formatters/human.js";
@@ -62,10 +58,7 @@ import { resetTipsCache } from "../../lib/tips.js";
 type DefaultKey =
   | "organization"
   | "project"
-  | "telemetry"
-  | "agent-skills"
-  | "graphics"
-  | "tips"
+  | OnOffPreference
   | "url"
   | "headers"
   | "ca-cert";
@@ -89,18 +82,23 @@ function validateSlug(value: string, label: string): string {
   return trimmed;
 }
 
+/** Side effects to run after an on/off preference changes. */
+const ON_OFF_CHANGE_HOOKS: Partial<Record<OnOffPreference, () => void>> = {
+  tips: resetTipsCache,
+};
+
 /**
- * Build a handler for an on/off preference. Accepts on/off, yes/no,
+ * Build the handler for an on/off preference. Accepts on/off, yes/no,
  * true/false, or 1/0 and reports the stored value as "on", "off", or null.
  */
-function onOffHandler(
-  key: string,
-  get: () => boolean | undefined,
-  set: (enabled: boolean | null) => void,
-): DefaultHandler {
+function onOffHandler(name: OnOffPreference): DefaultHandler {
+  const store = (enabled: boolean | null) => {
+    setOnOffPreference(name, enabled);
+    ON_OFF_CHANGE_HOOKS[name]?.();
+  };
   return {
     get: () => {
-      const pref = get();
+      const pref = getOnOffPreference(name);
       if (pref === undefined) {
         return null;
       }
@@ -110,13 +108,13 @@ function onOffHandler(
       const parsed = parseBoolValue(value);
       if (parsed === null) {
         throw new ValidationError(
-          `Invalid ${key} value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          key,
+          `Invalid ${name} value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
+          name,
         );
       }
-      set(parsed);
+      store(parsed);
     },
-    clear: () => set(null),
+    clear: () => store(null),
   };
 }
 
@@ -132,25 +130,9 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
     set: (value) => setDefaultProject(validateSlug(value, "Project")),
     clear: () => setDefaultProject(null),
   },
-  telemetry: onOffHandler(
-    "telemetry",
-    getTelemetryPreference,
-    setTelemetryPreference,
-  ),
-  "agent-skills": onOffHandler(
-    "agent-skills",
-    getAgentSkillsPreference,
-    setAgentSkillsPreference,
-  ),
-  graphics: onOffHandler(
-    "graphics",
-    getGraphicsPreference,
-    setGraphicsPreference,
-  ),
-  tips: onOffHandler("tips", getTipsPreference, (enabled) => {
-    setTipsPreference(enabled);
-    resetTipsCache();
-  }),
+  ...(Object.fromEntries(
+    ON_OFF_PREFERENCES.map((name) => [name, onOffHandler(name)]),
+  ) as Record<OnOffPreference, DefaultHandler>),
   url: {
     get: getDefaultUrl,
     set: (value) => {

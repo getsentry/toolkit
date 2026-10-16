@@ -70,22 +70,43 @@ function parseOnOffValue(val: string | undefined): "on" | "off" | null {
   return null;
 }
 
+/** Metadata keys for the on/off preferences, by `sentry cli defaults` key. */
+const ON_OFF_PREFERENCE_KEYS = {
+  telemetry: DEFAULTS_TELEMETRY,
+  "agent-skills": DEFAULTS_AGENT_SKILLS,
+  graphics: DEFAULTS_GRAPHICS,
+  tips: DEFAULTS_TIPS,
+} as const;
+
+/** Name of an on/off preference (`telemetry`, `agent-skills`, ...). */
+export type OnOffPreference = keyof typeof ON_OFF_PREFERENCE_KEYS;
+
+/** All on/off preference names, in display order. */
+export const ON_OFF_PREFERENCES = Object.keys(
+  ON_OFF_PREFERENCE_KEYS,
+) as OnOffPreference[];
+
 /**
- * Read an on/off preference stored under `key`.
+ * Read a persistent on/off preference.
  *
  * @returns `true` if explicitly enabled, `false` if explicitly disabled,
  *   `undefined` if no preference is stored (callers should default to enabled)
  */
-function getOnOffPreference(key: string): boolean | undefined {
+export function getOnOffPreference(name: OnOffPreference): boolean | undefined {
+  const key = ON_OFF_PREFERENCE_KEYS[name];
   const value = parseOnOffValue(getMetadata(getDatabase(), [key]).get(key));
   return value === null ? undefined : value === "on";
 }
 
 /**
- * Store an on/off preference under `key`.
+ * Set or clear a persistent on/off preference.
  * Pass `null` to remove it (callers will default to enabled).
  */
-function setOnOffPreference(key: string, enabled: boolean | null): void {
+export function setOnOffPreference(
+  name: OnOffPreference,
+  enabled: boolean | null,
+): void {
+  const key = ON_OFF_PREFERENCE_KEYS[name];
   const db = getDatabase();
   if (enabled === null) {
     clearMetadata(db, [key]);
@@ -110,26 +131,6 @@ export function getDefaultProject(): string | null {
   const db = getDatabase();
   const m = getMetadata(db, [DEFAULTS_PROJECT]);
   return m.get(DEFAULTS_PROJECT) ?? null;
-}
-
-/** Get the persistent telemetry preference (see {@link getOnOffPreference}). */
-export function getTelemetryPreference(): boolean | undefined {
-  return getOnOffPreference(DEFAULTS_TELEMETRY);
-}
-
-/** Get the persistent agent skill install preference (see {@link getOnOffPreference}). */
-export function getAgentSkillsPreference(): boolean | undefined {
-  return getOnOffPreference(DEFAULTS_AGENT_SKILLS);
-}
-
-/** Get the persistent inline-graphics preference (see {@link getOnOffPreference}). */
-export function getGraphicsPreference(): boolean | undefined {
-  return getOnOffPreference(DEFAULTS_GRAPHICS);
-}
-
-/** Get the persistent `Tip:` hint preference (see {@link getOnOffPreference}). */
-export function getTipsPreference(): boolean | undefined {
-  return getOnOffPreference(DEFAULTS_TIPS);
 }
 
 /** Get the default Sentry instance URL, or null if not set. */
@@ -201,26 +202,6 @@ export function setDefaultProject(value: string | null): void {
   } else {
     setMetadata(db, { [DEFAULTS_PROJECT]: value });
   }
-}
-
-/** Set or clear the persistent telemetry preference (see {@link setOnOffPreference}). */
-export function setTelemetryPreference(enabled: boolean | null): void {
-  setOnOffPreference(DEFAULTS_TELEMETRY, enabled);
-}
-
-/** Set or clear the persistent agent skill install preference (see {@link setOnOffPreference}). */
-export function setAgentSkillsPreference(enabled: boolean | null): void {
-  setOnOffPreference(DEFAULTS_AGENT_SKILLS, enabled);
-}
-
-/** Set or clear the persistent inline-graphics preference (see {@link setOnOffPreference}). */
-export function setGraphicsPreference(enabled: boolean | null): void {
-  setOnOffPreference(DEFAULTS_GRAPHICS, enabled);
-}
-
-/** Set or clear the persistent `Tip:` hint preference (see {@link setOnOffPreference}). */
-export function setTipsPreference(enabled: boolean | null): void {
-  setOnOffPreference(DEFAULTS_TIPS, enabled);
 }
 
 /** Set or clear the default Sentry instance URL. Pass `null` to clear. */
