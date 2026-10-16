@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: List valid Sentry platform identifiers
 requires:
   bins: ["sentry"]
-  auth: true
+  auth: false
 ---
 
 # Platform Commands

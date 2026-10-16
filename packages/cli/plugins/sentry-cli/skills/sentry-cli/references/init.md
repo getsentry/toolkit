@@ -51,4 +51,4 @@ sentry init acme/ --team backend
 sentry init --features profiling,replay
 ```
 
-All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
+All commands also support `--help`, `--log-level`, and `--verbose` flags.

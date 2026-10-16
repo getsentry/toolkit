@@ -421,6 +421,7 @@ async function preparePair(
 
 export const xcodeCommand = buildCommand({
   docs: {
+    requiresAuth: true,
     brief: "Upload React Native sourcemaps (Xcode build step)",
     fullDescription:
       "Upload React Native sourcemaps from an Xcode build phase. In a release " +

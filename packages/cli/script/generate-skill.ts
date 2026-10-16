@@ -616,6 +616,20 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** List the global flags that at least one command in the route accepts. */
+function formatGlobalFlagList(route: RouteInfo): string {
+  const accepted = (name: string) =>
+    route.commands.some((cmd) => cmd.flags.some((f) => f.name === name));
+  const names = [
+    ...["json", "fields"].filter(accepted),
+    "help",
+    "log-level",
+    "verbose",
+  ];
+  const flags = names.map((name) => `\`--${name}\``);
+  return `${flags.slice(0, -1).join(", ")}, and ${flags.at(-1)}`;
+}
+
 /**
  * Generate a complete reference file for a single route.
  *
@@ -644,7 +658,7 @@ function generateReferenceFile(
   lines.push(`description: ${description}`);
   lines.push("requires:");
   lines.push('  bins: ["sentry"]');
-  lines.push("  auth: true");
+  lines.push(`  auth: ${route.commands.some((cmd) => cmd.requiresAuth)}`);
   lines.push("---");
   lines.push("");
 
@@ -661,9 +675,7 @@ function generateReferenceFile(
   }
 
   // Note about global flags
-  lines.push(
-    "All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.",
-  );
+  lines.push(`All commands also support ${formatGlobalFlagList(route)} flags.`);
   lines.push("");
 
   return lines.join("\n");

@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: Sentry for local development
 requires:
   bins: ["sentry"]
-  auth: true
+  auth: false
 ---
 
 # Local Commands

@@ -4,7 +4,7 @@ version: 0.48.0-dev.0
 description: Add build ids to WebAssembly modules and split out debug data
 requires:
   bins: ["sentry"]
-  auth: true
+  auth: false
 ---
 
 # Wasm-split Commands
