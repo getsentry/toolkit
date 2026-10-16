@@ -6,6 +6,7 @@
  * and ad-hoc event queries.
  */
 
+import { isAggregateFieldOrEquation } from "@sentry/toolkit-core/events-fields";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 import type { SentryContext } from "../context.js";
 import {
@@ -338,7 +339,7 @@ function appendFieldHints(
 ): void {
   const fields = rawFields ?? [];
   const fieldList = metricActive
-    ? fields.filter((f) => !isAggregate(f))
+    ? fields.filter((f) => !isAggregateFieldOrEquation(f))
     : fields;
   const defaults = defaultFieldsForDataset(dataset).join(",");
   if (fieldList.join(",") !== defaults && fieldList.length > 0) {
@@ -389,11 +390,6 @@ function appendFlagHints(
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }
 
-/** True when the field looks like an aggregate call: `fn(...)`. */
-function isAggregate(field: string): boolean {
-  return field.includes("(") && field.endsWith(")");
-}
-
 /**
  * True when the aggregate uses the tracemetrics comma-separated format:
  * `aggregation(value,metric_name,metric_type,unit)`.
@@ -415,7 +411,7 @@ function isTracemetricsAggregate(aggregate: string): boolean {
  */
 function validateMetricsFields(fieldList: string[]): void {
   const badAggs = fieldList.filter(
-    (f) => isAggregate(f) && !isTracemetricsAggregate(f),
+    (f) => isAggregateFieldOrEquation(f) && !isTracemetricsAggregate(f),
   );
   if (badAggs.length === 0) {
     return;
@@ -762,7 +758,7 @@ export const exploreCommand = buildListCommand("explore", {
       const aggField = resolveMetricField(flags.metric, flags.agg, metrics);
       // Prepend any user-supplied grouping fields, then the resolved aggregate
       const groupByFields = userSuppliedFields
-        ? fieldList.filter((f) => !isAggregate(f))
+        ? fieldList.filter((f) => !isAggregateFieldOrEquation(f))
         : [];
       fieldList = [...groupByFields, aggField];
     } else if (dataset === "tracemetrics") {

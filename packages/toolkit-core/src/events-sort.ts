@@ -15,14 +15,11 @@
  * and a `--limit` that returns an arbitrary subset instead of a top N.
  */
 
+import { isAggregateFieldOrEquation } from "./events-fields.js";
+
 /** Return the column a sort expression orders by, without the `-` prefix. */
 export function getSortField(sort: string): string {
   return sort.startsWith("-") ? sort.slice(1) : sort;
-}
-
-/** Whether an Events field is an aggregate function such as `count()`. */
-export function isAggregateField(field: string): boolean {
-  return field.includes("(") && field.includes(")");
 }
 
 /**
@@ -41,7 +38,8 @@ export function ensureSortInFields(
   if (
     sortField &&
     !fields.includes(sortField) &&
-    (isAggregateField(sortField) || !fields.some(isAggregateField))
+    (isAggregateFieldOrEquation(sortField) ||
+      !fields.some(isAggregateFieldOrEquation))
   ) {
     return [...fields, sortField];
   }
@@ -70,7 +68,7 @@ export function resolveEventsSort({
   sort?: string | null;
 }): ResolvedEventsSort {
   const explicitSort = sort?.trim() || undefined;
-  const firstAggregate = fields.find(isAggregateField);
+  const firstAggregate = fields.find(isAggregateFieldOrEquation);
   const resolvedSort =
     explicitSort ?? (firstAggregate ? `-${firstAggregate}` : undefined);
   return {

@@ -33,6 +33,19 @@ describe("ensureSortInFields", () => {
     ]);
   });
 
+  it("treats an aggregate equation sort as an aggregate", () => {
+    expect(
+      ensureSortInFields(["title", "count()"], "-equation|count() / 60"),
+    ).toEqual(["title", "count()", "equation|count() / 60"]);
+  });
+
+  it("does not mistake a tag with parentheses for an aggregate", () => {
+    expect(ensureSortInFields(["title", "count()"], "tags[foo(bar)]")).toEqual([
+      "title",
+      "count()",
+    ]);
+  });
+
   it("leaves fields alone when the sort column is selected or absent", () => {
     expect(ensureSortInFields(["title", "count()"], "-count()")).toEqual([
       "title",

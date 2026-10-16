@@ -6,9 +6,10 @@ builds bundle this private workspace package into their artifacts.
 The shared code validates and formats upstream bearer tokens, assembles Sentry
 API URLs, constructs OAuth device-flow form bodies, classifies RFC 8628 polling
 responses, advances retry intervals, recognizes Sentry hostnames and
-credential-safe SaaS HTTPS origins, encodes API path identifiers, resolves Events
-endpoint sorts so the sort column is always selected, and deduplicates in-flight
-region lookups. Each product retains its own credential storage,
+credential-safe SaaS HTTPS origins, encodes API path identifiers, parses Events
+field expressions the way the Sentry frontend does, resolves Events endpoint
+sorts so the sort column is always selected, and deduplicates in-flight region
+lookups. Each product retains its own credential storage,
 regional cache identity and persistence, host allowlists, routing, polling
 deadline, HTTP transport, response validation, and user-facing errors.
 
