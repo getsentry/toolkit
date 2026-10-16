@@ -1599,6 +1599,56 @@ describe("local receiver to viewer integration", () => {
     ).not.toBeNull();
   });
 
+  test("keeps closed retention read-only while its archive replay connects and opens", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem(
+      STREAM_STORAGE_KEY,
+      "http://127.0.0.1:8969/_local/v1/sessions/closed-run/stream?cap=read",
+    );
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    const retained = () =>
+      new MessageEvent("sentry.local.session", {
+        data: '{"state":"retained"}',
+      });
+    await act(async () => {
+      source.onopen?.(new Event("open"));
+      source.dispatchEvent(
+        new MessageEvent("sentry.local.retention", {
+          data: '{"maxEnvelopes":1000}',
+        }),
+      );
+      source.dispatchEvent(retained());
+    });
+    await screen.findByRole("heading", { name: "Session closed" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reload saved events" }),
+    );
+    const replay = ControllableEventSource.instances.at(-1)!;
+    expect(replay).not.toBe(source);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Settings", exact: true }),
+    );
+    const assertReadOnly = () => {
+      expect(
+        screen.getByText("Retention is read-only for closed sessions."),
+      ).not.toBeNull();
+      expect(screen.queryByLabelText("Retention limit")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Apply retention limit" }),
+      ).toBeNull();
+    };
+    assertReadOnly();
+    await act(async () => replay.onopen?.(new Event("open")));
+    assertReadOnly();
+    await act(async () => replay.dispatchEvent(retained()));
+    assertReadOnly();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test.each([false, true])(
     "ignores delayed retention responses after newer metadata (switch receiver: %s)",
     async (switchReceiver) => {

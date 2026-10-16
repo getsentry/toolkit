@@ -1475,9 +1475,11 @@ export default function App() {
         supported={hasRetentionSettings}
         limit={retentionLimit}
         count={telemetry.envelopes.length}
-        editable={canEditRetention && connection === "connected"}
+        editable={
+          canEditRetention && !isClosedSession && connection === "connected"
+        }
         unavailableReason={
-          connection === "closed"
+          isClosedSession
             ? "Retention is read-only for closed sessions."
             : canEditRetention && connection !== "connected"
               ? "Reconnect to this receiver to change retention."
