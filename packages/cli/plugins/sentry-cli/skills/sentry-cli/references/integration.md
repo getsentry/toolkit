@@ -32,6 +32,22 @@ List installed integrations
 | `organizationIntegrationStatus` | string | Status of the install in this organization |
 | `externalId` | string | Provider-side installation ID |
 
+**Examples:**
+
+```bash
+# List installed integrations (auto-detect org)
+sentry integration list
+
+# List integrations in a specific org
+sentry integration list my-org/
+
+# Fetch the next page
+sentry integration list my-org/ -c next
+
+# Output as JSON
+sentry integration list --json
+```
+
 ### `sentry integration delete <org/integration-id>`
 
 Remove an installed integration
@@ -44,16 +60,13 @@ Remove an installed integration
 **Examples:**
 
 ```bash
-# List installed integrations (auto-detect org)
-sentry integration list
-
-# List integrations in a specific org with pagination
-sentry integration list my-org/ -c next
+# Remove an integration (auto-detect org)
+sentry integration delete 12345
 
 # Preview removing an integration
 sentry integration delete my-org/12345 --dry-run
 
-# Remove an integration without the confirmation prompt
+# Remove without the confirmation prompt
 sentry integration delete my-org/12345 --yes
 ```
 

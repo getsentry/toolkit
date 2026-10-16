@@ -124,12 +124,21 @@ export const deleteCommand = buildDeleteCommand({
       "Find the integration ID with `sentry integration list`.\n\n" +
       "Needs the org:integrations permission (org owners and managers). If your " +
       "login predates that scope, the CLI asks you to re-authorize first " +
-      "(interactive runs only; skipped with --yes or --json).\n\n" +
-      "Examples:\n" +
-      "  sentry integration delete 12345\n" +
-      "  sentry integration delete my-org/12345\n" +
-      "  sentry integration delete my-org/12345 --yes\n" +
-      "  sentry integration delete my-org/12345 --dry-run",
+      "(interactive runs only; skipped with --yes or --json).",
+    examples: [
+      {
+        description: "Remove an integration (auto-detect org)",
+        command: "sentry integration delete 12345",
+      },
+      {
+        description: "Preview removing an integration",
+        command: "sentry integration delete my-org/12345 --dry-run",
+      },
+      {
+        description: "Remove without the confirmation prompt",
+        command: "sentry integration delete my-org/12345 --yes",
+      },
+    ],
   },
   output: {
     human: formatIntegrationDeleted,

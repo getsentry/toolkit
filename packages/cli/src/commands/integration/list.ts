@@ -66,11 +66,25 @@ const docs: OrgListCommandDocs = {
     "Pagination:\n" +
     "  sentry integration list <org>/ -c next  # fetch next page\n" +
     "  sentry integration list <org>/ -c prev  # fetch previous page\n\n" +
-    "Examples:\n" +
-    "  sentry integration list\n" +
-    "  sentry integration list my-org/\n" +
-    "  sentry integration list --json\n\n" +
     "Alias: `sentry integrations` → `sentry integration list`",
+  examples: [
+    {
+      description: "List installed integrations (auto-detect org)",
+      command: "sentry integration list",
+    },
+    {
+      description: "List integrations in a specific org",
+      command: "sentry integration list my-org/",
+    },
+    {
+      description: "Fetch the next page",
+      command: "sentry integration list my-org/ -c next",
+    },
+    {
+      description: "Output as JSON",
+      command: "sentry integration list --json",
+    },
+  ],
 };
 
 export const listCommand = buildOrgListCommand(
