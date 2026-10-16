@@ -6,7 +6,10 @@
  * https://github.com/getsentry/sentry/blob/master/static/app/utils/discover/fields.tsx
  *
  * Keep this in sync with `parseFunction`, `parseArguments`, `isEquation`,
- * `isAggregateEquation`, and `isAggregateField` there.
+ * `isAggregateEquation`, `isAggregateField`, and `getColumnsAndAggregates`
+ * there. The frontend matches calls with `/^(\w+)\((.*)\)$/` and
+ * `/(\w+)\((.*)\)/g`; those backtrack polynomially on adversarial input, so
+ * this port does the same matching with linear scans.
  */
 
 /** A parsed aggregate call such as `p95(span.duration)`. */
@@ -17,13 +20,66 @@ export type ParsedFunction = {
   filter?: string;
 };
 
-const AGGREGATE_PATTERN = /^(\w+)\((.*)\)$/;
-/** {@link AGGREGATE_PATTERN} without anchors, to find calls inside equations. */
-const AGGREGATE_BASE = /(\w+)\((.*)\)/g;
 const IF_SUFFIX = "_if";
+const TRACEMETRICS_ARGUMENT_COUNT = 4;
 
 /** Prefix that marks an equation field. `|` is not a legal field character. */
 export const EQUATION_PREFIX = "equation|";
+
+function isWordChar(char: string | undefined): boolean {
+  return char !== undefined && /\w/.test(char);
+}
+
+function isLineTerminator(char: string | undefined): boolean {
+  return (
+    char === "\n" || char === "\r" || char === "\u2028" || char === "\u2029"
+  );
+}
+
+/**
+ * Split `name(args)` like `/^(\w+)\((.*)\)$/`: a non-empty word name, then
+ * everything between the first `(` and the trailing `)`, on a single line.
+ */
+function matchFunctionCall(
+  field: string,
+): { name: string; args: string } | null {
+  const open = field.indexOf("(");
+  if (open < 1 || !field.endsWith(")")) {
+    return null;
+  }
+  for (let i = 0; i < open; i += 1) {
+    if (!isWordChar(field[i])) {
+      return null;
+    }
+  }
+  const args = field.slice(open + 1, -1);
+  for (const char of args) {
+    if (isLineTerminator(char)) {
+      return null;
+    }
+  }
+  return { name: field.slice(0, open), args };
+}
+
+/**
+ * Whether the text contains a call like `/(\w+)\((.*)\)/`: a word character
+ * directly before a `(` that has a `)` after it on the same line.
+ */
+function containsFunctionCall(text: string): boolean {
+  let lineHasClose = false;
+  // Walk backwards so each `(` knows whether its line closes later.
+  for (let i = text.length - 1; i > 0; i -= 1) {
+    const char = text[i];
+    if (isLineTerminator(char)) {
+      lineHasClose = false;
+    } else if (char === ")") {
+      lineHasClose = true;
+    } else if (char === "(" && lineHasClose && isWordChar(text[i - 1])) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function isSearchFilterArgument(value: string): boolean {
   return value.length >= 2 && value.startsWith("`") && value.endsWith("`");
@@ -98,12 +154,12 @@ function parseArguments(columnText: string): string[] {
  * field is not a function call.
  */
 export function parseFunction(field: string): ParsedFunction | null {
-  const results = field.match(AGGREGATE_PATTERN);
-  if (results?.length !== 3) {
+  const call = matchFunctionCall(field);
+  if (!call) {
     return null;
   }
-  const name = results[1] as string;
-  const args = parseArguments(results[2] as string);
+  const { name } = call;
+  const args = parseArguments(call.args);
   const firstArgument = args[0] ?? "";
   if (isSearchFilterArgument(firstArgument) && name.endsWith(IF_SUFFIX)) {
     return { name, arguments: args, filter: firstArgument.slice(1, -1) };
@@ -123,10 +179,32 @@ export function isEquation(field: string): boolean {
 
 /** Whether a field is an equation over aggregates, e.g. `equation|count() / 60`. */
 export function isAggregateEquation(field: string): boolean {
-  return isEquation(field) && (field.match(AGGREGATE_BASE)?.length ?? 0) > 0;
+  return isEquation(field) && containsFunctionCall(field);
 }
 
 /** Whether a field makes a query aggregate: an aggregate or aggregate equation. */
 export function isAggregateFieldOrEquation(field: string): boolean {
   return isAggregateField(field) || isAggregateEquation(field);
+}
+
+/** Split selected fields into group-by columns and aggregates. */
+export function getColumnsAndAggregates(fields: readonly string[]): {
+  columns: string[];
+  aggregates: string[];
+} {
+  const columns: string[] = [];
+  const aggregates: string[] = [];
+  for (const field of fields) {
+    (isAggregateFieldOrEquation(field) ? aggregates : columns).push(field);
+  }
+  return { columns, aggregates };
+}
+
+/**
+ * Whether an aggregate uses the trace metrics argument format
+ * `aggregation(value,metric_name,metric_type,unit)`.
+ */
+export function isTracemetricsAggregate(field: string): boolean {
+  const args = parseFunction(field)?.arguments;
+  return args?.length === TRACEMETRICS_ARGUMENT_COUNT && args[0] === "value";
 }
