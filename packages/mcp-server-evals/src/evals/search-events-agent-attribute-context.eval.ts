@@ -107,6 +107,29 @@ describeEval("search-events-agent-attributes-without-context", {
             !value.includes("sentry.environment"),
         },
       },
+      {
+        // kiosk.firmware and kiosk.firmware_revision are made-up attributes, so
+        // the agent has no prior knowledge of either. Without briefs it can
+        // only match on the name, and kiosk.firmware_revision matches
+        // "firmware revision"
+        input:
+          "Count spans grouped by the kiosk's installed firmware revision over the last 7 days",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("kiosk.firmware_revision") &&
+            !value.includes("kiosk.firmware"),
+        },
+      },
     ];
   },
   task: async (input) => {
@@ -223,6 +246,52 @@ describeEval("search-events-agent-attributes-with-context", {
             typeof value === "string" &&
             value.includes("!sentry.environment:production") &&
             !/(?<!sentry\.)environment:/.test(value),
+        },
+      },
+      {
+        // deviceMemory and device.memory both look like a match by name, but
+        // only device.memory has a brief describing the device's total memory
+        input:
+          "What is the average estimated total memory capacity of devices across spans in the last 7 days?",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("avg(device.memory)") &&
+            !value.some(
+              (field) =>
+                typeof field === "string" && field.includes("deviceMemory"),
+            ),
+        },
+      },
+      {
+        // kiosk.firmware_revision matches "firmware revision" by name, but its
+        // brief says it is the staged revision. Only kiosk.firmware's brief
+        // describes the installed firmware
+        input:
+          "Count spans grouped by the kiosk's installed firmware revision over the last 7 days",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("kiosk.firmware") &&
+            !value.includes("kiosk.firmware_revision"),
         },
       },
     ];

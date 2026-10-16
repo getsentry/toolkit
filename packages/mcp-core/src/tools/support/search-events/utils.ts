@@ -30,6 +30,7 @@ export type FlexibleEventData = Record<string, unknown>;
 
 const DEFAULT_MAX_VALUE_LENGTH = 200;
 const DEFAULT_MAX_ARRAY_ITEMS = 20;
+const FIELDS_PAGE_SIZE = 50;
 // Mirrors regex_value in Sentry's event_search.py grammar, which is what
 // separates a key://pattern// filter from prose like http://example.com.
 const REGEX_FILTER_VALUE_SOURCE = String.raw`\/\/(?!\/\/(?:[\t\n )]|$))[^\n]{1,1024}?\/\/(?=[\t\n )]|$)`;
@@ -1183,8 +1184,22 @@ export function createDatasetAttributesTool(options: {
         .describe(
           "Optional attribute types to list. Use ['string','number','boolean'] when unsure.",
         ),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe(
+          "Optional position in the Available Fields list to start from. Use the offset given at the end of the previous response to see the next page of fields.",
+        ),
     }),
-    execute: async ({ dataset, substringMatch, query, attributeTypes }) => {
+    execute: async ({
+      dataset,
+      substringMatch,
+      query,
+      attributeTypes,
+      offset = 0,
+    }) => {
       const {
         BASE_COMMON_FIELDS,
         DATASET_FIELDS,
@@ -1213,10 +1228,33 @@ export function createDatasetAttributesTool(options: {
           },
         );
 
+      let commonFields: Record<string, string> = {};
+      let datasetFields: Record<string, string> = {};
+      if (substringMatch) {
+        Object.entries(BASE_COMMON_FIELDS).forEach(([key, value]) => {
+          if (key.includes(substringMatch) || value.includes(substringMatch)) {
+            commonFields[key] = value;
+          }
+        });
+        Object.entries(DATASET_FIELDS[normalizedDataset]).forEach(
+          ([key, value]) => {
+            if (
+              key.includes(substringMatch) ||
+              value.includes(substringMatch)
+            ) {
+              datasetFields[key] = value;
+            }
+          },
+        );
+      } else {
+        commonFields = BASE_COMMON_FIELDS;
+        datasetFields = DATASET_FIELDS[normalizedDataset];
+      }
+
       // Combine all available fields
       const allFields: Record<string, AttributeDescriptor> = {
-        ...toAttributeRecord(BASE_COMMON_FIELDS),
-        ...toAttributeRecord(DATASET_FIELDS[normalizedDataset]),
+        ...toAttributeRecord(commonFields),
+        ...toAttributeRecord(datasetFields),
         ...customAttributes,
       };
 
@@ -1225,7 +1263,6 @@ export function createDatasetAttributesTool(options: {
         replaced: replacedFields,
         updatedFieldTypes,
       } = resolveAvailableFields(allFields, fieldTypes);
-      const replacedKeys = new Set(replacedFields.map((field) => field.key));
       const fieldCount = availableFields.size;
 
       const recommendedFields = RECOMMENDED_FIELDS[normalizedDataset];
@@ -1239,20 +1276,48 @@ export function createDatasetAttributesTool(options: {
       for (const field of staticNumericFields) {
         allFieldTypes[field] = "number";
       }
-      const fieldTypeEntries = Object.entries(allFieldTypes).filter(
-        ([key]) => !replacedKeys.has(key),
-      );
 
       recordAgentToolResultCount(fieldCount);
 
+      // Page through fields to avoid overwhelming the agent
+      const pageFields = [...availableFields].slice(
+        offset,
+        offset + FIELDS_PAGE_SIZE,
+      );
+      const pageEnd = offset + pageFields.length;
+      const fieldsHeader =
+        pageFields.length > 0
+          ? `Available Fields (${fieldCount} total, showing ${offset + 1}-${pageEnd}):`
+          : `Available Fields (${fieldCount} total):${offset > 0 ? ` none at offset ${offset}.` : ""}`;
+      const fieldsList = pageFields
+        .map(
+          ([key, field]) =>
+            `- ${key}${allFieldTypes[key] ? ` (${allFieldTypes[key]})` : ""}: ${describeField(field)}`,
+        )
+        .join("\n");
+      const nextPageHint =
+        pageEnd < fieldCount
+          ? `\n... and ${fieldCount - pageEnd} more fields. To see them, call datasetAttributes again with the same arguments and offset: ${pageEnd}`
+          : "";
+
+      // Later pages only list their fields; the deprecated fields, recommended
+      // fields, and examples were already returned with the first page.
+      if (offset > 0) {
+        return `Dataset: ${dataset}
+
+${fieldsHeader}
+${fieldsList}
+${nextPageHint}
+
+IMPORTANT: Only use numeric aggregate functions (avg, sum, min, max, percentiles) with numeric fields. Use count() or count_unique() for non-numeric fields.
+`;
+      }
+
       return `Dataset: ${dataset}
 
-Available Fields (${fieldCount} total):
-${[...availableFields]
-  .slice(0, 50) // Limit to first 50 to avoid overwhelming the agent
-  .map(([key, field]) => `- ${key}: ${describeField(field)}`)
-  .join("\n")}
-${fieldCount > 50 ? `\n... and ${fieldCount - 50} more fields` : ""}
+${fieldsHeader}
+${fieldsList}
+${nextPageHint}
 ${
   replacedFields.length > 0
     ? `
@@ -1266,13 +1331,6 @@ ${replacedFields.length > 30 ? `\n... and ${replacedFields.length - 30} more dep
 }
 Recommended Fields for ${dataset}:
 ${recommendedFields.basic.map((f) => `- ${f}`).join("\n")}
-
-Field Types (CRITICAL for aggregate functions):
-${fieldTypeEntries
-  .slice(0, 30) // Show more field types since this is critical for aggregate functions
-  .map(([key, type]) => `- ${key}: ${type}`)
-  .join("\n")}
-${fieldTypeEntries.length > 30 ? `\n... and ${fieldTypeEntries.length - 30} more fields` : ""}
 
 IMPORTANT: Only use numeric aggregate functions (avg, sum, min, max, percentiles) with numeric fields. Use count() or count_unique() for non-numeric fields.
 
