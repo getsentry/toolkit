@@ -6,8 +6,9 @@
  * of the CLI keeps a one-credential view while users store several logins.
  *
  * The effective account is chosen per invocation, most specific first:
- *   1. An account pinned for this invocation because it knows the targeted
- *      organization ({@link selectAccountForOrg}).
+ *   1. The invocation's default account, chosen because it knows the
+ *      targeted organization ({@link selectAccountForOrg}). Each invocation
+ *      chooses again, so different commands can use different accounts.
  *   2. An account on the configured server (`SENTRY_HOST`/`SENTRY_URL`,
  *      `--url`, a pasted Sentry URL, or `.sentryclirc`) when the active
  *      account is on a different one.
@@ -38,13 +39,13 @@ import {
   deleteAccountRows,
   getAccountRow,
   getActiveAccountRow,
+  getMostRecentAccountRow,
   hasCachedOrgList,
   insertActiveAccountRow,
-  isAccountRowUsable,
   isSameServer,
   listAccountRows,
-  listAccountRowsForOrg,
-  mostRecentAccountRow,
+  listUsableAccountRowsByRecency,
+  listUsableAccountRowsForOrg,
 } from "./accounts.js";
 import { getAccountScope, resetAccountScopes } from "./account-scope.js";
 import { hashIdentity } from "./identity-hash.js";
@@ -97,22 +98,23 @@ function selectAccountForConfiguredHost(
   if (active && (!active.host || isSameServer(active.host, configured))) {
     return active;
   }
-  const onHost = listAccountRows().filter(
-    (row) =>
-      row.host && isSameServer(row.host, configured) && isAccountRowUsable(row),
+  // Same-server matching (origin normalization, `*.sentry.io` as one
+  // server) stays in TypeScript; SQL already filtered and ordered the rows.
+  const onHost = listUsableAccountRowsByRecency().find(
+    (row) => row.host && isSameServer(row.host, configured),
   );
-  return mostRecentAccountRow(onHost) ?? active;
+  return onHost ?? active;
 }
 
 /**
- * The effective account row for credential reads: pinned for this
- * invocation, else one on the configured server, else the active one.
+ * The effective account row for credential reads: the invocation's default
+ * account, else one on the configured server, else the active one.
  * Account management (switch, logout) uses the stored active row directly.
  */
 function getAuthRow(): AuthRow | undefined {
-  const pinned = getAccountScope().accountId;
-  if (pinned) {
-    const row = getAccountRow(pinned);
+  const defaultAccountId = getAccountScope().accountId;
+  if (defaultAccountId) {
+    const row = getAccountRow(defaultAccountId);
     if (row) {
       return row;
     }
@@ -127,7 +129,7 @@ export function getEffectiveAccountRow(): AccountRow | undefined {
 
 /**
  * Key for memoized credential state. The effective account depends on the
- * invocation's pin and configured server, so the memo must too.
+ * invocation's default account and configured server, so the memo must too.
  */
 function selectionKey(): string {
   return `${getAccountScope().accountId ?? ""}\0${getConfiguredUrlOrUndefined() ?? ""}`;
@@ -506,8 +508,9 @@ export function resetHasStoredCredsCache(): void {
 }
 
 /**
- * Forget accounts pinned by {@link selectAccountForOrg}. Tests only: in the
- * CLI a pin lasts for the invocation, and library calls get a fresh env.
+ * Forget default accounts chosen by {@link selectAccountForOrg}. Tests only:
+ * in the CLI the choice lasts for the invocation, and library calls get a
+ * fresh env.
  */
 export function resetAccountSelection(): void {
   resetAccountScopes();
@@ -694,7 +697,7 @@ export async function removeAccount(
     if (!options.promoteNext) {
       return;
     }
-    const next = mostRecentAccountRow(listAccountRows());
+    const next = getMostRecentAccountRow();
     if (next) {
       activateAccountRow(next.account_id);
       backfillActiveNullHost();
@@ -735,11 +738,11 @@ async function invalidateAccountCredentials(accountId: string): Promise<void> {
 }
 
 /**
- * Point the invocation's server at a newly pinned account, but only when
+ * Point the invocation's server at its newly chosen default account, but only when
  * no server was chosen explicitly: an unset URL or the persisted default
  * (`defaults.url`, applied at startup) yields to the account's own host.
  */
-function followPinnedAccountHost(host: string): void {
+function followDefaultAccountHost(host: string): void {
   const configured = getConfiguredUrlOrUndefined();
   if (configured && !isPersistedDefaultUrlInEffect()) {
     return;
@@ -758,10 +761,10 @@ function followPinnedAccountHost(host: string): void {
  *
  * No-op when the effective account knows the org or has no cached org
  * list to rule it out, when no stored account knows it, or when an earlier
- * org already pinned an account — one invocation never mixes identities. An explicit server
- * (`SENTRY_HOST`/`SENTRY_URL`, `--url`, `.sentryclirc`) limits candidates
- * to accounts on it; when several accounts qualify, the most recently used
- * wins. Forced env tokens (`SENTRY_FORCE_ENV_TOKEN`) are never overridden.
+ * org already chose the invocation's default account — one invocation
+ * never mixes identities. An explicit server (`SENTRY_HOST`/`SENTRY_URL`,
+ * `--url`, `.sentryclirc`) limits candidates to accounts on it; when several
+ * accounts qualify, the most recently used wins. Forced env tokens (`SENTRY_FORCE_ENV_TOKEN`) are never overridden.
  */
 export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
   if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim() && getRawEnvToken()) {
@@ -772,9 +775,8 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
     return;
   }
   try {
-    const owners = listAccountRowsForOrg(orgSlug, orgId).filter(
-      isAccountRowUsable,
-    );
+    // Usable accounts that know the org, most recently used first.
+    const owners = listUsableAccountRowsForOrg(orgSlug, orgId);
     if (owners.length === 0) {
       return;
     }
@@ -796,12 +798,12 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
     const candidates = explicitHost
       ? owners.filter((o) => o.host && isSameServer(o.host, explicitHost))
       : owners;
-    const pick = mostRecentAccountRow(candidates);
+    const pick = candidates[0];
     if (!pick?.host) {
       return;
     }
     scope.accountId = pick.account_id;
-    followPinnedAccountHost(pick.host);
+    followDefaultAccountHost(pick.host);
     log.debug(
       `Using stored account ${pick.account_id} (${pick.host}) for organization '${orgSlug}'`,
     );
@@ -847,9 +849,8 @@ export function getAccountIdForIdentity(identity: string): string | undefined {
  */
 export function hasStoredAccountForHost(url: string): boolean {
   try {
-    return listAccountRows().some(
-      (row) =>
-        row.host && isSameServer(row.host, url) && isAccountRowUsable(row),
+    return listUsableAccountRowsByRecency().some(
+      (row) => row.host && isSameServer(row.host, url),
     );
   } catch (error) {
     log.debug("Could not read stored accounts", error);

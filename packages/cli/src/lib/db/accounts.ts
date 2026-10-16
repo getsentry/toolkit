@@ -123,7 +123,10 @@ export function accountIdentity(row: AccountRow): string | undefined {
   return storedCredentialIdentity(row);
 }
 
-/** True when the row's credential is usable now or can be refreshed. */
+/**
+ * True when the row's credential is usable now or can be refreshed.
+ * `USABLE_ACCOUNT_SQL` is the query form; keep the two in sync.
+ */
 export function isAccountRowUsable(row: AccountRow): boolean {
   if (!row.token) {
     return false;
@@ -290,32 +293,60 @@ export function isSameServer(a: string, b: string): boolean {
   );
 }
 
-/** The most recently used row, or `undefined` for an empty list. */
-export function mostRecentAccountRow(
-  rows: readonly AccountRow[],
-): AccountRow | undefined {
-  return [...rows].sort(
-    (a, b) => b.last_used_at - a.last_used_at || b.updated_at - a.updated_at,
-  )[0];
+/**
+ * Most recently used first. Ties (same `last_used_at`) fall back to the
+ * latest update, then to creation order, so picks are deterministic.
+ */
+const BY_RECENCY =
+  "ORDER BY last_used_at DESC, updated_at DESC, created_at ASC, account_id ASC";
+
+/**
+ * SQL form of {@link isAccountRowUsable}: a token that is unexpired,
+ * never expires, or can be refreshed. Bind `Date.now()` as its only
+ * parameter. Keep the two in sync.
+ */
+const USABLE_ACCOUNT_SQL = `token IS NOT NULL AND token != ''
+  AND (expires_at IS NULL OR expires_at = 0 OR expires_at >= ?
+    OR (refresh_token IS NOT NULL AND refresh_token != ''))`;
+
+/** The most recently used stored account, usable or not. */
+export function getMostRecentAccountRow(): AccountRow | undefined {
+  return (
+    (getDatabase()
+      .query(`SELECT * FROM accounts ${BY_RECENCY} LIMIT 1`)
+      .get() as AccountRow | null) ?? undefined
+  );
+}
+
+/** Usable stored accounts, most recently used first. */
+export function listUsableAccountRowsByRecency(): AccountRow[] {
+  return getDatabase()
+    .query(`SELECT * FROM accounts WHERE ${USABLE_ACCOUNT_SQL} ${BY_RECENCY}`)
+    .all(Date.now()) as AccountRow[];
 }
 
 /**
- * Stored accounts that have seen an organization, by slug or numeric id.
- * The mapping comes from `org_regions.account_id`, recorded whenever an
- * account resolves or lists the organization.
+ * Usable stored accounts that have seen an organization, by slug or
+ * numeric id, most recently used first — the first row is the pick.
+ *
+ * Org membership is already cached per account: `org_regions.account_id`
+ * is recorded whenever an account resolves or lists an organization, so
+ * this is one query over that cache rather than a lookup per account.
  */
-export function listAccountRowsForOrg(
+export function listUsableAccountRowsForOrg(
   orgSlug: string,
   orgId?: string,
 ): AccountRow[] {
   return getDatabase()
     .query(
-      `SELECT * FROM accounts WHERE account_id IN (
-        SELECT account_id FROM org_regions
-        WHERE account_id IS NOT NULL AND (org_slug = ? OR org_id = ?)
-      )`,
+      `SELECT * FROM accounts
+       WHERE account_id IN (
+         SELECT account_id FROM org_regions
+         WHERE account_id IS NOT NULL AND (org_slug = ? OR org_id = ?)
+       ) AND ${USABLE_ACCOUNT_SQL}
+       ${BY_RECENCY}`,
     )
-    .all(orgSlug, orgId ?? null) as AccountRow[];
+    .all(orgSlug, orgId ?? null, Date.now()) as AccountRow[];
 }
 
 /**

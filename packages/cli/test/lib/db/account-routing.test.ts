@@ -254,6 +254,41 @@ describe("organization-based selection", () => {
     expect(getAuthToken()).toBe("personal-token");
   });
 
+  test("skips expired accounts that cannot refresh", () => {
+    const work = login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS);
+    login("personal-token", SAAS, "personal");
+    seeOrgList(SAAS, ["personal-org"]);
+    getDatabase()
+      .query(
+        "UPDATE accounts SET expires_at = ?, refresh_token = NULL WHERE account_id = ?",
+      )
+      .run(Date.now() - 1000, work);
+
+    selectAccountForOrg("work-org");
+
+    expect(getAuthToken()).toBe("personal-token");
+  });
+
+  test("picks the most recently used account when several know the org", () => {
+    // Created first, so plain insertion order would pick it.
+    const stale = login("stale-token", SAAS, "stale");
+    seeOrg("shared-org", SAAS);
+    const recent = login("recent-token", SAAS, "recent");
+    seeOrg("shared-org", SAAS);
+    login("personal-token", SAAS, "personal");
+    seeOrgList(SAAS, ["personal-org"]);
+    const setLastUsed = getDatabase().query(
+      "UPDATE accounts SET last_used_at = ? WHERE account_id = ?",
+    );
+    setLastUsed.run(1000, stale);
+    setLastUsed.run(2000, recent);
+
+    selectAccountForOrg("shared-org");
+
+    expect(getAuthToken()).toBe("recent-token");
+  });
+
   test("resolveOrgRegion routes through the org's account", async () => {
     login("work-token", SAAS, "work");
     seeOrg("work-org", SAAS, "https://de.sentry.io");
