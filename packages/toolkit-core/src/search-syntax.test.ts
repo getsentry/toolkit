@@ -7,6 +7,7 @@ import {
   getKeyName,
   type FilterToken,
   type KeyToken,
+  type ParseResultToken,
   parseSearch,
   parseSearchOrThrow,
   type SearchConfig,
@@ -149,6 +150,112 @@ describe("parseSearch", () => {
     expect(freeText).toMatchObject({
       invalid: { type: "free-text-not-allowed", reason: 'no "hello"' },
     });
+  });
+});
+
+describe("regex filters", () => {
+  type RegexFilter = { key: string; pattern: string; negated: boolean };
+
+  function regexFilters(query: string): RegexFilter[] {
+    const found: RegexFilter[] = [];
+    const visit = (tokens: ParseResultToken[]): void => {
+      for (const token of tokens) {
+        if (token.type === Token.LOGIC_GROUP) {
+          visit(token.inner);
+        } else if (
+          token.type === Token.FILTER &&
+          token.operator === TermOperator.MATCHES
+        ) {
+          found.push({
+            key: token.key.text,
+            pattern: token.value.text,
+            negated: token.negated,
+          });
+        }
+      }
+    };
+    visit(parseSearchOrThrow(query, { config: { allowRegex: true } }));
+    return found;
+  }
+
+  const regex = (key: string, pattern: string, negated = false) => ({
+    key,
+    pattern,
+    negated,
+  });
+
+  it.each([
+    // Pattern contents: commas, brackets, boolean words, parens and quotes
+    // all stay inside the pattern.
+    ["message://[a-z,]+//", [regex("message", "[a-z,]+")]],
+    [
+      "message://codes [401,403,) seen//",
+      [regex("message", "codes [401,403,) seen")],
+    ],
+    [
+      "message://timeout OR refused//",
+      [regex("message", "timeout OR refused")],
+    ],
+    ["message://read AND write//", [regex("message", "read AND write")]],
+    [
+      "message://(reset|timeout) [0-9,]+//",
+      [regex("message", "(reset|timeout) [0-9,]+")],
+    ],
+    ['message://say "hi" [a,]//', [regex("message", 'say "hi" [a,]')]],
+    [
+      String.raw`!message://^GET OR POST \d+ms//`,
+      [regex("message", String.raw`^GET OR POST \d+ms`, true)],
+    ],
+    // The pattern ends at the first `//` followed by whitespace.
+    [
+      "url://https://x// AND message://a OR b//",
+      [regex("url", "https://x"), regex("message", "a OR b")],
+    ],
+    // Every key shape that can carry a regex.
+    [
+      "tags[foo,string]://[a-z,]+ AND b//",
+      [regex("tags[foo,string]", "[a-z,]+ AND b")],
+    ],
+    [
+      "tags[foo, string]://a OR [b,]//",
+      [regex("tags[foo, string]", "a OR [b,]")],
+    ],
+    [
+      "tags[sentry:user]://^id [0-9,]+//",
+      [regex("tags[sentry:user]", "^id [0-9,]+")],
+    ],
+    ["tags[App:Region]://^us-//", [regex("tags[App:Region]", "^us-")]],
+    [
+      "flags[beta,string]://^on OR off$//",
+      [regex("flags[beta,string]", "^on OR off$")],
+    ],
+    ["flags[Feature:X]://y//", [regex("flags[Feature:X]", "y")]],
+    ['"my.key"://a OR [b,]//', [regex('"my.key"', "a OR [b,]")]],
+    [
+      "arr[*]://a OR [b,]// tags[k[*],array]://a OR b//",
+      [regex("arr[*]", "a OR [b,]"), regex("tags[k[*],array]", "a OR b")],
+    ],
+    // Regex filters directly after a paren group or quoted text, and inside
+    // a paren group.
+    [
+      '(level:x)message://[a,]// "foo"message://[b,]//',
+      [regex("message", "[a,]"), regex("message", "[b,]")],
+    ],
+    ['"Note"message://a b//', [regex("message", "a b")]],
+    ["(message://a b//)", [regex("message", "a b")]],
+  ])("parses %j", (query, expected) => {
+    expect(regexFilters(query)).toEqual(expected);
+  });
+
+  it("reads key://pattern// as a literal text filter without allowRegex", () => {
+    const [filter] = parseSearchOrThrow("message://^Timeout//").filter(
+      (token): token is FilterToken => token.type === Token.FILTER,
+    );
+    expect(filter).toMatchObject({
+      filter: FilterType.TEXT,
+      operator: TermOperator.DEFAULT,
+    });
+    expect(filter?.value.text).toBe("//^Timeout//");
   });
 });
 

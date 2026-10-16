@@ -363,22 +363,10 @@ describe("search query helpers", () => {
     expect(downgrade).toBe(false);
   });
 
-  it("should detect regex filters inside parentheses and on Sentry's other key shapes", () => {
+  // Which key shapes can carry a regex is tested with the grammar in
+  // packages/toolkit-core/src/search-syntax.test.ts.
+  it("should detect regex filters and other filters inside parentheses", () => {
     expect(looksLikeSentrySearchSyntax("(message://a b//)", "logs")).toBe(true);
-    expect(
-      looksLikeSentrySearchSyntax("tags[App:Region]://^us-//", "logs"),
-    ).toBe(true);
-    expect(looksLikeSentrySearchSyntax("flags[Feature:X]://y//", "logs")).toBe(
-      true,
-    );
-    expect(
-      looksLikeSentrySearchSyntax("tags[foo, string]://a b//", "logs"),
-    ).toBe(true);
-    expect(looksLikeSentrySearchSyntax('"mykey"://a b//', "logs")).toBe(true);
-    expect(looksLikeSentrySearchSyntax("arr[*]://a b//", "logs")).toBe(true);
-    expect(looksLikeSentrySearchSyntax('"Note"message://a b//', "logs")).toBe(
-      true,
-    );
     // The parser reads filters inside parentheses like any other filter.
     expect(looksLikeSentrySearchSyntax("(level:error)", "logs")).toBe(true);
     expect(looksLikeSentrySearchSyntax("(level:error OR level:warning)")).toBe(

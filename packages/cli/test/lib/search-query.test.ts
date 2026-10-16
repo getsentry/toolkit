@@ -402,49 +402,12 @@ describe("sanitizeQuery: edge cases", () => {
 });
 
 describe("sanitizeQuery: regex filters", () => {
-  test("passes through a character class containing a comma", () => {
-    expect(sanitizeQuery("message://[a-z,]+//")).toBe("message://[a-z,]+//");
-  });
-
-  test("passes through a malformed-looking list inside a pattern", () => {
-    expect(sanitizeQuery("message://codes [401,403,) seen//")).toBe(
-      "message://codes [401,403,) seen//",
-    );
-  });
-
-  test("does not treat OR inside a pattern as a boolean operator", () => {
-    expect(sanitizeQuery("message://timeout OR refused//")).toBe(
-      "message://timeout OR refused//",
-    );
-  });
-
-  test("does not treat AND inside a pattern as a boolean operator", () => {
-    expect(sanitizeQuery("message://read AND write//")).toBe(
-      "message://read AND write//",
-    );
-  });
-
+  // How the grammar reads regex patterns and keys is tested in
+  // packages/toolkit-core/src/search-syntax.test.ts. These cover the
+  // sanitizer: patterns survive AND stripping and OR rewriting untouched.
   test("preserves repeated whitespace inside a pattern", () => {
     expect(sanitizeQuery("message://a  AND  b//")).toBe(
       "message://a  AND  b//",
-    );
-  });
-
-  test("passes through a negated regex filter", () => {
-    expect(sanitizeQuery("!message://^GET OR POST \\d+ms//")).toBe(
-      "!message://^GET OR POST \\d+ms//",
-    );
-  });
-
-  test("passes through parentheses inside a pattern", () => {
-    expect(sanitizeQuery("message://(reset|timeout) [0-9,]+//")).toBe(
-      "message://(reset|timeout) [0-9,]+//",
-    );
-  });
-
-  test("passes through a double quote inside a pattern", () => {
-    expect(sanitizeQuery('message://say "hi" [a,]//')).toBe(
-      'message://say "hi" [a,]//',
     );
   });
 
@@ -474,48 +437,6 @@ describe("sanitizeQuery: regex filters", () => {
     expect(sanitizeQuery("message://in project:123 now//")).toBe(
       "message://in project:123 now//",
     );
-  });
-
-  test("passes through a regex on a typed tag key", () => {
-    expect(sanitizeQuery("tags[foo,string]://[a-z,]+ AND b//")).toBe(
-      "tags[foo,string]://[a-z,]+ AND b//",
-    );
-  });
-
-  test("passes through a regex on a typed tag key with spaces", () => {
-    expect(sanitizeQuery("tags[foo, string]://a OR [b,]//")).toBe(
-      "tags[foo, string]://a OR [b,]//",
-    );
-  });
-
-  test("passes through a regex on a tag key containing a colon", () => {
-    expect(sanitizeQuery("tags[sentry:user]://^id [0-9,]+//")).toBe(
-      "tags[sentry:user]://^id [0-9,]+//",
-    );
-  });
-
-  test("passes through a regex on a typed flag key", () => {
-    expect(sanitizeQuery("flags[beta,string]://^on OR off$//")).toBe(
-      "flags[beta,string]://^on OR off$//",
-    );
-  });
-
-  test("passes through a regex on a quoted key", () => {
-    expect(sanitizeQuery('"my.key"://a OR [b,]//')).toBe(
-      '"my.key"://a OR [b,]//',
-    );
-  });
-
-  test("passes through a regex on array keys", () => {
-    expect(
-      sanitizeQuery("arr[*]://a OR [b,]// tags[k[*],array]://a OR b//"),
-    ).toBe("arr[*]://a OR [b,]// tags[k[*],array]://a OR b//");
-  });
-
-  test("passes through a regex right after a closing paren or quote", () => {
-    expect(
-      sanitizeQuery('(level:x)message://[a,]// "foo"message://[b,]//'),
-    ).toBe('(level:x)message://[a,]// "foo"message://[b,]//');
   });
 
   test("passes through a regex right after an in-list", () => {
