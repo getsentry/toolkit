@@ -15,6 +15,7 @@ import { BrowserRouter } from "react-router";
 import { ThemeProvider } from "@/components/theme-provider.tsx";
 import { createLocalRetentionBuffer } from "../../../packages/cli/src/commands/local/retention-buffer.ts";
 import App from "./App.tsx";
+import { saveDisconnected } from "./lib/connection-history.ts";
 import { sdkException } from "./test-fixtures/sdk-exception.ts";
 import { LocalWorkspaceRoute } from "./routes/local-workspace-route.tsx";
 import {
@@ -120,8 +121,8 @@ function renderViewer(port: number, path = "/") {
   );
 }
 
-function renderBareViewer() {
-  window.history.replaceState(null, "", "/");
+function renderBareViewer(path = "/") {
+  window.history.replaceState(null, "", path);
   return render(
     <ThemeProvider attribute="class" defaultTheme="light">
       <NuqsAdapter>
@@ -867,6 +868,23 @@ describe("local receiver to viewer integration", () => {
     await screen.findByText("Connected to local receiver");
   });
 
+  test("an ignored remote query never reconnects a disconnected tab to its saved receiver", () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    window.localStorage.setItem(
+      STREAM_STORAGE_KEY,
+      "http://127.0.0.1:8969/_local/v1/sessions/saved/stream?cap=read",
+    );
+    saveDisconnected(true);
+    renderBareViewer(
+      "/?url=" + encodeURIComponent("https://remote.example/stream"),
+    );
+    expect(ControllableEventSource.instances).toHaveLength(0);
+    expect(
+      screen.getByRole("heading", { name: "Connect a receiver" }),
+    ).not.toBeNull();
+  });
+
   test("clear ignores pre-reset deliveries and reconnects without replacing the workspace shell", async () => {
     ControllableEventSource.instances = [];
     vi.stubGlobal("EventSource", ControllableEventSource);
@@ -914,6 +932,92 @@ describe("local receiver to viewer integration", () => {
       screen.getByRole("complementary", { name: "Workspace navigation" }),
     ).toBe(shell);
   });
+
+  test.each(["http", "network", "reconnecting"])(
+    "failed %s clear keeps an empty workspace recoverable",
+    async (failure) => {
+      ControllableEventSource.instances = [];
+      vi.stubGlobal("EventSource", ControllableEventSource);
+      const request = vi.fn();
+      if (failure === "network")
+        request.mockRejectedValue(new TypeError("Network unavailable"));
+      else request.mockResolvedValue(new Response(null, { status: 403 }));
+      vi.stubGlobal("fetch", request);
+      window.localStorage.setItem(
+        STREAM_STORAGE_KEY,
+        "http://127.0.0.1:8969/_local/v1/sessions/clear-failed/stream?cap=read",
+      );
+      renderBareViewer();
+      const source = ControllableEventSource.instances[0]!;
+      await act(async () => {
+        source.onopen?.(new Event("open"));
+        source.dispatchEvent(
+          new MessageEvent(SENTRY_CONTENT_TYPE, {
+            data: JSON.stringify([
+              {},
+              [[{ type: "event" }, { message: "before clear" }]],
+            ]),
+            lastEventId: "before-clear",
+          }),
+        );
+      });
+      if (failure === "reconnecting") {
+        await act(async () => source.onerror?.(new Event("error")));
+        fireEvent.click(
+          screen.getByRole("button", { name: "Reconnect", exact: true }),
+        );
+      }
+      const sidebar = screen.getByRole("complementary", {
+        name: "Workspace navigation",
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Clear events", exact: true }),
+      );
+      await screen.findByText(
+        "Cleared this viewer, but the receiver could not clear its retained session.",
+      );
+      expect(
+        screen.getByRole("complementary", { name: "Workspace navigation" }),
+      ).toBe(sidebar);
+      expect(source.closed).toBe(true);
+      expect(screen.queryByText("Waiting for events")).toBeNull();
+      expect(
+        screen.getByRole("heading", { name: "No events displayed" }),
+      ).not.toBeNull();
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Reconnect",
+            exact: true,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Reconnect", exact: true }),
+      );
+      const reconnected = await openLatestReceiver();
+      expect(reconnected).not.toBe(source);
+      await act(async () =>
+        reconnected.dispatchEvent(
+          new MessageEvent(SENTRY_CONTENT_TYPE, {
+            data: JSON.stringify([
+              {},
+              [[{ type: "event" }, { message: "after reconnect" }]],
+            ]),
+            lastEventId: "after-reconnect",
+          }),
+        ),
+      );
+      await screen.findByRole("button", { name: "View event event" });
+      expect(screen.getByTestId("event-list").textContent).toContain(
+        "after reconnect",
+      );
+      expect(
+        screen.queryByRole("heading", { name: "Receiver disconnected" }),
+      ).toBeNull();
+      expect(request).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test("unchanged Add receiver retries a disconnected scoped session without losing its events or selection", async () => {
     const stream =

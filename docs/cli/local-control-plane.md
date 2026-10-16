@@ -130,10 +130,12 @@ guarded against duplicate requests and times out if the receiver does not respon
 
 **Disconnect receiver** returns to the connection screen without closing capture
 or deleting receiver data. This tab stays disconnected after a reload; use Connect,
-past connections, or an explicit connection link to resume. **Clear events** resets
-local receiver data when permitted and resumes only an open session's feed. Closed
-sessions stay closed and empty after a reset. Other connected viewers receive reset
-and close notifications. The hosted viewer clears only its displayed data; reloading
+past connections, or an accepted connection link to resume. Ignored or unsupported
+URL parameters do not reconnect a saved receiver. **Clear events** resets
+local receiver data when permitted and resumes only an open session's feed. If the
+reset fails, the feed stays paused and offers Reconnect even when the view is empty.
+Closed sessions stay closed and empty after a reset. Other connected viewers
+receive reset and close notifications. The hosted viewer clears only its displayed data; reloading
 saved events restores the daemon's archive.
 
 ### Switching sessions

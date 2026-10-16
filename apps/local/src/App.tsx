@@ -1039,6 +1039,7 @@ export default function App() {
     clearingGeneration.current = generation;
     setIsClearing(true);
     setIsConnectionEnabled(false);
+    setIsConnecting(false);
     const clearUrl = new URL(endpoint.url);
     const scopedSession = isScopedSessionStream(clearUrl.pathname);
     if (scopedSession) {
@@ -1638,9 +1639,8 @@ export default function App() {
                   onSelect={connectToEndpoint}
                 />
               ) : null}
-              {!isDisconnected &&
-              (isClosedSession ||
-                (hasRetainedItems && connection === "failed")) ? (
+              {!showConnectionLanding &&
+              (isClosedSession || connection === "failed") ? (
                 <div
                   role="status"
                   className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b bg-muted/20 px-4 py-2"
@@ -1705,12 +1705,16 @@ export default function App() {
                   <h2 className="font-medium">
                     {isClosedSession
                       ? "No saved events displayed"
-                      : "Waiting for events"}
+                      : connection === "failed"
+                        ? "No events displayed"
+                        : "Waiting for events"}
                   </h2>
                   <p className="mt-2 text-sm text-muted-foreground">
                     {isClosedSession
                       ? "Capture has stopped. Reload saved events or connect to another session."
-                      : "Send events to the selected receiver to see them here."}
+                      : connection === "failed"
+                        ? "Reconnect to resume this feed."
+                        : "Send events to the selected receiver to see them here."}
                   </p>
                 </div>
               ) : workspaceView === "traces" ? (

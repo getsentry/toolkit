@@ -1,4 +1,8 @@
-import { parseStreamEndpoint } from "./spotlight.ts";
+import {
+  getStreamUrlFromHash,
+  getStreamUrlFromQuery,
+  parseStreamEndpoint,
+} from "./spotlight.ts";
 
 export const CONNECTION_HISTORY_KEY = "sentry.local.recent-connections";
 const MAX_CONNECTIONS = 5;
@@ -65,9 +69,10 @@ export function saveConnectionHistory(history: string[]): void {
 const DISCONNECTED_KEY = "sentry.local.disconnected";
 /** An explicit link or user Connect overrides a tab's disconnected landing. */
 export function getInitialDisconnected(): boolean {
-  const fragment = new URLSearchParams(window.location.hash.slice(1));
-  const query = new URLSearchParams(window.location.search);
-  if (parseStreamEndpoint(fragment.get("stream") ?? query.get("url") ?? ""))
+  if (
+    getStreamUrlFromHash(window.location.hash) ??
+    getStreamUrlFromQuery(window.location.search)
+  )
     return false;
   try {
     return window.sessionStorage.getItem(DISCONNECTED_KEY) === "1";

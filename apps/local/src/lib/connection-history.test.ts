@@ -99,3 +99,54 @@ test("older eight-entry history loads and saves only the newest five", () => {
     JSON.parse(window.sessionStorage.getItem(CONNECTION_HISTORY_KEY)!),
   ).toEqual(oldHistory.slice(0, 5));
 });
+
+test.each([
+  {
+    search: "?url=" + encodeURIComponent("https://remote.example/stream"),
+    hash: "",
+  },
+  {
+    search:
+      "?url=" +
+      encodeURIComponent(
+        "http://localhost:8969/_local/v1/sessions/web/stream?cap=read",
+      ),
+    hash: "",
+  },
+  {
+    search: "",
+    hash: "#stream=" + encodeURIComponent("https://remote.example/stream"),
+  },
+])(
+  "ignored connection links preserve a disconnected tab: $search $hash",
+  ({ search, hash }) => {
+    saveDisconnected(true);
+    window.history.replaceState(null, "", "/" + search + hash);
+    expect(getInitialDisconnected()).toBe(true);
+  },
+);
+
+test("startup applies a valid query when an invalid fragment is ignored", () => {
+  saveDisconnected(true);
+  window.history.replaceState(
+    null,
+    "",
+    "/?url=" +
+      encodeURIComponent("http://127.0.0.1:8969/stream") +
+      "#stream=invalid",
+  );
+  expect(getInitialDisconnected()).toBe(false);
+});
+
+test("an applied scoped CLI fragment can reconnect a disconnected tab", () => {
+  saveDisconnected(true);
+  window.history.replaceState(
+    null,
+    "",
+    "/#stream=" +
+      encodeURIComponent(
+        "http://127.0.0.1:8969/_local/v1/sessions/web/stream?cap=read",
+      ),
+  );
+  expect(getInitialDisconnected()).toBe(false);
+});
