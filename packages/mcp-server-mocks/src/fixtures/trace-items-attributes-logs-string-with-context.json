@@ -1,0 +1,106 @@
+[
+  {
+    "key": "message",
+    "name": "message",
+    "context": {
+      "isConvention": false,
+      "brief": "The body of the log message.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "severity",
+    "name": "severity",
+    "context": {
+      "isConvention": false,
+      "brief": "The severity level of the log (trace, debug, info, warn, error, fatal).",
+      "isDeprecated": false,
+      "examples": ["error"]
+    }
+  },
+  {
+    "key": "sentry.item_id",
+    "name": "sentry.item_id",
+    "context": {
+      "isConvention": false,
+      "brief": "The unique ID of the log item.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "project",
+    "name": "project",
+    "context": {
+      "isConvention": false,
+      "brief": "The name of the project. In some pages of sentry.io, you can also filter on project using a dropdown.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "environment",
+    "name": "environment",
+    "context": {
+      "isConvention": true,
+      "brief": "The sentry environment.",
+      "isDeprecated": true,
+      "examples": ["production"],
+      "replacementAttribute": "sentry.environment"
+    }
+  },
+  {
+    "key": "release",
+    "name": "release",
+    "context": {
+      "isConvention": true,
+      "brief": "The sentry release.",
+      "isDeprecated": true,
+      "examples": ["production"],
+      "replacementAttribute": "sentry.release"
+    }
+  },
+  {
+    "key": "trace",
+    "name": "trace",
+    "context": {
+      "isConvention": false,
+      "brief": "The ID of the trace the log was emitted in.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "level",
+    "name": "level",
+    "context": {}
+  },
+  {
+    "key": "logger",
+    "name": "logger",
+    "context": {}
+  },
+  {
+    "key": "module",
+    "name": "module",
+    "context": {}
+  },
+  {
+    "key": "custom.service",
+    "name": "custom.service",
+    "context": {}
+  },
+  {
+    "key": "custom.component",
+    "name": "custom.component",
+    "context": {}
+  },
+  {
+    "key": "code.filepath",
+    "name": "code.filepath",
+    "context": {
+      "isConvention": true,
+      "brief": "The source code file name that identifies the code unit as uniquely as possible (preferably an absolute file path).",
+      "isDeprecated": true,
+      "examples": ["/app/myapplication/http/handler/server.py"],
+      "replacementAttribute": "code.file.path"
+    }
+  }
+]

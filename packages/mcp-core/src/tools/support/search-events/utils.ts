@@ -1225,6 +1225,8 @@ export function createDatasetAttributesTool(options: {
             attributeTypes,
             substringMatch,
             query,
+            // Always call attributes endpoint with context
+            context: true,
           },
         );
 
