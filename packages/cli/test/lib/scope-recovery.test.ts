@@ -406,6 +406,19 @@ describe("ensureScopesForAction", () => {
     expect(login).not.toHaveBeenCalled();
   });
 
+  test("does not start the device flow when prompts are disabled (--yes/--json)", async () => {
+    const login = vi.fn();
+    const testRuntime = runtime({
+      getAuthScopes: vi.fn().mockResolvedValue(withoutIntegrations),
+      promptsAllowed: () => false,
+    });
+
+    await expect(
+      ensureScopesForAction(["org:integrations"], "x", login, testRuntime),
+    ).resolves.toBe("unavailable");
+    expect(login).not.toHaveBeenCalled();
+  });
+
   test("leaves env and auth tokens to the API", async () => {
     const login = vi.fn();
     const testRuntime = runtime({

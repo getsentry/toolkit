@@ -208,7 +208,9 @@ describe("integration delete", () => {
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).detail).toContain("predates");
-    expect((error as ApiError).detail).toContain("interactive terminal");
+    expect((error as ApiError).detail).toContain(
+      "skipped with --yes or --json",
+    );
   });
 
   test("throws ContextError when no org can be resolved", async () => {

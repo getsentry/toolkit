@@ -95,15 +95,16 @@ export function parseIntegrationArg(arg: string | undefined): {
  * when the user's org role is what's missing.
  *
  * @param scopeMissing - The stored login lacks the scope and couldn't be
- *   elevated here (no interactive terminal)
+ *   elevated in this run (no interactive terminal, or prompts disabled by
+ *   `--yes`/`--json`, which must never block on the authorization flow)
  */
 function enrichDeleteError(error: unknown, scopeMissing: boolean): unknown {
   if (!(error instanceof ApiError && error.status === 403)) {
     return error;
   }
   const detail = scopeMissing
-    ? `Your saved login predates the '${DELETE_SCOPE}' scope, and authorization can't be updated without an interactive terminal.\n  ` +
-      `Run this command in a terminal to re-authorize, or use an auth token with the '${DELETE_SCOPE}' scope.`
+    ? `Your saved login predates the '${DELETE_SCOPE}' scope. Re-authorization needs an interactive terminal and is skipped with --yes or --json.\n  ` +
+      `Run this command in a terminal without --yes or --json to re-authorize, or use an auth token with the '${DELETE_SCOPE}' scope.`
     : `Removing integrations requires the '${DELETE_SCOPE}' permission, which Sentry grants to org owners and managers.\n  ` +
       `If you use an auth token, make sure it has the '${DELETE_SCOPE}' scope.`;
   return new ApiError(
@@ -122,7 +123,8 @@ export const deleteCommand = buildDeleteCommand({
       "integration's linked issues and stops syncing with the provider.\n\n" +
       "Find the integration ID with `sentry integration list`.\n\n" +
       "Needs the org:integrations permission (org owners and managers). If your " +
-      "login predates that scope, the CLI asks you to re-authorize first.\n\n" +
+      "login predates that scope, the CLI asks you to re-authorize first " +
+      "(interactive runs only; skipped with --yes or --json).\n\n" +
       "Examples:\n" +
       "  sentry integration delete 12345\n" +
       "  sentry integration delete my-org/12345\n" +

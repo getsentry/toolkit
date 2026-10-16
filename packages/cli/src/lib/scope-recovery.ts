@@ -155,7 +155,9 @@ export async function ensureCurrentOAuthScopes(
  *   grant the CLI can elevate (env/auth tokens), or the check itself failed.
  *   Callers proceed and let the API decide.
  * - `elevated`: the user re-authorized and the new grant is stored.
- * - `unavailable`: elevation is needed but prompts aren't possible here.
+ * - `unavailable`: elevation is needed but prompts aren't possible here: no
+ *   TTY, or the run is unattended (`--yes`/`--json`), which must never block
+ *   on the device flow.
  * - `declined`: the authorization flow failed or was cancelled.
  */
 export type ScopeElevationResult =
