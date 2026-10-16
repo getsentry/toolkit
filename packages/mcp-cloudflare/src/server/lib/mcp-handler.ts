@@ -39,6 +39,7 @@ import {
 import { setSentryUserFromRequest } from "../utils/sentry-user";
 import {
   UTM_SOURCE_ATTRIBUTE,
+  resolvePluginAttributesFromRequest,
   resolveUtmSourceFromRequest,
 } from "./attribution";
 import { resolveClientFamily } from "./client-family";
@@ -342,6 +343,7 @@ async function handleAuthenticatedMcpRequest(
   if (utmSource) {
     activeSpan?.setAttribute(UTM_SOURCE_ATTRIBUTE, utmSource);
   }
+  activeSpan?.setAttributes(resolvePluginAttributesFromRequest(request));
 
   if (auth.kind === "oauth") {
     for (const skill of Array.from(auth.grantedSkills).sort()) {

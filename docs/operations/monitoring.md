@@ -183,6 +183,8 @@ These are Sentry MCP application attributes that are not part of the MCP semanti
 - `app.constraint.organization_slug` - Session organization constraint
 - `app.constraint.project_slug` - Session project constraint
 - `app.server.mode.experimental` - Whether experimental tools are enabled for this MCP request or stdio session
+- `app.plugin.name` - sentry-for-ai plugin distribution from `X-Sentry-Plugin` (allow-listed, else `other`)
+- `app.plugin.version` - sentry-for-ai plugin release from `X-Sentry-Plugin-Version`; prereleases bucket to `dev`, anything else to `other`
 - `app.consent.skill.<skill>.granted` - Per-skill boolean attributes for skills granted to the MCP request. Skill ids are normalized with `-` replaced by `_`
 - `app.upstream.host` - Upstream Sentry host configured for the server
 - `app.url.full` - MCP URL configured for stdio
@@ -291,6 +293,7 @@ Additional attributes on MCP response metrics:
 
 - `app.client.family` - Bucketed MCP client User-Agent
 - `app.server.mode.experimental` - `true` when the MCP URL includes `?experimental=1`
+- `app.plugin.name`, `app.plugin.version` - sentry-for-ai plugin attribution, when sent
 
 Additional attributes on direct OAuth client endpoints:
 

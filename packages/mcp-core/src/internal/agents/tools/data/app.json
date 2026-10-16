@@ -168,6 +168,27 @@
         "2ab2916d-a51f-4ac8-80ee-45ac31a28092"
       ]
     },
+    "app.plugin.name": {
+      "description": "Sentry MCP bucket for the sentry-for-ai plugin distribution that made the request.",
+      "type": "string",
+      "note": "From the X-Sentry-Plugin header. Unknown values bucket to `other`.",
+      "examples": [
+        "claude",
+        "cursor",
+        "codex",
+        "other"
+      ]
+    },
+    "app.plugin.version": {
+      "description": "Sentry MCP sentry-for-ai plugin release version.",
+      "type": "string",
+      "note": "From the X-Sentry-Plugin-Version header. Prerelease builds bucket to `dev`; malformed values to `other`.",
+      "examples": [
+        "1.4.5",
+        "dev",
+        "other"
+      ]
+    },
     "app.rate_limit.scope": {
       "description": "Scope of a Sentry MCP local rate-limit response.",
       "type": "string",
