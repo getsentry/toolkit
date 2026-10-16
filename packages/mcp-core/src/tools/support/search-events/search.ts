@@ -1,4 +1,5 @@
 import { getActiveSpan } from "@sentry/core";
+import { ensureSortInFields } from "@sentry/toolkit-core/events-sort";
 import { z } from "zod";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import { UserInputError } from "../../../errors";
@@ -113,19 +114,6 @@ function parseAgentTimeRange(
   }
 
   return undefined;
-}
-
-function augmentFieldsWithSort(fields: string[], sort: string): string[] {
-  const sortField = sort.startsWith("-") ? sort.slice(1) : sort;
-  const sortIsAggregate = sortField.includes("(") && sortField.includes(")");
-  if (
-    sortField &&
-    !fields.includes(sortField) &&
-    (sortIsAggregate || !isAggregateQuery(fields))
-  ) {
-    return [...fields, sortField];
-  }
-  return fields;
 }
 
 function buildRequestFields(
@@ -989,15 +977,10 @@ export async function runSearchEvents(
   // Sentry rejects the request if the sort column isn't in the selected
   // fields. The embedded agent's schema enforces this, but the handler can
   // recombine the caller's explicit fields with a default or explicit sort
-  // that the agent never saw — so re-check here.
-  //
-  // Skip the augment when the sort is non-aggregate but the existing fields
-  // are aggregate: adding a non-aggregate column to an aggregate query
-  // changes the GROUP BY and silently corrupts the result. Better to let
-  // Sentry's 400 propagate so the caller can fix the request explicitly.
+  // that the agent never saw — so re-check here with the rule the CLI shares.
   //
   // Note: fields and sortParam use the same function syntax sent to the API.
-  fields = augmentFieldsWithSort(fields, sortParam);
+  fields = ensureSortInFields(fields, sortParam);
 
   const requestFields = buildRequestFields(dataset, fields);
 

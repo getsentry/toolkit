@@ -27,8 +27,9 @@ export type ExploreQueryOptions = {
   query?: string;
   /**
    * Sort field. Prefix with `-` for descending.
-   * Supported on the `spans`, `errors`, and `discover` datasets; `metrics` and
-   * `logs` reject it with 400. A stable sort is required for correct
+   * Every Events dataset accepts it as long as the sort column is in
+   * `fields`; resolve both with `resolveEventsSort` from
+   * `@sentry/toolkit-core/events-sort`. A stable sort is required for correct
    * offset-based cursor pagination on grouped aggregate queries (#1519).
    */
   sort?: string;

@@ -530,7 +530,29 @@ describe("sentry explore", () => {
       );
     });
 
-    test("omits sort for metrics dataset even when auto-detected", async () => {
+    test("applies explicit sort on errors dataset", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "errors",
+          field: ["failure.node", "count()"],
+          sort: "-count()",
+        },
+        "test-org/",
+      );
+
+      // --sort + --limit must be a real top N, not an arbitrary subset (#1477).
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({ sort: "-count()", dataset: "errors" }),
+      );
+    });
+
+    test("auto-sorts metrics by their aggregate", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       const { context } = createContext();
 
@@ -544,10 +566,62 @@ describe("sentry explore", () => {
         "test-org/",
       );
 
-      // metrics/logs reject sort with 400, so it stays unset.
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ sort: undefined }),
+        expect.objectContaining({
+          dataset: "tracemetrics",
+          sort: "-sum(value,llm.token_usage,distribution,none)",
+        }),
+      );
+    });
+
+    test("applies explicit sort on logs dataset", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "logs",
+          field: ["severity", "count()"],
+          sort: "-count()",
+        },
+        "test-org/",
+      );
+
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          dataset: "logs",
+          fields: ["severity", "count()"],
+          sort: "-count()",
+        }),
+      );
+    });
+
+    test("selects an aggregate sort column the user did not request", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "errors",
+          field: ["failure.node", "count()"],
+          sort: "-count_unique(user)",
+        },
+        "test-org/",
+      );
+
+      // Sentry 400s when the sort column is not selected, on every dataset.
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          fields: ["failure.node", "count()", "count_unique(user)"],
+          sort: "-count_unique(user)",
+        }),
       );
     });
 
