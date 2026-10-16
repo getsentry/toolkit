@@ -116,7 +116,9 @@ this browser tab and survives reloads. Choose one to reconnect without pasting
 its address, or use its remove button to forget the entry. Local entries use the
 plain `/stream` address so reconnecting discovers available sessions without
 saving session capabilities in the list. Remote URLs stay in tab session storage;
-query credentials are omitted from their displayed labels. No history entry is
+query credentials are omitted from their displayed labels. Each tab keeps at most
+five receivers, ordered by most recent use; adding another discards the oldest
+entry, and reconnecting moves an existing receiver to the top. No history entry is
 created for a failed connection.
 
 Closing a session stops capture immediately: later ingestion receives HTTP 410,

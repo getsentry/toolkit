@@ -23,7 +23,11 @@ test("recent receivers deduplicate daemon sessions without storing their capabil
     history,
     "http://localhost:9009/_local/v1/sessions/web/stream?cap=private-session",
   );
-  expect(history).toHaveLength(8);
+  expect(history).toEqual(
+    [9009, 9008, 9007, 9006, 9005].map(
+      (port) => `http://localhost:${port}/stream`,
+    ),
+  );
   expect(history[0]).toBe("http://localhost:9009/stream");
   saveConnectionHistory(history);
   expect(window.sessionStorage.getItem(CONNECTION_HISTORY_KEY)).not.toContain(
@@ -69,4 +73,29 @@ test("disconnect survives reload but an explicit receiver link overrides it", ()
   expect(getInitialDisconnected()).toBe(true);
   saveDisconnected(false);
   expect(getInitialDisconnected()).toBe(false);
+});
+
+test("reconnecting promotes a receiver and adding a sixth discards the least recent", () => {
+  const url = (port: number) => `http://localhost:${port}/stream`;
+  let history = [9005, 9004, 9003, 9002, 9001].map(url);
+  history = rememberConnection(history, url(9001));
+  expect(history).toEqual([9001, 9005, 9004, 9003, 9002].map(url));
+  history = rememberConnection(history, url(9006));
+  expect(history).toEqual([9006, 9001, 9005, 9004, 9003].map(url));
+});
+
+test("older eight-entry history loads and saves only the newest five", () => {
+  const oldHistory = Array.from(
+    { length: 8 },
+    (_, index) => `http://localhost:${9008 - index}/stream`,
+  );
+  window.sessionStorage.setItem(
+    CONNECTION_HISTORY_KEY,
+    JSON.stringify(oldHistory),
+  );
+  expect(readConnectionHistory()).toEqual(oldHistory.slice(0, 5));
+  saveConnectionHistory(oldHistory);
+  expect(
+    JSON.parse(window.sessionStorage.getItem(CONNECTION_HISTORY_KEY)!),
+  ).toEqual(oldHistory.slice(0, 5));
 });

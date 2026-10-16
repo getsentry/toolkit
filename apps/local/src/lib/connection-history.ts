@@ -1,7 +1,7 @@
 import { parseStreamEndpoint } from "./spotlight.ts";
 
 export const CONNECTION_HISTORY_KEY = "sentry.local.recent-connections";
-const MAX_CONNECTIONS = 8;
+const MAX_CONNECTIONS = 5;
 
 /** Re-pair daemon receivers through discovery, without retaining session capabilities. */
 export function receiverAddress(stream: string): string {
@@ -55,7 +55,7 @@ export function saveConnectionHistory(history: string[]): void {
   try {
     window.sessionStorage.setItem(
       CONNECTION_HISTORY_KEY,
-      JSON.stringify(history),
+      JSON.stringify(history.slice(0, MAX_CONNECTIONS)),
     );
   } catch {
     // The current tab's in-memory history still works when storage is unavailable.
