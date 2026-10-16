@@ -148,6 +148,65 @@ export async function ensureCurrentOAuthScopes(
   return await refreshOAuthScopes(state, runInteractiveLogin, runtime);
 }
 
+/**
+ * Outcome of {@link ensureScopesForAction}.
+ *
+ * - `ready`: the token already has the scopes, or it isn't a stored OAuth
+ *   grant the CLI can elevate (env/auth tokens), or the check itself failed.
+ *   Callers proceed and let the API decide.
+ * - `elevated`: the user re-authorized and the new grant is stored.
+ * - `unavailable`: elevation is needed but prompts aren't possible here.
+ * - `declined`: the authorization flow failed or was cancelled.
+ */
+export type ScopeElevationResult =
+  | "ready"
+  | "elevated"
+  | "unavailable"
+  | "declined";
+
+/**
+ * Make sure the stored OAuth grant has `required` before running an action.
+ *
+ * Commands that need a default scope older logins may lack call this before
+ * any confirmation prompt, so the user authorizes once instead of hitting a
+ * 403 and re-running the command (and its prompts) through
+ * {@link runWithScopeRecovery}. The device flow requests the CLI's default
+ * scopes, so `required` must be a subset of {@link OAUTH_SCOPES}.
+ *
+ * @param required - Scopes the action needs
+ * @param action - Human description for the prompt, e.g. "Removing an integration"
+ */
+export async function ensureScopesForAction(
+  required: readonly string[],
+  action: string,
+  runInteractiveLogin: InteractiveLogin,
+  runtime: ScopeRecoveryRuntime = defaultRuntime,
+): Promise<ScopeElevationResult> {
+  let missing: string[];
+  try {
+    if (runtime.getAuthSource() !== "oauth") {
+      return "ready";
+    }
+    const granted = new Set((await runtime.getAuthScopes()) ?? []);
+    missing = required.filter((scope) => !granted.has(scope));
+  } catch (error) {
+    logger.debug("Could not inspect OAuth scopes before action", error);
+    return "ready";
+  }
+  if (missing.length === 0) {
+    return "ready";
+  }
+  if (!(runtime.inputIsTty() && runtime.promptsAllowed())) {
+    return "unavailable";
+  }
+
+  runtime.assertTrustedHost();
+  runtime.write(
+    `${action} needs elevated permissions (${missing.join(", ")}). Starting authorization...\n\n`,
+  );
+  return (await runInteractiveLogin()) ? "elevated" : "declined";
+}
+
 /** Check an OAuth token after a 401/403, re-authorize if needed, and retry once. */
 export async function runWithScopeRecovery(
   proceed: (commandArgs: string[]) => Promise<void>,

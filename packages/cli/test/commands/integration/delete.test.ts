@@ -41,6 +41,15 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
+vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../src/lib/scope-recovery.js")>();
+  return { ...actual, ensureScopesForAction: vi.fn() };
+});
+
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
+import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
+
 const sampleIntegration = {
   id: "42",
   name: "getsentry",
@@ -87,8 +96,10 @@ describe("integration delete", () => {
   let getSpy: ReturnType<typeof vi.spyOn>;
   let deleteSpy: ReturnType<typeof vi.spyOn>;
   let resolveOrgSpy: ReturnType<typeof vi.spyOn>;
+  const ensureScopesSpy = vi.mocked(scopeRecovery.ensureScopesForAction);
 
   beforeEach(() => {
+    ensureScopesSpy.mockResolvedValue("ready");
     getSpy = vi.spyOn(apiClient, "getIntegration");
     deleteSpy = vi.spyOn(apiClient, "deleteIntegration");
     resolveOrgSpy = vi.spyOn(resolveTarget, "resolveOrg");
@@ -101,6 +112,7 @@ describe("integration delete", () => {
     getSpy.mockRestore();
     deleteSpy.mockRestore();
     resolveOrgSpy.mockRestore();
+    ensureScopesSpy.mockReset();
   });
 
   test("removes the integration with --yes", async () => {
@@ -114,12 +126,37 @@ describe("integration delete", () => {
     expect(output(stdoutWrite)).toContain("Removed GitHub integration");
   });
 
+  test("elevates to org:integrations before deleting", async () => {
+    ensureScopesSpy.mockResolvedValue("elevated");
+    const { context } = createMockContext();
+    const func = await deleteCommand.loader();
+    await func.call(context, yesFlags, "my-org/42");
+
+    expect(ensureScopesSpy).toHaveBeenCalledWith(
+      ["org:integrations"],
+      "Removing an integration",
+      expect.any(Function),
+    );
+    expect(deleteSpy).toHaveBeenCalledWith("my-org", "42");
+  });
+
+  test("does not delete when authorization is declined", async () => {
+    ensureScopesSpy.mockResolvedValue("declined");
+    const { context, stdoutWrite } = createMockContext();
+    const func = await deleteCommand.loader();
+    await func.call(context, { ...yesFlags, json: true }, "my-org/42");
+
+    expect(deleteSpy).not.toHaveBeenCalled();
+    expect(JSON.parse(output(stdoutWrite))).toMatchObject({ deleted: false });
+  });
+
   test("dry-run does not delete", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await deleteCommand.loader();
     await func.call(context, { ...yesFlags, "dry-run": true }, "my-org/42");
 
     expect(deleteSpy).not.toHaveBeenCalled();
+    expect(ensureScopesSpy).not.toHaveBeenCalled();
     expect(output(stdoutWrite)).toContain("Would remove");
   });
 
@@ -147,7 +184,7 @@ describe("integration delete", () => {
     expect(deleteSpy).not.toHaveBeenCalled();
   });
 
-  test("explains the missing org:integrations scope on 403", async () => {
+  test("explains the role requirement on a 403 that survives elevation", async () => {
     deleteSpy.mockRejectedValue(new ApiError("Forbidden", 403));
     const { context } = createMockContext();
     const func = await deleteCommand.loader();
@@ -157,7 +194,21 @@ describe("integration delete", () => {
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).detail).toContain("org:integrations");
-    expect((error as ApiError).detail).toContain("sentry auth refresh --scope");
+    expect((error as ApiError).detail).toContain("owners and managers");
+  });
+
+  test("explains the missing scope on a 403 when elevation was unavailable", async () => {
+    ensureScopesSpy.mockResolvedValue("unavailable");
+    deleteSpy.mockRejectedValue(new ApiError("Forbidden", 403));
+    const { context } = createMockContext();
+    const func = await deleteCommand.loader();
+
+    const error = await func
+      .call(context, yesFlags, "my-org/42")
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).detail).toContain("predates");
+    expect((error as ApiError).detail).toContain("interactive terminal");
   });
 
   test("throws ContextError when no org can be resolved", async () => {

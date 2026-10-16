@@ -66,7 +66,7 @@ When creating your Sentry OAuth application:
 - **Scopes**: The CLI requests these scopes:
 <!-- GENERATED:START oauth-scopes -->
   - `project:read`, `project:write`, `project:admin`
-  - `org:read`
+  - `org:read`, `org:integrations`
   - `event:read`, `event:write`
   - `member:read`
   - `team:read`, `team:write`, `team:admin`

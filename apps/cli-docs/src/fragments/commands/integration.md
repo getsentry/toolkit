@@ -16,9 +16,8 @@ sentry integration delete my-org/12345 --dry-run
 sentry integration delete my-org/12345 --yes
 ```
 
-Removing an integration requires the `org:integrations` or `org:admin` scope.
-The default `sentry auth login` scopes do not include it; re-authenticate with
-`sentry auth refresh --scope ...` including `org:integrations`, or use an auth
-token that has it.
+Removing an integration needs the `org:integrations` permission, which Sentry
+grants to org owners and managers. If your CLI login predates that scope,
+`sentry integration delete` asks you to re-authorize before removing anything.
 
 Installing new integrations from the CLI is not supported yet.
