@@ -354,7 +354,7 @@ export async function addToGitHubPath(
 /**
  * Check if bash is available on the system.
  *
- * Uses `Bun.which` to search PATH for a bash executable.
+ * Uses `whichSync` to search PATH for a bash executable.
  * Useful as a fallback for unsupported shells — many custom shells
  * (xonsh, nushell, etc.) support bash completions.
  *

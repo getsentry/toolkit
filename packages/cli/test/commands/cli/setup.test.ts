@@ -10,6 +10,7 @@
 import { spawnSync } from "node:child_process";
 import {
   accessSync,
+  chmodSync,
   constants,
   existsSync,
   mkdirSync,
@@ -69,7 +70,7 @@ import { useTestConfigDir } from "../../helpers.js";
 /** Store original fetch for restoration */
 let originalFetch: typeof globalThis.fetch;
 
-/** Helper to mock fetch without TypeScript errors about missing Bun-specific properties */
+/** Replace fetch with a typed test implementation. */
 function mockFetch(
   fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
@@ -405,6 +406,9 @@ describe("sentry cli setup", () => {
     "registers zsh completion for $name and keeps setup idempotent",
     async ({ initializeFirst, legacy }) => {
       const zshrc = join(testDir, ".zshrc");
+      const unrelatedCompletions = join(testDir, "unrelated-completions");
+      mkdirSync(unrelatedCompletions);
+      chmodSync(unrelatedCompletions, 0o777);
       const completionDir = join(
         testDir,
         ".local",
@@ -445,7 +449,10 @@ describe("sentry cli setup", () => {
           "-dfi",
           "-c",
           `
-      fpath=(\${fpath:#*/zsh/site-functions})
+      fpath=("$2" $fpath)
+      # Exclude unrelated user/runner completion directories without bypassing compaudit.
+      fpath=( \${^fpath}/compinit(N:h) )
+      fpath=( $fpath $^fpath/*(N/) )
       source "$1"
       print -r -- "\${_comps[sentry]-MISSING}"
       source "$1"
@@ -454,6 +461,7 @@ describe("sentry cli setup", () => {
     `,
           "--",
           zshrc,
+          unrelatedCompletions,
         ],
         {
           encoding: "utf-8",
@@ -1234,7 +1242,7 @@ describe("sentry cli setup", () => {
       const homeDir = join(testDir, "home");
       const xdgData = join(homeDir, ".local", "share");
       mkdirSync(xdgData, { recursive: true });
-      // Create the zsh site-functions dir as unwritable so Bun.write() fails
+      // Make the zsh completion directory unwritable so writeFile() fails.
       const zshDir = join(xdgData, "zsh", "site-functions");
       mkdirSync(zshDir, { recursive: true });
       chmod(zshDir, 0o444); // read-only → completion write will throw
