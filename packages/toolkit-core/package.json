@@ -43,6 +43,10 @@
       "types": "./src/resource-identity.ts",
       "default": "./src/resource-identity.ts"
     },
+    "./search-syntax": {
+      "types": "./src/search-syntax.ts",
+      "default": "./src/search-syntax.ts"
+    },
     "./sentry-host": {
       "types": "./src/sentry-host.ts",
       "default": "./src/sentry-host.ts"
@@ -53,11 +57,13 @@
     }
   },
   "scripts": {
+    "generate": "tsx script/generate-parsers.ts",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "tsc": "tsc --noEmit"
   },
   "devDependencies": {
+    "peggy": "^5.1.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

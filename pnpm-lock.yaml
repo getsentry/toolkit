@@ -500,9 +500,6 @@ importers:
       p-limit:
         specifier: ^7.3.0
         version: 7.3.2
-      peggy:
-        specifier: ^5.1.0
-        version: 5.1.0
       picomatch:
         specifier: ^4.0.4
         version: 4.0.5
@@ -936,6 +933,9 @@ importers:
 
   packages/toolkit-core:
     devDependencies:
+      peggy:
+        specifier: ^5.1.0
+        version: 5.1.0
       typescript:
         specifier: 'catalog:'
         version: 5.8.3

@@ -379,7 +379,21 @@ describe("search query helpers", () => {
     expect(looksLikeSentrySearchSyntax('"Note"message://a b//', "logs")).toBe(
       true,
     );
-    expect(looksLikeSentrySearchSyntax("(level:error)", "logs")).toBe(false);
+    // The parser reads filters inside parentheses like any other filter.
+    expect(looksLikeSentrySearchSyntax("(level:error)", "logs")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("(level:error OR level:warning)")).toBe(
+      true,
+    );
+  });
+
+  it("should read structured filters the way Sentry's grammar does", () => {
+    expect(looksLikeSentrySearchSyntax("count():>10")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("p95(span.duration):>200")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("level:error\nchecking out")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("meeting 10.30:45 tomorrow")).toBe(
+      false,
+    );
+    expect(looksLikeSentrySearchSyntax("level:")).toBe(false);
   });
 
   it("should not treat regex filters as search syntax outside logs", () => {

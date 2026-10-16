@@ -14,7 +14,7 @@ import { describe, expect, test } from "vitest";
 import { ValidationError } from "../../src/lib/errors.js";
 import { __testing, sanitizeQuery } from "../../src/lib/search-query.js";
 
-const { normalizeQuery, transformUnquoted } = __testing;
+const { normalizeQuery, parseSearchNodes, transformUnquoted } = __testing;
 
 // ---------------------------------------------------------------------------
 // Passthrough (no operators)
@@ -508,8 +508,8 @@ describe("sanitizeQuery: regex filters", () => {
 
   test("passes through a regex on array keys", () => {
     expect(
-      sanitizeQuery("arr[*]://a OR [b,]// tags[k,array][*]://a OR b//"),
-    ).toBe("arr[*]://a OR [b,]// tags[k,array][*]://a OR b//");
+      sanitizeQuery("arr[*]://a OR [b,]// tags[k[*],array]://a OR b//"),
+    ).toBe("arr[*]://a OR [b,]// tags[k[*],array]://a OR b//");
   });
 
   test("passes through a regex right after a closing paren or quote", () => {
@@ -527,6 +527,76 @@ describe("sanitizeQuery: regex filters", () => {
   test("throws for OR between regex filters", () => {
     expect(() => sanitizeQuery("message://a// OR message://b//")).toThrow(
       ValidationError,
+    );
+  });
+});
+
+describe("parseSearchNodes: shared Sentry grammar", () => {
+  test("splits multi-word free text into one node per word", () => {
+    expect(parseSearchNodes("database timeout level:error")).toEqual([
+      { type: "free_text", value: "database", quoted: false },
+      { type: "free_text", value: "timeout", quoted: false },
+      { type: "text_filter", negated: false, key: "level", value: "error" },
+    ]);
+  });
+
+  test("keeps quotes on quoted free text and values", () => {
+    expect(parseSearchNodes('"foo bar" message:"a b"')).toEqual([
+      { type: "free_text", value: '"foo bar"', quoted: true },
+      { type: "text_filter", negated: false, key: "message", value: '"a b"' },
+    ]);
+  });
+
+  test("reads typed and aggregate filters as comparisons", () => {
+    expect(
+      parseSearchNodes("transaction.duration:>1s count():>=10 age:-24h"),
+    ).toEqual([
+      {
+        type: "comparison_filter",
+        negated: false,
+        key: "transaction.duration",
+        op: ">",
+        value: "1s",
+      },
+      {
+        type: "comparison_filter",
+        negated: false,
+        key: "count()",
+        op: ">=",
+        value: "10",
+      },
+      { type: "text_filter", negated: false, key: "age", value: "-24h" },
+    ]);
+  });
+
+  test("returns null for unbalanced parentheses", () => {
+    expect(parseSearchNodes("(level:error OR level:warning")).toBeNull();
+  });
+
+  test("keeps filters with an empty value or list item opaque", () => {
+    expect(parseSearchNodes("level: release:[a,,b]")).toEqual([
+      { type: "opaque", raw: "level:" },
+      { type: "opaque", raw: "release:[a,,b]" },
+    ]);
+  });
+});
+
+describe("sanitizeQuery: shared grammar behavior", () => {
+  test("passes unbalanced parentheses through to the API", () => {
+    expect(sanitizeQuery("(level:error OR level:warning")).toBe(
+      "(level:error OR level:warning",
+    );
+  });
+
+  test("refuses to merge aggregate comparisons", () => {
+    expect(() => sanitizeQuery("count():>10 OR count():>5")).toThrow(
+      ValidationError,
+    );
+  });
+
+  test("strips AND between multi-word free text and filters", () => {
+    expect(sanitizeQuery("database timeout AND level:error")).toBe(
+      "database timeout level:error",
     );
   });
 });

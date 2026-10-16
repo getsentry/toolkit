@@ -1,4 +1,11 @@
 import { isAggregateFieldOrEquation } from "@sentry/toolkit-core/events-fields";
+import {
+  type FilterToken,
+  type ParseResultToken,
+  parseSearch,
+  TermOperator,
+  Token,
+} from "@sentry/toolkit-core/search-syntax";
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
 import type {
@@ -35,7 +42,6 @@ const DEFAULT_MAX_ARRAY_ITEMS = 20;
 // separates a key://pattern// filter from prose like http://example.com.
 const REGEX_FILTER_VALUE_SOURCE = String.raw`\/\/(?!\/\/(?:[\t\n )]|$))[^\n]{1,1024}?\/\/(?=[\t\n )]|$)`;
 const REGEX_FILTER_VALUE_PATTERN = new RegExp(`^${REGEX_FILTER_VALUE_SOURCE}`);
-const SEARCH_FILTER_KEY_SOURCE = String.raw`(^|\s)!?(?<key>[A-Za-z_][A-Za-z0-9_.[\],-]*):`;
 // Sentry would parse `https://host/path// ` as a regex filter too, but no
 // attribute is named after a URL scheme, so treat those as plain text.
 const URL_SCHEME_KEY_SOURCE =
@@ -48,14 +54,17 @@ const REGEX_FILTER_KEY_BEFORE_PATTERN = new RegExp(
   `${REGEX_FILTER_KEY_SOURCE}$`,
 );
 const REGEX_FILTER_KEY_SCAN_LIMIT = 256;
-const SENTRY_SEARCH_TOKEN_PATTERN = new RegExp(
-  String.raw`${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?!\/\/)`,
-  "g",
-);
+const SEARCH_FILTER_KEY_SOURCE = String.raw`(^|\s)!?(?<key>[A-Za-z_][A-Za-z0-9_.[\],-]*):`;
+// Used by the semantic-downgrade comparison below, which still scans the raw
+// query text. `looksLikeSentrySearchSyntax` parses with the shared grammar.
 const SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN = new RegExp(
   String.raw`${REGEX_FILTER_KEY_SOURCE}(?=${REGEX_FILTER_VALUE_SOURCE})|${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?!\/\/)`,
   "g",
 );
+// Sentry would parse `https://host/path// ` as a regex filter too; see
+// URL_SCHEME_KEY_SOURCE.
+const URL_SCHEME_KEY_PATTERN = /^(?:https?|wss?|s?ftp|file|s3|gs)$/i;
+const LINE_BREAK_PATTERN = /[\r\n]+/g;
 const KNOWN_SENTRY_SEARCH_KEYS = new Set([
   "browser",
   "device",
@@ -113,50 +122,86 @@ export function isAggregateQuery(fields: readonly string[]): boolean {
 
 type SearchSyntaxDataset = EventsDataset | "replays";
 
-// Sentry only honors key://pattern// as a regex on logs; other datasets match
-// the literal text //pattern//.
-function searchTokenPattern(dataset?: SearchSyntaxDataset): RegExp {
-  return dataset === "logs"
-    ? SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN
-    : SENTRY_SEARCH_TOKEN_PATTERN;
+/** Every filter token, including those inside parenthesized groups. */
+function* filterTokens(
+  tokens: readonly ParseResultToken[],
+): Generator<FilterToken> {
+  for (const token of tokens) {
+    if (token.type === Token.FILTER) {
+      yield token;
+    } else if (token.type === Token.LOGIC_GROUP) {
+      yield* filterTokens(token.inner);
+    }
+  }
+}
+
+/**
+ * Whether a parsed filter is Sentry search syntax rather than prose that
+ * happens to contain a colon, like `Note: ...`, `10:30`, or a URL.
+ */
+function isStructuredFilter(query: string, filter: FilterToken): boolean {
+  const key = query.slice(
+    filter.key.location.start.offset,
+    filter.key.location.end.offset,
+  );
+
+  if (filter.operator === TermOperator.MATCHES) {
+    // No attribute is named after a URL scheme, so `https://host/path//` is
+    // prose even where Sentry would read it as a regex.
+    return !(
+      filter.key.type === Token.KEY_SIMPLE && URL_SCHEME_KEY_PATTERN.test(key)
+    );
+  }
+
+  const value = query.slice(
+    filter.key.location.end.offset + 1,
+    filter.location.end.offset,
+  );
+  // An empty value is `Word: ...`; a `//` value is a URL, or a regex on a
+  // dataset that matches it as literal text.
+  if (!value || value.startsWith("//") || !/^[A-Za-z_]/.test(key)) {
+    return false;
+  }
+
+  if (filter.key.type === Token.KEY_AGGREGATE || /^tags\[[^\]]+\]$/.test(key)) {
+    return true;
+  }
+
+  if (key !== key.toLowerCase()) {
+    return false;
+  }
+
+  return (
+    KNOWN_SENTRY_SEARCH_KEYS.has(key) ||
+    /[.[\],]/.test(key) ||
+    /^[a-z_][a-z0-9_-]*$/.test(key)
+  );
 }
 
 export function looksLikeSentrySearchSyntax(
   query?: string,
   dataset?: SearchSyntaxDataset,
 ): boolean {
-  const trimmedQuery = query?.trim();
+  // The grammar rejects line breaks outside quotes; they only separate terms.
+  const trimmedQuery = query?.trim().replace(LINE_BREAK_PATTERN, " ");
   if (!trimmedQuery) {
     return false;
   }
 
-  for (const match of trimmedQuery.matchAll(searchTokenPattern(dataset))) {
-    if (match.groups?.regexKey) {
-      return true;
-    }
+  // Sentry only honors key://pattern// as a regex on logs; other datasets
+  // match the literal text //pattern//.
+  const tokens = parseSearch(trimmedQuery, {
+    config: { allowRegex: dataset === "logs" },
+  });
+  if (!tokens) {
+    return false;
+  }
 
-    const key = match.groups?.key;
-    if (!key) {
-      continue;
-    }
-
-    if (/^tags\[[^\]]+\]$/.test(key)) {
-      return true;
-    }
-
-    if (key !== key.toLowerCase()) {
-      continue;
-    }
-
-    if (KNOWN_SENTRY_SEARCH_KEYS.has(key) || /[.[\],]/.test(key)) {
-      return true;
-    }
-
-    if (/^[a-z_][a-z0-9_-]*$/.test(key)) {
+  for (const filter of filterTokens(tokens)) {
+    if (isStructuredFilter(trimmedQuery, filter)) {
       return true;
     }
   }
-
   return false;
 }
 
