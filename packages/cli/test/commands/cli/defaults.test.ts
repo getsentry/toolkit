@@ -16,11 +16,13 @@ import {
   getDefaultProject,
   getDefaultUrl,
   getTelemetryPreference,
+  getTipsPreference,
   setAgentSkillsPreference,
   setDefaultOrganization,
   setDefaultProject,
   setDefaultUrl,
   setTelemetryPreference,
+  setTipsPreference,
 } from "../../../src/lib/db/defaults.js";
 import { getDatabase } from "../../../src/lib/db/index.js";
 import { formatDefaultsResult } from "../../../src/lib/formatters/human.js";
@@ -109,6 +111,25 @@ describe("defaults storage", () => {
     expect(getAgentSkillsPreference()).toBeUndefined();
   });
 
+  test("getTipsPreference returns undefined when not set", () => {
+    expect(getTipsPreference()).toBeUndefined();
+  });
+
+  test("setTipsPreference stores on/off", () => {
+    setTipsPreference(false);
+    expect(getTipsPreference()).toBe(false);
+    expect(getAllDefaults().tips).toBe("off");
+    setTipsPreference(true);
+    expect(getTipsPreference()).toBe(true);
+    expect(getAllDefaults().tips).toBe("on");
+  });
+
+  test("setTipsPreference(null) clears preference", () => {
+    setTipsPreference(false);
+    setTipsPreference(null);
+    expect(getTipsPreference()).toBeUndefined();
+  });
+
   test("getDefaultUrl returns null when not set", () => {
     expect(getDefaultUrl()).toBeNull();
   });
@@ -141,6 +162,7 @@ describe("defaults storage", () => {
       headers: null,
       "ca-cert": null,
       graphics: null,
+      tips: null,
     });
   });
 
@@ -155,6 +177,7 @@ describe("defaults storage", () => {
       headers: null,
       "ca-cert": null,
       graphics: null,
+      tips: null,
     });
   });
 
@@ -162,6 +185,7 @@ describe("defaults storage", () => {
     setDefaultOrganization("org");
     setDefaultProject("proj");
     setTelemetryPreference(true);
+    setTipsPreference(false);
     setDefaultUrl("https://example.com");
 
     clearAllDefaults();
@@ -169,6 +193,7 @@ describe("defaults storage", () => {
     expect(getDefaultOrganization()).toBeNull();
     expect(getDefaultProject()).toBeNull();
     expect(getTelemetryPreference()).toBeUndefined();
+    expect(getTipsPreference()).toBeUndefined();
     expect(getDefaultUrl()).toBeNull();
     expect(getDefaultHeaders()).toBeNull();
   });
@@ -417,6 +442,7 @@ describe("formatDefaultsResult", () => {
         project: "my-proj",
         telemetry: "off",
         graphics: "off",
+        tips: "off",
         url: "https://sentry.example.com",
       },
       telemetryEffective: { enabled: false, source: "preference" },
@@ -426,6 +452,7 @@ describe("formatDefaultsResult", () => {
     expect(plain).toContain("my-proj");
     expect(plain).toContain("off");
     expect(plain).toContain("Graphics");
+    expect(plain).toContain("Tips");
     expect(plain).toContain("sentry.example.com");
   });
 

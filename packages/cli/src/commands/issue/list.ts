@@ -98,6 +98,7 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
+import { tipsSuppressed } from "../../lib/tips.js";
 import {
   type SentryIssue,
   SentryIssueSchema,
@@ -1482,7 +1483,7 @@ function formatIssueListHuman(result: IssueListResult): string {
   }
 
   // Footer tip (e.g. "Tip: Use 'sentry issue view <ID>' ...")
-  if (result.footerMode) {
+  if (result.footerMode && !tipsSuppressed()) {
     parts.push(formatListFooter(result.footerMode));
   }
 

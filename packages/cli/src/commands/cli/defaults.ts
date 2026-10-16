@@ -29,6 +29,7 @@ import {
   getDefaultUrl,
   getGraphicsPreference,
   getTelemetryPreference,
+  getTipsPreference,
   setAgentSkillsPreference,
   setDefaultCaCert,
   setDefaultHeaders,
@@ -37,6 +38,7 @@ import {
   setDefaultUrl,
   setGraphicsPreference,
   setTelemetryPreference,
+  setTipsPreference,
 } from "../../lib/db/defaults.js";
 import { ValidationError } from "../../lib/errors.js";
 import { formatDefaultsResult } from "../../lib/formatters/human.js";
@@ -62,6 +64,7 @@ type DefaultKey =
   | "telemetry"
   | "agent-skills"
   | "graphics"
+  | "tips"
   | "url"
   | "headers"
   | "ca-cert";
@@ -165,6 +168,29 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
       setGraphicsPreference(parsed);
     },
     clear: () => setGraphicsPreference(null),
+  },
+  tips: {
+    get: () => {
+      const pref = getTipsPreference();
+      if (pref === true) {
+        return "on";
+      }
+      if (pref === false) {
+        return "off";
+      }
+      return null;
+    },
+    set: (value) => {
+      const parsed = parseBoolValue(value);
+      if (parsed === null) {
+        throw new ValidationError(
+          `Invalid tips value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
+          "tips",
+        );
+      }
+      setTipsPreference(parsed);
+    },
+    clear: () => setTipsPreference(null),
   },
   url: {
     get: getDefaultUrl,
@@ -281,6 +307,7 @@ export const defaultsCommand = buildCommand({
       "sentry cli defaults telemetry off      # Disable telemetry\n" +
       "sentry cli defaults agent-skills off   # Stop installing agent skills on upgrade\n" +
       "sentry cli defaults graphics off       # Disable inline terminal images\n" +
+      "sentry cli defaults tips off           # Hide Tip: hints in command output\n" +
       "sentry cli defaults url https://...    # Set Sentry URL (self-hosted)\n" +
       "sentry cli defaults headers 'X-IAP: t'  # Set custom headers (self-hosted)\n" +
       "sentry cli defaults ca-cert /path/to/ca.pem  # Trust a custom CA certificate\n" +
@@ -295,6 +322,7 @@ export const defaultsCommand = buildCommand({
       "| `telemetry` | Telemetry preference (on/off, yes/no, true/false, 1/0) |\n" +
       "| `agent-skills` | Install agent skills on setup/upgrade (on/off, yes/no, true/false, 1/0) |\n" +
       "| `graphics` | Render images inline on capable terminals (on/off, yes/no, true/false, 1/0) |\n" +
+      "| `tips` | Show `Tip:` hints in command output (on/off, yes/no, true/false, 1/0). `SENTRY_DISABLE_TIPS` overrides it at runtime |\n" +
       "| `url` | Sentry instance URL (for self-hosted installations) |\n" +
       "| `headers` | Custom HTTP headers for self-hosted proxies (semicolon-separated `Name: Value`) |\n" +
       "| `ca-cert` | Path to PEM file with custom CA certificates (for corporate proxies) |",
@@ -351,7 +379,7 @@ export const defaultsCommand = buildCommand({
         guardNonInteractive(flags);
         if (!isConfirmationBypassed(flags)) {
           const confirmed = await log.prompt(
-            "This will clear all defaults (organization, project, telemetry, URL, headers, ca-cert, agent-skills, graphics). Continue?",
+            "This will clear all defaults (organization, project, telemetry, URL, headers, ca-cert, agent-skills, graphics, tips). Continue?",
             { type: "confirm" },
           );
           if (confirmed !== true) {

@@ -66,18 +66,30 @@ If you previously used the legacy `sentry-cli` and have a `~/.sentryclirc` file,
 
 ## Persistent Defaults
 
-Use `sentry cli defaults` to set persistent defaults for organization, project, URL, and telemetry. These are stored in the CLI's local database and apply to all commands.
+Use `sentry cli defaults` to set persistent defaults for organization, project, URL, telemetry, and tips. These are stored in the CLI's local database and apply to all commands.
 
 ```bash
 sentry cli defaults org my-org           # Set default organization
 sentry cli defaults project my-project   # Set default project
 sentry cli defaults url https://...      # Set Sentry URL (self-hosted)
 sentry cli defaults telemetry off        # Disable telemetry
+sentry cli defaults tips off             # Hide Tip: hints in command output
 sentry cli defaults                      # Show all current defaults
 sentry cli defaults org --clear          # Clear a specific default
 ```
 
 See [`sentry cli defaults`](./commands/cli/#sentry-cli-defaults) for full usage.
+
+### Disabling tips
+
+Some commands print a `Tip: ...` hint below their output. To hide these, store the preference or set an environment variable:
+
+```bash
+sentry cli defaults tips off   # persistent
+export SENTRY_DISABLE_TIPS=1   # per-session, overrides the stored preference
+```
+
+Only the tips are removed. Pagination hints, dry-run and cancellation notices, and the cache-age footer (`cached · 3m ago · use -f to refresh`) are still shown.
 
 ## Global Options
 

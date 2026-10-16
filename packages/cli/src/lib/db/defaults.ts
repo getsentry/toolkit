@@ -8,6 +8,7 @@
  * - `defaults.url` — Sentry instance URL (for self-hosted)
  * - `defaults.agent-skills` — agent skill install preference (`"on"` / `"off"`)
  * - `defaults.graphics` — inline terminal graphics preference (`"on"` / `"off"`)
+ * - `defaults.tips` — `Tip:` hint preference (`"on"` / `"off"`)
  */
 
 import { getDatabase } from "./index.js";
@@ -21,6 +22,7 @@ const DEFAULTS_HEADERS = "defaults.headers";
 const DEFAULTS_CA_CERT = "defaults.ca-cert";
 const DEFAULTS_AGENT_SKILLS = "defaults.agent-skills";
 const DEFAULTS_GRAPHICS = "defaults.graphics";
+const DEFAULTS_TIPS = "defaults.tips";
 
 /** All metadata keys used for defaults (for bulk operations) */
 const ALL_DEFAULTS_KEYS = [
@@ -32,6 +34,7 @@ const ALL_DEFAULTS_KEYS = [
   DEFAULTS_CA_CERT,
   DEFAULTS_AGENT_SKILLS,
   DEFAULTS_GRAPHICS,
+  DEFAULTS_TIPS,
 ];
 
 /** State of all persistent defaults */
@@ -52,6 +55,8 @@ export type DefaultsState = {
   "agent-skills": "on" | "off" | null;
   /** Inline terminal graphics preference: "on", "off", or null (= default enabled) */
   graphics: "on" | "off" | null;
+  /** `Tip:` hint preference: "on", "off", or null (= default enabled) */
+  tips: "on" | "off" | null;
 };
 
 /** Parse a raw "on" / "off" metadata value to a typed "on" | "off" | null. */
@@ -140,6 +145,25 @@ export function getGraphicsPreference(): boolean | undefined {
   return;
 }
 
+/**
+ * Get the persistent `Tip:` hint preference.
+ *
+ * @returns `true` if explicitly enabled, `false` if explicitly disabled,
+ *   `undefined` if no preference is stored (callers should default to enabled)
+ */
+export function getTipsPreference(): boolean | undefined {
+  const db = getDatabase();
+  const m = getMetadata(db, [DEFAULTS_TIPS]);
+  const val = m.get(DEFAULTS_TIPS);
+  if (val === "on") {
+    return true;
+  }
+  if (val === "off") {
+    return false;
+  }
+  return;
+}
+
 /** Get the default Sentry instance URL, or null if not set. */
 export function getDefaultUrl(): string | null {
   const db = getDatabase();
@@ -183,6 +207,7 @@ export function getAllDefaults(): DefaultsState {
     "ca-cert": m.get(DEFAULTS_CA_CERT) ?? null,
     "agent-skills": parseOnOffValue(m.get(DEFAULTS_AGENT_SKILLS)),
     graphics: parseOnOffValue(m.get(DEFAULTS_GRAPHICS)),
+    tips: parseOnOffValue(m.get(DEFAULTS_TIPS)),
   };
 }
 
@@ -246,6 +271,19 @@ export function setGraphicsPreference(enabled: boolean | null): void {
     clearMetadata(db, [DEFAULTS_GRAPHICS]);
   } else {
     setMetadata(db, { [DEFAULTS_GRAPHICS]: enabled ? "on" : "off" });
+  }
+}
+
+/**
+ * Set or clear the persistent `Tip:` hint preference.
+ * Pass `null` to remove the preference (callers will default to enabled).
+ */
+export function setTipsPreference(enabled: boolean | null): void {
+  const db = getDatabase();
+  if (enabled === null) {
+    clearMetadata(db, [DEFAULTS_TIPS]);
+  } else {
+    setMetadata(db, { [DEFAULTS_TIPS]: enabled ? "on" : "off" });
   }
 }
 
