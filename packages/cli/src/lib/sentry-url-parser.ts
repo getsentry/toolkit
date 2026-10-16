@@ -424,12 +424,13 @@ export function applySentryUrlContext(baseUrl: string): void {
     delete env.SENTRY_URL;
     // When the active account is self-hosted but a SaaS account is stored,
     // name SaaS explicitly so that account is used (see db/auth `getAuthRow`).
-    const activeHost = getActiveTokenHost();
-    if (
-      !(activeHost && isSaaSTrustOrigin(activeHost)) &&
-      hasStoredAccountForHost(DEFAULT_SENTRY_URL)
-    ) {
-      env.SENTRY_URL = DEFAULT_SENTRY_URL;
+    // Check stored accounts first: reading the active token host snapshots
+    // the env-token host, which must not happen as a side effect here.
+    if (hasStoredAccountForHost(DEFAULT_SENTRY_URL)) {
+      const activeHost = getActiveTokenHost();
+      if (!(activeHost && isSaaSTrustOrigin(activeHost))) {
+        env.SENTRY_URL = DEFAULT_SENTRY_URL;
+      }
     }
     return;
   }
