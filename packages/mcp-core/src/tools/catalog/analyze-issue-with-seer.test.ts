@@ -93,6 +93,53 @@ describe("analyze_issue_with_seer", () => {
     expect(result).toContain("</seer_analysis>");
   });
 
+  it("returns a mismatch message when runId differs from the current run", async () => {
+    const result = await analyzeIssueWithSeer.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        instruction: undefined,
+        issueId: "CLOUDFLARE-MCP-45",
+        issueUrl: undefined,
+        runId: 99,
+      },
+      {
+        constraints: {
+          organizationSlug: undefined,
+        },
+        accessToken: "access-token",
+        userId: "1",
+      },
+    );
+
+    expect(result).toContain("No analysis found for Run ID 99.");
+    expect(result).toContain("current analysis is Run ID 13.");
+    expect(result).not.toContain("## Analysis Complete");
+  });
+
+  it("returns the run when runId matches the current run", async () => {
+    const result = await analyzeIssueWithSeer.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        instruction: undefined,
+        issueId: "CLOUDFLARE-MCP-45",
+        issueUrl: undefined,
+        runId: 13,
+      },
+      {
+        constraints: {
+          organizationSlug: undefined,
+        },
+        accessToken: "access-token",
+        userId: "1",
+      },
+    );
+
+    expect(result).toContain("Found existing analysis (Run ID: 13)");
+    expect(result).toContain("## Analysis Complete");
+  });
+
   it("wraps completed Seer-authored sections with provenance tags", async () => {
     mswServer.use(
       http.get(
@@ -345,6 +392,87 @@ describe("analyze_issue_with_seer", () => {
       "The analysis is taking longer than expected (>300s)",
     );
     expect(result).toContain("Processing: Analyzing the issue...");
+  });
+
+  describe("with runId while polling", () => {
+    const processing = {
+      ...autofixStateFixture,
+      autofix: {
+        ...autofixStateFixture.autofix,
+        run_id: 13,
+        status: "processing",
+        blocks: [],
+      },
+    };
+
+    function callWithRunId() {
+      return analyzeIssueWithSeer.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          instruction: undefined,
+          issueId: "CLOUDFLARE-MCP-TIMEOUT",
+          runId: 13,
+        },
+        {
+          constraints: {
+            organizationSlug: undefined,
+          },
+          accessToken: "access-token",
+          userId: "1",
+        },
+      );
+    }
+
+    it("stops when a newer run replaces the requested one", async () => {
+      let polls = 0;
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-TIMEOUT/autofix/",
+          () => {
+            polls++;
+            return HttpResponse.json(
+              polls === 1
+                ? processing
+                : {
+                    ...processing,
+                    autofix: {
+                      ...autofixStateFixture.autofix,
+                      run_id: 14,
+                      status: "completed",
+                    },
+                  },
+            );
+          },
+        ),
+      );
+
+      const promise = callWithRunId();
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toContain("No analysis found for Run ID 13.");
+      expect(result).toContain("current analysis is Run ID 14.");
+      expect(result).not.toContain("## Analysis Complete");
+    });
+
+    it("keeps runId in the follow-up call after a timeout", async () => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-TIMEOUT/autofix/",
+          () => HttpResponse.json(processing),
+        ),
+      );
+
+      const promise = callWithRunId();
+      await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
+      const result = await promise;
+
+      expect(result).toContain("## Analysis Timed Out");
+      expect(result).toContain(
+        'analyze_issue_with_seer(organizationSlug="sentry-mcp-evals", issueId="CLOUDFLARE-MCP-TIMEOUT", runId=13)',
+      );
+    });
   });
 
   it("handles consecutive polling errors", async () => {
