@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   findAccounts,
+  getAccountRow,
   getActiveAccountRow,
   listAccounts,
 } from "../../../src/lib/db/accounts.js";
@@ -21,6 +22,11 @@ import {
   setActiveAccount,
   setAuthToken,
 } from "../../../src/lib/db/auth.js";
+import { getDatabase } from "../../../src/lib/db/index.js";
+import {
+  getCachedIssueOrg,
+  setCachedIssueOrg,
+} from "../../../src/lib/db/issue-org-cache.js";
 import { getUserInfo, setUserInfo } from "../../../src/lib/db/user.js";
 import { AuthError, ConfigError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -28,7 +34,13 @@ import * as oauth from "../../../src/lib/oauth.js";
 import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 useTestConfigDir("accounts-");
-useEnvSandbox(["SENTRY_AUTH_TOKEN", "SENTRY_TOKEN", "SENTRY_FORCE_ENV_TOKEN"]);
+useEnvSandbox([
+  "SENTRY_AUTH_TOKEN",
+  "SENTRY_TOKEN",
+  "SENTRY_FORCE_ENV_TOKEN",
+  "SENTRY_HOST",
+  "SENTRY_URL",
+]);
 
 function login(
   token: string,
@@ -129,6 +141,58 @@ describe("removeAccount", () => {
 
     expect(await removeAccount(personal, { promoteNext: true })).toBe(work);
     expect(getAuthToken()).toBe("work-token");
+  });
+
+  test("promoteNext follows account switches, not login order", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1000);
+      const a = login("a-token", "https://sentry.io", { userId: "1" });
+      vi.setSystemTime(2000);
+      const b = login("b-token", "https://sentry.io", { userId: "2" });
+      vi.setSystemTime(3000);
+      login("c-token", "https://sentry.io", { userId: "3" });
+      vi.setSystemTime(4000);
+      setActiveAccount(b);
+      vi.setSystemTime(5000);
+      setActiveAccount(a);
+
+      expect(await removeAccount(a, { promoteNext: true })).toBe(b);
+      expect(getAuthToken()).toBe("b-token");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("account changes clear identity-unscoped caches", () => {
+  test("a new login drops issue-org mappings from the previous account", () => {
+    login("work-token", "https://sentry.io", { userId: "1" });
+    setCachedIssueOrg("123", "org-foo");
+
+    login("other-token", "https://sentry.example.com", { userId: "2" });
+
+    expect(getCachedIssueOrg("123")).toBeUndefined();
+  });
+});
+
+describe("legacy accounts without a host", () => {
+  test("switching to one backfills its host before it is used", async () => {
+    const { resetEnvTokenHostForTesting } =
+      await import("../../../src/lib/env-token-host.js");
+    delete process.env.SENTRY_HOST;
+    delete process.env.SENTRY_URL;
+    resetEnvTokenHostForTesting();
+    getDatabase()
+      .query(
+        "INSERT INTO accounts (account_id, token, host, is_active, updated_at) VALUES ('legacy', 'legacy-token', NULL, 0, ?)",
+      )
+      .run(Date.now());
+    login("self-hosted-token", "https://sentry.example.com", { userId: "1" });
+
+    setActiveAccount("legacy");
+
+    expect(getAccountRow("legacy")?.host).toBe("https://sentry.io");
   });
 });
 

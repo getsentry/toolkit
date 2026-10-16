@@ -163,6 +163,18 @@ describe("setUserInfo with several stored accounts", () => {
     expect(accounts[0]?.active).toBe(true);
   });
 
+  test("keeps the stored username when an OAuth re-login reports none", () => {
+    setAuthToken("old", undefined, undefined, { host: "https://sentry.io" });
+    setUserInfo({ userId: "1", email: "one@example.com", username: "one" });
+    setAuthToken("new", undefined, undefined, {
+      host: "https://sentry.io",
+      newAccount: true,
+    });
+    setUserInfo({ userId: "1", email: "one@example.com" });
+
+    expect(listAccounts().map((a) => a.username)).toEqual(["one"]);
+  });
+
   test("keeps the same user id on different hosts as separate accounts", () => {
     setAuthToken("saas", undefined, undefined, { host: "https://sentry.io" });
     setUserInfo({ userId: "1" });

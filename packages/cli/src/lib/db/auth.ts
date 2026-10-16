@@ -88,6 +88,19 @@ function migrateNullHost(row: AuthRow): string {
   return host;
 }
 
+/**
+ * Backfill the active account's legacy NULL host (see `migrateNullHost`).
+ * Account mutations call this around activation so no stored account is
+ * left without a host, and `auth switch`/`logout` can point the default
+ * URL at a concrete server instead of keeping a previous account's.
+ */
+function backfillActiveNullHost(): void {
+  const row = getAuthRow();
+  if (row && !row.host) {
+    migrateNullHost(row);
+  }
+}
+
 function normalizeCredentialHost(host: string): string {
   const origin = normalizeHttpOrigin(host);
   if (!origin) {
@@ -458,6 +471,10 @@ export function setAuthToken(
       issued_at: issuedAt,
     };
     if (!existing) {
+      // A new account is a new identity: drop caches scoped to the
+      // previous account's permissions but not keyed by it.
+      backfillActiveNullHost();
+      clearUnscopedIdentityCaches();
       return insertActiveAccountRow(values, now);
     }
     db.query(
@@ -535,7 +552,9 @@ export function setActiveAccount(accountId: string): void {
     if (getAuthRow()?.account_id === accountId) {
       return;
     }
+    backfillActiveNullHost();
     activateAccountRow(accountId);
+    backfillActiveNullHost();
     clearUnscopedIdentityCaches();
   });
   resetActiveCredentialState();
@@ -544,7 +563,7 @@ export function setActiveAccount(accountId: string): void {
 /**
  * Remove one stored account. Removing the active account leaves no account
  * active unless `promoteNext` is set, in which case the most recently
- * updated remaining account becomes active.
+ * used remaining account becomes active.
  *
  * @returns the id of the account that is active afterwards, if any
  */
@@ -566,10 +585,11 @@ export async function removeAccount(
       return;
     }
     const [next] = listAccountRows().sort(
-      (a, b) => b.updated_at - a.updated_at,
+      (a, b) => b.last_used_at - a.last_used_at || b.updated_at - a.updated_at,
     );
     if (next) {
       activateAccountRow(next.account_id);
+      backfillActiveNullHost();
     }
     return next?.account_id;
   });

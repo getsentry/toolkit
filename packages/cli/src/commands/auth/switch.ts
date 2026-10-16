@@ -11,7 +11,12 @@ import {
   resolveAccountSelector,
 } from "../../lib/account-selection.js";
 import { buildCommand } from "../../lib/command.js";
-import { type AccountSummary, listAccounts } from "../../lib/db/accounts.js";
+import {
+  type AccountSummary,
+  getAccountRow,
+  listAccounts,
+  toAccountSummary,
+} from "../../lib/db/accounts.js";
 import {
   getActiveEnvVarName,
   getAuthConfig,
@@ -87,11 +92,14 @@ export const switchCommand = buildCommand({
     }
 
     setActiveAccount(target.id);
-    pointDefaultUrlAtAccount(target.host);
+    // Re-read: activation backfills a legacy account's missing host.
+    const activeRow = getAccountRow(target.id);
+    const active = activeRow ? toAccountSummary(activeRow) : target;
+    pointDefaultUrlAtAccount(active.host);
     const switched = !target.active;
     yield new CommandOutput<AccountSwitchResult>({
       switched,
-      account: { ...target, active: true },
+      account: { ...active, active: true },
     });
 
     if (!target.usable) {

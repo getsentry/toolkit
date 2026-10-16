@@ -26,6 +26,7 @@ export type AccountRow = {
   is_active: number;
   created_at: number;
   updated_at: number;
+  last_used_at: number;
 };
 
 /** Public, secret-free view of a stored account. */
@@ -82,8 +83,8 @@ export function insertActiveAccountRow(
     db.query("UPDATE accounts SET is_active = 0 WHERE is_active = 1").run();
     db.query(
       `INSERT INTO accounts (account_id, host, token, refresh_token, expires_at,
-        issued_at, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        issued_at, is_active, created_at, updated_at, last_used_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
     ).run(
       accountId,
       values.host,
@@ -93,19 +94,24 @@ export function insertActiveAccountRow(
       values.issued_at,
       now,
       now,
+      now,
     );
   })();
   return accountId;
 }
 
-/** Mark one account active and every other account inactive. */
+/**
+ * Mark one account active and every other account inactive, recording when
+ * it was last used. `updated_at` is left alone: it versions the stored
+ * credential for refresh compare-and-swap.
+ */
 export function activateAccountRow(accountId: string): void {
   const db = getDatabase();
   db.transaction(() => {
     db.query("UPDATE accounts SET is_active = 0 WHERE is_active = 1").run();
-    db.query("UPDATE accounts SET is_active = 1 WHERE account_id = ?").run(
-      accountId,
-    );
+    db.query(
+      "UPDATE accounts SET is_active = 1, last_used_at = ? WHERE account_id = ?",
+    ).run(Date.now(), accountId);
   })();
 }
 

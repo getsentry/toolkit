@@ -53,23 +53,29 @@ export function setUserInfo(info: UserInfo): void {
     if (!active) {
       return;
     }
+    const duplicates = listAccountRows().filter(
+      (row) =>
+        row.account_id !== active.account_id &&
+        row.user_id === info.userId &&
+        row.host === active.host,
+    );
+    // OAuth login responses carry no username. Keep one already known for
+    // this user — on this row or on a duplicate about to be folded into it —
+    // so `sentry auth switch <username>` keeps working after a re-login.
+    const knownUsername =
+      (active.user_id === info.userId ? active.username : null) ??
+      duplicates.find((row) => row.username)?.username ??
+      null;
     const db = getDatabase();
     db.query(
       "UPDATE accounts SET user_id = ?, email = ?, username = ?, name = ?, updated_at = ? WHERE account_id = ?",
     ).run(
       info.userId,
       info.email ?? null,
-      info.username ??
-        (active.user_id === info.userId ? active.username : null),
+      info.username ?? knownUsername,
       info.name ?? null,
       Date.now(),
       active.account_id,
-    );
-    const duplicates = listAccountRows().filter(
-      (row) =>
-        row.account_id !== active.account_id &&
-        row.user_id === info.userId &&
-        row.host === active.host,
     );
     deleteAccountRows(duplicates);
   });

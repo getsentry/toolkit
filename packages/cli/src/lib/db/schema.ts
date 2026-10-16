@@ -95,6 +95,13 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
         notNull: true,
         default: "(unixepoch() * 1000)",
       },
+      // When this account last became active (login, switch, or logout
+      // promotion). Logout promotes the most recently used account.
+      last_used_at: {
+        type: "INTEGER",
+        notNull: true,
+        default: "(unixepoch() * 1000)",
+      },
     },
   },
 
@@ -792,8 +799,9 @@ function migrateSingleAuthToAccounts(db: Database): void {
     db.query("UPDATE accounts SET is_active = 0").run();
     db.query(
       `INSERT INTO accounts (account_id, host, user_id, email, username, name,
-        token, refresh_token, expires_at, issued_at, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        token, refresh_token, expires_at, issued_at, is_active, created_at, updated_at,
+        last_used_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
     ).run(
       uuidv7(),
       auth.host,
@@ -807,6 +815,7 @@ function migrateSingleAuthToAccounts(db: Database): void {
       auth.issued_at,
       now,
       auth.updated_at ?? now,
+      now,
     );
   }
 
