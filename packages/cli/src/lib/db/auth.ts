@@ -694,9 +694,7 @@ export async function removeAccount(
     if (!options.promoteNext) {
       return;
     }
-    const [next] = listAccountRows().sort(
-      (a, b) => b.last_used_at - a.last_used_at || b.updated_at - a.updated_at,
-    );
+    const next = mostRecentAccountRow(listAccountRows());
     if (next) {
       activateAccountRow(next.account_id);
       backfillActiveNullHost();

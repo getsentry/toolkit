@@ -294,7 +294,9 @@ export function isSameServer(a: string, b: string): boolean {
 export function mostRecentAccountRow(
   rows: readonly AccountRow[],
 ): AccountRow | undefined {
-  return [...rows].sort((a, b) => b.updated_at - a.updated_at)[0];
+  return [...rows].sort(
+    (a, b) => b.last_used_at - a.last_used_at || b.updated_at - a.updated_at,
+  )[0];
 }
 
 /**
