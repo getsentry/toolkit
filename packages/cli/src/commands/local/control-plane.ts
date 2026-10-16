@@ -22,7 +22,11 @@ import {
   type LocalSessionStore,
 } from "./session-store.js";
 
-import { LOCAL_DIRECTORY_EVENT } from "./viewer-protocol.js";
+import {
+  LOCAL_DIRECTORY_EVENT,
+  LOCAL_SESSION_EVENT,
+  type LocalSessionEvent,
+} from "./viewer-protocol.js";
 import { LOCAL_RETENTION_EVENT } from "./retention-limits.js";
 import {
   RetentionLimitError,
@@ -379,6 +383,12 @@ export function createLocalControlPlane({
     const browserBeacon =
       c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
       c.req.header("origin");
+    // Close can occur while the body is being read. Check at the commit boundary.
+    if (sessionStore.resolve(reference).state === "retained")
+      return c.json(
+        { error: "Session is closed; create a new session to capture events." },
+        410,
+      );
     pushToSpotlightBuffer({
       spotlightBuffer: sessionStore.getBuffer(reference),
       body,
@@ -404,18 +414,32 @@ export function createLocalControlPlane({
       return c.body(null, 401);
     }
     return streamSSE(c, async (stream) => {
-      const retention = sessionStore.getRetention(c.req.param("id"));
+      const reference = c.req.param("id");
+      const retention = sessionStore.getRetention(reference);
+      // Serialize metadata and envelopes so a close notification is the final
+      // message, after every envelope accepted before capture stopped.
+      let pending = Promise.resolve();
+      const writer = {
+        writeSSE(message: { id?: string; event?: string; data: string }) {
+          const write = pending.then(() => stream.writeSSE(message));
+          pending = write.catch((error) =>
+            logger.debug("Local session stream closed", error),
+          );
+          return pending;
+        },
+      };
+      const sendSession = (event: LocalSessionEvent) =>
+        writer.writeSSE({
+          event: LOCAL_SESSION_EVENT,
+          data: JSON.stringify(event),
+        });
       const sendSettings = (
         settings: ReturnType<typeof retention.getSettings>,
       ) => {
-        void stream
-          .writeSSE({
-            event: LOCAL_RETENTION_EVENT,
-            data: JSON.stringify(settings),
-          })
-          .catch((error) =>
-            logger.debug("Local retention stream closed", error),
-          );
+        void writer.writeSSE({
+          event: LOCAL_RETENTION_EVENT,
+          data: JSON.stringify(settings),
+        });
       };
       const unsubscribeSettings =
         c.req.query("retention") === "1"
@@ -424,16 +448,38 @@ export function createLocalControlPlane({
       if (c.req.query("retention") === "1")
         sendSettings(retention.getSettings());
       const readerId = buffer.subscribe(
-        buildSSEHandler(stream, c.req.query("base64") !== undefined),
+        buildSSEHandler(writer, c.req.query("base64") !== undefined),
         c.req.header("Last-Event-ID"),
       );
-      await new Promise<void>((resolve) => {
-        stream.onAbort(() => {
-          buffer.unsubscribe(readerId);
-          unsubscribeSettings();
-          resolve();
-        });
+      let finish: () => void = () => {};
+      const finished = new Promise<void>((resolve) => {
+        finish = resolve;
       });
+      const unsubscribeSession = sessionStore.subscribe(reference, (event) => {
+        if (event.state === "retained" && event.action !== "reset") {
+          buffer.stream(readerId);
+          buffer.unsubscribe(readerId);
+          void sendSession(event).finally(finish);
+        } else {
+          void sendSession(event);
+        }
+      });
+      stream.onAbort(finish);
+      try {
+        const state = sessionStore.resolve(reference).state;
+        if (state === "retained") {
+          buffer.stream(readerId);
+          await sendSession({ state });
+        } else {
+          await sendSession({ state });
+          await finished;
+        }
+        await pending;
+      } finally {
+        buffer.unsubscribe(readerId);
+        unsubscribeSettings();
+        unsubscribeSession();
+      }
     });
   });
 
@@ -468,7 +514,7 @@ export function createLocalControlPlane({
     if (!sessionExists(c.req.param("id"))) {
       return c.body(null, 404);
     }
-    sessionStore.getBuffer(c.req.param("id")).clear();
+    sessionStore.reset(c.req.param("id"));
     return c.body(null, 204);
   });
 
@@ -494,7 +540,7 @@ export function createLocalControlPlane({
     }
     if (c.req.param("action") === "retention") return updateRetention(c);
     if (c.req.param("action") === "reset") {
-      sessionStore.getBuffer(c.req.param("id")).clear();
+      sessionStore.reset(c.req.param("id"));
       return c.body(null, 204);
     }
     return c.json(sessionStore.close(c.req.param("id")));

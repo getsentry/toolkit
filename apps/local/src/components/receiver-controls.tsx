@@ -4,6 +4,7 @@ import {
   Settings,
   Trash2,
   X,
+  Unplug,
   type LucideIcon,
 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -15,6 +16,8 @@ type ReceiverControlsProps = {
   connection: ConnectionPresentation;
   retainedItemCount: number;
   onClear: () => void;
+  onDisconnect?: () => void;
+  isClearing?: boolean;
   onOpenSettings?: (trigger: HTMLButtonElement) => void;
   onCloseSession?: () => void;
   isClosingSession?: boolean;
@@ -35,6 +38,8 @@ export function ReceiverControls({
   connection,
   retainedItemCount,
   onClear,
+  onDisconnect,
+  isClearing = false,
   onOpenSettings,
   onCloseSession,
   isClosingSession = false,
@@ -73,7 +78,7 @@ export function ReceiverControls({
       label: "Clear all events",
       Icon: Trash2,
       onClick: onClear,
-      disabled: retainedItemCount === 0,
+      disabled: retainedItemCount === 0 || isClearing,
       destructive: true,
     },
     ...(onCloseSession
@@ -82,10 +87,13 @@ export function ReceiverControls({
             label: "Close session",
             Icon: X,
             onClick: onCloseSession,
-            disabled: isClosingSession,
+            disabled: isClosingSession || isClearing,
             destructive: true,
           },
         ]
+      : []),
+    ...(onDisconnect
+      ? [{ label: "Disconnect receiver", Icon: Unplug, onClick: onDisconnect }]
       : []),
   ];
   const dotClass =

@@ -71,7 +71,11 @@ function envelope(transaction: string, options: EnvelopeOptions = {}): string {
 }
 
 async function startReceiver() {
-  return tryListen(buildApp(createSpotlightBuffer(10)), 0, "127.0.0.1");
+  return tryListen(
+    buildApp(createSpotlightBuffer(10), { uiActions: true }),
+    0,
+    "127.0.0.1",
+  );
 }
 
 async function stopReceiver(
@@ -861,6 +865,54 @@ describe("local receiver to viewer integration", () => {
     );
     await openLatestReceiver();
     await screen.findByText("Connected to local receiver");
+  });
+
+  test("clear ignores pre-reset deliveries and reconnects without replacing the workspace shell", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    window.localStorage.setItem(
+      STREAM_STORAGE_KEY,
+      "http://127.0.0.1:8969/_local/v1/sessions/reset-run/stream?cap=reset-test",
+    );
+    let completeReset: ((response: Response) => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            completeReset = resolve;
+          }),
+      ),
+    );
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    const deliver = (message: string, id: string) =>
+      source.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([{}, [[{ type: "event" }, { message }]]]),
+          lastEventId: id,
+        }),
+      );
+    await act(async () => {
+      source.onopen?.(new Event("open"));
+      deliver("before reset", "before");
+    });
+    const shell = screen.getByRole("complementary", {
+      name: "Workspace navigation",
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear events", exact: true }),
+    );
+    await act(async () => deliver("stale queued event", "stale"));
+    expect(screen.queryByText("stale queued event")).toBeNull();
+    expect(
+      screen.getByRole("complementary", { name: "Workspace navigation" }),
+    ).toBe(shell);
+    await act(async () => completeReset?.(new Response(null, { status: 204 })));
+    expect(ControllableEventSource.instances).toHaveLength(2);
+    expect(
+      screen.getByRole("complementary", { name: "Workspace navigation" }),
+    ).toBe(shell);
   });
 
   test("unchanged Add receiver retries a disconnected scoped session without losing its events or selection", async () => {
@@ -1759,7 +1811,12 @@ describe("local receiver to viewer integration", () => {
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
         "http://127.0.0.1:8969/_local/v1/sessions/session-1/ui/reset?cap=read-capability",
       );
-      expect(fetchMock.mock.calls[0]?.[1]).toEqual({ method: "POST" });
+      expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+        expect.objectContaining({
+          method: "POST",
+          signal: expect.any(AbortSignal),
+        }),
+      );
       if (resetStatus !== 204) {
         await screen.findByText(
           "Cleared this viewer, but the receiver could not clear its retained session.",
@@ -1786,21 +1843,18 @@ describe("local receiver to viewer integration", () => {
           "Telemetry session closed. Retained events remain available for three hours.",
         ),
       ).toBeNull();
+      expect(screen.getByLabelText("Workspace navigation")).not.toBeNull();
+      expect(screen.queryByLabelText("Receiver endpoint")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Reload saved events" }),
+      ).not.toBeNull();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Disconnect receiver" }),
+      );
+      await screen.findByRole("heading", { name: "Connect a receiver" });
       expect(
         screen.getByRole("region", { name: "Past connections" }),
       ).not.toBeNull();
-      expect(
-        screen.getByRole("button", { name: "Reconnect to session" }),
-      ).not.toBeNull();
-      fireEvent.click(
-        screen.getByRole("button", { name: "Reconnect to session" }),
-      );
-      await openLatestReceiver();
-      expect(
-        screen.getByRole("heading", { name: "Session closed" }),
-      ).not.toBeNull();
-      expect(screen.queryByText("Waiting for events")).toBeNull();
-      expect(screen.queryByText("Waiting for events")).toBeNull();
       expect(screen.getByLabelText("Receiver endpoint")).not.toBeNull();
       await waitFor(() =>
         expect(
@@ -1924,7 +1978,10 @@ describe("local receiver to viewer integration", () => {
           screen.queryByRole("button", { name: "Close telemetry session" }),
         ).toBeNull();
         fireEvent.click(
-          screen.getByRole("button", { name: "Reconnect", exact: true }),
+          screen.getByRole("button", {
+            name: "Reload saved events",
+            exact: true,
+          }),
         );
         const replay = await openLatestReceiver();
         await act(async () => replay.onerror?.(new Event("error")));

@@ -550,3 +550,68 @@ test("a session lifecycle refresh immediately replaces a stale Running badge wit
     await daemon.stop();
   }
 });
+
+test("close, archive replay, clear and disconnect keep the viewer lifecycle stable", async () => {
+  const daemon = await startDaemon();
+  try {
+    const web = await daemon.create("web");
+    const worker = await daemon.create("worker");
+    await daemon.ingest(web, "/archived-web");
+    await daemon.ingest(worker, "/running-worker");
+    renderSession(web);
+    await screen.findAllByText("/archived-web");
+    daemon.plane.sessionStore.close(web.id);
+    await screen.findByRole("heading", { name: "Session closed", exact: true });
+    expect(screen.queryByRole("alert")).toBeNull();
+    await selectSession("worker");
+    await screen.findAllByText("/running-worker");
+    await selectSession("web");
+    await screen.findAllByText("/archived-web");
+    await screen.findByRole("heading", { name: "Session closed", exact: true });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear events", exact: true }),
+    );
+    await screen.findByRole("heading", {
+      name: "No saved events displayed",
+      exact: true,
+    });
+    expect(screen.queryByLabelText("Receiver endpoint")).toBeNull();
+    expect(
+      screen.getByRole("complementary", { name: "Workspace navigation" }),
+    ).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reload saved events", exact: true }),
+    );
+    await screen.findAllByText("/archived-web");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Disconnect receiver", exact: true }),
+    );
+    await screen.findByRole("heading", {
+      name: "Connect a receiver",
+      exact: true,
+    });
+    expect(
+      screen.queryByRole("combobox", { name: "Session", exact: true }),
+    ).toBeNull();
+    expect(
+      daemon.plane.sessionStore.getRetention(web.id).getSettings()
+        .retainedEnvelopes,
+    ).toBe(1);
+    cleanup();
+    renderViewer();
+    await screen.findByRole("heading", {
+      name: "Connect a receiver",
+      exact: true,
+    });
+    expect(screen.queryByText("/archived-web")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    await screen.findAllByText("/archived-web");
+    await screen.findByRole("heading", { name: "Session closed", exact: true });
+    expect(screen.queryByRole("alert")).toBeNull();
+  } finally {
+    cleanup();
+    await daemon.stop();
+  }
+}, 15_000);

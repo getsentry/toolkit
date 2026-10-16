@@ -122,3 +122,26 @@ test("mobile actions prevent empty clears and duplicate close requests", async (
   expect(add).toHaveBeenCalledWith(trigger);
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
+
+test("mobile disconnect returns to connections without clearing or closing", async () => {
+  const disconnect = vi.fn();
+  const clear = vi.fn();
+  const close = vi.fn();
+  render(
+    <ReceiverControls
+      connection={connection}
+      retainedItemCount={2}
+      onClear={clear}
+      onCloseSession={close}
+      onDisconnect={disconnect}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Receiver options" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Disconnect receiver" }),
+  );
+  expect(disconnect).toHaveBeenCalledOnce();
+  expect(clear).not.toHaveBeenCalled();
+  expect(close).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});

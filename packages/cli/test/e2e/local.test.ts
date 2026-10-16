@@ -264,6 +264,42 @@ describe("Local daemon E2E", () => {
     ).toHaveLength(1);
   }, 30_000);
 
+  test("close freezes capture and reconnect replays a finite archive until reset", async () => {
+    const session = await createSession("archive", await availablePort());
+    await ingest(session, "saved-id", "saved-before-close");
+    expect((await cli("session", "close", session.id)).exitCode).toBe(0);
+    const rejected = await fetch(session.ingestUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-sentry-envelope" },
+      body: '{}\n{"type":"event"}\n{"message":"must-not-arrive"}',
+    });
+    expect(rejected.status).toBe(410);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const archive = await fetch(session.streamUrl, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const text = await archive.text();
+      expect(text).toContain("saved-before-close");
+      expect(text).toContain("event: sentry.local.session");
+      expect(text).toContain('"state":"retained"');
+      expect(text).not.toContain("must-not-arrive");
+    }
+    const reset = new URL(session.streamUrl);
+    reset.pathname = reset.pathname.replace(/\/stream$/, "/ui/reset");
+    expect((await fetch(reset, { method: "POST" })).status).toBe(204);
+    const empty = await (
+      await fetch(session.streamUrl, { signal: AbortSignal.timeout(5000) })
+    ).text();
+    expect(empty).toContain('"state":"retained"');
+    expect(empty).not.toContain("saved-before-close");
+    const directory = (await (await fetch(session.directoryUrl)).json()) as {
+      sessions: { id: string; state: string }[];
+    };
+    expect(
+      directory.sessions.find((entry) => entry.id === session.id)?.state,
+    ).toBe("retained");
+  }, 30_000);
+
   test.each(
     ["stop", "restart"].flatMap((command) =>
       ["delayed", "rejected", "never", "hung"].map((mode) => ({
@@ -439,8 +475,13 @@ describe("Local daemon E2E", () => {
     });
     const reader = stream.body?.getReader();
     expect(reader).toBeDefined();
-    const first = await reader?.read();
-    expect(new TextDecoder().decode(first?.value)).toContain("web event");
+    let replay = "";
+    while (!replay.includes("web event")) {
+      const chunk = await reader!.read();
+      if (chunk.done) throw new Error("Stream ended before retained event");
+      replay += new TextDecoder().decode(chunk.value);
+    }
+    expect(replay).toContain("web event");
     await reader?.cancel();
     const resetUrl = new URL(web.streamUrl);
     resetUrl.pathname = resetUrl.pathname.replace(/\/stream$/, "/ui/reset");

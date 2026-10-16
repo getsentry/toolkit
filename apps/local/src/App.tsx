@@ -8,6 +8,8 @@ import {
   rememberConnection,
   saveConnectionHistory,
   receiverAddress,
+  getInitialDisconnected,
+  saveDisconnected,
 } from "./lib/connection-history.ts";
 import { SessionSwitcher } from "./components/session-switcher.tsx";
 import {
@@ -16,7 +18,10 @@ import {
   saveSessionDirectory,
 } from "./lib/session-directory.ts";
 import { LocalSettings } from "./components/local-settings.tsx";
-import { LOCAL_DIRECTORY_EVENT } from "../../../packages/cli/src/commands/local/viewer-protocol.ts";
+import {
+  LOCAL_DIRECTORY_EVENT,
+  LOCAL_SESSION_EVENT,
+} from "../../../packages/cli/src/commands/local/viewer-protocol.ts";
 import {
   DEFAULT_MAX_ENVELOPES,
   isValidMaxEnvelopes,
@@ -28,6 +33,7 @@ import {
   ChevronRight,
   Copy,
   Menu,
+  Unplug,
   Radio,
   Settings,
   Trash2,
@@ -524,6 +530,8 @@ type WorkspaceSidebarProps = {
   snapshot: LocalTelemetrySnapshot;
   traceCount: number;
   onClear: () => void;
+  onDisconnect: () => void;
+  isClearing: boolean;
   onCloseSession?: () => void;
   onChangeReceiver: (trigger: HTMLButtonElement) => void;
   isClosingSession: boolean;
@@ -542,6 +550,8 @@ function WorkspaceSidebar({
   snapshot,
   traceCount,
   onClear,
+  onDisconnect,
+  isClearing,
   onCloseSession,
   onChangeReceiver,
   isClosingSession,
@@ -555,7 +565,7 @@ function WorkspaceSidebar({
       label: "Clear events",
       Icon: Trash2,
       onClick: onClear,
-      disabled: retainedItemCount === 0,
+      disabled: retainedItemCount === 0 || isClearing,
     },
     ...(onCloseSession
       ? [
@@ -563,10 +573,16 @@ function WorkspaceSidebar({
             label: "Close telemetry session",
             Icon: X,
             onClick: onCloseSession,
-            disabled: isClosingSession,
+            disabled: isClosingSession || isClearing,
           },
         ]
       : []),
+    {
+      label: "Disconnect receiver",
+      Icon: Unplug,
+      onClick: onDisconnect,
+      disabled: false,
+    },
   ];
   const statusLabel = connection.label.replace(" to local receiver", "");
   const statusDotClass =
@@ -576,6 +592,12 @@ function WorkspaceSidebar({
         ? "bg-amber-500"
         : "bg-muted-foreground";
 
+  const statusPillClass =
+    connection.tone === "success"
+      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+      : connection.tone === "warning"
+        ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+        : "bg-muted text-muted-foreground";
   return (
     <aside
       aria-label="Workspace navigation"
@@ -617,7 +639,7 @@ function WorkspaceSidebar({
           className={`flex h-8 items-center rounded-md ${
             collapsed
               ? "justify-center px-0"
-              : "gap-2 bg-emerald-500/10 px-2.5 text-emerald-700 dark:text-emerald-400"
+              : `gap-2 px-2.5 ${statusPillClass}`
           }`}
         >
           <span className={`size-2 shrink-0 rounded-full ${statusDotClass}`} />
@@ -747,7 +769,7 @@ function WorkspaceSidebar({
                       aria-label={label}
                       disabled={disabled}
                       onClick={onClick}
-                      className={`text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${collapsed ? "w-full" : ""}`}
+                      className={`text-muted-foreground ${label === "Disconnect receiver" ? "" : "hover:bg-destructive/10 hover:text-destructive"} ${collapsed ? "w-full" : ""}`}
                     >
                       <Icon className="size-4 shrink-0" aria-hidden="true" />
                     </Button>
@@ -791,13 +813,20 @@ export default function App() {
       window.location.search,
     ),
   );
+  const [isDisconnected, setIsDisconnected] = useState(getInitialDisconnected);
+  const [hasEstablishedConnection, setHasEstablishedConnection] =
+    useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const clearingGeneration = useRef<number | undefined>(undefined);
   const [directoryUrl, setDirectoryUrl] = useState(() =>
     getInitialSessionDirectory(streamUrl),
   );
   const activeDirectoryUrl = parseSessionDirectoryUrl(directoryUrl, streamUrl);
   const connectionGeneration = useRef(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
-  const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [connection, setConnection] = useState<ConnectionState>(
+    isDisconnected ? "missing" : "connecting",
+  );
   const [draftEndpoint, setDraftEndpoint] = useState(() =>
     receiverAddress(streamUrl),
   );
@@ -816,7 +845,8 @@ export default function App() {
   const [isClosingSession, setIsClosingSession] = useState(false);
   const closingGeneration = useRef<number | undefined>(undefined);
   const [isEditingReceiver, setIsEditingReceiver] = useState(false);
-  const [isConnectionEnabled, setIsConnectionEnabled] = useState(true);
+  const [isConnectionEnabled, setIsConnectionEnabled] =
+    useState(!isDisconnected);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState<string>();
   const [retentionLimit, setRetentionLimit] = useState(DEFAULT_MAX_ENVELOPES);
@@ -959,21 +989,55 @@ export default function App() {
     markItemsSeen(nextWorkspace);
   };
 
-  const clearItems = () => {
+  const clearDisplayedItems = () => {
     isClearingCommandSearch.current = true;
     setCommandSearchQuery("");
     telemetryStore.clear();
     setMessage(undefined);
     setLastViewedItemIds({});
     void workspaceQuery.clearWorkspace();
-
+  };
+  const clearDisplayedItemsRef = useRef(clearDisplayedItems);
+  useEffect(() => {
+    clearDisplayedItemsRef.current = clearDisplayedItems;
+  });
+  const disconnectReceiver = () => {
+    connectionGeneration.current += 1;
+    cancelReceiverAttempt();
+    setIsConnectionEnabled(false);
+    setIsConnecting(false);
+    setHasEstablishedConnection(false);
+    setIsDisconnected(true);
+    saveDisconnected(true);
+    setConnection("missing");
+    setClosedSessionUrl(undefined);
+    setConnectionError(undefined);
+    setReceiverError(undefined);
+    setIsEditingReceiver(false);
+    setIsSettingsOpen(false);
+    setIsClearing(false);
+    clearingGeneration.current = undefined;
+    closingGeneration.current = undefined;
+    setIsClosingSession(false);
+    setDraftEndpoint(receiverAddress(streamUrl));
+    receiverEndpointEdited.current = false;
+    clearDisplayedItems();
+  };
+  const clearItems = () => {
+    if (isClearing) return;
     const endpoint = parseStreamEndpoint(streamUrl);
+    clearDisplayedItems();
     if (
       endpoint?.kind !== "loopback" ||
       !isLoopbackHost(window.location.hostname)
-    ) {
+    )
       return;
-    }
+    // Pause this generation before resetting. Replaying afterward captures all
+    // post-reset arrivals without allowing queued pre-reset events back in.
+    const generation = ++connectionGeneration.current;
+    clearingGeneration.current = generation;
+    setIsClearing(true);
+    setIsConnectionEnabled(false);
     const clearUrl = new URL(endpoint.url);
     const scopedSession = isScopedSessionStream(clearUrl.pathname);
     if (scopedSession) {
@@ -982,17 +1046,31 @@ export default function App() {
       clearUrl.pathname = "/clear";
       clearUrl.search = "";
     }
-    const generation = connectionGeneration.current;
-    void fetch(clearUrl, { method: scopedSession ? "POST" : "DELETE" })
+    void fetch(clearUrl, {
+      method: scopedSession ? "POST" : "DELETE",
+      signal: AbortSignal.timeout(5000),
+    })
       .then((response) => {
         if (!response.ok)
           throw new Error(`Session reset failed with HTTP ${response.status}`);
+        if (connectionGeneration.current === generation)
+          connectToEndpoint(streamUrl);
       })
       .catch(() => {
         if (connectionGeneration.current !== generation) return;
+        setConnection("failed");
+        setConnectionError(
+          "Could not clear receiver data. Reconnect to try again.",
+        );
         setMessage(
           "Cleared this viewer, but the receiver could not clear its retained session.",
         );
+      })
+      .finally(() => {
+        if (clearingGeneration.current === generation) {
+          clearingGeneration.current = undefined;
+          setIsClearing(false);
+        }
       });
   };
 
@@ -1061,6 +1139,10 @@ export default function App() {
       return;
     }
     cancelReceiverAttempt();
+    setIsDisconnected(false);
+    saveDisconnected(false);
+    setIsClearing(false);
+    clearingGeneration.current = undefined;
     connectionGeneration.current += 1;
     closingGeneration.current = undefined;
     setIsClosingSession(false);
@@ -1246,6 +1328,42 @@ export default function App() {
         "Connection timed out after 10 seconds. Check the endpoint and try again.",
       );
     }, CONNECTION_TIMEOUT_MS);
+    const onSession = (event: Event) => {
+      if (!isActiveConnection()) return;
+      let metadata: unknown;
+      try {
+        metadata = JSON.parse((event as MessageEvent<string>).data);
+      } catch {
+        return;
+      }
+      if (
+        !metadata ||
+        typeof metadata !== "object" ||
+        !("state" in metadata) ||
+        (metadata.state !== "open" && metadata.state !== "retained")
+      )
+        return;
+      if ("action" in metadata && metadata.action === "reset") {
+        clearDisplayedItemsRef.current();
+        return;
+      }
+      if (metadata.state === "retained") {
+        // This notification follows the complete archive replay. EOF is normal,
+        // and must not be mistaken for a failed receiver or trigger live retry.
+        isCurrent = false;
+        source.close();
+        window.clearTimeout(timeoutId);
+        connectionGeneration.current += 1;
+        setIsConnectionEnabled(false);
+        setIsConnecting(false);
+        setHasEstablishedConnection(true);
+        setConnection("closed");
+        setClosedSessionUrl(streamUrl);
+        setConnectionError(undefined);
+        setMessage(undefined);
+      }
+    };
+    source.addEventListener(LOCAL_SESSION_EVENT, onSession);
     const onEnvelope = (event: Event) => {
       if (!isActiveConnection()) {
         return;
@@ -1280,6 +1398,7 @@ export default function App() {
       }
       window.clearTimeout(timeoutId);
       setIsConnecting(false);
+      setHasEstablishedConnection(true);
       const endpoint = parseStreamEndpoint(streamUrl);
       if (endpoint?.kind === "loopback") {
         saveStreamUrl(endpoint.url);
@@ -1312,6 +1431,7 @@ export default function App() {
       isCurrent = false;
       window.clearTimeout(timeoutId);
       source.removeEventListener(SENTRY_ENVELOPE_EVENT, onEnvelope);
+      source.removeEventListener(LOCAL_SESSION_EVENT, onSession);
       source.removeEventListener(LOCAL_RETENTION_EVENT, onRetention);
       source.removeEventListener(LOCAL_DIRECTORY_EVENT, onDirectory);
       source.close();
@@ -1319,10 +1439,8 @@ export default function App() {
   }, [connectionAttempt, isConnectionEnabled, streamUrl, telemetryStore]);
 
   const showConnectionLanding =
-    !hasRetainedItems && (isClosedSession || connection !== "connected");
-  const isReceiverUnavailable =
-    !hasRetainedItems &&
-    (isClosedSession || (connection !== "connected" && !isConnecting));
+    isDisconnected || (!hasEstablishedConnection && !hasRetainedItems);
+  const isReceiverUnavailable = showConnectionLanding && !isConnecting;
   const canSearch = hasRetainedItems && !isEditingReceiver && !isSettingsOpen;
   const commandNavigation: CommandNavigationItem[] = workspaceNavigation.map(
     ({ icon, id, label }) => ({ icon, id, label }),
@@ -1357,9 +1475,11 @@ export default function App() {
         count={telemetry.envelopes.length}
         editable={canEditRetention && connection === "connected"}
         unavailableReason={
-          canEditRetention && connection !== "connected"
-            ? "Reconnect to this receiver to change retention."
-            : undefined
+          connection === "closed"
+            ? "Retention is read-only for closed sessions."
+            : canEditRetention && connection !== "connected"
+              ? "Reconnect to this receiver to change retention."
+              : undefined
         }
       />
       <div
@@ -1376,6 +1496,8 @@ export default function App() {
             snapshot={telemetry}
             traceCount={traces.length}
             onClear={clearItems}
+            onDisconnect={disconnectReceiver}
+            isClearing={isClearing}
             onCloseSession={
               hasScopedSession && !isClosedSession
                 ? closeScopedSession
@@ -1446,6 +1568,8 @@ export default function App() {
                 connection={presentation}
                 retainedItemCount={retainedItemCount}
                 onClear={clearItems}
+                onDisconnect={disconnectReceiver}
+                isClearing={isClearing}
                 onCloseSession={
                   hasScopedSession && !isClosedSession
                     ? closeScopedSession
@@ -1495,7 +1619,7 @@ export default function App() {
               className="flex min-h-0 min-w-0 flex-1 flex-col"
               aria-label="Local Sentry events"
             >
-              {activeDirectoryUrl ? (
+              {activeDirectoryUrl && !isDisconnected ? (
                 <SessionSwitcher
                   key={activeDirectoryUrl}
                   refreshKey={closedSessionUrl}
@@ -1510,8 +1634,9 @@ export default function App() {
                   onSelect={connectToEndpoint}
                 />
               ) : null}
-              {hasRetainedItems &&
-              (isClosedSession || connection === "failed") ? (
+              {!isDisconnected &&
+              (isClosedSession ||
+                (hasRetainedItems && connection === "failed")) ? (
                 <div
                   role="status"
                   className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b bg-muted/20 px-4 py-2"
@@ -1543,7 +1668,7 @@ export default function App() {
                     aria-busy={isConnecting}
                     onClick={() => connectToEndpoint(streamUrl)}
                   >
-                    Reconnect
+                    {isClosedSession ? "Reload saved events" : "Reconnect"}
                   </Button>
                 </div>
               ) : null}
@@ -1560,18 +1685,11 @@ export default function App() {
                 <ConnectionLanding
                   {...connectionForm}
                   phase={
-                    isClosedSession
-                      ? "closed"
-                      : connection === "connecting"
-                        ? "probing"
-                        : connection === "failed"
-                          ? "failed"
-                          : "editing"
-                  }
-                  onReconnectSession={
-                    isClosedSession
-                      ? () => connectToEndpoint(streamUrl)
-                      : undefined
+                    connection === "connecting"
+                      ? "probing"
+                      : connection === "failed"
+                        ? "failed"
+                        : "editing"
                   }
                 />
               ) : !hasRetainedItems ? (
@@ -1580,9 +1698,15 @@ export default function App() {
                     className="mb-3 size-5 text-primary"
                     aria-hidden="true"
                   />
-                  <p className="font-medium">Waiting for events</p>
+                  <h2 className="font-medium">
+                    {isClosedSession
+                      ? "No saved events displayed"
+                      : "Waiting for events"}
+                  </h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Send events to the selected receiver to see them here.
+                    {isClosedSession
+                      ? "Capture has stopped. Reload saved events or connect to another session."
+                      : "Send events to the selected receiver to see them here."}
                   </p>
                 </div>
               ) : workspaceView === "traces" ? (

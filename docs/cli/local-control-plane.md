@@ -119,11 +119,20 @@ saving session capabilities in the list. Remote URLs stay in tab session storage
 query credentials are omitted from their displayed labels. No history entry is
 created for a failed connection.
 
-Closing a session stops capture and keeps already displayed events available
-for inspection and search. A compact status row offers **Reconnect** to replay retained
-data. When no events are displayed, the landing explains that capture stopped and
-offers **Reconnect to session**, another endpoint, and past connections. Closing
-is guarded against duplicate requests and times out if the receiver does not respond.
+Closing a session stops capture immediately: later ingestion receives HTTP 410,
+including requests whose bodies finish after Close. Saved events remain readable
+for three hours from the first Close; retries and attempted ingestion do not extend
+that deadline. **Reload saved events** replays the archive without resuming capture.
+The viewer keeps the workspace visible even when the archive is empty. Close is
+guarded against duplicate requests and times out if the receiver does not respond.
+
+**Disconnect receiver** returns to the connection screen without closing capture
+or deleting receiver data. This tab stays disconnected after a reload; use Connect,
+past connections, or an explicit connection link to resume. **Clear events** resets
+local receiver data when permitted and resumes only an open session's feed. Closed
+sessions stay closed and empty after a reset. Other connected viewers receive reset
+and close notifications. The hosted viewer clears only its displayed data; reloading
+saved events restores the daemon's archive.
 
 ### Switching sessions
 
@@ -176,7 +185,7 @@ change the limit at runtime with validation; increases preserve captured data,
 and lowering it below the retained count is rejected until enough data is cleared.
 Retention is read-only in the hosted viewer; use the CLI to change it there.
 The sidebar keeps Add receiver on its own row, with Settings at the left and
-Clear/Close icons at the right beneath it. Icon tooltips also work with keyboard focus.
+Clear, Close, and Disconnect icons at the right beneath it. Icon tooltips also work with keyboard focus.
 
 A loopback-served viewer can reset and close its scoped session. The hosted viewer
 can read the stream and clear its own displayed feed; it cannot mutate retained
@@ -194,7 +203,7 @@ from earlier connections, including when returning to the same receiver URL.
 Search and view navigation remain available for retained telemetry after a
 receiver disconnects or a session closes, including raw-only envelopes. A trace
 search with no matches explains how to change or clear the filter. Closing an
-empty session returns to the receiver picker. Waterfall failure styling uses
+empty session keeps the workspace visible; Disconnect returns to the receiver picker. Waterfall failure styling uses
 each span's own level, HTTP status, and SDK span status; a failed transaction does not mark healthy child
 spans as failures. The AI workspace matches AI namespaces (`ai`, `gen_ai`,
 `llm`), including dotted origins, rather than substrings of ordinary operations.

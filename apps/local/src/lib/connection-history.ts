@@ -61,3 +61,25 @@ export function saveConnectionHistory(history: string[]): void {
     // The current tab's in-memory history still works when storage is unavailable.
   }
 }
+
+const DISCONNECTED_KEY = "sentry.local.disconnected";
+/** An explicit link or user Connect overrides a tab's disconnected landing. */
+export function getInitialDisconnected(): boolean {
+  const fragment = new URLSearchParams(window.location.hash.slice(1));
+  const query = new URLSearchParams(window.location.search);
+  if (parseStreamEndpoint(fragment.get("stream") ?? query.get("url") ?? ""))
+    return false;
+  try {
+    return window.sessionStorage.getItem(DISCONNECTED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+export function saveDisconnected(disconnected: boolean): void {
+  try {
+    if (disconnected) window.sessionStorage.setItem(DISCONNECTED_KEY, "1");
+    else window.sessionStorage.removeItem(DISCONNECTED_KEY);
+  } catch {
+    /* The current tab still works when storage is disabled. */
+  }
+}

@@ -168,19 +168,13 @@ export function ConnectionForm({
 }
 
 export type ConnectionLandingProps = ConnectionFormProps & {
-  phase: "probing" | "failed" | "editing" | "closed";
-  onReconnectSession?: () => void;
+  phase: "probing" | "failed" | "editing";
 };
 
 /** A focused landing when no captured events are available to inspect. */
-export function ConnectionLanding({
-  phase,
-  onReconnectSession,
-  ...form
-}: ConnectionLandingProps) {
+export function ConnectionLanding({ phase, ...form }: ConnectionLandingProps) {
   const titleId = useId();
   const isProbing = phase === "probing";
-  const closed = phase === "closed";
   return (
     <section
       aria-labelledby={titleId}
@@ -196,43 +190,22 @@ export function ConnectionLanding({
             {isProbing ? (
               <span className="absolute -inset-1 rounded-full border-2 border-primary/15 border-r-primary/50 border-t-primary motion-safe:animate-[spin_1.1s_linear_infinite] motion-reduce:animate-none" />
             ) : null}
-            {closed ? (
-              <Check className="size-5 text-primary" aria-hidden="true" />
-            ) : (
-              <Radio
-                className={`size-5 ${isProbing ? "text-primary" : "text-muted-foreground"}`}
-                aria-hidden="true"
-              />
-            )}
+            <Radio
+              className={`size-5 ${isProbing ? "text-primary" : "text-muted-foreground"}`}
+              aria-hidden="true"
+            />
           </div>
           <div>
             <h2 id={titleId} className="text-lg font-semibold tracking-tight">
-              {isProbing
-                ? "Connecting to receiver"
-                : closed
-                  ? "Session closed"
-                  : "Connect a receiver"}
+              {isProbing ? "Connecting to receiver" : "Connect a receiver"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {isProbing
                 ? "Establishing a connection…"
-                : closed
-                  ? "Events remain available for up to 3 hours."
-                  : "Inspect events from your local development sessions."}
+                : "Inspect events from your local development sessions."}
             </p>
           </div>
         </div>
-        {onReconnectSession ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={form.isConnecting}
-            aria-busy={form.isConnecting}
-            onClick={onReconnectSession}
-          >
-            Reconnect to session
-          </Button>
-        ) : null}
         <ConnectionForm {...form} />
       </div>
     </section>

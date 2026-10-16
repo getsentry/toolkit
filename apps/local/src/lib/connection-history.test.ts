@@ -1,6 +1,8 @@
 import { afterEach, expect, test } from "vitest";
 import {
   CONNECTION_HISTORY_KEY,
+  getInitialDisconnected,
+  saveDisconnected,
   connectionLabel,
   readConnectionHistory,
   rememberConnection,
@@ -10,6 +12,7 @@ import {
 afterEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
+  window.history.replaceState(null, "", "/");
 });
 
 test("recent receivers deduplicate daemon sessions without storing their capabilities", () => {
@@ -51,4 +54,19 @@ test("history rejects malformed storage and unsafe endpoints", () => {
     ]),
   );
   expect(readConnectionHistory()).toEqual(["http://localhost:9000/stream"]);
+});
+
+test("disconnect survives reload but an explicit receiver link overrides it", () => {
+  saveDisconnected(true);
+  expect(getInitialDisconnected()).toBe(true);
+  window.history.replaceState(
+    null,
+    "",
+    "/?url=" + encodeURIComponent("http://127.0.0.1:8969/stream"),
+  );
+  expect(getInitialDisconnected()).toBe(false);
+  window.history.replaceState(null, "", "/");
+  expect(getInitialDisconnected()).toBe(true);
+  saveDisconnected(false);
+  expect(getInitialDisconnected()).toBe(false);
 });
