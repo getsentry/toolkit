@@ -28,10 +28,12 @@ export function nightlyTimestamp(version) {
 
 /**
  * Returns human-readable problems with the nightly pipeline. `runs` are Build
- * workflow push runs on main, newest first; `headCommitTime` is the committer
- * time of the newest run's commit, which the Build stamps into the version.
+ * workflow push runs on main, newest first, including every unfinished run no
+ * matter how old. `expected` is the newest run created before the staleness
+ * grace period, with the committer time the Build stamps into its version; the
+ * nightly must be at least that new, however many pushes came after it.
  */
-export function assessNightly({ now, runs, nightlyVersion, headCommitTime }) {
+export function assessNightly({ now, runs, nightlyVersion, expected }) {
   const problems = [];
 
   for (const run of runs) {
@@ -53,16 +55,16 @@ export function assessNightly({ now, runs, nightlyVersion, headCommitTime }) {
     );
   }
 
-  if (runs.length > 0 && now - headCommitTime > STALE_AFTER_MS) {
+  if (expected) {
     let published;
     try {
       published = nightlyTimestamp(nightlyVersion);
     } catch (error) {
       problems.push(`Could not read the published nightly: ${error.message}`);
     }
-    if (published !== undefined && published < headCommitTime) {
+    if (published !== undefined && published < expected.commitTime) {
       problems.push(
-        `GHCR \`nightly\` is \`${nightlyVersion}\` (${new Date(published).toISOString()}), older than main \`${runs[0].head_sha.slice(0, 8)}\` committed at ${new Date(headCommitTime).toISOString()}.`,
+        `GHCR \`nightly\` is \`${nightlyVersion}\` (${new Date(published).toISOString()}), older than main \`${expected.sha.slice(0, 8)}\` committed at ${new Date(expected.commitTime).toISOString()}.`,
       );
     }
   }
@@ -111,22 +113,50 @@ async function main() {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
-  const { workflow_runs: runs } = await getJson(
-    `${api}/actions/workflows/${BUILD_WORKFLOW}/runs?branch=main&event=push&per_page=50`,
-    headers,
-  );
-  let headCommitTime = 0;
-  if (runs.length > 0) {
-    const commit = await getJson(`${api}/commits/${runs[0].head_sha}`, headers);
-    headCommitTime = Date.parse(commit.commit.committer.date);
+  const listRuns = async (query) =>
+    (
+      await getJson(
+        `${api}/actions/workflows/${BUILD_WORKFLOW}/runs?branch=main&event=push&${query}`,
+        headers,
+      )
+    ).workflow_runs;
+  const now = Date.now();
+
+  // A stuck run is the oldest one, so query unfinished runs by status rather
+  // than relying on them still being on the first page of recent runs.
+  const byId = new Map();
+  for (const batch of await Promise.all([
+    listRuns("per_page=50"),
+    ...[...UNFINISHED].map((status) =>
+      listRuns(`status=${status}&per_page=100`),
+    ),
+  ])) {
+    for (const run of batch) {
+      byId.set(run.id, run);
+    }
   }
+  const runs = [...byId.values()].sort(
+    (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
+  );
+
+  const cutoff = new Date(now - STALE_AFTER_MS).toISOString();
+  const [reference] = await listRuns(
+    `created=${encodeURIComponent(`<${cutoff}`)}&per_page=1`,
+  );
+  let expected = null;
+  if (reference) {
+    const commit = await getJson(
+      `${api}/commits/${reference.head_sha}`,
+      headers,
+    );
+    expected = {
+      sha: reference.head_sha,
+      commitTime: Date.parse(commit.commit.committer.date),
+    };
+  }
+
   const nightlyVersion = await readNightlyVersion(repository);
-  const problems = assessNightly({
-    now: Date.now(),
-    runs,
-    nightlyVersion,
-    headCommitTime,
-  });
+  const problems = assessNightly({ now, runs, nightlyVersion, expected });
 
   const report = [
     problems.length === 0

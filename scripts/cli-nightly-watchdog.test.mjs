@@ -17,6 +17,10 @@ function run(id, status, conclusion, createdAt) {
   };
 }
 
+function expected(commitTime) {
+  return { sha: "e".repeat(40), commitTime: Date.parse(commitTime) };
+}
+
 test("reads the commit timestamp stamped into nightly versions", () => {
   assert.equal(nightlyTimestamp("0.48.0-dev.1791270977"), 1791270977 * 1000);
   assert.throws(() => nightlyTimestamp("0.48.0"));
@@ -31,7 +35,7 @@ test("is quiet while a fresh build is publishing the newest commit", () => {
       run(2, "completed", "success", "2026-10-16T20:00:00Z"),
     ],
     nightlyVersion: `0.48.0-dev.${Date.parse("2026-10-16T20:00:00Z") / 1000}`,
-    headCommitTime: Date.parse("2026-10-16T22:19:00Z"),
+    expected: expected("2026-10-16T20:00:00Z"),
   });
   assert.deepEqual(problems, []);
 });
@@ -47,11 +51,27 @@ test("flags a run parked on an environment gate and the stale nightly behind it"
       run(1, "waiting", null, "2026-10-06T09:14:45Z"),
     ],
     nightlyVersion: "0.48.0-dev.1791270977",
-    headCommitTime: Date.parse("2026-10-16T18:00:00Z"),
+    expected: expected("2026-10-16T18:00:00Z"),
   });
   assert.equal(problems.length, 2);
   assert.match(problems[0], /runs\/1\).*`waiting` since 2026-10-06/);
   assert.match(problems[1], /0\.48\.0-dev\.1791270977.*older than main/);
+});
+
+test("keeps flagging a stale nightly while fresh pushes keep arriving", () => {
+  // Each new push used to restart the grace period. The commit pushed before
+  // the grace period must be published regardless of what came after it.
+  const problems = assessNightly({
+    now,
+    runs: [
+      run(9, "pending", null, "2026-10-16T22:25:00Z"),
+      run(8, "completed", "cancelled", "2026-10-16T21:50:00Z"),
+    ],
+    nightlyVersion: "0.48.0-dev.1791270977",
+    expected: expected("2026-10-16T19:00:00Z"),
+  });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /older than main `eeeeeeee`/);
 });
 
 test("flags the latest finished build failing, ignoring superseded runs", () => {
@@ -63,7 +83,7 @@ test("flags the latest finished build failing, ignoring superseded runs", () => 
       run(1, "completed", "success", "2026-10-16T20:00:00Z"),
     ],
     nightlyVersion: `0.48.0-dev.${Date.parse("2026-10-16T20:00:00Z") / 1000}`,
-    headCommitTime: Date.parse("2026-10-16T21:59:00Z"),
+    expected: expected("2026-10-16T20:00:00Z"),
   });
   assert.equal(problems.length, 1);
   assert.match(problems[0], /runs\/2\).*concluded `failure`/);
@@ -74,7 +94,7 @@ test("treats an unreadable nightly manifest as a problem once the grace period p
     now,
     runs: [run(1, "completed", "success", "2026-10-16T18:00:00Z")],
     nightlyVersion: "unreadable (GET ... returned 404)",
-    headCommitTime: now - 4 * HOUR,
+    expected: expected(new Date(now - 4 * HOUR).toISOString()),
   });
   assert.equal(problems.length, 1);
   assert.match(problems[0], /Could not read the published nightly/);
