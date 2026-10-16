@@ -84,7 +84,7 @@ export default defineTool({
     openWorldHint: true,
   },
   async handler(params, context: ServerContext) {
-    if (!getClient()) {
+    if (!getClient()?.getDsn()) {
       throw new ConfigurationError(
         "Problem report not sent: Sentry telemetry is not configured for this MCP server.",
       );

@@ -10,12 +10,16 @@ vi.mock("@sentry/core", async (importOriginal) => ({
   getClient: vi.fn(),
 }));
 
+function mockClient(dsn: object | undefined): void {
+  vi.mocked(getClient).mockReturnValue({
+    getDsn: () => dsn,
+  } as unknown as ReturnType<typeof getClient>);
+}
+
 describe("report_sentry_problem", () => {
   beforeEach(() => {
     vi.mocked(captureFeedback).mockClear();
-    vi.mocked(getClient).mockReturnValue(
-      {} as unknown as ReturnType<typeof getClient>,
-    );
+    mockClient({ host: "o1.ingest.sentry.io" });
   });
 
   it("sends the report as user feedback", async () => {
@@ -79,8 +83,14 @@ describe("report_sentry_problem", () => {
     expect(params?.tags?.["agent_report.client_family"]).toBe("unknown");
   });
 
-  it("fails when Sentry telemetry is not configured", async () => {
-    vi.mocked(getClient).mockReturnValue(undefined);
+  it.each([
+    [
+      "no Sentry client is registered",
+      () => vi.mocked(getClient).mockReturnValue(undefined),
+    ],
+    ["the Sentry DSN is empty", () => mockClient(undefined)],
+  ])("fails when %s", async (_label, setup) => {
+    setup();
 
     await expect(
       reportSentryProblem.handler(
