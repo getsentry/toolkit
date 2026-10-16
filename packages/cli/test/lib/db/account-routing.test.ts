@@ -16,7 +16,11 @@ import {
   setAuthToken,
 } from "../../../src/lib/db/auth.js";
 import { closeDatabase, getDatabase } from "../../../src/lib/db/index.js";
-import { setOrgRegion, setOrgRegions } from "../../../src/lib/db/regions.js";
+import {
+  ORG_CACHE_TTL_MS,
+  setOrgRegion,
+  setOrgRegions,
+} from "../../../src/lib/db/regions.js";
 import { CURRENT_SCHEMA_VERSION } from "../../../src/lib/db/schema.js";
 import { getUserInfo, setUserInfo } from "../../../src/lib/db/user.js";
 import { resolveOrgRegion } from "../../../src/lib/region.js";
@@ -117,6 +121,20 @@ describe("organization-based selection", () => {
     login("personal-token", SAAS, "personal");
 
     selectAccountForOrg("shared-org");
+
+    expect(getAuthToken()).toBe("personal-token");
+  });
+
+  test("keeps an account whose cached org list has expired", () => {
+    login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS);
+    const personal = login("personal-token", SAAS, "personal");
+    seeOrgList(SAAS, ["personal-org"]);
+    getDatabase()
+      .query("UPDATE org_regions SET updated_at = ? WHERE account_id = ?")
+      .run(Date.now() - ORG_CACHE_TTL_MS - 1000, personal);
+
+    selectAccountForOrg("work-org");
 
     expect(getAuthToken()).toBe("personal-token");
   });

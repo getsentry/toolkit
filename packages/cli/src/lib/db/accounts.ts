@@ -319,15 +319,19 @@ export function listAccountRowsForOrg(
 }
 
 /**
- * Whether a full organization list is cached for an account (rows written
- * by `listOrganizations`, which carry the numeric org id). Only then can an
- * org's absence mean the account is not a member.
+ * Whether a fresh full organization list is cached for an account (rows
+ * written by `listOrganizations`, which carry the numeric org id, updated
+ * after `freshSince`). Only then can an org's absence mean the account is
+ * not a member; an expired list may predate a new membership.
  */
-export function hasCachedOrgList(accountId: string): boolean {
+export function hasCachedOrgList(
+  accountId: string,
+  freshSince: number,
+): boolean {
   const row = getDatabase()
     .query(
-      "SELECT 1 AS found FROM org_regions WHERE account_id = ? AND org_id IS NOT NULL LIMIT 1",
+      "SELECT 1 AS found FROM org_regions WHERE account_id = ? AND org_id IS NOT NULL AND updated_at > ? LIMIT 1",
     )
-    .get(accountId) as { found: number } | null | undefined;
+    .get(accountId, freshSince) as { found: number } | null | undefined;
   return Boolean(row);
 }

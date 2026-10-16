@@ -50,7 +50,7 @@ import { getAccountScope, resetAccountScopes } from "./account-scope.js";
 import { hashIdentity } from "./identity-hash.js";
 import { getDatabase } from "./index.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
-import { clearTrustedHostState } from "./regions.js";
+import { clearTrustedHostState, ORG_CACHE_TTL_MS } from "./regions.js";
 
 /** Refresh when less than 10% of token lifetime remains */
 export const REFRESH_THRESHOLD = 0.1;
@@ -779,13 +779,14 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
       return;
     }
     const current = getAuthRow();
-    // Respect the account in effect unless its cached org list shows it is
-    // not a member: after `sentry auth switch`, an account that simply
-    // hasn't used the org yet must not be overridden by one that has.
+    // Respect the account in effect unless its fresh cached org list shows
+    // it is not a member: after `sentry auth switch`, an account that simply
+    // hasn't used the org yet must not be overridden by one that has. Uses
+    // the same TTL as `getCachedOrganizations`.
     if (
       current &&
       (owners.some((o) => o.account_id === current.account_id) ||
-        !hasCachedOrgList(current.account_id))
+        !hasCachedOrgList(current.account_id, Date.now() - ORG_CACHE_TTL_MS))
     ) {
       return;
     }

@@ -480,7 +480,7 @@ export type CachedOrg = {
  * fresh API fetch. 7 days balances offline usability with picking up
  * new org memberships.
  */
-const ORG_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const ORG_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Get all cached organizations with id, slug, and name.
