@@ -162,7 +162,11 @@ type LoginFlags = {
 };
 
 /** Command function type extracted from loader result */
-type LoginFunc = (this: unknown, flags: LoginFlags) => Promise<void>;
+type LoginFunc = (
+  this: unknown,
+  flags: LoginFlags,
+  email?: string,
+) => Promise<void>;
 
 const SAMPLE_USER = {
   id: "42",
@@ -203,6 +207,7 @@ function createContext() {
 function expectTokenStored(
   spy: ReturnType<typeof spyOn>,
   expectedToken: string,
+  newAccount = true,
 ): void {
   // shared helper
   expect(spy).toHaveBeenCalled();
@@ -211,7 +216,7 @@ function expectTokenStored(
   // shared helper
   expect(spy.mock.calls[0]?.[3]).toMatchObject({
     host: expect.any(String),
-    newAccount: true,
+    newAccount,
   });
 }
 
@@ -275,6 +280,65 @@ describe("loginCommand.func --token path", () => {
 
     expect(setAuthTokenSpy).not.toHaveBeenCalled();
     expect(getCurrentUserSpy).not.toHaveBeenCalled();
+  });
+
+  test("already authenticated (non-TTY) with an email: adds that account without prompting", async () => {
+    isAuthenticatedSpy.mockReturnValue(true);
+    runInteractiveLoginSpy.mockResolvedValue({
+      method: "oauth",
+      configPath: "/fake",
+    });
+
+    const { context } = createContext();
+    await func.call(
+      context,
+      { force: false, timeout: 900 },
+      "jane@example.com",
+    );
+
+    expect(runInteractiveLoginSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newAccount: true,
+        expectedEmail: "jane@example.com",
+      }),
+    );
+  });
+
+  test("--force: replaces the active account instead of adding one", async () => {
+    isAuthenticatedSpy.mockReturnValue(true);
+    runInteractiveLoginSpy.mockResolvedValue({
+      method: "oauth",
+      configPath: "/fake",
+    });
+
+    const { context } = createContext();
+    await func.call(context, { force: true, timeout: 900 });
+
+    expect(runInteractiveLoginSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ newAccount: false }),
+    );
+  });
+
+  test("--token with an email for someone else: removes the stored token and fails", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue({
+      ...SAMPLE_USER,
+      email: "bob@example.com",
+    });
+
+    const { context } = createContext();
+    await expect(
+      func.call(
+        context,
+        { token: "new-token", force: false, timeout: 900 },
+        "jane@example.com",
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    expect(removeAccountSpy).toHaveBeenCalledWith("new-account");
+    expect(setUserInfoSpy).not.toHaveBeenCalled();
   });
 
   test("already authenticated (env token SENTRY_AUTH_TOKEN): warns and proceeds to OAuth login", async () => {
@@ -558,7 +622,7 @@ describe("loginCommand.func --token path", () => {
     expect(runInteractiveLoginSpy).toHaveBeenCalled();
   });
 
-  test("--force --token when authenticated: adds the token as an account", async () => {
+  test("--force --token when authenticated: replaces the active account's token", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     clearAuthSpy.mockResolvedValue(undefined);
     setAuthTokenSpy.mockReturnValue(undefined);
@@ -574,7 +638,7 @@ describe("loginCommand.func --token path", () => {
     });
 
     expect(clearAuthSpy).not.toHaveBeenCalled();
-    expectTokenStored(setAuthTokenSpy, "new-token");
+    expectTokenStored(setAuthTokenSpy, "new-token", false);
     expect(getStdout()).toContain("Authenticated");
   });
 
@@ -664,7 +728,7 @@ describe("login re-authentication interactive prompt", () => {
     const promptMessage = (mockPrompt.mock.calls[0] as unknown as string[])[0];
     expect(promptMessage).toContain("Jane Doe");
     expect(promptMessage).toContain("jane@example.com");
-    expect(promptMessage).toContain("Log in again or add another account?");
+    expect(promptMessage).toContain("Add another account?");
   });
 
   test("shows 'current user' fallback when no cached user info", async () => {

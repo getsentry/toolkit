@@ -196,3 +196,27 @@ describe("auth switch", () => {
     expect(listAccounts()).toEqual([]);
   });
 });
+
+describe("auth switch selection", () => {
+  test("uses a close match with a warning", async () => {
+    const { saas } = seedTwoAccounts();
+    const func = (await switchCommand.loader()) as unknown as SwitchFunc;
+
+    await func.call(createContext().context, { json: false }, "jane@example");
+
+    expect(getAuthToken()).toBe("saas-token");
+    expect(listAccounts().find((a) => a.active)?.id).toBe(saas);
+  });
+
+  test("--url without an account switches to the only account on that server", async () => {
+    seedTwoAccounts();
+    const func = (await switchCommand.loader()) as unknown as SwitchFunc;
+
+    await func.call(createContext().context, {
+      json: false,
+      url: "https://sentry.io",
+    } as { json: boolean });
+
+    expect(getAuthToken()).toBe("saas-token");
+  });
+});

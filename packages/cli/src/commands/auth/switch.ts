@@ -14,6 +14,7 @@ import { buildCommand } from "../../lib/command.js";
 import {
   type AccountSummary,
   getAccountRow,
+  isAccountOnServer,
   listAccounts,
   toAccountSummary,
 } from "../../lib/db/accounts.js";
@@ -22,27 +23,48 @@ import {
   getAuthConfig,
   setActiveAccount,
 } from "../../lib/db/auth.js";
-import { AuthError } from "../../lib/errors.js";
+import { AuthError, ResolutionError } from "../../lib/errors.js";
 import {
   type AccountSwitchResult,
   formatAccountSwitch,
 } from "../../lib/formatters/accounts.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import { parseLoginUrl } from "./login.js";
 
 const COMMAND = "sentry auth switch";
+
+type SwitchFlags = {
+  readonly url?: string;
+};
 
 async function pickAccount(
   selector: string | undefined,
   accounts: AccountSummary[],
+  url: string | undefined,
 ): Promise<AccountSummary | undefined> {
   if (selector !== undefined) {
-    return resolveAccountSelector(selector, COMMAND);
+    return resolveAccountSelector(selector, COMMAND, { url, fuzzy: true });
   }
-  const [only] = accounts;
-  if (accounts.length === 1 && only) {
+  const candidates = url
+    ? accounts.filter((a) => isAccountOnServer(a, url))
+    : accounts;
+  if (candidates.length === 0) {
+    throw new ResolutionError(
+      `Account on '${url}'`,
+      "not found",
+      `${COMMAND} [account] --url <server>`,
+      ["Run 'sentry auth list' to see stored accounts"],
+    );
+  }
+  const [only] = candidates;
+  if (candidates.length === 1 && only) {
     return only;
   }
-  return await promptForAccount(accounts, "Switch to which account?", COMMAND);
+  return await promptForAccount(
+    candidates,
+    "Switch to which account?",
+    COMMAND,
+  );
 }
 
 export const switchCommand = buildCommand({
@@ -55,17 +77,27 @@ export const switchCommand = buildCommand({
       "credentials and server (the default URL is updated to match; SENTRY_HOST\n" +
       "and SENTRY_URL still take precedence).\n\n" +
       "Select the account by email, username, user ID, or account ID (see\n" +
-      "'sentry auth list --json'). When the same user is stored on several\n" +
-      "servers, use '<email>@<server-hostname>'. Without an argument, pick from\n" +
-      "a list interactively.\n\n" +
+      "'sentry auth list --json'). A close but inexact match (e.g. 'jane' for\n" +
+      "'jane@acme.com') is used with a warning when it is the only one. When\n" +
+      "the same user is stored on several servers, add --url <server> (or use\n" +
+      "'<email>@<server-hostname>'). Without an argument, pick from a\n" +
+      "searchable list interactively.\n\n" +
       "Examples:\n" +
       "  sentry auth switch\n" +
       "  sentry auth switch jane@acme.com\n" +
-      "  sentry auth switch jane@acme.com@sentry.acme.com",
+      "  sentry auth switch jane@acme.com --url https://sentry.acme.com",
   },
   output: { human: formatAccountSwitch },
   parameters: {
-    flags: {},
+    flags: {
+      url: {
+        kind: "parsed",
+        parse: parseLoginUrl,
+        brief:
+          "Only consider accounts on this server (disambiguates the same email on several servers)",
+        optional: true,
+      },
+    },
     positional: {
       kind: "tuple",
       parameters: [
@@ -78,7 +110,7 @@ export const switchCommand = buildCommand({
       ],
     },
   },
-  async *func(this: SentryContext, _flags: object, selector?: string) {
+  async *func(this: SentryContext, flags: SwitchFlags, selector?: string) {
     const accounts = listAccounts();
     if (accounts.length === 0) {
       throw new AuthError("not_authenticated", undefined, {
@@ -86,7 +118,7 @@ export const switchCommand = buildCommand({
       });
     }
 
-    const target = await pickAccount(selector, accounts);
+    const target = await pickAccount(selector, accounts, flags.url);
     if (!target) {
       return;
     }

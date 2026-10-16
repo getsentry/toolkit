@@ -1764,7 +1764,11 @@ export function formatLogoutResult(data: LogoutResult): string {
   const [only] = removed;
   let removedLabel = "";
   if (removed.length > 1) {
-    removedLabel = ` of all ${removed.length} accounts`;
+    removedLabel = data.all
+      ? ` of all ${removed.length} accounts`
+      : ` of ${removed.length} accounts (${removed
+          .map((a) => escapeMarkdownInline(formatAccountLabel(a)))
+          .join(", ")})`;
   } else if (only) {
     removedLabel = ` of ${escapeMarkdownInline(formatAccountLabel(only))}`;
   }

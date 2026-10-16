@@ -380,8 +380,8 @@ sentry auth logout
 Authenticate with Sentry
 
 - `sentry auth list` — List stored accounts
-- `sentry auth login` — Authenticate with Sentry
-- `sentry auth logout [<account>]` — Log out of Sentry
+- `sentry auth login [<email>]` — Authenticate with Sentry
+- `sentry auth logout <account...>` — Log out of Sentry
 - `sentry auth refresh` — Refresh your OAuth access token
 - `sentry auth status` — View authentication status
 - `sentry auth switch [<account>]` — Switch the active account

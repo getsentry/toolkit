@@ -8,7 +8,10 @@
  */
 
 import { createHash } from "node:crypto";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { uuidv7 } from "uuidv7";
+import { fuzzyMatch } from "../fuzzy.js";
+import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { getDatabase } from "./index.js";
 
 /** Raw `accounts` row. */
@@ -219,9 +222,67 @@ export function findAccounts(selector: string): AccountSummary[] {
   );
 }
 
+/**
+ * Stored accounts whose email, username, or name resembles `selector`,
+ * ranked by the shared {@link fuzzyMatch} matcher (prefix, substring, then
+ * small typos). Used when {@link findAccounts} has no exact match, to
+ * suggest — or, for non-destructive commands, pick — the intended account.
+ */
+export function findSimilarAccounts(
+  selector: string,
+  maxResults = 5,
+): AccountSummary[] {
+  const needle = selector.trim();
+  if (!needle) {
+    return [];
+  }
+  const byValue = new Map<string, AccountSummary[]>();
+  for (const account of listAccounts()) {
+    const host = hostnameOf(account.host);
+    const values = [
+      account.email,
+      account.username,
+      account.name,
+      account.email && host ? `${account.email}@${host}` : undefined,
+    ];
+    for (const value of values) {
+      if (value) {
+        byValue.set(value, [...(byValue.get(value) ?? []), account]);
+      }
+    }
+  }
+  const ranked: AccountSummary[] = [];
+  for (const value of fuzzyMatch(needle, [...byValue.keys()])) {
+    for (const account of byValue.get(value) ?? []) {
+      if (!ranked.some((a) => a.id === account.id)) {
+        ranked.push(account);
+      }
+    }
+  }
+  return ranked.slice(0, maxResults);
+}
+
 function matchesIdentity(account: AccountSummary, needle: string): boolean {
   return [account.email, account.username, account.userId].some(
     (value) => value?.toLowerCase() === needle,
+  );
+}
+
+/**
+ * Whether an account's stored host is the given server: the same origin,
+ * or both SaaS (`*.sentry.io`). `false` for an account without a host.
+ */
+export function isAccountOnServer(
+  account: Pick<AccountSummary, "host">,
+  url: string,
+): boolean {
+  const host = account.host ? normalizeHttpOrigin(account.host) : undefined;
+  const target = normalizeHttpOrigin(url);
+  if (!(host && target)) {
+    return false;
+  }
+  return (
+    host === target || (isSaaSTrustOrigin(host) && isSaaSTrustOrigin(target))
   );
 }
 

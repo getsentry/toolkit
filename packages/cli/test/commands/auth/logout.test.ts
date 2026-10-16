@@ -21,8 +21,8 @@ import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 type LogoutFunc = (
   this: unknown,
-  flags: { all?: boolean },
-  selector?: string,
+  flags: { url?: string },
+  ...selectors: string[]
 ) => Promise<void>;
 
 useTestConfigDir("auth-logout-");
@@ -72,7 +72,7 @@ describe("logoutCommand.func", () => {
     const func = await loadFunc();
     const { context, getOutput } = createContext();
 
-    await func.call(context, { all: false });
+    await func.call(context, {});
 
     expect(getOutput()).toContain("Not currently authenticated");
   });
@@ -85,7 +85,7 @@ describe("logoutCommand.func", () => {
     const func = await loadFunc();
     const { context, getOutput } = createContext();
 
-    await func.call(context, { all: false });
+    await func.call(context, {});
 
     expect(listAccounts()).toEqual([]);
     expect(getAuthToken()).toBeUndefined();
@@ -98,7 +98,7 @@ describe("logoutCommand.func", () => {
     const func = await loadFunc();
     const { context } = createContext();
 
-    const error = await func.call(context, { all: false }).catch((e) => e);
+    const error = await func.call(context, {}).catch((e) => e);
 
     expect(error).toBeInstanceOf(AuthError);
     const msg = (error as AuthError).message;
@@ -112,7 +112,7 @@ describe("logoutCommand.func", () => {
     const func = await loadFunc();
     const { context } = createContext();
 
-    const error = await func.call(context, { all: false }).catch((e) => e);
+    const error = await func.call(context, {}).catch((e) => e);
 
     expect(error).toBeInstanceOf(AuthError);
     expect((error as AuthError).message).toContain("SENTRY_TOKEN");
@@ -127,7 +127,7 @@ describe("logoutCommand.func", () => {
     const func = await loadFunc();
     const { context, getOutput } = createContext();
 
-    await func.call(context, { all: false });
+    await func.call(context, {});
 
     expect(listAccounts()).toEqual([]);
     expect(getOutput()).toContain("Logged out of");
@@ -147,7 +147,7 @@ describe("logoutCommand.func with several accounts", () => {
     const func = await loadFunc();
     const { context, getOutput } = createContext();
 
-    await func.call(context, { all: false });
+    await func.call(context, {});
 
     const remaining = listAccounts();
     expect(remaining.map((a) => a.email)).toEqual(["work@example.com"]);
@@ -169,7 +169,7 @@ describe("logoutCommand.func with several accounts", () => {
     const func = await loadFunc();
     const { context } = createContext();
 
-    await func.call(context, { all: false });
+    await func.call(context, {});
 
     expect(getAuthToken()).toBe("saas-token");
     expect(getDefaultUrl()).toBeNull();
@@ -187,7 +187,7 @@ describe("logoutCommand.func with several accounts", () => {
     const func = await loadFunc();
     const { context } = createContext();
 
-    await func.call(context, { all: false }, "work@example.com");
+    await func.call(context, {}, "work@example.com");
 
     expect(listAccounts().map((a) => a.email)).toEqual([
       "personal@example.com",
@@ -204,12 +204,12 @@ describe("logoutCommand.func with several accounts", () => {
     const { context } = createContext();
 
     await expect(
-      func.call(context, { all: false }, "nobody@example.com"),
+      func.call(context, {}, "nobody@example.com"),
     ).rejects.toBeInstanceOf(ResolutionError);
     expect(listAccounts()).toHaveLength(1);
   });
 
-  test("--all removes every stored account", async () => {
+  test("'all' removes every stored account", async () => {
     addAccount("work-token", "https://sentry.io", {
       userId: "1",
       email: "work@example.com",
@@ -221,10 +221,82 @@ describe("logoutCommand.func with several accounts", () => {
     const func = await loadFunc();
     const { context, getOutput } = createContext();
 
-    await func.call(context, { all: true });
+    await func.call(context, {}, "all");
 
     expect(listAccounts()).toEqual([]);
     expect(getAuthToken()).toBeUndefined();
     expect(getOutput()).toContain("Logged out of all 2 accounts");
+  });
+
+  test("logs out of several comma- or space-separated accounts", async () => {
+    addAccount("a-token", "https://sentry.io", {
+      userId: "1",
+      email: "a@example.com",
+    });
+    addAccount("b-token", "https://sentry.io", {
+      userId: "2",
+      email: "b@example.com",
+    });
+    addAccount("c-token", "https://sentry.io", {
+      userId: "3",
+      email: "c@example.com",
+    });
+    const func = await loadFunc();
+    const { context, getOutput } = createContext();
+
+    await func.call(context, {}, "a@example.com,c@example.com");
+
+    expect(listAccounts().map((a) => a.email)).toEqual(["b@example.com"]);
+    expect(getAuthToken()).toBe("b-token");
+    expect(getOutput()).toContain("Logged out of 2 accounts");
+
+    addAccount("d-token", "https://sentry.io", {
+      userId: "4",
+      email: "d@example.com",
+    });
+    await func.call(context, {}, "b@example.com", "d@example.com");
+    expect(listAccounts()).toEqual([]);
+  });
+
+  test("--url picks the account on that server when an email is stored twice", async () => {
+    addAccount("saas-token", "https://sentry.io", {
+      userId: "1",
+      email: "jane@example.com",
+    });
+    addAccount("self-token", "https://sentry.example.com", {
+      userId: "1",
+      email: "jane@example.com",
+    });
+    const func = await loadFunc();
+    const { context } = createContext();
+
+    await expect(
+      func.call(context, {}, "jane@example.com"),
+    ).rejects.toBeInstanceOf(ResolutionError);
+
+    await func.call(
+      context,
+      { url: "https://sentry.example.com" },
+      "jane@example.com",
+    );
+
+    expect(listAccounts().map((a) => a.host)).toEqual(["https://sentry.io"]);
+  });
+
+  test("does not log out of a fuzzy match, only suggests it", async () => {
+    addAccount("work-token", "https://sentry.io", {
+      userId: "1",
+      email: "work@example.com",
+    });
+    const func = await loadFunc();
+    const { context } = createContext();
+
+    const error = await func.call(context, {}, "work").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    expect(String((error as Error).message)).toContain(
+      "Did you mean work@example.com",
+    );
+    expect(listAccounts()).toHaveLength(1);
   });
 });

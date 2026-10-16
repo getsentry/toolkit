@@ -194,6 +194,51 @@ describe("runInteractiveLogin", () => {
     });
   });
 
+  test("expectedEmail: refuses a login approved as someone else without storing it", async () => {
+    performDeviceFlowSpy = vi
+      .spyOn(oauth, "performDeviceFlow")
+      .mockResolvedValue(
+        makeTokenResponse({
+          id: "1",
+          name: "Bob",
+          email: "bob@example.com",
+        }),
+      );
+
+    const result = await runInteractiveLogin({
+      timeout: 1000,
+      newAccount: true,
+      expectedEmail: "jane@example.com",
+    });
+
+    expect(result).toBeNull();
+    expect(completeOAuthFlowSpy).not.toHaveBeenCalled();
+    expect(setUserInfoSpy).not.toHaveBeenCalled();
+  });
+
+  test("expectedEmail: stores a matching login (case-insensitive) as requested", async () => {
+    performDeviceFlowSpy = vi
+      .spyOn(oauth, "performDeviceFlow")
+      .mockResolvedValue(
+        makeTokenResponse({
+          id: "1",
+          name: "Jane",
+          email: "Jane@Example.com",
+        }),
+      );
+
+    const result = await runInteractiveLogin({
+      timeout: 1000,
+      newAccount: true,
+      expectedEmail: "jane@example.com",
+    });
+
+    expect(result).not.toBeNull();
+    expect(completeOAuthFlowSpy).toHaveBeenCalledWith(expect.anything(), {
+      newAccount: true,
+    });
+  });
+
   test("null user.email is omitted from result", async () => {
     performDeviceFlowSpy = vi
       .spyOn(oauth, "performDeviceFlow")
