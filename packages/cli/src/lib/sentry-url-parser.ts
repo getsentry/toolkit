@@ -9,7 +9,8 @@
  */
 
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
-import { DEFAULT_SENTRY_HOST } from "./constants.js";
+import { DEFAULT_SENTRY_HOST, DEFAULT_SENTRY_URL } from "./constants.js";
+import { hasStoredAccountForHost } from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { HostScopeError } from "./errors.js";
 import { tryNormalizeHexId } from "./hex-id.js";
@@ -421,11 +422,26 @@ export function applySentryUrlContext(baseUrl: string): void {
     delete env.SENTRY_HOST;
     // env registry requires delete to truly unset; assignment coerces to string in Node.js
     delete env.SENTRY_URL;
+    // When the active account is self-hosted but a SaaS account is stored,
+    // name SaaS explicitly so that account is used (see db/auth `getAuthRow`).
+    const activeHost = getActiveTokenHost();
+    if (
+      !(activeHost && isSaaSTrustOrigin(activeHost)) &&
+      hasStoredAccountForHost(DEFAULT_SENTRY_URL)
+    ) {
+      env.SENTRY_URL = DEFAULT_SENTRY_URL;
+    }
     return;
   }
 
+  // A stored account on this server is used for it (see db/auth `getAuthRow`).
   const tokenHost = getActiveTokenHost();
-  if (!(tokenHost && isHostTrusted(baseUrl, tokenHost))) {
+  if (
+    !(
+      (tokenHost && isHostTrusted(baseUrl, tokenHost)) ||
+      hasStoredAccountForHost(baseUrl)
+    )
+  ) {
     throw new HostScopeError("URL argument", baseUrl, tokenHost);
   }
 

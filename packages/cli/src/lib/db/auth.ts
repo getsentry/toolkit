@@ -2,13 +2,26 @@
  * Authentication credential storage.
  *
  * Credentials live in the multi-row `accounts` table (see `accounts.ts`).
- * Every read and refresh here targets the single active account, so the
- * rest of the CLI keeps a one-credential view while users can store and
- * switch between several logins.
+ * Every read and refresh here targets one *effective* account, so the rest
+ * of the CLI keeps a one-credential view while users store several logins.
+ *
+ * The effective account is chosen per invocation, most specific first:
+ *   1. An account pinned for this invocation because it knows the targeted
+ *      organization ({@link selectAccountForOrg}).
+ *   2. An account on the configured server (`SENTRY_HOST`/`SENTRY_URL`,
+ *      `--url`, a pasted Sentry URL, or `.sentryclirc`) when the active
+ *      account is on a different one.
+ *   3. The active account (`sentry auth login` / `sentry auth switch`).
  */
 
 import { normalizeAuthToken, trimAuthToken } from "../auth-header.js";
-import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
+import {
+  clearPersistedDefaultUrl,
+  DEFAULT_SENTRY_URL,
+  getConfiguredSentryUrl,
+  isPersistedDefaultUrlInEffect,
+  markPersistedDefaultUrl,
+} from "../constants.js";
 import { getEnv } from "../env.js";
 import {
   getBootConfiguredSentryUrl,
@@ -25,10 +38,16 @@ import {
   deleteAccountRows,
   getAccountRow,
   getActiveAccountRow,
-  hashIdentity,
+  hasCachedOrgList,
   insertActiveAccountRow,
+  isAccountRowUsable,
+  isSameServer,
   listAccountRows,
+  listAccountRowsForOrg,
+  mostRecentAccountRow,
 } from "./accounts.js";
+import { getAccountScope, resetAccountScopes } from "./account-scope.js";
+import { hashIdentity } from "./identity-hash.js";
 import { getDatabase } from "./index.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
 import { clearTrustedHostState } from "./regions.js";
@@ -47,9 +66,71 @@ type AuthRow = AccountRow;
 
 const log = logger.withTag("auth");
 
-/** Read the active account row. Returns `undefined` when none is active. */
+/** `SENTRY_HOST`/`SENTRY_URL`, or `undefined` when unset or malformed. */
+function getConfiguredUrlOrUndefined(): string | undefined {
+  try {
+    return getConfiguredSentryUrl();
+  } catch (error) {
+    // Malformed values surface where requests are built; selection ignores them.
+    log.debug(
+      "Ignoring invalid SENTRY_HOST/SENTRY_URL for account selection",
+      error,
+    );
+    return;
+  }
+}
+
+/**
+ * Prefer an account on the configured server when the active account is
+ * on another one. Without a configured server, or without a stored
+ * account for it, the active account stays in effect (and the host trust
+ * checks report the mismatch exactly as before).
+ */
+function selectAccountForConfiguredHost(
+  active: AuthRow | undefined,
+): AuthRow | undefined {
+  const configured = getConfiguredUrlOrUndefined();
+  if (!configured) {
+    return active;
+  }
+  // NULL host: pre-v16 row, scoped lazily by migrateNullHost. Keep it.
+  if (active && (!active.host || isSameServer(active.host, configured))) {
+    return active;
+  }
+  const onHost = listAccountRows().filter(
+    (row) =>
+      row.host && isSameServer(row.host, configured) && isAccountRowUsable(row),
+  );
+  return mostRecentAccountRow(onHost) ?? active;
+}
+
+/**
+ * The effective account row for credential reads: pinned for this
+ * invocation, else one on the configured server, else the active one.
+ * Account management (switch, logout) uses the stored active row directly.
+ */
 function getAuthRow(): AuthRow | undefined {
-  return getActiveAccountRow();
+  const pinned = getAccountScope().accountId;
+  if (pinned) {
+    const row = getAccountRow(pinned);
+    if (row) {
+      return row;
+    }
+  }
+  return selectAccountForConfiguredHost(getActiveAccountRow());
+}
+
+/** The stored account whose credentials this invocation uses, if any. */
+export function getEffectiveAccountRow(): AccountRow | undefined {
+  return getAuthRow();
+}
+
+/**
+ * Key for memoized credential state. The effective account depends on the
+ * invocation's pin and configured server, so the memo must too.
+ */
+function selectionKey(): string {
+  return `${getAccountScope().accountId ?? ""}\0${getConfiguredUrlOrUndefined() ?? ""}`;
 }
 
 /**
@@ -320,9 +401,25 @@ export function getUsableStoredTokenHost(): string | undefined {
 }
 
 const authCacheState = {
-  tokens: new WeakMap<NodeJS.ProcessEnv, { value: string | undefined }>(),
-  fingerprints: new WeakMap<NodeJS.ProcessEnv, string>(),
+  tokens: new WeakMap<
+    NodeJS.ProcessEnv,
+    Map<string, { value: string | undefined }>
+  >(),
+  fingerprints: new WeakMap<NodeJS.ProcessEnv, Map<string, string>>(),
 };
+
+/** The per-env, per-selection memo map in `store`, created on first use. */
+function memoFor<T>(
+  store: WeakMap<NodeJS.ProcessEnv, Map<string, T>>,
+): Map<string, T> {
+  const env = getEnv();
+  let memo = store.get(env);
+  if (!memo) {
+    memo = new Map();
+    store.set(env, memo);
+  }
+  return memo;
+}
 
 /**
  * Get the active auth token.
@@ -331,13 +428,14 @@ const authCacheState = {
  * With `SENTRY_FORCE_ENV_TOKEN=1`: checks env vars first (old behavior).
  */
 export function getAuthToken(): string | undefined {
-  const env = getEnv();
-  const cached = authCacheState.tokens.get(env);
+  const memo = memoFor(authCacheState.tokens);
+  const key = selectionKey();
+  const cached = memo.get(key);
   if (cached !== undefined) {
     return cached.value;
   }
   const value = computeAuthToken();
-  authCacheState.tokens.set(env, { value });
+  memo.set(key, { value });
   return value;
 }
 
@@ -380,29 +478,41 @@ export function resetAuthTokenCache(): void {
   authCacheState.tokens = new WeakMap();
 }
 
-/** Memoized result for {@link hasStoredAuthCredentials}. */
-let cachedHasStoredCreds: { value: boolean } | undefined;
+/** Memoized results for {@link hasStoredAuthCredentials}, by selection. */
+const cachedHasStoredCreds = new Map<string, boolean>();
 
-/** Memoized full auth row for {@link refreshToken}. */
-let cachedAuthRow: { value: AuthRow | undefined } | undefined;
+/** Memoized effective auth rows for {@link refreshToken}, by selection. */
+const cachedAuthRows = new Map<string, { value: AuthRow | undefined }>();
 
 function getCachedAuthRow(): AuthRow | undefined {
-  if (cachedAuthRow !== undefined) {
-    return cachedAuthRow.value;
+  const key = selectionKey();
+  const cached = cachedAuthRows.get(key);
+  if (cached !== undefined) {
+    return cached.value;
   }
   const row = getAuthRow();
-  cachedAuthRow = { value: row };
+  cachedAuthRows.set(key, { value: row });
   return row;
 }
 
 /** Reset the memoized auth row. Tests only — call between auth-state mutations. */
 export function resetAuthRowCache(): void {
-  cachedAuthRow = undefined;
+  cachedAuthRows.clear();
 }
 
 /** Reset the memoized stored-credentials flag. Tests only — call between auth-state mutations. */
 export function resetHasStoredCredsCache(): void {
-  cachedHasStoredCreds = undefined;
+  cachedHasStoredCreds.clear();
+}
+
+/**
+ * Forget accounts pinned by {@link selectAccountForOrg}. Tests only: in the
+ * CLI a pin lasts for the invocation, and library calls get a fresh env.
+ */
+export function resetAccountSelection(): void {
+  resetAccountScopes();
+  clearPersistedDefaultUrl();
+  resetActiveCredentialState();
 }
 
 /**
@@ -535,7 +645,7 @@ export async function clearAuth(): Promise<void> {
 
 /** The active stored account's id, or `undefined` when none is active. */
 export function getActiveAccountId(): string | undefined {
-  return getAuthRow()?.account_id;
+  return getActiveAccountRow()?.account_id;
 }
 
 /**
@@ -549,7 +659,7 @@ export function setActiveAccount(accountId: string): void {
     if (!getAccountRow(accountId)) {
       throw new ConfigError(`No stored account with id '${accountId}'.`);
     }
-    if (getAuthRow()?.account_id === accountId) {
+    if (getActiveAccountRow()?.account_id === accountId) {
       return;
     }
     backfillActiveNullHost();
@@ -574,11 +684,11 @@ export async function removeAccount(
   const nextActive = withDbSpan("removeAccount", () => {
     const row = getAccountRow(accountId);
     if (!row) {
-      return getAuthRow()?.account_id;
+      return getActiveAccountRow()?.account_id;
     }
     deleteAccountRows([row]);
     if (row.is_active !== 1) {
-      return getAuthRow()?.account_id;
+      return getActiveAccountRow()?.account_id;
     }
     clearUnscopedIdentityCaches();
     if (!options.promoteNext) {
@@ -626,6 +736,128 @@ async function invalidateAccountCredentials(accountId: string): Promise<void> {
   await clearResponseCacheBestEffort();
 }
 
+/**
+ * Point the invocation's server at a newly pinned account, but only when
+ * no server was chosen explicitly: an unset URL or the persisted default
+ * (`defaults.url`, applied at startup) yields to the account's own host.
+ */
+function followPinnedAccountHost(host: string): void {
+  const configured = getConfiguredUrlOrUndefined();
+  if (configured && !isPersistedDefaultUrlInEffect()) {
+    return;
+  }
+  if (isSameServer(configured ?? DEFAULT_SENTRY_URL, host)) {
+    return;
+  }
+  getEnv().SENTRY_URL = host;
+  markPersistedDefaultUrl(host);
+}
+
+/**
+ * Use the stored account that knows `orgSlug` (or numeric `orgId`) for the
+ * rest of this invocation, so commands targeting another login's
+ * organization work without `sentry auth switch`.
+ *
+ * No-op when the effective account knows the org or has no cached org
+ * list to rule it out, when no stored account knows it, or when an earlier
+ * org already pinned an account — one invocation never mixes identities. An explicit server
+ * (`SENTRY_HOST`/`SENTRY_URL`, `--url`, `.sentryclirc`) limits candidates
+ * to accounts on it; when several accounts qualify, the most recently used
+ * wins. Forced env tokens (`SENTRY_FORCE_ENV_TOKEN`) are never overridden.
+ */
+export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
+  if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim() && getRawEnvToken()) {
+    return;
+  }
+  const scope = getAccountScope();
+  if (scope.accountId) {
+    return;
+  }
+  try {
+    const owners = listAccountRowsForOrg(orgSlug, orgId).filter(
+      isAccountRowUsable,
+    );
+    if (owners.length === 0) {
+      return;
+    }
+    const current = getAuthRow();
+    // Respect the account in effect unless its cached org list shows it is
+    // not a member: after `sentry auth switch`, an account that simply
+    // hasn't used the org yet must not be overridden by one that has.
+    if (
+      current &&
+      (owners.some((o) => o.account_id === current.account_id) ||
+        !hasCachedOrgList(current.account_id))
+    ) {
+      return;
+    }
+    const configured = getConfiguredUrlOrUndefined();
+    const explicitHost =
+      configured && !isPersistedDefaultUrlInEffect() ? configured : undefined;
+    const candidates = explicitHost
+      ? owners.filter((o) => o.host && isSameServer(o.host, explicitHost))
+      : owners;
+    const pick = mostRecentAccountRow(candidates);
+    if (!pick?.host) {
+      return;
+    }
+    scope.accountId = pick.account_id;
+    followPinnedAccountHost(pick.host);
+    log.debug(
+      `Using stored account ${pick.account_id} (${pick.host}) for organization '${orgSlug}'`,
+    );
+  } catch (error) {
+    // Best-effort: the active account stays in effect.
+    log.debug("Could not select an account for the organization", error);
+  }
+}
+
+/**
+ * The stored account whose credentials hash to `identity` (following
+ * in-process refresh-token rotations), so cached org data can record which
+ * account it belongs to. `undefined` for env tokens and unknown identities.
+ */
+export function getAccountIdForIdentity(identity: string): string | undefined {
+  try {
+    const match = listAccountRows().find((row) => {
+      const rowIdentity = accountIdentity(row);
+      if (!rowIdentity) {
+        return false;
+      }
+      if (rowIdentity === identity) {
+        return true;
+      }
+      const host = row.host ? normalizeHttpOrigin(row.host) : undefined;
+      return (
+        host !== undefined &&
+        matchesRefreshIdentity(host, identity, rowIdentity)
+      );
+    });
+    return match?.account_id;
+  } catch (error) {
+    // The mapping is an optimization; a miss just skips recording it.
+    log.debug("Could not map credential identity to an account", error);
+    return;
+  }
+}
+
+/**
+ * Whether a usable stored account is on `url`'s server. Lets a pasted
+ * Sentry URL for another login's server select that login instead of
+ * failing the host check against the active account.
+ */
+export function hasStoredAccountForHost(url: string): boolean {
+  try {
+    return listAccountRows().some(
+      (row) =>
+        row.host && isSameServer(row.host, url) && isAccountRowUsable(row),
+    );
+  } catch (error) {
+    log.debug("Could not read stored accounts", error);
+    return false;
+  }
+}
+
 export function isAuthenticated(): boolean {
   const token = getAuthToken();
   return !!token;
@@ -650,13 +882,14 @@ export const ANON_IDENTITY = "<anon>";
  * {@link resetIdentityFingerprintCache}.
  */
 export function getIdentityFingerprint(): string {
-  const env = getEnv();
-  const cached = authCacheState.fingerprints.get(env);
+  const memo = memoFor(authCacheState.fingerprints);
+  const key = selectionKey();
+  const cached = memo.get(key);
   if (cached !== undefined) {
     return cached;
   }
   const fingerprint = computeIdentityFingerprint();
-  authCacheState.fingerprints.set(env, fingerprint);
+  memo.set(key, fingerprint);
   return fingerprint;
 }
 
@@ -769,8 +1002,10 @@ export function getActiveAuthHost(): string | undefined {
  * when an env token is present.
  */
 export function hasStoredAuthCredentials(): boolean {
-  if (cachedHasStoredCreds !== undefined) {
-    return cachedHasStoredCreds.value;
+  const key = selectionKey();
+  const cached = cachedHasStoredCreds.get(key);
+  if (cached !== undefined) {
+    return cached;
   }
   const row = getAuthRow();
   let result = false;
@@ -783,7 +1018,7 @@ export function hasStoredAuthCredentials(): boolean {
       result = !!row.refresh_token;
     }
   }
-  cachedHasStoredCreds = { value: result };
+  cachedHasStoredCreds.set(key, result);
   return result;
 }
 

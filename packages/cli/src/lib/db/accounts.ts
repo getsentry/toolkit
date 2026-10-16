@@ -7,11 +7,11 @@
  * credential is active go through `auth.ts` so its memoized state resets.
  */
 
-import { createHash } from "node:crypto";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { uuidv7 } from "uuidv7";
 import { fuzzyMatch } from "../fuzzy.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
+import { storedCredentialIdentity } from "./identity-hash.js";
 import { getDatabase } from "./index.js";
 
 /** Raw `accounts` row. */
@@ -118,28 +118,9 @@ export function activateAccountRow(accountId: string): void {
   })();
 }
 
-/**
- * Stable SHA-256 namespace for high-entropy OAuth and organization tokens.
- * A collision would mix credentials' cached responses, so retain the full
- * digest. This fingerprint is never a password verifier or a bearer token.
- */
-export function hashIdentity(kind: string, secret: string): string {
-  return createHash("sha256")
-    .update(kind)
-    .update("\0")
-    .update(secret)
-    .digest("hex");
-}
-
 /** Cache namespace for a stored account (matches `getIdentityFingerprint`). */
 export function accountIdentity(row: AccountRow): string | undefined {
-  if (row.refresh_token) {
-    return hashIdentity("oauth", row.refresh_token);
-  }
-  if (row.token) {
-    return hashIdentity("oauth-access", row.token);
-  }
-  return;
+  return storedCredentialIdentity(row);
 }
 
 /** True when the row's credential is usable now or can be refreshed. */
@@ -167,6 +148,9 @@ export function deleteAccountRows(rows: readonly AccountRow[]): void {
           identity,
         );
       }
+      db.query("DELETE FROM org_regions WHERE account_id = ?").run(
+        row.account_id,
+      );
       db.query("DELETE FROM accounts WHERE account_id = ?").run(row.account_id);
     }
   })();
@@ -276,14 +260,7 @@ export function isAccountOnServer(
   account: Pick<AccountSummary, "host">,
   url: string,
 ): boolean {
-  const host = account.host ? normalizeHttpOrigin(account.host) : undefined;
-  const target = normalizeHttpOrigin(url);
-  if (!(host && target)) {
-    return false;
-  }
-  return (
-    host === target || (isSaaSTrustOrigin(host) && isSaaSTrustOrigin(target))
-  );
+  return account.host ? isSameServer(account.host, url) : false;
 }
 
 /** Hostname of a stored account origin, lowercased. */
@@ -294,4 +271,61 @@ export function hostnameOf(host: string | undefined): string | undefined {
   return URL.canParse(host)
     ? new URL(host).hostname.toLowerCase()
     : host.toLowerCase();
+}
+
+/**
+ * Whether two server URLs belong to the same Sentry installation: the same
+ * origin, or both SaaS (`*.sentry.io`). Mirrors the token trust model in
+ * `token-host.ts`, so an account is only ever chosen for hosts its token
+ * is already allowed to reach.
+ */
+export function isSameServer(a: string, b: string): boolean {
+  const left = normalizeHttpOrigin(a);
+  const right = normalizeHttpOrigin(b);
+  if (!(left && right)) {
+    return false;
+  }
+  return (
+    left === right || (isSaaSTrustOrigin(left) && isSaaSTrustOrigin(right))
+  );
+}
+
+/** The most recently used row, or `undefined` for an empty list. */
+export function mostRecentAccountRow(
+  rows: readonly AccountRow[],
+): AccountRow | undefined {
+  return [...rows].sort((a, b) => b.updated_at - a.updated_at)[0];
+}
+
+/**
+ * Stored accounts that have seen an organization, by slug or numeric id.
+ * The mapping comes from `org_regions.account_id`, recorded whenever an
+ * account resolves or lists the organization.
+ */
+export function listAccountRowsForOrg(
+  orgSlug: string,
+  orgId?: string,
+): AccountRow[] {
+  return getDatabase()
+    .query(
+      `SELECT * FROM accounts WHERE account_id IN (
+        SELECT account_id FROM org_regions
+        WHERE account_id IS NOT NULL AND (org_slug = ? OR org_id = ?)
+      )`,
+    )
+    .all(orgSlug, orgId ?? null) as AccountRow[];
+}
+
+/**
+ * Whether a full organization list is cached for an account (rows written
+ * by `listOrganizations`, which carry the numeric org id). Only then can an
+ * org's absence mean the account is not a member.
+ */
+export function hasCachedOrgList(accountId: string): boolean {
+  const row = getDatabase()
+    .query(
+      "SELECT 1 AS found FROM org_regions WHERE account_id = ? AND org_id IS NOT NULL LIMIT 1",
+    )
+    .get(accountId) as { found: number } | null | undefined;
+  return Boolean(row);
 }

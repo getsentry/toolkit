@@ -58,6 +58,8 @@ async function preloadProjectContext(cwd: string): Promise<void> {
       const url = getDefaultUrl();
       if (url) {
         env.SENTRY_URL = url;
+        const { markPersistedDefaultUrl } = await import("./lib/constants.js");
+        markPersistedDefaultUrl(url);
       }
     } catch {
       // DB not available — skip
