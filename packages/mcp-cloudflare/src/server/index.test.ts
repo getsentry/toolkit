@@ -27,6 +27,7 @@ const {
     mockCheckRateLimit: vi.fn(),
     mockActiveSpan: {
       setAttribute: vi.fn(),
+      setAttributes: vi.fn(),
     },
     mockMetricsCount: vi.fn(),
   };
@@ -73,6 +74,12 @@ vi.mock("./utils/rate-limiter", () => ({
 }));
 
 import handler from "./index";
+import {
+  PLUGIN_NAME_ATTRIBUTE,
+  PLUGIN_NAME_HEADER,
+  PLUGIN_VERSION_ATTRIBUTE,
+  PLUGIN_VERSION_HEADER,
+} from "./lib/attribution";
 import {
   OAUTH_ERROR_ATTRIBUTE,
   OAUTH_ERROR_REASON_ATTRIBUTE,
@@ -604,6 +611,33 @@ describe("worker entrypoint", () => {
         [OAUTH_REQUEST_HEADER_SHAPE_ATTRIBUTE]: "wrapper",
         "http.response.status_code": 401,
       }),
+    });
+  });
+
+  it("records sentry-for-ai plugin attribution on MCP spans and metrics", async () => {
+    mockOAuthProviderFetch.mockResolvedValueOnce(
+      new Response("unauthorized", { status: 401 }),
+    );
+
+    await handler.fetch!(
+      new Request("https://mcp.sentry.dev/mcp", {
+        method: "POST",
+        headers: {
+          [PLUGIN_NAME_HEADER]: "cursor",
+          [PLUGIN_VERSION_HEADER]: "1.4.6-dev.14.gdeadbee",
+        },
+      }),
+      env,
+      ctx,
+    );
+
+    const pluginAttributes = {
+      [PLUGIN_NAME_ATTRIBUTE]: "cursor",
+      [PLUGIN_VERSION_ATTRIBUTE]: "dev",
+    };
+    expect(mockActiveSpan.setAttributes).toHaveBeenCalledWith(pluginAttributes);
+    expect(mockMetricsCount).toHaveBeenCalledWith("app.server.response", 1, {
+      attributes: expect.objectContaining(pluginAttributes),
     });
   });
 });
