@@ -1,11 +1,17 @@
 /**
- * User identity storage for telemetry.
+ * User identity of the active stored account.
  *
- * Stores user info fetched from Sentry API to set Sentry user context.
+ * Stores user info fetched from Sentry API on the active `accounts` row,
+ * used for display and to set Sentry user context.
  */
 
+import { withDbSpan } from "../telemetry.js";
+import {
+  deleteAccountRows,
+  getActiveAccountRow,
+  listAccountRows,
+} from "./accounts.js";
 import { getDatabase } from "./index.js";
-import { runUpsert } from "./utils.js";
 
 export type UserInfo = {
   userId: string;
@@ -15,24 +21,13 @@ export type UserInfo = {
   name?: string;
 };
 
-type UserRow = {
-  user_id: string;
-  email: string | null;
-  username: string | null;
-  name: string | null;
-};
-
 /**
- * Get stored user info.
- * Returns undefined if no user info is stored.
+ * Get the active account's user info.
+ * Returns undefined when no account is active or its user is not known yet.
  */
 export function getUserInfo(): UserInfo | undefined {
-  const db = getDatabase();
-  const row = db.query("SELECT * FROM user_info WHERE id = 1").get() as
-    | UserRow
-    | undefined;
-
-  if (!row) {
+  const row = getActiveAccountRow();
+  if (!row?.user_id) {
     return;
   }
 
@@ -45,24 +40,37 @@ export function getUserInfo(): UserInfo | undefined {
 }
 
 /**
- * Store user info.
- * Overwrites any existing user info.
+ * Record who the active account's credentials belong to.
+ *
+ * Any other stored account for the same user on the same host is removed:
+ * logging in again to an existing account replaces its old credentials
+ * instead of adding a duplicate. No-op when no account is active (for
+ * example, when only an env-var token is in use).
  */
 export function setUserInfo(info: UserInfo): void {
-  const db = getDatabase();
-  const now = Date.now();
-
-  runUpsert(
-    db,
-    "user_info",
-    {
-      id: 1,
-      user_id: info.userId,
-      email: info.email ?? null,
-      username: info.username ?? null,
-      name: info.name ?? null,
-      updated_at: now,
-    },
-    ["id"],
-  );
+  withDbSpan("setUserInfo", () => {
+    const active = getActiveAccountRow();
+    if (!active) {
+      return;
+    }
+    const db = getDatabase();
+    db.query(
+      "UPDATE accounts SET user_id = ?, email = ?, username = ?, name = ?, updated_at = ? WHERE account_id = ?",
+    ).run(
+      info.userId,
+      info.email ?? null,
+      info.username ??
+        (active.user_id === info.userId ? active.username : null),
+      info.name ?? null,
+      Date.now(),
+      active.account_id,
+    );
+    const duplicates = listAccountRows().filter(
+      (row) =>
+        row.account_id !== active.account_id &&
+        row.user_id === info.userId &&
+        row.host === active.host,
+    );
+    deleteAccountRows(duplicates);
+  });
 }

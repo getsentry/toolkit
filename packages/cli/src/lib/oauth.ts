@@ -479,9 +479,10 @@ export async function performDeviceFlow(
 }
 
 /**
- * Complete the OAuth flow by storing the token in the database. The token
- * is scoped to {@link getSentryUrl} so the fetch-layer trust check refuses
- * to attach it to other hosts.
+ * Complete the OAuth flow by storing the token in the database as a new,
+ * active account (earlier logins stay stored for `sentry auth switch`). The
+ * token is scoped to {@link getSentryUrl} so the fetch-layer trust check
+ * refuses to attach it to other hosts.
  *
  * @param tokenResponse - The token response from performDeviceFlow
  */
@@ -492,7 +493,7 @@ export async function completeOAuthFlow(
     tokenResponse.access_token,
     tokenResponse.expires_in,
     tokenResponse.refresh_token,
-    { host: getSentryUrl() },
+    { host: getSentryUrl(), newAccount: true },
   );
 }
 
@@ -504,7 +505,10 @@ export async function completeOAuthFlow(
  * @param token - The API token to store
  */
 export async function setApiToken(token: string): Promise<void> {
-  await setAuthToken(token, undefined, undefined, { host: getSentryUrl() });
+  await setAuthToken(token, undefined, undefined, {
+    host: getSentryUrl(),
+    newAccount: true,
+  });
 }
 
 /** Refresh an access token using a refresh token. */

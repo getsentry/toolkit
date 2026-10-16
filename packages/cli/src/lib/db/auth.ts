@@ -1,8 +1,12 @@
 /**
- * Authentication credential storage (single-row table pattern).
+ * Authentication credential storage.
+ *
+ * Credentials live in the multi-row `accounts` table (see `accounts.ts`).
+ * Every read and refresh here targets the single active account, so the
+ * rest of the CLI keeps a one-credential view while users can store and
+ * switch between several logins.
  */
 
-import { createHash } from "node:crypto";
 import { normalizeAuthToken, trimAuthToken } from "../auth-header.js";
 import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
 import { getEnv } from "../env.js";
@@ -14,10 +18,20 @@ import { ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { withDbSpan } from "../telemetry.js";
+import {
+  type AccountRow,
+  accountIdentity,
+  activateAccountRow,
+  deleteAccountRows,
+  getAccountRow,
+  getActiveAccountRow,
+  hashIdentity,
+  insertActiveAccountRow,
+  listAccountRows,
+} from "./accounts.js";
 import { getDatabase } from "./index.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
 import { clearTrustedHostState } from "./regions.js";
-import { runUpsert } from "./utils.js";
 
 /** Refresh when less than 10% of token lifetime remains */
 export const REFRESH_THRESHOLD = 0.1;
@@ -25,28 +39,17 @@ export const REFRESH_THRESHOLD = 0.1;
 /** Default token lifetime (1 hour) for tokens without issuedAt */
 export const DEFAULT_TOKEN_LIFETIME_MS = 3600 * 1000;
 
-type AuthRow = {
-  token: string | null;
-  refresh_token: string | null;
-  expires_at: number | null;
-  issued_at: number | null;
-  updated_at: number;
-  /**
-   * Origin URL the token was issued against (e.g., `https://sentry.io` or
-   * `https://sentry.example.com`). NULL for rows written before schema v16;
-   * lazily migrated by `migrateNullHostIfPresent` on first access.
-   */
-  host: string | null;
-};
+/**
+ * The active account row. `host` is NULL only for rows migrated from the
+ * pre-v16 `auth` table; `migrateNullHost` backfills it on access.
+ */
+type AuthRow = AccountRow;
 
 const log = logger.withTag("auth");
 
-/** Read the single auth row. Returns `undefined` when no row exists. */
+/** Read the active account row. Returns `undefined` when none is active. */
 function getAuthRow(): AuthRow | undefined {
-  const db = getDatabase();
-  return db.query("SELECT * FROM auth WHERE id = 1").get() as
-    | AuthRow
-    | undefined;
+  return getActiveAccountRow();
 }
 
 /**
@@ -70,7 +73,10 @@ function migrateNullHost(row: AuthRow): string {
   try {
     withDbSpan("migrateAuthHost", () => {
       const db = getDatabase();
-      db.query("UPDATE auth SET host = ? WHERE id = 1").run(host);
+      db.query("UPDATE accounts SET host = ? WHERE account_id = ?").run(
+        host,
+        row.account_id,
+      );
     });
     log.info(`Migrated stored credentials to host-scoped model: ${host}`);
   } catch {
@@ -393,60 +399,19 @@ export function resetHasStoredCredsCache(): void {
  *   an update (e.g., access-token refresh), the existing row's host is
  *   preserved. When omitted on a fresh write, defaults to the
  *   currently-configured host (`SENTRY_HOST`/`SENTRY_URL`) or `DEFAULT_SENTRY_URL`.
+ * @property newAccount - Store the token as a new account and make it
+ *   active instead of overwriting the active account's credentials. Login
+ *   flows set this so earlier logins stay available to `sentry auth switch`.
+ *   Recording user info afterwards ({@link setUserInfo}) folds a re-login to
+ *   the same user on the same host into one account.
  */
 export type SetAuthTokenOptions = {
   host?: string;
+  newAccount?: boolean;
 };
 
-/** Normalize an access token before storage; malformed input leaves the auth row unchanged. */
-export function setAuthToken(
-  token: string,
-  expiresIn?: number,
-  newRefreshToken?: string,
-  options?: SetAuthTokenOptions,
-): void {
-  const normalizedToken = normalizeAuthToken(token);
-  withDbSpan("setAuthToken", () => {
-    const db = getDatabase();
-    const now = Date.now();
-    const expiresAt = expiresIn ? now + expiresIn * 1000 : null;
-    const issuedAt = expiresIn ? now : null;
-
-    // Host resolution precedence:
-    //   1. Explicit `options.host` (login command, tests)
-    //   2. Existing row's `host` (refresh flow preserves the original scope)
-    //   3. Currently-configured host (getConfiguredSentryUrl)
-    //   4. SaaS default
-    // Always normalized to scheme+host[+port].
-    const existingHost = (
-      db.query("SELECT host FROM auth WHERE id = 1").get() as
-        | { host: string | null }
-        | undefined
-    )?.host;
-    const rawHost =
-      options?.host ??
-      existingHost ??
-      getConfiguredSentryUrl() ??
-      DEFAULT_SENTRY_URL;
-    const host = normalizeCredentialHost(rawHost);
-
-    runUpsert(
-      db,
-      "auth",
-      {
-        id: 1,
-        token: normalizedToken,
-        refresh_token: newRefreshToken ?? null,
-        expires_at: expiresAt,
-        issued_at: issuedAt,
-        updated_at: now,
-        host,
-      },
-      ["id"],
-    );
-  });
-  // Auth row changed — drop memoized fingerprint, token, row, and
-  // stored-credentials flag so the next read reflects the new row.
+/** Drop all memoized active-credential state after an account mutation. */
+function resetActiveCredentialState(): void {
   resetIdentityFingerprintCache();
   refreshIdentityAliases.clear();
   resetAuthTokenCache();
@@ -454,34 +419,191 @@ export function setAuthToken(
   resetHasStoredCredsCache();
 }
 
-export async function clearAuth(): Promise<void> {
-  withDbSpan("clearAuth", () => {
+/**
+ * Normalize an access token before storage; malformed input leaves the
+ * stored accounts unchanged. Returns the id of the account written.
+ */
+export function setAuthToken(
+  token: string,
+  expiresIn?: number,
+  newRefreshToken?: string,
+  options?: SetAuthTokenOptions,
+): string {
+  const normalizedToken = normalizeAuthToken(token);
+  const accountId = withDbSpan("setAuthToken", () => {
     const db = getDatabase();
-    db.query("DELETE FROM auth WHERE id = 1").run();
-    // Also clear user info, org region cache, pagination cursors, and the
-    // issue-id → org cache (scoped to the current user's permissions) when
-    // logging out.
-    db.query("DELETE FROM user_info WHERE id = 1").run();
-    db.query("DELETE FROM org_regions").run();
-    db.query("DELETE FROM pagination_cursors").run();
-    clearAllIssueOrgCache();
-  });
-  resetIdentityFingerprintCache();
-  refreshIdentityAliases.clear();
-  resetAuthTokenCache();
-  resetAuthRowCache();
-  resetHasStoredCredsCache();
-  // Evict in-process trust extensions tied to the now-cleared identity.
-  clearTrustedHostState();
+    const now = Date.now();
+    const expiresAt = expiresIn ? now + expiresIn * 1000 : null;
+    const issuedAt = expiresIn ? now : null;
 
+    const existing = options?.newAccount ? undefined : getAuthRow();
+    // Host resolution precedence:
+    //   1. Explicit `options.host` (login command, tests)
+    //   2. Existing row's `host` (refresh flow preserves the original scope)
+    //   3. Currently-configured host (getConfiguredSentryUrl)
+    //   4. SaaS default
+    // Always normalized to scheme+host[+port].
+    const rawHost =
+      options?.host ??
+      existing?.host ??
+      getConfiguredSentryUrl() ??
+      DEFAULT_SENTRY_URL;
+    const host = normalizeCredentialHost(rawHost);
+
+    const values = {
+      host,
+      token: normalizedToken,
+      refresh_token: newRefreshToken ?? null,
+      expires_at: expiresAt,
+      issued_at: issuedAt,
+    };
+    if (!existing) {
+      return insertActiveAccountRow(values, now);
+    }
+    db.query(
+      "UPDATE accounts SET host = ?, token = ?, refresh_token = ?, expires_at = ?, issued_at = ?, updated_at = ? WHERE account_id = ?",
+    ).run(
+      values.host,
+      values.token,
+      values.refresh_token,
+      values.expires_at,
+      values.issued_at,
+      now,
+      existing.account_id,
+    );
+    return existing.account_id;
+  });
+  // Active credential changed — drop memoized fingerprint, token, row, and
+  // stored-credentials flag so the next read reflects the new row.
+  resetActiveCredentialState();
+  return accountId;
+}
+
+/**
+ * Clear caches whose entries are scoped to one identity's permissions but
+ * not keyed by it (pagination cursors, issue-id → org mappings), plus the
+ * in-process trust extension.
+ */
+function clearUnscopedIdentityCaches(): void {
+  const db = getDatabase();
+  db.query("DELETE FROM pagination_cursors").run();
+  clearAllIssueOrgCache();
+  clearTrustedHostState();
+}
+
+async function clearResponseCacheBestEffort(): Promise<void> {
   // Dynamic import avoids the auth→response-cache→auth cycle.
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const { clearResponseCache } = await import("../response-cache.js");
     await clearResponseCache();
-  } catch {
+  } catch (error) {
     // Non-fatal: cache directory may not exist yet
+    log.debug("Could not clear response cache", error);
   }
+}
+
+/** Log out of every stored account and clear identity-scoped caches. */
+export async function clearAuth(): Promise<void> {
+  withDbSpan("clearAuth", () => {
+    const db = getDatabase();
+    db.query("DELETE FROM accounts").run();
+    // Also clear the org region cache, pagination cursors, and the
+    // issue-id → org cache (scoped to the logged-out users' permissions).
+    db.query("DELETE FROM org_regions").run();
+    clearUnscopedIdentityCaches();
+  });
+  resetActiveCredentialState();
+  await clearResponseCacheBestEffort();
+}
+
+/** The active stored account's id, or `undefined` when none is active. */
+export function getActiveAccountId(): string | undefined {
+  return getAuthRow()?.account_id;
+}
+
+/**
+ * Make a stored account the active one. Subsequent commands use its
+ * credentials. No-op when it is already active.
+ *
+ * @throws {ConfigError} when no stored account has this id
+ */
+export function setActiveAccount(accountId: string): void {
+  withDbSpan("setActiveAccount", () => {
+    if (!getAccountRow(accountId)) {
+      throw new ConfigError(`No stored account with id '${accountId}'.`);
+    }
+    if (getAuthRow()?.account_id === accountId) {
+      return;
+    }
+    activateAccountRow(accountId);
+    clearUnscopedIdentityCaches();
+  });
+  resetActiveCredentialState();
+}
+
+/**
+ * Remove one stored account. Removing the active account leaves no account
+ * active unless `promoteNext` is set, in which case the most recently
+ * updated remaining account becomes active.
+ *
+ * @returns the id of the account that is active afterwards, if any
+ */
+export async function removeAccount(
+  accountId: string,
+  options: { promoteNext?: boolean } = {},
+): Promise<string | undefined> {
+  const nextActive = withDbSpan("removeAccount", () => {
+    const row = getAccountRow(accountId);
+    if (!row) {
+      return getAuthRow()?.account_id;
+    }
+    deleteAccountRows([row]);
+    if (row.is_active !== 1) {
+      return getAuthRow()?.account_id;
+    }
+    clearUnscopedIdentityCaches();
+    if (!options.promoteNext) {
+      return;
+    }
+    const [next] = listAccountRows().sort(
+      (a, b) => b.updated_at - a.updated_at,
+    );
+    if (next) {
+      activateAccountRow(next.account_id);
+    }
+    return next?.account_id;
+  });
+  resetActiveCredentialState();
+  await clearResponseCacheBestEffort();
+  return nextActive;
+}
+
+/**
+ * Drop an account's rejected or expired credentials while keeping the
+ * account (and its active state) so the user can see it and log in again.
+ * Never promotes another account: a request must not silently continue
+ * under a different identity.
+ */
+async function invalidateAccountCredentials(accountId: string): Promise<void> {
+  withDbSpan("invalidateAccountCredentials", () => {
+    const row = getAccountRow(accountId);
+    if (!row) {
+      return;
+    }
+    const db = getDatabase();
+    const identity = accountIdentity(row);
+    if (identity) {
+      db.query("DELETE FROM org_regions WHERE credential_identity = ?").run(
+        identity,
+      );
+    }
+    db.query(
+      "UPDATE accounts SET token = NULL, refresh_token = NULL, expires_at = NULL, issued_at = NULL, updated_at = ? WHERE account_id = ?",
+    ).run(Date.now(), accountId);
+    clearUnscopedIdentityCaches();
+  });
+  resetActiveCredentialState();
+  await clearResponseCacheBestEffort();
 }
 
 export function isAuthenticated(): boolean {
@@ -532,18 +654,7 @@ function computeIdentityFingerprint(): string {
     }
   }
 
-  const row = withDbSpan("getIdentityFingerprint", () => {
-    const db = getDatabase();
-    return db
-      .query("SELECT token, refresh_token, expires_at FROM auth WHERE id = 1")
-      .get() as
-      | {
-          token: string | null;
-          refresh_token: string | null;
-          expires_at: number | null;
-        }
-      | undefined;
-  });
+  const row = withDbSpan("getIdentityFingerprint", getAuthRow);
   // Prefer refresh_token: stable across access-token rotation.
   if (row?.refresh_token) {
     return hashIdentity("oauth", row.refresh_token);
@@ -558,19 +669,6 @@ function computeIdentityFingerprint(): string {
     return hashIdentity("env", envToken);
   }
   return ANON_IDENTITY;
-}
-
-/**
- * Stable SHA-256 namespace for high-entropy OAuth and organization tokens.
- * A collision would mix credentials' cached responses, so retain the full
- * digest. This fingerprint is never a password verifier or a bearer token.
- */
-function hashIdentity(kind: string, secret: string): string {
-  return createHash("sha256")
-    .update(kind)
-    .update("\0")
-    .update(secret)
-    .digest("hex");
 }
 
 /** Immutable token, host, and namespace captured from one auth state. */
@@ -687,6 +785,7 @@ export type RefreshTokenResult = {
 };
 
 type StoredCredentialSnapshot = {
+  accountId: string;
   token: string;
   refreshToken: string;
   expiresAt: number | null;
@@ -745,7 +844,8 @@ function rowMatchesCredential(
   credential: StoredCredentialSnapshot,
 ): boolean {
   return (
-    row?.token === credential.token &&
+    row?.account_id === credential.accountId &&
+    row.token === credential.token &&
     row.refresh_token === credential.refreshToken &&
     row.expires_at === credential.expiresAt &&
     row.issued_at === credential.issuedAt &&
@@ -783,12 +883,16 @@ function persistRefreshedCredential(
   const saved = withDbSpan("persistRefreshedCredential", () => {
     const db = getDatabase();
     return db.transaction(() => {
-      if (!rowMatchesCredential(getAuthRow(), credential)) {
+      // Match by account id (not "active"): a concurrent `auth switch`
+      // must not redirect this refresh onto another account's row.
+      if (
+        !rowMatchesCredential(getAccountRow(credential.accountId), credential)
+      ) {
         return false;
       }
       const now = Date.now();
       db.query(
-        "UPDATE auth SET token = ?, refresh_token = ?, expires_at = ?, issued_at = ?, updated_at = ?, host = ? WHERE id = 1",
+        "UPDATE accounts SET token = ?, refresh_token = ?, expires_at = ?, issued_at = ?, updated_at = ?, host = ? WHERE account_id = ?",
       ).run(
         token,
         nextRefreshToken,
@@ -796,6 +900,7 @@ function persistRefreshedCredential(
         now,
         now,
         credential.host,
+        credential.accountId,
       );
       return true;
     })();
@@ -824,9 +929,9 @@ async function performTokenRefresh(
     // Only clear auth on explicit rejection, not network errors
     if (
       error instanceof AuthError &&
-      rowMatchesCredential(getAuthRow(), credential)
+      rowMatchesCredential(getAccountRow(credential.accountId), credential)
     ) {
-      await clearAuth();
+      await invalidateAccountCredentials(credential.accountId);
     }
     throw error;
   }
@@ -964,7 +1069,7 @@ export async function refreshToken(
   }
 
   if (!row.refresh_token) {
-    await clearAuth();
+    await invalidateAccountCredentials(row.account_id);
     // Fall back to env token if available (consistent with getAuthToken/getAuthConfig)
     const fallback = getEnvRefreshResult(options.expectedCredential);
     if (fallback) {
@@ -977,6 +1082,7 @@ export async function refreshToken(
   }
 
   const credential: StoredCredentialSnapshot = {
+    accountId: row.account_id,
     token: row.token,
     refreshToken: row.refresh_token,
     expiresAt: row.expires_at,

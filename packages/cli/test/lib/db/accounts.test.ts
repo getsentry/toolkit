@@ -1,0 +1,214 @@
+/**
+ * Multi-account storage tests.
+ *
+ * Covers storing several logins, switching and removing accounts, selector
+ * resolution, and that credential failures never silently move a request
+ * onto another stored account.
+ */
+
+import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  findAccounts,
+  getActiveAccountRow,
+  listAccounts,
+} from "../../../src/lib/db/accounts.js";
+import {
+  getActiveAccountId,
+  getAuthToken,
+  getIdentityFingerprint,
+  refreshToken,
+  removeAccount,
+  setActiveAccount,
+  setAuthToken,
+} from "../../../src/lib/db/auth.js";
+import { getUserInfo, setUserInfo } from "../../../src/lib/db/user.js";
+import { AuthError, ConfigError } from "../../../src/lib/errors.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as oauth from "../../../src/lib/oauth.js";
+import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+
+useTestConfigDir("accounts-");
+useEnvSandbox(["SENTRY_AUTH_TOKEN", "SENTRY_TOKEN", "SENTRY_FORCE_ENV_TOKEN"]);
+
+function login(
+  token: string,
+  host: string,
+  user: { userId: string; email?: string; username?: string },
+  refresh?: string,
+): string {
+  const id = setAuthToken(token, refresh ? 3600 : undefined, refresh, {
+    host,
+    newAccount: true,
+  });
+  setUserInfo(user);
+  return id;
+}
+
+describe("storing several accounts", () => {
+  test("a new login is added alongside the previous one and becomes active", () => {
+    const work = login("work-token", "https://sentry.io", {
+      userId: "1",
+      email: "work@example.com",
+    });
+    const personal = login("personal-token", "https://sentry.io", {
+      userId: "2",
+      email: "personal@example.com",
+    });
+
+    expect(listAccounts().map((a) => [a.id, a.active])).toEqual([
+      [work, false],
+      [personal, true],
+    ]);
+    expect(getAuthToken()).toBe("personal-token");
+    expect(getUserInfo()?.email).toBe("personal@example.com");
+  });
+
+  test("an access-token update without newAccount stays on the active account", () => {
+    const id = login("first", "https://sentry.example.com", { userId: "1" });
+
+    expect(setAuthToken("second")).toBe(id);
+    expect(listAccounts()).toHaveLength(1);
+    expect(getAuthToken()).toBe("second");
+    expect(getActiveAccountRow()?.host).toBe("https://sentry.example.com");
+  });
+});
+
+describe("setActiveAccount", () => {
+  test("switches the credential, identity, and user info in use", () => {
+    const work = login("work-token", "https://sentry.io", {
+      userId: "1",
+      email: "work@example.com",
+    });
+    login("personal-token", "https://sentry.io", {
+      userId: "2",
+      email: "personal@example.com",
+    });
+    const personalIdentity = getIdentityFingerprint();
+
+    setActiveAccount(work);
+
+    expect(getActiveAccountId()).toBe(work);
+    expect(getAuthToken()).toBe("work-token");
+    expect(getUserInfo()?.email).toBe("work@example.com");
+    expect(getIdentityFingerprint()).not.toBe(personalIdentity);
+  });
+
+  test("rejects an unknown account id", () => {
+    login("token", "https://sentry.io", { userId: "1" });
+    expect(() => setActiveAccount("missing")).toThrow(ConfigError);
+  });
+});
+
+describe("removeAccount", () => {
+  test("removing an inactive account keeps the active one", async () => {
+    const work = login("work-token", "https://sentry.io", { userId: "1" });
+    const personal = login("personal-token", "https://sentry.io", {
+      userId: "2",
+    });
+
+    expect(await removeAccount(work)).toBe(personal);
+    expect(getAuthToken()).toBe("personal-token");
+  });
+
+  test("removing the active account leaves none active unless promoteNext is set", async () => {
+    login("work-token", "https://sentry.io", { userId: "1" });
+    const personal = login("personal-token", "https://sentry.io", {
+      userId: "2",
+    });
+
+    expect(await removeAccount(personal)).toBeUndefined();
+    expect(getAuthToken()).toBeUndefined();
+    expect(listAccounts()).toHaveLength(1);
+  });
+
+  test("promoteNext activates the most recently updated remaining account", async () => {
+    const work = login("work-token", "https://sentry.io", { userId: "1" });
+    const personal = login("personal-token", "https://sentry.io", {
+      userId: "2",
+    });
+
+    expect(await removeAccount(personal, { promoteNext: true })).toBe(work);
+    expect(getAuthToken()).toBe("work-token");
+  });
+});
+
+describe("credential failures stay on the failing account", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("an expired token without a refresh token is dropped without switching accounts", async () => {
+    const work = login("work-token", "https://sentry.io", { userId: "1" });
+    const expired = setAuthToken("expired-token", -1, undefined, {
+      host: "https://sentry.io",
+      newAccount: true,
+    });
+    setUserInfo({ userId: "2", email: "expired@example.com" });
+
+    await expect(refreshToken()).rejects.toBeInstanceOf(AuthError);
+
+    expect(getActiveAccountId()).toBe(expired);
+    expect(getAuthToken()).toBeUndefined();
+    const accounts = listAccounts();
+    expect(accounts.find((a) => a.id === expired)?.usable).toBe(false);
+    expect(accounts.find((a) => a.id === work)?.usable).toBe(true);
+    // The account (and who it belongs to) is kept so it can be re-used.
+    expect(getUserInfo()?.email).toBe("expired@example.com");
+  });
+
+  test("a rejected refresh invalidates only the refreshing account", async () => {
+    const work = login("work-token", "https://sentry.io", { userId: "1" });
+    const personal = login(
+      "personal-token",
+      "https://sentry.io",
+      { userId: "2" },
+      "personal-refresh",
+    );
+    vi.spyOn(oauth, "refreshAccessToken").mockRejectedValue(
+      new AuthError("invalid", "refresh rejected"),
+    );
+
+    await expect(refreshToken({ force: true })).rejects.toBeInstanceOf(
+      AuthError,
+    );
+
+    expect(getActiveAccountId()).toBe(personal);
+    expect(getAuthToken()).toBeUndefined();
+    setActiveAccount(work);
+    expect(getAuthToken()).toBe("work-token");
+  });
+});
+
+describe("findAccounts", () => {
+  test("matches by id, email, username, or user id (case-insensitive)", () => {
+    const id = login("token", "https://sentry.io", {
+      userId: "42",
+      email: "Jane@Example.com",
+      username: "jane",
+    });
+
+    for (const selector of [id, "jane@example.com", "JANE", "42"]) {
+      expect(findAccounts(selector).map((a) => a.id)).toEqual([id]);
+    }
+    expect(findAccounts("nobody")).toEqual([]);
+  });
+
+  test("returns every match for an ambiguous selector and narrows with @host", () => {
+    const saas = login("saas", "https://sentry.io", {
+      userId: "1",
+      email: "jane@example.com",
+    });
+    const selfHosted = login("self", "https://sentry.example.com", {
+      userId: "1",
+      email: "jane@example.com",
+    });
+
+    expect(findAccounts("jane@example.com")).toHaveLength(2);
+    expect(findAccounts("jane@example.com@sentry.io").map((a) => a.id)).toEqual(
+      [saas],
+    );
+    expect(
+      findAccounts("jane@example.com@sentry.example.com").map((a) => a.id),
+    ).toEqual([selfHosted]);
+  });
+});

@@ -1,6 +1,7 @@
 import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
+import { pointDefaultUrlAtAccount } from "../../lib/account-selection.js";
 import {
   getCurrentUser,
   getUserRegions,
@@ -10,14 +11,15 @@ import { normalizeAuthToken } from "../../lib/auth-header.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import {
-  clearAuth,
+  getActiveAccountId,
   getActiveEnvVarName,
   hasStoredAuthCredentials,
   isAuthenticated,
   isEnvTokenActive,
+  removeAccount,
+  setActiveAccount,
   setAuthToken,
 } from "../../lib/db/auth.js";
-import { setDefaultUrl } from "../../lib/db/defaults.js";
 import { getDbPath } from "../../lib/db/index.js";
 import { getUserInfo, setUserInfo } from "../../lib/db/user.js";
 import { getEnv } from "../../lib/env.js";
@@ -270,20 +272,22 @@ export function rcTokenHint(
 }
 
 /**
- * Persist a non-SaaS `--url` host as the stored default so subsequent CLI
- * invocations route correctly without requiring `SENTRY_HOST`. Only writes
- * when `--url` was explicitly passed; env/rc-sourced values persist
- * through those channels. Non-fatal on DB failure.
+ * Persist an explicit `--url` host as the stored default so subsequent CLI
+ * invocations route to the account just logged in to without requiring
+ * `SENTRY_HOST`: a self-hosted host is stored, SaaS clears a previous
+ * self-hosted default. Only writes when `--url` was explicitly passed;
+ * env/rc-sourced values persist through those channels. Non-fatal on DB
+ * failure.
  */
 function persistLoginUrlAsDefault(
   flagUrl: string | undefined,
   effectiveHost: string,
 ): void {
-  if (!flagUrl || isSaaSTrustOrigin(effectiveHost)) {
+  if (!flagUrl) {
     return;
   }
   try {
-    setDefaultUrl(effectiveHost);
+    pointDefaultUrlAtAccount(effectiveHost);
   } catch {
     log.debug(
       `Could not persist default URL to DB; host is recorded on the stored token. Set SENTRY_HOST or run 'sentry cli defaults url ${effectiveHost}' if subsequent commands route incorrectly.`,
@@ -318,12 +322,14 @@ export function applyLoginUrl(url: string | undefined): string {
 /**
  * Handle the case where the user is already authenticated.
  *
- * Returns `true` if the login flow should proceed (credentials cleared),
- * or `false` if the command should exit early.
+ * Returns `true` if the login flow should proceed, or `false` if the
+ * command should exit early. Proceeding never discards the current
+ * account: the new login is stored alongside it and becomes active
+ * (logging in again as the same user replaces that user's old account).
  *
- * - Env-var auth: always blocks re-auth (user must unset the var).
- * - `--force`: clears auth silently and proceeds.
- * - Interactive TTY: prompts user to confirm re-authentication.
+ * - Env-var auth only: proceeds (stored OAuth is kept separately).
+ * - `--force`: proceeds without prompting.
+ * - Interactive TTY: prompts user to confirm logging in again.
  * - Non-interactive without `--force`: prints a message and blocks.
  */
 async function handleExistingAuth(force: boolean): Promise<boolean> {
@@ -344,7 +350,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     // Non-interactive (piped, CI): print message and block
     if (!isatty(0)) {
       log.info(
-        "You are already authenticated. Use '--force' or 'sentry auth logout' first to re-authenticate.",
+        "You are already authenticated. Use '--force' to log in again or add another account.",
       );
       return false;
     }
@@ -353,7 +359,8 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     const userInfo = getUserInfo();
     const identity = userInfo ? formatUserIdentity(userInfo) : "current user";
     const confirmed = await log.prompt(
-      `Already authenticated as ${identity}. Re-authenticate?`,
+      `Already authenticated as ${identity}. Log in again or add another account? ` +
+        "(The current account stays saved; see 'sentry auth list'.)",
       { type: "confirm", initial: false },
     );
 
@@ -363,29 +370,35 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     }
   }
 
-  // Clear existing credentials and caches before re-authenticating
-  await clearAuth();
   return true;
 }
 
 /**
  * Handle a failure while validating a user-supplied `--token` via
  * {@link getUserRegions}. A 401/403 means the token itself is rejected (invalid
- * or insufficiently scoped) — clear it and raise a user-facing {@link AuthError}.
+ * or insufficiently scoped) — remove the account it was stored as, restore the
+ * previously active account, and raise a user-facing {@link AuthError}.
  * Any other failure (network, 5xx, parse) is NOT a token problem, so the token
  * is kept and the original error is re-thrown: surfacing "Invalid API token"
  * would mislead the user and discard the real cause, and clearing a
  * possibly-valid token on a transient blip is hostile (CLI-19).
  *
- * @throws {AuthError} for a 401/403 (after clearing the stored token)
+ * @throws {AuthError} for a 401/403 (after removing the stored token)
  * @throws the original error for any other failure
  */
-async function handleTokenValidationError(error: unknown): Promise<never> {
+async function handleTokenValidationError(
+  error: unknown,
+  accountId: string,
+  previousAccountId: string | undefined,
+): Promise<never> {
   if (
     error instanceof ApiError &&
     (error.status === 401 || error.status === 403)
   ) {
-    await clearAuth();
+    await removeAccount(accountId);
+    if (previousAccountId) {
+      setActiveAccount(previousAccountId);
+    }
     throw new AuthError(
       "invalid",
       "Invalid API token. Please check your token and try again.",
@@ -425,7 +438,8 @@ export const loginCommand = buildCommand({
       },
       force: {
         kind: "boolean",
-        brief: "Re-authenticate without prompting",
+        brief:
+          "Log in without prompting when already authenticated (adds or refreshes an account)",
         default: false,
       },
       url: {
@@ -497,15 +511,18 @@ export const loginCommand = buildCommand({
     }
 
     if (token !== undefined) {
-      // Save token first (with host scope), then validate by fetching user regions
-      await setAuthToken(token, undefined, undefined, {
+      // Save token first (with host scope) as a new active account, then
+      // validate by fetching user regions.
+      const previousAccountId = getActiveAccountId();
+      const accountId = setAuthToken(token, undefined, undefined, {
         host: effectiveHost,
+        newAccount: true,
       });
 
       try {
         await getUserRegions();
       } catch (error) {
-        await handleTokenValidationError(error);
+        await handleTokenValidationError(error, accountId, previousAccountId);
       }
 
       persistLoginUrlAsDefault(flags.url, effectiveHost);

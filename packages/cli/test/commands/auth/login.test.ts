@@ -211,6 +211,7 @@ function expectTokenStored(
   // shared helper
   expect(spy.mock.calls[0]?.[3]).toMatchObject({
     host: expect.any(String),
+    newAccount: true,
   });
 }
 
@@ -222,6 +223,7 @@ describe("loginCommand.func --token path", () => {
   let setAuthTokenSpy: ReturnType<typeof spyOn>;
   let getUserRegionsSpy: ReturnType<typeof spyOn>;
   let clearAuthSpy: ReturnType<typeof spyOn>;
+  let removeAccountSpy: ReturnType<typeof spyOn>;
   let getCurrentUserSpy: ReturnType<typeof spyOn>;
   let setUserInfoSpy: ReturnType<typeof spyOn>;
   let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
@@ -235,6 +237,8 @@ describe("loginCommand.func --token path", () => {
     setAuthTokenSpy = vi.spyOn(dbAuth, "setAuthToken");
     getUserRegionsSpy = vi.spyOn(apiClient, "getUserRegions");
     clearAuthSpy = vi.spyOn(dbAuth, "clearAuth");
+    removeAccountSpy = vi.spyOn(dbAuth, "removeAccount");
+    removeAccountSpy.mockResolvedValue(undefined);
     getCurrentUserSpy = vi.spyOn(apiClient, "getCurrentUser");
     setUserInfoSpy = vi.spyOn(dbUser, "setUserInfo");
     runInteractiveLoginSpy = vi.spyOn(interactiveLogin, "runInteractiveLogin");
@@ -255,6 +259,7 @@ describe("loginCommand.func --token path", () => {
     setAuthTokenSpy.mockRestore();
     getUserRegionsSpy.mockRestore();
     clearAuthSpy.mockRestore();
+    removeAccountSpy.mockRestore();
     getCurrentUserSpy.mockRestore();
     setUserInfoSpy.mockRestore();
     runInteractiveLoginSpy.mockRestore();
@@ -428,9 +433,9 @@ describe("loginCommand.func --token path", () => {
     expect(out).toContain("x@y.com");
   });
 
-  test("--token: 401 from validation clears auth and throws AuthError", async () => {
+  test("--token: 401 from validation removes only the new account and throws AuthError", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue("new-account");
     getUserRegionsSpy.mockRejectedValue(new ApiError("Unauthorized", 401));
     clearAuthSpy.mockResolvedValue(undefined);
 
@@ -439,7 +444,8 @@ describe("loginCommand.func --token path", () => {
       func.call(context, { token: "bad-token", force: false, timeout: 900 }),
     ).rejects.toBeInstanceOf(AuthError);
 
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(removeAccountSpy).toHaveBeenCalledWith("new-account");
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(getCurrentUserSpy).not.toHaveBeenCalled();
   });
 
@@ -458,6 +464,7 @@ describe("loginCommand.func --token path", () => {
     ).rejects.toBe(cause);
 
     expect(clearAuthSpy).not.toHaveBeenCalled();
+    expect(removeAccountSpy).not.toHaveBeenCalled();
     expect(getCurrentUserSpy).not.toHaveBeenCalled();
   });
 
@@ -536,7 +543,7 @@ describe("loginCommand.func --token path", () => {
     expect(getStdout()).toContain("Access token expires in: 1 hour");
   });
 
-  test("--force when authenticated: clears auth and proceeds to interactive login", async () => {
+  test("--force when authenticated: keeps stored accounts and proceeds to interactive login", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     clearAuthSpy.mockResolvedValue(undefined);
     runInteractiveLoginSpy.mockResolvedValue({
@@ -547,11 +554,11 @@ describe("loginCommand.func --token path", () => {
     const { context } = createContext();
     await func.call(context, { force: true, timeout: 900 });
 
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(runInteractiveLoginSpy).toHaveBeenCalled();
   });
 
-  test("--force --token when authenticated: clears auth and proceeds to token login", async () => {
+  test("--force --token when authenticated: adds the token as an account", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     clearAuthSpy.mockResolvedValue(undefined);
     setAuthTokenSpy.mockReturnValue(undefined);
@@ -566,7 +573,7 @@ describe("loginCommand.func --token path", () => {
       timeout: 900,
     });
 
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expectTokenStored(setAuthTokenSpy, "new-token");
     expect(getStdout()).toContain("Authenticated");
   });
@@ -657,7 +664,7 @@ describe("login re-authentication interactive prompt", () => {
     const promptMessage = (mockPrompt.mock.calls[0] as unknown as string[])[0];
     expect(promptMessage).toContain("Jane Doe");
     expect(promptMessage).toContain("jane@example.com");
-    expect(promptMessage).toContain("Re-authenticate?");
+    expect(promptMessage).toContain("Log in again or add another account?");
   });
 
   test("shows 'current user' fallback when no cached user info", async () => {
@@ -673,7 +680,7 @@ describe("login re-authentication interactive prompt", () => {
     expect(promptMessage).toContain("current user");
   });
 
-  test("confirm: clears auth and proceeds to login", async () => {
+  test("confirm: keeps stored accounts and proceeds to login", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     getUserInfoSpy.mockReturnValue(undefined);
     mockPrompt.mockResolvedValue(true);
@@ -681,7 +688,7 @@ describe("login re-authentication interactive prompt", () => {
     const context = createPromptContext();
     await func.call(context, { force: false, timeout: 900 });
 
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(runInteractiveLoginSpy).toHaveBeenCalled();
   });
 
@@ -720,11 +727,11 @@ describe("login re-authentication interactive prompt", () => {
     await func.call(context, { force: true, timeout: 900 });
 
     expect(mockPrompt).not.toHaveBeenCalled();
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(runInteractiveLoginSpy).toHaveBeenCalled();
   });
 
-  test("confirm + --token: clears auth and re-authenticates with token", async () => {
+  test("confirm + --token: adds the token as an account", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     getUserInfoSpy.mockReturnValue(undefined);
     mockPrompt.mockResolvedValue(true);
@@ -751,8 +758,8 @@ describe("login re-authentication interactive prompt", () => {
         timeout: 900,
       });
 
-      expect(clearAuthSpy).toHaveBeenCalled();
-      // Token stored with host scope (4th arg = { host: ... })
+      expect(clearAuthSpy).not.toHaveBeenCalled();
+      // Token stored as a new account with host scope (4th arg)
       expectTokenStored(setAuthTokenSpy, "new-token");
     } finally {
       setAuthTokenSpy.mockRestore();

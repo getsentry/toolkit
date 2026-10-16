@@ -12,6 +12,7 @@
  */
 
 import { createRequire } from "node:module";
+import { uuidv7 } from "uuidv7";
 import { getEnv } from "../env.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
@@ -19,7 +20,7 @@ import type { Database } from "./sqlite.js";
 
 const _require = createRequire(import.meta.url);
 
-export const CURRENT_SCHEMA_VERSION = 17;
+export const CURRENT_SCHEMA_VERSION = 18;
 
 /** Environment variable to disable auto-repair */
 const NO_AUTO_REPAIR_ENV = "SENTRY_CLI_NO_AUTO_REPAIR";
@@ -57,23 +58,43 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
       version: { type: "INTEGER", primaryKey: true },
     },
   },
-  auth: {
+  /**
+   * Stored Sentry accounts (one row per login). Replaces the single-row
+   * `auth` and `user_info` tables in schema v18.
+   *
+   * Exactly one row is active at a time (`is_active = 1`); every
+   * credential read targets that row. `user_id` is NULL until the login
+   * flow learns who the token belongs to. Rows sharing `(host, user_id)`
+   * are deduplicated when user info is recorded, so re-logging in to the
+   * same account updates it instead of adding a duplicate.
+   */
+  accounts: {
     columns: {
-      id: { type: "INTEGER", primaryKey: true, check: "id = 1" },
+      account_id: { type: "TEXT", primaryKey: true },
+      // Origin URL (scheme://host[:port]) this token was issued against.
+      // Enforced at the fetch layer: credentials are only attached to requests
+      // whose origin matches this host (with SaaS equivalence). NULL only for
+      // rows migrated from pre-v16 `auth` rows; backfilled lazily on read.
+      host: { type: "TEXT" },
+      user_id: { type: "TEXT" },
+      email: { type: "TEXT" },
+      username: { type: "TEXT" },
+      name: { type: "TEXT" },
       token: { type: "TEXT" },
       refresh_token: { type: "TEXT" },
       expires_at: { type: "INTEGER" },
       issued_at: { type: "INTEGER" },
+      is_active: { type: "INTEGER", notNull: true, default: "0" },
+      created_at: {
+        type: "INTEGER",
+        notNull: true,
+        default: "(unixepoch() * 1000)",
+      },
       updated_at: {
         type: "INTEGER",
         notNull: true,
         default: "(unixepoch() * 1000)",
       },
-      // Origin URL (scheme://host[:port]) this token was issued against.
-      // Enforced at the fetch layer: credentials are only attached to requests
-      // whose origin matches this host (with SaaS equivalence). Nullable for
-      // rows created before schema v16; migrated lazily in getAuthConfig.
-      host: { type: "TEXT", addedInVersion: 16 },
     },
   },
 
@@ -178,20 +199,6 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
       },
     },
     compositePrimaryKey: ["credential_identity", "source_origin", "org_slug"],
-  },
-  user_info: {
-    columns: {
-      id: { type: "INTEGER", primaryKey: true, check: "id = 1" },
-      user_id: { type: "TEXT", notNull: true },
-      email: { type: "TEXT" },
-      username: { type: "TEXT" },
-      name: { type: "TEXT", addedInVersion: 3 },
-      updated_at: {
-        type: "INTEGER",
-        notNull: true,
-        default: "(unixepoch() * 1000)",
-      },
-    },
   },
   instance_info: {
     columns: {
@@ -734,6 +741,79 @@ function getSchemaVersion(db: Database): number {
   return row?.version ?? 0;
 }
 
+type LegacyAuthRow = {
+  token: string | null;
+  refresh_token: string | null;
+  expires_at: number | null;
+  issued_at: number | null;
+  updated_at: number | null;
+  host: string | null;
+};
+
+type LegacyUserRow = {
+  user_id: string | null;
+  email: string | null;
+  username: string | null;
+  name: string | null;
+};
+
+/**
+ * Copy the pre-v18 single-row credential (`auth`) and identity
+ * (`user_info`) into one active `accounts` row, then drop both tables.
+ *
+ * A NULL `host` (rows from before v16) is carried over as-is; the auth
+ * layer backfills it lazily from the boot-time URL snapshot.
+ */
+function migrateSingleAuthToAccounts(db: Database): void {
+  db.exec(EXPECTED_TABLES.accounts as string);
+
+  const auth = tableExists(db, "auth")
+    ? (db
+        .query(
+          `SELECT token, refresh_token, expires_at, issued_at, updated_at, ${
+            hasColumn(db, "auth", "host") ? "host" : "NULL AS host"
+          } FROM auth WHERE id = 1`,
+        )
+        .get() as LegacyAuthRow | undefined)
+    : undefined;
+  const user =
+    auth?.token && tableExists(db, "user_info")
+      ? (db
+          .query(
+            `SELECT user_id, email, username, ${
+              hasColumn(db, "user_info", "name") ? "name" : "NULL AS name"
+            } FROM user_info WHERE id = 1`,
+          )
+          .get() as LegacyUserRow | undefined)
+      : undefined;
+
+  if (auth?.token) {
+    const now = Date.now();
+    db.query("UPDATE accounts SET is_active = 0").run();
+    db.query(
+      `INSERT INTO accounts (account_id, host, user_id, email, username, name,
+        token, refresh_token, expires_at, issued_at, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    ).run(
+      uuidv7(),
+      auth.host,
+      user?.user_id ?? null,
+      user?.email ?? null,
+      user?.username ?? null,
+      user?.name ?? null,
+      auth.token,
+      auth.refresh_token,
+      auth.expires_at,
+      auth.issued_at,
+      now,
+      auth.updated_at ?? now,
+    );
+  }
+
+  db.exec("DROP TABLE IF EXISTS auth");
+  db.exec("DROP TABLE IF EXISTS user_info");
+}
+
 /**
  * Run migrations for schema changes between versions.
  *
@@ -747,17 +827,17 @@ function getSchemaVersion(db: Database): number {
 export function runMigrations(db: Database): void {
   const currentVersion = getSchemaVersion(db);
 
-  // Migration 1 -> 2: Add org_regions, user_info, and instance_info tables
+  // Migration 1 -> 2: Add org_regions and instance_info tables. The
+  // `user_info` table this step also created was folded into `accounts` in v18.
   if (currentVersion < 2) {
     db.exec(`
       ${EXPECTED_TABLES.org_regions};
-      ${EXPECTED_TABLES.user_info};
       ${EXPECTED_TABLES.instance_info};
     `);
   }
 
   // Migration 2 -> 3: Add name column to user_info table
-  if (currentVersion < 3) {
+  if (currentVersion < 3 && tableExists(db, "user_info")) {
     addColumnIfMissing(db, "user_info", "name", "TEXT");
   }
 
@@ -870,7 +950,7 @@ export function runMigrations(db: Database): void {
   // The column is NULL for existing rows; the first credential read backfills
   // it from the boot-time explicit host (or SaaS), before later config shims
   // can change SENTRY_URL.
-  if (currentVersion < 16) {
+  if (currentVersion < 16 && tableExists(db, "auth")) {
     addColumnIfMissing(db, "auth", "host", "TEXT");
   }
 
@@ -881,6 +961,12 @@ export function runMigrations(db: Database): void {
       db.exec("DROP TABLE IF EXISTS org_regions");
       db.exec(EXPECTED_TABLES.org_regions as string);
     })();
+  }
+
+  // Migration 17 -> 18: Multi-account support. Fold the single-row `auth`
+  // and `user_info` tables into `accounts`; the migrated login stays active.
+  if (currentVersion < 18) {
+    db.transaction(() => migrateSingleAuthToAccounts(db))();
   }
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {

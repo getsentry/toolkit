@@ -59,10 +59,44 @@ sentry auth --token YOUR_TOKEN --url https://sentry.example.com
 
 See [Self-Hosted Sentry](../self-hosted/) for details.
 
+### Multiple accounts
+
+The CLI can store several accounts at once — for example a work and a personal
+account, or a SaaS and a self-hosted login. Each `sentry auth login` adds an
+account and makes it active; logging in again as the same user on the same
+server replaces that account's credentials instead of adding a duplicate.
+
+```bash
+# Add another account (prompts for confirmation when already logged in)
+sentry auth login --force
+sentry auth login --force --url https://sentry.example.com
+
+# Show stored accounts; * marks the active one
+sentry auth list
+
+# Switch the account commands use (pick interactively without an argument)
+sentry auth switch jane@example.com
+sentry auth switch
+```
+
+Select an account by email, username, user ID, or account ID (from
+`sentry auth list --json`). If the same email is stored on several servers,
+add the server hostname: `sentry auth switch jane@example.com@sentry.example.com`.
+
+Switching also points the default URL (`sentry cli defaults url`) at the
+account's server. `SENTRY_HOST`/`SENTRY_URL` and `SENTRY_AUTH_TOKEN` (with
+`SENTRY_FORCE_ENV_TOKEN=1`) still take precedence over the active account.
+Default organization and project settings are shared by all accounts.
+
 ### Logout
 
 ```bash
+# Log out of the active account (the most recently used other account becomes active)
 sentry auth logout
+
+# Log out of a specific account, or of all of them
+sentry auth logout jane@example.com
+sentry auth logout --all
 ```
 
 ### Refresh the OAuth access token

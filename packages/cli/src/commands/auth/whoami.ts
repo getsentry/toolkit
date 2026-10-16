@@ -9,7 +9,7 @@
 import type { SentryContext } from "../../context.js";
 import { getCurrentUser } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { getAuthToken } from "../../lib/db/auth.js";
+import { getAuthConfig, getAuthToken } from "../../lib/db/auth.js";
 import { setUserInfo } from "../../lib/db/user.js";
 import { ResolutionError } from "../../lib/errors.js";
 import {
@@ -104,17 +104,21 @@ export const whoamiCommand = buildCommand({
 
     const user = await getCurrentUser();
 
-    // Keep cached user info up to date. Non-fatal: display must succeed even
-    // if the DB write fails (read-only filesystem, corrupted database, etc.).
-    try {
-      setUserInfo({
-        userId: user.id,
-        email: user.email ?? undefined,
-        username: user.username ?? undefined,
-        name: user.name ?? undefined,
-      });
-    } catch (error) {
-      log.debug("Failed to update cached user info", error);
+    // Keep cached user info up to date. Only for stored credentials: an env
+    // token's user must not be written onto the stored active account.
+    // Non-fatal: display must succeed even if the DB write fails (read-only
+    // filesystem, corrupted database, etc.).
+    if (getAuthConfig()?.source === "oauth") {
+      try {
+        setUserInfo({
+          userId: user.id,
+          email: user.email ?? undefined,
+          username: user.username ?? undefined,
+          name: user.name ?? undefined,
+        });
+      } catch (error) {
+        log.debug("Failed to update cached user info", error);
+      }
     }
 
     return yield new CommandOutput(user);
