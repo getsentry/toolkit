@@ -180,16 +180,21 @@ needs a restart after upgrading; restarting clears its in-memory telemetry. One 
 covers one daemon, not receivers on other ports or computers.
 
 Open Settings with the sidebar gear (or Session settings in the mobile receiver
-menu) to view retention for the selected session. A locally served viewer can
-change the limit at runtime with validation; increases preserve captured data,
-and lowering it below the retained count is rejected until enough data is cleared.
-Retention is read-only in the hosted viewer; use the CLI to change it there.
+menu) to change retention for a running session. Both a locally served viewer and
+local.sentry.dev (including trusted PR previews) use the runtime API. The form uses
+React Hook Form and Valibot to require a whole number from 1 to 50,000. Increases preserve
+captured data, and lowering below the retained count is rejected until enough data
+is cleared. The receiver validates the same bounds and rejects concurrent decreases
+that would discard envelopes. Closed sessions and disconnected streams are read-only.
+Older daemons/receivers need an upgrade and restart to allow hosted updates.
 The sidebar keeps Add receiver on its own row, with Settings at the left and
 Clear, Close, and Disconnect icons at the right beneath it. Icon tooltips also work with keyboard focus.
 
 A loopback-served viewer can reset and close its scoped session. The hosted viewer
-can read the stream and clear its own displayed feed; it cannot mutate retained
-receiver data. Remote HTTPS streams stay read-only.
+can read the stream, update retention, and clear its own displayed feed; it cannot
+reset receiver data or close sessions. Scoped retention requests require the session
+stream capability. Standalone retention updates require UI actions to be enabled on
+the loopback receiver. Other browser origins cannot change retention. Remote HTTPS streams stay read-only.
 
 Exception event titles use the current SDK exception type and message, including
 when the event carries a request transaction name. Overview shows the current

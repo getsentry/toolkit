@@ -116,8 +116,8 @@ export function RetentionSettings({
               id="retention-help"
               className="text-xs leading-relaxed text-muted-foreground"
             >
-              Maximum envelopes to keep. To set a limit below the retained
-              count, clear events first.
+              Keep 1–{MAX_ENVELOPES.toLocaleString()} envelopes. Existing data
+              is preserved.
             </p>
             {error ? (
               <p

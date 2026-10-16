@@ -19,6 +19,7 @@ import {
 } from "./lib/session-directory.ts";
 import { LocalSettings } from "./components/local-settings.tsx";
 import {
+  isHostedUiOrigin,
   LOCAL_DIRECTORY_EVENT,
   LOCAL_SESSION_EVENT,
 } from "../../../packages/cli/src/commands/local/viewer-protocol.ts";
@@ -1120,7 +1121,8 @@ export default function App() {
   const currentEndpoint = parseStreamEndpoint(streamUrl);
   const canEditRetention =
     currentEndpoint?.kind === "loopback" &&
-    isLoopbackHost(window.location.hostname);
+    (isLoopbackHost(window.location.hostname) ||
+      isHostedUiOrigin(window.location.origin));
   const hasScopedSession =
     currentEndpoint?.kind === "loopback" &&
     isLoopbackHost(window.location.hostname) &&

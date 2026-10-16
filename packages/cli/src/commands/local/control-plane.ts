@@ -14,7 +14,7 @@ import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
-import { buildSSEHandler, isHostedUiOrigin, MAX_BODY_BYTES } from "./server.js";
+import { buildSSEHandler, MAX_BODY_BYTES } from "./server.js";
 import { logger } from "../../lib/logger.js";
 import {
   createLocalSessionStore,
@@ -23,6 +23,7 @@ import {
 } from "./session-store.js";
 
 import {
+  isHostedUiOrigin,
   LOCAL_DIRECTORY_EVENT,
   LOCAL_SESSION_EVENT,
   type LocalSessionEvent,
@@ -238,14 +239,30 @@ export function createLocalControlPlane({
       }
       return hostedCors(c, next);
     });
-  app.use(
-    `${CONTROL_PLANE_PREFIX}/sessions/:id/ui/*`,
-    cors({
-      allowMethods: ["POST", "OPTIONS"],
-      allowHeaders: ["Content-Type"],
-      origin: (origin) => (LOOPBACK_ORIGIN_RE.test(origin) ? origin : null),
-    }),
-  );
+  const sessionUiCors = cors({
+    allowMethods: ["POST", "OPTIONS"],
+    allowHeaders: ["Content-Type"],
+    origin: (origin) =>
+      LOOPBACK_ORIGIN_RE.test(origin) || isHostedUiOrigin(origin)
+        ? origin
+        : null,
+  });
+  app.use(`${CONTROL_PLANE_PREFIX}/sessions/:id/ui/*`, async (c, next) => {
+    const hostedRetention =
+      c.req.path.endsWith("/ui/retention") &&
+      isHostedUiOrigin(c.req.header("origin"));
+    if (!isLoopbackBrowserRequest(c.req.raw) && !hostedRetention)
+      return c.body(null, 403);
+    if (hostedRetention && c.req.method === "OPTIONS") {
+      if (c.req.header("access-control-request-method") !== "POST")
+        return c.body(null, 403);
+      if (c.req.header("access-control-request-private-network") === "true") {
+        c.header("Access-Control-Allow-Private-Network", "true");
+        c.header("Vary", "Access-Control-Request-Private-Network");
+      }
+    }
+    return sessionUiCors(c, next);
+  });
 
   // Choosing the daemon-wide entry point opts into discovering its sessions.
   // Browser origins remain restricted; scoped streams never emit this metadata.
@@ -528,9 +545,6 @@ export function createLocalControlPlane({
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/ui/:action`, async (c) => {
     if (!(isSessionUiAction(c.req.path) && sessionExists(c.req.param("id")))) {
       return c.body(null, 404);
-    }
-    if (!isLoopbackBrowserRequest(c.req.raw)) {
-      return c.body(null, 403);
     }
     if (
       c.req.query("cap") !==

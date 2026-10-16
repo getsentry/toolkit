@@ -577,7 +577,7 @@ describe("Local daemon E2E", () => {
       const updated = await fetch(uiUrl, {
         method: "POST",
         headers: {
-          Origin: "http://localhost:5173",
+          Origin: "https://local.sentry.dev",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ maxEnvelopes: 6 }),

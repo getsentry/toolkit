@@ -13,7 +13,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test.each(["0", "1.5", "50001", ""])(
+test.each(["-1", "0", "1.5", "50001", "9007199254740992", ""])(
   "rejects invalid retention %s before sending mutations",
   async (value) => {
     const fetch = vi.fn();
@@ -135,3 +135,61 @@ test.each([1, 1000])(
     expect(screen.queryByRole("spinbutton")).toBeNull();
   },
 );
+
+test.each([1, 50000])(
+  "submits valid boundary %i as a number",
+  async (value) => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ maxEnvelopes: value }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    render(
+      <RetentionSettings
+        limit={500}
+        count={0}
+        streamUrl="http://127.0.0.1:8969/_local/v1/sessions/web/stream?cap=test"
+        editable
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Retention limit"), {
+      target: { value: String(value) },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply retention limit" }),
+    );
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
+          body: JSON.stringify({ maxEnvelopes: value }),
+        }),
+      ),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  },
+);
+
+test("rejects lowering capacity below saved data before sending a request", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  render(
+    <RetentionSettings
+      limit={500}
+      count={8}
+      streamUrl="http://127.0.0.1:8969/stream"
+      editable
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Retention limit"), {
+    target: { value: "7" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Apply retention limit" }),
+  );
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "Cannot lower the limit below 8",
+  );
+  expect(fetch).not.toHaveBeenCalled();
+});

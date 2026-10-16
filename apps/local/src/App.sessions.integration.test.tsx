@@ -16,7 +16,11 @@ import { BrowserRouter } from "react-router";
 import { ThemeProvider } from "./components/theme-provider.tsx";
 import { LocalWorkspaceRoute } from "./routes/local-workspace-route.tsx";
 import { createLocalControlPlane } from "../../../packages/cli/src/commands/local/control-plane.ts";
-import { tryListen } from "../../../packages/cli/src/commands/local/server.ts";
+import { createLocalRetentionBuffer } from "../../../packages/cli/src/commands/local/retention-buffer.ts";
+import {
+  buildApp,
+  tryListen,
+} from "../../../packages/cli/src/commands/local/server.ts";
 import {
   createLocalSessionStore,
   SESSION_RETENTION_MS,
@@ -166,8 +170,26 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     fireEvent.click(
       screen.getByRole("button", { name: "Settings", exact: true }),
     );
-    await screen.findByText(/1,000 envelopes/);
-    expect(screen.queryByLabelText("Retention limit")).toBeNull();
+    const limit = (await screen.findByLabelText(
+      "Retention limit",
+    )) as HTMLInputElement;
+    expect(limit.value).toBe("1000");
+    fireEvent.change(limit, { target: { value: "2000" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply retention limit" }),
+    );
+    await waitFor(() =>
+      expect(daemon.plane.sessionStore.resolve(worker.id).maxEnvelopes).toBe(
+        2000,
+      ),
+    );
+    await waitFor(() => expect(limit.value).toBe("2000"));
+    expect(
+      daemon.plane.sessionStore.getBuffer(worker.id).read({ all: true }),
+    ).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: "Close telemetry session" }),
+    ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
     await daemon.ingest(web, "/web-after-switch");
     await daemon.ingest(worker, "/worker-after-switch");
@@ -337,11 +359,13 @@ test("pasting a plain receiver discovers active sessions and waits for newly sta
       screen.getByRole("button", { name: "Settings", exact: true }),
     );
     await screen.findByRole("dialog", { name: "Settings", exact: true });
-    await screen.findByText(/500 envelopes/);
-    expect(screen.queryByLabelText("Retention limit")).toBeNull();
-    await screen.findByText(
-      "Change retention from a locally served viewer or the CLI.",
-    );
+    expect(
+      ((await screen.findByLabelText("Retention limit")) as HTMLInputElement)
+        .value,
+    ).toBe("500");
+    expect(
+      screen.getByRole("button", { name: "Apply retention limit" }),
+    ).not.toBeNull();
   } finally {
     cleanup();
     await daemon.stop();
@@ -615,3 +639,43 @@ test("close, archive replay, clear and disconnect keep the viewer lifecycle stab
     await daemon.stop();
   }
 }, 15_000);
+
+test("hosted standalone receiver edits retention without losing saved events", async () => {
+  const retention = createLocalRetentionBuffer(500);
+  const { server, port } = await tryListen(
+    buildApp(retention.buffer, { uiActions: true, retention }),
+    0,
+    "127.0.0.1",
+  );
+  try {
+    const streamUrl = `http://127.0.0.1:${port}/stream`;
+    await fetch(streamUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-sentry-envelope" },
+      body: '{}\n{"type":"event"}\n{"message":"saved standalone event"}\n',
+    });
+    renderSession({ streamUrl });
+    await screen.findByRole("button", { name: "View event event" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Settings", exact: true }),
+    );
+    const input = (await screen.findByLabelText(
+      "Retention limit",
+    )) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "1000" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply retention limit" }),
+    );
+    await waitFor(() =>
+      expect(retention.getSettings().maxEnvelopes).toBe(1000),
+    );
+    await waitFor(() => expect(input.value).toBe("1000"));
+    expect(retention.buffer.read({ all: true })).toHaveLength(1);
+  } finally {
+    cleanup();
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
+  }
+});
