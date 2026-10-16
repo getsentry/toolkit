@@ -52,6 +52,7 @@ import {
 } from "../../lib/mutate-command.js";
 import { parseBoolValue } from "../../lib/parse-bool.js";
 import { computeTelemetryEffective } from "../../lib/telemetry.js";
+import { resetTipsCache } from "../../lib/tips.js";
 
 // ---------------------------------------------------------------------------
 // Defaults registry — maps canonical keys to get/set/clear handlers
@@ -88,6 +89,37 @@ function validateSlug(value: string, label: string): string {
   return trimmed;
 }
 
+/**
+ * Build a handler for an on/off preference. Accepts on/off, yes/no,
+ * true/false, or 1/0 and reports the stored value as "on", "off", or null.
+ */
+function onOffHandler(
+  key: string,
+  get: () => boolean | undefined,
+  set: (enabled: boolean | null) => void,
+): DefaultHandler {
+  return {
+    get: () => {
+      const pref = get();
+      if (pref === undefined) {
+        return null;
+      }
+      return pref ? "on" : "off";
+    },
+    set: (value) => {
+      const parsed = parseBoolValue(value);
+      if (parsed === null) {
+        throw new ValidationError(
+          `Invalid ${key} value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
+          key,
+        );
+      }
+      set(parsed);
+    },
+    clear: () => set(null),
+  };
+}
+
 /** Registry of all supported defaults with their handlers */
 const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
   organization: {
@@ -100,98 +132,25 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
     set: (value) => setDefaultProject(validateSlug(value, "Project")),
     clear: () => setDefaultProject(null),
   },
-  telemetry: {
-    get: () => {
-      const pref = getTelemetryPreference();
-      if (pref === true) {
-        return "on";
-      }
-      if (pref === false) {
-        return "off";
-      }
-      return null;
-    },
-    set: (value) => {
-      const parsed = parseBoolValue(value);
-      if (parsed === null) {
-        throw new ValidationError(
-          `Invalid telemetry value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          "telemetry",
-        );
-      }
-      setTelemetryPreference(parsed);
-    },
-    clear: () => setTelemetryPreference(null),
-  },
-  "agent-skills": {
-    get: () => {
-      const pref = getAgentSkillsPreference();
-      if (pref === true) {
-        return "on";
-      }
-      if (pref === false) {
-        return "off";
-      }
-      return null;
-    },
-    set: (value) => {
-      const parsed = parseBoolValue(value);
-      if (parsed === null) {
-        throw new ValidationError(
-          `Invalid agent-skills value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          "agent-skills",
-        );
-      }
-      setAgentSkillsPreference(parsed);
-    },
-    clear: () => setAgentSkillsPreference(null),
-  },
-  graphics: {
-    get: () => {
-      const pref = getGraphicsPreference();
-      if (pref === true) {
-        return "on";
-      }
-      if (pref === false) {
-        return "off";
-      }
-      return null;
-    },
-    set: (value) => {
-      const parsed = parseBoolValue(value);
-      if (parsed === null) {
-        throw new ValidationError(
-          `Invalid graphics value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          "graphics",
-        );
-      }
-      setGraphicsPreference(parsed);
-    },
-    clear: () => setGraphicsPreference(null),
-  },
-  tips: {
-    get: () => {
-      const pref = getTipsPreference();
-      if (pref === true) {
-        return "on";
-      }
-      if (pref === false) {
-        return "off";
-      }
-      return null;
-    },
-    set: (value) => {
-      const parsed = parseBoolValue(value);
-      if (parsed === null) {
-        throw new ValidationError(
-          `Invalid tips value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          "tips",
-        );
-      }
-      setTipsPreference(parsed);
-    },
-    clear: () => setTipsPreference(null),
-  },
+  telemetry: onOffHandler(
+    "telemetry",
+    getTelemetryPreference,
+    setTelemetryPreference,
+  ),
+  "agent-skills": onOffHandler(
+    "agent-skills",
+    getAgentSkillsPreference,
+    setAgentSkillsPreference,
+  ),
+  graphics: onOffHandler(
+    "graphics",
+    getGraphicsPreference,
+    setGraphicsPreference,
+  ),
+  tips: onOffHandler("tips", getTipsPreference, (enabled) => {
+    setTipsPreference(enabled);
+    resetTipsCache();
+  }),
   url: {
     get: getDefaultUrl,
     set: (value) => {
@@ -379,7 +338,7 @@ export const defaultsCommand = buildCommand({
         guardNonInteractive(flags);
         if (!isConfirmationBypassed(flags)) {
           const confirmed = await log.prompt(
-            "This will clear all defaults (organization, project, telemetry, URL, headers, ca-cert, agent-skills, graphics, tips). Continue?",
+            `This will clear all defaults (${Object.keys(DEFAULTS_REGISTRY).join(", ")}). Continue?`,
             { type: "confirm" },
           );
           if (confirmed !== true) {
@@ -387,6 +346,7 @@ export const defaultsCommand = buildCommand({
           }
         }
         clearAllDefaults();
+        resetTipsCache();
         yield new CommandOutput({
           action: "clear-all" as const,
           defaults: getAllDefaults(),

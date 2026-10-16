@@ -25,7 +25,14 @@ export const TIPS_DISABLE_ENV_VAR = "SENTRY_DISABLE_TIPS";
 const TIP_PATTERN = /(^|\s+)Tip:.*$/;
 
 /**
- * Decide whether `Tip:` hints should be suppressed.
+ * Memoized {@link tipsSuppressed} results, keyed by the active env object.
+ * The CLI has one env per process, so the DB is read at most once; SDK
+ * invocations isolated with `withEnv()` each get their own entry.
+ */
+const tipsCache = { byEnv: new WeakMap<NodeJS.ProcessEnv, boolean>() };
+
+/**
+ * Decide whether `Tip:` hints should be suppressed. Memoized per env.
  *
  * - A truthy `SENTRY_DISABLE_TIPS` suppresses tips and wins over the stored
  *   preference, using the shared truthy-env semantics (`"0"` / `"false"` /
@@ -34,11 +41,25 @@ const TIP_PATTERN = /(^|\s+)Tip:.*$/;
  * - Default: tips are shown.
  */
 export function tipsSuppressed(): boolean {
-  const envVal = getEnv()[TIPS_DISABLE_ENV_VAR];
-  if (envVal !== undefined && isTruthyEnv(envVal)) {
-    return true;
+  const env = getEnv();
+  const cached = tipsCache.byEnv.get(env);
+  if (cached !== undefined) {
+    return cached;
   }
-  return getTipsPreference() === false;
+  const envVal = env[TIPS_DISABLE_ENV_VAR];
+  const suppressed =
+    (envVal !== undefined && isTruthyEnv(envVal)) ||
+    getTipsPreference() === false;
+  tipsCache.byEnv.set(env, suppressed);
+  return suppressed;
+}
+
+/**
+ * Drop memoized {@link tipsSuppressed} results. Call after the stored tips
+ * preference changes (`sentry cli defaults tips ...`) and between tests.
+ */
+export function resetTipsCache(): void {
+  tipsCache.byEnv = new WeakMap();
 }
 
 /**

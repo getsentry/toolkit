@@ -10,6 +10,7 @@ import { setTipsPreference } from "../../src/lib/db/defaults.js";
 import { setEnv } from "../../src/lib/env.js";
 import {
   applyTipsPreference,
+  resetTipsCache,
   stripTips,
   tipsSuppressed,
 } from "../../src/lib/tips.js";
@@ -47,6 +48,14 @@ describe("tipsSuppressed", () => {
     expect(tipsSuppressed()).toBe(false);
   });
 
+  test("memoizes per env until the cache is reset", () => {
+    expect(tipsSuppressed()).toBe(false);
+    setTipsPreference(false);
+    expect(tipsSuppressed()).toBe(false);
+    resetTipsCache();
+    expect(tipsSuppressed()).toBe(true);
+  });
+
   test("truthy SENTRY_DISABLE_TIPS wins over the stored preference", () => {
     setTipsPreference(true);
     for (const val of ["1", "true", "yes"]) {
@@ -59,8 +68,10 @@ describe("tipsSuppressed", () => {
     for (const val of ["0", "false", ""]) {
       setTipsEnv(val);
       setTipsPreference(null);
+      resetTipsCache();
       expect(tipsSuppressed()).toBe(false);
       setTipsPreference(false);
+      resetTipsCache();
       expect(tipsSuppressed()).toBe(true);
     }
   });
