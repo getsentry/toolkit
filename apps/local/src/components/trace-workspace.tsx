@@ -52,10 +52,10 @@ export function TraceWorkspace({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
       <aside
         aria-label="Trace list"
-        className="flex min-h-0 w-80 shrink-0 flex-col border-r border-border bg-muted/30"
+        className="flex h-44 min-h-0 w-full shrink-0 flex-col border-b border-border bg-muted/30 md:h-auto md:w-80 md:border-r md:border-b-0"
       >
         <header className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
           <h2

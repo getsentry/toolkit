@@ -222,6 +222,14 @@ export function getStreamUrlFromHash(hash: string): string | undefined {
   );
 }
 
+/** Public viewer query links may select only a credential-free loopback receiver. */
+export function getStreamUrlFromQuery(search: string): string | undefined {
+  const endpoint = parseStreamEndpoint(new URLSearchParams(search).get("url"));
+  if (endpoint?.kind !== "loopback") return;
+  const url = new URL(endpoint.url);
+  return url.pathname === "/stream" && !url.search ? endpoint.url : undefined;
+}
+
 /** Validate a stream endpoint saved by an earlier CLI-launched tab. */
 export function getStreamUrlFromStorage(
   stream: string | null,
@@ -249,9 +257,11 @@ export function resolveInitialStreamUrl(
   hash: string,
   savedLoopbackStream: string | null,
   savedRemoteStream: string | null,
+  search = "",
 ): string {
   return (
     getStreamUrlFromHash(hash) ??
+    getStreamUrlFromQuery(search) ??
     getStreamUrlFromStorage(savedLoopbackStream) ??
     getRemoteStreamUrlFromStorage(savedRemoteStream) ??
     DEFAULT_STREAM_URL

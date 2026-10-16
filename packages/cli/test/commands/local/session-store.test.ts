@@ -128,7 +128,7 @@ describe("LocalSessionStore", () => {
     expect(() => store.resolve(session.id)).toThrow(/not found/i);
   });
 
-  test("refreshes the retention deadline when a retained session receives activity", () => {
+  test("does not extend the expiry of a closed session after activity", () => {
     let now = 1000;
     const store = createLocalSessionStore({ now: () => now });
     const session = store.create({ label: "web", cwd: "/work/web" });
@@ -138,7 +138,7 @@ describe("LocalSessionStore", () => {
     store.recordActivity(session.id);
     now += 2 * 60 * 60 * 1000;
 
-    expect(store.pruneExpired()).toEqual([]);
-    expect(store.resolve(session.id).state).toBe("retained");
+    expect(store.pruneExpired()).toEqual([session.id]);
+    expect(() => store.resolve(session.id)).toThrow(/not found/i);
   });
 });

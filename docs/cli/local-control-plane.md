@@ -22,8 +22,8 @@ sentry local daemon stop
 `--session` or `--open`. Invalid combinations are rejected before a receiver or
 application is started. Omit `--verify` to capture into a retained daemon session.
 
-`local session create <name> --json` returns distinct `ingestUrl` and `streamUrl`
-capabilities for SDK ingestion and viewer reads. The ingest capability lives in
+`local session create <name> --json` returns distinct `ingestUrl`, `streamUrl`, and `directoryUrl`
+capabilities for SDK ingestion, single-session streaming, and browser session discovery. The ingest capability lives in
 the URL path so SDK transports that omit query parameters still deliver events.
 Treat those URLs as credentials.
 Use `--clientId <key>` to make session creation idempotent for retries. Once a
@@ -93,14 +93,112 @@ The independently served viewer lives in `apps/local`. Run
 CLI builds use <https://local.sentry.dev/>; publishing the migrated app requires
 that hosting project to use Toolkit and `apps/local` as its root directory.
 
-A loopback-served viewer can reset and close its scoped session. The hosted viewer
-can read the stream and clear its own displayed feed; it cannot mutate retained
-receiver data. Remote HTTPS streams stay read-only.
+The Settings dialog also offers Light, Dark, and System appearance options.
+The choice applies immediately and persists in the browser across reloads.
+System follows the browser's `prefers-color-scheme` preference, including live
+changes; the dialog shows its resolved Light or Dark appearance. An explicit
+Light or Dark choice overrides it until System is selected again.
+Settings also remains accessible from the connection landing without an active receiver.
 
-The viewer connects to one stream at a time. Use **Change receiver** and a session's
-`streamUrl` from `local session view <session> --json` to switch runs; it does not
-automatically discover or list other daemon sessions. The **Sessions & SDKs** view
-shows SDK session telemetry within the connected stream, not a run picker.
+On narrow screens, the event or trace list stacks above its inspector. Mobile
+receiver actions open the same Settings and Add receiver dialogs as the sidebar.
+
+### Receiver connections
+
+**Add receiver** opens a modal over the current feed. Close it with its close
+button, Escape, or an outside click; focus returns to its trigger. The background
+is blocked while Add receiver or Settings is open. Both dialogs scroll within
+the viewport. Adding a receiver checks its stream before replacing a healthy
+feed. A failed or cancelled attempt keeps the existing connection and events.
+
+**Past connections**, below the connection form, lists successful receivers for
+this browser tab and survives reloads. Choose one to reconnect without pasting
+its address, or use its remove button to forget the entry. Local entries use the
+plain `/stream` address so reconnecting discovers available sessions without
+saving session capabilities in the list. Remote URLs stay in tab session storage;
+query credentials are omitted from their displayed labels. Each tab keeps at most
+five receivers, ordered by most recent use; adding another discards the oldest
+entry, and reconnecting moves an existing receiver to the top. No history entry is
+created for a failed connection.
+
+Closing a session stops capture immediately: later ingestion receives HTTP 410,
+including requests whose bodies finish after Close. Saved events remain readable
+for three hours from the first Close; retries and attempted ingestion do not extend
+that deadline. **Reload saved events** replays the archive without resuming capture.
+The viewer keeps the workspace visible even when the archive is empty. Close is
+guarded against duplicate requests and times out if the receiver does not respond.
+
+**Disconnect receiver** returns to the connection screen without closing capture
+or deleting receiver data. This tab stays disconnected after a reload; use Connect,
+past connections, or an accepted connection link to resume. Ignored or unsupported
+URL parameters do not reconnect a saved receiver. **Clear events** resets
+local receiver data when permitted and resumes only an open session's feed. If the
+reset fails, the feed stays paused and offers Reconnect even when the view is empty.
+Closed sessions stay closed and empty after a reset. Other connected viewers
+receive reset and close notifications. The hosted viewer clears only its displayed data; reloading
+saved events restores the daemon's archive.
+
+### Switching sessions
+
+Human-readable `local run` and `local serve` output prints a **View events at**
+link with the receiver's actual port, for example:
+
+```text
+View events at https://local.sentry.dev/?url=http%3A%2F%2Flocalhost%3A8969%2Fstream
+```
+
+Session create/view and daemon start/status summaries include the same link.
+It opens the hosted viewer and connects to the plain receiver address, so named
+sessions appear in the picker automatically. The public `url` query accepts only
+credential-free loopback `/stream` addresses; session capabilities still use the
+existing fragment connection flow. The viewer consumes the query at startup so
+reloading keeps the selected session. JSON and NDJSON output stay unchanged.
+
+Connect to the daemon's plain `http://127.0.0.1:8969/stream` endpoint (using its
+actual host and port) to discover running sessions automatically. The viewer
+selects the first running session and fills the Session picker. If no sessions
+exist yet, it waits and discovers them as they start. This works in the local
+development viewer and on <https://local.sentry.dev/>. Alternatively, run either
+command with `--session <name> --open` to start on that specific session.
+The picker lists running and retained sessions from that daemon, including sessions
+created after the viewer opens. It refreshes every five seconds; Refresh sessions
+updates it immediately. Labels include the working directory and a short session ID
+to distinguish runs with the same name. Picking a session replaces only the viewer's
+feed, searches, and selection; the daemon retains every session's captured data.
+Switching back replays its retained envelopes. Retention follows the selected session.
+A failed refresh leaves the current feed readable. Expired sessions leave the list;
+the viewer keeps already displayed telemetry and does not silently switch runs.
+
+The daemon-wide `/stream` emits discovery metadata to loopback viewers and the
+trusted hosted Local origins. Other browser origins cannot read it. Discovery
+uses a separate `directoryUrl` capability, also returned by session create and
+session view. `--open` passes it alongside the initial stream in the URL fragment,
+which is removed after startup and is never sent to the hosting server. The directory
+is kept only in tab session storage, so reloads can retain the picker. The capability
+allows discovery of all sessions and their stream capabilities on this daemon; treat
+it as a credential. It does not grant ingestion or the CLI control API, and expires
+when the daemon stops. By themselves, existing scoped stream links do not grant sibling discovery.
+An older CLI/daemon or a plain receiver can still connect without a picker; reopen
+with an updated CLI and daemon to enable discovery. An already-running older daemon
+needs a restart after upgrading; restarting clears its in-memory telemetry. One picker
+covers one daemon, not receivers on other ports or computers.
+
+Open Settings with the sidebar gear (or Session settings in the mobile receiver
+menu) to change retention for a running session. Both a locally served viewer and
+local.sentry.dev (including trusted PR previews) use the runtime API. The form uses
+React Hook Form and Valibot to require a whole number from 1 to 50,000. Increases preserve
+captured data, and lowering below the retained count is rejected until enough data
+is cleared. The receiver validates the same bounds and rejects concurrent decreases
+that would discard envelopes. Closed sessions and disconnected streams are read-only.
+Older daemons/receivers need an upgrade and restart to allow hosted updates.
+The sidebar keeps Add receiver on its own row, with Settings at the left and
+Clear, Close, and Disconnect icons at the right beneath it. Icon tooltips also work with keyboard focus.
+
+A loopback-served viewer can reset and close its scoped session. The hosted viewer
+can read the stream, update retention, and clear its own displayed feed; it cannot
+reset receiver data or close sessions. Scoped retention requests require the session
+stream capability. Standalone retention updates require UI actions to be enabled on
+the loopback receiver. Other browser origins cannot change retention. Remote HTTPS streams stay read-only.
 
 Exception event titles use the current SDK exception type and message, including
 when the event carries a request transaction name. Overview shows the current
@@ -114,7 +212,7 @@ from earlier connections, including when returning to the same receiver URL.
 Search and view navigation remain available for retained telemetry after a
 receiver disconnects or a session closes, including raw-only envelopes. A trace
 search with no matches explains how to change or clear the filter. Closing an
-empty session returns to the receiver picker. Waterfall failure styling uses
+empty session keeps the workspace visible; Disconnect returns to the receiver picker. Waterfall failure styling uses
 each span's own level, HTTP status, and SDK span status; a failed transaction does not mark healthy child
 spans as failures. The AI workspace matches AI namespaces (`ai`, `gen_ai`,
 `llm`), including dotted origins, rather than substrings of ordinary operations.
@@ -123,7 +221,7 @@ spans as failures. The AI workspace matches AI namespaces (`ai`, `gen_ai`,
 
 `pnpm --filter sentry test:e2e` builds the npm bundle and runs the CLI process
 suite. `test/e2e/local.test.ts` covers concurrent startup, session isolation,
-capability checks, retained queries, scoped browser controls, wrapped applications,
+capability checks, hosted-origin session discovery and isolated stream switching, retained queries, scoped browser controls, wrapped applications,
 real Sentry Node SDK ingestion, restart, and singleton ownership. The Local workflow repeats these tests against
 npm and native binaries on Linux, macOS, and Windows.
 

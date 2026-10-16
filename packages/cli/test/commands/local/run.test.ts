@@ -17,6 +17,7 @@ import {
 } from "../../../src/commands/local/run.js";
 import { buildApp, tryListen } from "../../../src/commands/local/server.js";
 import { openBrowser } from "../../../src/lib/browser.js";
+import { logger } from "../../../src/lib/logger.js";
 import { CliError, ValidationError } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
 import { TEST_TMP_DIR } from "../../constants.js";
@@ -100,6 +101,37 @@ describe("sentry local run", () => {
     spawnCapture.env = undefined;
     spawnCapture.stdio = undefined;
   });
+
+  test.each(["human", "json"] as const)(
+    "prints a credential-free viewer link only for human tails (%s)",
+    async (format) => {
+      const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+      try {
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        await func.call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify: false, timeout: 0, format },
+          process.execPath,
+          "-e",
+          "process.exit(0)",
+        );
+        const hints = info.mock.calls
+          .map((c) => String(c[0]))
+          .filter((line) => line.startsWith("View events at "));
+        expect(hints).toHaveLength(format === "human" ? 1 : 0);
+        if (hints[0]) {
+          const url = new URL(hints[0].slice("View events at ".length));
+          const receiver = new URL(url.searchParams.get("url")!);
+          expect(url.origin).toBe("https://local.sentry.dev");
+          expect(receiver.pathname).toBe("/stream");
+          expect(Number(receiver.port)).toBeGreaterThan(0);
+          expect(receiver.search).toBe("");
+        }
+      } finally {
+        info.mockRestore();
+      }
+    },
+  );
 
   test("throws ValidationError when no command and no auto-detect", async () => {
     const func = (await runCommand.loader()) as unknown as RunFunc;
