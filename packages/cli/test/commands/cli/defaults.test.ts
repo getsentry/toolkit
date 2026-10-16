@@ -15,6 +15,7 @@ import {
   getDefaultProject,
   getDefaultUrl,
   getOnOffPreference,
+  ON_OFF_PREFERENCES,
   setDefaultOrganization,
   setDefaultProject,
   setDefaultUrl,
@@ -71,59 +72,19 @@ describe("defaults storage", () => {
     expect(getDefaultProject()).toBe("proj1");
   });
 
-  test("getOnOffPreference(telemetry) returns undefined when not set", () => {
-    expect(getOnOffPreference("telemetry")).toBeUndefined();
-  });
+  describe.each(ON_OFF_PREFERENCES)("on/off preference %s", (name) => {
+    test("is undefined when not set", () => {
+      expect(getOnOffPreference(name)).toBeUndefined();
+    });
 
-  test("setOnOffPreference(telemetry) stores on/off", () => {
-    setOnOffPreference("telemetry", false);
-    expect(getOnOffPreference("telemetry")).toBe(false);
-
-    setOnOffPreference("telemetry", true);
-    expect(getOnOffPreference("telemetry")).toBe(true);
-  });
-
-  test("setOnOffPreference(telemetry, null) clears preference", () => {
-    setOnOffPreference("telemetry", false);
-    setOnOffPreference("telemetry", null);
-    expect(getOnOffPreference("telemetry")).toBeUndefined();
-  });
-
-  test("getOnOffPreference(agent-skills) returns undefined when not set", () => {
-    expect(getOnOffPreference("agent-skills")).toBeUndefined();
-  });
-
-  test("setOnOffPreference(agent-skills) stores on/off", () => {
-    setOnOffPreference("agent-skills", false);
-    expect(getOnOffPreference("agent-skills")).toBe(false);
-
-    setOnOffPreference("agent-skills", true);
-    expect(getOnOffPreference("agent-skills")).toBe(true);
-  });
-
-  test("setOnOffPreference(agent-skills, null) clears preference", () => {
-    setOnOffPreference("agent-skills", false);
-    setOnOffPreference("agent-skills", null);
-    expect(getOnOffPreference("agent-skills")).toBeUndefined();
-  });
-
-  test("getOnOffPreference(tips) returns undefined when not set", () => {
-    expect(getOnOffPreference("tips")).toBeUndefined();
-  });
-
-  test("setOnOffPreference(tips) stores on/off", () => {
-    setOnOffPreference("tips", false);
-    expect(getOnOffPreference("tips")).toBe(false);
-    expect(getAllDefaults().tips).toBe("off");
-    setOnOffPreference("tips", true);
-    expect(getOnOffPreference("tips")).toBe(true);
-    expect(getAllDefaults().tips).toBe("on");
-  });
-
-  test("setOnOffPreference(tips, null) clears preference", () => {
-    setOnOffPreference("tips", false);
-    setOnOffPreference("tips", null);
-    expect(getOnOffPreference("tips")).toBeUndefined();
+    test("stores on/off and clears with null", () => {
+      setOnOffPreference(name, false);
+      expect(getOnOffPreference(name)).toBe(false);
+      setOnOffPreference(name, true);
+      expect(getOnOffPreference(name)).toBe(true);
+      setOnOffPreference(name, null);
+      expect(getOnOffPreference(name)).toBeUndefined();
+    });
   });
 
   test("getDefaultUrl returns null when not set", () => {

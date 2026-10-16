@@ -16,48 +16,52 @@ import { clearMetadata, getMetadata, setMetadata } from "./utils.js";
 
 const DEFAULTS_ORG = "defaults.org";
 const DEFAULTS_PROJECT = "defaults.project";
-const DEFAULTS_TELEMETRY = "defaults.telemetry";
 const DEFAULTS_URL = "defaults.url";
 const DEFAULTS_HEADERS = "defaults.headers";
 const DEFAULTS_CA_CERT = "defaults.ca-cert";
-const DEFAULTS_AGENT_SKILLS = "defaults.agent-skills";
-const DEFAULTS_GRAPHICS = "defaults.graphics";
-const DEFAULTS_TIPS = "defaults.tips";
+
+/** Names of the on/off preferences, in display order. */
+export const ON_OFF_PREFERENCES = [
+  "telemetry",
+  "agent-skills",
+  "graphics",
+  "tips",
+] as const;
+
+/** Name of an on/off preference. */
+export type OnOffPreference = (typeof ON_OFF_PREFERENCES)[number];
+
+/** Metadata key an on/off preference is stored under. */
+function onOffKey(name: OnOffPreference): `defaults.${OnOffPreference}` {
+  return `defaults.${name}`;
+}
 
 /** All metadata keys used for defaults (for bulk operations) */
 const ALL_DEFAULTS_KEYS = [
   DEFAULTS_ORG,
   DEFAULTS_PROJECT,
-  DEFAULTS_TELEMETRY,
   DEFAULTS_URL,
   DEFAULTS_HEADERS,
   DEFAULTS_CA_CERT,
-  DEFAULTS_AGENT_SKILLS,
-  DEFAULTS_GRAPHICS,
-  DEFAULTS_TIPS,
+  ...ON_OFF_PREFERENCES.map(onOffKey),
 ];
 
-/** State of all persistent defaults */
+/**
+ * State of all persistent defaults. On/off preferences are "on", "off", or
+ * null (= default enabled).
+ */
 export type DefaultsState = {
   /** Default organization slug, or null if unset */
   organization: string | null;
   /** Default project slug, or null if unset */
   project: string | null;
-  /** Telemetry preference: "on", "off", or null (= default enabled) */
-  telemetry: "on" | "off" | null;
   /** Default Sentry instance URL, or null if unset */
   url: string | null;
   /** Custom HTTP headers for self-hosted proxy auth, or null if unset */
   headers: string | null;
   /** Path to a PEM file with custom CA certificates, or null if unset */
   "ca-cert": string | null;
-  /** Agent skill install preference: "on", "off", or null (= default enabled) */
-  "agent-skills": "on" | "off" | null;
-  /** Inline terminal graphics preference: "on", "off", or null (= default enabled) */
-  graphics: "on" | "off" | null;
-  /** `Tip:` hint preference: "on", "off", or null (= default enabled) */
-  tips: "on" | "off" | null;
-};
+} & Record<OnOffPreference, "on" | "off" | null>;
 
 /** Parse a raw "on" / "off" metadata value to a typed "on" | "off" | null. */
 function parseOnOffValue(val: string | undefined): "on" | "off" | null {
@@ -70,22 +74,6 @@ function parseOnOffValue(val: string | undefined): "on" | "off" | null {
   return null;
 }
 
-/** Metadata keys for the on/off preferences, by `sentry cli defaults` key. */
-const ON_OFF_PREFERENCE_KEYS = {
-  telemetry: DEFAULTS_TELEMETRY,
-  "agent-skills": DEFAULTS_AGENT_SKILLS,
-  graphics: DEFAULTS_GRAPHICS,
-  tips: DEFAULTS_TIPS,
-} as const;
-
-/** Name of an on/off preference (`telemetry`, `agent-skills`, ...). */
-export type OnOffPreference = keyof typeof ON_OFF_PREFERENCE_KEYS;
-
-/** All on/off preference names, in display order. */
-export const ON_OFF_PREFERENCES = Object.keys(
-  ON_OFF_PREFERENCE_KEYS,
-) as OnOffPreference[];
-
 /**
  * Read a persistent on/off preference.
  *
@@ -93,7 +81,7 @@ export const ON_OFF_PREFERENCES = Object.keys(
  *   `undefined` if no preference is stored (callers should default to enabled)
  */
 export function getOnOffPreference(name: OnOffPreference): boolean | undefined {
-  const key = ON_OFF_PREFERENCE_KEYS[name];
+  const key = onOffKey(name);
   const value = parseOnOffValue(getMetadata(getDatabase(), [key]).get(key));
   return value === null ? undefined : value === "on";
 }
@@ -106,7 +94,7 @@ export function setOnOffPreference(
   name: OnOffPreference,
   enabled: boolean | null,
 ): void {
-  const key = ON_OFF_PREFERENCE_KEYS[name];
+  const key = onOffKey(name);
   const db = getDatabase();
   if (enabled === null) {
     clearMetadata(db, [key]);
@@ -170,13 +158,15 @@ export function getAllDefaults(): DefaultsState {
   return {
     organization: m.get(DEFAULTS_ORG) ?? null,
     project: m.get(DEFAULTS_PROJECT) ?? null,
-    telemetry: parseOnOffValue(m.get(DEFAULTS_TELEMETRY)),
     url: m.get(DEFAULTS_URL) ?? null,
     headers: m.get(DEFAULTS_HEADERS) ?? null,
     "ca-cert": m.get(DEFAULTS_CA_CERT) ?? null,
-    "agent-skills": parseOnOffValue(m.get(DEFAULTS_AGENT_SKILLS)),
-    graphics: parseOnOffValue(m.get(DEFAULTS_GRAPHICS)),
-    tips: parseOnOffValue(m.get(DEFAULTS_TIPS)),
+    ...(Object.fromEntries(
+      ON_OFF_PREFERENCES.map((name) => [
+        name,
+        parseOnOffValue(m.get(onOffKey(name))),
+      ]),
+    ) as Record<OnOffPreference, "on" | "off" | null>),
   };
 }
 
