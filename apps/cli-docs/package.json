@@ -20,7 +20,7 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "astro": "^7.1.1",
-    "sharp": "^0.35.0",
+    "sharp": "^0.35.5",
     "shiki": "^3.21.0"
   },
   "devDependencies": {
