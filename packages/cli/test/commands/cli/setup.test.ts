@@ -7,6 +7,7 @@
  * via a spy on process.stderr.write and assert on the collected output.
  */
 
+import { spawnSync } from "node:child_process";
 import {
   accessSync,
   constants,
@@ -62,6 +63,7 @@ import { setEnv } from "../../../src/lib/env.js";
 import * as interactiveLogin from "../../../src/lib/interactive-login.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- dynamic setup imports are mocked at the module boundary
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
+import { whichSync } from "../../../src/lib/which.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 /** Store original fetch for restoration */
@@ -391,38 +393,83 @@ describe("sentry cli setup", () => {
     expect(content).toContain("site-functions");
   });
 
-  test("skips fpath modification when already configured in .zshrc", async () => {
-    const zshrc = join(testDir, ".zshrc");
-    const completionDir = join(
-      testDir,
-      ".local",
-      "share",
-      "zsh",
-      "site-functions",
-    );
-    writeFileSync(zshrc, `# existing\nfpath=("${completionDir}" $fpath)\n`);
+  test.skipIf(!whichSync("zsh")).each([
+    { name: "fresh shell", initializeFirst: false, legacy: false },
+    {
+      name: "completion already initialized",
+      initializeFirst: true,
+      legacy: false,
+    },
+    { name: "existing install", initializeFirst: true, legacy: true },
+  ])(
+    "registers zsh completion for $name and keeps setup idempotent",
+    async ({ initializeFirst, legacy }) => {
+      const zshrc = join(testDir, ".zshrc");
+      const completionDir = join(
+        testDir,
+        ".local",
+        "share",
+        "zsh",
+        "site-functions",
+      );
+      const original = initializeFirst
+        ? "autoload -Uz compinit; compinit -D\n"
+        : "# user configuration\n";
+      writeFileSync(
+        zshrc,
+        original +
+          (legacy ? `# sentry\nfpath=("${completionDir}" $fpath)\n` : ""),
+      );
+      if (legacy) {
+        mkdirSync(completionDir, { recursive: true });
+        writeFileSync(join(completionDir, "_sentry"), "#compdef sentry\n");
+      }
+      const { context, getOutput, clearOutput, restore } = createMockContext({
+        homeDir: testDir,
+        execPath: join(testDir, "bin", "sentry"),
+        env: {
+          PATH: `/usr/bin:${join(testDir, "bin")}:/bin`,
+          SHELL: "/bin/zsh",
+        },
+      });
+      restoreStderr = restore;
+      const args = ["cli", "setup", "--no-modify-path", "--no-agent-skills"];
+      await run(app, args, context);
+      const configured = await readFile(zshrc, "utf-8");
+      expect(configured).toContain(original);
+      expect(getOutput()).toContain("Restart your shell");
 
-    const { context, getOutput, restore } = createMockContext({
-      homeDir: testDir,
-      execPath: join(testDir, "bin", "sentry"),
-      env: {
-        PATH: `/usr/bin:${join(testDir, "bin")}:/bin`,
-        SHELL: "/bin/zsh",
-      },
-    });
-    restoreStderr = restore;
-
-    await run(
-      app,
-      ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context,
-    );
-
-    // Should still show "Installed to" but not "Added ... to fpath"
-    const output = getOutput();
-    expect(output).toContain("Completions: Installed to");
-    expect(output).not.toContain("Added sentry fpath in");
-  });
+      const result = spawnSync(
+        "zsh",
+        [
+          "-dfi",
+          "-c",
+          `
+      fpath=(\${fpath:#*/zsh/site-functions})
+      source "$1"
+      print -r -- "\${_comps[sentry]-MISSING}"
+      source "$1"
+      print -r -- "\${_comps[sentry]-MISSING}"
+      autoload +X _sentry
+    `,
+          "--",
+          zshrc,
+        ],
+        {
+          encoding: "utf-8",
+          env: { ...process.env, HOME: testDir, ZDOTDIR: testDir },
+          timeout: 10000,
+        },
+      );
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe("_sentry\n_sentry");
+      clearOutput();
+      await run(app, args, context);
+      expect(await readFile(zshrc, "utf-8")).toBe(configured);
+      expect(getOutput()).not.toContain("Completions:");
+    },
+  );
 
   test("handles GitHub Actions PATH when GITHUB_ACTIONS is set", async () => {
     const ghPathFile = join(testDir, "github_path");

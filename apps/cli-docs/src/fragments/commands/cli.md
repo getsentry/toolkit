@@ -156,6 +156,11 @@ sentry cli setup --no-agent-skills
 sentry cli setup --no-modify-path --no-completions
 ```
 
+For zsh, setup initializes completion when needed and registers Sentry even if
+another tool has already initialized it. Running setup again repairs completion
+configuration from older installs. Restart your shell or source your `.zshrc`
+after setup to load the changes.
+
 ### Uninstall
 
 ```bash

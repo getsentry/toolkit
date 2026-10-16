@@ -187,12 +187,14 @@ export function isInPath(
  * @param directory - Directory being configured (used for duplicate check)
  * @param command - The full shell command to append (e.g. `export PATH="..."`)
  * @param label - Human-readable label for messages (e.g. "PATH", "fpath")
+ * @param previousCommand - Legacy managed command to replace during migration
  */
 async function addToShellConfig(
   configFile: string,
   directory: string,
   command: string,
   label: string,
+  previousCommand?: string,
 ): Promise<PathModificationResult> {
   const exists = await access(configFile).then(
     () => true,
@@ -221,7 +223,10 @@ async function addToShellConfig(
 
   const content = await readFile(configFile, "utf-8");
 
-  if (content.includes(command) || content.includes(`"${directory}"`)) {
+  if (
+    content.includes(command) ||
+    (!previousCommand && content.includes(`"${directory}"`))
+  ) {
     return {
       modified: false,
       configFile,
@@ -232,9 +237,22 @@ async function addToShellConfig(
 
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const newContent = content.endsWith("\n")
-      ? `${content}\n# sentry\n${command}\n`
-      : `${content}\n\n# sentry\n${command}\n`;
+    const lines = content.split("\n");
+    const legacyIndex = previousCommand
+      ? lines.findIndex(
+          (line, index) =>
+            line === previousCommand && lines[index - 1] === "# sentry",
+        )
+      : -1;
+    let newContent: string;
+    if (legacyIndex >= 0) {
+      lines[legacyIndex] = command;
+      newContent = lines.join("\n");
+    } else {
+      newContent = content.endsWith("\n")
+        ? `${content}\n# sentry\n${command}\n`
+        : `${content}\n\n# sentry\n${command}\n`;
+    }
 
     await writeFile(configFile, newContent, "utf-8");
     return {
@@ -267,10 +285,14 @@ export function addToPath(
 }
 
 /**
- * Generate the fpath command for zsh completion directory.
+ * Configure zsh completion regardless of when the shell runs compinit.
+ *
+ * Keep this on one line so uninstall can remove the managed command. Explicit
+ * registration covers shells that initialized completion before this directory
+ * entered fpath. The interactive guard also permits use in .zshenv.
  */
 export function getFpathCommand(directory: string): string {
-  return `fpath=("${directory}" $fpath)`;
+  return `fpath=("${directory}" $fpath); if [[ -o interactive ]]; then if ! (( $+functions[compdef] )); then autoload -Uz compinit; compinit; fi; autoload -Uz _sentry; compdef _sentry sentry; fi`;
 }
 
 /**
@@ -288,6 +310,7 @@ export function addToFpath(
     directory,
     getFpathCommand(directory),
     "fpath",
+    `fpath=("${directory}" $fpath)`,
   );
 }
 
