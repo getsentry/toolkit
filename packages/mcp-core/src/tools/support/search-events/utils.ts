@@ -1,3 +1,4 @@
+import { isAggregateFieldOrEquation } from "@sentry/toolkit-core/events-fields";
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
 import type {
@@ -106,8 +107,8 @@ export function getNumberValue(
 }
 
 // Helper to check if fields contain aggregate functions
-export function isAggregateQuery(fields: string[]): boolean {
-  return fields.some((field) => field.includes("(") && field.includes(")"));
+export function isAggregateQuery(fields: readonly string[]): boolean {
+  return fields.some(isAggregateFieldOrEquation);
 }
 
 type SearchSyntaxDataset = EventsDataset | "replays";

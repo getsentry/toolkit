@@ -6,7 +6,10 @@
  * and ad-hoc event queries.
  */
 
-import { isAggregateFieldOrEquation } from "@sentry/toolkit-core/events-fields";
+import {
+  isAggregateFieldOrEquation,
+  isTracemetricsAggregate,
+} from "@sentry/toolkit-core/events-fields";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 import type { SentryContext } from "../context.js";
 import {
@@ -388,19 +391,6 @@ function appendFlagHints(
   }
   appendPeriodHint(parts, flags.period, DEFAULT_PERIOD);
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
-}
-
-/**
- * True when the aggregate uses the tracemetrics comma-separated format:
- * `aggregation(value,metric_name,metric_type,unit)`.
- */
-function isTracemetricsAggregate(aggregate: string): boolean {
-  const parenIdx = aggregate.indexOf("(");
-  if (parenIdx < 0) {
-    return false;
-  }
-  const inner = aggregate.slice(parenIdx + 1, -1);
-  return inner.startsWith("value,") && inner.split(",").length === 4;
 }
 
 /**

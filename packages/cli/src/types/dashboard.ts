@@ -7,6 +7,11 @@
  */
 
 import {
+  isEquation,
+  isTracemetricsAggregate,
+  parseFunction,
+} from "@sentry/toolkit-core/events-fields";
+import {
   array,
   boolean,
   getDotPath,
@@ -375,8 +380,7 @@ export function parseAggregate(input: string): string {
  *   "p95(span.duration)"   → "p95"
  */
 function extractFunctionName(aggregate: string): string {
-  const parenIdx = aggregate.indexOf("(");
-  return parenIdx > 0 ? aggregate.slice(0, parenIdx) : aggregate;
+  return parseFunction(aggregate)?.name ?? aggregate;
 }
 
 /**
@@ -384,17 +388,9 @@ function extractFunctionName(aggregate: string): string {
  * Format: `aggregation(value,metric_name,metric_type,unit)`
  * Example: `p50(value,completion.duration_ms,distribution,none)`
  */
-function isTracemetricsAggregate(aggregate: string): boolean {
+function isTracemetricsWidgetAggregate(aggregate: string): boolean {
   // equation| prefix denotes a formula combining multiple tracemetrics aggregates
-  if (aggregate.startsWith("equation|")) {
-    return true;
-  }
-  const parenIdx = aggregate.indexOf("(");
-  if (parenIdx < 0) {
-    return false;
-  }
-  const inner = aggregate.slice(parenIdx + 1, -1);
-  return inner.startsWith("value,") && inner.split(",").length === 4;
+  return isEquation(aggregate) || isTracemetricsAggregate(aggregate);
 }
 
 /**
@@ -416,7 +412,7 @@ export function validateAggregateNames(
   // tracemetrics uses a different aggregate format — validate structure, not function names
   if (dataset === "tracemetrics") {
     for (const agg of aggregates) {
-      if (!isTracemetricsAggregate(agg)) {
+      if (!isTracemetricsWidgetAggregate(agg)) {
         throw new ValidationError(
           `Invalid tracemetrics aggregate "${agg}".\n\n` +
             "tracemetrics queries must use the format: aggregation(value,metric_name,metric_type,unit)\n" +

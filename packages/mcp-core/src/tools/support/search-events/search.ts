@@ -1,3 +1,4 @@
+import { getColumnsAndAggregates } from "@sentry/toolkit-core/events-fields";
 import { getActiveSpan } from "@sentry/core";
 import { ensureSortInFields } from "@sentry/toolkit-core/events-sort";
 import { z } from "zod";
@@ -1034,12 +1035,8 @@ export async function runSearchEvents(
     ...timeParams,
   });
 
-  const aggregateFunctions = fields.filter(
-    (field) => field.includes("(") && field.includes(")"),
-  );
-  const groupByFields = fields.filter(
-    (field) => !field.includes("(") && !field.includes(")"),
-  );
+  const { columns: groupByFields, aggregates: aggregateFunctions } =
+    getColumnsAndAggregates(fields);
 
   function isValidResponse(
     response: unknown,
