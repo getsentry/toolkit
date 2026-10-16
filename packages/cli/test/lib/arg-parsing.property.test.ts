@@ -285,8 +285,48 @@ describe("parseOrgProjectArg properties", () => {
         if (result.type === "explicit") {
           expect(result.org).toBe(org);
           expect(result.project).toBe(project);
+          expect(result.projects).toBeUndefined();
         }
       }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("org/a,b stays one project unless list parsing is enabled", async () => {
+    await fcAssert(
+      property(
+        tuple(orgSlugArb, projectSlugArb, projectSlugArb),
+        ([org, first, second]) => {
+          const result = parseOrgProjectArg(`${org}/${first},${second}`);
+          expect(result.type).toBe("explicit");
+          if (result.type === "explicit") {
+            expect(result.project).toBe(`${first},${second}`);
+            expect(result.projects).toBeUndefined();
+          }
+        },
+      ),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("org/a,b returns both slugs when list parsing is enabled", async () => {
+    await fcAssert(
+      property(
+        tuple(orgSlugArb, projectSlugArb, projectSlugArb),
+        ([org, first, second]) => {
+          if (first === second) {
+            return;
+          }
+          const result = parseOrgProjectArg(`${org}/${first},${second}`, {
+            multi: true,
+          });
+          expect(result.type).toBe("explicit");
+          if (result.type === "explicit") {
+            expect(result.project).toBe(first);
+            expect(result.projects).toEqual([first, second]);
+          }
+        },
+      ),
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });

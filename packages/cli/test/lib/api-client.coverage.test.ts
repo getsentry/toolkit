@@ -1451,10 +1451,7 @@ describe("infrastructure.ts", () => {
       const apiError = new ApiError("test", 500, "detail");
       expect(() =>
         unwrapResult(
-          { data: undefined, error: apiError } as {
-            data: undefined;
-            error: unknown;
-          },
+          { data: undefined, error: apiError, response: undefined },
           "context",
         ),
       ).toThrow(apiError);
@@ -1464,10 +1461,7 @@ describe("infrastructure.ts", () => {
       const authError = new AuthError("expired");
       expect(() =>
         unwrapResult(
-          { data: undefined, error: authError } as {
-            data: undefined;
-            error: unknown;
-          },
+          { data: undefined, error: authError, response: undefined },
           "context",
         ),
       ).toThrow(authError);
@@ -1475,10 +1469,7 @@ describe("infrastructure.ts", () => {
 
     test("returns data on success", () => {
       const result = unwrapResult(
-        { data: { foo: "bar" }, error: undefined } as {
-          data: { foo: string };
-          error: undefined;
-        },
+        { data: { foo: "bar" }, response: new Response() },
         "context",
       );
       expect(result).toEqual({ foo: "bar" });
@@ -1496,10 +1487,7 @@ describe("infrastructure.ts", () => {
       };
 
       try {
-        unwrapResult(
-          result as { data: undefined; error: unknown },
-          "Failed operation",
-        );
+        unwrapResult(result, "Failed operation");
         expect(true).toBe(false); // Should not reach
       } catch (error) {
         expect(error).toBeInstanceOf(ApiError);

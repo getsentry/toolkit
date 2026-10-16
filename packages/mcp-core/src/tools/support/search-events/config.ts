@@ -40,9 +40,10 @@ TOOL USAGE GUIDELINES:
 4. Use whoami tool when queries contain "me" references for user.id or user.email fields
 5. IMPORTANT: For ambiguous terms like "user agents", "browser", "client" - use the appropriate field discovery tool instead of guessing field names
 6. When the user already supplied Sentry search syntax for spans/logs/metrics, call datasetAttributes with substringMatch or query filters from the request before dropping or renaming fields
-7. Use datasetAttributes substringMatch, query, and attributeTypes for targeted lookup when broad field discovery is truncated
-8. For non-replay datasets, call validateSearch after constructing the candidate request. If invalid, fix and validate again in this same pass
-9. NEVER replace a structured field:value filter with message/log.body/full-text matching. If an explicit field is unavailable on the dataset, keep it and let validation fail instead of inventing a weaker query
+7. If datasetAttributes lists a field under Deprecated Fields, use its replacement instead, even when the deprecated name appears in the guidance or examples in this prompt
+8. Use datasetAttributes substringMatch, query, and attributeTypes for targeted lookup when broad field discovery is truncated
+9. For non-replay datasets, call validateSearch after constructing the candidate request. If invalid, fix and validate again in this same pass
+10. NEVER replace a structured field:value filter with message/log.body/full-text matching. If an explicit field is unavailable on the dataset, keep it and let validation fail instead of inventing a weaker query
 
 CRITICAL - TOOL RESPONSE HANDLING:
 All tools return responses in this format: {error?: string, result?: data}
@@ -122,6 +123,21 @@ REPLAY SEARCH RULES:
 - If the user asks about replays they have viewed, prefer viewed_by_me:true
 - If the user asks about replay users and says "me", use whoami and translate to user.email:<actual email>
 
+LOGS TEXT MATCHING (LOGS DATASET ONLY):
+- Plain word, phrase, prefix, or suffix: use wildcards. message:"*database*" contains, message:"database*" starts with, message:"*database" ends with. Do NOT use a regex when a wildcard is enough
+- Any of several plain words or phrases: use a wildcard list, e.g. message:["*ConnectionReset*","*ReadTimeout*"]
+- Use a regex filter key://pattern// when wildcards cannot express the request: number shapes (\\d+), character classes ([0-9a-f]), structured values like IPs, UUIDs, and status codes, or ignoring case (wildcards are case sensitive). Use alternation (a|b) and anchors (^ or $) only alongside one of these
+  - Example: message://request took \\d+ms//
+  - Negate with a leading !: !message://worker \\d+ ready//
+  - There is no regex list form (key:[//a//,//b//] is a literal list); put alternatives inside one pattern: message://(upload|download) of \\d+ bytes failed//
+  - For an exact set of values, keep the list: severity:[error,fatal], not severity://error|fatal//
+- Regex on message is for text inside the message. When the user asks about a value that has its own attribute (e.g. response status), filter that attribute instead
+- NEVER quote a regex: message:"//...//" is a literal string match, not a regex
+- The pattern ends at the first // followed by a space, ) or the end of the query. Spaces, parentheses, and a // followed by anything else (https?://host) are fine unquoted; write \\/\\/ for a literal // followed by a space or )
+- Regex uses RE2 syntax (no lookarounds or backreferences), matches anywhere unless anchored, and is case sensitive; prefix the pattern with (?i) to ignore case
+- Patterns are limited to 64 characters (an escape like \\d counts as one), so keep them short: leave out \\b unless the request needs it, and match either case with (?i)[0-9a-f] rather than [0-9a-fA-F]
+- Regex only works on string attributes in the logs dataset. NEVER write key://pattern// for errors, spans, metrics, or any other dataset: they match //...// literally and return nothing. Approximate the shape with wildcards there, e.g. message:"*retry*failed*"
+
 MATHEMATICAL QUERY PATTERNS:
 When user asks mathematical questions like "how many X", "total Y used", "sum of Z":
 - Identify the appropriate dataset based on context
@@ -129,6 +145,14 @@ When user asks mathematical questions like "how many X", "total Y used", "sum of
 - Use sum() function for totals, avg() for averages, count() for counts
 - For time-based queries ("today", "yesterday", "this week"), use timeRange parameter
 - For "total" or "how many" questions: Users typically want highest values first (descending sort)
+
+CONDITIONAL AGGREGATES (_if) FOR SPANS, LOGS, AND METRICS:
+- Append _if to an aggregate and pass a backtick-wrapped search filter as the first argument
+- Remaining arguments match the base function. The filter uses normal Sentry search syntax
+- Spans: count_if(\`span.op:db\`), count_if(\`span.duration:>100\`), avg_if(\`span.duration:<=100\`,span.duration), p95_if(\`has:db.statement\`,span.duration)
+- Logs: count_if(\`severity:error\`), avg_if(\`severity:error\`,severity_number)
+- Metrics: sum_if(\`environment:production\`,value,my.counter,counter,-), p95_if(\`release:1.2.3\`,value,http.request.duration,distribution,millisecond)
+- Errors keeps the three-argument form: count_if(error.handled,equals,false)
 
 DERIVED METRICS AND CALCULATIONS (SPANS ONLY):
 When user asks for calculated metrics, ratios, or conversions:
@@ -232,6 +256,7 @@ Return a JSON object with these fields:
 CORRECT QUERY PATTERNS (FOLLOW THESE):
 - For field existence: Use has:field_name (NOT field_name IS NOT NULL)
 - For field absence: Use !has:field_name (NOT field_name IS NULL)
+- For field negation: Use !span.op:db (NOT span.op IS db)
 - For time periods: Use timeRange parameter (NOT SQL date functions)
 - Example: "items processed yesterday" → query: "has:item.processed", timeRange: {"statsPeriod": "24h"}
 
@@ -373,6 +398,12 @@ export const DATASET_FIELDS = {
     "p100(field)": "100th percentile (max), e.g. p100(span.duration)",
     "epm()": "Events per minute rate",
     "failure_rate()": "Percentage of failed spans",
+    "count_if(`query`)":
+      "Conditional count. First argument is a backtick-wrapped search filter, e.g. count_if(`span.op:db`). Optional second argument defaults to span.duration",
+    "count_unique_if(`query`,field)":
+      "Conditional unique count, e.g. count_unique_if(`span.op:db`,user.id)",
+    "avg_if(`query`,field)":
+      "Conditional average, e.g. avg_if(`span.duration:<=100`,span.duration). Same backtick-filter form for sum_if, min_if, max_if, and p50_if through p100_if",
   },
   errors: {
     // Error-specific fields
@@ -399,7 +430,7 @@ export const DATASET_FIELDS = {
     "count()": "Count of error events",
     "count_unique(field)": "Count of unique values, e.g. count_unique(user.id)",
     "count_if(field,equals,value)":
-      "Conditional count, e.g. count_if(error.handled,equals,false)",
+      "Errors-only conditional count, e.g. count_if(error.handled,equals,false). Spans, logs, and metrics use count_if(`filter`) instead",
     "last_seen()": "Most recent timestamp of the group",
     "eps()": "Events per second rate",
     "epm()": "Events per minute rate",
@@ -429,6 +460,12 @@ export const DATASET_FIELDS = {
     "p99(field)": "99th percentile",
     "p100(field)": "100th percentile (max)",
     "epm()": "Events per minute rate",
+    "count_if(`query`)":
+      "Conditional count. First argument is a backtick-wrapped search filter, e.g. count_if(`severity:error`)",
+    "count_unique_if(`query`,field)":
+      "Conditional unique count, e.g. count_unique_if(`severity:error`,user.id)",
+    "avg_if(`query`,field)":
+      "Conditional average, e.g. avg_if(`severity:error`,severity_number). Same backtick-filter form for sum_if, min_if, max_if, and p50_if through p99_if",
   },
   tracemetrics: {
     "metric.name": "Metric name for the newer span metrics dataset",
@@ -468,6 +505,8 @@ export const DATASET_FIELDS = {
       "Per-second rate for a metric, typically counters",
     "per_minute(value,metric.name,metric.type,metric.unit)":
       "Per-minute rate for a metric, typically counters",
+    "sum_if(`query`,value,metric.name,metric.type,metric.unit)":
+      "Conditional aggregate. First argument is a backtick-wrapped search filter, then the same metric arguments as the base function, e.g. sum_if(`environment:production`,value,request_count,counter,-). Same form for avg_if, min_if, max_if, count_if, p50_if through p99_if, per_second_if, and per_minute_if",
   },
   profiles: {
     "profile.id": "Transaction profile ID for a specific captured profile",
@@ -621,6 +660,32 @@ export const DATASET_EXAMPLES: Record<
         sort: "-p75(span.duration)",
       },
     },
+    {
+      description: "spans that did not succeed, excluding database queries",
+      output: {
+        query: "!span.status:ok AND !span.op:db*",
+        fields: [
+          "span.op",
+          "span.description",
+          "span.status",
+          "span.duration",
+          "transaction",
+          "timestamp",
+        ],
+        sort: "-span.duration",
+      },
+    },
+    {
+      description: "database span count and p95 duration",
+      output: {
+        query: "",
+        fields: [
+          "count_if(`span.op:db`)",
+          "p95_if(`span.op:db`,span.duration)",
+        ],
+        sort: "-count_if(`span.op:db`)",
+      },
+    },
   ],
   errors: [
     {
@@ -678,6 +743,14 @@ export const DATASET_EXAMPLES: Record<
         sort: "-count()",
       },
     },
+    {
+      description: "errors excluding TypeError and ReferenceError",
+      output: {
+        query: "level:error AND !error.type:[TypeError,ReferenceError]",
+        fields: ["error.type", "count()"],
+        sort: "-count()",
+      },
+    },
   ],
   logs: [
     {
@@ -718,6 +791,52 @@ export const DATASET_EXAMPLES: Record<
         query: 'severity:warn AND message:"*memory*"',
         fields: ["timestamp", "message", "severity", "trace"],
         sort: "-timestamp",
+      },
+    },
+    {
+      description:
+        "logs whose message reports a retry count like 'retry 3 of 5'",
+      output: {
+        query: "message://retry \\d+ of \\d+//",
+        fields: ["timestamp", "message", "severity", "trace"],
+        sort: "-timestamp",
+      },
+    },
+    {
+      description:
+        "error logs whose message contains a hex error code like 'err=0x8007000e'",
+      output: {
+        query: "severity:error AND message://err=0x[0-9a-f]+//",
+        fields: ["timestamp", "message", "severity", "trace"],
+        sort: "-timestamp",
+      },
+    },
+    {
+      description:
+        "logs excluding heartbeat messages like 'heartbeat seq=1042'",
+      output: {
+        query: "!message://^heartbeat seq=\\d+$//",
+        fields: ["timestamp", "message", "severity", "trace"],
+        sort: "-timestamp",
+      },
+    },
+    {
+      description: "error logs excluding health checks",
+      output: {
+        query: 'severity:error AND !message:"*health check*"',
+        fields: ["timestamp", "message", "severity", "trace"],
+        sort: "-timestamp",
+      },
+    },
+    {
+      description: "error log count and average severity",
+      output: {
+        query: "",
+        fields: [
+          "count_if(`severity:error`)",
+          "avg_if(`severity:error`,severity_number)",
+        ],
+        sort: "-count_if(`severity:error`)",
       },
     },
   ],
@@ -786,6 +905,29 @@ export const DATASET_EXAMPLES: Record<
         sort: "-avg(value,http.request.duration,distribution,millisecond)",
       },
     },
+    {
+      description: "request duration by route, excluding health check routes",
+      output: {
+        query:
+          "metric.name:http.request.duration AND metric.type:distribution AND !transaction:*health*",
+        fields: [
+          "transaction",
+          "p95(value,http.request.duration,distribution,millisecond)",
+          "count(value,http.request.duration,distribution,millisecond)",
+        ],
+        sort: "-p95(value,http.request.duration,distribution,millisecond)",
+      },
+    },
+    {
+      description: "production request count for a counter metric",
+      output: {
+        query: "",
+        fields: [
+          "sum_if(`environment:production`,value,http.server.request.count,counter,-)",
+        ],
+        sort: "-sum_if(`environment:production`,value,http.server.request.count,counter,-)",
+      },
+    },
   ],
   profiles: [
     {
@@ -842,6 +984,14 @@ export const DATASET_EXAMPLES: Record<
         query: "",
         fields: ["environment", "count()", "p95()"],
         sort: "-count()",
+      },
+    },
+    {
+      description: "slowest profiled transactions outside development",
+      output: {
+        query: "!environment:development",
+        fields: ["transaction", "p95()", "count()"],
+        sort: "-p95()",
       },
     },
   ],

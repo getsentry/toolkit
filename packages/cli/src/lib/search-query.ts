@@ -39,6 +39,19 @@ const log = logger.withTag("search-query");
  */
 const INVALID_INLIST_KEYS = new Set(["is", "has"]);
 
+/**
+ * Filter keys whose values scope *which* issues match but which the Sentry
+ * issues-list endpoint does NOT apply to its per-group seen-stats
+ * (`count`, `userCount`, `firstSeen`, `lastSeen`).
+ *
+ * A query filtering on one of these returns the groups matching the filter,
+ * but the displayed counts remain period-wide totals across every value of the
+ * key — e.g. `release:"X"` restricts the result set yet the counts still cover
+ * all releases. Callers must be told so they don't attribute the numbers to the
+ * filter. See getsentry/cli#1518.
+ */
+const COUNT_UNSCOPED_FILTER_KEYS = new Set(["release"]);
+
 // ---------------------------------------------------------------------------
 // AST → string serialization
 // ---------------------------------------------------------------------------
@@ -62,6 +75,10 @@ function serializeNode(node: SearchNode): string {
     case "text_in_filter": {
       const prefix = node.negated ? "!" : "";
       return `${prefix}${node.key}:[${node.values.join(",")}]`;
+    }
+    case "regex_filter": {
+      const prefix = node.negated ? "!" : "";
+      return `${prefix}${node.key}:${node.value}`;
     }
     case "comparison_filter": {
       const prefix = node.negated ? "!" : "";
@@ -460,6 +477,7 @@ function handleOr(
       "  - is: or has: qualifiers (not supported with in-list)\n" +
       "  - Negated qualifiers (!key:val1 OR !key:val2)\n" +
       "  - Comparison values (age:>24h OR age:>7d)\n" +
+      "  - Regex filters (use alternation instead: key://(a|b)//)\n" +
       "  - Parenthesized groups\n\n" +
       "Alternatives:\n" +
       '  - Write in-list syntax directly: --query "key:[val1,val2]"\n' +
@@ -467,6 +485,65 @@ function handleOr(
       "Search syntax: https://docs.sentry.io/concepts/search/",
     "query",
   );
+}
+
+/**
+ * Collect the count-unscoped filter keys (see {@link COUNT_UNSCOPED_FILTER_KEYS})
+ * present in a query, recursing into parenthesized groups.
+ */
+function collectUnscopedCountKeys(
+  nodes: SearchNode[],
+  found: Set<string>,
+): void {
+  for (const node of nodes) {
+    if (node.type === "paren_group") {
+      collectUnscopedCountKeys(node.inner, found);
+      continue;
+    }
+    if (
+      node.type === "text_filter" ||
+      node.type === "text_in_filter" ||
+      node.type === "comparison_filter" ||
+      node.type === "regex_filter"
+    ) {
+      const key = node.key.toLowerCase();
+      if (COUNT_UNSCOPED_FILTER_KEYS.has(key)) {
+        found.add(key);
+      }
+    }
+  }
+}
+
+/**
+ * Return the filter keys in `query` whose values restrict which issues match
+ * but are NOT reflected in the issues-list endpoint's seen-stats
+ * (`count`, `userCount`, `firstSeen`, `lastSeen`). See getsentry/cli#1518.
+ *
+ * Used to warn callers that a release-scoped `issue list` reports period-wide
+ * counts, not counts matching the filter. Returns an empty array when the
+ * query is absent, unparseable, or contains no such keys.
+ *
+ * @param query - Raw `--query` value, or `undefined`
+ * @returns Lower-cased matching keys (e.g. `["release"]`), deduplicated
+ */
+export function unscopedCountFilterKeys(query: string | undefined): string[] {
+  if (!query) {
+    return [];
+  }
+  let nodes: SearchNode[];
+  try {
+    nodes = parse(normalizeQuery(query));
+  } catch (error) {
+    // Unparseable query has no keys we can detect; the API will reject it with
+    // a proper 400. Nothing actionable here — just skip the count-scope check.
+    log.debug(
+      `Skipping count-scope check for unparseable query: ${String(error)}`,
+    );
+    return [];
+  }
+  const found = new Set<string>();
+  collectUnscopedCountKeys(nodes, found);
+  return [...found];
 }
 
 // ---------------------------------------------------------------------------
@@ -497,6 +574,8 @@ export const SEARCH_SYNTAX_REFERENCE = {
     comparison: [">=", "<=", ">", "<", "=", "!="],
     wildcard: "* in values (e.g., message:*timeout*)",
     inList: "key:[val1,val2] — matches any value in the list",
+    regex:
+      "key://pattern// (logs only, string attributes) — RE2, unanchored, case-sensitive ((?i) to ignore case), max 64 chars, never quoted; ends at the first // followed by whitespace, ) or end of query; negate with !key://pattern//",
   },
   filterTypes: [
     "text (key:value)",
@@ -556,12 +635,18 @@ const PROJECT_NUMERIC_RE = /(^|\s)(!?)project:(\d+)(?=\s|$)/gi;
 const PROJECT_NUMERIC_LIST_RE = /(^|\s)(!?)project:\[(\d+(?:\s*,\s*\d+)*)\]/gi;
 
 /**
- * Pattern that splits a query into alternating unquoted / quoted segments.
+ * Pattern that splits a query into alternating unquoted / preserved segments.
  *
- * Matches double-quoted strings (including escaped quotes inside them).
- * Between matches is unquoted text that can be safely normalized.
+ * Matches double-quoted strings (including escaped quotes inside them) and
+ * `key://pattern//` regex values, which end at the first `//` followed by
+ * whitespace, `)`, or end of query. Between matches is unquoted text that
+ * can be safely normalized.
  */
-const QUOTED_SEGMENT_RE = /"(?:[^"\\]|\\.)*"/g;
+const REGEX_FILTER_KEY_SOURCE = String.raw`(?:(?:tags|flags)\[[\w.:-]+(?: *, *(?:string|number|boolean|array))?\]|"[\w.:-]+"|[\w.[\]-]+)(?:\[\*\])?`;
+const PRESERVED_SEGMENT_RE = new RegExp(
+  String.raw`"(?:[^"\\]|\\.)*"|(?<=(?:^|[\s()"\]])!?${REGEX_FILTER_KEY_SOURCE}:)\/\/(?:(?!\/\/(?:[\t\n )]|$))[^\n])+\/\/(?=[\t\n )]|$)`,
+  "g",
+);
 
 /**
  * Rewrite `project:<digits>` / `project:[digits,…]` to `project_id`.
@@ -587,8 +672,9 @@ function rewriteNumericProjectFilters(query: string): string {
  * transform that fixes a common agent/user mistake. The pipeline is ordered
  * from most common to least common pattern.
  *
- * Quoted regions (`"..."`) are preserved verbatim — only unquoted text is
- * normalized. This prevents `message:"error [500,] found"` from being
+ * Quoted regions (`"..."`) and regex values (`key://pattern//`) are
+ * preserved verbatim — only the remaining text is normalized. This prevents
+ * `message:"error [500,] found"` and `message://[a-z,]+//` from being
  * corrupted.
  *
  * Returns the original query unchanged if no repairs were applicable.
@@ -613,15 +699,15 @@ function normalizeQuery(query: string): string {
 /**
  * Apply a transform function only to the unquoted segments of a query.
  *
- * Splits the query at double-quoted boundaries, applies `fn` to each
- * unquoted segment, and re-assembles with the quoted segments untouched.
+ * Splits the query at double-quoted and regex-value boundaries, applies `fn`
+ * to each unquoted segment, and re-assembles with the preserved segments
+ * untouched.
  */
 function transformUnquoted(
   query: string,
   fn: (unquoted: string) => string,
 ): string {
-  // Fast path: no quotes → transform the whole string
-  if (!query.includes('"')) {
+  if (!(query.includes('"') || query.includes("//"))) {
     return fn(query);
   }
 
@@ -629,21 +715,18 @@ function transformUnquoted(
   let lastIndex = 0;
 
   // Reset the regex state for each call (global regex)
-  QUOTED_SEGMENT_RE.lastIndex = 0;
-  let match = QUOTED_SEGMENT_RE.exec(query);
+  PRESERVED_SEGMENT_RE.lastIndex = 0;
+  let match = PRESERVED_SEGMENT_RE.exec(query);
 
   while (match !== null) {
-    // Unquoted segment before this quoted match
     if (match.index > lastIndex) {
       parts.push(fn(query.slice(lastIndex, match.index)));
     }
-    // Quoted segment — preserved as-is
     parts.push(match[0]);
     lastIndex = match.index + match[0].length;
-    match = QUOTED_SEGMENT_RE.exec(query);
+    match = PRESERVED_SEGMENT_RE.exec(query);
   }
 
-  // Trailing unquoted segment after last quote
   if (lastIndex < query.length) {
     parts.push(fn(query.slice(lastIndex)));
   }

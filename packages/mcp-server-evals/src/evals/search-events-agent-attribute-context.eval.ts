@@ -68,6 +68,45 @@ describeEval("search-events-agent-attributes-without-context", {
             !value.includes("http.response.status_code"),
         },
       },
+      {
+        // transaction is picked from span fields
+        input: "total request duration by endpoint (transaction boundaries)",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("transaction") &&
+            !value.includes("sentry.segment.name"),
+        },
+      },
+      {
+        // environment is picked from the common fields
+        input:
+          "Show me spans from non production environments in the last 24 hours",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          query: (value: unknown) =>
+            typeof value === "string" &&
+            value.includes("!environment:production") &&
+            !value.includes("sentry.environment"),
+        },
+      },
     ];
   },
   task: async (input) => {
@@ -94,12 +133,11 @@ describeEval("search-events-agent-attributes-without-context", {
   ],
 });
 
-// Context not enabled yet so these should not show the correct queries. Asserting them to the wrong queries for now.
 describeEval("search-events-agent-attributes-with-context", {
   data: async () => {
     return [
       {
-        // EVENTUALLY Context marks http.method as deprecated in favor of http.request.method
+        // Context marks http.method as deprecated in favor of http.request.method
         input: "Count spans grouped by HTTP method over the last 7 days",
         expectedTools: [
           {
@@ -113,12 +151,12 @@ describeEval("search-events-agent-attributes-with-context", {
           dataset: "spans",
           fields: (value: unknown) =>
             Array.isArray(value) &&
-            !value.includes("http.request.method") &&
-            value.includes("http.method"),
+            value.includes("http.request.method") &&
+            !value.includes("http.method"),
         },
       },
       {
-        // EVENTUALLY Context marks http.status_code as deprecated in favor of
+        // Context marks http.status_code as deprecated in favor of
         // http.response.status_code
         input: "Show me spans with HTTP status code 503 in the last 24 hours",
         expectedTools: [
@@ -133,8 +171,58 @@ describeEval("search-events-agent-attributes-with-context", {
           dataset: "spans",
           query: (value: unknown) =>
             typeof value === "string" &&
-            !value.includes("http.response.status_code:503") &&
-            value.includes("http.status_code"),
+            value.includes("http.response.status_code:503") &&
+            !value.includes("http.status_code"),
+        },
+      },
+      {
+        // sentry.segment.name is picked from span fields due to transaction deprecation and validation endpoint passing
+        // even though transaction is shown in example queries
+        input: "total request duration by endpoint (transaction boundaries)",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+          {
+            name: "validateSearch",
+            arguments: {
+              dataset: "spans",
+              fields: ["sentry.segment.name"],
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            !value.includes("transaction") &&
+            value.includes("sentry.segment.name"),
+        },
+      },
+      {
+        // Context marks environment as deprecated in favor of
+        // sentry.environment
+        input:
+          "Show me spans from non production environments in the last 24 hours",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          // sentry.environment:production contains environment:production, so
+          // look for a bare environment key not preceded by "sentry."
+          query: (value: unknown) =>
+            typeof value === "string" &&
+            value.includes("!sentry.environment:production") &&
+            !/(?<!sentry\.)environment:/.test(value),
         },
       },
     ];

@@ -60,6 +60,9 @@ sentry cli defaults ca-cert /path/to/ca.pem
 # Disable telemetry
 sentry cli defaults telemetry off
 
+# Hide Tip: hints in command output
+sentry cli defaults tips off
+
 # Clear a single default
 sentry cli defaults org --clear
 

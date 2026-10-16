@@ -85,6 +85,9 @@ sentry cli defaults ca-cert /path/to/ca.pem
 # Disable telemetry
 sentry cli defaults telemetry off
 
+# Hide Tip: hints in command output
+sentry cli defaults tips off
+
 # Clear a single default
 sentry cli defaults org --clear
 
@@ -155,6 +158,11 @@ sentry cli setup --no-agent-skills
 # Skip PATH and completion modifications
 sentry cli setup --no-modify-path --no-completions
 ```
+
+For zsh, setup initializes completion when needed and registers Sentry even if
+another tool has already initialized it. Running setup again repairs completion
+configuration from older installs. Restart your shell or source your `.zshrc`
+after setup to load the changes.
 
 ### Uninstall
 

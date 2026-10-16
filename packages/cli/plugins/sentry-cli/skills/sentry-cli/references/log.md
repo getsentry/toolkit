@@ -46,6 +46,9 @@ sentry log list -q 'severity:error'
 # Filter by message content
 sentry log list -q 'database'
 
+# Match a regular expression (key://pattern//)
+sentry log list -q 'message://^Timeout after \d+ms//'
+
 # Limit results
 sentry log list --limit 50
 

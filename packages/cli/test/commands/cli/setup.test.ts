@@ -7,8 +7,10 @@
  * via a spy on process.stderr.write and assert on the collected output.
  */
 
+import { spawnSync } from "node:child_process";
 import {
   accessSync,
+  chmodSync,
   constants,
   existsSync,
   mkdirSync,
@@ -45,8 +47,8 @@ import { app } from "../../../src/app.js";
 import type { SentryContext } from "../../../src/context.js";
 import { getAuthConfig, setAuthToken } from "../../../src/lib/db/auth.js";
 import {
-  getAgentSkillsPreference,
-  setAgentSkillsPreference,
+  getOnOffPreference,
+  setOnOffPreference,
 } from "../../../src/lib/db/defaults.js";
 import {
   clearInstallInfo,
@@ -62,12 +64,13 @@ import { setEnv } from "../../../src/lib/env.js";
 import * as interactiveLogin from "../../../src/lib/interactive-login.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- dynamic setup imports are mocked at the module boundary
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
+import { whichSync } from "../../../src/lib/which.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 /** Store original fetch for restoration */
 let originalFetch: typeof globalThis.fetch;
 
-/** Helper to mock fetch without TypeScript errors about missing Bun-specific properties */
+/** Replace fetch with a typed test implementation. */
 function mockFetch(
   fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
@@ -391,38 +394,90 @@ describe("sentry cli setup", () => {
     expect(content).toContain("site-functions");
   });
 
-  test("skips fpath modification when already configured in .zshrc", async () => {
-    const zshrc = join(testDir, ".zshrc");
-    const completionDir = join(
-      testDir,
-      ".local",
-      "share",
-      "zsh",
-      "site-functions",
-    );
-    writeFileSync(zshrc, `# existing\nfpath=("${completionDir}" $fpath)\n`);
+  test.skipIf(!whichSync("zsh")).each([
+    { name: "fresh shell", initializeFirst: false, legacy: false },
+    {
+      name: "completion already initialized",
+      initializeFirst: true,
+      legacy: false,
+    },
+    { name: "existing install", initializeFirst: true, legacy: true },
+  ])(
+    "registers zsh completion for $name and keeps setup idempotent",
+    async ({ initializeFirst, legacy }) => {
+      const zshrc = join(testDir, ".zshrc");
+      const unrelatedCompletions = join(testDir, "unrelated-completions");
+      mkdirSync(unrelatedCompletions);
+      chmodSync(unrelatedCompletions, 0o777);
+      const completionDir = join(
+        testDir,
+        ".local",
+        "share",
+        "zsh",
+        "site-functions",
+      );
+      const original = initializeFirst
+        ? "autoload -Uz compinit; compinit -D\n"
+        : "# user configuration\n";
+      writeFileSync(
+        zshrc,
+        original +
+          (legacy ? `# sentry\nfpath=("${completionDir}" $fpath)\n` : ""),
+      );
+      if (legacy) {
+        mkdirSync(completionDir, { recursive: true });
+        writeFileSync(join(completionDir, "_sentry"), "#compdef sentry\n");
+      }
+      const { context, getOutput, clearOutput, restore } = createMockContext({
+        homeDir: testDir,
+        execPath: join(testDir, "bin", "sentry"),
+        env: {
+          PATH: `/usr/bin:${join(testDir, "bin")}:/bin`,
+          SHELL: "/bin/zsh",
+        },
+      });
+      restoreStderr = restore;
+      const args = ["cli", "setup", "--no-modify-path", "--no-agent-skills"];
+      await run(app, args, context);
+      const configured = await readFile(zshrc, "utf-8");
+      expect(configured).toContain(original);
+      expect(getOutput()).toContain("Restart your shell");
 
-    const { context, getOutput, restore } = createMockContext({
-      homeDir: testDir,
-      execPath: join(testDir, "bin", "sentry"),
-      env: {
-        PATH: `/usr/bin:${join(testDir, "bin")}:/bin`,
-        SHELL: "/bin/zsh",
-      },
-    });
-    restoreStderr = restore;
-
-    await run(
-      app,
-      ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context,
-    );
-
-    // Should still show "Installed to" but not "Added ... to fpath"
-    const output = getOutput();
-    expect(output).toContain("Completions: Installed to");
-    expect(output).not.toContain("Added sentry fpath in");
-  });
+      const result = spawnSync(
+        "zsh",
+        [
+          "-dfi",
+          "-c",
+          `
+      fpath=("$2" $fpath)
+      # Exclude unrelated user/runner completion directories without bypassing compaudit.
+      fpath=( \${^fpath}/compinit(N:h) )
+      fpath=( $fpath $^fpath/*(N/) )
+      source "$1"
+      print -r -- "\${_comps[sentry]-MISSING}"
+      source "$1"
+      print -r -- "\${_comps[sentry]-MISSING}"
+      autoload +X _sentry
+    `,
+          "--",
+          zshrc,
+          unrelatedCompletions,
+        ],
+        {
+          encoding: "utf-8",
+          env: { ...process.env, HOME: testDir, ZDOTDIR: testDir },
+          timeout: 10000,
+        },
+      );
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe("_sentry\n_sentry");
+      clearOutput();
+      await run(app, args, context);
+      expect(await readFile(zshrc, "utf-8")).toBe(configured);
+      expect(getOutput()).not.toContain("Completions:");
+    },
+  );
 
   test("handles GitHub Actions PATH when GITHUB_ACTIONS is set", async () => {
     const ghPathFile = join(testDir, "github_path");
@@ -938,7 +993,7 @@ describe("sentry cli setup", () => {
     beforeEach(() => {
       // Reset the persisted preference — the config DB is shared across tests
       // in this file, so a prior --no-agent-skills run would otherwise leak.
-      setAgentSkillsPreference(null);
+      setOnOffPreference("agent-skills", null);
       originalFetch = globalThis.fetch;
       mockFetch(
         async () =>
@@ -948,7 +1003,7 @@ describe("sentry cli setup", () => {
 
     afterEach(() => {
       globalThis.fetch = originalFetch;
-      setAgentSkillsPreference(null);
+      setOnOffPreference("agent-skills", null);
     });
 
     test("installs agent skills when Claude Code is detected", async () => {
@@ -1123,12 +1178,12 @@ describe("sentry cli setup", () => {
         context,
       );
 
-      expect(getAgentSkillsPreference()).toBe(false);
+      expect(getOnOffPreference("agent-skills")).toBe(false);
     });
 
     test("honors a persisted opt-out without the flag (upgrade scenario)", async () => {
       // Simulate a prior `--no-agent-skills` run having stored the preference.
-      setAgentSkillsPreference(false);
+      setOnOffPreference("agent-skills", false);
       mkdirSync(join(testDir, ".claude"), { recursive: true });
 
       const { context, getOutput, restore } = createMockContext({
@@ -1187,7 +1242,7 @@ describe("sentry cli setup", () => {
       const homeDir = join(testDir, "home");
       const xdgData = join(homeDir, ".local", "share");
       mkdirSync(xdgData, { recursive: true });
-      // Create the zsh site-functions dir as unwritable so Bun.write() fails
+      // Make the zsh completion directory unwritable so writeFile() fails.
       const zshDir = join(xdgData, "zsh", "site-functions");
       mkdirSync(zshDir, { recursive: true });
       chmod(zshDir, 0o444); // read-only → completion write will throw

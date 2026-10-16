@@ -2193,7 +2193,10 @@ export function formatIssueOutput({
       | z.infer<typeof GenericEventSchema>
       | any; // CSP events don't have a schema yet
     if (typedEvent.dateCreated) {
-      output += `**Occurred At**: ${new Date(typedEvent.dateCreated).toISOString()}\n`;
+      const d = new Date(typedEvent.dateCreated);
+      if (!isNaN(d.getTime())) {
+        output += `**Occurred At**: ${d.toISOString()}\n`;
+      }
     }
   }
   if (event.message) {

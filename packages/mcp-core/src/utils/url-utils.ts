@@ -1,3 +1,4 @@
+import { getColumnsAndAggregates } from "@sentry/toolkit-core/events-fields";
 import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import type { SentryProtocol } from "../types";
 import {
@@ -772,12 +773,11 @@ export function getEventsExplorerUrl(
   protocol: SentryProtocol = "https",
 ): string {
   if (isMetricsDataset(dataset)) {
+    const derived = fields ? getColumnsAndAggregates(fields) : undefined;
     const derivedAggregateFunctions =
-      explorerOptions?.aggregateFunctions ??
-      fields?.filter((field) => field.includes("(") && field.includes(")"));
+      explorerOptions?.aggregateFunctions ?? derived?.aggregates;
     const derivedGroupByFields =
-      explorerOptions?.groupByFields ??
-      fields?.filter((field) => !field.includes("(") && !field.includes(")"));
+      explorerOptions?.groupByFields ?? derived?.columns;
 
     return getTraceMetricsExploreUrl(
       host,
@@ -794,12 +794,11 @@ export function getEventsExplorerUrl(
   }
 
   if (isProfilesDataset(dataset)) {
+    const derived = fields ? getColumnsAndAggregates(fields) : undefined;
     const derivedAggregateFunctions =
-      explorerOptions?.aggregateFunctions ??
-      fields?.filter((field) => field.includes("(") && field.includes(")"));
+      explorerOptions?.aggregateFunctions ?? derived?.aggregates;
     const derivedGroupByFields =
-      explorerOptions?.groupByFields ??
-      fields?.filter((field) => !field.includes("(") && !field.includes(")"));
+      explorerOptions?.groupByFields ?? derived?.columns;
 
     return getProfilingExplorerUrl(
       host,

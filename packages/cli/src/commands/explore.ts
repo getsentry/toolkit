@@ -6,6 +6,11 @@
  * and ad-hoc event queries.
  */
 
+import {
+  isAggregateFieldOrEquation,
+  isTracemetricsAggregate,
+} from "@sentry/toolkit-core/events-fields";
+import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 import type { SentryContext } from "../context.js";
 import {
   isReplaySortValue,
@@ -337,7 +342,7 @@ function appendFieldHints(
 ): void {
   const fields = rawFields ?? [];
   const fieldList = metricActive
-    ? fields.filter((f) => !isAggregate(f))
+    ? fields.filter((f) => !isAggregateFieldOrEquation(f))
     : fields;
   const defaults = defaultFieldsForDataset(dataset).join(",");
   if (fieldList.join(",") !== defaults && fieldList.length > 0) {
@@ -389,32 +394,6 @@ function appendFlagHints(
 }
 
 /**
- * Detect the first aggregate function in the field list.
- * Aggregates contain parentheses, e.g., `count()`, `p50(span.duration)`.
- */
-function findFirstAggregate(fieldList: string[]): string | undefined {
-  return fieldList.find((f) => f.includes("(") && f.includes(")"));
-}
-
-/** True when the field looks like an aggregate call: `fn(...)`. */
-function isAggregate(field: string): boolean {
-  return field.includes("(") && field.endsWith(")");
-}
-
-/**
- * True when the aggregate uses the tracemetrics comma-separated format:
- * `aggregation(value,metric_name,metric_type,unit)`.
- */
-function isTracemetricsAggregate(aggregate: string): boolean {
-  const parenIdx = aggregate.indexOf("(");
-  if (parenIdx < 0) {
-    return false;
-  }
-  const inner = aggregate.slice(parenIdx + 1, -1);
-  return inner.startsWith("value,") && inner.split(",").length === 4;
-}
-
-/**
  * Validate that aggregate fields use the tracemetrics format when querying
  * the `tracemetrics` dataset. Standard aggregates like `count()` or
  * `avg(measurements.fcp)` are invalid — the API requires the four-part
@@ -422,7 +401,7 @@ function isTracemetricsAggregate(aggregate: string): boolean {
  */
 function validateMetricsFields(fieldList: string[]): void {
   const badAggs = fieldList.filter(
-    (f) => isAggregate(f) && !isTracemetricsAggregate(f),
+    (f) => isAggregateFieldOrEquation(f) && !isTracemetricsAggregate(f),
   );
   if (badAggs.length === 0) {
     return;
@@ -446,27 +425,6 @@ function validateMetricsFields(fieldList: string[]): void {
 // ---------------------------------------------------------------------------
 // Dataset configuration
 // ---------------------------------------------------------------------------
-
-/**
- * Datasets whose Events endpoint accepts a `sort` param. A deterministic sort
- * is what makes offset-based cursor pagination stable — without it, multi-page
- * grouped aggregate queries overlap and skip rows (#1519). `metrics`
- * (`tracemetrics`) and `logs` reject `sort` with a 400, so they stay unsorted.
- *
- * This is a hand-curated contract, not a machine-readable capability lookup,
- * because no canonical source for it exists today (#1523):
- *   - The OpenAPI spec (`@sentry/api` `listOrganizationEvents`) models `sort`
- *     as a flat query param whose only documented constraint is "must be in
- *     the `field` list" — it does not encode which datasets accept it.
- *   - There is no dataset-capability introspection endpoint in the spec.
- *   - The spec's `dataset` enum is
- *     `errors | logs | profile_functions | spans | tracemetrics |
- *     uptime_results`; `discover` is a legacy virtual dataset that is not a
- *     valid `--dataset` value here (see {@link DATASET_ALIASES}), so it is
- *     intentionally omitted.
- * Revisit if Sentry ever publishes a per-dataset capability contract.
- */
-const SORTABLE_DATASETS = new Set(["spans", "errors"]);
 
 /**
  * Dataset-specific configuration resolved before the main query loop.
@@ -526,8 +484,9 @@ function resolveEventsDataset(dataset: string, query: string | undefined) {
  * For the `replays` dataset this validates fields, resolves replay-specific
  * sort, and returns a fetch function that calls `listReplays`. For all other
  * datasets it translates `--environment` values into `environment:...` query
- * filter terms, resolves explore sort (spans-only), prepends `project:<slug>`
- * to the query, and returns a `queryEvents` fetch.
+ * filter terms, resolves the sort with {@link resolveEventsSort} (which also
+ * selects the sort column), prepends `project:<slug>` to the query, and
+ * returns a `queryEvents` fetch.
  */
 function resolveDatasetConfig(params: {
   dataset: string;
@@ -587,27 +546,13 @@ function resolveDatasetConfig(params: {
   const queryWithEnv =
     [envPrefix, resolved.query].filter(Boolean).join(" ") || undefined;
 
-  const firstAgg = findFirstAggregate(fieldList);
-  const rawSort = flags.sort ?? (firstAgg ? `-${firstAgg}` : undefined);
-  let sort: string | undefined;
-  if (SORTABLE_DATASETS.has(resolved.dataset)) {
-    // A deterministic sort is required for correct cursor pagination: the
-    // events cursor is offset-based, so without a stable total order the
-    // separate page requests overlap and skip rows, producing duplicate and
-    // missing dimension tuples across the merged result (#1519). Defaulting
-    // to `-<firstAggregate>` gives grouped aggregate queries a stable order.
-    sort = rawSort;
-  } else {
-    // Warn only when the user explicitly passed --sort on a dataset that
-    // rejects it (metrics/logs). An auto-derived sort is silently dropped.
-    if (rawSort && flags.sort) {
-      const displayDataset = API_TO_USER_DATASET.get(dataset) ?? dataset;
-      log.warn(
-        `--sort is not supported on the ${displayDataset} dataset. Ignoring sort.`,
-      );
-    }
-    sort = undefined;
-  }
+  // Every Events dataset honors sort as long as the sort column is selected.
+  // A stable sort is what keeps offset-based cursor pagination from
+  // duplicating and skipping rows (#1519) and makes --limit a top N (#1477).
+  const { fields, sort } = resolveEventsSort({
+    fields: fieldList,
+    sort: flags.sort,
+  });
 
   const query = buildProjectQuery(queryWithEnv, project);
   return {
@@ -615,7 +560,7 @@ function resolveDatasetConfig(params: {
     query,
     fetch: async ({ cursor, limit, timeRange }) =>
       queryEvents(org, {
-        fields: fieldList,
+        fields,
         dataset: resolved.dataset,
         query,
         sort,
@@ -803,7 +748,7 @@ export const exploreCommand = buildListCommand("explore", {
       const aggField = resolveMetricField(flags.metric, flags.agg, metrics);
       // Prepend any user-supplied grouping fields, then the resolved aggregate
       const groupByFields = userSuppliedFields
-        ? fieldList.filter((f) => !isAggregate(f))
+        ? fieldList.filter((f) => !isAggregateFieldOrEquation(f))
         : [];
       fieldList = [...groupByFields, aggField];
     } else if (dataset === "tracemetrics") {

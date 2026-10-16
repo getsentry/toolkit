@@ -318,6 +318,14 @@ describe("viewCommand.func", () => {
   test("yields CommandOutput with transcript result (JSON)", async () => {
     getConversationSpansSpy.mockResolvedValue({
       spans: sampleSpans,
+      stats: {
+        errors: 1,
+        llmCalls: 2,
+        toolCalls: 3,
+        toolErrors: 1,
+        totalCost: 0.0042,
+        totalTokens: 150,
+      },
       truncated: false,
       title: null,
     });
@@ -330,7 +338,16 @@ describe("viewCommand.func", () => {
     const parsed = JSON.parse(output);
     expect(parsed.conversationId).toBe(CONVERSATION_ID);
     expect(parsed.org).toBe(ORG);
-    expect(parsed.spanCount).toBe(2);
+    expect(parsed).toMatchObject({
+      errors: 1,
+      llmCalls: 2,
+      toolCalls: 3,
+      toolErrors: 1,
+      totalCost: 0.0042,
+      totalTokens: 150,
+      traceIds: ["00112233445566778899aabbccddeeff"],
+      spanCount: 2,
+    });
     expect(parsed.turns).toBeDefined();
     expect(Array.isArray(parsed.turns)).toBe(true);
   });

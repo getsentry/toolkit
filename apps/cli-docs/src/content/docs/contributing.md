@@ -68,8 +68,9 @@ toolkit/
 │       │   │   ├── dsn/         # list
 │       │   │   ├── event/       # list, send, view
 │       │   │   ├── feedback/    # list, resolve, spam, unresolve, view
+│       │   │   ├── integration/ # delete, list
 │       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, unlink, unresolve, view
-│       │   │   ├── local/       # run, serve
+│       │   │   ├── local/       # close, create, list, reset, restart, retention, run, serve, start, status, stop, view
 │       │   │   ├── log/         # list, view
 │       │   │   ├── monitor/     # list, run
 │       │   │   ├── org/         # list, view

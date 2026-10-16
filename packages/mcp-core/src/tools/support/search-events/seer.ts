@@ -1,3 +1,5 @@
+import { isAggregateFieldOrEquation } from "@sentry/toolkit-core/events-fields";
+import { getSortField } from "@sentry/toolkit-core/events-sort";
 import type { z } from "zod";
 import type { CrossEventQueries, SentryApiService } from "../../../api-client";
 import {
@@ -17,8 +19,9 @@ export const SEER_SEARCH_AGENT_TIMEOUT = 60 * 1000; // 1 minute
 // Sentry's sentinel for all projects the user can access.
 const ALL_ACCESSIBLE_PROJECTS = -1;
 
-// The search agent endpoints require this feature. `hideAiFeatures` is checked separately.
-const SEARCH_AGENT_FEATURE = "gen-ai-search-agent-translate";
+// Gradual rollout flag for Seer translation in search_events. The search agent
+// endpoints themselves are ungated; `hideAiFeatures` is checked separately.
+const SEER_TRANSLATE_FEATURE = "mcp-search-events-seer-translate";
 
 const SEER_STRATEGIES = {
   errors: "Errors",
@@ -62,7 +65,7 @@ async function hasSeerSearchAgentAccess(
     return false;
   }
   const features = organization.features ?? [];
-  return features.includes(SEARCH_AGENT_FEATURE);
+  return features.includes(SEER_TRANSLATE_FEATURE);
 }
 
 function toSearchTranslation(
@@ -87,10 +90,10 @@ function toSearchTranslation(
   // The handler adds the sort field to the selected fields, except for a
   // non-aggregate sort in an aggregate query since that would change the
   // grouping. Fall back to the default sort instead of letting Sentry reject it.
-  const sortField = sort.startsWith("-") ? sort.slice(1) : sort;
+  const sortField = getSortField(sort);
   if (
     result.mode === "aggregates" &&
-    !sortField.includes("(") &&
+    !isAggregateFieldOrEquation(sortField) &&
     !fields.includes(sortField)
   ) {
     sort = defaultSort;

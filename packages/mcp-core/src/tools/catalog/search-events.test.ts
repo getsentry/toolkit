@@ -3260,6 +3260,115 @@ describe("search_events", () => {
     expect(result).toContain("TimeoutError");
   });
 
+  describe("with regex log queries", () => {
+    const regexSearchParams = {
+      organizationSlug: "test-org",
+      regionUrl: null,
+      projectSlug: null,
+      dataset: "logs" as const,
+      fields: null,
+      sort: null,
+      period: "24h",
+      limit: 10,
+      includeExplanation: false,
+    };
+    const regexSearchContext = {
+      constraints: {
+        organizationSlug: null,
+        regionUrl: null,
+        projectSlug: null,
+      },
+      accessToken: "test-token",
+      userId: "1",
+    };
+
+    const captureEventsQueries = () => {
+      const queries: Array<string | null> = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            queries.push(new URL(request.url).searchParams.get("query"));
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+      return queries;
+    };
+
+    it("runs a regex-only query as written without the agent when fields and sort are explicit", async () => {
+      const queries = captureEventsQueries();
+
+      await searchEvents.handler(
+        {
+          ...regexSearchParams,
+          query: "message://^Timeout after \\d+ms//",
+          fields: ["timestamp", "message"],
+          sort: "-timestamp",
+        },
+        regexSearchContext,
+      );
+
+      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(queries).toEqual(["message://^Timeout after \\d+ms//"]);
+    });
+
+    it("keeps the regex filter when the agent rewrites it into a wildcard", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("logs", 'message:"*Timeout after*"'),
+      );
+      const queries = captureEventsQueries();
+
+      await searchEvents.handler(
+        { ...regexSearchParams, query: "message://^Timeout after \\d+ms//" },
+        regexSearchContext,
+      );
+
+      expect(mockGenerateText).toHaveBeenCalledTimes(1);
+      expect(queries).toEqual(["message://^Timeout after \\d+ms//"]);
+    });
+
+    it("accepts agent repairs that keep a regex value with spaces and apostrophes", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse(
+          "logs",
+          "severity:error message://can't connect to \\w+// has:trace",
+        ),
+      );
+      const queries = captureEventsQueries();
+
+      await searchEvents.handler(
+        {
+          ...regexSearchParams,
+          query: "message://can't connect to \\w+// severity:error",
+        },
+        regexSearchContext,
+      );
+
+      expect(queries).toEqual([
+        "severity:error message://can't connect to \\w+// has:trace",
+      ]);
+    });
+
+    it("uses the agent's rewrite of regex syntax outside logs", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", 'span.description:"GET /api/*"'),
+      );
+      const queries = captureEventsQueries();
+
+      await searchEvents.handler(
+        {
+          ...regexSearchParams,
+          dataset: "spans",
+          query: "span.description://^GET \\/api\\/\\d+//",
+        },
+        regexSearchContext,
+      );
+
+      expect(queries).toEqual(['span.description:"GET /api/*"']);
+    });
+  });
+
   it("keeps caller fields when the agent returns an empty fields array", async () => {
     let eventsRequestUrl: URL | undefined;
 
@@ -3611,7 +3720,10 @@ describe("search_events", () => {
       metric_query: null,
     };
 
-    const mockOrganization = (features: string[]) =>
+    const mockOrganization = (
+      features: string[],
+      { hideAiFeatures = false } = {},
+    ) =>
       http.get(
         "https://sentry.io/api/0/organizations/test-org/",
         ({ request }) =>
@@ -3625,7 +3737,7 @@ describe("search_events", () => {
             ) === "1"
               ? { features }
               : {}),
-            hideAiFeatures: false,
+            hideAiFeatures,
           }),
       );
     const mockProject = http.get(
@@ -3659,7 +3771,7 @@ describe("search_events", () => {
 
     it("should translate natural language queries with Seer", async () => {
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: { responses: [seerQuery], unsupported_reason: null },
@@ -3698,7 +3810,7 @@ describe("search_events", () => {
 
     it("should return a time series when Seer sets an interval", async () => {
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: {
@@ -3752,7 +3864,7 @@ describe("search_events", () => {
 
     it("should apply Seer's cross-event filters", async () => {
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: {
@@ -3790,7 +3902,7 @@ describe("search_events", () => {
       "warns about unapplied time-series filters with includeExplanation=%s",
       async (includeExplanation) => {
         mswServer.use(
-          mockOrganization(["gen-ai-search-agent-translate"]),
+          mockOrganization(["mcp-search-events-seer-translate"]),
           mockSeerState({
             status: "completed",
             final_response: {
@@ -3883,7 +3995,7 @@ describe("search_events", () => {
 
     it("should keep a grouped Seer query with an interval as a table", async () => {
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: {
@@ -3914,7 +4026,7 @@ describe("search_events", () => {
 
     it("should add an explicit environment to Seer's query", async () => {
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: { responses: [seerQuery], unsupported_reason: null },
@@ -3958,7 +4070,7 @@ describe("search_events", () => {
       "should keep the requested project and %s Seer's wider scope",
       async (_, handlerContext, expectNote) => {
         mswServer.use(
-          mockOrganization(["gen-ai-search-agent-translate"]),
+          mockOrganization(["mcp-search-events-seer-translate"]),
           mockSeerState({
             status: "completed",
             final_response: {
@@ -3988,7 +4100,7 @@ describe("search_events", () => {
 
     it("should keep the requested project when Seer does not broaden it", async () => {
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: {
@@ -4021,7 +4133,7 @@ describe("search_events", () => {
         },
       );
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         http.post(
           "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
           mockAllProjectsStart,
@@ -4068,7 +4180,7 @@ describe("search_events", () => {
 
     it("should keep Seer's all-project scope for time series", async () => {
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         http.post(
           "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
           async ({ request }) => {
@@ -4109,7 +4221,7 @@ describe("search_events", () => {
 
     it("should prefer an explicit period over Seer's time range", async () => {
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: { responses: [seerQuery], unsupported_reason: null },
@@ -4131,7 +4243,7 @@ describe("search_events", () => {
 
     it("should not group by a non-aggregate Seer sort", async () => {
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({
           status: "completed",
           final_response: {
@@ -4160,6 +4272,10 @@ describe("search_events", () => {
 
     it.each([
       ["a structured query", { query: "span.op:http.client" }],
+      [
+        "a regex-only logs query",
+        { dataset: "logs" as const, query: "message://^Timeout//" },
+      ],
       ["explicit fields", { fields: ["span.description", "count()"] }],
       ["an explicit sort", { sort: "-count()" }],
     ])("should skip Seer for %s", async (_, overrides) => {
@@ -4167,7 +4283,7 @@ describe("search_events", () => {
         mockAIResponse("spans", "span.op:http.client"),
       );
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
           HttpResponse.json({ data: [] }),
         ),
@@ -4223,12 +4339,31 @@ describe("search_events", () => {
       expect(mockGenerateText).toHaveBeenCalled();
     });
 
+    it("should fall back to the agent when AI features are hidden", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", "span.op:http.client"),
+      );
+      mswServer.use(
+        mockOrganization(["mcp-search-events-seer-translate"], {
+          hideAiFeatures: true,
+        }),
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json({ data: [] }),
+        ),
+      );
+
+      await searchEvents.handler(seerParams, context);
+
+      expect(mockSeerStart).not.toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+    });
+
     it("should fall back to the agent when Seer cannot translate", async () => {
       mockGenerateText.mockResolvedValueOnce(
         mockAIResponse("spans", "span.op:http.client"),
       );
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         mockSeerState({ status: "error", unsupported_reason: "Unsupported" }),
         http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
           HttpResponse.json({ data: [] }),
@@ -4246,7 +4381,7 @@ describe("search_events", () => {
         mockAIResponse("spans", "span.op:http.client"),
       );
       mswServer.use(
-        mockOrganization(["gen-ai-search-agent-translate"]),
+        mockOrganization(["mcp-search-events-seer-translate"]),
         http.post(
           "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
           () =>

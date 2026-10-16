@@ -19,6 +19,14 @@
       "types": "./src/auth-token.ts",
       "default": "./src/auth-token.ts"
     },
+    "./events-fields": {
+      "types": "./src/events-fields.ts",
+      "default": "./src/events-fields.ts"
+    },
+    "./events-sort": {
+      "types": "./src/events-sort.ts",
+      "default": "./src/events-sort.ts"
+    },
     "./oauth-device": {
       "types": "./src/oauth-device.ts",
       "default": "./src/oauth-device.ts"
