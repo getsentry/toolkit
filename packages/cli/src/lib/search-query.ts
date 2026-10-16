@@ -26,6 +26,7 @@
 
 import {
   type FilterToken,
+  FilterType,
   type ParseResultToken,
   parseSearch,
   TermOperator,
@@ -122,6 +123,18 @@ export type SearchNode =
   | OpaqueTerm;
 
 const COMPARISON_PREFIX_RE = /^(>=|<=|!=|>|<|=)/;
+
+/**
+ * Filter types whose key shape also has an in-list rule in Sentry's grammar
+ * (`text_in_filter` / `numeric_in_filter`). Aggregate (`count():10`),
+ * array-includes (`foo[*]:a`), `has:`/`is:`, boolean, date, duration and
+ * size filters have no in-list form, so merging them would build a query
+ * the API rejects.
+ */
+const LISTABLE_FILTER_TYPES: ReadonlySet<FilterType> = new Set([
+  FilterType.TEXT,
+  FilterType.NUMERIC,
+]);
 const FREE_TEXT_SEPARATOR_RE = /[ \t]+/;
 
 type Located = {
@@ -172,7 +185,7 @@ function filterToNode(query: string, token: FilterToken): SearchNode {
     };
   }
 
-  if (!value) {
+  if (!value || !LISTABLE_FILTER_TYPES.has(token.filter)) {
     return { type: "opaque", raw: sourceOf(query, token) };
   }
 

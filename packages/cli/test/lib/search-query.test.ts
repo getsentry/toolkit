@@ -594,6 +594,23 @@ describe("sanitizeQuery: shared grammar behavior", () => {
     );
   });
 
+  test("refuses to merge filters with no in-list form", () => {
+    for (const query of [
+      "count():10 OR count():5",
+      "p95(span.duration):10 OR p95(span.duration):5",
+      "foo[*]:a OR foo[*]:b",
+      "tags[k[*],array]:a OR tags[k[*],array]:b",
+    ]) {
+      expect(() => sanitizeQuery(query), query).toThrow(ValidationError);
+    }
+  });
+
+  test("passes filters with no in-list form through when there is no OR", () => {
+    expect(sanitizeQuery("count():10 foo[*]:a level:error")).toBe(
+      "count():10 foo[*]:a level:error",
+    );
+  });
+
   test("strips AND between multi-word free text and filters", () => {
     expect(sanitizeQuery("database timeout AND level:error")).toBe(
       "database timeout level:error",
