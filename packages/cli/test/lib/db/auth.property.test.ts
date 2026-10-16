@@ -23,7 +23,6 @@ import {
   getAuthToken,
   isEnvTokenActive,
   refreshToken,
-  resetAuthRowCache,
   resetAuthTokenCache,
   setAuthToken,
 } from "../../../src/lib/db/auth.js";
@@ -44,7 +43,6 @@ const storedTokenArb = stringMatching(/^[\x21-\x7e]{1,100}$/);
 /** Invalidate between property iterations — env-var mutations bypass setAuthToken. */
 function resetAuthCaches() {
   resetAuthTokenCache();
-  resetAuthRowCache();
 }
 
 describe("property: env var priority", () => {

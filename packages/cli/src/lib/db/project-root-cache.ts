@@ -80,13 +80,17 @@ export async function getCachedProjectRoot(
 
     if (currentMtime !== row.cwd_mtime) {
       // Directory structure changed, invalidate cache
-      db.query("DELETE FROM project_root_cache WHERE cwd = ?").run(cwd);
+      getDatabase()
+        .query("DELETE FROM project_root_cache WHERE cwd = ?")
+        .run(cwd);
       recordCacheHit("project-root", false);
       return;
     }
   } catch {
     // Directory doesn't exist or can't stat - invalidate cache
-    db.query("DELETE FROM project_root_cache WHERE cwd = ?").run(cwd);
+    getDatabase()
+      .query("DELETE FROM project_root_cache WHERE cwd = ?")
+      .run(cwd);
     recordCacheHit("project-root", false);
     return;
   }
@@ -108,7 +112,9 @@ export async function setCachedProjectRoot(
   cwd: string,
   entry: ProjectRootCacheEntry,
 ): Promise<void> {
-  const db = getDatabase();
+  // Initialize storage before stat in case it creates files in cwd. The
+  // connection may change while awaiting stat, so reacquire it for the write.
+  getDatabase();
   const now = Date.now();
 
   // Get current mtime of the cwd directory
@@ -123,7 +129,7 @@ export async function setCachedProjectRoot(
   }
 
   runUpsert(
-    db,
+    getDatabase(),
     "project_root_cache",
     {
       cwd,

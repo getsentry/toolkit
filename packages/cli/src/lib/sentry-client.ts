@@ -460,7 +460,10 @@ async function tryCacheHit(
   if (method !== "GET") {
     return;
   }
-  return await getCachedResponse(method, fullUrl, requestHeaders, identity);
+  return await getCachedResponse(method, fullUrl, {
+    headers: requestHeaders,
+    identity,
+  });
 }
 
 /**
@@ -488,9 +491,8 @@ function cacheResponse(
   storeCachedResponse(
     method,
     fullUrl,
-    requestHeaders,
+    { headers: requestHeaders, identity },
     response.clone() as Response,
-    identity,
   ).catch((error) => {
     log.debug("Response cache write failed", error);
   });

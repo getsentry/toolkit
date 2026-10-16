@@ -7,13 +7,17 @@
  * by property tests (isAuthenticated, getActiveEnvVarName).
  */
 
-import { describe, expect, test } from "vitest";
+import { symlink } from "node:fs/promises";
+import { join } from "node:path";
+import { setImmediate } from "node:timers/promises";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   ANON_IDENTITY,
   clearAuth,
   getActiveEnvVarName,
   getAuthConfig,
   getAuthToken,
+  getCredentialContext,
   getIdentityFingerprint,
   getRawEnvToken,
   hasStoredAuthCredentials,
@@ -26,10 +30,11 @@ import {
   setAuthToken,
 } from "../../../src/lib/db/auth.js";
 import { getDatabase } from "../../../src/lib/db/index.js";
+import { withEnv } from "../../../src/lib/env.js";
 import { MalformedAuthTokenError } from "../../../src/lib/errors.js";
-import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
-useTestConfigDir("auth-env-");
+const getConfigDir = useTestConfigDir("auth-env-");
 useEnvSandbox(["SENTRY_AUTH_TOKEN", "SENTRY_TOKEN", "SENTRY_FORCE_ENV_TOKEN"]);
 
 describe("env var auth: getAuthToken edge cases", () => {
@@ -407,10 +412,162 @@ describe("getAuthToken memoization", () => {
   });
 });
 
-describe("refreshToken row-read memoization", () => {
+describe("refreshToken session ownership", () => {
+  const host = "https://synthetic.example.invalid";
+  const sessionEnv = () => ({
+    ...process.env,
+    SENTRY_URL: host,
+    SENTRY_HOST: host,
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function login(): void {
+    setAuthToken("original-token", 3600, "original-refresh", { host });
+  }
+
+  function mockRefresh(gate = Promise.resolve()) {
+    const started = Promise.withResolvers<void>();
+    const refreshTokens: (string | null)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(async (input, init) => {
+        const request = new Request(input, init);
+        expect(request.url).toBe(`${host}/oauth/token/`);
+        refreshTokens.push(
+          new URLSearchParams(await request.text()).get("refresh_token"),
+        );
+        started.resolve();
+        await gate;
+        return Response.json({
+          access_token: "new-token",
+          refresh_token: "new-refresh",
+          expires_in: 3600,
+          token_type: "bearer",
+        });
+      }),
+    );
+    return { started: started.promise, refreshTokens };
+  }
+
+  test.each(["config alias", "legacy host"] as const)(
+    "shares an in-flight refresh across a %s",
+    async (variant) => {
+      const configDir = getConfigDir();
+      const secondConfigDir =
+        variant === "config alias" ? join(configDir, "alias") : configDir;
+      if (variant === "config alias") {
+        await symlink(configDir, secondConfigDir, "junction");
+      }
+      const env = sessionEnv();
+      const gate = Promise.withResolvers<void>();
+      const { started, refreshTokens } = mockRefresh(gate.promise);
+      const pending: Promise<unknown>[] = [];
+
+      try {
+        login();
+        if (variant === "legacy host") {
+          // OAuth's trust check migrates pre-v16 rows while refresh is pending.
+          getDatabase().query("UPDATE auth SET host = NULL WHERE id = 1").run();
+        }
+        pending.push(withEnv(env, () => refreshToken({ force: true })));
+        await started;
+        pending.push(
+          withEnv({ ...env, SENTRY_CONFIG_DIR: secondConfigDir }, () =>
+            refreshToken({ force: true }),
+          ),
+        );
+        // Let the second invocation join the refresh before completing it.
+        await setImmediate();
+        const completed = Promise.all(pending);
+        gate.resolve();
+        await expect(completed).resolves.toMatchObject([
+          { token: "new-token", refreshed: true },
+          { token: "new-token", refreshed: true },
+        ]);
+        expect(refreshTokens).toEqual(["original-refresh"]);
+        expect(getAuthConfig()).toMatchObject({
+          token: "new-token",
+          refreshToken: "new-refresh",
+        });
+      } finally {
+        gate.resolve();
+        await Promise.allSettled(pending);
+      }
+    },
+  );
+
+  test("a login in another store neither inherits nor clears this session's refresh history", async () => {
+    const env = sessionEnv();
+    const otherEnv = {
+      ...env,
+      SENTRY_CONFIG_DIR: join(getConfigDir(), "other-store"),
+    };
+    const { refreshTokens } = mockRefresh();
+    const original = withEnv(env, () => {
+      login();
+      return getCredentialContext();
+    });
+    expect(original).toBeDefined();
+    await withEnv(env, () => refreshToken({ force: true }));
+
+    await withEnv(otherEnv, async () => {
+      login();
+      const expectedCredential = getCredentialContext();
+      setAuthToken("new-token", 3600, "new-refresh", { host });
+      // Matching token values do not make two separate logins the same session.
+      await expect(refreshToken({ expectedCredential })).rejects.toThrow(
+        "Active credentials changed",
+      );
+    });
+
+    // A late 401 from the original session must refresh with the rotated token.
+    await expect(
+      withEnv(env, () =>
+        refreshToken({ force: true, expectedCredential: original }),
+      ),
+    ).resolves.toMatchObject({
+      token: "new-token",
+      refreshed: true,
+    });
+    expect(refreshTokens).toEqual(["original-refresh", "new-refresh"]);
+  });
+
+  test("uses a rotated session when another invocation reaches the refresh threshold", async () => {
+    let now = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const { refreshTokens } = mockRefresh();
+    const env = sessionEnv();
+    login();
+    // Start just above the 10% refresh threshold for a one-hour session.
+    getDatabase()
+      .query("UPDATE auth SET issued_at = ?, expires_at = ? WHERE id = 1")
+      .run(now - 3239 * 1000, now + 361 * 1000);
+
+    await withEnv(env, async () => {
+      await expect(refreshToken()).resolves.toMatchObject({
+        token: "original-token",
+        refreshed: false,
+      });
+      await withEnv(env, () => refreshToken({ force: true }));
+      now += 2000;
+
+      // A later page must not spend the already-consumed refresh token.
+      await expect(refreshToken()).resolves.toMatchObject({
+        token: "new-token",
+        refreshed: false,
+      });
+    });
+    expect(refreshTokens).toEqual(["original-refresh"]);
+  });
+});
+
+describe("refreshToken stored session updates", () => {
   test("setAuthToken between refreshToken calls is reflected", async () => {
-    // refreshToken reads the full row; invalidation must propagate so the
-    // second call sees the freshly stored token.
+    // The next request must use the newly stored session.
     setAuthToken("first_token", 3600, "refresh_1");
     const r1 = await refreshToken();
     expect(r1.token).toBe("first_token");
@@ -420,7 +577,7 @@ describe("refreshToken row-read memoization", () => {
     expect(r2.token).toBe("second_token");
   });
 
-  test("clearAuth invalidates the row cache", async () => {
+  test("clearAuth is reflected by the next request", async () => {
     setAuthToken("will_be_cleared", 3600, "refresh_x");
     const r1 = await refreshToken();
     expect(r1.token).toBe("will_be_cleared");

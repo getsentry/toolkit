@@ -13,7 +13,10 @@ import {
   RESOLVE_COMMIT_SENTINEL,
   RESOLVE_NEXT_RELEASE_SENTINEL,
 } from "../../../src/lib/api-client.js";
-import { setAuthToken } from "../../../src/lib/db/auth.js";
+import {
+  getIdentityFingerprint,
+  setAuthToken,
+} from "../../../src/lib/db/auth.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 import {
   getCachedResponse,
@@ -268,13 +271,18 @@ describe("mergeIssues: cross-origin legacy cache", () => {
       await storeCachedResponse(
         "GET",
         legacyUrl(id),
-        {},
+        { identity: getIdentityFingerprint(), headers: {} },
         new Response(JSON.stringify({ id }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
       );
-      expect(await getCachedResponse("GET", legacyUrl(id), {})).toBeDefined();
+      expect(
+        await getCachedResponse("GET", legacyUrl(id), {
+          identity: getIdentityFingerprint(),
+          headers: {},
+        }),
+      ).toBeDefined();
     }
 
     globalThis.fetch = mockFetch(
@@ -290,7 +298,12 @@ describe("mergeIssues: cross-origin legacy cache", () => {
     await mergeIssues("test-org", ["100", "200", "300"]);
 
     for (const id of ["100", "200", "300"]) {
-      expect(await getCachedResponse("GET", legacyUrl(id), {})).toBeUndefined();
+      expect(
+        await getCachedResponse("GET", legacyUrl(id), {
+          identity: getIdentityFingerprint(),
+          headers: {},
+        }),
+      ).toBeUndefined();
     }
   });
 });

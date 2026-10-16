@@ -36,7 +36,7 @@
 
 import { DEFAULT_SENTRY_URL, normalizeUrl } from "./constants.js";
 import { getRawEnvToken } from "./db/auth.js";
-import { getEnv } from "./env.js";
+import { createInvocationState, getEnv } from "./env.js";
 import { ConfigError } from "./errors.js";
 import { parseSntrysClaim } from "./token-claims.js";
 
@@ -97,9 +97,9 @@ function captureClaimHost(token: string | undefined): {
   }
 }
 
-const snapshotState = {
-  byEnv: new WeakMap<NodeJS.ProcessEnv, HostSnapshot>(),
-};
+const getHostState = createInvocationState<{ snapshot?: HostSnapshot }>(
+  () => ({}),
+);
 
 /**
  * Snapshot the env-token's scoping host. Idempotent — second and subsequent
@@ -114,10 +114,11 @@ const snapshotState = {
  * 3. `DEFAULT_SENTRY_URL` (SaaS).
  */
 export function captureEnvTokenHost(): void {
-  const env = getEnv();
-  if (snapshotState.byEnv.has(env)) {
+  const state = getHostState();
+  if (state.snapshot) {
     return;
   }
+  const env = getEnv();
   const configuredHost =
     normalizeHost(
       env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim(),
@@ -125,11 +126,11 @@ export function captureEnvTokenHost(): void {
     ) ?? null;
   // Claim first: for sntrys_ tokens, the embedded url is authoritative.
   const claim = captureClaimHost(getRawEnvToken());
-  snapshotState.byEnv.set(env, {
+  state.snapshot = {
     configuredHost,
     host: claim.host ?? configuredHost ?? DEFAULT_SENTRY_URL,
     ...(claim.error ? { claimError: claim.error } : {}),
-  });
+  };
 }
 
 /**
@@ -138,11 +139,8 @@ export function captureEnvTokenHost(): void {
  * auto-capture covers library-mode callers that bypass the boot.
  */
 export function getEnvTokenHost(): string {
-  const env = getEnv();
-  if (!snapshotState.byEnv.has(env)) {
-    captureEnvTokenHost();
-  }
-  const snapshot = snapshotState.byEnv.get(env);
+  captureEnvTokenHost();
+  const { snapshot } = getHostState();
   if (snapshot?.claimError) {
     throw snapshot.claimError;
   }
@@ -151,14 +149,11 @@ export function getEnvTokenHost(): string {
 
 /** Only the explicit URL captured at boot may migrate a legacy stored login. */
 export function getBootConfiguredSentryUrl(): string | undefined {
-  const env = getEnv();
-  if (!snapshotState.byEnv.has(env)) {
-    captureEnvTokenHost();
-  }
-  return snapshotState.byEnv.get(env)?.configuredHost ?? undefined;
+  captureEnvTokenHost();
+  return getHostState().snapshot?.configuredHost ?? undefined;
 }
 
 /** @internal */
 export function resetEnvTokenHostForTesting(): void {
-  snapshotState.byEnv = new WeakMap<NodeJS.ProcessEnv, HostSnapshot>();
+  getHostState().snapshot = undefined;
 }

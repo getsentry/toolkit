@@ -16,7 +16,9 @@ import {
   warnIfSaasWithEnvCa,
 } from "../custom-ca.js";
 import { applyCustomHeaders } from "../custom-headers.js";
+import { getIdentityFingerprint } from "../db/auth.js";
 import { ApiError, ValidationError } from "../errors.js";
+import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import { invalidateCachedResponsesMatching } from "../response-cache.js";
 import { getApiBaseUrl } from "../sentry-client.js";
@@ -669,13 +671,22 @@ export async function mergeIssues(
     // stale data.
     const apiBase = getApiBaseUrl().replace(TRAILING_SLASH_RE, "");
     const affectedIds = data.merge.children.toSpliced(0, 0, data.merge.parent);
-    await Promise.all(
-      affectedIds.map((id) =>
-        invalidateCachedResponsesMatching(
-          `${apiBase}/api/0/issues/${encodeURIComponent(id)}/`,
+    try {
+      const identity = getIdentityFingerprint();
+      await Promise.all(
+        affectedIds.map((id) =>
+          invalidateCachedResponsesMatching(
+            `${apiBase}/api/0/issues/${encodeURIComponent(id)}/`,
+            identity,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (error) {
+      // Cache maintenance must not turn a completed merge into a failure.
+      logger
+        .withTag("issues")
+        .debug("Merged issue cache invalidation failed", error);
+    }
     return data.merge;
   } catch (error) {
     // The bulk-mutate endpoint returns 204 when no matching issues are

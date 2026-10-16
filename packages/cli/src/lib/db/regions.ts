@@ -11,6 +11,7 @@
  */
 
 import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
+import { createInvocationState } from "../env.js";
 import { logger } from "../logger.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { recordCacheHit } from "../telemetry.js";
@@ -33,7 +34,7 @@ function getActiveSourceOrigin(): string {
 }
 
 /**
- * Process-local trust extension: origins that were vouched for by the
+ * Invocation-local trust extension: origins that were vouched for by the
  * active token's issuing host (via `/users/me/regions/` responses or
  * `org_regions` table entries from prior invocations). Used by the
  * fetch-layer trust check in `token-host.ts` to admit requests to
@@ -43,8 +44,11 @@ function getActiveSourceOrigin(): string {
  * start (with cached orgs from a previous CLI invocation) we don't
  * re-fetch regions just to extend trust.
  */
-const trustedRegionOrigins = new Map<string, Set<string>>();
-const seededTrustScopes = new Set<string>();
+const getRegionState = createInvocationState(() => ({
+  trustedRegionOrigins: new Map<string, Set<string>>(),
+  seededTrustScopes: new Set<string>(),
+  orgCacheDisabled: false,
+}));
 
 function trustScopeKey(identity: string, sourceOrigin: string): string {
   return `${identity}\0${sourceOrigin}`;
@@ -76,6 +80,7 @@ function registerTrustedOrigins(
   sourceOrigin: string,
   urls: readonly string[],
 ): void {
+  const { trustedRegionOrigins, seededTrustScopes } = getRegionState();
   const key = trustScopeKey(identity, sourceOrigin);
   if (
     !trustedRegionOrigins.has(key) &&
@@ -98,6 +103,7 @@ function registerTrustedOrigins(
 }
 
 function seedTrustedOrigins(identity: string, sourceOrigin: string): void {
+  const { seededTrustScopes } = getRegionState();
   const key = trustScopeKey(identity, sourceOrigin);
   if (seededTrustScopes.has(key)) {
     return;
@@ -160,6 +166,7 @@ export function isTrustedRegionOrigin(
   if (!(candidate && source)) {
     return false;
   }
+  const { trustedRegionOrigins } = getRegionState();
   const pending = [source];
   const visited = new Set<string>();
   while (pending.length > 0 && visited.size < MAX_TRUST_GRAPH_ORIGINS) {
@@ -191,6 +198,7 @@ export function isTrustedRegionOrigin(
  * after clearAuth runs during re-auth.
  */
 export function clearTrustedHostState(): void {
+  const { trustedRegionOrigins, seededTrustScopes } = getRegionState();
   trustedRegionOrigins.clear();
   seededTrustScopes.clear();
 }
@@ -200,17 +208,14 @@ export function resetTrustedRegionUrlsForTesting(): void {
   clearTrustedHostState();
 }
 
-/** When true, getCachedOrganizations() returns empty (forces API fetch). */
-let orgCacheDisabled = false;
-
 /** Disable the org listing cache for this invocation (e.g., `--fresh` flag). */
 export function disableOrgCache(): void {
-  orgCacheDisabled = true;
+  getRegionState().orgCacheDisabled = true;
 }
 
 /** Re-enable the org listing cache. Exported for testing. */
 export function enableOrgCache(): void {
-  orgCacheDisabled = false;
+  getRegionState().orgCacheDisabled = false;
 }
 
 type OrgRegionRow = {
@@ -484,7 +489,7 @@ export function getCachedOrganizations(
   sourceOrigin = getActiveSourceOrigin(),
   identity = getIdentityFingerprint(),
 ): CachedOrg[] {
-  if (orgCacheDisabled) {
+  if (getRegionState().orgCacheDisabled) {
     return [];
   }
 

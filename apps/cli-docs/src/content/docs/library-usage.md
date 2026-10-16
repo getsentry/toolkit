@@ -194,16 +194,22 @@ try {
 
 ## Environment Isolation
 
-The library never mutates `process.env`. Each invocation creates an isolated
-copy of the environment. This means:
+The library never mutates `process.env`. Each invocation captures the environment
+when called and owns its in-memory auth and routing state. Pending requests keep that
+context even if the command fails before they finish. This means:
 
 - Your application's env vars are never touched
 - Multiple sequential calls are safe
 - Auth tokens passed via `token` don't leak to subsequent calls
 
+Stored login credentials remain shared by calls using the same config directory.
+Each HTTP response is cached under the identity selected for that request, even if
+the stored session changes while it is in flight.
+
 :::note
 Concurrent calls are not supported in the current version.
-Calls should be sequential (awaited one at a time).
+Overlapping invocations reject with `SentryError`. Calls must be sequential
+(awaited one at a time), including calls on different SDK instances.
 :::
 
 ## Comparison with Subprocess
@@ -244,7 +250,7 @@ for await (const snapshot of sdk.run("dashboard", "view", "123", "--refresh", "3
 
 // Stop streaming by breaking out of the loop
 for await (const log of sdk.log.list({ follow: "2" })) {
-  if (someCondition) break; // Streaming stops immediately
+  if (someCondition) break; // Signals cancellation and waits for cleanup
 }
 ```
 
@@ -263,10 +269,12 @@ setTimeout(() => controller.abort(), 30_000);
 for await (const log of sdk.log.list({ follow: "5" })) {
   console.log(log);
 }
-// Loop exits when signal fires
+// Loop exits after cancellation and cleanup finish
 ```
 
 :::note
 Concurrent streaming calls are not supported. Each streaming invocation
-uses an isolated environment — only one can be active at a time.
+uses an isolated environment — only one SDK invocation can be active at a time.
+Finishing iteration or exiting with `break` waits for the producer to stop and
+finish cleanup. Await that cleanup before starting another SDK call.
 :::

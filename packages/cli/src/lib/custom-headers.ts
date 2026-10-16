@@ -10,7 +10,7 @@
  *
  * The library API (`createSentrySDK({ headers })`) bypasses the string format
  * and sets the structured headers for the current invocation via
- * {@link setCustomHeadersOverride}, validated with the same rules.
+ * {@link withCustomHeadersOverride}, validated with the same rules.
  *
  * @example
  * ```bash
@@ -28,7 +28,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getDefaultHeaders } from "./db/defaults.js";
-import { getEnv } from "./env.js";
+import { createInvocationState, getEnv } from "./env.js";
 import { ConfigError } from "./errors.js";
 import { logger } from "./logger.js";
 import { isSentrySaasUrl } from "./sentry-urls.js";
@@ -66,23 +66,14 @@ const HEADER_SEPARATOR_RE = /[;\n]/;
 /** Strips trailing carriage return from a line (Windows line endings). */
 const TRAILING_CR_RE = /\r$/;
 
-/** Cached parsed headers (from env var or defaults). `undefined` = not yet parsed. */
-let cachedHeaders: readonly [string, string][] | undefined;
-
-/** Tracks the raw source string that produced `cachedHeaders`, for invalidation. */
-let cachedRawSource: string | undefined;
-
-/** Whether the SaaS warning has already been logged this session. */
-let saasWarningLogged = false;
-
-/** Whether the untrusted-destination warning has already been logged. */
-let untrustedDestinationWarningLogged = false;
-
-/**
- * Structured headers set by the library API for the current invocation.
- * `undefined` = not set, fall through to the env var / SQLite defaults.
- */
-let overrideHeaders: readonly [string, string][] | undefined;
+type HeaderState = {
+  cachedHeaders?: readonly [string, string][];
+  cachedRawSource?: string;
+  saasWarningLogged?: boolean;
+  untrustedDestinationWarningLogged?: boolean;
+  overrideHeaders?: readonly [string, string][];
+};
+const getHeaderState = createInvocationState<HeaderState>(() => ({}));
 const scopedHeadersOverride = new AsyncLocalStorage<{
   value: readonly [string, string][] | undefined;
 }>();
@@ -162,7 +153,8 @@ export function parseCustomHeaders(raw: string): readonly [string, string][] {
  * over an inherited env var. The self-hosted guard and the request-origin
  * trust check in {@link applyCustomHeaders} still apply.
  *
- * Pass `undefined` to clear. The SDK invoke layer calls this next to `setEnv`.
+ * Pass `undefined` to inherit env/SQLite headers. The SDK validates overrides
+ * inside its invocation context.
  *
  * @param headers - Header name/value map from `SentryOptions.headers`
  * @throws {ConfigError} On invalid or reserved header names
@@ -191,7 +183,7 @@ function validateCustomHeadersOverride(
 export function setCustomHeadersOverride(
   headers: Record<string, string> | undefined,
 ): void {
-  overrideHeaders = validateCustomHeadersOverride(headers);
+  getHeaderState().overrideHeaders = validateCustomHeadersOverride(headers);
 }
 
 export function withCustomHeadersOverride<T>(
@@ -240,11 +232,12 @@ function resolveRawHeaders(): string | undefined {
 
 /** Self-hosted guard: warn once and report false on SaaS. */
 function passesSelfHostedGuard(): boolean {
+  const state = getHeaderState();
   if (isSelfHosted()) {
     return true;
   }
-  if (!saasWarningLogged) {
-    saasWarningLogged = true;
+  if (!state.saasWarningLogged) {
+    state.saasWarningLogged = true;
     log.warn(
       "Custom headers are set but no self-hosted Sentry instance is configured. Headers will be ignored.",
     );
@@ -263,8 +256,9 @@ function passesSelfHostedGuard(): boolean {
  * because `SENTRY_HOST` can be set dynamically by URL argument parsing.
  */
 export function getCustomHeaders(): readonly [string, string][] {
+  const state = getHeaderState();
   const scoped = scopedHeadersOverride.getStore();
-  const effective = scoped ? scoped.value : overrideHeaders;
+  const effective = scoped ? scoped.value : state.overrideHeaders;
   if (effective !== undefined) {
     return effective.length > 0 && passesSelfHostedGuard() ? effective : [];
   }
@@ -279,13 +273,13 @@ export function getCustomHeaders(): readonly [string, string][] {
   }
 
   // Return cached result if the raw source hasn't changed
-  if (cachedHeaders !== undefined && cachedRawSource === raw) {
-    return cachedHeaders;
+  if (state.cachedHeaders !== undefined && state.cachedRawSource === raw) {
+    return state.cachedHeaders;
   }
 
-  cachedHeaders = parseCustomHeaders(raw);
-  cachedRawSource = raw;
-  return cachedHeaders;
+  state.cachedHeaders = parseCustomHeaders(raw);
+  state.cachedRawSource = raw;
+  return state.cachedHeaders;
 }
 
 /**
@@ -308,14 +302,15 @@ export function applyCustomHeaders(
   requestUrl: string | URL | Request,
   isTrusted = isRequestOriginTrustedForCustomHeaders(requestUrl),
 ): void {
+  const state = getHeaderState();
   const customHeaders = getCustomHeaders();
   if (customHeaders.length === 0) {
     return;
   }
 
   if (!isTrusted) {
-    if (!untrustedDestinationWarningLogged) {
-      untrustedDestinationWarningLogged = true;
+    if (!state.untrustedDestinationWarningLogged) {
+      state.untrustedDestinationWarningLogged = true;
       log.warn(
         "Skipping custom headers for request to untrusted host. " +
           "If this is legitimate, run 'sentry auth login --url <url>' against the intended instance.",
@@ -334,9 +329,10 @@ export function applyCustomHeaders(
  * @internal
  */
 export function _resetCustomHeadersCache(): void {
-  cachedHeaders = undefined;
-  cachedRawSource = undefined;
-  overrideHeaders = undefined;
-  saasWarningLogged = false;
-  untrustedDestinationWarningLogged = false;
+  const state = getHeaderState();
+  state.cachedHeaders = undefined;
+  state.cachedRawSource = undefined;
+  state.overrideHeaders = undefined;
+  state.saasWarningLogged = false;
+  state.untrustedDestinationWarningLogged = false;
 }

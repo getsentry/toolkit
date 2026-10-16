@@ -7,12 +7,14 @@
 import { mkdirSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
+import { getDatabase } from "../../../src/lib/db/index.js";
 import {
   clearProjectRootCache,
   clearProjectRootCacheFor,
   getCachedProjectRoot,
   setCachedProjectRoot,
 } from "../../../src/lib/db/project-root-cache.js";
+import { withEnv } from "../../../src/lib/env.js";
 import { cleanupTestDir, useTestConfigDir } from "../../helpers.js";
 
 const getConfigDir = useTestConfigDir("test-project-root-cache-");
@@ -86,6 +88,26 @@ describe("getCachedProjectRoot", () => {
     const after = await getCachedProjectRoot(tempDir);
     expect(after).toBeUndefined();
   });
+
+  test("invalidates its own cache after another invocation opens a different database", async () => {
+    await setCachedProjectRoot(testProjectDir, {
+      projectRoot: testProjectDir,
+      reason: "language",
+    });
+    const futureTime = new Date(statSync(testProjectDir).mtimeMs + 5000);
+    utimesSync(testProjectDir, futureTime, futureTime);
+
+    const pending = withEnv({ ...process.env }, () =>
+      getCachedProjectRoot(testProjectDir),
+    );
+    // The filesystem check yields while another invocation uses its store.
+    withEnv(
+      { ...process.env, SENTRY_CONFIG_DIR: join(getConfigDir(), "other") },
+      getDatabase,
+    );
+
+    await expect(pending).resolves.toBeUndefined();
+  });
 });
 
 describe("setCachedProjectRoot", () => {
@@ -125,6 +147,30 @@ describe("setCachedProjectRoot", () => {
     // Should not have cached anything (can't stat the directory)
     const result = await getCachedProjectRoot("/nonexistent/path");
     expect(result).toBeUndefined();
+  });
+
+  test("writes to its own cache after another invocation opens a different database", async () => {
+    const pending = withEnv({ ...process.env }, () =>
+      setCachedProjectRoot(testProjectDir, {
+        projectRoot: testProjectDir,
+        reason: "vcs",
+      }),
+    );
+    // The filesystem check yields while another invocation uses its store.
+    const otherEnv = {
+      ...process.env,
+      SENTRY_CONFIG_DIR: join(getConfigDir(), "other"),
+    };
+    withEnv(otherEnv, getDatabase);
+
+    await pending;
+    await expect(getCachedProjectRoot(testProjectDir)).resolves.toEqual({
+      projectRoot: testProjectDir,
+      reason: "vcs",
+    });
+    await expect(
+      withEnv(otherEnv, () => getCachedProjectRoot(testProjectDir)),
+    ).resolves.toBeUndefined();
   });
 });
 

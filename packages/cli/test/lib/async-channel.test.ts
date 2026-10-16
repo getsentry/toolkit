@@ -118,6 +118,32 @@ describe("createAsyncChannel", () => {
     expect(results).toEqual([1]);
   });
 
+  test("return waits for producer cleanup before completing pending reads", async () => {
+    let finishCleanup: (() => void) | undefined;
+    const cleanup = new Promise<void>((resolve) => {
+      finishCleanup = resolve;
+    });
+    const ch = createAsyncChannel<number>({ onReturn: () => cleanup });
+    const iterator = ch[Symbol.asyncIterator]();
+    let readDone = false;
+    const pendingRead = iterator.next().then((result) => {
+      readDone = true;
+      return result;
+    });
+    let returnDone = false;
+    const returning = iterator.return!().then((result) => {
+      returnDone = true;
+      return result;
+    });
+
+    await Promise.resolve();
+    expect(readDone).toBe(false);
+    expect(returnDone).toBe(false);
+    finishCleanup?.();
+    expect((await returning).done).toBe(true);
+    expect((await pendingRead).done).toBe(true);
+  });
+
   test("push after error is a silent no-op", async () => {
     const ch = createAsyncChannel<number>();
     const iter = ch[Symbol.asyncIterator]();

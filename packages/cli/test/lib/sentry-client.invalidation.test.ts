@@ -9,7 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { setAuthToken } from "../../src/lib/db/auth.js";
+import { getIdentityFingerprint, setAuthToken } from "../../src/lib/db/auth.js";
 import {
   getCachedResponse,
   storeCachedResponse,
@@ -70,13 +70,13 @@ describe("HTTP-layer auto-invalidation", () => {
     await storeCachedResponse(
       "GET",
       DETAIL_URL,
-      {},
+      { identity: getIdentityFingerprint(), headers: {} },
       makeResponse({ id: "12345" }),
     );
     await storeCachedResponse(
       "GET",
       `${LIST_URL}?cursor=abc`,
-      {},
+      { identity: getIdentityFingerprint(), headers: {} },
       makeResponse({ data: [] }),
     );
 
@@ -90,9 +90,17 @@ describe("HTTP-layer auto-invalidation", () => {
 
     // Invalidation is awaited inside the hook, so the cache is
     // already cleared when the caller sees the response.
-    expect(await getCachedResponse("GET", DETAIL_URL, {})).toBeUndefined();
     expect(
-      await getCachedResponse("GET", `${LIST_URL}?cursor=abc`, {}),
+      await getCachedResponse("GET", DETAIL_URL, {
+        identity: getIdentityFingerprint(),
+        headers: {},
+      }),
+    ).toBeUndefined();
+    expect(
+      await getCachedResponse("GET", `${LIST_URL}?cursor=abc`, {
+        identity: getIdentityFingerprint(),
+        headers: {},
+      }),
     ).toBeUndefined();
   });
 
@@ -100,21 +108,26 @@ describe("HTTP-layer auto-invalidation", () => {
     await storeCachedResponse(
       "GET",
       DETAIL_URL,
-      {},
+      { identity: getIdentityFingerprint(), headers: {} },
       makeResponse({ id: "12345" }),
     );
 
     installMockFetch(async () => makeResponse({ error: "denied" }, 403));
     const response = await runAuthenticatedFetch(DETAIL_URL, "PUT");
     expect(response.status).toBe(403);
-    expect(await getCachedResponse("GET", DETAIL_URL, {})).toBeDefined();
+    expect(
+      await getCachedResponse("GET", DETAIL_URL, {
+        identity: getIdentityFingerprint(),
+        headers: {},
+      }),
+    ).toBeDefined();
   });
 
   test("GET does NOT invalidate the cache", async () => {
     await storeCachedResponse(
       "GET",
       DETAIL_URL,
-      {},
+      { identity: getIdentityFingerprint(), headers: {} },
       makeResponse({ id: "12345" }),
     );
 
@@ -123,7 +136,12 @@ describe("HTTP-layer auto-invalidation", () => {
       `${BASE}organizations/acme/issues/99999/`,
       "GET",
     );
-    expect(await getCachedResponse("GET", DETAIL_URL, {})).toBeDefined();
+    expect(
+      await getCachedResponse("GET", DETAIL_URL, {
+        identity: getIdentityFingerprint(),
+        headers: {},
+      }),
+    ).toBeDefined();
   });
 
   test("cross-endpoint rule fires for project delete", async () => {
@@ -131,7 +149,7 @@ describe("HTTP-layer auto-invalidation", () => {
     await storeCachedResponse(
       "GET",
       `${orgListUrl}?cursor=xyz`,
-      {},
+      { identity: getIdentityFingerprint(), headers: {} },
       makeResponse({ data: [] }),
     );
 
@@ -139,7 +157,10 @@ describe("HTTP-layer auto-invalidation", () => {
     await runAuthenticatedFetch(`${BASE}projects/acme/frontend/`, "DELETE");
 
     expect(
-      await getCachedResponse("GET", `${orgListUrl}?cursor=xyz`, {}),
+      await getCachedResponse("GET", `${orgListUrl}?cursor=xyz`, {
+        identity: getIdentityFingerprint(),
+        headers: {},
+      }),
     ).toBeUndefined();
   });
 
@@ -148,7 +169,7 @@ describe("HTTP-layer auto-invalidation", () => {
     await storeCachedResponse(
       "GET",
       DETAIL_URL,
-      {},
+      { identity: getIdentityFingerprint(), headers: {} },
       makeResponse({ owner: "a" }),
     );
 
@@ -157,6 +178,11 @@ describe("HTTP-layer auto-invalidation", () => {
     await runAuthenticatedFetch(DETAIL_URL, "PUT");
 
     setAuthToken("identity-a", 3600, "refresh-a");
-    expect(await getCachedResponse("GET", DETAIL_URL, {})).toBeDefined();
+    expect(
+      await getCachedResponse("GET", DETAIL_URL, {
+        identity: getIdentityFingerprint(),
+        headers: {},
+      }),
+    ).toBeDefined();
   });
 });
