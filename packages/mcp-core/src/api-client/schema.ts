@@ -2460,11 +2460,13 @@ export type IngestionMeta = z.infer<typeof IngestionMetaSchema>;
  * One bucket of an events-timeseries series. `timestamp` is in milliseconds.
  * `incomplete` marks buckets that may still receive data (the current bucket,
  * or anything after `meta.ingestion.completeThrough`).
+ * `value` is passed through from the query unchanged, so date-typed
+ * aggregates such as `max(timestamp)` return ISO datetime strings.
  */
 export const EventsTimeSeriesValueSchema = z
   .object({
     timestamp: z.number(),
-    value: z.number().nullish(),
+    value: z.union([z.number(), z.string()]).nullish(),
     incomplete: z.boolean(),
     incompleteReason: z.string().optional(),
   })
