@@ -20,6 +20,7 @@ import {
   setActiveAccount,
   setAuthToken,
 } from "../../lib/db/auth.js";
+import { getAccountRow, isAccountRowUsable } from "../../lib/db/accounts.js";
 import { getDbPath } from "../../lib/db/index.js";
 import { getUserInfo, setUserInfo } from "../../lib/db/user.js";
 import { getEnv } from "../../lib/env.js";
@@ -416,10 +417,11 @@ async function discardTokenLogin(
  * Any other failure (network, 5xx, parse) is NOT a token problem, so the
  * original error is re-thrown: surfacing "Invalid API token" would mislead the
  * user and discard the real cause. The unconfirmed token must not take over
- * the session either: when another account was active, it is dropped and that
- * account restored (the user can retry). With no other account, the token is
- * kept, since clearing a possibly-valid only credential on a transient blip is
- * hostile (CLI-19).
+ * the session either: when the previously active account still has usable
+ * credentials, the token is dropped and that account restored (the user can
+ * retry). Otherwise (no other account, or its credentials expired or were
+ * rejected) the token is kept, since discarding a possibly-valid token on a
+ * transient blip would leave the user logged out (CLI-19).
  *
  * @throws {AuthError} for a 401/403 (after removing the stored token)
  * @throws the original error for any other failure
@@ -439,10 +441,22 @@ async function handleTokenValidationError(
       "Invalid API token. Please check your token and try again.",
     );
   }
-  if (previousAccountId && previousAccountId !== accountId) {
+  if (hasUsablePreviousAccount(accountId, previousAccountId)) {
     await discardTokenLogin(accountId, previousAccountId);
   }
   throw error;
+}
+
+/** Whether the account active before this login can still authenticate. */
+function hasUsablePreviousAccount(
+  accountId: string,
+  previousAccountId: string | undefined,
+): previousAccountId is string {
+  if (!previousAccountId || previousAccountId === accountId) {
+    return false;
+  }
+  const row = getAccountRow(previousAccountId);
+  return row !== undefined && isAccountRowUsable(row);
 }
 
 export const loginCommand = buildCommand({

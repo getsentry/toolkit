@@ -27,6 +27,7 @@ import {
   getAuthToken,
   setAuthToken,
 } from "../../../src/lib/db/auth.js";
+import { getDatabase } from "../../../src/lib/db/index.js";
 import { getUserInfo, setUserInfo } from "../../../src/lib/db/user.js";
 import { ApiError, AuthError } from "../../../src/lib/errors.js";
 import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
@@ -151,6 +152,25 @@ describe("login --force --token", () => {
   });
 
   test("a transient validation failure with no other account keeps the token", async () => {
+    const cause = new ApiError("Server error", 503);
+    vi.spyOn(apiClient, "getUserRegions").mockRejectedValue(cause);
+
+    await expect(
+      func.call(createContext(), {
+        token: "maybe-good",
+        force: true,
+        timeout: 900,
+      }),
+    ).rejects.toBe(cause);
+
+    expect(getAuthToken()).toBe("maybe-good");
+  });
+
+  test("a transient failure keeps the token when the previous account can't authenticate", async () => {
+    const stale = addAccount("old-token", "2", "jane@example.com");
+    getDatabase()
+      .query("UPDATE accounts SET token = NULL WHERE account_id = ?")
+      .run(stale);
     const cause = new ApiError("Server error", 503);
     vi.spyOn(apiClient, "getUserRegions").mockRejectedValue(cause);
 
