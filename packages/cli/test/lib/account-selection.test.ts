@@ -25,7 +25,8 @@ import {
 } from "../../src/lib/db/accounts.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { setUserInfo } from "../../src/lib/db/user.js";
-import { ResolutionError } from "../../src/lib/errors.js";
+import { ContextError, ResolutionError } from "../../src/lib/errors.js";
+import { setInteractivePromptsAllowed } from "../../src/lib/interactive-prompts.js";
 import { useEnvSandbox, useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("account-selection-");
@@ -51,6 +52,7 @@ function addAccount(
 beforeEach(() => {
   selectWithFilter.mockReset();
   isatty.mockReturnValue(true);
+  setInteractivePromptsAllowed(true);
 });
 
 describe("resolveAccountSelector", () => {
@@ -166,5 +168,25 @@ describe("promptForAccount", () => {
     await expect(
       promptForAccount(listAccounts(), "Pick", "sentry auth switch"),
     ).resolves.toBeUndefined();
+  });
+
+  test("never prompts under --json, even in a terminal", async () => {
+    addAccount("https://sentry.io", { userId: "1", email: "jane@acme.com" });
+    setInteractivePromptsAllowed(false);
+
+    await expect(
+      promptForAccount(listAccounts(), "Pick", "sentry auth switch"),
+    ).rejects.toBeInstanceOf(ContextError);
+    expect(selectWithFilter).not.toHaveBeenCalled();
+  });
+
+  test("never prompts when stdout is not a terminal", async () => {
+    addAccount("https://sentry.io", { userId: "1", email: "jane@acme.com" });
+    isatty.mockImplementation((fd: number) => fd === 0);
+
+    await expect(
+      promptForAccount(listAccounts(), "Pick", "sentry auth switch"),
+    ).rejects.toBeInstanceOf(ContextError);
+    expect(selectWithFilter).not.toHaveBeenCalled();
   });
 });

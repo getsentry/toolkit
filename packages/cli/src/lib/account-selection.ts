@@ -16,6 +16,7 @@ import {
 import { getDefaultUrl, setDefaultUrl } from "./db/defaults.js";
 import { ContextError, ResolutionError } from "./errors.js";
 import { formatAccountLabel } from "./formatters/accounts.js";
+import { interactivePromptsAllowed } from "./interactive-prompts.js";
 import { logger } from "./logger.js";
 
 const log = logger.withTag("auth.accounts");
@@ -102,14 +103,15 @@ export function resolveAccountSelector(
  * type-to-filter fuzzy search (the same picker as org/project selection).
  * Returns `undefined` when the prompt is cancelled.
  *
- * @throws {ContextError} when stdin is not a TTY
+ * @throws {ContextError} when prompts are not allowed (`--json`, or stdin or
+ *   stdout is not a TTY)
  */
 export async function promptForAccount(
   accounts: readonly AccountSummary[],
   message: string,
   command: string,
 ): Promise<AccountSummary | undefined> {
-  if (!isatty(0)) {
+  if (!(interactivePromptsAllowed() && isatty(0) && isatty(1))) {
     throw new ContextError(
       "Account",
       `${command} <email|username|account-id>`,
