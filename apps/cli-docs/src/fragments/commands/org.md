@@ -13,6 +13,26 @@ my-org         My Organization      owner
 another-org    Another Org          member
 ```
 
+With several stored accounts (see `sentry auth list`), `sentry org list` lists
+the organizations of every logged-in account together, each fetched with that
+account's own credentials on its own server, plus an `ACCOUNT` column. An
+organization reachable from several accounts on the same server is listed once,
+under the active account if it is one of them, else the most recently used.
+Accounts whose login fails are skipped with a warning. `SENTRY_HOST`/`SENTRY_URL` limits the list to accounts on that server,
+and `--account` to a single account. The stored active account never changes.
+
+```
+$ sentry org list
+SLUG             NAME               ACCOUNT
+my-org           My Organization    jane@example.com on sentry.io
+acme-internal    Acme Internal      jane@acme.com on sentry.acme.com
+```
+
+```bash
+# Only one account's organizations
+sentry org list --account jane@acme.com
+```
+
 ```bash
 # View organization details
 sentry org view my-org
