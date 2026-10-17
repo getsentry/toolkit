@@ -12,6 +12,7 @@ import {
   parseSentryLinkHeader,
   type SdkResult,
   SentryApiError,
+  type SentryClient,
 } from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
@@ -28,6 +29,7 @@ import { getEnv } from "../env.js";
 import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
+import { getSentryClient } from "../sentry-api-client.js";
 import {
   getApiBaseUrl,
   getDefaultSdkConfig,
@@ -370,13 +372,11 @@ export function appendSearchParams(
   return `${endpoint}${separator}${searchParams.toString()}`;
 }
 
-/**
- * Get SDK config for an organization's region.
- * Resolves the org's region URL and returns the config.
- */
-export async function getOrgSdkConfig(orgSlug: string) {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  return getSdkConfig(regionUrl);
+/** Resolve existing CLI region metadata before selecting its shared client. */
+export async function getOrgSentryClient(
+  orgSlug: string,
+): Promise<SentryClient> {
+  return getSentryClient(await resolveOrgRegion(orgSlug));
 }
 
 /**

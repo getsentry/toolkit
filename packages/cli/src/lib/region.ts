@@ -5,13 +5,13 @@
  * using cached data when available or fetching from the API when needed.
  */
 
-import { getOrganization } from "@sentry/api";
 import { resolveCachedRegion } from "@sentry/toolkit-core/region-cache";
 import { type CredentialContext, getCredentialContext } from "./db/auth.js";
 import { getOrgByNumericId, getOrgRegion, setOrgRegion } from "./db/regions.js";
 import { stripDsnOrgPrefix } from "./dsn/index.js";
 import { AuthError, withAuthGuard } from "./errors.js";
 import { logger } from "./logger.js";
+import { getSentryClient } from "./sentry-api-client.js";
 import {
   getApiBaseUrl,
   getResponseCredentialIdentity,
@@ -117,13 +117,14 @@ async function resolveOrgRegionUncached(
   }
 
   // 2. Fetch org details via SDK to discover the region URL
+  const sentry = getSentryClient(baseUrl);
   const config = getSdkConfig(baseUrl, {
     credential,
     validatedRedirects: true,
   });
 
   const result = await withAuthGuard(async () => {
-    const response = await getOrganization({
+    const response = await sentry.getOrganization({
       ...config,
       path: { organization_id_or_slug: orgSlug },
     });

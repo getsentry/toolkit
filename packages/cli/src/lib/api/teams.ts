@@ -4,12 +4,6 @@
  * CRUD operations for Sentry teams, including project-scoped team listing.
  */
 
-import {
-  addOrganizationMemberTeam,
-  createOrganizationTeam,
-  listOrganizationTeams,
-  listProjectTeams as sdkListProjectTeams,
-} from "@sentry/api";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 
@@ -18,7 +12,7 @@ import type { SentryTeam } from "../../types/index.js";
 import { logger } from "../logger.js";
 
 import {
-  getOrgSdkConfig,
+  getOrgSentryClient,
   type PaginatedResponse,
   unwrapPaginatedResult,
   unwrapResult,
@@ -29,10 +23,9 @@ import {
  * Uses region-aware routing for multi-region support.
  */
 export async function listTeams(orgSlug: string): Promise<SentryTeam[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await listOrganizationTeams({
-    ...config,
+  const result = await sentry.listOrganizationTeams({
     path: { organization_id_or_slug: orgSlug },
   });
 
@@ -51,10 +44,9 @@ export async function listTeamsPaginated(
   orgSlug: string,
   options: { cursor?: string; perPage?: number } = {},
 ): Promise<PaginatedResponse<SentryTeam[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await listOrganizationTeams({
-    ...config,
+  const result = await sentry.listOrganizationTeams({
     path: { organization_id_or_slug: orgSlug },
     query: {
       cursor: options.cursor,
@@ -79,9 +71,8 @@ export async function listProjectTeams(
   orgSlug: string,
   projectSlug: string,
 ): Promise<SentryTeam[]> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await sdkListProjectTeams({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.listProjectTeams({
     path: {
       organization_id_or_slug: orgSlug,
       project_id_or_slug: projectSlug,
@@ -106,9 +97,8 @@ export async function createTeam(
   orgSlug: string,
   slug: string,
 ): Promise<SentryTeam> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await createOrganizationTeam({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.createOrganizationTeam({
     path: { organization_id_or_slug: orgSlug },
     body: { slug },
   });
@@ -141,9 +131,8 @@ export async function addMemberToTeam(
   teamSlug: string,
   memberId: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await addOrganizationMemberTeam({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.addOrganizationMemberTeam({
     path: {
       organization_id_or_slug: orgSlug,
       member_id: memberId,

@@ -4,14 +4,7 @@
  * Functions for retrieving, listing, and resolving Sentry events.
  */
 
-import {
-  type EventAttachmentDetailsResponse,
-  getOrganizationIssueEvent,
-  getProjectEvent,
-  listOrganizationIssueEvents,
-  listProjectEventAttachments,
-  resolveOrganizationEventId as sdkResolveAnEventId,
-} from "@sentry/api";
+import type { EventAttachmentDetailsResponse } from "@sentry/api";
 import pLimit from "p-limit";
 
 import type { IssueEvent, SentryEvent } from "../../types/index.js";
@@ -21,7 +14,7 @@ import { ApiError, AuthError } from "../errors.js";
 import {
   API_MAX_PER_PAGE,
   autoPaginate,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   MAX_PAGINATION_PAGES,
   ORG_FANOUT_CONCURRENCY,
   type PaginatedResponse,
@@ -41,10 +34,9 @@ export async function getLatestEvent(
   orgSlug: string,
   issueId: string,
 ): Promise<SentryEvent> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await getOrganizationIssueEvent({
-    ...config,
+  const result = await sentry.getOrganizationIssueEvent({
     path: {
       organization_id_or_slug: orgSlug,
       issue_id: issueId,
@@ -64,10 +56,9 @@ export async function getEvent(
   projectSlug: string,
   eventId: string,
 ): Promise<SentryEvent> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await getProjectEvent({
-    ...config,
+  const result = await sentry.getProjectEvent({
     path: {
       organization_id_or_slug: orgSlug,
       project_id_or_slug: projectSlug,
@@ -89,7 +80,7 @@ export async function listEventAttachments(
   projectSlug: string,
   eventId: string,
 ): Promise<EventAttachmentDetailsResponse[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
   const { data } = await autoPaginate(
     async (cursor) => {
       // The endpoint accepts `per_page`, but its generated SDK type omits it.
@@ -99,8 +90,7 @@ export async function listEventAttachments(
         per_page: API_MAX_PER_PAGE,
         ...(cursor ? { cursor } : {}),
       };
-      const result = await listProjectEventAttachments({
-        ...config,
+      const result = await sentry.listProjectEventAttachments({
         path: {
           organization_id_or_slug: orgSlug,
           project_id_or_slug: projectSlug,
@@ -139,10 +129,9 @@ export async function resolveEventInOrg(
   orgSlug: string,
   eventId: string,
 ): Promise<ResolvedEvent | null> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await sdkResolveAnEventId({
-    ...config,
+  const result = await sentry.resolveOrganizationEventId({
     path: { organization_id_or_slug: orgSlug, event_id: eventId },
   });
 
@@ -270,7 +259,7 @@ export async function listIssueEvents(
 ): Promise<PaginatedResponse<IssueEvent[]>> {
   const { limit = 25, query, full, cursor, statsPeriod, start, end } = options;
 
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
   const perPage = Math.min(limit, API_MAX_PER_PAGE);
 
   const allEvents: IssueEvent[] = [];
@@ -278,8 +267,7 @@ export async function listIssueEvents(
   let nextCursor: string | undefined;
 
   for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
-    const result = await listOrganizationIssueEvents({
-      ...config,
+    const result = await sentry.listOrganizationIssueEvents({
       path: {
         organization_id_or_slug: orgSlug,
         issue_id: issueId,
@@ -294,7 +282,7 @@ export async function listIssueEvents(
         // `per_page` is accepted at runtime but absent from the generated query
         // type, so widen via cast.
         per_page: perPage,
-      } as Parameters<typeof listOrganizationIssueEvents>[0]["query"],
+      } as Parameters<typeof sentry.listOrganizationIssueEvents>[0]["query"],
     });
 
     const paginated = unwrapPaginatedResult(

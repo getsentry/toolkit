@@ -5,11 +5,6 @@
  */
 
 import {
-  getOrganization as sdkGetOrganization,
-  listOrganizations as sdkListOrganizations,
-} from "@sentry/api";
-
-import {
   type Region,
   type SentryOrganization,
   type UserRegionsResponse,
@@ -18,6 +13,7 @@ import {
 import { type CredentialContext, getCredentialContext } from "../db/auth.js";
 import type { OrgRegionEntry } from "../db/regions.js";
 import { ApiError, AuthError } from "../errors.js";
+import { getSentryClient } from "../sentry-api-client.js";
 import {
   getControlSiloUrl,
   getResponseCredentialIdentity,
@@ -29,7 +25,7 @@ import { normalizeHttpOrigin, normalizeRegionBaseUrl } from "../sentry-urls.js";
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   unwrapPaginatedResult,
@@ -87,12 +83,13 @@ export async function listOrganizationsPage(
   options: { cursor?: string; perPage?: number } = {},
   credential = getCredentialContext(),
 ): Promise<PaginatedResponse<SentryOrganization[]>> {
+  const sentry = getSentryClient(baseUrl);
   const config = getSdkConfig(baseUrl, {
     credential,
     validatedRedirects: true,
   });
 
-  const result = await sdkListOrganizations({
+  const result = await sentry.listOrganizations({
     ...config,
     query: { cursor: options.cursor, per_page: options.perPage },
   });
@@ -270,10 +267,9 @@ export async function listOrganizationsUncached(
 export async function getOrganization(
   orgSlug: string,
 ): Promise<SentryOrganization> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await sdkGetOrganization({
-    ...config,
+  const result = await sentry.getOrganization({
     path: { organization_id_or_slug: orgSlug },
   });
 

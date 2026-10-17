@@ -5,16 +5,6 @@
  * Sentry releases in an organization.
  */
 
-import {
-  createOrganizationRelease,
-  createOrganizationReleaseDeploy,
-  deleteOrganizationRelease,
-  getOrganizationRelease,
-  listOrganizationReleaseDeploys,
-  listOrganizationReleases,
-  listProjectEnvironments as sdkListProjectEnvironments,
-  updateOrganizationRelease,
-} from "@sentry/api";
 import { encodeApiPathSegment } from "@sentry/toolkit-core/api-path-segment";
 import type { SentryDeploy, SentryRelease } from "../../types/index.js";
 import { ApiError, ValidationError, validationError } from "../errors.js";
@@ -23,7 +13,7 @@ import { resolveOrgRegion } from "../region.js";
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   unwrapPaginatedResult,
@@ -65,10 +55,9 @@ export async function listReleasesPaginated(
   orgSlug: string,
   options: ListReleasesOptions = {},
 ): Promise<PaginatedResponse<SentryRelease[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await listOrganizationReleases({
-    ...config,
+  const result = await sentry.listOrganizationReleases({
     path: { organization_id_or_slug: orgSlug },
     // Most query params are supported at runtime but absent from the OpenAPI spec
     query: {
@@ -160,10 +149,9 @@ export async function getRelease(
     healthStatsPeriod?: string;
   },
 ): Promise<SentryRelease> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await getOrganizationRelease({
-    ...config,
+  const result = await sentry.getOrganizationRelease({
     path: {
       organization_id_or_slug: orgSlug,
       version,
@@ -216,15 +204,14 @@ export async function createRelease(
     }>;
   },
 ): Promise<SentryRelease> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
   // Cast body through unknown — the SDK's body type requires `projects: string[]`
   // as non-optional, but the API accepts it as optional at runtime.
-  const result = await createOrganizationRelease({
-    ...config,
+  const result = await sentry.createOrganizationRelease({
     path: { organization_id_or_slug: orgSlug },
     body: body as unknown as Parameters<
-      typeof createOrganizationRelease
+      typeof sentry.createOrganizationRelease
     >[0]["body"],
   });
 
@@ -262,16 +249,15 @@ export async function updateRelease(
     }>;
   },
 ): Promise<SentryRelease> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await updateOrganizationRelease({
-    ...config,
+  const result = await sentry.updateOrganizationRelease({
     path: {
       organization_id_or_slug: orgSlug,
       version,
     },
     body: body as unknown as Parameters<
-      typeof updateOrganizationRelease
+      typeof sentry.updateOrganizationRelease
     >[0]["body"],
   });
 
@@ -291,10 +277,9 @@ export async function deleteRelease(
   orgSlug: string,
   version: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await deleteOrganizationRelease({
-    ...config,
+  const result = await sentry.deleteOrganizationRelease({
     path: {
       organization_id_or_slug: orgSlug,
       version,
@@ -315,10 +300,9 @@ export async function listReleaseDeploys(
   orgSlug: string,
   version: string,
 ): Promise<SentryDeploy[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await listOrganizationReleaseDeploys({
-    ...config,
+  const result = await sentry.listOrganizationReleaseDeploys({
     path: {
       organization_id_or_slug: orgSlug,
       version,
@@ -350,16 +334,15 @@ export async function createReleaseDeploy(
     dateFinished?: string;
   },
 ): Promise<SentryDeploy> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await createOrganizationReleaseDeploy({
-    ...config,
+  const result = await sentry.createOrganizationReleaseDeploy({
     path: {
       organization_id_or_slug: orgSlug,
       version,
     },
     body: body as unknown as Parameters<
-      typeof createOrganizationReleaseDeploy
+      typeof sentry.createOrganizationReleaseDeploy
     >[0]["body"],
   });
 
@@ -584,9 +567,8 @@ export async function listProjectEnvironments(
   orgSlug: string,
   projectSlug: string,
 ): Promise<ProjectEnvironment[]> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await sdkListProjectEnvironments({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.listProjectEnvironments({
     path: {
       organization_id_or_slug: orgSlug,
       project_id_or_slug: projectSlug,
