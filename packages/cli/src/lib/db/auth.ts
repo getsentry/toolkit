@@ -43,6 +43,7 @@ import {
   getMostRecentAccountRow,
   hasCachedOrgList,
   insertActiveAccountRow,
+  isAccountRowUsable,
   isSameServer,
   listAccountRows,
   listUsableAccountRowsByRecency,
@@ -784,11 +785,14 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
     // Respect the account in effect unless its fresh cached org list shows
     // it is not a member: after `sentry auth switch`, an account that simply
     // hasn't used the org yet must not be overridden by one that has. Uses
-    // the same TTL as `getCachedOrganizations`.
+    // the same TTL as `getCachedOrganizations`. An account that can no
+    // longer authenticate (credentials invalidated or expired) is never
+    // kept over an owner that can.
     if (
       current &&
       (owners.some((o) => o.account_id === current.account_id) ||
-        !hasCachedOrgList(current.account_id, Date.now() - ORG_CACHE_TTL_MS))
+        (isAccountRowUsable(current) &&
+          !hasCachedOrgList(current.account_id, Date.now() - ORG_CACHE_TTL_MS)))
     ) {
       return;
     }

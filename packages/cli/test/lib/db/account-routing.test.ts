@@ -282,6 +282,23 @@ describe("organization-based selection", () => {
     expect(getAuthToken()).toBe("personal-token");
   });
 
+  test("moves off an account in effect whose credentials were invalidated", () => {
+    login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS);
+    const personal = login("personal-token", SAAS, "personal");
+    // Invalidated: token cleared and its org cache dropped, still active.
+    const db = getDatabase();
+    db.query("UPDATE accounts SET token = NULL WHERE account_id = ?").run(
+      personal,
+    );
+    db.query("DELETE FROM org_regions WHERE account_id = ?").run(personal);
+
+    selectAccountForOrg("work-org");
+
+    expect(getAuthToken()).toBe("work-token");
+    expect(getActiveAccountId()).toBe(personal);
+  });
+
   test("skips expired accounts that cannot refresh", () => {
     const work = login("work-token", SAAS, "work");
     seeOrg("work-org", SAAS);
