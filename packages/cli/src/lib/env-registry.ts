@@ -207,6 +207,12 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     example: "1",
   },
   {
+    name: "SENTRY_DISABLE_TIPS",
+    description:
+      "Hide `Tip: ...` hints in command output. Other notices (pagination, dry-run, cache age) are still shown. Overrides the persistent `sentry cli defaults tips` setting.",
+    example: "1",
+  },
+  {
     name: "SENTRY_NO_SIXEL",
     description:
       "Deprecated alias for `SENTRY_NO_GRAPHICS`. Still honored for backward compatibility.",

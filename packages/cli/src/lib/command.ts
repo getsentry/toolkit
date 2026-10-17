@@ -66,6 +66,7 @@ import {
   setLogLevel,
 } from "./logger.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
+import { applyTipsPreference } from "./tips.js";
 
 /**
  * Parse a string input as a number.
@@ -819,7 +820,12 @@ export function buildCommand<
       // "cached · 3m ago · use -f to refresh" when data was cached.
       // Skip bare `return;` paths (e.g. `--web` which opens a browser
       // without yielding) — no rendered output should mean no footer.
-      const finalHint = returned ? appendCacheHint(returned.hint) : undefined;
+      // `Tip:` text is stripped first when tips are disabled
+      // (`sentry cli defaults tips off` / SENTRY_DISABLE_TIPS); other
+      // notices and the cache-age staleness indicator are kept.
+      const finalHint = returned
+        ? appendCacheHint(applyTipsPreference(returned.hint))
+        : undefined;
       await withTracing("render", "cli.command.render", () => {
         writeFinalization(stdout, finalHint, cleanFlags.json, renderer);
       });

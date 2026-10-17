@@ -1,0 +1,76 @@
+name: Install Scripts
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/install-scripts.yml"
+      - "packages/cli/install"
+      - "packages/cli/install.ps1"
+  pull_request:
+    paths:
+      - ".github/workflows/install-scripts.yml"
+      - "packages/cli/install"
+      - "packages/cli/install.ps1"
+
+jobs:
+  unix-bash:
+    name: bash installs latest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      SENTRY_CLI_NO_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install through curl | bash
+        run: |
+          export SENTRY_INSTALL_DIR="$RUNNER_TEMP/sentry-bin"
+          bash < packages/cli/install
+          installed=$("$SENTRY_INSTALL_DIR/sentry" --version)
+          echo "Installed sentry $installed"
+
+      - name: Find sentry on PATH in a later step
+        run: |
+          echo "Resolved $(command -v sentry)"
+          sentry --version
+
+  windows-powershell:
+    name: ${{ matrix.shell }} installs latest
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # pwsh is PowerShell 7; powershell is the Windows PowerShell 5.1 that
+        # ships with Windows.
+        shell: [pwsh, powershell]
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    env:
+      SENTRY_CLI_NO_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install through Invoke-Expression
+        run: |
+          $env:SENTRY_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'sentry-bin'
+          Get-Content -Raw -LiteralPath packages/cli/install.ps1 | Invoke-Expression
+          $installed = & (Join-Path $env:SENTRY_INSTALL_DIR 'sentry.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw "sentry --version exited with $LASTEXITCODE" }
+          "Installed sentry $installed"
+
+      - name: Find sentry on PATH in a later step
+        run: |
+          $command = Get-Command sentry -ErrorAction Stop
+          "Resolved $($command.Source)"
+          sentry --version
+          if ($LASTEXITCODE -ne 0) { throw "sentry --version exited with $LASTEXITCODE" }

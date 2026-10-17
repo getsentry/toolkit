@@ -5,6 +5,7 @@
  * ID resolution from numeric IDs or title strings.
  */
 
+import { parseFunction } from "@sentry/toolkit-core/events-fields";
 import { MAX_PAGINATION_PAGES } from "../../lib/api/infrastructure.js";
 import {
   API_MAX_PER_PAGE,
@@ -544,16 +545,13 @@ function warnUnknownAggregateFields(
     return;
   }
   for (const agg of aggregates) {
-    const parenIdx = agg.indexOf("(");
-    if (parenIdx < 0) {
-      continue;
-    }
-    const fn = agg.slice(0, parenIdx);
+    const parsed = parseFunction(agg);
     // Only check numeric aggregate functions — count_unique, any, etc. accept any column
-    if (!NUMERIC_AGGREGATE_FUNCTIONS.has(fn)) {
+    if (!(parsed && NUMERIC_AGGREGATE_FUNCTIONS.has(parsed.name))) {
       continue;
     }
-    const inner = agg.slice(parenIdx + 1, -1);
+    // The aggregated field is the first argument; percentile() adds a level.
+    const inner = parsed.arguments[0];
     if (!inner) {
       continue;
     }

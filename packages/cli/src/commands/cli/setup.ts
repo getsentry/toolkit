@@ -31,8 +31,8 @@ import {
 import { CLI_VERSION } from "../../lib/constants.js";
 import { getAuthConfig } from "../../lib/db/auth.js";
 import {
-  getAgentSkillsPreference,
-  setAgentSkillsPreference,
+  getOnOffPreference,
+  setOnOffPreference,
 } from "../../lib/db/defaults.js";
 import { closeDatabase, resolveXdgConfigDir } from "../../lib/db/index.js";
 import { setInstallInfo } from "../../lib/db/install-info.js";
@@ -564,12 +564,12 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
   if (flags["no-agent-skills"]) {
     await bestEffort(
       "Recording agent skills preference",
-      () => setAgentSkillsPreference(false),
+      () => setOnOffPreference("agent-skills", false),
       warn,
     );
   }
   const skipAgentSkills =
-    flags["no-agent-skills"] || getAgentSkillsPreference() === false;
+    flags["no-agent-skills"] || getOnOffPreference("agent-skills") === false;
   if (!skipAgentSkills) {
     await bestEffort(
       "Agent skills",

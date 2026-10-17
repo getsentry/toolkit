@@ -31,6 +31,7 @@ import type {
 import { resolveOrgDisplayName } from "../api-client.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { withSerializeSpan } from "../telemetry.js";
+import { tipsSuppressed } from "../tips.js";
 import { formatAccountLabel } from "./accounts.js";
 import { type FixabilityTier, muted } from "./colors.js";
 import {
@@ -2061,7 +2062,7 @@ export function formatProjectCreated(result: ProjectCreatedResult): string {
   lines.push(mdKvTable(kvRows));
 
   // Tip footer — only when a real project exists to view
-  if (!dry) {
+  if (!dry && !tipsSuppressed()) {
     lines.push("");
     lines.push(
       `*Tip: Use \`sentry project view ${result.orgSlug}/${result.project.slug}\` for details*`,
@@ -2541,6 +2542,7 @@ const DEFAULT_LABELS: Record<string, string> = {
   telemetry: "Telemetry",
   "agent-skills": "Agent Skills",
   graphics: "Graphics",
+  tips: "Tips",
   url: "URL",
   headers: "Headers",
   "ca-cert": "CA Certificate",
@@ -2567,6 +2569,7 @@ function buildDefaultsShowRows(data: DefaultsResult): [string, string][] {
   const telLabel = d.telemetry ?? "on (default)";
   const agentSkillsLabel = d["agent-skills"] ?? "on (default)";
   const graphicsLabel = d.graphics ?? "on (default)";
+  const tipsLabel = d.tips ?? "on (default)";
 
   return [
     ["Organization", d.organization ? safeCodeSpan(d.organization) : notSet],
@@ -2577,6 +2580,7 @@ function buildDefaultsShowRows(data: DefaultsResult): [string, string][] {
     ],
     ["Agent Skills", escapeMarkdownInline(String(agentSkillsLabel))],
     ["Graphics", escapeMarkdownInline(String(graphicsLabel))],
+    ["Tips", escapeMarkdownInline(String(tipsLabel))],
     ["URL", d.url ? safeCodeSpan(d.url) : notSet],
     ["Headers", d.headers ? safeCodeSpan(d.headers) : notSet],
     ["CA Certificate", d["ca-cert"] ? safeCodeSpan(d["ca-cert"]) : notSet],

@@ -6,12 +6,33 @@ builds bundle this private workspace package into their artifacts.
 The shared code validates and formats upstream bearer tokens, assembles Sentry
 API URLs, constructs OAuth device-flow form bodies, classifies RFC 8628 polling
 responses, advances retry intervals, recognizes Sentry hostnames and
-credential-safe SaaS HTTPS origins, encodes API path identifiers, and deduplicates
-in-flight region lookups. Each product retains its own credential storage,
-regional cache identity and persistence, host allowlists, routing, polling
+credential-safe SaaS HTTPS origins, encodes API path identifiers, parses Events
+field expressions the way the Sentry frontend does, parses search queries with
+the Sentry frontend grammar, resolves Events endpoint sorts so the sort column
+is always selected, and deduplicates in-flight region lookups. Each product
+retains its own credential storage, regional cache identity and persistence,
+host allowlists, routing, polling
 deadline, HTTP transport, response validation, and user-facing errors.
 
 The `resource-identity` types describe the identifiers shared by organization,
 project, team, and issue responses. CLI overlays retain SDK-derived string IDs;
 MCP schemas accept numeric IDs too and check their parsed outputs against these
 types. Each product keeps its own response validation.
+
+## Search syntax
+
+`search-syntax` parses Sentry search queries with the Sentry frontend's own
+grammar. `grammar/search-syntax.pegjs` is an unchanged copy of
+[`static/app/components/searchSyntax/grammar.pegjs`](https://github.com/getsentry/sentry/blob/master/static/app/components/searchSyntax/grammar.pegjs),
+and `test/fixtures/search-syntax/` is a copy of the `fixtures/search-syntax`
+cases the frontend and `event_search.py` both test against. `parseSearch`
+returns the frontend's token tree, minus validation: `TokenConverter` never
+marks tokens invalid or fills `parsed` values. A product that needs those
+subclasses `TokenConverter` and passes it as `converter`.
+
+The parser is compiled ahead of time into `src/generated/` and committed,
+since this package has no build step. After editing a grammar, run
+`pnpm --filter @sentry/toolkit-core generate`; the pre-commit hook does this
+for staged grammar changes, and `pnpm run check:generated` fails in CI when
+the committed parser is out of date. When updating the grammar from upstream,
+copy the fixtures too.

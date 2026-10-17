@@ -15,6 +15,7 @@ import {
   resetIdentityFingerprintCache,
 } from "../src/lib/db/auth.js";
 import { CONFIG_DIR_ENV_VAR, closeDatabase } from "../src/lib/db/index.js";
+import { resetTipsCache } from "../src/lib/tips.js";
 
 // re-exporting a single constant, not a barrel
 export { TEST_TMP_DIR } from "./constants.js";
@@ -116,6 +117,7 @@ export function useTestConfigDir(
     resetAuthRowCache();
     resetHasStoredCredsCache();
     resetIdentityFingerprintCache();
+    resetTipsCache();
     dir = await createTestConfigDir(prefix, options);
     process.env[CONFIG_DIR_ENV_VAR] = dir;
   });
@@ -126,6 +128,7 @@ export function useTestConfigDir(
     resetAuthRowCache();
     resetHasStoredCredsCache();
     resetIdentityFingerprintCache();
+    resetTipsCache();
     // Always restore the previous value — never delete.
     // Deleting process.env.SENTRY_CONFIG_DIR causes failures in test files
     // that load after this afterEach runs, because their module-level code

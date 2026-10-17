@@ -90,6 +90,7 @@ export const OAUTH_SCOPES: readonly string[] = [
   "project:write",
   "project:admin",
   "org:read",
+  "org:integrations",
   "event:read",
   "event:write",
   "member:read",
@@ -108,8 +109,9 @@ const SCOPES = OAUTH_SCOPES.join(" ");
  *
  * Derived by keeping only scopes whose action is `:read`. This assumes every
  * read-granting scope the CLI requests carries the `:read` suffix — true for
- * the current list. If a future read-ish scope without that suffix is added to
- * `OAUTH_SCOPES` (e.g. `org:integrations`), update this filter explicitly.
+ * the current list. `org:integrations` grants install/uninstall, so excluding
+ * it here is intended. If a future read-ish scope without that suffix is
+ * added to `OAUTH_SCOPES`, update this filter explicitly.
  */
 const OAUTH_SCOPES_READ_ONLY: readonly string[] = OAUTH_SCOPES.filter((scope) =>
   scope.endsWith(":read"),
