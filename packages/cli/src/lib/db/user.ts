@@ -1,17 +1,18 @@
 /**
- * User identity of the active stored account.
+ * User identity of the stored account in effect.
  *
- * Stores user info fetched from Sentry API on the active `accounts` row,
- * used for display and to set Sentry user context.
+ * Stores user info fetched from Sentry API on the `accounts` row whose
+ * credentials the invocation uses (usually the active one; see
+ * `getEffectiveAccountRow`), for display and to set Sentry user context.
  */
 
 import { withDbSpan } from "../telemetry.js";
 import {
   deleteAccountRows,
-  getActiveAccountRow,
   isAccountOnServer,
   listAccountRows,
 } from "./accounts.js";
+import { getEffectiveAccountRow } from "./auth.js";
 import { getDatabase } from "./index.js";
 
 export type UserInfo = {
@@ -23,11 +24,11 @@ export type UserInfo = {
 };
 
 /**
- * Get the active account's user info.
- * Returns undefined when no account is active or its user is not known yet.
+ * Get the user info of the account in effect.
+ * Returns undefined when no stored account is in use or its user is not known yet.
  */
 export function getUserInfo(): UserInfo | undefined {
-  const row = getActiveAccountRow();
+  const row = getEffectiveAccountRow();
   if (!row?.user_id) {
     return;
   }
@@ -41,13 +42,14 @@ export function getUserInfo(): UserInfo | undefined {
 }
 
 /**
- * Record who the active account's credentials belong to.
+ * Record who the in-effect account's credentials belong to.
  *
  * Any other stored account for the same user on the same server is
  * removed: logging in again to an existing account replaces its old
  * credentials instead of adding a duplicate. "Same server" matches `--url`
  * selection, so every `*.sentry.io` region counts as SaaS. No-op when no
- * account is active (for example, when only an env-var token is in use).
+ * stored account is in use (for example, when only an env-var token is in
+ * use).
  *
  * Leaves `updated_at` alone: it versions the stored credential for refresh
  * compare-and-swap, and identity writes must not invalidate an in-flight
@@ -55,7 +57,7 @@ export function getUserInfo(): UserInfo | undefined {
  */
 export function setUserInfo(info: UserInfo): void {
   withDbSpan("setUserInfo", () => {
-    const active = getActiveAccountRow();
+    const active = getEffectiveAccountRow();
     if (!active) {
       return;
     }
@@ -87,14 +89,14 @@ export function setUserInfo(info: UserInfo): void {
 }
 
 /**
- * Forget who the active account's credentials belong to. Used after its
+ * Forget who the in-effect account's credentials belong to. Used after its
  * credentials were replaced in place without user info for the new ones,
  * so list/switch/status never show the previous user against a new token.
  * Leaves `updated_at` alone (see {@link setUserInfo}).
  */
 export function clearUserInfo(): void {
   withDbSpan("clearUserInfo", () => {
-    const active = getActiveAccountRow();
+    const active = getEffectiveAccountRow();
     if (!active) {
       return;
     }

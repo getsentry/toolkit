@@ -101,6 +101,34 @@ export function getConfiguredSentryUrl(): string | undefined {
   }
 }
 
+/** `SENTRY_URL` values the CLI applied from `defaults.url`, per invocation env. */
+const persistedDefaultUrls = new WeakMap<NodeJS.ProcessEnv, string>();
+
+/**
+ * Record that `env.SENTRY_URL` was set from the persisted default URL (not
+ * by the user), so account selection may route to another stored
+ * account's server instead of treating it as an explicit choice.
+ */
+export function markPersistedDefaultUrl(url: string): void {
+  persistedDefaultUrls.set(getEnv(), url);
+}
+
+/** Forget which URL came from `defaults.url`. Tests only. */
+export function clearPersistedDefaultUrl(): void {
+  persistedDefaultUrls.delete(getEnv());
+}
+
+/** Whether the configured URL is still the one applied from `defaults.url`. */
+export function isPersistedDefaultUrlInEffect(): boolean {
+  const env = getEnv();
+  const applied = persistedDefaultUrls.get(env);
+  return (
+    applied !== undefined &&
+    !env.SENTRY_HOST?.trim() &&
+    env.SENTRY_URL?.trim() === applied
+  );
+}
+
 /** CLI version string, available for help output and other uses */
 export const CLI_VERSION =
   typeof SENTRY_CLI_VERSION !== "undefined" ? SENTRY_CLI_VERSION : "0.0.0-dev";

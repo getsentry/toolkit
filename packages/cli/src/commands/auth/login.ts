@@ -11,6 +11,7 @@ import { normalizeAuthToken } from "../../lib/auth-header.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import {
+  getAccountIdToReplace,
   getActiveAccountId,
   getActiveEnvVarName,
   hasStoredAuthCredentials,
@@ -345,7 +346,8 @@ export function applyLoginUrl(url: string | undefined): string {
  * command should exit early. Without `--force` the new login is added
  * alongside the current account and becomes active (logging in again as
  * the same user replaces that user's old account); with `--force` it
- * replaces the active account's credentials.
+ * replaces the stored login for the same server (or adds one when that
+ * server has none). Accounts on other servers are never touched.
  *
  * - Env-var auth only: proceeds (stored OAuth is kept separately).
  * - `--force`: proceeds without prompting.
@@ -474,7 +476,8 @@ export const loginCommand = buildCommand({
       "currently-authenticated host.\n\n" +
       "When already logged in, the new login is stored as another account\n" +
       "(see 'sentry auth list' / 'sentry auth switch'); --force instead\n" +
-      "replaces the active account's login. Pass an email to add or log in\n" +
+      "replaces the stored login for that server (accounts on other servers\n" +
+      "are kept). Pass an email to add or log in\n" +
       "again to that account without prompting: Sentry approves the request\n" +
       "as whoever is signed in to the browser, so a login approved as another\n" +
       "user is refused and nothing is saved.\n\n" +
@@ -501,7 +504,7 @@ export const loginCommand = buildCommand({
       force: {
         kind: "boolean",
         brief:
-          "Replace the active account's login without prompting, instead of adding another account",
+          "Replace the stored login for this server without prompting, instead of adding another account",
         default: false,
       },
       url: {
@@ -586,16 +589,20 @@ export const loginCommand = buildCommand({
       // Non-fatal: cache directory may not exist
     }
 
-    // `--force` replaces the active account; otherwise the login is stored
-    // as another account (see handleExistingAuth).
+    // `--force` replaces the stored login for this server; otherwise the
+    // login is stored as another account (see handleExistingAuth).
     const newAccount = email !== undefined || !flags.force;
 
     if (token !== undefined) {
       // Save token first (with host scope), then validate by fetching user
       // regions. It is always stored as its own account so a rejected token
-      // never touches the stored ones; with `--force` the previously active
-      // account is replaced only once the new token checks out.
+      // never touches the stored ones; with `--force` the stored login for
+      // this server (never another server's) is replaced only once the new
+      // token checks out.
       const previousAccountId = getActiveAccountId();
+      const replacedAccountId = newAccount
+        ? undefined
+        : getAccountIdToReplace(effectiveHost);
       const accountId = setAuthToken(token, undefined, undefined, {
         host: effectiveHost,
         newAccount: true,
@@ -645,11 +652,11 @@ export const loginCommand = buildCommand({
         }
         result.user = toLoginUser(user);
       }
-      // Replace the previous account only now. After setUserInfo, so a
-      // re-login as the same user folds that account in (keeping a known
-      // username) instead of losing it; then this is a no-op.
-      if (!newAccount && previousAccountId && previousAccountId !== accountId) {
-        await removeAccount(previousAccountId);
+      // Replace this server's previous login only now. After setUserInfo,
+      // so a re-login as the same user folds that account in (keeping a
+      // known username) instead of losing it; then this is a no-op.
+      if (replacedAccountId && replacedAccountId !== accountId) {
+        await removeAccount(replacedAccountId);
       }
 
       // Warm the org + region cache so the first real command is fast.

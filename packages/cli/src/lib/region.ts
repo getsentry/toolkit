@@ -7,7 +7,11 @@
 
 import { getOrganization } from "@sentry/api";
 import { resolveCachedRegion } from "@sentry/toolkit-core/region-cache";
-import { type CredentialContext, getCredentialContext } from "./db/auth.js";
+import {
+  type CredentialContext,
+  getCredentialContext,
+  selectAccountForOrg,
+} from "./db/auth.js";
 import { getOrgByNumericId, getOrgRegion, setOrgRegion } from "./db/regions.js";
 import { stripDsnOrgPrefix } from "./dsn/index.js";
 import { AuthError, withAuthGuard } from "./errors.js";
@@ -56,6 +60,7 @@ const regionCache = new Map<string, Promise<RegionResolution>>();
  * @returns The region URL for the organization
  */
 export function resolveOrgRegion(orgSlug: string): Promise<string> {
+  useAccountForOrg(orgSlug);
   const credential = getCredentialContext();
   if (!credential) {
     return Promise.reject(new AuthError("not_authenticated"));
@@ -68,6 +73,15 @@ export function resolveOrgRegion(orgSlug: string): Promise<string> {
     () => resolveOrgRegionUncached(orgSlug, credential, baseUrl),
     (resolution) => resolution.cacheable,
   ).then((resolution) => resolution.url);
+}
+
+/**
+ * Switch this invocation to the stored account that knows the org, if the
+ * current one doesn't. Accepts DSN-style `oNNNN` identifiers too.
+ */
+function useAccountForOrg(orgSlug: string): void {
+  const numericId = stripDsnOrgPrefix(orgSlug);
+  selectAccountForOrg(orgSlug, numericId === orgSlug ? undefined : numericId);
 }
 
 /**
@@ -246,6 +260,7 @@ function resolveOrgFromCache(orgSlug: string): string | undefined {
  * @returns The org slug to use for API calls (may be normalized)
  */
 export async function resolveEffectiveOrg(orgSlug: string): Promise<string> {
+  useAccountForOrg(orgSlug);
   // First attempt: use local cache
   const fromCache = resolveOrgFromCache(orgSlug);
   if (fromCache) {

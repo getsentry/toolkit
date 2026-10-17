@@ -7,11 +7,11 @@
  * credential is active go through `auth.ts` so its memoized state resets.
  */
 
-import { createHash } from "node:crypto";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { uuidv7 } from "uuidv7";
 import { fuzzyMatch } from "../fuzzy.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
+import { storedCredentialIdentity } from "./identity-hash.js";
 import { getDatabase } from "./index.js";
 
 /** Raw `accounts` row. */
@@ -118,31 +118,15 @@ export function activateAccountRow(accountId: string): void {
   })();
 }
 
-/**
- * Stable SHA-256 namespace for high-entropy OAuth and organization tokens.
- * A collision would mix credentials' cached responses, so retain the full
- * digest. This fingerprint is never a password verifier or a bearer token.
- */
-export function hashIdentity(kind: string, secret: string): string {
-  return createHash("sha256")
-    .update(kind)
-    .update("\0")
-    .update(secret)
-    .digest("hex");
-}
-
 /** Cache namespace for a stored account (matches `getIdentityFingerprint`). */
 export function accountIdentity(row: AccountRow): string | undefined {
-  if (row.refresh_token) {
-    return hashIdentity("oauth", row.refresh_token);
-  }
-  if (row.token) {
-    return hashIdentity("oauth-access", row.token);
-  }
-  return;
+  return storedCredentialIdentity(row);
 }
 
-/** True when the row's credential is usable now or can be refreshed. */
+/**
+ * True when the row's credential is usable now or can be refreshed.
+ * `USABLE_ACCOUNT_SQL` is the query form; keep the two in sync.
+ */
 export function isAccountRowUsable(row: AccountRow): boolean {
   if (!row.token) {
     return false;
@@ -161,15 +145,26 @@ export function deleteAccountRows(rows: readonly AccountRow[]): void {
   const db = getDatabase();
   db.transaction(() => {
     for (const row of rows) {
-      const identity = accountIdentity(row);
-      if (identity) {
-        db.query("DELETE FROM org_regions WHERE credential_identity = ?").run(
-          identity,
-        );
-      }
+      deleteAccountOrgRegions(row);
       db.query("DELETE FROM accounts WHERE account_id = ?").run(row.account_id);
     }
   })();
+}
+
+/**
+ * Delete an account's cached org memberships: rows keyed by its current
+ * credential identity, and rows recorded against the account under an
+ * earlier identity (before a refresh-token rotation or re-login).
+ */
+export function deleteAccountOrgRegions(row: AccountRow): void {
+  const db = getDatabase();
+  const identity = accountIdentity(row);
+  if (identity) {
+    db.query("DELETE FROM org_regions WHERE credential_identity = ?").run(
+      identity,
+    );
+  }
+  db.query("DELETE FROM org_regions WHERE account_id = ?").run(row.account_id);
 }
 
 /** Convert a row into its secret-free summary. */
@@ -276,14 +271,7 @@ export function isAccountOnServer(
   account: Pick<AccountSummary, "host">,
   url: string,
 ): boolean {
-  const host = account.host ? normalizeHttpOrigin(account.host) : undefined;
-  const target = normalizeHttpOrigin(url);
-  if (!(host && target)) {
-    return false;
-  }
-  return (
-    host === target || (isSaaSTrustOrigin(host) && isSaaSTrustOrigin(target))
-  );
+  return account.host ? isSameServer(account.host, url) : false;
 }
 
 /** Hostname of a stored account origin, lowercased. */
@@ -294,4 +282,113 @@ export function hostnameOf(host: string | undefined): string | undefined {
   return URL.canParse(host)
     ? new URL(host).hostname.toLowerCase()
     : host.toLowerCase();
+}
+
+/**
+ * Whether two server URLs belong to the same Sentry installation: the same
+ * origin, or both SaaS (`*.sentry.io`). Mirrors the token trust model in
+ * `token-host.ts`, so an account is only ever chosen for hosts its token
+ * is already allowed to reach.
+ */
+export function isSameServer(a: string, b: string): boolean {
+  const left = normalizeHttpOrigin(a);
+  const right = normalizeHttpOrigin(b);
+  if (!(left && right)) {
+    return false;
+  }
+  return (
+    left === right || (isSaaSTrustOrigin(left) && isSaaSTrustOrigin(right))
+  );
+}
+
+/**
+ * Most recently used first. Ties (same `last_used_at`) fall back to the
+ * latest update, then to creation order, so picks are deterministic.
+ */
+const BY_RECENCY =
+  "ORDER BY last_used_at DESC, updated_at DESC, created_at ASC, account_id ASC";
+
+/**
+ * SQL form of {@link isAccountRowUsable}: a token that is unexpired,
+ * never expires, or can be refreshed. Bind `Date.now()` as its only
+ * parameter. Keep the two in sync.
+ */
+const USABLE_ACCOUNT_SQL = `token IS NOT NULL AND token != ''
+  AND (expires_at IS NULL OR expires_at = 0 OR expires_at >= ?
+    OR (refresh_token IS NOT NULL AND refresh_token != ''))`;
+
+/** The most recently used stored account, usable or not. */
+export function getMostRecentAccountRow(): AccountRow | undefined {
+  return (
+    (getDatabase()
+      .query(`SELECT * FROM accounts ${BY_RECENCY} LIMIT 1`)
+      .get() as AccountRow | null) ?? undefined
+  );
+}
+
+/** All stored accounts, usable or not, most recently used first. */
+export function listAccountRowsByRecency(): AccountRow[] {
+  return getDatabase()
+    .query(`SELECT * FROM accounts ${BY_RECENCY}`)
+    .all() as AccountRow[];
+}
+
+/** Usable stored accounts, most recently used first. */
+export function listUsableAccountRowsByRecency(): AccountRow[] {
+  return getDatabase()
+    .query(`SELECT * FROM accounts WHERE ${USABLE_ACCOUNT_SQL} ${BY_RECENCY}`)
+    .all(Date.now()) as AccountRow[];
+}
+
+/**
+ * Usable stored accounts that have seen an organization, by slug or
+ * numeric id, most recently used first — the first row is the pick.
+ *
+ * Org membership is already cached per account: `org_regions.account_id`
+ * is recorded whenever an account resolves or lists an organization, so
+ * this is one query over that cache rather than a lookup per account.
+ *
+ * Resolving one org by slug caches no numeric id (only org lists do), so a
+ * numeric id also matches rows for the slug that any cached row on the
+ * same server maps that id to.
+ */
+export function listUsableAccountRowsForOrg(
+  orgSlug: string,
+  orgId?: string,
+): AccountRow[] {
+  const id = orgId ?? null;
+  return getDatabase()
+    .query(
+      `SELECT * FROM accounts
+       WHERE account_id IN (
+         SELECT r.account_id FROM org_regions r
+         WHERE r.account_id IS NOT NULL AND (
+           r.org_slug = ? OR r.org_id = ? OR EXISTS (
+             SELECT 1 FROM org_regions m
+             WHERE m.org_id = ? AND m.org_slug = r.org_slug
+               AND m.source_origin = r.source_origin
+           )
+         )
+       ) AND ${USABLE_ACCOUNT_SQL}
+       ${BY_RECENCY}`,
+    )
+    .all(orgSlug, id, id, Date.now()) as AccountRow[];
+}
+
+/**
+ * Whether a fresh full organization list is cached for an account (rows
+ * written by `listOrganizations`, which carry the numeric org id, updated
+ * after `freshSince`). Only then can an org's absence mean the account is
+ * not a member; an expired list may predate a new membership.
+ */
+export function hasCachedOrgList(
+  accountId: string,
+  freshSince: number,
+): boolean {
+  const row = getDatabase()
+    .query(
+      "SELECT 1 AS found FROM org_regions WHERE account_id = ? AND org_id IS NOT NULL AND updated_at > ? LIMIT 1",
+    )
+    .get(accountId, freshSince) as { found: number } | null | undefined;
+  return Boolean(row);
 }
