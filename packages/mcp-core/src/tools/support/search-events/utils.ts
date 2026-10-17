@@ -49,7 +49,9 @@ const URL_SCHEME_KEY_SOURCE =
     /[a-z]/g,
     (letter) => `[${letter}${letter.toUpperCase()}]`,
   );
-const REGEX_FILTER_KEY_SOURCE = String.raw`(^|[\s()"])!?(?<regexKey>(?:tags|flags)\[[\w.:-]+(?: *, *(?:string|number|boolean|array))?\](?:\[\*\])?|"[\w.:-]+"(?:\[\*\])?|(?!${URL_SCHEME_KEY_SOURCE})[A-Za-z_][A-Za-z0-9_.[\],-]*(?:\[\*\])?):`;
+// Array membership on an explicit tag goes inside the brackets,
+// `tags[k[*],array]`, as in Sentry's `array_includes_tag_key` rule.
+const REGEX_FILTER_KEY_SOURCE = String.raw`(^|[\s()"])!?(?<regexKey>(?:tags|flags)\[[\w.:-]+(?:\[\*\])?(?: *, *(?:string|number|boolean|array))?\]|"[\w.:-]+"(?:\[\*\])?|(?!${URL_SCHEME_KEY_SOURCE})[A-Za-z_][A-Za-z0-9_.[\],-]*(?:\[\*\])?):`;
 const REGEX_FILTER_KEY_BEFORE_PATTERN = new RegExp(
   `${REGEX_FILTER_KEY_SOURCE}$`,
 );

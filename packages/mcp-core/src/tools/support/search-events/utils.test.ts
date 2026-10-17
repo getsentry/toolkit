@@ -466,6 +466,20 @@ describe("search query helpers", () => {
     ).toBe(true);
     expect(
       isSemanticFilterDowngrade(
+        "tags[k[*],array]://^a b//",
+        "tags[k[*],array]:*a*",
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "tags[k[*],array]://^a b//",
+        'message:"*a b*"',
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
         "tags[x, string]://^a b//",
         'tags[x, string]:"*a*"',
         "logs",
