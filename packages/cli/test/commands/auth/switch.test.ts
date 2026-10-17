@@ -103,6 +103,22 @@ describe("auth list", () => {
     expect(out).not.toContain("self-token");
   });
 
+  test("suggests a plain login, not --force, to add another account", async () => {
+    addAccount("saas-token", "https://sentry.io", {
+      userId: "1",
+      email: "jane@example.com",
+    });
+    const func = (await listCommand.loader()) as unknown as ListFunc;
+    const { context, getOutput } = createContext();
+
+    await func.call(context, { json: false });
+
+    expect(getOutput()).toContain(
+      "Add another account with 'sentry auth login'",
+    );
+    expect(getOutput()).not.toContain("--force");
+  });
+
   test("shows a login hint when nothing is stored", async () => {
     const func = (await listCommand.loader()) as unknown as ListFunc;
     const { context, getOutput } = createContext();

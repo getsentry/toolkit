@@ -638,7 +638,8 @@ describe("loginCommand.func --token path", () => {
     });
 
     expect(clearAuthSpy).not.toHaveBeenCalled();
-    expectTokenStored(setAuthTokenSpy, "new-token", false);
+    // Validated as its own account first; the previous one is dropped after.
+    expectTokenStored(setAuthTokenSpy, "new-token", true);
     expect(getStdout()).toContain("Authenticated");
   });
 

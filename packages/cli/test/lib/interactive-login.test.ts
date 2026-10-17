@@ -281,11 +281,32 @@ describe("runInteractiveLogin", () => {
         return makeTokenResponse(); // no user
       });
 
+    const clearUserInfoSpy = vi
+      .spyOn(dbUser, "clearUserInfo")
+      .mockReturnValue(undefined);
+
     const result = await runInteractiveLogin({ timeout: 1000 });
 
     expect(result).not.toBeNull();
     expect(result!.user).toBeUndefined();
     expect(setUserInfoSpy).not.toHaveBeenCalled();
+    // Credentials were replaced in place: forget the previous identity.
+    expect(clearUserInfoSpy).toHaveBeenCalled();
+    clearUserInfoSpy.mockRestore();
+  });
+
+  test("no user in token response for a new account: nothing to clear", async () => {
+    performDeviceFlowSpy = vi
+      .spyOn(oauth, "performDeviceFlow")
+      .mockResolvedValue(makeTokenResponse());
+    const clearUserInfoSpy = vi
+      .spyOn(dbUser, "clearUserInfo")
+      .mockReturnValue(undefined);
+
+    await runInteractiveLogin({ timeout: 1000, newAccount: true });
+
+    expect(clearUserInfoSpy).not.toHaveBeenCalled();
+    clearUserInfoSpy.mockRestore();
   });
 
   test("forwards an explicit scope string to performDeviceFlow", async () => {

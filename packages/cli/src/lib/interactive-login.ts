@@ -10,7 +10,7 @@ import * as Sentry from "@sentry/node-core/light";
 import { openBrowser } from "./browser.js";
 import { setupCopyKeyListener } from "./clipboard.js";
 import { getDbPath } from "./db/index.js";
-import { setUserInfo } from "./db/user.js";
+import { clearUserInfo, setUserInfo } from "./db/user.js";
 import { formatError, ValidationError } from "./errors.js";
 import { renderInlineMarkdown } from "./formatters/markdown.js";
 import { logger } from "./logger.js";
@@ -248,6 +248,15 @@ export async function runInteractiveLogin(
         });
       } catch (error) {
         // Report to Sentry but don't block auth - user info is not critical
+        Sentry.captureException(error);
+      }
+    } else if (!options?.newAccount) {
+      // The active account's credentials were replaced in place; without
+      // user info for the new ones, forget the previous user's identity
+      // rather than showing it against a token that may belong to someone else.
+      try {
+        clearUserInfo();
+      } catch (error) {
         Sentry.captureException(error);
       }
     }

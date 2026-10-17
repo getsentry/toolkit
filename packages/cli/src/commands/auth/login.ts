@@ -394,6 +394,21 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
 }
 
 /**
+ * Drop a `--token` login that failed validation and make the previously
+ * active account active again. The token is always stored as its own
+ * account until it checks out, so `previousAccountId` is still intact here.
+ */
+async function discardTokenLogin(
+  accountId: string,
+  previousAccountId: string | undefined,
+): Promise<void> {
+  await removeAccount(accountId);
+  if (previousAccountId && previousAccountId !== accountId) {
+    setActiveAccount(previousAccountId);
+  }
+}
+
+/**
  * Handle a failure while validating a user-supplied `--token` via
  * {@link getUserRegions}. A 401/403 means the token itself is rejected (invalid
  * or insufficiently scoped) — remove the account it was stored as, restore the
@@ -415,10 +430,7 @@ async function handleTokenValidationError(
     error instanceof ApiError &&
     (error.status === 401 || error.status === 403)
   ) {
-    await removeAccount(accountId);
-    if (previousAccountId) {
-      setActiveAccount(previousAccountId);
-    }
+    await discardTokenLogin(accountId, previousAccountId);
     throw new AuthError(
       "invalid",
       "Invalid API token. Please check your token and try again.",
@@ -554,17 +566,19 @@ export const loginCommand = buildCommand({
       // Non-fatal: cache directory may not exist
     }
 
-    // `--force` re-authenticates the active account in place; otherwise the
-    // login is stored as another account (see handleExistingAuth).
+    // `--force` replaces the active account; otherwise the login is stored
+    // as another account (see handleExistingAuth).
     const newAccount = email !== undefined || !flags.force;
 
     if (token !== undefined) {
       // Save token first (with host scope), then validate by fetching user
-      // regions.
+      // regions. It is always stored as its own account so a rejected token
+      // never touches the stored ones; with `--force` the previously active
+      // account is replaced only once the new token checks out.
       const previousAccountId = getActiveAccountId();
       const accountId = setAuthToken(token, undefined, undefined, {
         host: effectiveHost,
-        newAccount,
+        newAccount: true,
       });
 
       try {
@@ -592,12 +606,12 @@ export const loginCommand = buildCommand({
         try {
           assertExpectedLoginEmail(email, user?.email);
         } catch (error) {
-          await removeAccount(accountId);
-          if (previousAccountId) {
-            setActiveAccount(previousAccountId);
-          }
+          await discardTokenLogin(accountId, previousAccountId);
           throw error;
         }
+      }
+      if (!newAccount && previousAccountId && previousAccountId !== accountId) {
+        await removeAccount(previousAccountId);
       }
       if (user) {
         try {

@@ -43,6 +43,9 @@ export const listCommand = buildCommand({
     if (accounts.length > 1) {
       return { hint: "Switch accounts with 'sentry auth switch <email>'." };
     }
-    return { hint: "Add another account with 'sentry auth login --force'." };
+    if (accounts.length === 0) {
+      return { hint: "Log in with 'sentry auth login'." };
+    }
+    return { hint: "Add another account with 'sentry auth login'." };
   },
 });
