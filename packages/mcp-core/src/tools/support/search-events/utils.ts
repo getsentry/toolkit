@@ -1023,6 +1023,14 @@ export function recordEventsSearchValidationTelemetry({
   }
 }
 
+/**
+ * Validate a candidate events search against Sentry's validation endpoint.
+ *
+ * Returns `null` when the target deployment does not expose the
+ * `/events/validate/` endpoint (e.g. older self-hosted Sentry instances). A
+ * `null` result means validation is unavailable and callers should proceed
+ * with the search rather than treating it as a failure.
+ */
 export async function validateEventsSearch(
   apiService: SentryApiService,
   {
@@ -1048,7 +1056,7 @@ export async function validateEventsSearch(
     start?: string;
     end?: string;
   },
-): Promise<EventsValidationResult> {
+): Promise<EventsValidationResult | null> {
   return apiService.validateEvents({
     organizationSlug,
     dataset,
@@ -1101,6 +1109,11 @@ export async function assertEventsSearchIsValid(
     start,
     end,
   });
+
+  // `null` means the deployment does not support validation; skip the gate.
+  if (validationResults === null) {
+    return;
+  }
 
   if (!validationResults.valid) {
     const formatted = formatEventsValidationResults(validationResults);
@@ -1389,6 +1402,16 @@ export function createValidateEventsSearchTool(options: {
         start,
         end,
       });
+
+      // The deployment does not expose the validation endpoint; treat the
+      // candidate as valid so the search can proceed.
+      if (validation === null) {
+        return {
+          valid: true,
+          message:
+            "Events validation is not supported by this Sentry instance; skipped.",
+        };
+      }
 
       recordEventsSearchValidationTelemetry({
         attempt: 0,

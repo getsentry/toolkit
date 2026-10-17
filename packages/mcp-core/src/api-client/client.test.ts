@@ -106,6 +106,19 @@ describe("validateEvents error bodies", () => {
   );
 });
 
+// Many tests in this file replace `globalThis.fetch` directly. Snapshot and
+// restore it around every test so a mock never leaks into later tests that
+// rely on MSW interception.
+let savedFetch: typeof globalThis.fetch;
+
+beforeEach(() => {
+  savedFetch = globalThis.fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = savedFetch;
+});
+
 describe("API bearer token validation", () => {
   it("removes edge padding before sending a request", async () => {
     let authorization: string | null = null;
@@ -2507,6 +2520,30 @@ describe("API query builders", () => {
       expect(params.getAll("orderby")).toEqual(["-span.duration"]);
       expect(params.getAll("environment")).toEqual(["production", "staging"]);
       expect(requestOptions?.method).toBeUndefined();
+    });
+
+    it("returns null when the validate endpoint is unavailable (404)", async () => {
+      const apiService = new SentryApiService({
+        host: "sentry.example.com",
+        accessToken: "test-token",
+      });
+
+      mswServer.use(
+        http.get(
+          "https://sentry.example.com/api/0/organizations/test-org/events/validate/",
+          () => HttpResponse.json({ detail: "Not Found" }, { status: 404 }),
+        ),
+      );
+
+      const result = await apiService.validateEvents({
+        organizationSlug: "test-org",
+        dataset: "spans",
+        fields: ["span.duration"],
+        query: "",
+        orderby: ["-span.duration"],
+      });
+
+      expect(result).toBeNull();
     });
   });
 
