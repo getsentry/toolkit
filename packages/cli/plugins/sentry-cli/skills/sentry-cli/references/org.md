@@ -18,6 +18,7 @@ List organizations
 **Flags:**
 - `-n, --limit <value> - Maximum number of organizations to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+- `--account <value> - Only list organizations of this stored account (email, username, or account id)`
 
 ### `sentry org view [<org>]`
 
@@ -32,6 +33,9 @@ View details of an organization
 ```bash
 # List organizations
 sentry org list
+
+# Only one account's organizations
+sentry org list --account jane@acme.com
 
 # View organization details
 sentry org view my-org
