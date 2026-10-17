@@ -56,12 +56,17 @@ function createContext() {
   };
 }
 
-function addAccount(token: string, userId: string, email: string): string {
+function addAccount(
+  token: string,
+  userId: string,
+  email: string,
+  username?: string,
+): string {
   const id = setAuthToken(token, undefined, undefined, {
     host: SAAS,
     newAccount: true,
   });
-  setUserInfo({ userId, email });
+  setUserInfo({ userId, email, username });
   return id;
 }
 
@@ -119,6 +124,63 @@ describe("login --force --token", () => {
       [true, "other@example.com"],
       [false, "bob@example.com"],
     ]);
+  });
+
+  test("a transient validation failure keeps the previous account active", async () => {
+    const active = addAccount("old-token", "2", "jane@example.com");
+    const cause = new ApiError("Server error", 503);
+    vi.spyOn(apiClient, "getUserRegions").mockRejectedValue(cause);
+
+    // `--force`, and adding an account by naming it (no re-auth prompt).
+    for (const [force, email] of [
+      [true, undefined],
+      [false, "bob@example.com"],
+    ] as const) {
+      await expect(
+        func.call(
+          createContext(),
+          { token: "maybe-good", force, timeout: 900 },
+          email,
+        ),
+      ).rejects.toBe(cause);
+
+      expect(getActiveAccountId()).toBe(active);
+      expect(getAuthToken()).toBe("old-token");
+      expect(listAccounts().map((a) => a.id)).toEqual([active]);
+    }
+  });
+
+  test("a transient validation failure with no other account keeps the token", async () => {
+    const cause = new ApiError("Server error", 503);
+    vi.spyOn(apiClient, "getUserRegions").mockRejectedValue(cause);
+
+    await expect(
+      func.call(createContext(), {
+        token: "maybe-good",
+        force: true,
+        timeout: 900,
+      }),
+    ).rejects.toBe(cause);
+
+    expect(getAuthToken()).toBe("maybe-good");
+  });
+
+  test("re-login as the same user keeps the known username", async () => {
+    addAccount("old-token", "2", "jane@example.com", "jane");
+    vi.spyOn(apiClient, "getUserRegions").mockResolvedValue([]);
+    vi.spyOn(apiClient, "getCurrentUser").mockResolvedValue({
+      id: "2",
+      email: "jane@example.com",
+    });
+
+    await func.call(createContext(), {
+      token: "new-token",
+      force: true,
+      timeout: 900,
+    });
+
+    expect(getAuthToken()).toBe("new-token");
+    expect(listAccounts().map((a) => a.username)).toEqual(["jane"]);
   });
 
   test("never shows the previous user when the new user can't be fetched", async () => {

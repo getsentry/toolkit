@@ -413,10 +413,13 @@ async function discardTokenLogin(
  * {@link getUserRegions}. A 401/403 means the token itself is rejected (invalid
  * or insufficiently scoped) — remove the account it was stored as, restore the
  * previously active account, and raise a user-facing {@link AuthError}.
- * Any other failure (network, 5xx, parse) is NOT a token problem, so the token
- * is kept and the original error is re-thrown: surfacing "Invalid API token"
- * would mislead the user and discard the real cause, and clearing a
- * possibly-valid token on a transient blip is hostile (CLI-19).
+ * Any other failure (network, 5xx, parse) is NOT a token problem, so the
+ * original error is re-thrown: surfacing "Invalid API token" would mislead the
+ * user and discard the real cause. The unconfirmed token must not take over
+ * the session either: when another account was active, it is dropped and that
+ * account restored (the user can retry). With no other account, the token is
+ * kept, since clearing a possibly-valid only credential on a transient blip is
+ * hostile (CLI-19).
  *
  * @throws {AuthError} for a 401/403 (after removing the stored token)
  * @throws the original error for any other failure
@@ -435,6 +438,9 @@ async function handleTokenValidationError(
       "invalid",
       "Invalid API token. Please check your token and try again.",
     );
+  }
+  if (previousAccountId && previousAccountId !== accountId) {
+    await discardTokenLogin(accountId, previousAccountId);
   }
   throw error;
 }
@@ -610,9 +616,6 @@ export const loginCommand = buildCommand({
           throw error;
         }
       }
-      if (!newAccount && previousAccountId && previousAccountId !== accountId) {
-        await removeAccount(previousAccountId);
-      }
       if (user) {
         try {
           setUserInfo({
@@ -626,6 +629,12 @@ export const loginCommand = buildCommand({
           log.debug("Could not store user info after token login", error);
         }
         result.user = toLoginUser(user);
+      }
+      // Replace the previous account only now. After setUserInfo, so a
+      // re-login as the same user folds that account in (keeping a known
+      // username) instead of losing it; then this is a no-op.
+      if (!newAccount && previousAccountId && previousAccountId !== accountId) {
+        await removeAccount(previousAccountId);
       }
 
       // Warm the org + region cache so the first real command is fast.
