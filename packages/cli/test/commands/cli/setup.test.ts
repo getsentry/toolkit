@@ -590,6 +590,27 @@ describe("sentry cli setup", () => {
       expect(readFileSync(ghPathFile, "utf-8").trim()).toBe(binDir);
     });
 
+    test("persists the user PATH even when the session PATH has the directory", async () => {
+      vi.mocked(addToWindowsUserPath).mockResolvedValue({
+        modified: true,
+        message: "Added",
+        manualCommand: null,
+      });
+      const ghPathFile = join(testDir, "github_path");
+      writeFileSync(ghPathFile, "");
+      const binDir = join(testDir, "bin");
+
+      const { output } = await runSetup({
+        PATH: `${binDir}:/usr/bin`,
+        GITHUB_ACTIONS: "true",
+        GITHUB_PATH: ghPathFile,
+      });
+
+      expect(addToWindowsUserPath).toHaveBeenCalledWith(binDir);
+      expect(output).not.toContain("is already in PATH");
+      expect(readFileSync(ghPathFile, "utf-8").trim()).toBe(binDir);
+    });
+
     test("skips the user PATH with --no-modify-path", async () => {
       const { context, restore } = createMockContext({ homeDir: testDir });
       restoreStderr = restore;

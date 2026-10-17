@@ -269,6 +269,15 @@ async function handlePathModification(
   env: NodeJS.ProcessEnv,
   emit: Logger,
 ) {
+  // On Windows the session PATH can come from a profile or a one-off change
+  // that new terminals never see, so always check the persisted user PATH
+  // (the registry update skips entries that are already there).
+  if (process.platform === "win32") {
+    await handleWindowsPath(binaryDir, emit);
+    await handleGitHubPath(binaryDir, env, emit);
+    return;
+  }
+
   const alreadyInPath = isInPath(binaryDir, env.PATH);
 
   if (alreadyInPath) {
@@ -276,9 +285,7 @@ async function handlePathModification(
     return;
   }
 
-  if (process.platform === "win32") {
-    await handleWindowsPath(binaryDir, emit);
-  } else if (shell.configFile) {
+  if (shell.configFile) {
     const result = await addToPath(shell.configFile, binaryDir, shell.type);
 
     if (result.modified) {
@@ -296,7 +303,15 @@ async function handlePathModification(
     emit(`      Add manually to your shell config: ${cmd}`);
   }
 
-  // Handle GitHub Actions
+  await handleGitHubPath(binaryDir, env, emit);
+}
+
+/** Add the binary directory to `$GITHUB_PATH` when running in GitHub Actions. */
+async function handleGitHubPath(
+  binaryDir: string,
+  env: NodeJS.ProcessEnv,
+  emit: Logger,
+) {
   const addedToGitHub = await addToGitHubPath(binaryDir, env);
   if (addedToGitHub) {
     emit("PATH: Added to $GITHUB_PATH");
