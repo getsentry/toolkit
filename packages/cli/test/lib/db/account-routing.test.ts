@@ -17,6 +17,7 @@ import {
   setAuthToken,
 } from "../../../src/lib/db/auth.js";
 import { closeDatabase, getDatabase } from "../../../src/lib/db/index.js";
+import { getEnvTokenHost } from "../../../src/lib/env-token-host.js";
 import {
   ORG_CACHE_TTL_MS,
   setOrgRegion,
@@ -385,6 +386,19 @@ describe("logging in after an org picked the account", () => {
     expect(getUserInfo()?.userId).toBe("personal");
   });
 
+  test("re-authenticating replaces the active account, not one on the configured server", () => {
+    const acme = login("acme-token", ACME, "acme");
+    const saas = login("saas-token", SAAS, "saas");
+    process.env.SENTRY_URL = ACME;
+    expect(getAuthToken()).toBe("acme-token");
+
+    // `sentry auth login --force --url <acme>` replaces the active login.
+    setAuthToken("replaced-token", undefined, undefined, { host: ACME });
+
+    expect(tokenOf(acme)).toBe("acme-token");
+    expect(tokenOf(saas)).toBe("replaced-token");
+  });
+
   test("adding an account records its user on the new account", () => {
     const { work } = pinWorkAccount();
 
@@ -440,6 +454,20 @@ describe("pasted Sentry URLs", () => {
     applySentryUrlContext("https://acme-org.sentry.io");
 
     expect(getAuthToken()).toBe("saas-token");
+  });
+
+  test("a SaaS URL never snapshots an env token's host", () => {
+    login("saas-token", SAAS, "saas");
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    process.env.SENTRY_URL = ACME;
+
+    applySentryUrlContext("https://acme-org.sentry.io");
+
+    // Had the URL handling read the env token's host after clearing the
+    // URL, it would be pinned to SaaS; captured now, it is still ACME.
+    process.env.SENTRY_URL = ACME;
+    expect(getEnvTokenHost()).toBe(ACME);
   });
 
   test("a URL for a server with no stored account is still refused", () => {

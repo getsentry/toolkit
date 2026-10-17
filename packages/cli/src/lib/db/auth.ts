@@ -180,7 +180,7 @@ function migrateNullHost(row: AuthRow): string {
  * URL at a concrete server instead of keeping a previous account's.
  */
 function backfillActiveNullHost(): void {
-  const row = getAuthRow();
+  const row = getActiveAccountRow();
   if (row && !row.host) {
     migrateNullHost(row);
   }
@@ -568,7 +568,10 @@ export function setAuthToken(
     const expiresAt = expiresIn ? now + expiresIn * 1000 : null;
     const issuedAt = expiresIn ? now : null;
 
-    const existing = options?.newAccount ? undefined : getAuthRow();
+    // Replacing credentials in place targets the stored active account,
+    // never one chosen for the configured server: `--force` replaces the
+    // active login even when SENTRY_HOST or `.sentryclirc` names another.
+    const existing = options?.newAccount ? undefined : getActiveAccountRow();
     // Host resolution precedence:
     //   1. Explicit `options.host` (login command, tests)
     //   2. Existing row's `host` (refresh flow preserves the original scope)
@@ -851,6 +854,20 @@ export function getAccountIdForIdentity(identity: string): string | undefined {
  * Sentry URL for another login's server select that login instead of
  * failing the host check against the active account.
  */
+/**
+ * Host of the stored account in effect, ignoring env-var tokens (reading an
+ * env token's host would snapshot it). `undefined` when no stored account
+ * is in effect, its host is not recorded yet, or the store can't be read.
+ */
+export function getEffectiveStoredAccountHost(): string | undefined {
+  try {
+    return getAuthRow()?.host ?? undefined;
+  } catch (error) {
+    log.debug("Could not read stored accounts", error);
+    return;
+  }
+}
+
 export function hasStoredAccountForHost(url: string): boolean {
   try {
     return listUsableAccountRowsByRecency().some(
