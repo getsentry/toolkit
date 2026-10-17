@@ -6,7 +6,8 @@
  */
 
 import chalk from "chalk";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { defaultsCommand } from "../../../src/commands/cli/defaults.js";
 import {
   clearAllDefaults,
   getAllDefaults,
@@ -528,5 +529,57 @@ describe("formatDefaultsResult", () => {
     const plain = stripAnsi(result);
     expect(plain).toContain("unknown_key");
     expect(plain).toContain("set to");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Command func: show-all verb aliases
+// ---------------------------------------------------------------------------
+
+describe("defaultsCommand.func show-all aliases", () => {
+  const FLAGS = { clear: false, yes: false, force: false, json: true };
+
+  async function run(
+    flags: Record<string, unknown>,
+    ...args: string[]
+  ): Promise<string> {
+    const stdoutWrite = vi.fn(() => true);
+    const context = {
+      stdout: { write: stdoutWrite },
+      stderr: { write: vi.fn(() => true) },
+      cwd: "/tmp",
+    };
+    const func = await defaultsCommand.loader();
+    await (func as any).call(context, flags, ...args);
+    return stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
+  }
+
+  test.each(["list", "ls", "show", "LIST"])(
+    "'%s' shows all defaults like no arguments",
+    async (verb) => {
+      setDefaultOrganization("alias-org");
+      const expected = JSON.parse(await run(FLAGS));
+      const actual = JSON.parse(await run(FLAGS, verb));
+      expect(actual).toEqual(expected);
+      expect(actual.defaults.organization).toBe("alias-org");
+    },
+  );
+
+  test("show verb with a value is rejected", async () => {
+    await expect(run(FLAGS, "list", "foo")).rejects.toThrow(
+      /shows all defaults/,
+    );
+  });
+
+  test("show verb with --clear is rejected and clears nothing", async () => {
+    setDefaultOrganization("keep-org");
+    await expect(run({ ...FLAGS, clear: true }, "list")).rejects.toThrow(
+      /shows all defaults/,
+    );
+    expect(getDefaultOrganization()).toBe("keep-org");
+  });
+
+  test("unknown key still throws", async () => {
+    await expect(run(FLAGS, "nope")).rejects.toThrow(/Unknown default 'nope'/);
   });
 });
