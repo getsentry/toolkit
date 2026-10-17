@@ -145,18 +145,26 @@ export function deleteAccountRows(rows: readonly AccountRow[]): void {
   const db = getDatabase();
   db.transaction(() => {
     for (const row of rows) {
-      const identity = accountIdentity(row);
-      if (identity) {
-        db.query("DELETE FROM org_regions WHERE credential_identity = ?").run(
-          identity,
-        );
-      }
-      db.query("DELETE FROM org_regions WHERE account_id = ?").run(
-        row.account_id,
-      );
+      deleteAccountOrgRegions(row);
       db.query("DELETE FROM accounts WHERE account_id = ?").run(row.account_id);
     }
   })();
+}
+
+/**
+ * Delete an account's cached org memberships: rows keyed by its current
+ * credential identity, and rows recorded against the account under an
+ * earlier identity (before a refresh-token rotation or re-login).
+ */
+export function deleteAccountOrgRegions(row: AccountRow): void {
+  const db = getDatabase();
+  const identity = accountIdentity(row);
+  if (identity) {
+    db.query("DELETE FROM org_regions WHERE credential_identity = ?").run(
+      identity,
+    );
+  }
+  db.query("DELETE FROM org_regions WHERE account_id = ?").run(row.account_id);
 }
 
 /** Convert a row into its secret-free summary. */

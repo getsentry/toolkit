@@ -11,6 +11,7 @@ import { markPersistedDefaultUrl } from "../../../src/lib/constants.js";
 import {
   getActiveAccountId,
   getAuthToken,
+  refreshToken,
   selectAccountForOrg,
   setActiveAccount,
   setAuthToken,
@@ -51,6 +52,14 @@ function login(token: string, host: string, userId: string): string {
 /** Cache `org` (looked up on `host`) as seen by the account in effect. */
 function seeOrg(org: string, host: string, region = host): void {
   setOrgRegion(org, region, host);
+}
+
+/** An account's stored access token; `undefined` once the account is gone. */
+function tokenOf(accountId: string): string | null | undefined {
+  const row = getDatabase()
+    .query("SELECT token FROM accounts WHERE account_id = ?")
+    .get(accountId) as { token: string | null } | null;
+  return row?.token;
 }
 
 let nextOrgId = 1000;
@@ -313,6 +322,67 @@ describe("organization-based selection", () => {
 
     expect(getAuthToken()).toBe("personal-token");
     expect(personal).not.toBe(work);
+  });
+});
+
+describe("logging in after an org picked the account", () => {
+  function pinWorkAccount(): { work: string; personal: string } {
+    const work = login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS);
+    const personal = login("personal-token", SAAS, "personal");
+    seeOrgList(SAAS, ["personal-org"]);
+    selectAccountForOrg("work-org");
+    expect(getAuthToken()).toBe("work-token");
+    return { work, personal };
+  }
+
+  test("re-authenticating replaces the active account, not the picked one", () => {
+    const { work, personal } = pinWorkAccount();
+
+    // Automatic login / `--force`: replace the active account in place.
+    setAuthToken("personal-new", undefined, undefined, { host: SAAS });
+    setUserInfo({ userId: "personal", email: "personal@example.com" });
+
+    expect(tokenOf(work)).toBe("work-token");
+    expect(tokenOf(personal)).toBe("personal-new");
+    expect(getAuthToken()).toBe("personal-new");
+    expect(getUserInfo()?.userId).toBe("personal");
+  });
+
+  test("adding an account records its user on the new account", () => {
+    const { work } = pinWorkAccount();
+
+    const added = login("new-token", SAAS, "work");
+
+    expect(getActiveAccountId()).toBe(added);
+    expect(getAuthToken()).toBe("new-token");
+    // Same user: the new login replaces the old work account.
+    expect(tokenOf(work)).toBeUndefined();
+  });
+});
+
+describe("credential invalidation", () => {
+  test("drops org memberships cached under an earlier identity", async () => {
+    login("personal-token", SAAS, "personal");
+    seeOrgList(SAAS, ["personal-org"]);
+    const work = login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS);
+    const db = getDatabase();
+    // As if written before a refresh-token rotation.
+    db.query(
+      "UPDATE org_regions SET credential_identity = 'rotated-away' WHERE account_id = ?",
+    ).run(work);
+    db.query(
+      "UPDATE accounts SET expires_at = ?, refresh_token = NULL WHERE account_id = ?",
+    ).run(Date.now() - 1000, work);
+
+    await refreshToken().catch(() => undefined);
+
+    const left = db
+      .query("SELECT COUNT(*) AS n FROM org_regions WHERE account_id = ?")
+      .get(work) as { n: number };
+    expect(left.n).toBe(0);
+    expect(tokenOf(work)).toBeNull();
   });
 });
 

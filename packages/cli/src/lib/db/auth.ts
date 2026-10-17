@@ -36,6 +36,7 @@ import {
   type AccountRow,
   accountIdentity,
   activateAccountRow,
+  deleteAccountOrgRegions,
   deleteAccountRows,
   getAccountRow,
   getActiveAccountRow,
@@ -556,6 +557,10 @@ export function setAuthToken(
   options?: SetAuthTokenOptions,
 ): string {
   const normalizedToken = normalizeAuthToken(token);
+  // A login, not a refresh: it targets the stored active account (or a new
+  // one), never the account this invocation picked for its target org, and
+  // the new credentials are what the rest of the invocation uses.
+  getAccountScope().accountId = undefined;
   const accountId = withDbSpan("setAuthToken", () => {
     const db = getDatabase();
     const now = Date.now();
@@ -722,12 +727,7 @@ async function invalidateAccountCredentials(accountId: string): Promise<void> {
       return;
     }
     const db = getDatabase();
-    const identity = accountIdentity(row);
-    if (identity) {
-      db.query("DELETE FROM org_regions WHERE credential_identity = ?").run(
-        identity,
-      );
-    }
+    deleteAccountOrgRegions(row);
     db.query(
       "UPDATE accounts SET token = NULL, refresh_token = NULL, expires_at = NULL, issued_at = NULL, updated_at = ? WHERE account_id = ?",
     ).run(Date.now(), accountId);
