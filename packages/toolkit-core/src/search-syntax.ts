@@ -927,6 +927,11 @@ export class TokenConverter<C extends SearchConfig = SearchConfig> {
         return this.isDateKey(keyName);
       case FilterType.AGGREGATE_DURATION:
         return checkAggregate((name) => this.isDurationKey(name));
+      // Diverges from the frontend, whose `predicateFilter` lets every
+      // aggregate take a size value. Gate it on a size argument like the
+      // other typed aggregates (see getsentry/toolkit#1533).
+      case FilterType.AGGREGATE_SIZE:
+        return checkAggregate((name) => this.isSizeKey(name));
       case FilterType.AGGREGATE_DATE:
         return checkAggregate((name) => this.isDateKey(name));
       case FilterType.AGGREGATE_PERCENTAGE:

@@ -115,6 +115,23 @@ describe("parseSearch", () => {
     expect(filters[0]?.operator).toBe(TermOperator.GREATER_THAN);
   });
 
+  it("reads aggregate size filters only when an argument is a size key", () => {
+    const filterOf = (query: string, config?: Partial<SearchConfig>) =>
+      parseSearchOrThrow(query, { config }).find(
+        (token): token is FilterToken => token.type === Token.FILTER,
+      );
+    const sized = { sizeKeys: new Set(["span.size"]) };
+
+    expect(filterOf("avg(span.size):>1kb", sized)?.filter).toBe(
+      FilterType.AGGREGATE_SIZE,
+    );
+    // Like duration values on a non-duration aggregate, a size value on a
+    // non-size aggregate isn't a typed filter.
+    expect(filterOf("avg(span.duration):>1kb", sized)).toBeUndefined();
+    expect(filterOf("avg(span.size):>1kb")).toBeUndefined();
+    expect(filterOf("avg(span.duration):>1s")).toBeUndefined();
+  });
+
   it("returns null for queries that do not parse, and throws from parseSearchOrThrow", () => {
     // The grammar falls back to free text for almost anything; a newline
     // outside quotes is one of the few inputs it rejects.
