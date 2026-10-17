@@ -208,8 +208,7 @@ function Install-SentryCli {
   $state.Arch = 'x64'
 
   # Sentry's release registry is the source of truth for versions, download
-  # URLs (including legacy getsentry/cli releases), and checksums. GitHub is
-  # only a fallback for registry outages.
+  # URLs, and checksums. GitHub is only a fallback for registry outages.
   $state.Step = 'resolve-version'
   if ($env:SENTRY_VERSION -eq 'nightly') {
     Stop-Install 'The PowerShell installer only installs stable releases. Install stable, then run: sentry cli upgrade nightly'

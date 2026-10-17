@@ -275,8 +275,8 @@ if [[ "$requested_version" == "nightly" ]]; then
 
 else
   # Stable build. Sentry's release registry is the source of truth for
-  # versions, download URLs (including legacy getsentry/cli releases), and
-  # checksums. GitHub is only a fallback for registry outages.
+  # versions, download URLs, and checksums. GitHub is only a fallback for
+  # registry outages.
   if [[ -n "$requested_version" ]]; then
     version="${requested_version#cli@}"
     version="${version#v}"

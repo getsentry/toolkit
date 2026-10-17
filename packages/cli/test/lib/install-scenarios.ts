@@ -28,10 +28,6 @@ export function toolkitDownload(version: string, asset: string): string {
   return `https://github.com/getsentry/toolkit/releases/download/cli@${version}/${asset}`;
 }
 
-function legacyDownload(version: string, asset: string): string {
-  return `https://github.com/getsentry/cli/releases/download/${version}/${asset}`;
-}
-
 export function sha256(data: string | Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
@@ -46,8 +42,6 @@ export interface ServedAsset {
 type RegistryResponse =
   | {
       status: 200;
-      /** Which repository the registry's download URLs point at. */
-      repo?: "toolkit" | "legacy";
       /** Advertise checksums that do not match the served bytes. */
       tamper?: boolean;
       /** Omit this platform's files from the release. */
@@ -73,9 +67,8 @@ export interface InstallScenario {
 /** Build a registry response template in the release registry's shape. */
 export function registryTemplate(
   served: ServedAsset,
-  options: { repo?: "toolkit" | "legacy"; tamper?: boolean; missing?: boolean },
+  options: { tamper?: boolean; missing?: boolean },
 ): string {
-  const download = options.repo === "legacy" ? legacyDownload : toolkitDownload;
   const entries: [string, string | Buffer][] = options.missing
     ? [["sentry-other-platform", "other"]]
     : [
@@ -85,7 +78,7 @@ export function registryTemplate(
   const fileUrls: Record<string, string> = {};
   const files: Record<string, unknown> = {};
   for (const [name, bytes] of entries) {
-    const url = download("__VERSION__", name);
+    const url = toolkitDownload("__VERSION__", name);
     fileUrls[name] = url;
     files[name] = {
       checksums: {
@@ -127,7 +120,6 @@ export function applyScenario(
     body,
     scenario.registry.status === 200
       ? registryTemplate(served, {
-          repo: scenario.registry.repo,
           tamper: scenario.registry.tamper,
           missing: scenario.registry.missingAsset,
         })
@@ -155,16 +147,6 @@ export const INSTALL_SCENARIOS: InstallScenario[] = [
     requests: (asset) => [
       `${REGISTRY}/latest`,
       toolkitDownload(LATEST_VERSION, `${asset}.gz`),
-    ],
-  },
-  {
-    name: "installs a pinned legacy release from the registry",
-    version: "v0.42.2",
-    registry: { status: 200, repo: "legacy" },
-    ok: true,
-    requests: (asset) => [
-      `${REGISTRY}/0.42.2`,
-      legacyDownload("0.42.2", `${asset}.gz`),
     ],
   },
   {
