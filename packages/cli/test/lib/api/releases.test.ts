@@ -347,9 +347,13 @@ describe("setCommitsAuto", () => {
         }),
     );
 
-    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /No repository integrations/,
-    );
+    await expect(
+      setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    ).rejects.toMatchObject({
+      name: "ApiError",
+      status: 404,
+      message: expect.stringMatching(/No repository integrations/),
+    });
   });
 
   test.each([

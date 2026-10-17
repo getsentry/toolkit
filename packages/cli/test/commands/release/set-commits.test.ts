@@ -308,43 +308,49 @@ describe("release set-commits (default mode)", () => {
     resolveOrgSpy.mockRestore();
   });
 
-  test("propagates unrelated 400 errors from setCommitsAuto", async () => {
-    resolveOrgSpy.mockResolvedValue({ org: "my-org" });
-    setCommitsAutoSpy.mockRejectedValue(
-      new ApiError("Invalid commit SHA.", 400, undefined, "releases/1.0.0/"),
-    );
+  test.each([
+    { status: 400, message: "Invalid commit SHA." },
+    { status: 404, message: "The requested resource does not exist" },
+  ])(
+    "propagates unrelated $status errors from setCommitsAuto",
+    async ({ status, message }) => {
+      resolveOrgSpy.mockResolvedValue({ org: "my-org" });
+      setCommitsAutoSpy.mockRejectedValue(
+        new ApiError(message, status, undefined, "releases/1.0.0/"),
+      );
 
-    const repoRoot = new URL("../../..", import.meta.url).pathname.replace(
-      /\/$/,
-      "",
-    );
-    const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
-    await expect(
-      func.call(
-        context,
-        {
-          auto: false,
-          local: false,
-          clear: false,
-          commit: undefined,
-          "initial-depth": 20,
-          json: true,
-        },
-        "1.0.0",
-      ),
-    ).rejects.toThrow("Invalid commit SHA.");
+      const repoRoot = new URL("../../..", import.meta.url).pathname.replace(
+        /\/$/,
+        "",
+      );
+      const { context } = createMockContext(repoRoot);
+      const func = await setCommitsCommand.loader();
+      await expect(
+        func.call(
+          context,
+          {
+            auto: false,
+            local: false,
+            clear: false,
+            commit: undefined,
+            "initial-depth": 20,
+            json: true,
+          },
+          "1.0.0",
+        ),
+      ).rejects.toThrow(message);
 
-    expect(setCommitsAutoSpy).toHaveBeenCalled();
-    expect(setCommitsLocalSpy).not.toHaveBeenCalled();
-  });
+      expect(setCommitsAutoSpy).toHaveBeenCalled();
+      expect(setCommitsLocalSpy).not.toHaveBeenCalled();
+    },
+  );
 
-  test("falls back to local only on the no-repo-integration 400", async () => {
+  test("falls back to local only on the no-repo-integration 404", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
     setCommitsAutoSpy.mockRejectedValue(
       new ApiError(
         NO_REPO_INTEGRATIONS_MESSAGE,
-        400,
+        404,
         undefined,
         "releases/1.0.0/",
       ),

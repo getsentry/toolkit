@@ -405,7 +405,7 @@ async function getPreviousReleaseCommit(
 /**
  * Message of the client-side {@link ApiError} thrown by {@link setCommitsAuto}
  * when the org has no repository integrations. Exported so callers can
- * distinguish this specific no-repo-integration case from unrelated 400s
+ * distinguish this specific no-repo-integration case from unrelated API errors
  * returned by the server (e.g. invalid commit refs), which must not be masked
  * as "no integration". Matched on `message` (not `detail`) because this error is
  * constructed client-side with `detail: undefined`.
@@ -432,7 +432,7 @@ export const NO_REPO_INTEGRATIONS_MESSAGE =
  * @param version - Release version
  * @param cwd - Working directory to discover git remote and HEAD from
  * @returns Updated release detail with commit count
- * @throws {ApiError} When the org has no repository integrations (400)
+ * @throws {ApiError} When the org has no repository integrations (404)
  * @throws {ValidationError} When local git remote is missing or doesn't match any Sentry repo
  */
 export async function setCommitsAuto(
@@ -499,7 +499,7 @@ export async function setCommitsAuto(
       const endpoint = `organizations/${orgSlug}/releases/${encodeURIComponent(version)}/`;
       throw new ApiError(
         NO_REPO_INTEGRATIONS_MESSAGE,
-        400,
+        404,
         undefined,
         endpoint,
       );
