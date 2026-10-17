@@ -386,14 +386,41 @@ describe("logging in after an org picked the account", () => {
     expect(getUserInfo()?.userId).toBe("personal");
   });
 
-  test("re-authenticating replaces the active account, not one on the configured server", () => {
+  test("re-authenticating replaces the stored login for the login's server", () => {
+    const acme = login("acme-token", ACME, "acme");
+    const saas = login("saas-token", SAAS, "saas");
+
+    // `sentry auth login --force --url <acme>` while SaaS is active.
+    const replaced = setAuthToken("replaced-token", undefined, undefined, {
+      host: ACME,
+    });
+
+    expect(replaced).toBe(acme);
+    expect(tokenOf(acme)).toBe("replaced-token");
+    expect(tokenOf(saas)).toBe("saas-token");
+    expect(getActiveAccountId()).toBe(acme);
+  });
+
+  test("re-authenticating to a server with no stored login adds an account", () => {
+    const saas = login("saas-token", SAAS, "saas");
+
+    const added = setAuthToken("acme-token", undefined, undefined, {
+      host: ACME,
+    });
+
+    expect(added).not.toBe(saas);
+    expect(tokenOf(saas)).toBe("saas-token");
+    expect(getActiveAccountId()).toBe(added);
+  });
+
+  test("a configured server never redirects re-authentication to its account", () => {
     const acme = login("acme-token", ACME, "acme");
     const saas = login("saas-token", SAAS, "saas");
     process.env.SENTRY_URL = ACME;
     expect(getAuthToken()).toBe("acme-token");
 
-    // `sentry auth login --force --url <acme>` replaces the active login.
-    setAuthToken("replaced-token", undefined, undefined, { host: ACME });
+    // A SaaS login replaces the SaaS account, whatever SENTRY_URL says.
+    setAuthToken("replaced-token", undefined, undefined, { host: SAAS });
 
     expect(tokenOf(acme)).toBe("acme-token");
     expect(tokenOf(saas)).toBe("replaced-token");

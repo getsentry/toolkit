@@ -1,6 +1,7 @@
 /**
  * `sentry auth login --force --token` against a real test database: the
- * active account is replaced only once the new token checks out.
+ * stored login for the token's server is replaced only once the new token
+ * checks out, and accounts on other servers are never touched.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -48,6 +49,7 @@ useEnvSandbox([
 ]);
 
 const SAAS = "https://sentry.io";
+const ACME = "https://sentry.acme.com";
 
 function createContext() {
   return {
@@ -125,6 +127,57 @@ describe("login --force --token", () => {
       [true, "other@example.com"],
       [false, "bob@example.com"],
     ]);
+  });
+
+  test("--url for another server keeps the active account and adds one there", async () => {
+    const saas = addAccount("saas-token", "1", "jane@example.com");
+    vi.spyOn(apiClient, "getUserRegions").mockResolvedValue([]);
+    vi.spyOn(apiClient, "getCurrentUser").mockResolvedValue({
+      id: "7",
+      email: "jane@acme.com",
+    });
+
+    await func.call(createContext(), {
+      token: "acme-token",
+      force: true,
+      timeout: 900,
+      url: ACME,
+    });
+
+    expect(listAccounts().map((a) => [a.id === saas, a.email, a.host])).toEqual(
+      [
+        [true, "jane@example.com", SAAS],
+        [false, "jane@acme.com", ACME],
+      ],
+    );
+  });
+
+  test("--url replaces that server's stored login, not the active account", async () => {
+    const acme = setAuthToken("old-acme-token", undefined, undefined, {
+      host: ACME,
+      newAccount: true,
+    });
+    setUserInfo({ userId: "7", email: "jane@acme.com" });
+    const saas = addAccount("saas-token", "1", "jane@example.com");
+    vi.spyOn(apiClient, "getUserRegions").mockResolvedValue([]);
+    vi.spyOn(apiClient, "getCurrentUser").mockResolvedValue({
+      id: "8",
+      email: "bob@acme.com",
+    });
+
+    await func.call(createContext(), {
+      token: "new-acme-token",
+      force: true,
+      timeout: 900,
+      url: ACME,
+    });
+
+    const accounts = listAccounts();
+    expect(accounts.map((a) => [a.id === saas, a.email, a.host])).toEqual([
+      [true, "jane@example.com", SAAS],
+      [false, "bob@acme.com", ACME],
+    ]);
+    expect(accounts.some((a) => a.id === acme)).toBe(false);
   });
 
   test("a transient validation failure keeps the previous account active", async () => {

@@ -326,6 +326,13 @@ export function getMostRecentAccountRow(): AccountRow | undefined {
   );
 }
 
+/** All stored accounts, usable or not, most recently used first. */
+export function listAccountRowsByRecency(): AccountRow[] {
+  return getDatabase()
+    .query(`SELECT * FROM accounts ${BY_RECENCY}`)
+    .all() as AccountRow[];
+}
+
 /** Usable stored accounts, most recently used first. */
 export function listUsableAccountRowsByRecency(): AccountRow[] {
   return getDatabase()

@@ -66,7 +66,8 @@ account, or a SaaS and a self-hosted login. When you're already logged in,
 `sentry auth login` asks whether to add another account and makes it active;
 logging in again as the same user on the same server replaces that account's
 credentials instead of adding a duplicate. `--force` skips the prompt and
-replaces the active account's login instead.
+replaces the stored login for that server instead (or adds one when that
+server has none); accounts on other servers are never replaced.
 
 ```bash
 # Add (or log in again to) a specific account without prompting

@@ -46,6 +46,7 @@ import {
   isAccountRowUsable,
   isSameServer,
   listAccountRows,
+  listAccountRowsByRecency,
   listUsableAccountRowsByRecency,
   listUsableAccountRowsForOrg,
 } from "./accounts.js";
@@ -568,10 +569,12 @@ export function setAuthToken(
     const expiresAt = expiresIn ? now + expiresIn * 1000 : null;
     const issuedAt = expiresIn ? now : null;
 
-    // Replacing credentials in place targets the stored active account,
-    // never one chosen for the configured server: `--force` replaces the
-    // active login even when SENTRY_HOST or `.sentryclirc` names another.
-    const existing = options?.newAccount ? undefined : getActiveAccountRow();
+    // Replacing credentials in place targets the stored login for the
+    // login's server — never an account on another server, whatever
+    // SENTRY_HOST or `.sentryclirc` says. With none there, a new account.
+    const existing = options?.newAccount
+      ? undefined
+      : findAccountToReplace(options?.host);
     // Host resolution precedence:
     //   1. Explicit `options.host` (login command, tests)
     //   2. Existing row's `host` (refresh flow preserves the original scope)
@@ -610,12 +613,54 @@ export function setAuthToken(
       now,
       existing.account_id,
     );
+    if (existing.is_active !== 1) {
+      // Logging in to another server's stored account makes it active,
+      // like adding an account does; it is a different identity.
+      backfillActiveNullHost();
+      clearUnscopedIdentityCaches();
+      activateAccountRow(existing.account_id);
+    }
     return existing.account_id;
   });
   // Active credential changed — drop memoized fingerprint, token, row, and
   // stored-credentials flag so the next read reflects the new row.
   resetActiveCredentialState();
   return accountId;
+}
+
+/**
+ * The stored account a login to `host` replaces in place (`sentry auth
+ * login --force`, automatic re-login): the active account when it is on
+ * that server, else the most recently used account on it. Accounts are
+ * tied to their server, so a login never overwrites another server's
+ * account; `undefined` when no stored account is on `host` (the login is
+ * then stored as a new account). Without a host (credential updates that
+ * keep the existing scope), the active account.
+ */
+function findAccountToReplace(host: string | undefined): AuthRow | undefined {
+  const active = getActiveAccountRow();
+  if (!host) {
+    return active;
+  }
+  const loginHost = normalizeCredentialHost(host);
+  if (
+    active &&
+    isSameServer(active.host ?? migrateNullHost(active), loginHost)
+  ) {
+    return active;
+  }
+  return listAccountRowsByRecency().find(
+    (row) => row.host && isSameServer(row.host, loginHost),
+  );
+}
+
+/**
+ * Id of the stored account a login to `host` replaces (see
+ * {@link findAccountToReplace}), or `undefined` when it adds one.
+ */
+export function getAccountIdToReplace(host: string): string | undefined {
+  return withDbSpan("getAccountIdToReplace", () => findAccountToReplace(host))
+    ?.account_id;
 }
 
 /**
