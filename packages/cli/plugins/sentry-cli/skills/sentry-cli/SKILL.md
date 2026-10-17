@@ -625,6 +625,15 @@ Work with Sentry teams
 
 → Full flags and examples: `references/team.md`
 
+### Integration
+
+Work with Sentry integrations
+
+- `sentry integration list [<org/project>]` — List installed integrations
+- `sentry integration delete <org/integration-id>` — Remove an installed integration
+
+→ Full flags and examples: `references/integration.md`
+
 ### Explore
 
 Query aggregate event data (Explore)

@@ -436,9 +436,10 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:command-docs` then `generate:skill`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
 
-- **Command docs** (`docs/src/content/docs/commands/*.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `docs/src/fragments/commands/`.
+- **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/commands/`.
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
-- Edit fragments in `docs/src/fragments/commands/` for custom examples and guides.
+- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write an `Examples:` block in `fullDescription` or a `## Examples` section in a fragment for new commands.
+- Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.
 
@@ -1029,8 +1030,9 @@ vi.mock("./some-module", () => ({
 | Add unit tests | `test/` (mirror `src/` structure) |
 | Add E2E tests | `test/e2e/` |
 | Test helpers | `test/model-based/helpers.ts` |
-| Add documentation | `docs/src/content/docs/` |
-| Hand-written command doc content | `docs/src/fragments/commands/` |
+| Add documentation | `apps/cli-docs/src/content/docs/` |
+| Command examples | `docs.examples` on the command |
+| Hand-written command doc content (guides, caveats) | `apps/cli-docs/src/fragments/commands/` |
 
 ## Automated Fix PRs (BugBot / agents)
 
