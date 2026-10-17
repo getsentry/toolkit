@@ -340,21 +340,32 @@ export function listUsableAccountRowsByRecency(): AccountRow[] {
  * Org membership is already cached per account: `org_regions.account_id`
  * is recorded whenever an account resolves or lists an organization, so
  * this is one query over that cache rather than a lookup per account.
+ *
+ * Resolving one org by slug caches no numeric id (only org lists do), so a
+ * numeric id also matches rows for the slug that any cached row on the
+ * same server maps that id to.
  */
 export function listUsableAccountRowsForOrg(
   orgSlug: string,
   orgId?: string,
 ): AccountRow[] {
+  const id = orgId ?? null;
   return getDatabase()
     .query(
       `SELECT * FROM accounts
        WHERE account_id IN (
-         SELECT account_id FROM org_regions
-         WHERE account_id IS NOT NULL AND (org_slug = ? OR org_id = ?)
+         SELECT r.account_id FROM org_regions r
+         WHERE r.account_id IS NOT NULL AND (
+           r.org_slug = ? OR r.org_id = ? OR EXISTS (
+             SELECT 1 FROM org_regions m
+             WHERE m.org_id = ? AND m.org_slug = r.org_slug
+               AND m.source_origin = r.source_origin
+           )
+         )
        ) AND ${USABLE_ACCOUNT_SQL}
        ${BY_RECENCY}`,
     )
-    .all(orgSlug, orgId ?? null, Date.now()) as AccountRow[];
+    .all(orgSlug, id, id, Date.now()) as AccountRow[];
 }
 
 /**

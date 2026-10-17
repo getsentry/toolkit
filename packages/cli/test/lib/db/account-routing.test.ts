@@ -162,6 +162,25 @@ describe("organization-based selection", () => {
     expect(getAuthToken()).toBe("work-token");
   });
 
+  test("matches a DSN org id against an account that only resolved the slug", () => {
+    const work = login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS);
+    login("personal-token", SAAS, "personal");
+    seeOrgList(SAAS, ["personal-org"]);
+    const db = getDatabase();
+    // Only an org list (here: an env-token's, not tied to an account) knows
+    // that org 42 is `work-org`; the work account resolved it by slug.
+    db.query(
+      `INSERT INTO org_regions (org_slug, org_id, region_url, credential_identity, account_id, source_origin, response_origin, updated_at)
+       SELECT org_slug, '42', region_url, 'env-token-identity', NULL, source_origin, response_origin, updated_at
+       FROM org_regions WHERE account_id = ? AND org_slug = 'work-org'`,
+    ).run(work);
+
+    selectAccountForOrg("o42", "42");
+
+    expect(getAuthToken()).toBe("work-token");
+  });
+
   test("keeps the current account when it knows the org too", () => {
     login("work-token", SAAS, "work");
     seeOrg("shared-org", SAAS);
