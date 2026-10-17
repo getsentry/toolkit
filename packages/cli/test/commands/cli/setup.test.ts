@@ -43,6 +43,13 @@ vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => ({
   ensureCurrentOAuthScopes: vi.fn(),
 }));
 
+vi.mock("../../../src/lib/windows-path.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../src/lib/windows-path.js")
+  >()),
+  addToWindowsUserPath: vi.fn(),
+}));
+
 import { app } from "../../../src/app.js";
 import type { SentryContext } from "../../../src/context.js";
 import { getAuthConfig, setAuthToken } from "../../../src/lib/db/auth.js";
@@ -65,6 +72,7 @@ import * as interactiveLogin from "../../../src/lib/interactive-login.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- dynamic setup imports are mocked at the module boundary
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
 import { whichSync } from "../../../src/lib/which.js";
+import { addToWindowsUserPath } from "../../../src/lib/windows-path.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 /** Store original fetch for restoration */
@@ -502,6 +510,104 @@ describe("sentry cli setup", () => {
     );
 
     expect(getOutput()).toContain("GITHUB_PATH");
+  });
+
+  describe("on Windows", () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "win32" });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(process, "platform", platform);
+      vi.mocked(addToWindowsUserPath).mockReset();
+    });
+
+    async function runSetup(env: Record<string, string | undefined> = {}) {
+      const binDir = join(testDir, "bin");
+      // A .bashrc must be ignored on Windows: the user PATH lives in the registry.
+      writeFileSync(join(testDir, ".bashrc"), "# existing config\n");
+      const { context, getOutput, restore } = createMockContext({
+        homeDir: testDir,
+        execPath: join(binDir, "sentry.exe"),
+        env: { PATH: "/usr/bin:/bin", SHELL: "/bin/bash", ...env },
+      });
+      restoreStderr = restore;
+      await run(
+        app,
+        ["cli", "setup", "--no-completions", "--no-agent-skills"],
+        context,
+      );
+      return { binDir, output: getOutput() };
+    }
+
+    test("adds the binary directory to the user PATH", async () => {
+      vi.mocked(addToWindowsUserPath).mockResolvedValue({
+        modified: true,
+        message: "Added C:\\bin to your user PATH",
+        manualCommand: null,
+      });
+
+      const { binDir, output } = await runSetup();
+
+      expect(addToWindowsUserPath).toHaveBeenCalledWith(binDir);
+      expect(output).toContain("PATH: Added C:\\bin to your user PATH");
+      expect(output).toContain("Open a new terminal");
+      expect(readFileSync(join(testDir, ".bashrc"), "utf-8")).toBe(
+        "# existing config\n",
+      );
+    });
+
+    test("shows a manual step when the user PATH cannot be updated", async () => {
+      vi.mocked(addToWindowsUserPath).mockResolvedValue({
+        modified: false,
+        message: "Could not update your user PATH: access denied",
+        manualCommand: "Add C:\\bin to your user PATH by hand",
+      });
+
+      const { output } = await runSetup();
+
+      expect(output).toContain("Could not update your user PATH");
+      expect(output).toContain("Add C:\\bin to your user PATH by hand");
+    });
+
+    test("still writes GITHUB_PATH in GitHub Actions", async () => {
+      vi.mocked(addToWindowsUserPath).mockResolvedValue({
+        modified: true,
+        message: "Added",
+        manualCommand: null,
+      });
+      const ghPathFile = join(testDir, "github_path");
+      writeFileSync(ghPathFile, "");
+
+      const { binDir, output } = await runSetup({
+        GITHUB_ACTIONS: "true",
+        GITHUB_PATH: ghPathFile,
+      });
+
+      expect(output).toContain("PATH: Added to $GITHUB_PATH");
+      expect(readFileSync(ghPathFile, "utf-8").trim()).toBe(binDir);
+    });
+
+    test("skips the user PATH with --no-modify-path", async () => {
+      const { context, restore } = createMockContext({ homeDir: testDir });
+      restoreStderr = restore;
+
+      await run(
+        app,
+        [
+          "cli",
+          "setup",
+          "--no-modify-path",
+          "--no-completions",
+          "--no-agent-skills",
+        ],
+        context,
+      );
+
+      expect(addToWindowsUserPath).not.toHaveBeenCalled();
+    });
   });
 
   test("falls back to bash completions for unsupported shell when bash is available", async () => {

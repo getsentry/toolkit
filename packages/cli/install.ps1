@@ -4,8 +4,9 @@
 
 .DESCRIPTION
   Downloads the standalone Sentry CLI binary for Windows and hands off to
-  `sentry cli setup`, which places the binary, installs agent skills, and
-  records the install method so `sentry cli upgrade` keeps working.
+  `sentry cli setup`, which places the binary, adds it to the user PATH,
+  installs agent skills, and records the install method so
+  `sentry cli upgrade` keeps working.
 
   Usage:
     irm https://cli.sentry.dev/install.ps1 | iex
@@ -154,42 +155,9 @@ function Install-SentryCli {
     Stop-Install "Failed to fetch latest stable version from Sentry's release registry and GitHub. Retry or set SENTRY_VERSION to install a specific version."
   }
 
-  # Compute the directory `sentry cli setup` will install into, matching
-  # determineInstallDir() in src/lib/binary.ts, so the installer and setup agree
-  # on which directory to put on PATH.
-  function Resolve-InstallDir([string]$HomeDir) {
-    if ($env:SENTRY_INSTALL_DIR) { return $env:SENTRY_INSTALL_DIR }
-    if ($env:XDG_BIN_HOME -and [System.IO.Path]::IsPathRooted($env:XDG_BIN_HOME)) {
-      return $env:XDG_BIN_HOME
-    }
-    $pathDirs = "$env:PATH" -split [System.IO.Path]::PathSeparator |
-      ForEach-Object { $_.TrimEnd('\', '/') }
-    foreach ($dir in @((Join-Path $HomeDir '.local\bin'), (Join-Path $HomeDir 'bin'))) {
-      if ((Test-Path -LiteralPath $dir -PathType Container) -and ($pathDirs -contains $dir.TrimEnd('\', '/'))) {
-        return $dir
-      }
-    }
-    return (Join-Path $HomeDir '.local\bin')
-  }
-
-  # Persist $Dir on the user PATH without expanding existing %VAR% entries.
-  function Add-ToUserPath([string]$Dir) {
-    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
-    try {
-      $current = "$($key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames))"
-      $entries = @($current -split ';' | Where-Object { $_ })
-      if ($entries | Where-Object { $_.TrimEnd('\') -eq $Dir.TrimEnd('\') }) {
-        return $false
-      }
-      $key.SetValue('Path', (@($Dir) + $entries) -join ';', [Microsoft.Win32.RegistryValueKind]::ExpandString)
-    } finally {
-      $key.Dispose()
-    }
-    # Setting any user variable through .NET broadcasts WM_SETTINGCHANGE, so
-    # newly opened terminals pick up the updated PATH.
-    [Environment]::SetEnvironmentVariable('SENTRY_CLI_PATH_REFRESH', '1', 'User')
-    [Environment]::SetEnvironmentVariable('SENTRY_CLI_PATH_REFRESH', $null, 'User')
-    return $true
+  # Entries of the persisted user PATH, expanded. Empty on non-Windows hosts.
+  function Get-UserPathEntries {
+    return @("$([Environment]::GetEnvironmentVariable('Path', 'User'))" -split ';' | Where-Object { $_ })
   }
 
   $state.Step = 'detect-os'
@@ -287,51 +255,30 @@ function Install-SentryCli {
     Remove-Item -LiteralPath $tmpArchive -Force -ErrorAction SilentlyContinue
   }
 
-  # Resolve the install directory once and pass it to setup explicitly so PATH
-  # handling below targets the same directory setup installs into.
-  $homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
-  $installDir = Resolve-InstallDir $homeDir
-  $previousInstallDir = $env:SENTRY_INSTALL_DIR
-  $env:SENTRY_INSTALL_DIR = $installDir
-
   try {
-    if ($env:SENTRY_NO_MODIFY_PATH -ne '1') {
-      $state.Step = 'path'
-      try {
-        if (Add-ToUserPath $installDir) {
-          Write-Host "PATH: Added $installDir to your user PATH. Open a new terminal to use it everywhere."
-        }
-      } catch {
-        Write-Warning "Could not update your user PATH. Add $installDir to PATH manually."
-      }
-      # GitHub Actions does not read the registry between steps.
-      if ($env:GITHUB_PATH) {
-        Add-Content -LiteralPath $env:GITHUB_PATH -Value $installDir
-      }
-      # Make the CLI available in this session too.
-      $sessionDirs = "$env:PATH" -split [System.IO.Path]::PathSeparator
-      if ($sessionDirs -notcontains $installDir) {
-        $env:PATH = "$installDir$([System.IO.Path]::PathSeparator)$env:PATH"
-      }
-    }
-
-    # Delegate placement, completions, agent skills, install-method recording,
-    # and first-run login to the binary itself. PATH is handled above because
-    # setup only knows how to edit POSIX shell config files.
+    # Delegate placement, PATH, completions, agent skills, install-method
+    # recording, and first-run login to the binary itself.
     $state.Step = 'setup'
-    $setupArgs = @('cli', 'setup', '--install', '--method', 'curl', '--channel', 'stable', '--no-modify-path')
+    $setupArgs = @('cli', 'setup', '--install', '--method', 'curl', '--channel', 'stable')
+    if ($env:SENTRY_NO_MODIFY_PATH -eq '1') { $setupArgs += '--no-modify-path' }
+    $userPathBefore = Get-UserPathEntries
     & $tmpBinary @setupArgs
     if ($LASTEXITCODE -ne 0) {
       Stop-Install "sentry cli setup failed with exit code $LASTEXITCODE"
     }
 
+    # Setup persists the install directory on the user PATH, which only new
+    # terminals pick up. Mirror what it added into this session too.
+    $added = @(Get-UserPathEntries | Where-Object { $userPathBefore -notcontains $_ })
+    if ($added.Count -gt 0) {
+      $env:PATH = (@($added) + @("$env:PATH")) -join [System.IO.Path]::PathSeparator
+    }
+
     if ($env:SENTRY_INIT -eq '1') {
+      # Run init from the downloaded binary, which is the one setup just
+      # installed, so the installer never has to know where setup put it.
       $state.Step = 'init'
-      $installedBinary = Join-Path $installDir 'sentry.exe'
-      if (-not (Test-Path -LiteralPath $installedBinary)) {
-        Stop-Install 'Cannot find installed sentry binary'
-      }
-      & $installedBinary init
+      & $tmpBinary init
       if ($LASTEXITCODE -ne 0) {
         # Like the bash installer, report wizard failures to the caller but not
         # to installer telemetry: init errors are not installation failures.
@@ -339,7 +286,6 @@ function Install-SentryCli {
       }
     }
   } finally {
-    $env:SENTRY_INSTALL_DIR = $previousInstallDir
     # The running temp binary cannot always be deleted on Windows; try anyway.
     Remove-Item -LiteralPath $tmpBinary -Force -ErrorAction SilentlyContinue
   }

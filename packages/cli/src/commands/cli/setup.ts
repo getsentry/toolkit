@@ -61,6 +61,7 @@ import {
   isInPath,
   type ShellInfo,
 } from "../../lib/shell.js";
+import { addToWindowsUserPath } from "../../lib/windows-path.js";
 
 type SetupFlags = {
   readonly install: boolean;
@@ -243,7 +244,24 @@ async function handleInstall(
 }
 
 /**
+ * Persist the binary directory on the Windows user PATH (registry), which every
+ * new terminal inherits regardless of shell.
+ */
+async function handleWindowsPath(binaryDir: string, emit: Logger) {
+  const result = await addToWindowsUserPath(binaryDir);
+  emit(`PATH: ${result.message}`);
+  if (result.modified) {
+    emit("      Open a new terminal to use it");
+  } else if (result.manualCommand) {
+    emit(`      ${result.manualCommand}`);
+  }
+}
+
+/**
  * Handle PATH modification for a directory.
+ *
+ * On Windows this edits the user PATH in the registry; elsewhere it appends to
+ * the detected shell's config file.
  */
 async function handlePathModification(
   binaryDir: string,
@@ -258,7 +276,9 @@ async function handlePathModification(
     return;
   }
 
-  if (shell.configFile) {
+  if (process.platform === "win32") {
+    await handleWindowsPath(binaryDir, emit);
+  } else if (shell.configFile) {
     const result = await addToPath(shell.configFile, binaryDir, shell.type);
 
     if (result.modified) {
@@ -585,7 +605,8 @@ export const setupCommand = buildCommand({
     brief: "Configure shell integration",
     fullDescription:
       "Sets up shell integration for the Sentry CLI:\n\n" +
-      "- Adds binary directory to PATH (if not already in PATH)\n" +
+      "- Adds binary directory to PATH (if not already in PATH): the shell\n" +
+      "  config file, or the user PATH on Windows\n" +
       "- Installs shell completions (bash, zsh, fish)\n" +
       "- Installs agent skills for detected AI coding assistants\n" +
       "- Records installation metadata for upgrades\n\n" +

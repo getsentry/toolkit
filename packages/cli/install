@@ -188,10 +188,11 @@ tmp_binary="${tmpdir}/sentry-install-$$${suffix}"
 blob_headers="${tmpdir}/sentry-install-headers-$$"
 blob_file="${tmpdir}/sentry-install-blob-$$"
 metadata_file="${tmpdir}/sentry-install-metadata-$$"
+init_binary="${tmpdir}/sentry-install-init-$$${suffix}"
 version=""
 
 # Clean up temporary files after setup or on failure.
-trap 'rm -f "$tmp_binary" "$blob_headers" "$blob_file" "$metadata_file"' EXIT
+trap 'rm -f "$tmp_binary" "$blob_headers" "$blob_file" "$metadata_file" "$init_binary"' EXIT
 
 if [[ "$requested_version" == "nightly" ]]; then
   # Nightly build: download from GHCR via OCI blob protocol.
@@ -441,6 +442,13 @@ fi
 
 chmod +x "$tmp_binary"
 
+# `sentry init` runs from a hard link to the downloaded binary: setup removes
+# the temp binary after installing it, and the link means the installer never
+# has to know which directory setup chose.
+if [[ "${SENTRY_INIT:-}" == "1" ]]; then
+  ln -f "$tmp_binary" "$init_binary" 2>/dev/null || cp "$tmp_binary" "$init_binary"
+fi
+
 # Delegate installation and configuration to the binary itself.
 # setup --install handles: directory selection, binary placement, PATH,
 # completions, agent skills, and the welcome message.
@@ -479,35 +487,8 @@ fi
 # Reconnect stdin to the real terminal so the wizard can prompt
 # interactively — when piped (curl | bash), stdin is the pipe.
 if [[ "${SENTRY_INIT:-}" == "1" ]]; then
-  # Only honor XDG_BIN_HOME when absolute, per the XDG spec (matches the Node
-  # determineInstallDir logic); a relative value is ignored. Accept both POSIX
-  # (/…) and Windows drive-letter (C:\… or C:/…) absolute paths so a Windows
-  # XDG_BIN_HOME isn't dropped while Node still installs there.
-  xdg_bin_home="${XDG_BIN_HOME:-}"
-  if [[ "$xdg_bin_home" != /* && ! "$xdg_bin_home" =~ ^[A-Za-z]:[\\/] ]]; then
-    xdg_bin_home=""
-  fi
-  if [[ -n "${SENTRY_INSTALL_DIR:-}" ]]; then
-    install_dir="$SENTRY_INSTALL_DIR"
-  elif [[ -n "$xdg_bin_home" ]]; then
-    install_dir="$xdg_bin_home"
-  else
-    # Match determineInstallDir(): prefer existing directories on PATH, then
-    # fall back to the XDG location even when it is not yet on PATH.
-    install_dir="$HOME/.local/bin"
-    for dir in "$HOME/.local/bin" "$HOME/bin"; do
-      if [[ -d "$dir" ]] && { [[ ":${PATH:-}:" == *":${dir}:"* ]] || [[ ":${PATH:-}:" == *":${dir}/:"* ]]; }; then
-        install_dir="$dir"
-        break
-      fi
-    done
-  fi
-  sentry_bin="${install_dir}/sentry${suffix}"
-  if [[ ! -x "$sentry_bin" ]]; then
-    die "Cannot find installed sentry binary" "init"
-  fi
   if [[ ! -e /dev/tty ]]; then
     die "SENTRY_INIT=1 requires an interactive terminal (/dev/tty not available)" "init"
   fi
-  "$sentry_bin" init </dev/tty
+  "$init_binary" init </dev/tty
 fi

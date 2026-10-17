@@ -38,7 +38,6 @@ set -euo pipefail
 if [[ "$1" == "cli" && "$2" == "setup" ]]; then
   printf '%s\\n' "$@" > "$SENTRY_TEST_DIR/setup-args"
   printf '%s\\n' "$SENTRY_INSTALL_DIR" > "$SENTRY_TEST_DIR/setup-install-dir"
-  printf '%s\\n' "$PATH" > "$SENTRY_TEST_DIR/setup-path"
   mkdir -p "$SENTRY_INSTALL_DIR"
   cp "$0" "$SENTRY_INSTALL_DIR/sentry.exe"
   exit "\${SENTRY_TEST_SETUP_EXIT:-0}"
@@ -185,7 +184,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     ).toEqual([]);
   });
 
-  test("hands off to setup and puts the install dir on PATH", () => {
+  test("hands off PATH handling to setup", () => {
     const result = run();
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -200,21 +199,22 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
       "curl",
       "--channel",
       "stable",
-      "--no-modify-path",
     ]);
+    // Setup decides the install directory and edits PATH itself.
     expect(recorded("setup-install-dir")).toEqual([installDir]);
-    expect(recorded("setup-path")[0]?.startsWith(`${installDir}:`)).toBe(true);
-    expect(recorded("github-path")).toEqual([installDir]);
+    expect(recorded("github-path")).toEqual([]);
   });
 
-  test("runs sentry init with the installed binary when SENTRY_INIT=1", () => {
+  test("runs sentry init with the downloaded binary when SENTRY_INIT=1", () => {
     env.SENTRY_INIT = "1";
 
     const result = run();
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("post-args")).toEqual(["init"]);
-    expect(recorded("post-binary")).toEqual([join(installDir, "sentry.exe")]);
+    const [initBinary] = recorded("post-binary");
+    expect(initBinary?.startsWith(join(testDir, "sentry-install-"))).toBe(true);
+    expect(existsSync(initBinary!)).toBe(false);
   });
 
   test("fails when sentry init fails", () => {
@@ -230,14 +230,13 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     expect(recorded("post-args")).toEqual(["init"]);
   });
 
-  test("leaves PATH alone when SENTRY_NO_MODIFY_PATH=1", () => {
+  test("passes --no-modify-path to setup when SENTRY_NO_MODIFY_PATH=1", () => {
     env.SENTRY_NO_MODIFY_PATH = "1";
 
     const result = run();
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("github-path")).toEqual([]);
-    expect(recorded("setup-path")[0]?.startsWith(`${installDir}:`)).toBe(false);
+    expect(recorded("setup-args").at(-1)).toBe("--no-modify-path");
   });
 
   test.each([

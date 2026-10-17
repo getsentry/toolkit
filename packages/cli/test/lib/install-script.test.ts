@@ -48,9 +48,8 @@ if [[ "$1" == "cli" && "$2" == "setup" ]]; then
   printf '%s\\n' "$@" > "$SENTRY_TEST_DIR/setup-args"
   printf '%s\\n' "$0" > "$SENTRY_TEST_DIR/setup-binary"
   record_tty 3> "$SENTRY_TEST_DIR/setup-tty"
-  setup_dir="\${SENTRY_TEST_SETUP_INSTALL_DIR:-$SENTRY_INSTALL_DIR}"
-  mkdir -p "$setup_dir"
-  cp "$0" "$setup_dir/sentry"
+  mkdir -p "$SENTRY_INSTALL_DIR"
+  cp "$0" "$SENTRY_INSTALL_DIR/sentry"
   if [[ "\${SENTRY_TEST_KEEP_TEMP_BINARY:-}" != "1" ]]; then
     rm "$0"
   fi
@@ -627,13 +626,11 @@ process.exitCode = result.status ?? 1;
 
   test("hands off to init instead of login when SENTRY_INIT is set", () => {
     env.SENTRY_INIT = "1";
-    env.SENTRY_TEST_KEEP_TEMP_BINARY = "1";
     env.SENTRY_TEST_POST_EXIT = "7";
     const result = runInTerminal();
     expect(result.status, result.stdout + result.stderr).toBe(7);
     expect(recorded("setup-tty")[0]).toBe("0:false");
     expect(recorded("post-args")).toEqual(["init"]);
-    expect(recorded("post-binary")).toEqual([join(installDir, "sentry")]);
     expect(recorded("post-tty")).toEqual([
       "0:true",
       "1:true",
@@ -643,23 +640,25 @@ process.exitCode = result.status ?? 1;
     expect(installerTempFiles()).toEqual([]);
   });
 
-  test("initializes the new binary instead of a stale install outside PATH", () => {
-    const home = env.HOME!;
-    const staleDir = join(home, ".local", "bin");
-    const currentDir = join(home, "bin");
+  test("initializes the downloaded binary even after setup deletes it", () => {
+    // A stale install that is not where setup puts the new binary must not be
+    // the one that runs init.
+    const staleDir = join(env.HOME!, ".local", "bin");
     mkdirSync(staleDir, { recursive: true });
-    mkdirSync(currentDir);
     writeFileSync(join(staleDir, "sentry"), downloadedExecutable);
     chmodSync(join(staleDir, "sentry"), 0o755);
-    env.SENTRY_INSTALL_DIR = "";
-    env.SENTRY_TEST_SETUP_INSTALL_DIR = currentDir;
-    env.PATH = `${currentDir}:${env.PATH}`;
+    env.PATH = `${staleDir}:${env.PATH}`;
     env.SENTRY_INIT = "1";
 
     const result = runInTerminal();
     expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(recorded("setup-args")).toContain("setup");
     expect(recorded("post-args")).toEqual(["init"]);
-    expect(recorded("post-binary")).toEqual([join(currentDir, "sentry")]);
+    const [initBinary] = recorded("post-binary");
+    expect(initBinary?.startsWith(join(testDir, "sentry-install-init-"))).toBe(
+      true,
+    );
+    expect(installerTempFiles()).toEqual([]);
   });
 
   test.each([1, 130])(
