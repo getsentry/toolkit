@@ -194,6 +194,14 @@ const KEY_ALIASES: Partial<Record<string, DefaultKey>> = {
   "ca-certs": "ca-cert",
 };
 
+/**
+ * Words that mean "show all defaults" when passed as the only positional.
+ *
+ * Other commands use `list` subcommands, so users and agents often try
+ * `sentry cli defaults list`. Treat these like running with no arguments.
+ */
+const SHOW_ALL_VERBS = new Set(["list", "ls", "show"]);
+
 /** Resolve a user-provided key string to a canonical key, or null if unknown */
 function normalizeKey(key: string): DefaultKey | null {
   const lower = key.toLowerCase();
@@ -243,6 +251,7 @@ export const defaultsCommand = buildCommand({
       "## Examples\n\n" +
       "```\n" +
       "sentry cli defaults                    # Show all defaults\n" +
+      "sentry cli defaults list               # Same as above (alias: ls, show)\n" +
       "sentry cli defaults org my-org         # Set default organization\n" +
       "sentry cli defaults project my-proj    # Set default project\n" +
       "sentry cli defaults telemetry off      # Disable telemetry\n" +
@@ -303,7 +312,7 @@ export const defaultsCommand = buildCommand({
     },
     ...args: string[]
   ) {
-    const [keyArg, valueArg, ...rest] = args;
+    const [rawKeyArg, valueArg, ...rest] = args;
 
     // Too many arguments
     if (rest.length > 0) {
@@ -312,6 +321,17 @@ export const defaultsCommand = buildCommand({
         "args",
       );
     }
+
+    // `list` / `ls` / `show` are aliases for showing all defaults
+    const isShowVerb =
+      rawKeyArg !== undefined && SHOW_ALL_VERBS.has(rawKeyArg.toLowerCase());
+    if (isShowVerb && (valueArg !== undefined || flags.clear)) {
+      throw new ValidationError(
+        `'${rawKeyArg}' shows all defaults and takes no value or --clear. Use 'sentry cli defaults' to show all, or 'sentry cli defaults --clear' to clear all.`,
+        "args",
+      );
+    }
+    const keyArg = isShowVerb ? undefined : rawKeyArg;
 
     // No key specified — show all or clear all
     if (!keyArg) {
