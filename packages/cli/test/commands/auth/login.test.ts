@@ -86,6 +86,22 @@ vi.mock("../../../src/lib/logger.js", () => ({
 const { loginCommand, rcTokenHint } =
   await import("../../../src/commands/auth/login.js");
 
+vi.mock("../../../src/lib/account-selection.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../../src/lib/account-selection.js")
+    >();
+  return Object.fromEntries(
+    Object.entries(actual).map(([k, v]) => [
+      k,
+      typeof v === "function" ? vi.fn(v) : v,
+    ]),
+  );
+});
+
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as accountSelection from "../../../src/lib/account-selection.js";
+
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
@@ -339,6 +355,78 @@ describe("loginCommand.func --token path", () => {
 
     expect(removeAccountSpy).toHaveBeenCalledWith("new-account");
     expect(setUserInfoSpy).not.toHaveBeenCalled();
+  });
+
+  test("--token --url with an email for someone else: leaves the default URL alone", async () => {
+    isAuthenticatedSpy.mockReturnValue(true);
+    vi.spyOn(dbAuth, "getActiveAccountId").mockReturnValue("previous-account");
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue({
+      ...SAMPLE_USER,
+      email: "bob@example.com",
+    });
+    const setActiveAccountSpy = vi
+      .spyOn(dbAuth, "setActiveAccount")
+      .mockReturnValue(undefined);
+    const pointDefaultUrlSpy = vi
+      .spyOn(accountSelection, "pointDefaultUrlAtAccount")
+      .mockReturnValue(undefined);
+
+    try {
+      const { context } = createContext();
+      await expect(
+        func.call(
+          context,
+          {
+            token: "new-token",
+            force: false,
+            timeout: 900,
+            url: "https://other.example.com",
+          },
+          "jane@example.com",
+        ),
+      ).rejects.toBeInstanceOf(ValidationError);
+
+      expect(removeAccountSpy).toHaveBeenCalledWith("new-account");
+      expect(setActiveAccountSpy).toHaveBeenCalledWith("previous-account");
+      expect(pointDefaultUrlSpy).not.toHaveBeenCalled();
+    } finally {
+      setActiveAccountSpy.mockRestore();
+      pointDefaultUrlSpy.mockRestore();
+      vi.mocked(dbAuth.getActiveAccountId).mockRestore();
+    }
+  });
+
+  test("--token --url with a matching email: points the default URL at the new host", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
+    setUserInfoSpy.mockReturnValue(undefined);
+    const pointDefaultUrlSpy = vi
+      .spyOn(accountSelection, "pointDefaultUrlAtAccount")
+      .mockReturnValue(undefined);
+
+    try {
+      const { context } = createContext();
+      await func.call(
+        context,
+        {
+          token: "new-token",
+          force: false,
+          timeout: 900,
+          url: "https://other.example.com",
+        },
+        SAMPLE_USER.email,
+      );
+
+      expect(pointDefaultUrlSpy).toHaveBeenCalledWith(
+        "https://other.example.com",
+      );
+    } finally {
+      pointDefaultUrlSpy.mockRestore();
+    }
   });
 
   test("already authenticated (env token SENTRY_AUTH_TOKEN): warns and proceeds to OAuth login", async () => {

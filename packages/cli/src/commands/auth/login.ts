@@ -607,8 +607,6 @@ export const loginCommand = buildCommand({
         await handleTokenValidationError(error, accountId, previousAccountId);
       }
 
-      persistLoginUrlAsDefault(flags.url, effectiveHost);
-
       // Fetch and cache user info via /auth/ (works with all token types).
       // A transient failure here must not block login — the token is already valid.
       const result: LoginResult = {
@@ -630,6 +628,9 @@ export const loginCommand = buildCommand({
           throw error;
         }
       }
+      // Only now is the login kept: a rejected email above restores the
+      // previous account, so the default URL must not have moved yet.
+      persistLoginUrlAsDefault(flags.url, effectiveHost);
       if (user) {
         try {
           setUserInfo({
