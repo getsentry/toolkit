@@ -96,9 +96,10 @@ Most of the time you don't need to switch: commands pick the stored account
 that fits what they target, without changing the active account:
 
 - **Organization** — when the target organization isn't in the active
-  account's organization list (cached at login and by `sentry org list`) but
-  another stored account has used it, that account is used. This includes
-  `oNNNN` IDs from DSNs.
+  account's organization list (cached at login and by `sentry org list`,
+  which lists every stored account's organizations) but another stored
+  account has used it, that account is used. This includes `oNNNN` IDs from
+  DSNs.
 - **Server** — `SENTRY_HOST`/`SENTRY_URL`, `.sentryclirc`, or a pasted Sentry
   URL for another account's server (for example a self-hosted issue link) uses
   the account stored for that server.

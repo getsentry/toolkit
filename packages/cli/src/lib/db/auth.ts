@@ -23,7 +23,7 @@ import {
   isPersistedDefaultUrlInEffect,
   markPersistedDefaultUrl,
 } from "../constants.js";
-import { getEnv } from "../env.js";
+import { getEnv, withEnv } from "../env.js";
 import {
   getBootConfiguredSentryUrl,
   getEnvTokenHost,
@@ -865,6 +865,54 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
   }
 }
 
+/** A stored account a command can run as: its id and server. */
+export type StoredAccountRef = Readonly<{ id: string; host: string }>;
+
+/**
+ * Usable stored accounts a cross-account command (`sentry org list`)
+ * covers, most recently used first. An explicit server (`SENTRY_HOST`/
+ * `SENTRY_URL`, `.sentryclirc`) limits them to accounts on that server, the
+ * same rule as {@link selectAccountForOrg}. Empty when a forced env token
+ * (`SENTRY_FORCE_ENV_TOKEN`) overrides stored accounts.
+ */
+export function listUsableAccountsInScope(): AccountRow[] {
+  if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim() && getRawEnvToken()) {
+    return [];
+  }
+  const configured = getConfiguredUrlOrUndefined();
+  const explicitHost =
+    configured && !isPersistedDefaultUrlInEffect() ? configured : undefined;
+  return withDbSpan("listUsableAccountsInScope", () =>
+    listUsableAccountRowsByRecency().filter((row) => {
+      const host = row.host ?? migrateNullHost(row);
+      return !explicitHost || isSameServer(host, explicitHost);
+    }),
+  );
+}
+
+/**
+ * Run `fn` as the stored `account`, on its own server, without touching the
+ * invocation's account selection or the stored active account.
+ *
+ * `fn` runs under a copy of the invocation env (see `withEnv`), so its
+ * account scope, memoized credentials, and configured server are its own:
+ * several accounts can be queried concurrently, and credential reads, token
+ * refreshes, and invalidation inside `fn` all target `account`. The URL is
+ * pinned to the account's server so its token is never sent to another.
+ */
+export function withStoredAccount<T>(
+  account: StoredAccountRef,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const env: NodeJS.ProcessEnv = { ...getEnv() };
+  delete env.SENTRY_HOST;
+  env.SENTRY_URL = account.host;
+  return withEnv(env, () => {
+    getAccountScope().accountId = account.id;
+    return fn();
+  });
+}
+
 /**
  * The stored account whose credentials hash to `identity` (following
  * in-process refresh-token rotations), so cached org data can record which
@@ -895,11 +943,6 @@ export function getAccountIdForIdentity(identity: string): string | undefined {
 }
 
 /**
- * Whether a usable stored account is on `url`'s server. Lets a pasted
- * Sentry URL for another login's server select that login instead of
- * failing the host check against the active account.
- */
-/**
  * Host of the stored account in effect, ignoring env-var tokens (reading an
  * env token's host would snapshot it). `undefined` when no stored account
  * is in effect, its host is not recorded yet, or the store can't be read.
@@ -913,6 +956,11 @@ export function getEffectiveStoredAccountHost(): string | undefined {
   }
 }
 
+/**
+ * Whether a usable stored account is on `url`'s server. Lets a pasted
+ * Sentry URL for another login's server select that login instead of
+ * failing the host check against the active account.
+ */
 export function hasStoredAccountForHost(url: string): boolean {
   try {
     return listUsableAccountRowsByRecency().some(
