@@ -268,6 +268,21 @@ describe("org list across stored accounts", () => {
     expect(requests).toEqual([`${SAAS} saas-token`]);
   });
 
+  test("lists the one usable account when the active login is logged out", async () => {
+    addAccount("acme-token", ACME, "jane@acme.com");
+    const saas = addAccount("saas-token", SAAS, "jane@example.com");
+    getDatabase()
+      .query("UPDATE accounts SET token = NULL WHERE account_id = ?")
+      .run(saas);
+    orgsByToken["acme-token"] = [org("acme-internal", ACME)];
+
+    const entries = await runList();
+
+    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
+    expect(requests).toEqual([`${ACME} acme-token`]);
+    expect(getActiveAccountId()).toBe(saas);
+  });
+
   test("--limit applies to the merged list", async () => {
     addAccount("acme-token", ACME, "jane@acme.com");
     addAccount("saas-token", SAAS, "jane@example.com");
@@ -304,6 +319,20 @@ describe("org list --account", () => {
 
     expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
     expect(entries[0]?.account).toBeUndefined();
+    expect(requests).toEqual([`${ACME} acme-token`]);
+  });
+
+  test("uses the account's own token even when an env token is forced", async () => {
+    addAccount("acme-token", ACME, "jane@acme.com");
+    addAccount("saas-token", SAAS, "jane@example.com");
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    orgsByToken["acme-token"] = [org("acme-internal", ACME)];
+    orgsByToken["env-token"] = [org("env-org")];
+
+    const entries = await runList({ account: "jane@acme.com" });
+
+    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
     expect(requests).toEqual([`${ACME} acme-token`]);
   });
 

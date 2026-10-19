@@ -967,7 +967,8 @@ export function listUsableAccountsInScope(): AccountRow[] {
  * account scope, memoized credentials, and configured server are its own:
  * several accounts can be queried concurrently, and credential reads, token
  * refreshes, and invalidation inside `fn` all target `account`. The URL is
- * pinned to the account's server so its token is never sent to another.
+ * pinned to the account's server so its token is never sent to another, and
+ * env tokens are dropped so no other credential is sent to that server.
  */
 export function withStoredAccount<T>(
   account: StoredAccountRef,
@@ -976,6 +977,12 @@ export function withStoredAccount<T>(
   const env: NodeJS.ProcessEnv = { ...getEnv() };
   delete env.SENTRY_HOST;
   env.SENTRY_URL = account.host;
+  // Only the account's own credentials: an env token (forced or as a
+  // fallback when the stored one is unusable) must never be sent to the
+  // account's server.
+  delete env.SENTRY_AUTH_TOKEN;
+  delete env.SENTRY_TOKEN;
+  delete env.SENTRY_FORCE_ENV_TOKEN;
   return withEnv(env, () => {
     getAccountScope().accountId = account.id;
     return fn();

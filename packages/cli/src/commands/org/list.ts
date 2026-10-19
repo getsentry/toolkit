@@ -261,8 +261,10 @@ function mergeAccountOrgs(results: AccountOrgs[]): {
 /**
  * Which stored accounts to list: the one named by `--account`, else every
  * usable account in scope. `undefined` means "the credentials in effect"
- * (one or no stored account, or a forced env token), which keeps the
- * single-account output unchanged.
+ * (no usable stored account, only the active one, or a forced env token),
+ * which keeps the single-account output unchanged. A single usable account
+ * that isn't the active one (say, the active login was logged out) is
+ * listed with its own credentials.
  */
 function resolveAccounts(selector?: string): AccountSummary[] | undefined {
   if (selector !== undefined) {
@@ -289,7 +291,8 @@ function resolveAccounts(selector?: string): AccountSummary[] | undefined {
   const accounts = listUsableAccountsInScope()
     .map(toAccountSummary)
     .sort((a, b) => Number(b.active) - Number(a.active));
-  return accounts.length > 1 ? accounts : undefined;
+  const [only] = accounts;
+  return accounts.length > 1 || (only && !only.active) ? accounts : undefined;
 }
 
 export const listCommand = buildCommand({
