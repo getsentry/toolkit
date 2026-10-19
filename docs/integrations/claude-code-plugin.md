@@ -8,10 +8,10 @@ The plugin registers a `sentry-mcp` subagent that Claude Code automatically dele
 
 Two variants are published:
 
-| Plugin | MCP URL | Purpose |
-|--------|---------|---------|
-| `sentry-mcp` | `https://mcp.sentry.dev/mcp` | Default catalog gateway surface |
-| `sentry-mcp-experimental` | `https://mcp.sentry.dev/mcp?experimental=1` | Forward-looking feature flags |
+| Plugin                    | MCP URL                                     | Purpose                         |
+| ------------------------- | ------------------------------------------- | ------------------------------- |
+| `sentry-mcp`              | `https://mcp.sentry.dev/mcp`                | Default catalog gateway surface |
+| `sentry-mcp-experimental` | `https://mcp.sentry.dev/mcp?experimental=1` | Forward-looking feature flags   |
 
 ## Directory Layout
 
@@ -46,11 +46,11 @@ description: Sentry error tracking and performance monitoring agent. Use when
   the user asks about errors, exceptions, issues, stack traces, performance,
   traces, releases, or provides a Sentry URL.
 mcpServers:
-  - sentry           # References the server name from .mcp.json
+  - sentry # References the server name from .mcp.json
 allowedTools:
   - analyze_issue_with_seer
   - search_issues
-  - ...              # Default-grant direct MCP tool names
+  - ... # Default-grant direct MCP tool names
 ---
 ```
 
@@ -70,12 +70,14 @@ pnpm run --filter @sentry/mcp-core generate-definitions
 ```
 
 This script:
+
 1. Imports all tools from `packages/mcp-core/src/tools/index.ts`
 2. Imports all skills from `packages/mcp-core/src/skills.ts`
 3. Writes `toolDefinitions.json` and `skillDefinitions.json` to `packages/mcp-core/src/`
 4. Updates `allowedTools` in both `plugins/sentry-mcp/agents/sentry-mcp.md` and `plugins/sentry-mcp-experimental/agents/sentry-mcp.md`, using the default-grant direct surface for each plugin mode. Optional-skill tools remain reachable through `search_sentry_tools` and `execute_sentry_tool` when available.
 
 The script runs automatically as a `prebuild` and `pretest` hook in `packages/mcp-core/package.json`. Run it explicitly after:
+
 - Adding, removing, or renaming tools
 - Changing tool skills assignments
 - Modifying agent prompts (to verify frontmatter stays valid)

@@ -33,6 +33,7 @@ Our testing approach prioritizes **functional coverage** over implementation det
 ### What to Test
 
 ✅ **DO test:**
+
 - Tool functionality: "Does find_issues return correct data?"
 - API integration: "Does our client handle API errors correctly?"
 - Error handling: "Do we provide helpful error messages?"
@@ -40,6 +41,7 @@ Our testing approach prioritizes **functional coverage** over implementation det
 - Configuration: "Can the server be configured for different deployment modes?"
 
 ❌ **DON'T test:**
+
 - Standard library behavior (Promise.all, Array.map, etc.)
 - Third-party package internals (Zod validation, MSW mocking, etc.)
 - Implementation details (private methods, internal state)
@@ -49,6 +51,7 @@ Our testing approach prioritizes **functional coverage** over implementation det
 ### Example: Context Passing
 
 **Bad approach** (testing language features):
+
 ```typescript
 // ❌ Don't test that closures capture variables
 it("closures capture context", async () => {
@@ -59,6 +62,7 @@ it("closures capture context", async () => {
 ```
 
 **Good approach** (testing our functionality):
+
 ```typescript
 // ✅ Test that server configuration works
 it("builds server with context for tool handlers", async () => {
@@ -70,7 +74,9 @@ it("builds server with context for tool handlers", async () => {
 ## Testing Levels
 
 ### 1. Functional Tests
+
 Fast, focused tests of actual functionality:
+
 - Located alongside source files (`*.test.ts`)
 - Use Vitest with inline snapshots
 - Mock external APIs only (Sentry API, OpenAI) with MSW
@@ -89,13 +95,16 @@ Fast, focused tests of actual functionality:
   formatted output stays user-facing and avoids raw internals.
 
 ### 2. Evaluation Tests
+
 Real-world scenarios with LLM:
+
 - Located in `packages/mcp-server-evals`
 - Use actual AI models
 - Verify end-to-end functionality
 - Test complete workflows
 
 ### 3. Manual Testing
+
 Interactive testing with the MCP test client (preferred for testing MCP changes):
 
 ```bash
@@ -111,6 +120,7 @@ pnpm -w run cli --access-token=TOKEN "query"
 ```
 
 **When to use manual testing:**
+
 - Verifying end-to-end MCP server behavior
 - Testing OAuth flows
 - Debugging tool interactions
@@ -120,6 +130,7 @@ pnpm -w run cli --access-token=TOKEN "query"
 **Note:** The CLI defaults to `http://localhost:5173` for easier local development. Override with `--mcp-host` or set `MCP_URL` environment variable to test against different servers.
 
 ### 4. Real Agent CLI Testing
+
 Use the agent CLI harness when you need to verify behavior through the actual Claude Code or Codex client, not just the MCP test client.
 
 ```bash
@@ -133,6 +144,7 @@ Use the agent CLI harness when you need to verify behavior through the actual Cl
 ```
 
 This harness:
+
 - Uses the real local CLI session for the selected provider
 - Checks the configured MCP server entry before running the prompt
 - Runs a real authenticated-user smoke prompt and verifies the final response contains an authenticated email
@@ -142,6 +154,7 @@ Use `--setup repo --server sentry` to target the hosted server instead of the lo
 Because real clients launch stdio servers non-interactively, first-run device-code auth does not start inside Claude or Codex. Warm that cache from a real TTY first:
 
 ```bash
+
 ```
 
 When the harness fails, rerun the provider directly with debug enabled so you can inspect the exact MCP startup failure:
@@ -168,9 +181,9 @@ describe("tool_name", () => {
   it("returns formatted output", async () => {
     const result = await TOOL_HANDLERS.tool_name(mockContext, {
       organizationSlug: "test-org",
-      param: "value"
+      param: "value",
     });
-    
+
     expect(result).toMatchInlineSnapshot(`
       "# Expected Output
       
@@ -186,20 +199,19 @@ describe("tool_name", () => {
 
 ```typescript
 it("validates required parameters", async () => {
-  await expect(
-    TOOL_HANDLERS.tool_name(mockContext, {})
-  ).rejects.toThrow(UserInputError);
+  await expect(TOOL_HANDLERS.tool_name(mockContext, {})).rejects.toThrow(
+    UserInputError,
+  );
 });
 
 it("handles API errors gracefully", async () => {
   server.use(
-    http.get("*/api/0/issues/*", () => 
-      HttpResponse.json({ detail: "Not found" }, { status: 404 })
-    )
+    http.get("*/api/0/issues/*", () =>
+      HttpResponse.json({ detail: "Not found" }, { status: 404 }),
+    ),
   );
-  
-  await expect(handler(mockContext, params))
-    .rejects.toThrow("Issue not found");
+
+  await expect(handler(mockContext, params)).rejects.toThrow("Issue not found");
 });
 ```
 
@@ -212,12 +224,14 @@ See [../contributing/api-patterns.md](../contributing/api-patterns.md) for MSW m
 ### When to Use Snapshots
 
 Use inline snapshots for:
+
 - Tool output formatting
 - Error message text
 - Markdown responses
 - JSON structure validation
 
 For MCP tools specifically:
+
 - Every tool test suite must include at least one representative successful call
   that snapshots the full handler response.
 - Use targeted substring assertions only for additional branch-specific checks,
@@ -267,13 +281,13 @@ describeEval("tool-name", {
   data: async () => [
     {
       input: "Natural language request",
-      expected: "Expected response content"
-    }
+      expected: "Expected response content",
+    },
   ],
-  task: TaskRunner(),      // Uses AI to call tools
+  task: TaskRunner(), // Uses AI to call tools
   scorers: [Factuality()], // Validates output
   threshold: 0.6,
-  timeout: 30000
+  timeout: 30000,
 });
 ```
 
@@ -298,7 +312,7 @@ import { issueFixture } from "@sentry-mcp/mocks";
 const customIssue = {
   ...issueFixture,
   status: "resolved",
-  id: "CUSTOM-123"
+  id: "CUSTOM-123",
 };
 ```
 
@@ -310,7 +324,7 @@ function createTestIssues(count: number) {
   return Array.from({ length: count }, (_, i) => ({
     ...issueFixture,
     id: `TEST-${i}`,
-    title: `Test Issue ${i}`
+    title: `Test Issue ${i}`,
   }));
 }
 ```
@@ -320,12 +334,16 @@ function createTestIssues(count: number) {
 ### Timeout Configuration
 
 ```typescript
-it("handles large datasets", async () => {
-  const largeDataset = createTestIssues(1000);
-  
-  const result = await handler(mockContext, params);
-  expect(result).toBeDefined();
-}, { timeout: 10000 }); // 10 second timeout
+it(
+  "handles large datasets",
+  async () => {
+    const largeDataset = createTestIssues(1000);
+
+    const result = await handler(mockContext, params);
+    expect(result).toBeDefined();
+  },
+  { timeout: 10000 },
+); // 10 second timeout
 ```
 
 ### Memory Testing
@@ -333,9 +351,9 @@ it("handles large datasets", async () => {
 ```typescript
 it("streams large responses efficiently", async () => {
   const initialMemory = process.memoryUsage().heapUsed;
-  
+
   await processLargeDataset();
-  
+
   const memoryIncrease = process.memoryUsage().heapUsed - initialMemory;
   expect(memoryIncrease).toBeLessThan(50 * 1024 * 1024); // < 50MB
 });
@@ -353,11 +371,13 @@ for mock setup.
 ## CI/CD Integration
 
 Tests run automatically on:
+
 - Pull requests
 - Main branch commits
 - Pre-release checks
 
 Coverage requirements:
+
 - Statements: 80%
 - Branches: 75%
 - Functions: 80%

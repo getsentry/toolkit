@@ -124,12 +124,13 @@ export async function runMcpServer(
   // Resolve access token before starting the transport.
   // For sentry.io without a token, this blocks on device code flow —
   // the client won't connect until the user has authenticated.
-  const cfg = await (options.resolveAccessToken
-    ? options.resolveAccessToken(partialCfg).then((accessToken) => ({
-        ...partialCfg,
-        accessToken,
-      }))
-    : resolveAccessToken(partialCfg)
+  const cfg = await (
+    options.resolveAccessToken
+      ? options.resolveAccessToken(partialCfg).then((accessToken) => ({
+          ...partialCfg,
+          accessToken,
+        }))
+      : resolveAccessToken(partialCfg)
   ).catch((err) => {
     die(err);
   });

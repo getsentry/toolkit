@@ -7,13 +7,14 @@ This directory contains documentation for the Cloudflare-hosted web chat applica
 The Cloudflare chat application (`packages/mcp-cloudflare`) is a **separate web application** that demonstrates how to build a chat interface using MCP. It is not part of the MCP protocol or server itself.
 
 Think of it as:
+
 - **MCP Server**: The backend service that provides Sentry functionality via the Model Context Protocol
 - **Cloudflare Chat**: A frontend web app (like ChatGPT) that connects to and uses the MCP server
 
 ## What This Application Provides
 
 - Web-based chat UI with OAuth authentication
-- AI-powered assistant using OpenAI's GPT-4  
+- AI-powered assistant using OpenAI's GPT-4
 - Integration with Sentry MCP tools via HTTP transport
 - Cloudflare Workers deployment for global edge hosting
 

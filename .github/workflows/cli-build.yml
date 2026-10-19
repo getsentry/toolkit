@@ -182,7 +182,7 @@ jobs:
           version: ${{ needs.nightly-version.outputs.version }}
           registry: ghcr.io
           repo: getsentry/toolkit
-          binary-glob: 'sentry-*'
+          binary-glob: "sentry-*"
           new-binaries-dir: new-binaries
           new-gz-dir: new-binaries
           patches-dir: patches
@@ -232,7 +232,7 @@ jobs:
           version: ${{ needs.nightly-version.outputs.version }}
           registry: ghcr.io
           repo: getsentry/toolkit
-          binary-glob: 'sentry-*'
+          binary-glob: "sentry-*"
           artifacts-dir: artifacts
           binaries-dir: binaries
           patches-dir: patches
