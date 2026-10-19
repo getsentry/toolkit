@@ -926,6 +926,20 @@ export function hasStoredAccountForHost(url: string): boolean {
 }
 
 /**
+ * Whether any account is stored, logged in or not. A pasted SaaS URL then
+ * pins the server to SaaS so the URL can never route to a self-hosted
+ * account (see `applySentryUrlContext`).
+ */
+export function hasStoredAccounts(): boolean {
+  try {
+    return listAccountRows().length > 0;
+  } catch (error) {
+    log.debug("Could not read stored accounts", error);
+    return false;
+  }
+}
+
+/**
  * Whether any stored account can authenticate. The command auth guard
  * defers to it when the account in effect cannot: the command's target (an
  * organization, a pasted URL) may still select that stored account, and a

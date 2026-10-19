@@ -498,6 +498,37 @@ describe("pasted Sentry URLs", () => {
     expect(getAuthToken()).toBe("saas-token");
   });
 
+  test("a SaaS URL never routes to a self-hosted account when the SaaS login is logged out", () => {
+    login("acme-token", ACME, "acme");
+    seeOrg("shared", ACME);
+    const saas = login("saas-token", SAAS, "saas");
+    getDatabase()
+      .query("UPDATE accounts SET token = NULL WHERE account_id = ?")
+      .run(saas);
+
+    applySentryUrlContext("https://shared.sentry.io");
+    selectAccountForOrg("shared");
+
+    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(getAuthToken()).not.toBe("acme-token");
+  });
+
+  test("a SaaS URL never routes to a self-hosted account when no SaaS account is stored", () => {
+    const OTHER = "https://sentry.other.com";
+    login("other-token", OTHER, "other");
+    seeOrg("shared", OTHER);
+    login("acme-token", ACME, "acme");
+    seeOrgList(ACME, ["alpha"]);
+
+    applySentryUrlContext("https://shared.sentry.io");
+    selectAccountForOrg("shared");
+
+    // Pinned to SaaS: the self-hosted account that knows the slug is never
+    // picked; the active one stays and the SaaS host check refuses it.
+    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(getAuthToken()).toBe("acme-token");
+  });
+
   test("a SaaS URL never snapshots an env token's host", () => {
     login("saas-token", SAAS, "saas");
     process.env.SENTRY_AUTH_TOKEN = "env-token";
