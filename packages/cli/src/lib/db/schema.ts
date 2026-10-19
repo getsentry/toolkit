@@ -16,11 +16,12 @@ import { uuidv7 } from "uuidv7";
 import { getEnv } from "../env.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
+import { storedCredentialIdentity } from "./identity-hash.js";
 import type { Database } from "./sqlite.js";
 
 const _require = createRequire(import.meta.url);
 
-export const CURRENT_SCHEMA_VERSION = 18;
+export const CURRENT_SCHEMA_VERSION = 19;
 
 /** Environment variable to disable auto-repair */
 const NO_AUTO_REPAIR_ENV = "SENTRY_CLI_NO_AUTO_REPAIR";
@@ -197,6 +198,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
       org_role: { type: "TEXT", addedInVersion: 10 },
       region_url: { type: "TEXT", notNull: true },
       credential_identity: { type: "TEXT", notNull: true, addedInVersion: 17 },
+      account_id: { type: "TEXT", addedInVersion: 19 },
       source_origin: { type: "TEXT", notNull: true, addedInVersion: 17 },
       response_origin: { type: "TEXT", notNull: true, addedInVersion: 17 },
       updated_at: {
@@ -771,6 +773,29 @@ type LegacyUserRow = {
  * A NULL `host` (rows from before v16) is carried over as-is; the auth
  * layer backfills it lazily from the boot-time URL snapshot.
  */
+/** Tag cached org rows with the stored account whose credentials wrote them. */
+function backfillOrgRegionAccounts(db: Database): void {
+  if (!tableExists(db, "accounts")) {
+    return;
+  }
+  const accounts = db
+    .query("SELECT account_id, token, refresh_token FROM accounts")
+    .all() as {
+    account_id: string;
+    token: string | null;
+    refresh_token: string | null;
+  }[];
+  const update = db.query(
+    "UPDATE org_regions SET account_id = ? WHERE credential_identity = ? AND account_id IS NULL",
+  );
+  for (const account of accounts) {
+    const identity = storedCredentialIdentity(account);
+    if (identity) {
+      update.run(account.account_id, identity);
+    }
+  }
+}
+
 function migrateSingleAuthToAccounts(db: Database): void {
   db.exec(EXPECTED_TABLES.accounts as string);
 
@@ -976,6 +1001,15 @@ export function runMigrations(db: Database): void {
   // and `user_info` tables into `accounts`; the migrated login stays active.
   if (currentVersion < 18) {
     db.transaction(() => migrateSingleAuthToAccounts(db))();
+  }
+
+  // Migration 18 -> 19: Record which account each cached org belongs to, so
+  // commands targeting an org can use that account without a manual switch.
+  if (currentVersion < 19) {
+    db.transaction(() => {
+      addColumnIfMissing(db, "org_regions", "account_id", "TEXT");
+      backfillOrgRegionAccounts(db);
+    })();
   }
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {

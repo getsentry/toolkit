@@ -9,6 +9,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach } from "vitest";
 import {
+  resetAccountSelection,
   resetAuthRowCache,
   resetAuthTokenCache,
   resetHasStoredCredsCache,
@@ -118,6 +119,7 @@ export function useTestConfigDir(
     resetHasStoredCredsCache();
     resetIdentityFingerprintCache();
     resetTipsCache();
+    resetAccountSelection();
     dir = await createTestConfigDir(prefix, options);
     process.env[CONFIG_DIR_ENV_VAR] = dir;
   });
@@ -129,6 +131,7 @@ export function useTestConfigDir(
     resetHasStoredCredsCache();
     resetIdentityFingerprintCache();
     resetTipsCache();
+    resetAccountSelection();
     // Always restore the previous value — never delete.
     // Deleting process.env.SENTRY_CONFIG_DIR causes failures in test files
     // that load after this afterEach runs, because their module-level code

@@ -2,19 +2,33 @@
  * Authentication credential storage.
  *
  * Credentials live in the multi-row `accounts` table (see `accounts.ts`).
- * Every read and refresh here targets the single active account, so the
- * rest of the CLI keeps a one-credential view while users can store and
- * switch between several logins.
+ * Every read and refresh here targets one *effective* account, so the rest
+ * of the CLI keeps a one-credential view while users store several logins.
+ *
+ * The effective account is chosen per invocation, most specific first:
+ *   1. The invocation's default account, chosen because it knows the
+ *      targeted organization ({@link selectAccountForOrg}). Each invocation
+ *      chooses again, so different commands can use different accounts.
+ *   2. An account on the configured server (`SENTRY_HOST`/`SENTRY_URL`,
+ *      `--url`, a pasted Sentry URL, or `.sentryclirc`) when the active
+ *      account is on a different one.
+ *   3. The active account (`sentry auth login` / `sentry auth switch`).
  */
 
 import { normalizeAuthToken, trimAuthToken } from "../auth-header.js";
-import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
+import {
+  clearPersistedDefaultUrl,
+  DEFAULT_SENTRY_URL,
+  getConfiguredSentryUrl,
+  isPersistedDefaultUrlInEffect,
+  markPersistedDefaultUrl,
+} from "../constants.js";
 import { getEnv } from "../env.js";
 import {
   getBootConfiguredSentryUrl,
   getEnvTokenHost,
 } from "../env-token-host.js";
-import { ConfigError } from "../errors.js";
+import { AuthError, ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { withDbSpan } from "../telemetry.js";
@@ -22,13 +36,23 @@ import {
   type AccountRow,
   accountIdentity,
   activateAccountRow,
+  deleteAccountOrgRegions,
   deleteAccountRows,
   getAccountRow,
   getActiveAccountRow,
-  hashIdentity,
+  getMostRecentAccountRow,
+  hasCachedOrgList,
   insertActiveAccountRow,
+  isAccountOnServer,
+  isAccountRowUsable,
+  isSameServer,
   listAccountRows,
+  listAccountRowsByRecency,
+  listUsableAccountRowsByRecency,
+  listUsableAccountRowsForOrg,
 } from "./accounts.js";
+import { getAccountScope, resetAccountScopes } from "./account-scope.js";
+import { hashIdentity } from "./identity-hash.js";
 import { getDatabase } from "./index.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
 import { clearTrustedHostState } from "./regions.js";
@@ -47,9 +71,88 @@ type AuthRow = AccountRow;
 
 const log = logger.withTag("auth");
 
-/** Read the active account row. Returns `undefined` when none is active. */
+/** `SENTRY_HOST`/`SENTRY_URL`, or `undefined` when unset or malformed. */
+function getConfiguredUrlOrUndefined(): string | undefined {
+  try {
+    return getConfiguredSentryUrl();
+  } catch (error) {
+    // Malformed values surface where requests are built; selection ignores them.
+    log.debug(
+      "Ignoring invalid SENTRY_HOST/SENTRY_URL for account selection",
+      error,
+    );
+    return;
+  }
+}
+
+/**
+ * The server the user chose explicitly (`SENTRY_HOST`/`SENTRY_URL`, `--url`,
+ * `.sentryclirc`, a pasted URL), as opposed to the persisted default URL
+ * (`defaults.url`, applied at startup), which yields to account selection.
+ */
+function getExplicitServerUrl(): string | undefined {
+  const configured = getConfiguredUrlOrUndefined();
+  return configured && !isPersistedDefaultUrlInEffect()
+    ? configured
+    : undefined;
+}
+
+/** The most recently used usable stored account on `url`'s server. */
+function findUsableAccountOnServer(url: string): AuthRow | undefined {
+  // Same-server matching (origin normalization, `*.sentry.io` as one
+  // server) stays in TypeScript; SQL already filtered and ordered the rows.
+  return listUsableAccountRowsByRecency().find((row) =>
+    isAccountOnServer(row, url),
+  );
+}
+
+/**
+ * Prefer an account on the configured server when the active account is
+ * on another one. Without a configured server, or without a stored
+ * account for it, the active account stays in effect (and the host trust
+ * checks report the mismatch exactly as before).
+ */
+function selectAccountForConfiguredHost(
+  active: AuthRow | undefined,
+): AuthRow | undefined {
+  const configured = getConfiguredUrlOrUndefined();
+  if (!configured) {
+    return active;
+  }
+  // NULL host: pre-v16 row, scoped lazily by migrateNullHost. Keep it.
+  if (active && (!active.host || isAccountOnServer(active, configured))) {
+    return active;
+  }
+  return findUsableAccountOnServer(configured) ?? active;
+}
+
+/**
+ * The effective account row for credential reads: the invocation's default
+ * account, else one on the configured server, else the active one.
+ * Account management (switch, logout) uses the stored active row directly.
+ */
 function getAuthRow(): AuthRow | undefined {
-  return getActiveAccountRow();
+  const defaultAccountId = getAccountScope().accountId;
+  if (defaultAccountId) {
+    const row = getAccountRow(defaultAccountId);
+    if (row) {
+      return row;
+    }
+  }
+  return selectAccountForConfiguredHost(getActiveAccountRow());
+}
+
+/** The stored account whose credentials this invocation uses, if any. */
+export function getEffectiveAccountRow(): AccountRow | undefined {
+  return getAuthRow();
+}
+
+/**
+ * Key for memoized credential state. The effective account depends on the
+ * invocation's default account and configured server, so the memo must too.
+ */
+function selectionKey(): string {
+  return `${getAccountScope().accountId ?? ""}\0${getConfiguredUrlOrUndefined() ?? ""}`;
 }
 
 /**
@@ -95,7 +198,7 @@ function migrateNullHost(row: AuthRow): string {
  * URL at a concrete server instead of keeping a previous account's.
  */
 function backfillActiveNullHost(): void {
-  const row = getAuthRow();
+  const row = getActiveAccountRow();
   if (row && !row.host) {
     migrateNullHost(row);
   }
@@ -320,9 +423,25 @@ export function getUsableStoredTokenHost(): string | undefined {
 }
 
 const authCacheState = {
-  tokens: new WeakMap<NodeJS.ProcessEnv, { value: string | undefined }>(),
-  fingerprints: new WeakMap<NodeJS.ProcessEnv, string>(),
+  tokens: new WeakMap<
+    NodeJS.ProcessEnv,
+    Map<string, { value: string | undefined }>
+  >(),
+  fingerprints: new WeakMap<NodeJS.ProcessEnv, Map<string, string>>(),
 };
+
+/** The per-env, per-selection memo map in `store`, created on first use. */
+function memoFor<T>(
+  store: WeakMap<NodeJS.ProcessEnv, Map<string, T>>,
+): Map<string, T> {
+  const env = getEnv();
+  let memo = store.get(env);
+  if (!memo) {
+    memo = new Map();
+    store.set(env, memo);
+  }
+  return memo;
+}
 
 /**
  * Get the active auth token.
@@ -331,13 +450,14 @@ const authCacheState = {
  * With `SENTRY_FORCE_ENV_TOKEN=1`: checks env vars first (old behavior).
  */
 export function getAuthToken(): string | undefined {
-  const env = getEnv();
-  const cached = authCacheState.tokens.get(env);
+  const memo = memoFor(authCacheState.tokens);
+  const key = selectionKey();
+  const cached = memo.get(key);
   if (cached !== undefined) {
     return cached.value;
   }
   const value = computeAuthToken();
-  authCacheState.tokens.set(env, { value });
+  memo.set(key, { value });
   return value;
 }
 
@@ -380,29 +500,42 @@ export function resetAuthTokenCache(): void {
   authCacheState.tokens = new WeakMap();
 }
 
-/** Memoized result for {@link hasStoredAuthCredentials}. */
-let cachedHasStoredCreds: { value: boolean } | undefined;
+/** Memoized results for {@link hasStoredAuthCredentials}, by selection. */
+const cachedHasStoredCreds = new Map<string, boolean>();
 
-/** Memoized full auth row for {@link refreshToken}. */
-let cachedAuthRow: { value: AuthRow | undefined } | undefined;
+/** Memoized effective auth rows for {@link refreshToken}, by selection. */
+const cachedAuthRows = new Map<string, { value: AuthRow | undefined }>();
 
 function getCachedAuthRow(): AuthRow | undefined {
-  if (cachedAuthRow !== undefined) {
-    return cachedAuthRow.value;
+  const key = selectionKey();
+  const cached = cachedAuthRows.get(key);
+  if (cached !== undefined) {
+    return cached.value;
   }
   const row = getAuthRow();
-  cachedAuthRow = { value: row };
+  cachedAuthRows.set(key, { value: row });
   return row;
 }
 
 /** Reset the memoized auth row. Tests only — call between auth-state mutations. */
 export function resetAuthRowCache(): void {
-  cachedAuthRow = undefined;
+  cachedAuthRows.clear();
 }
 
 /** Reset the memoized stored-credentials flag. Tests only — call between auth-state mutations. */
 export function resetHasStoredCredsCache(): void {
-  cachedHasStoredCreds = undefined;
+  cachedHasStoredCreds.clear();
+}
+
+/**
+ * Forget default accounts chosen by {@link selectAccountForOrg}. Tests only:
+ * in the CLI the choice lasts for the invocation, and library calls get a
+ * fresh env.
+ */
+export function resetAccountSelection(): void {
+  resetAccountScopes();
+  clearPersistedDefaultUrl();
+  resetActiveCredentialState();
 }
 
 /**
@@ -417,10 +550,16 @@ export function resetHasStoredCredsCache(): void {
  *   flows set this so earlier logins stay available to `sentry auth switch`.
  *   Recording user info afterwards ({@link setUserInfo}) folds a re-login to
  *   the same user on the same host into one account.
+ * @property accountId - Re-authorize this stored account in place instead
+ *   of the active one: scope recovery for the account an invocation picked
+ *   for its target org (see {@link getReauthorizationAccountId}). It stays
+ *   in effect for the rest of the invocation; the stored active account is
+ *   unchanged. Must be on `host`'s server.
  */
 export type SetAuthTokenOptions = {
   host?: string;
   newAccount?: boolean;
+  accountId?: string;
 };
 
 /** Drop all memoized active-credential state after an account mutation. */
@@ -443,13 +582,28 @@ export function setAuthToken(
   options?: SetAuthTokenOptions,
 ): string {
   const normalizedToken = normalizeAuthToken(token);
+  const reauthorizeId = options?.accountId;
+  if (!reauthorizeId) {
+    // A login, not a refresh: it targets the stored active account (or a
+    // new one), never the account this invocation picked for its target
+    // org, and the new credentials are what the rest of the invocation uses.
+    getAccountScope().accountId = undefined;
+  }
   const accountId = withDbSpan("setAuthToken", () => {
     const db = getDatabase();
     const now = Date.now();
     const expiresAt = expiresIn ? now + expiresIn * 1000 : null;
     const issuedAt = expiresIn ? now : null;
 
-    const existing = options?.newAccount ? undefined : getAuthRow();
+    // Replacing credentials in place targets the stored login for the
+    // login's server — never an account on another server, whatever
+    // SENTRY_HOST or `.sentryclirc` says. With none there, a new account.
+    // Re-authorizing a specific account targets exactly that account.
+    const existing = reauthorizeId
+      ? findAccountToReauthorize(reauthorizeId, options?.host)
+      : options?.newAccount
+        ? undefined
+        : findAccountToReplace(options?.host);
     // Host resolution precedence:
     //   1. Explicit `options.host` (login command, tests)
     //   2. Existing row's `host` (refresh flow preserves the original scope)
@@ -488,12 +642,97 @@ export function setAuthToken(
       now,
       existing.account_id,
     );
+    if (existing.is_active !== 1 && !reauthorizeId) {
+      // Logging in to another server's stored account makes it active,
+      // like adding an account does; it is a different identity.
+      backfillActiveNullHost();
+      clearUnscopedIdentityCaches();
+      activateAccountRow(existing.account_id);
+    }
     return existing.account_id;
   });
   // Active credential changed — drop memoized fingerprint, token, row, and
   // stored-credentials flag so the next read reflects the new row.
   resetActiveCredentialState();
   return accountId;
+}
+
+/**
+ * The stored account a login to `host` replaces in place (`sentry auth
+ * login --force`, automatic re-login): the active account when it is on
+ * that server, else the most recently used account on it. Accounts are
+ * tied to their server, so a login never overwrites another server's
+ * account; `undefined` when no stored account is on `host` (the login is
+ * then stored as a new account). Without a host (credential updates that
+ * keep the existing scope), the active account.
+ */
+function findAccountToReplace(host: string | undefined): AuthRow | undefined {
+  const active = getActiveAccountRow();
+  if (!host) {
+    return active;
+  }
+  const loginHost = normalizeCredentialHost(host);
+  if (
+    active &&
+    isSameServer(active.host ?? migrateNullHost(active), loginHost)
+  ) {
+    return active;
+  }
+  return listAccountRowsByRecency().find((row) =>
+    isAccountOnServer(row, loginHost),
+  );
+}
+
+/**
+ * The stored account {@link setAuthToken} re-authorizes for `accountId`.
+ *
+ * @throws {AuthError} when it is gone or on another server than the login,
+ *   so the new credentials are never stored under a different account
+ */
+function findAccountToReauthorize(
+  accountId: string,
+  host: string | undefined,
+): AuthRow {
+  const row = getAccountRow(accountId);
+  if (row && (!host || isAccountOnServer(row, normalizeCredentialHost(host)))) {
+    return row;
+  }
+  throw new AuthError(
+    "not_authenticated",
+    "The account being re-authorized is no longer stored for this server. Nothing was saved.",
+    { skipAutoAuth: true },
+  );
+}
+
+/**
+ * The account a 401/403 re-authorization must target: the one this
+ * invocation picked for its target org ({@link selectAccountForOrg}) when
+ * it isn't the stored active account. A plain login would replace the
+ * active account and leave the picked one's old grant in place, so the
+ * retried command would pick it again and fail the same way. `undefined`
+ * when the active account (or no stored account) is in effect.
+ */
+export function getReauthorizationAccountId(): string | undefined {
+  const accountId = getAccountScope().accountId;
+  if (!accountId) {
+    return;
+  }
+  try {
+    const row = getAccountRow(accountId);
+    return row && row.is_active !== 1 ? accountId : undefined;
+  } catch (error) {
+    log.debug("Could not read the invocation's account", error);
+    return;
+  }
+}
+
+/**
+ * Id of the stored account a login to `host` replaces (see
+ * {@link findAccountToReplace}), or `undefined` when it adds one.
+ */
+export function getAccountIdToReplace(host: string): string | undefined {
+  return withDbSpan("getAccountIdToReplace", () => findAccountToReplace(host))
+    ?.account_id;
 }
 
 /**
@@ -535,7 +774,7 @@ export async function clearAuth(): Promise<void> {
 
 /** The active stored account's id, or `undefined` when none is active. */
 export function getActiveAccountId(): string | undefined {
-  return getAuthRow()?.account_id;
+  return getActiveAccountRow()?.account_id;
 }
 
 /**
@@ -549,7 +788,7 @@ export function setActiveAccount(accountId: string): void {
     if (!getAccountRow(accountId)) {
       throw new ConfigError(`No stored account with id '${accountId}'.`);
     }
-    if (getAuthRow()?.account_id === accountId) {
+    if (getActiveAccountRow()?.account_id === accountId) {
       return;
     }
     backfillActiveNullHost();
@@ -574,19 +813,17 @@ export async function removeAccount(
   const nextActive = withDbSpan("removeAccount", () => {
     const row = getAccountRow(accountId);
     if (!row) {
-      return getAuthRow()?.account_id;
+      return getActiveAccountRow()?.account_id;
     }
     deleteAccountRows([row]);
     if (row.is_active !== 1) {
-      return getAuthRow()?.account_id;
+      return getActiveAccountRow()?.account_id;
     }
     clearUnscopedIdentityCaches();
     if (!options.promoteNext) {
       return;
     }
-    const [next] = listAccountRows().sort(
-      (a, b) => b.last_used_at - a.last_used_at || b.updated_at - a.updated_at,
-    );
+    const next = getMostRecentAccountRow();
     if (next) {
       activateAccountRow(next.account_id);
       backfillActiveNullHost();
@@ -611,12 +848,7 @@ async function invalidateAccountCredentials(accountId: string): Promise<void> {
       return;
     }
     const db = getDatabase();
-    const identity = accountIdentity(row);
-    if (identity) {
-      db.query("DELETE FROM org_regions WHERE credential_identity = ?").run(
-        identity,
-      );
-    }
+    deleteAccountOrgRegions(row);
     db.query(
       "UPDATE accounts SET token = NULL, refresh_token = NULL, expires_at = NULL, issued_at = NULL, updated_at = ? WHERE account_id = ?",
     ).run(Date.now(), accountId);
@@ -624,6 +856,167 @@ async function invalidateAccountCredentials(accountId: string): Promise<void> {
   });
   resetActiveCredentialState();
   await clearResponseCacheBestEffort();
+}
+
+/**
+ * Point the invocation's server at its newly chosen default account, but only when
+ * no server was chosen explicitly: an unset URL or the persisted default
+ * (`defaults.url`, applied at startup) yields to the account's own host.
+ */
+function followDefaultAccountHost(host: string): void {
+  if (getExplicitServerUrl()) {
+    return;
+  }
+  if (isSameServer(getConfiguredUrlOrUndefined() ?? DEFAULT_SENTRY_URL, host)) {
+    return;
+  }
+  getEnv().SENTRY_URL = host;
+  markPersistedDefaultUrl(host);
+}
+
+/**
+ * Use the stored account that knows `orgSlug` (or numeric `orgId`) for the
+ * rest of this invocation, so commands targeting another login's
+ * organization work without `sentry auth switch`.
+ *
+ * No-op when the effective account knows the org, or is the active account
+ * and has no cached org list to rule it out, when no stored account knows it, or when an earlier
+ * org already chose the invocation's default account — one invocation
+ * never mixes identities. An explicit server (`SENTRY_HOST`/`SENTRY_URL`,
+ * `--url`, `.sentryclirc`) limits candidates to accounts on it; when several
+ * accounts qualify, the most recently used wins. Forced env tokens (`SENTRY_FORCE_ENV_TOKEN`) are never overridden.
+ */
+export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
+  if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim() && getRawEnvToken()) {
+    return;
+  }
+  const scope = getAccountScope();
+  if (scope.accountId) {
+    return;
+  }
+  try {
+    // Usable accounts that know the org, most recently used first.
+    const owners = listUsableAccountRowsForOrg(orgSlug, orgId);
+    if (owners.length === 0) {
+      return;
+    }
+    const current = getAuthRow();
+    // Respect the active account unless its fresh cached org list shows it
+    // is not a member: after `sentry auth switch`, an account that simply
+    // hasn't used the org yet must not be overridden by one that has. That
+    // deference is for the user's choice only: an account the configured
+    // server picked by recency yields to one on it that knows the org. An
+    // account that can no longer authenticate (credentials invalidated or
+    // expired) is never kept over an owner that can.
+    if (
+      current &&
+      (owners.some((o) => o.account_id === current.account_id) ||
+        (current.is_active === 1 &&
+          isAccountRowUsable(current) &&
+          !hasCachedOrgList(current.account_id)))
+    ) {
+      return;
+    }
+    const explicitHost = getExplicitServerUrl();
+    const candidates = explicitHost
+      ? owners.filter((o) => isAccountOnServer(o, explicitHost))
+      : owners;
+    const pick = candidates[0];
+    if (!pick?.host) {
+      return;
+    }
+    scope.accountId = pick.account_id;
+    followDefaultAccountHost(pick.host);
+    log.debug(
+      `Using stored account ${pick.account_id} (${pick.host}) for organization '${orgSlug}'`,
+    );
+  } catch (error) {
+    // Best-effort: the active account stays in effect.
+    log.debug("Could not select an account for the organization", error);
+  }
+}
+
+/**
+ * The stored account whose credentials hash to `identity` (following
+ * in-process refresh-token rotations), so cached org data can record which
+ * account it belongs to. `undefined` for env tokens and unknown identities.
+ */
+export function getAccountIdForIdentity(identity: string): string | undefined {
+  try {
+    const match = listAccountRows().find((row) => {
+      const rowIdentity = accountIdentity(row);
+      if (!rowIdentity) {
+        return false;
+      }
+      if (rowIdentity === identity) {
+        return true;
+      }
+      const host = row.host ? normalizeHttpOrigin(row.host) : undefined;
+      return (
+        host !== undefined &&
+        matchesRefreshIdentity(host, identity, rowIdentity)
+      );
+    });
+    return match?.account_id;
+  } catch (error) {
+    // The mapping is an optimization; a miss just skips recording it.
+    log.debug("Could not map credential identity to an account", error);
+    return;
+  }
+}
+
+/**
+ * Whether a usable stored account is on `url`'s server. Lets a pasted
+ * Sentry URL for another login's server select that login instead of
+ * failing the host check against the active account.
+ */
+/**
+ * Whether a usable stored account is on `url`'s server. Lets a pasted
+ * Sentry URL for another login's server select that login instead of
+ * failing the host check against the active account.
+ */
+export function hasStoredAccountForHost(url: string): boolean {
+  try {
+    return findUsableAccountOnServer(url) !== undefined;
+  } catch (error) {
+    log.debug("Could not read stored accounts", error);
+    return false;
+  }
+}
+
+/**
+ * Whether a pasted SaaS URL must pin the server to SaaS. With a SaaS account
+ * stored (logged in or not), or accounts on several servers, org-based
+ * account selection could otherwise route the URL to a self-hosted account
+ * that shares the org slug or id. A single non-SaaS login keeps the
+ * single-account behavior: its own server serves the request.
+ */
+export function shouldPinSaaSForPastedUrl(): boolean {
+  try {
+    const rows = listAccountRows();
+    return (
+      rows.length > 1 ||
+      rows.some((row) => isAccountOnServer(row, DEFAULT_SENTRY_URL))
+    );
+  } catch (error) {
+    log.debug("Could not read stored accounts", error);
+    return false;
+  }
+}
+
+/**
+ * Whether any stored account can authenticate. The command auth guard
+ * defers to it when the account in effect cannot: the command's target (an
+ * organization, a pasted URL) may still select that stored account, and a
+ * request without one fails with `AuthError` when it is made.
+ */
+export function hasUsableStoredAccount(): boolean {
+  try {
+    return listUsableAccountRowsByRecency().length > 0;
+  } catch (error) {
+    log.debug("Could not read stored accounts", error);
+    return false;
+  }
 }
 
 export function isAuthenticated(): boolean {
@@ -650,13 +1043,14 @@ export const ANON_IDENTITY = "<anon>";
  * {@link resetIdentityFingerprintCache}.
  */
 export function getIdentityFingerprint(): string {
-  const env = getEnv();
-  const cached = authCacheState.fingerprints.get(env);
+  const memo = memoFor(authCacheState.fingerprints);
+  const key = selectionKey();
+  const cached = memo.get(key);
   if (cached !== undefined) {
     return cached;
   }
   const fingerprint = computeIdentityFingerprint();
-  authCacheState.fingerprints.set(env, fingerprint);
+  memo.set(key, fingerprint);
   return fingerprint;
 }
 
@@ -769,8 +1163,10 @@ export function getActiveAuthHost(): string | undefined {
  * when an env token is present.
  */
 export function hasStoredAuthCredentials(): boolean {
-  if (cachedHasStoredCreds !== undefined) {
-    return cachedHasStoredCreds.value;
+  const key = selectionKey();
+  const cached = cachedHasStoredCreds.get(key);
+  if (cached !== undefined) {
+    return cached;
   }
   const row = getAuthRow();
   let result = false;
@@ -783,7 +1179,7 @@ export function hasStoredAuthCredentials(): boolean {
       result = !!row.refresh_token;
     }
   }
-  cachedHasStoredCreds = { value: result };
+  cachedHasStoredCreds.set(key, result);
   return result;
 }
 

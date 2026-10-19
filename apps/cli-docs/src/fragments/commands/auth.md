@@ -67,7 +67,8 @@ account, or a SaaS and a self-hosted login. When you're already logged in,
 `sentry auth login` asks whether to add another account and makes it active;
 logging in again as the same user on the same server replaces that account's
 credentials instead of adding a duplicate. `--force` skips the prompt and
-replaces the active account's login instead.
+replaces the stored login for that server instead (or adds one when that
+server has none); accounts on other servers are never replaced.
 
 ```bash
 # Add (or log in again to) a specific account without prompting
@@ -91,6 +92,30 @@ Select an account by email, username, user ID, or account ID (from
 `sentry auth switch jane` picks `jane@example.com` with a warning when it's the
 only candidate. If the same email is stored on several servers, add `--url`:
 `sentry auth switch jane@example.com --url https://sentry.example.com`.
+
+Most of the time you don't need to switch: commands pick the stored account
+that fits what they target, without changing the active account:
+
+- **Organization** — when the target organization isn't in the active
+  account's organization list (cached at login and by `sentry org list`) but
+  another stored account has used it, that account is used. This includes
+  `oNNNN` IDs from DSNs.
+- **Server** — `SENTRY_HOST`/`SENTRY_URL`, `.sentryclirc`, or a pasted Sentry
+  URL for another account's server (for example a self-hosted issue link) uses
+  the account stored for that server.
+
+```bash
+# Active account is personal; this uses the work account that knows acme-corp
+sentry issue list acme-corp/
+
+# Uses the self-hosted account without switching
+sentry issue view https://sentry.example.com/organizations/acme/issues/123/
+```
+
+Otherwise the active account is used. One command never mixes accounts; when
+several other accounts know the organization, the most recently used wins.
+This works even when the active account is logged out: the target can still
+pick a stored account that can authenticate.
 
 Switching also points the default URL (`sentry cli defaults url`) at the
 account's server. `SENTRY_HOST`/`SENTRY_URL` and `SENTRY_AUTH_TOKEN` (with

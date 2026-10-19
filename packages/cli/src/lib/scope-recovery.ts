@@ -1,14 +1,23 @@
 import { isatty } from "node:tty";
 import { getCurrentAuthScopes } from "./api/auth.js";
 import { assertAutoLoginHostTrusted } from "./auto-auth.js";
-import { type AuthSource, getAuthConfig } from "./db/auth.js";
+import {
+  type AuthSource,
+  getAuthConfig,
+  getReauthorizationAccountId,
+} from "./db/auth.js";
 import { ApiError, AuthError } from "./errors.js";
-import type { LoginResult } from "./interactive-login.js";
+import type {
+  InteractiveLoginOptions,
+  LoginResult,
+} from "./interactive-login.js";
 import { interactivePromptsAllowed } from "./interactive-prompts.js";
 import { logger } from "./logger.js";
 import { OAUTH_SCOPES } from "./oauth.js";
 
-type InteractiveLogin = () => Promise<LoginResult | null>;
+type InteractiveLogin = (
+  options?: InteractiveLoginOptions,
+) => Promise<LoginResult | null>;
 
 type OAuthScopeState =
   | { kind: "current" }
@@ -22,6 +31,12 @@ export type ScopeRecoveryRuntime = {
   inputIsTty: () => boolean;
   promptsAllowed: () => boolean;
   write: (message: string) => void;
+  /**
+   * The stored account to re-authorize when it isn't the active one (the
+   * account the invocation picked for its target org). Optional so test
+   * runtimes default to re-authorizing the active account.
+   */
+  getReauthorizationAccountId?: () => string | undefined;
 };
 
 const defaultRuntime: ScopeRecoveryRuntime = {
@@ -31,7 +46,22 @@ const defaultRuntime: ScopeRecoveryRuntime = {
   inputIsTty: () => isatty(0),
   promptsAllowed: interactivePromptsAllowed,
   write: (message) => process.stderr.write(message),
+  getReauthorizationAccountId,
 };
+
+/**
+ * Run the login that re-authorizes the account in effect. When that is an
+ * account the invocation picked for its target org, the new grant must
+ * replace that account's credentials: a plain login replaces the active
+ * account, so the retried command would pick the unchanged account again.
+ */
+function reauthorize(
+  runInteractiveLogin: InteractiveLogin,
+  runtime: ScopeRecoveryRuntime,
+): Promise<LoginResult | null> {
+  const accountId = runtime.getReauthorizationAccountId?.();
+  return accountId ? runInteractiveLogin({ accountId }) : runInteractiveLogin();
+}
 
 async function inspectOAuthScopes(
   runtime: ScopeRecoveryRuntime,
@@ -133,7 +163,7 @@ async function refreshOAuthScopes(
       "Your CLI authorization is no longer valid. Starting authorization...\n\n",
     );
   }
-  return Boolean(await runInteractiveLogin());
+  return Boolean(await reauthorize(runInteractiveLogin, runtime));
 }
 
 /** Refresh a stored OAuth grant when it lacks any scope requested by this CLI. */
@@ -206,7 +236,9 @@ export async function ensureScopesForAction(
   runtime.write(
     `${action} needs elevated permissions (${missing.join(", ")}). Starting authorization...\n\n`,
   );
-  return (await runInteractiveLogin()) ? "elevated" : "declined";
+  return (await reauthorize(runInteractiveLogin, runtime))
+    ? "elevated"
+    : "declined";
 }
 
 /** Check an OAuth token after a 401/403, re-authorize if needed, and retry once. */

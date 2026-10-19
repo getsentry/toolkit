@@ -9,7 +9,15 @@
  */
 
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
-import { DEFAULT_SENTRY_HOST } from "./constants.js";
+import {
+  clearPersistedDefaultUrl,
+  DEFAULT_SENTRY_HOST,
+  DEFAULT_SENTRY_URL,
+} from "./constants.js";
+import {
+  hasStoredAccountForHost,
+  shouldPinSaaSForPastedUrl,
+} from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { HostScopeError } from "./errors.js";
 import { tryNormalizeHexId } from "./hex-id.js";
@@ -421,11 +429,32 @@ export function applySentryUrlContext(baseUrl: string): void {
     delete env.SENTRY_HOST;
     // env registry requires delete to truly unset; assignment coerces to string in Node.js
     delete env.SENTRY_URL;
+    // Pin the server to SaaS explicitly when other stored accounts could
+    // claim the URL (see `shouldPinSaaSForPastedUrl`): a usable SaaS account
+    // is used even when the active one is self-hosted (db/auth `getAuthRow`),
+    // and org-based selection only considers SaaS accounts, so the URL can't
+    // route to a self-hosted account sharing the org slug or id — even when
+    // the SaaS login is logged out (the request then fails to authenticate).
+    // Checks stored accounts only: reading the active token host would
+    // snapshot an env token's host (as SaaS, now that the URL is cleared).
+    if (shouldPinSaaSForPastedUrl()) {
+      env.SENTRY_URL = DEFAULT_SENTRY_URL;
+      // The pin is the user's choice even when `defaults.url` is already
+      // SaaS: otherwise it would still read as the persisted default, which
+      // org-based selection lets yield to a self-hosted account.
+      clearPersistedDefaultUrl();
+    }
     return;
   }
 
+  // A stored account on this server is used for it (see db/auth `getAuthRow`).
   const tokenHost = getActiveTokenHost();
-  if (!(tokenHost && isHostTrusted(baseUrl, tokenHost))) {
+  if (
+    !(
+      (tokenHost && isHostTrusted(baseUrl, tokenHost)) ||
+      hasStoredAccountForHost(baseUrl)
+    )
+  ) {
     throw new HostScopeError("URL argument", baseUrl, tokenHost);
   }
 

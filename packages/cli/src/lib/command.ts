@@ -38,7 +38,7 @@ import {
 } from "@stricli/core";
 import type { Writer } from "../types/index.js";
 import { appendCacheHint } from "./cache-hint.js";
-import { getAuthConfig } from "./db/auth.js";
+import { getAuthConfig, hasUsableStoredAccount } from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { AuthError, CliError, OutputError } from "./errors.js";
 import { warning } from "./formatters/colors.js";
@@ -785,7 +785,9 @@ export function buildCommand<
     // `sentry issue list help`). Without this, the auth prompt would fire
     // before the help-recovery path could show the command's help text.
     try {
-      if (requiresAuth && !getAuthConfig()) {
+      // A usable stored account defers the check: the command's target may
+      // select it even when the account in effect is logged out.
+      if (requiresAuth && !getAuthConfig() && !hasUsableStoredAccount()) {
         throw new AuthError("not_authenticated");
       }
 
