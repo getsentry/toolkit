@@ -66,6 +66,8 @@ Read it alongside `validationIssues`; another field may have failed.
 | `app.upstream.host` | configured Sentry host | tags, spans | host-specific behavior |
 | `app.server.version` | MCP server package version | tags, spans | release/version behavior |
 | `app.utm_source` | sanitized `X-Sentry-Utm-Source` header or `utm_source` query param | spans | in-product / plugin attribution |
+| `app.plugin.name` | allow-listed `X-Sentry-Plugin` header, else `other` | metrics, spans | sentry-for-ai plugin distribution |
+| `app.plugin.version` | `X-Sentry-Plugin-Version` release version; `dev` for prereleases, else `other` | metrics, spans | sentry-for-ai plugin release |
 | `app.referrer.family` | low-cardinality bucket of the `Referer` host | spans | external traffic attribution |
 | `gen_ai.provider.name` | GenAI provider | spans, tags | provider-specific model behavior |
 | `gen_ai.request.model` | requested GenAI model | spans | model-specific behavior |

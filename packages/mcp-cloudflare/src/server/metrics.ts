@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/cloudflare";
 import {
   UTM_SOURCE_ATTRIBUTE,
+  resolvePluginAttributesFromRequest,
   resolveUtmSourceFromRequest,
 } from "./lib/attribution";
 import { resolveClientFamily } from "./lib/client-family";
@@ -96,6 +97,7 @@ function getMcpRequestAttributes(request: Request, url: URL) {
     clientFamily: resolveClientFamily(request.headers.get("user-agent")),
     experimentalMode: url.searchParams.get("experimental") === "1",
     utmSource: resolveUtmSourceFromRequest(request, url),
+    pluginAttributes: resolvePluginAttributesFromRequest(request),
   };
 }
 
@@ -141,6 +143,7 @@ function getMetricAttributes(
     if (mcpAttributes.utmSource) {
       attributes[UTM_SOURCE_ATTRIBUTE] = mcpAttributes.utmSource;
     }
+    Object.assign(attributes, mcpAttributes.pluginAttributes);
   }
 
   return attributes;
@@ -195,6 +198,7 @@ export function annotateTrackedRequestSpan(
     if (mcpAttributes.utmSource) {
       activeSpan.setAttribute(UTM_SOURCE_ATTRIBUTE, mcpAttributes.utmSource);
     }
+    activeSpan.setAttributes(mcpAttributes.pluginAttributes);
   }
 
   if (options?.responseReason) {

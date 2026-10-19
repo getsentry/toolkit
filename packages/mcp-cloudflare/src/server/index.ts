@@ -5,6 +5,7 @@ import { SCOPES } from "../constants";
 import app from "./app";
 import {
   UTM_SOURCE_ATTRIBUTE,
+  resolvePluginAttributesFromRequest,
   resolveUtmSourceFromRequest,
 } from "./lib/attribution";
 import { resolveClientFamily } from "./lib/client-family";
@@ -261,6 +262,7 @@ const wrappedOAuthProvider = {
       if (utmSource) {
         activeSpan?.setAttribute(UTM_SOURCE_ATTRIBUTE, utmSource);
       }
+      activeSpan?.setAttributes(resolvePluginAttributesFromRequest(request));
     }
 
     if (url.pathname.startsWith("/mcp")) {

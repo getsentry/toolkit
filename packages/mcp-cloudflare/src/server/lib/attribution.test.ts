@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  PLUGIN_NAME_ATTRIBUTE,
+  PLUGIN_NAME_HEADER,
+  PLUGIN_VERSION_ATTRIBUTE,
+  PLUGIN_VERSION_HEADER,
   UTM_SOURCE_ATTRIBUTE,
   UTM_SOURCE_HEADER,
+  resolvePluginAttributesFromRequest,
+  resolvePluginName,
+  resolvePluginVersion,
   resolveUtmSource,
   resolveUtmSourceFromRequest,
   resolveUtmSourceFromUrl,
@@ -85,5 +92,71 @@ describe("resolveUtmSourceFromRequest", () => {
     const url = new URL("https://mcp.sentry.dev/mcp?utm_source=plugin");
     const request = new Request("https://mcp.sentry.dev/mcp");
     expect(resolveUtmSourceFromRequest(request, url)).toBe("plugin");
+  });
+});
+
+describe("resolvePluginName", () => {
+  it.each([
+    ["claude", "claude"],
+    ["cursor", "cursor"],
+    ["codex", "codex"],
+    ["copilot", "copilot"],
+    ["grok", "grok"],
+    ["agent-plugin", "agent-plugin"],
+    ["Claude", "other"],
+    ["something-new", "other"],
+    ["", null],
+    [null, null],
+    [undefined, null],
+  ])("maps %s → %s", (input, expected) => {
+    expect(resolvePluginName(input)).toBe(expected);
+  });
+});
+
+describe("resolvePluginVersion", () => {
+  it.each([
+    ["1.4.5", "1.4.5"],
+    ["10.0.1234", "10.0.1234"],
+    ["1.4.6-dev.14.gdeadbee", "dev"],
+    ["1.4.6-rc.1", "dev"],
+    ["12345.0.0", "other"],
+    ["v1.4.5", "other"],
+    ["1.4", "other"],
+    ["1.4.5+build", "other"],
+    ["latest", "other"],
+    ["", null],
+    [null, null],
+    [undefined, null],
+  ])("maps %s → %s", (input, expected) => {
+    expect(resolvePluginVersion(input)).toBe(expected);
+  });
+});
+
+describe("resolvePluginAttributesFromRequest", () => {
+  it("resolves both plugin headers", () => {
+    const request = new Request("https://mcp.sentry.dev/mcp", {
+      headers: {
+        [PLUGIN_NAME_HEADER]: "claude",
+        [PLUGIN_VERSION_HEADER]: "1.4.5",
+      },
+    });
+    expect(resolvePluginAttributesFromRequest(request)).toEqual({
+      [PLUGIN_NAME_ATTRIBUTE]: "claude",
+      [PLUGIN_VERSION_ATTRIBUTE]: "1.4.5",
+    });
+  });
+
+  it("omits absent headers", () => {
+    const request = new Request("https://mcp.sentry.dev/mcp", {
+      headers: { [PLUGIN_NAME_HEADER]: "codex" },
+    });
+    expect(resolvePluginAttributesFromRequest(request)).toEqual({
+      [PLUGIN_NAME_ATTRIBUTE]: "codex",
+    });
+    expect(
+      resolvePluginAttributesFromRequest(
+        new Request("https://mcp.sentry.dev/mcp"),
+      ),
+    ).toEqual({});
   });
 });

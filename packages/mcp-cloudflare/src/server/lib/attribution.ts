@@ -63,3 +63,63 @@ export function resolveUtmSourceFromRequest(
   }
   return resolveUtmSourceFromUrl(url);
 }
+
+/** Headers sent by sentry-for-ai plugins to identify the distribution and release. */
+export const PLUGIN_NAME_HEADER = "X-Sentry-Plugin";
+export const PLUGIN_VERSION_HEADER = "X-Sentry-Plugin-Version";
+
+export const PLUGIN_NAME_ATTRIBUTE = "app.plugin.name";
+export const PLUGIN_VERSION_ATTRIBUTE = "app.plugin.version";
+
+const KNOWN_PLUGIN_NAMES = new Set([
+  "claude",
+  "cursor",
+  "codex",
+  "copilot",
+  "grok",
+  "agent-plugin",
+]);
+
+/**
+ * Buckets the plugin distribution name. Returns null when absent.
+ */
+export function resolvePluginName(
+  raw: string | null | undefined,
+): string | null {
+  if (!raw) return null;
+  return KNOWN_PLUGIN_NAMES.has(raw) ? raw : "other";
+}
+
+/**
+ * Keeps release versions (`1.4.5`), buckets prerelease builds
+ * (`1.4.6-dev.14.gdeadbee`) to "dev" and anything else to "other".
+ * Returns null when absent.
+ */
+export function resolvePluginVersion(
+  raw: string | null | undefined,
+): string | null {
+  if (!raw) return null;
+  if (/^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(raw)) return raw;
+  if (/^\d+\.\d+\.\d+-/.test(raw)) return "dev";
+  return "other";
+}
+
+/**
+ * Resolve plugin attribution attributes for a request, omitting absent ones.
+ */
+export function resolvePluginAttributesFromRequest(
+  request: Request,
+): Record<string, string> {
+  const attributes: Record<string, string> = {};
+  const name = resolvePluginName(request.headers.get(PLUGIN_NAME_HEADER));
+  if (name) {
+    attributes[PLUGIN_NAME_ATTRIBUTE] = name;
+  }
+  const version = resolvePluginVersion(
+    request.headers.get(PLUGIN_VERSION_HEADER),
+  );
+  if (version) {
+    attributes[PLUGIN_VERSION_ATTRIBUTE] = version;
+  }
+  return attributes;
+}
