@@ -273,4 +273,32 @@ describe("ZipWriter binary format", () => {
     expect(entriesOnDisk).toBe(3);
     expect(totalEntries).toBe(3);
   });
+
+  test("writes a ZIP64 end record when entries exceed the 16-bit limit", async () => {
+    const zipPath = join(tmpDir, "many.zip");
+    const entryCount = 0xff_ff + 1;
+    const zip = await ZipWriter.create(zipPath, { compression: "stored" });
+    for (let i = 0; i < entryCount; i++) {
+      await zip.addEntry(`f${i}.js`, Buffer.alloc(0));
+    }
+    await zip.finalize();
+
+    const data = await readFile(zipPath);
+    const eocdStart = data.length - 22;
+    expect(data.readUInt16LE(eocdStart + 8)).toBe(0xff_ff);
+    expect(data.readUInt16LE(eocdStart + 10)).toBe(0xff_ff);
+
+    const locatorStart = eocdStart - 20;
+    expect(data.readUInt32LE(locatorStart)).toBe(0x07_06_4b_50);
+    const zip64Start = Number(data.readBigUInt64LE(locatorStart + 8));
+    expect(data.readUInt32LE(zip64Start)).toBe(0x06_06_4b_50);
+    expect(data.readBigUInt64LE(zip64Start + 24)).toBe(BigInt(entryCount));
+    expect(data.readBigUInt64LE(zip64Start + 32)).toBe(BigInt(entryCount));
+
+    // -q keeps 65k per-entry lines out of spawnSync's output buffer
+    const proc = spawnSync("unzip", ["-tq", zipPath], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    expect(proc.status).toBe(0);
+  }, 60_000);
 });
