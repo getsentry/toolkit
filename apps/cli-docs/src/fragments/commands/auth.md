@@ -44,11 +44,12 @@ sentry auth --scope project:read,event:read
 
 ### Self-hosted Sentry
 
-Use `--url` (recommended) or the `SENTRY_URL` environment variable:
+Pass `--url` to log in to a self-hosted instance. Setting `SENTRY_HOST` or
+`SENTRY_URL` alone is not enough: the CLI refuses to log in to a self-hosted
+host unless `--url` confirms it.
 
 ```bash
 sentry auth --url https://sentry.example.com
-SENTRY_URL=https://sentry.example.com sentry auth
 ```
 
 For token-based auth with self-hosted:
