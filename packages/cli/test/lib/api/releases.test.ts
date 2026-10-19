@@ -614,4 +614,50 @@ describe("listReleasesPaginated", () => {
 
     expect(result.data).toHaveLength(0);
   });
+
+  test.each(["sessions", "users", "crash_free_sessions", "crash_free_users"])(
+    "requests flattened results when sorting by %s",
+    async (sort) => {
+      let flatten: string | null = null;
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const url = new URL(new Request(input!, init).url);
+        flatten = url.searchParams.get("flatten");
+        // Sentry rejects session sorts unless the results are flattened.
+        if (flatten !== "1") {
+          return new Response(
+            JSON.stringify({
+              detail:
+                "sorting by crash statistics requires flattening (flatten=1)",
+            }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify([SAMPLE_RELEASE]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const result = await listReleasesPaginated("test-org", { sort });
+
+      expect(flatten).toBe("1");
+      expect(result.data).toHaveLength(1);
+    },
+  );
+
+  test("does not flatten date-sorted results", async () => {
+    let flatten: string | null = "unset";
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input!, init).url);
+      flatten = url.searchParams.get("flatten");
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await listReleasesPaginated("test-org", { sort: "date" });
+
+    expect(flatten).toBeNull();
+  });
 });

@@ -61,6 +61,17 @@ export type ListReleasesOptions = {
   status?: string;
 };
 
+/**
+ * Sorts the releases endpoint only accepts with `flatten=1`; otherwise it
+ * responds 400 "sorting by crash statistics requires flattening".
+ */
+const SESSION_SORTS = new Set([
+  "sessions",
+  "users",
+  "crash_free_sessions",
+  "crash_free_users",
+]);
+
 export async function listReleasesPaginated(
   orgSlug: string,
   options: ListReleasesOptions = {},
@@ -76,6 +87,7 @@ export async function listReleasesPaginated(
       per_page: options.perPage ?? 25,
       query: options.query,
       sort: options.sort,
+      flatten: options.sort && SESSION_SORTS.has(options.sort) ? 1 : undefined,
       health: options.health ? 1 : undefined,
       project: options.project,
       environment: options.environment,
@@ -86,6 +98,7 @@ export async function listReleasesPaginated(
       per_page?: number;
       query?: string;
       sort?: string;
+      flatten?: number;
       health?: number;
       project?: number[];
       environment?: string[];
