@@ -113,6 +113,8 @@ sentry issue view https://sentry.example.com/organizations/acme/issues/123/
 
 Otherwise the active account is used. One command never mixes accounts; when
 several other accounts know the organization, the most recently used wins.
+This works even when the active account is logged out: the target can still
+pick a stored account that can authenticate.
 
 Switching also points the default URL (`sentry cli defaults url`) at the
 account's server. `SENTRY_HOST`/`SENTRY_URL` and `SENTRY_AUTH_TOKEN` (with

@@ -483,6 +483,21 @@ describe("pasted Sentry URLs", () => {
     expect(getAuthToken()).toBe("saas-token");
   });
 
+  test("a SaaS URL pins the server so org selection can't switch to a self-hosted account", () => {
+    login("acme-token", ACME, "acme");
+    // The self-hosted account knows an org whose slug SaaS also uses.
+    seeOrg("shared", ACME);
+    login("saas-token", SAAS, "saas");
+    // SaaS is active, with a fresh org list that doesn't include it yet.
+    seeOrgList(SAAS, ["alpha"]);
+
+    applySentryUrlContext("https://shared.sentry.io");
+    selectAccountForOrg("shared");
+
+    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(getAuthToken()).toBe("saas-token");
+  });
+
   test("a SaaS URL never snapshots an env token's host", () => {
     login("saas-token", SAAS, "saas");
     process.env.SENTRY_AUTH_TOKEN = "env-token";

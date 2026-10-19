@@ -43,6 +43,7 @@ import {
   getMostRecentAccountRow,
   hasCachedOrgList,
   insertActiveAccountRow,
+  isAccountOnServer,
   isAccountRowUsable,
   isSameServer,
   listAccountRows,
@@ -54,7 +55,7 @@ import { getAccountScope, resetAccountScopes } from "./account-scope.js";
 import { hashIdentity } from "./identity-hash.js";
 import { getDatabase } from "./index.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
-import { clearTrustedHostState, ORG_CACHE_TTL_MS } from "./regions.js";
+import { clearTrustedHostState } from "./regions.js";
 
 /** Refresh when less than 10% of token lifetime remains */
 export const REFRESH_THRESHOLD = 0.1;
@@ -85,6 +86,27 @@ function getConfiguredUrlOrUndefined(): string | undefined {
 }
 
 /**
+ * The server the user chose explicitly (`SENTRY_HOST`/`SENTRY_URL`, `--url`,
+ * `.sentryclirc`, a pasted URL), as opposed to the persisted default URL
+ * (`defaults.url`, applied at startup), which yields to account selection.
+ */
+function getExplicitServerUrl(): string | undefined {
+  const configured = getConfiguredUrlOrUndefined();
+  return configured && !isPersistedDefaultUrlInEffect()
+    ? configured
+    : undefined;
+}
+
+/** The most recently used usable stored account on `url`'s server. */
+function findUsableAccountOnServer(url: string): AuthRow | undefined {
+  // Same-server matching (origin normalization, `*.sentry.io` as one
+  // server) stays in TypeScript; SQL already filtered and ordered the rows.
+  return listUsableAccountRowsByRecency().find((row) =>
+    isAccountOnServer(row, url),
+  );
+}
+
+/**
  * Prefer an account on the configured server when the active account is
  * on another one. Without a configured server, or without a stored
  * account for it, the active account stays in effect (and the host trust
@@ -98,15 +120,10 @@ function selectAccountForConfiguredHost(
     return active;
   }
   // NULL host: pre-v16 row, scoped lazily by migrateNullHost. Keep it.
-  if (active && (!active.host || isSameServer(active.host, configured))) {
+  if (active && (!active.host || isAccountOnServer(active, configured))) {
     return active;
   }
-  // Same-server matching (origin normalization, `*.sentry.io` as one
-  // server) stays in TypeScript; SQL already filtered and ordered the rows.
-  const onHost = listUsableAccountRowsByRecency().find(
-    (row) => row.host && isSameServer(row.host, configured),
-  );
-  return onHost ?? active;
+  return findUsableAccountOnServer(configured) ?? active;
 }
 
 /**
@@ -649,8 +666,8 @@ function findAccountToReplace(host: string | undefined): AuthRow | undefined {
   ) {
     return active;
   }
-  return listAccountRowsByRecency().find(
-    (row) => row.host && isSameServer(row.host, loginHost),
+  return listAccountRowsByRecency().find((row) =>
+    isAccountOnServer(row, loginHost),
   );
 }
 
@@ -792,11 +809,10 @@ async function invalidateAccountCredentials(accountId: string): Promise<void> {
  * (`defaults.url`, applied at startup) yields to the account's own host.
  */
 function followDefaultAccountHost(host: string): void {
-  const configured = getConfiguredUrlOrUndefined();
-  if (configured && !isPersistedDefaultUrlInEffect()) {
+  if (getExplicitServerUrl()) {
     return;
   }
-  if (isSameServer(configured ?? DEFAULT_SENTRY_URL, host)) {
+  if (isSameServer(getConfiguredUrlOrUndefined() ?? DEFAULT_SENTRY_URL, host)) {
     return;
   }
   getEnv().SENTRY_URL = host;
@@ -832,23 +848,19 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
     const current = getAuthRow();
     // Respect the account in effect unless its fresh cached org list shows
     // it is not a member: after `sentry auth switch`, an account that simply
-    // hasn't used the org yet must not be overridden by one that has. Uses
-    // the same TTL as `getCachedOrganizations`. An account that can no
-    // longer authenticate (credentials invalidated or expired) is never
-    // kept over an owner that can.
+    // hasn't used the org yet must not be overridden by one that has. An
+    // account that can no longer authenticate (credentials invalidated or
+    // expired) is never kept over an owner that can.
     if (
       current &&
       (owners.some((o) => o.account_id === current.account_id) ||
-        (isAccountRowUsable(current) &&
-          !hasCachedOrgList(current.account_id, Date.now() - ORG_CACHE_TTL_MS)))
+        (isAccountRowUsable(current) && !hasCachedOrgList(current.account_id)))
     ) {
       return;
     }
-    const configured = getConfiguredUrlOrUndefined();
-    const explicitHost =
-      configured && !isPersistedDefaultUrlInEffect() ? configured : undefined;
+    const explicitHost = getExplicitServerUrl();
     const candidates = explicitHost
-      ? owners.filter((o) => o.host && isSameServer(o.host, explicitHost))
+      ? owners.filter((o) => isAccountOnServer(o, explicitHost))
       : owners;
     const pick = candidates[0];
     if (!pick?.host) {
@@ -900,24 +912,28 @@ export function getAccountIdForIdentity(identity: string): string | undefined {
  * failing the host check against the active account.
  */
 /**
- * Host of the stored account in effect, ignoring env-var tokens (reading an
- * env token's host would snapshot it). `undefined` when no stored account
- * is in effect, its host is not recorded yet, or the store can't be read.
+ * Whether a usable stored account is on `url`'s server. Lets a pasted
+ * Sentry URL for another login's server select that login instead of
+ * failing the host check against the active account.
  */
-export function getEffectiveStoredAccountHost(): string | undefined {
+export function hasStoredAccountForHost(url: string): boolean {
   try {
-    return getAuthRow()?.host ?? undefined;
+    return findUsableAccountOnServer(url) !== undefined;
   } catch (error) {
     log.debug("Could not read stored accounts", error);
-    return;
+    return false;
   }
 }
 
-export function hasStoredAccountForHost(url: string): boolean {
+/**
+ * Whether any stored account can authenticate. The command auth guard
+ * defers to it when the account in effect cannot: the command's target (an
+ * organization, a pasted URL) may still select that stored account, and a
+ * request without one fails with `AuthError` when it is made.
+ */
+export function hasUsableStoredAccount(): boolean {
   try {
-    return listUsableAccountRowsByRecency().some(
-      (row) => row.host && isSameServer(row.host, url),
-    );
+    return listUsableAccountRowsByRecency().length > 0;
   } catch (error) {
     log.debug("Could not read stored accounts", error);
     return false;

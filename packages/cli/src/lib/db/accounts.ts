@@ -13,6 +13,7 @@ import { fuzzyMatch } from "../fuzzy.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { storedCredentialIdentity } from "./identity-hash.js";
 import { getDatabase } from "./index.js";
+import { ORG_CACHE_TTL_MS } from "./regions.js";
 
 /** Raw `accounts` row. */
 export type AccountRow = {
@@ -268,7 +269,7 @@ function matchesIdentity(account: AccountSummary, needle: string): boolean {
  * or both SaaS (`*.sentry.io`). `false` for an account without a host.
  */
 export function isAccountOnServer(
-  account: Pick<AccountSummary, "host">,
+  account: { readonly host?: string | null },
   url: string,
 ): boolean {
   return account.host ? isSameServer(account.host, url) : false;
@@ -378,17 +379,18 @@ export function listUsableAccountRowsForOrg(
 /**
  * Whether a fresh full organization list is cached for an account (rows
  * written by `listOrganizations`, which carry the numeric org id, updated
- * after `freshSince`). Only then can an org's absence mean the account is
- * not a member; an expired list may predate a new membership.
+ * within {@link ORG_CACHE_TTL_MS} — the TTL `getCachedOrganizations` uses).
+ * Only then can an org's absence mean the account is not a member; an
+ * expired list may predate a new membership.
  */
-export function hasCachedOrgList(
-  accountId: string,
-  freshSince: number,
-): boolean {
+export function hasCachedOrgList(accountId: string): boolean {
   const row = getDatabase()
     .query(
       "SELECT 1 AS found FROM org_regions WHERE account_id = ? AND org_id IS NOT NULL AND updated_at > ? LIMIT 1",
     )
-    .get(accountId, freshSince) as { found: number } | null | undefined;
+    .get(accountId, Date.now() - ORG_CACHE_TTL_MS) as
+    | { found: number }
+    | null
+    | undefined;
   return Boolean(row);
 }
