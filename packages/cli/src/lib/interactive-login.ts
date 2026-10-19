@@ -9,6 +9,7 @@
 import * as Sentry from "@sentry/node-core/light";
 import { openBrowser } from "./browser.js";
 import { setupCopyKeyListener } from "./clipboard.js";
+import { getAccountRow } from "./db/accounts.js";
 import { getDbPath } from "./db/index.js";
 import { clearUserInfo, setUserInfo } from "./db/user.js";
 import { formatError, ValidationError } from "./errors.js";
@@ -70,6 +71,13 @@ export type InteractiveLoginOptions = {
    * the check happens here: a mismatching token is discarded, not stored.
    */
   expectedEmail?: string;
+  /**
+   * Re-authorize this stored account in place instead of the active one
+   * (scope recovery for the account an invocation picked for its target
+   * org). The login must be approved as that account's user; a different
+   * user's token is discarded, not stored.
+   */
+  accountId?: string;
 };
 
 /**
@@ -98,6 +106,36 @@ export function assertExpectedLoginEmail(
         "there (or use a private window) and run the command again.",
     );
   }
+}
+
+/**
+ * Refuse re-authorizing a stored account as a different user: its token
+ * would be stored under that account, and recording the user would then
+ * fold away the other user's own account.
+ *
+ * @throws {ValidationError} when the approving user isn't the account's
+ *   user, or either identity is unknown
+ */
+export function assertReauthorizingSameUser(
+  accountId: string | undefined,
+  user: { id: string; email?: string | null } | undefined,
+): void {
+  if (!accountId) {
+    return;
+  }
+  const account = getAccountRow(accountId);
+  if (account?.user_id && user?.id === account.user_id) {
+    return;
+  }
+  const expected = account?.email ?? account?.username ?? "the account in use";
+  const actual = user?.email
+    ? `Signed in as ${user.email}, not ${expected}`
+    : `Could not confirm the login is for ${expected}`;
+  throw new ValidationError(
+    `${actual}. Nothing was saved.\n\n` +
+      `Sentry authorizes whichever user is signed in to the browser. Sign in as ${expected} ` +
+      "there (or use a private window) and run the command again.",
+  );
 }
 
 /**
@@ -232,10 +270,12 @@ export async function runInteractiveLogin(
 
     const user = tokenResponse.user;
     assertExpectedLoginEmail(expectedEmail, user?.email);
+    assertReauthorizingSameUser(options?.accountId, user);
 
     // Store the token
     await completeOAuthFlow(tokenResponse, {
       newAccount: options?.newAccount,
+      accountId: options?.accountId,
     });
 
     // Store user info from token response for telemetry and display

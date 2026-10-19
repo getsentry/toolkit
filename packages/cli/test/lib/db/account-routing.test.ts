@@ -6,18 +6,25 @@
  * `sentry auth switch`, and never change the stored active account.
  */
 
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { markPersistedDefaultUrl } from "../../../src/lib/constants.js";
 import {
   getActiveAccountId,
   getAuthToken,
+  getReauthorizationAccountId,
   refreshToken,
+  resetAccountSelection,
   selectAccountForOrg,
   setActiveAccount,
   setAuthToken,
 } from "../../../src/lib/db/auth.js";
 import { closeDatabase, getDatabase } from "../../../src/lib/db/index.js";
 import { getEnvTokenHost } from "../../../src/lib/env-token-host.js";
+import { AuthError } from "../../../src/lib/errors.js";
+import { assertReauthorizingSameUser } from "../../../src/lib/interactive-login.js";
 import {
   ORG_CACHE_TTL_MS,
   setOrgRegion,
@@ -27,6 +34,11 @@ import { CURRENT_SCHEMA_VERSION } from "../../../src/lib/db/schema.js";
 import { getUserInfo, setUserInfo } from "../../../src/lib/db/user.js";
 import { resolveOrgRegion } from "../../../src/lib/region.js";
 import { applySentryUrlContext } from "../../../src/lib/sentry-url-parser.js";
+import {
+  applySentryCliRcEnvShim,
+  assertRcUrlTrusted,
+  clearSentryCliRcCache,
+} from "../../../src/lib/sentryclirc.js";
 import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 useTestConfigDir("account-routing-");
@@ -438,6 +450,78 @@ describe("logging in after an org picked the account", () => {
   });
 });
 
+describe("re-authorizing the account an org picked", () => {
+  function pinWorkAccount(): { work: string; personal: string } {
+    const work = login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS);
+    const personal = login("personal-token", SAAS, "personal");
+    seeOrgList(SAAS, ["personal-org"]);
+    selectAccountForOrg("work-org");
+    expect(getAuthToken()).toBe("work-token");
+    return { work, personal };
+  }
+
+  test("targets the picked account, which the retry then uses with the new grant", () => {
+    const { work, personal } = pinWorkAccount();
+    expect(getReauthorizationAccountId()).toBe(work);
+
+    // Scope recovery: the new grant replaces the picked account in place.
+    setAuthToken("work-new", undefined, undefined, {
+      host: SAAS,
+      accountId: work,
+    });
+    setUserInfo({ userId: "work", email: "work@example.com" });
+
+    expect(tokenOf(work)).toBe("work-new");
+    expect(tokenOf(personal)).toBe("personal-token");
+    expect(getActiveAccountId()).toBe(personal);
+    expect(getAuthToken()).toBe("work-new");
+
+    // The retried command resolves the org again and gets the new grant.
+    resetAccountSelection();
+    selectAccountForOrg("work-org");
+    expect(getAuthToken()).toBe("work-new");
+  });
+
+  test("only accepts a login approved as the picked account's user", () => {
+    const { work } = pinWorkAccount();
+
+    expect(() =>
+      assertReauthorizingSameUser(work, { id: "work", email: null }),
+    ).not.toThrow();
+    // Signed in to the browser as the other user: nothing may be stored.
+    expect(() =>
+      assertReauthorizingSameUser(work, {
+        id: "personal",
+        email: "personal@example.com",
+      }),
+    ).toThrow(/not work@example.com/);
+    expect(() => assertReauthorizingSameUser(work, undefined)).toThrow(
+      /Could not confirm/,
+    );
+  });
+
+  test("is not needed while the active account is in effect", () => {
+    login("saas-token", SAAS, "saas");
+
+    expect(getReauthorizationAccountId()).toBeUndefined();
+  });
+
+  test("refuses an account on another server and saves nothing", () => {
+    const acme = login("acme-token", ACME, "acme");
+    const saas = login("saas-token", SAAS, "saas");
+
+    expect(() =>
+      setAuthToken("new-token", undefined, undefined, {
+        host: SAAS,
+        accountId: acme,
+      }),
+    ).toThrow(AuthError);
+    expect(tokenOf(acme)).toBe("acme-token");
+    expect(tokenOf(saas)).toBe("saas-token");
+  });
+});
+
 describe("credential invalidation", () => {
   test("drops org memberships cached under an earlier identity", async () => {
     login("personal-token", SAAS, "personal");
@@ -573,6 +657,44 @@ describe("pasted Sentry URLs", () => {
     login("saas-token", SAAS, "saas");
 
     expect(() => applySentryUrlContext("https://evil.example.com")).toThrow();
+  });
+});
+
+describe(".sentryclirc URLs", () => {
+  async function withRcUrl(url: string, run: (dir: string) => Promise<void>) {
+    const dir = mkdtempSync(join(tmpdir(), "account-routing-rc-"));
+    try {
+      writeFileSync(join(dir, ".sentryclirc"), `[defaults]\nurl = ${url}\n`);
+      clearSentryCliRcCache();
+      await applySentryCliRcEnvShim(dir);
+      await run(dir);
+    } finally {
+      clearSentryCliRcCache();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("a logged-out active account on the rc server defers to a usable peer that knows the org", async () => {
+    login("peer-token", ACME, "peer");
+    seeOrg("acme-org", ACME);
+    const active = login("active-token", ACME, "active");
+    getDatabase()
+      .query("UPDATE accounts SET token = NULL WHERE account_id = ?")
+      .run(active);
+
+    await withRcUrl(ACME, async (dir) => {
+      await expect(assertRcUrlTrusted(dir)).resolves.toBeUndefined();
+      selectAccountForOrg("acme-org");
+      expect(getAuthToken()).toBe("peer-token");
+    });
+  });
+
+  test("an rc server with no usable stored account is still refused", async () => {
+    login("saas-token", SAAS, "saas");
+
+    await withRcUrl("https://evil.example.com", async (dir) => {
+      await expect(assertRcUrlTrusted(dir)).rejects.toThrow();
+    });
   });
 });
 

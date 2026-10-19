@@ -55,6 +55,28 @@ describe("runWithScopeRecovery", () => {
     );
   });
 
+  test("re-authorizes the account picked for the target org, not the active one", async () => {
+    const error = new ApiError("Forbidden", 403);
+    const proceed = vi
+      .fn<(argv: string[]) => Promise<void>>()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce();
+    const login = vi.fn().mockResolvedValue({ method: "oauth" });
+
+    await runWithScopeRecovery(
+      proceed,
+      [],
+      login,
+      runtime({
+        getAuthScopes: vi.fn().mockResolvedValue([]),
+        getReauthorizationAccountId: () => "work-account",
+      }),
+    );
+
+    expect(login).toHaveBeenCalledWith({ accountId: "work-account" });
+    expect(proceed).toHaveBeenCalledTimes(2);
+  });
+
   test("does not re-authorize a role or policy 403 when the token has every scope", async () => {
     const error = new ApiError("Forbidden", 403);
     const proceed = vi.fn().mockRejectedValue(error);
@@ -376,6 +398,23 @@ describe("ensureScopesForAction", () => {
         "Removing an integration needs elevated permissions (org:integrations)",
       ),
     );
+  });
+
+  test("elevates the account picked for the target org", async () => {
+    const login = vi.fn().mockResolvedValue({ method: "oauth" });
+
+    await expect(
+      ensureScopesForAction(
+        ["org:integrations"],
+        "Removing an integration",
+        login,
+        runtime({
+          getAuthScopes: vi.fn().mockResolvedValue(withoutIntegrations),
+          getReauthorizationAccountId: () => "work-account",
+        }),
+      ),
+    ).resolves.toBe("elevated");
+    expect(login).toHaveBeenCalledWith({ accountId: "work-account" });
   });
 
   test("reports declined when the login does not complete", async () => {

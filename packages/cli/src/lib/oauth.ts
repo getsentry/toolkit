@@ -491,6 +491,11 @@ export type StoreTokenOptions = {
    * automatic login) expects.
    */
   newAccount?: boolean;
+  /**
+   * Re-authorize this stored account in place instead of the active one
+   * (scope recovery for an account picked for the target org).
+   */
+  accountId?: string;
 };
 
 /**
@@ -509,7 +514,11 @@ export async function completeOAuthFlow(
     tokenResponse.access_token,
     tokenResponse.expires_in,
     tokenResponse.refresh_token,
-    { host: getSentryUrl(), newAccount: options.newAccount },
+    {
+      host: getSentryUrl(),
+      newAccount: options.newAccount,
+      accountId: options.accountId,
+    },
   );
 }
 

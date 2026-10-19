@@ -28,7 +28,7 @@ import {
   getBootConfiguredSentryUrl,
   getEnvTokenHost,
 } from "../env-token-host.js";
-import { ConfigError } from "../errors.js";
+import { AuthError, ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { withDbSpan } from "../telemetry.js";
@@ -550,10 +550,16 @@ export function resetAccountSelection(): void {
  *   flows set this so earlier logins stay available to `sentry auth switch`.
  *   Recording user info afterwards ({@link setUserInfo}) folds a re-login to
  *   the same user on the same host into one account.
+ * @property accountId - Re-authorize this stored account in place instead
+ *   of the active one: scope recovery for the account an invocation picked
+ *   for its target org (see {@link getReauthorizationAccountId}). It stays
+ *   in effect for the rest of the invocation; the stored active account is
+ *   unchanged. Must be on `host`'s server.
  */
 export type SetAuthTokenOptions = {
   host?: string;
   newAccount?: boolean;
+  accountId?: string;
 };
 
 /** Drop all memoized active-credential state after an account mutation. */
@@ -576,10 +582,13 @@ export function setAuthToken(
   options?: SetAuthTokenOptions,
 ): string {
   const normalizedToken = normalizeAuthToken(token);
-  // A login, not a refresh: it targets the stored active account (or a new
-  // one), never the account this invocation picked for its target org, and
-  // the new credentials are what the rest of the invocation uses.
-  getAccountScope().accountId = undefined;
+  const reauthorizeId = options?.accountId;
+  if (!reauthorizeId) {
+    // A login, not a refresh: it targets the stored active account (or a
+    // new one), never the account this invocation picked for its target
+    // org, and the new credentials are what the rest of the invocation uses.
+    getAccountScope().accountId = undefined;
+  }
   const accountId = withDbSpan("setAuthToken", () => {
     const db = getDatabase();
     const now = Date.now();
@@ -589,9 +598,12 @@ export function setAuthToken(
     // Replacing credentials in place targets the stored login for the
     // login's server — never an account on another server, whatever
     // SENTRY_HOST or `.sentryclirc` says. With none there, a new account.
-    const existing = options?.newAccount
-      ? undefined
-      : findAccountToReplace(options?.host);
+    // Re-authorizing a specific account targets exactly that account.
+    const existing = reauthorizeId
+      ? findAccountToReauthorize(reauthorizeId, options?.host)
+      : options?.newAccount
+        ? undefined
+        : findAccountToReplace(options?.host);
     // Host resolution precedence:
     //   1. Explicit `options.host` (login command, tests)
     //   2. Existing row's `host` (refresh flow preserves the original scope)
@@ -630,7 +642,7 @@ export function setAuthToken(
       now,
       existing.account_id,
     );
-    if (existing.is_active !== 1) {
+    if (existing.is_active !== 1 && !reauthorizeId) {
       // Logging in to another server's stored account makes it active,
       // like adding an account does; it is a different identity.
       backfillActiveNullHost();
@@ -669,6 +681,49 @@ function findAccountToReplace(host: string | undefined): AuthRow | undefined {
   return listAccountRowsByRecency().find((row) =>
     isAccountOnServer(row, loginHost),
   );
+}
+
+/**
+ * The stored account {@link setAuthToken} re-authorizes for `accountId`.
+ *
+ * @throws {AuthError} when it is gone or on another server than the login,
+ *   so the new credentials are never stored under a different account
+ */
+function findAccountToReauthorize(
+  accountId: string,
+  host: string | undefined,
+): AuthRow {
+  const row = getAccountRow(accountId);
+  if (row && (!host || isAccountOnServer(row, normalizeCredentialHost(host)))) {
+    return row;
+  }
+  throw new AuthError(
+    "not_authenticated",
+    "The account being re-authorized is no longer stored for this server. Nothing was saved.",
+    { skipAutoAuth: true },
+  );
+}
+
+/**
+ * The account a 401/403 re-authorization must target: the one this
+ * invocation picked for its target org ({@link selectAccountForOrg}) when
+ * it isn't the stored active account. A plain login would replace the
+ * active account and leave the picked one's old grant in place, so the
+ * retried command would pick it again and fail the same way. `undefined`
+ * when the active account (or no stored account) is in effect.
+ */
+export function getReauthorizationAccountId(): string | undefined {
+  const accountId = getAccountScope().accountId;
+  if (!accountId) {
+    return;
+  }
+  try {
+    const row = getAccountRow(accountId);
+    return row && row.is_active !== 1 ? accountId : undefined;
+  } catch (error) {
+    log.debug("Could not read the invocation's account", error);
+    return;
+  }
 }
 
 /**
