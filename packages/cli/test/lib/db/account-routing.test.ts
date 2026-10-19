@@ -529,6 +529,16 @@ describe("pasted Sentry URLs", () => {
     expect(getAuthToken()).toBe("acme-token");
   });
 
+  test("a SaaS URL with a single self-hosted login keeps using that login", () => {
+    login("acme-token", ACME, "acme");
+    process.env.SENTRY_URL = ACME;
+
+    applySentryUrlContext("https://acme-org.sentry.io");
+
+    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(getAuthToken()).toBe("acme-token");
+  });
+
   test("a SaaS URL never snapshots an env token's host", () => {
     login("saas-token", SAAS, "saas");
     process.env.SENTRY_AUTH_TOKEN = "env-token";

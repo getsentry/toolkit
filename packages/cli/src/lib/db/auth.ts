@@ -926,13 +926,19 @@ export function hasStoredAccountForHost(url: string): boolean {
 }
 
 /**
- * Whether any account is stored, logged in or not. A pasted SaaS URL then
- * pins the server to SaaS so the URL can never route to a self-hosted
- * account (see `applySentryUrlContext`).
+ * Whether a pasted SaaS URL must pin the server to SaaS. With a SaaS account
+ * stored (logged in or not), or accounts on several servers, org-based
+ * account selection could otherwise route the URL to a self-hosted account
+ * that shares the org slug or id. A single non-SaaS login keeps the
+ * single-account behavior: its own server serves the request.
  */
-export function hasStoredAccounts(): boolean {
+export function shouldPinSaaSForPastedUrl(): boolean {
   try {
-    return listAccountRows().length > 0;
+    const rows = listAccountRows();
+    return (
+      rows.length > 1 ||
+      rows.some((row) => isAccountOnServer(row, DEFAULT_SENTRY_URL))
+    );
   } catch (error) {
     log.debug("Could not read stored accounts", error);
     return false;
