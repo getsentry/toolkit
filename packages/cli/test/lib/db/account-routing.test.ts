@@ -498,6 +498,22 @@ describe("pasted Sentry URLs", () => {
     expect(getAuthToken()).toBe("saas-token");
   });
 
+  test("a SaaS URL pins the server even when the persisted default is already SaaS", () => {
+    login("acme-token", ACME, "acme");
+    seeOrg("shared", ACME);
+    login("saas-token", SAAS, "saas");
+    seeOrgList(SAAS, ["alpha"]);
+    // `defaults.url` is SaaS and was applied at startup.
+    process.env.SENTRY_URL = SAAS;
+    markPersistedDefaultUrl(SAAS);
+
+    applySentryUrlContext("https://shared.sentry.io");
+    selectAccountForOrg("shared");
+
+    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(getAuthToken()).toBe("saas-token");
+  });
+
   test("a SaaS URL never routes to a self-hosted account when the SaaS login is logged out", () => {
     login("acme-token", ACME, "acme");
     seeOrg("shared", ACME);

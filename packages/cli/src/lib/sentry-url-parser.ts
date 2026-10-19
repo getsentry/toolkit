@@ -9,7 +9,11 @@
  */
 
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
-import { DEFAULT_SENTRY_HOST, DEFAULT_SENTRY_URL } from "./constants.js";
+import {
+  clearPersistedDefaultUrl,
+  DEFAULT_SENTRY_HOST,
+  DEFAULT_SENTRY_URL,
+} from "./constants.js";
 import {
   hasStoredAccountForHost,
   shouldPinSaaSForPastedUrl,
@@ -435,6 +439,10 @@ export function applySentryUrlContext(baseUrl: string): void {
     // snapshot an env token's host (as SaaS, now that the URL is cleared).
     if (shouldPinSaaSForPastedUrl()) {
       env.SENTRY_URL = DEFAULT_SENTRY_URL;
+      // The pin is the user's choice even when `defaults.url` is already
+      // SaaS: otherwise it would still read as the persisted default, which
+      // org-based selection lets yield to a self-hosted account.
+      clearPersistedDefaultUrl();
     }
     return;
   }

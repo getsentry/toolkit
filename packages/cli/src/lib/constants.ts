@@ -113,7 +113,12 @@ export function markPersistedDefaultUrl(url: string): void {
   persistedDefaultUrls.set(getEnv(), url);
 }
 
-/** Forget which URL came from `defaults.url`. Tests only. */
+/**
+ * Forget which URL came from `defaults.url`, so the configured URL counts as
+ * an explicit server choice from now on (e.g. a pasted SaaS URL pinning the
+ * server to the same value as the persisted default). Tests also use it to
+ * reset state.
+ */
 export function clearPersistedDefaultUrl(): void {
   persistedDefaultUrls.delete(getEnv());
 }
