@@ -9,7 +9,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { markPersistedDefaultUrl } from "../../../src/lib/constants.js";
 import {
   getActiveAccountId,
@@ -356,6 +356,30 @@ describe("organization-based selection", () => {
     await expect(resolveOrgRegion("work-org")).resolves.toBe(
       "https://de.sentry.io",
     );
+    expect(getAuthToken()).toBe("work-token");
+    expect(getActiveAccountId()).toBe(personal);
+  });
+
+  test("resolveOrgRegion routes a bare numeric DSN org id through its account", async () => {
+    login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS, "https://de.sentry.io");
+    getDatabase()
+      .query("UPDATE org_regions SET org_id = '42' WHERE org_slug = 'work-org'")
+      .run();
+    const personal = login("personal-token", SAAS, "personal");
+    seeOrgList(SAAS, ["personal-org"]);
+
+    // DSN resolution can hand over the id without its `o` prefix. The
+    // region lookup itself isn't under test: keep it off the network.
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("offline"));
+    try {
+      await resolveOrgRegion("42").catch(() => undefined);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
     expect(getAuthToken()).toBe("work-token");
     expect(getActiveAccountId()).toBe(personal);
   });

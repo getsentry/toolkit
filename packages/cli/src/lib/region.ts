@@ -75,13 +75,21 @@ export function resolveOrgRegion(orgSlug: string): Promise<string> {
   ).then((resolution) => resolution.url);
 }
 
+/** Sentry org slugs are never entirely numeric, so digits are an org id. */
+const NUMERIC_ORG_ID = /^\d+$/;
+
 /**
  * Switch this invocation to the stored account that knows the org, if the
- * current one doesn't. Accepts DSN-style `oNNNN` identifiers too.
+ * current one doesn't. Accepts DSN-style `oNNNN` identifiers and the bare
+ * numeric ids DSN resolution can yield too.
  */
 function useAccountForOrg(orgSlug: string): void {
   const numericId = stripDsnOrgPrefix(orgSlug);
-  selectAccountForOrg(orgSlug, numericId === orgSlug ? undefined : numericId);
+  const orgId =
+    numericId !== orgSlug || NUMERIC_ORG_ID.test(orgSlug)
+      ? numericId
+      : undefined;
+  selectAccountForOrg(orgSlug, orgId);
 }
 
 /**
