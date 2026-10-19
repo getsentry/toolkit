@@ -108,4 +108,4 @@ sentry cli defaults headers "X-IAP: token"
 | `NODE_EXTRA_CA_CERTS` | Path to PEM file with additional CA certificates (for corporate proxies) |
 <!-- GENERATED:END self-hosted-env-vars -->
 
-See [Configuration](./configuration/) for the full environment variable reference.
+See [Configuration](../configuration/) for the full environment variable reference.

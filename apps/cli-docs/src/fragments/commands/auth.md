@@ -58,7 +58,7 @@ For token-based auth with self-hosted:
 sentry auth --token YOUR_TOKEN --url https://sentry.example.com
 ```
 
-See [Self-Hosted Sentry](../self-hosted/) for details.
+See [Self-Hosted Sentry](../../self-hosted/) for details.
 
 ### Multiple accounts
 

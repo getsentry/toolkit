@@ -13,7 +13,7 @@ Selectors tolerate typos in unfinished prefixes: `frone` can find `frontend-web`
 
 ## DSN Auto-Detection
 
-The CLI automatically detects your Sentry project from your codebase, eliminating the need to specify the target for every command. DSN detection is one part of the [resolution priority chain](./configuration/#resolution-priority) — it runs after checking for explicit arguments, environment variables, and `.sentryclirc` config files.
+The CLI automatically detects your Sentry project from your codebase, eliminating the need to specify the target for every command. DSN detection is one part of the [resolution priority chain](../configuration/#resolution-priority) — it runs after checking for explicit arguments, environment variables, and `.sentryclirc` config files.
 
 ### How It Works
 
@@ -26,7 +26,7 @@ DSN detection follows this priority order (highest first):
 When a DSN is found, the CLI resolves it to your organization and project, then caches the result for fast subsequent lookups.
 
 :::tip
-For monorepos or when DSN detection picks up the wrong project, use a [`.sentryclirc` config file](./configuration/#configuration-file-sentryclirc) to pin your org/project explicitly.
+For monorepos or when DSN detection picks up the wrong project, use a [`.sentryclirc` config file](../configuration/#configuration-file-sentryclirc) to pin your org/project explicitly.
 :::
 
 ### Supported Languages
