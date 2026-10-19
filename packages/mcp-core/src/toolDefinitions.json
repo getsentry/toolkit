@@ -146,7 +146,7 @@
         }
       }
     },
-    "requiredScopes": [],
+    "requiredScopes": ["event:write"],
     "skills": ["seer"],
     "surface": "direct"
   },

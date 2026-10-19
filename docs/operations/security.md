@@ -58,21 +58,27 @@ not mean the same thing.
 
 ### Upstream Sentry Scopes
 
-When we redirect to Sentry OAuth, we always request the shared Sentry scope set
-defined in `packages/mcp-core/src/scopes.ts`:
+When we redirect to Sentry OAuth, we request only the scopes needed by the
+tools the user's selected skills enable. `getScopesForSkills()` in
+`packages/mcp-core/src/skills.ts` computes them from each tool's
+`requiredScopes`, plus the default read scopes
+(`org:read project:read team:read event:read`).
+
+For example, approving only **Inspect Issues & Events** requests:
 
 ```text
-org:read project:write team:write event:write alerts:write
+event:read org:read project:read team:read
 ```
 
-We ask Sentry for this broader shared token because:
+Triage, Seer, and Manage Projects & Teams add the write scopes their tools need
+(for example `event:write` for triage and Seer, and `project:write`,
+`team:write`, and `alerts:write` for project management).
 
-1. Sentry OAuth scopes are coarse compared to our MCP capability model.
-2. A single upstream token must support every tool that could be enabled for the granted MCP skills.
-3. The worker reuses the same upstream token across later MCP token refreshes and MCP requests for that grant.
-
-This token is therefore a server-side capability token for talking to Sentry,
-not the final permission boundary presented to the MCP client.
+The upstream token is still a server-side capability token for talking to
+Sentry. It is reused across MCP token refreshes for the same grant, so the
+skills chosen at consent time fix its scopes. Granting more skills later goes
+through the OAuth flow again, and Sentry asks the user to approve any new
+scopes.
 
 ### Downstream MCP Restrictions
 
@@ -122,7 +128,7 @@ The remote deployment intentionally separates trust boundaries:
    - All Sentry API access happens server-side
 
 3. **Session narrowing**
-   - Broad upstream Sentry scopes are narrowed by MCP-side skills and URL constraints
+   - Upstream Sentry scopes match the granted skills, and MCP-side skills and URL constraints narrow access further
    - A client may hold a valid MCP token but still be unable to access tools or resources outside the granted session shape
 
 4. **Revocation on upstream failure**
@@ -182,7 +188,7 @@ interface ServerContext {
   userIpAddress?: string;
   clientId: string;
   accessToken: string;
-  grantedSkills: Set<Skill>;  // Primary authorization method
+  grantedSkills: Set<Skill>; // Primary authorization method
   // grantedScopes is deprecated and will be removed Jan 1, 2026
   constraints: Constraints;
   sentryHost: string;
@@ -240,7 +246,7 @@ Example protection in tools:
 
 ```typescript
 // URLs must be valid and from expected domains
-if (!issueUrl.includes('sentry.io')) {
+if (!issueUrl.includes("sentry.io")) {
   throw new UserInputError("Invalid Sentry URL");
 }
 
@@ -257,10 +263,10 @@ The OAuth `state` is a compact HMAC-signed payload with a 10‑minute expiry:
 type OAuthState = {
   clientId: string;
   redirectUri: string; // must be a valid URL
-  scope: string[];     // from OAuth provider parseAuthRequest
+  scope: string[]; // from OAuth provider parseAuthRequest
   permissions?: string[]; // user selections from approval
-  iat: number;         // issued at (ms)
-  exp: number;         // expires at (ms)
+  iat: number; // issued at (ms)
+  exp: number; // expires at (ms)
 };
 
 // Sign: `${hex(hmacSHA256(json))}.${btoa(json)}` using COOKIE_SECRET
@@ -285,11 +291,11 @@ All user inputs sanitized:
 // Signed cookie for approved clients
 const cookie = await signCookie(
   `approved_clients=${JSON.stringify(approvedClients)}`,
-  COOKIE_SECRET
+  COOKIE_SECRET,
 );
 
 // Cookie attributes
-"HttpOnly; Secure; SameSite=Lax; Max-Age=2592000" // 30 days
+("HttpOnly; Secure; SameSite=Lax; Max-Age=2592000"); // 30 days
 ```
 
 ## Error Handling
@@ -324,7 +330,7 @@ catch (error) {
 ```typescript
 // Verify organization access
 const { organizations } = await apiService.listOrganizations();
-if (!organizations.find(org => org.slug === requestedOrg)) {
+if (!organizations.find((org) => org.slug === requestedOrg)) {
   throw new UserInputError("No access to organization");
 }
 ```
@@ -335,7 +341,7 @@ Required for OAuth:
 
 ```bash
 SENTRY_CLIENT_ID=your_oauth_app_id
-SENTRY_CLIENT_SECRET=your_oauth_app_secret  
+SENTRY_CLIENT_SECRET=your_oauth_app_secret
 COOKIE_SECRET=random_32_char_string
 ```
 
@@ -343,10 +349,7 @@ COOKIE_SECRET=random_32_char_string
 
 ```typescript
 // Allowed origins for OAuth flow
-const ALLOWED_ORIGINS = [
-  "https://sentry.io",
-  "https://*.sentry.io"
-];
+const ALLOWED_ORIGINS = ["https://sentry.io", "https://*.sentry.io"];
 ```
 
 ## References

@@ -33,7 +33,9 @@ import type { ServerContext } from "../../types";
 export default defineTool({
   name: "analyze_issue_with_seer",
   skills: ["seer"], // Only available in seer skill
-  requiredScopes: [], // No Sentry API scopes required - authorization via 'seer' skill
+  // Starting an autofix run is a POST to /issues/{id}/autofix/, which Sentry
+  // gates on event:write (GroupAiPermission).
+  requiredScopes: ["event:write"],
   description: [
     "Use Seer to analyze production errors and get detailed root cause analysis with specific code fixes.",
     "",

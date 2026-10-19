@@ -514,6 +514,16 @@ describe("oauth authorize routes", () => {
         ]);
       });
 
+      it("requests event:write when Seer is selected, for starting autofix", async () => {
+        expect(await upstreamScopesFor(["inspect", "seer"])).toEqual([
+          "event:read",
+          "event:write",
+          "org:read",
+          "project:read",
+          "team:read",
+        ]);
+      });
+
       it.each([
         [["inspect"]],
         [["inspect", "seer"]],

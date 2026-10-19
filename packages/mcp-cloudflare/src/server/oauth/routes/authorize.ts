@@ -3,9 +3,9 @@ import {
   type AuthRequest,
 } from "@cloudflare/workers-oauth-provider";
 import * as Sentry from "@sentry/cloudflare";
+import { getScopesForSkills, parseSkills } from "@sentry/mcp-core/skills";
 import { logWarn } from "@sentry/mcp-core/telem/logging";
 import { Hono } from "hono";
-import { SCOPES } from "../../../constants";
 import {
   getRememberedSkillsForClient,
   parseRedirectApproval,
@@ -38,10 +38,24 @@ interface AuthRequestWithSkills extends AuthRequest {
   resource?: string;
 }
 
+/**
+ * Sentry API scopes to request upstream for the skills the user approved.
+ *
+ * Only ask Sentry for what the enabled tools need, so the consent screen and
+ * the resulting upstream token match the selected skills.
+ */
+async function getUpstreamScope(skills: unknown): Promise<string> {
+  const { valid } = parseSkills(skills);
+  return Array.from(await getScopesForSkills(valid))
+    .sort()
+    .join(" ");
+}
+
 async function redirectToUpstream(
   env: Env,
   request: Request,
   oauthReqInfo: AuthRequest | AuthRequestWithSkills,
+  scope: string,
   headers: HeadersInit = {},
   stateOverride?: string,
 ) {
@@ -53,7 +67,7 @@ async function redirectToUpstream(
         SENTRY_AUTH_URL,
         `https://${env.SENTRY_HOST || "sentry.io"}`,
       ).href,
-      scope: Object.keys(SCOPES).join(" "),
+      scope,
       client_id: env.SENTRY_CLIENT_ID,
       redirect_uri: new URL("/oauth/callback", request.url).href,
       state: stateOverride ?? btoa(JSON.stringify(oauthReqInfo)),
@@ -379,6 +393,7 @@ export default new Hono<{ Bindings: Env }>()
       c.env,
       c.req.raw,
       oauthReqWithSkills,
+      await getUpstreamScope(skills),
       headers,
       signedState,
     );
