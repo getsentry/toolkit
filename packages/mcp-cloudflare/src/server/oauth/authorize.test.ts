@@ -1,6 +1,7 @@
 import { AuthorizationError } from "@cloudflare/workers-oauth-provider";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type Skill, getScopesForSkills } from "@sentry/mcp-core/skills";
 import { SKILL_PREFERENCES_COOKIE_NAME } from "../lib/approval-dialog";
 import type { Env } from "../types";
 import oauthRoute from "./index";
@@ -464,6 +465,72 @@ describe("oauth authorize routes", () => {
         "https://example.com/callback",
       );
       expect((decodedState.req as any).scope).toEqual(["read", "write"]);
+    });
+
+    describe("upstream Sentry scopes match selected skills", () => {
+      async function upstreamScopesFor(skills: string[]): Promise<string[]> {
+        const formData = new FormData();
+        const signedState = await signState(
+          {
+            req: {
+              oauthReqInfo: {
+                clientId: "test-client",
+                redirectUri: "https://example.com/callback",
+                scope: ["read"],
+                state: "original-state",
+              },
+            },
+            iat: Date.now(),
+            exp: Date.now() + 10 * 60 * 1000,
+          },
+          testEnv.COOKIE_SECRET!,
+        );
+        formData.append("state", signedState);
+        for (const skill of skills) {
+          formData.append("skill", skill);
+        }
+        const response = await app.fetch(
+          new Request("http://localhost/oauth/authorize", {
+            method: "POST",
+            body: formData,
+          }),
+          testEnv as Env,
+        );
+        expect(response.status).toBe(302);
+        const redirectUrl = new URL(response.headers.get("location")!);
+        expect(redirectUrl.pathname).toBe("/oauth/authorize/");
+        return (redirectUrl.searchParams.get("scope") ?? "")
+          .split(" ")
+          .filter(Boolean)
+          .sort();
+      }
+
+      it("requests only read scopes from Sentry when only 'inspect' is selected", async () => {
+        const requested = await upstreamScopesFor(["inspect"]);
+
+        expect(requested.filter((s) => s.endsWith(":write"))).toEqual([]);
+      });
+
+      // Write scopes imply read in Sentry, so compare only write scopes:
+      // the consent request must not ask for writes the selected skills
+      // don't need.
+      it.each([
+        [["inspect"]],
+        [["inspect", "seer"]],
+        [["inspect", "triage"]],
+        [["inspect", "project-management"]],
+      ])("requests no write scopes beyond what %j needs", async (skills) => {
+        const needed = Array.from(
+          await getScopesForSkills(new Set(skills as Skill[])),
+        )
+          .filter((s) => s.endsWith(":write"))
+          .sort();
+        const requested = (await upstreamScopesFor(skills)).filter((s) =>
+          s.endsWith(":write"),
+        );
+
+        expect(requested).toEqual(needed);
+      });
     });
 
     it("uses submitted skills rather than remembered skills for redirect state", async () => {
