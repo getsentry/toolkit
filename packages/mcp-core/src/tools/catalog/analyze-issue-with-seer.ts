@@ -74,6 +74,7 @@ export default defineTool({
     "- If the user provides an issueUrl, extract it and use that parameter alone",
     "- The analysis includes actual code snippets and fixes, not just error descriptions",
     "- Results are cached - subsequent calls return instantly",
+    "- Pass runId when you already hold a Seer run id (for example from a seer.* webhook) so the tool refuses to return a different run's results or start a new run",
     "</hints>",
   ].join("\n"),
   inputSchema: {
@@ -84,6 +85,14 @@ export default defineTool({
     instruction: z
       .string()
       .describe("Optional custom instruction for the AI analysis")
+      .optional(),
+    runId: z
+      .number()
+      .int()
+      .positive()
+      .describe(
+        "Optional Seer run ID to confirm, e.g. from a seer.* webhook payload. When set, the tool never starts a new run and returns a mismatch message if the issue's current run differs.",
+      )
       .optional(),
   },
   annotations: {
@@ -119,6 +128,25 @@ export default defineTool({
     }
 
     let output = `# Seer Analysis for Issue ${parsedIssueId}\n\n`;
+    const runIdArg =
+      params.runId !== undefined ? `, runId=${params.runId}` : "";
+    const retryCall = params.issueUrl
+      ? `analyze_issue_with_seer(issueUrl="${params.issueUrl}"${runIdArg})`
+      : `analyze_issue_with_seer(organizationSlug="${orgSlug}", issueId="${parsedIssueId}"${runIdArg})`;
+    // Sentry only exposes an issue's current run, and a newer run can replace
+    // the requested one while this tool polls.
+    const runMismatch = (currentRunId: number | undefined): string | null => {
+      if (params.runId === undefined || currentRunId === params.runId) {
+        return null;
+      }
+      return (
+        `No analysis found for Run ID ${params.runId}.\n` +
+        (currentRunId === undefined
+          ? `The issue has no Seer analysis yet.\n`
+          : `The issue's current analysis is Run ID ${currentRunId}.\n`) +
+        `Sentry only exposes an issue's current run, so call again without runId to work with that run instead.\n`
+      );
+    };
 
     // Step 1: Check if analysis already exists
     let autofixState = await retryWithBackoff(
@@ -138,6 +166,11 @@ export default defineTool({
         },
       },
     );
+
+    const initialMismatch = runMismatch(autofixState.autofix?.run_id);
+    if (initialMismatch) {
+      return output + initialMismatch;
+    }
 
     // Step 2: Start analysis if none exists
     if (!autofixState.autofix) {
@@ -204,11 +237,14 @@ export default defineTool({
       if (!autofixState.autofix) {
         output += `Error: Analysis state lost. Please try again by running:\n`;
         output += `\`\`\`\n`;
-        output += params.issueUrl
-          ? `analyze_issue_with_seer(issueUrl="${params.issueUrl}")`
-          : `analyze_issue_with_seer(organizationSlug="${orgSlug}", issueId="${parsedIssueId}")`;
+        output += retryCall;
         output += `\n\`\`\`\n`;
         return output;
+      }
+
+      const pollMismatch = runMismatch(autofixState.autofix.run_id);
+      if (pollMismatch) {
+        return output + pollMismatch;
       }
 
       const status = autofixState.autofix.status;
@@ -275,9 +311,7 @@ export default defineTool({
           output += `Error: ${error instanceof Error ? error.message : String(error)}\n\n`;
           output += `You can check the status later by running the same command again:\n`;
           output += `\`\`\`\n`;
-          output += params.issueUrl
-            ? `analyze_issue_with_seer(issueUrl="${params.issueUrl}")`
-            : `analyze_issue_with_seer(organizationSlug="${orgSlug}", issueId="${parsedIssueId}")`;
+          output += retryCall;
           output += `\n\`\`\`\n`;
           return output;
         }
@@ -304,9 +338,7 @@ export default defineTool({
 
     output += `\nYou can check the status later by running the same command again:\n`;
     output += `\`\`\`\n`;
-    output += params.issueUrl
-      ? `analyze_issue_with_seer(issueUrl="${params.issueUrl}")`
-      : `analyze_issue_with_seer(organizationSlug="${orgSlug}", issueId="${parsedIssueId}")`;
+    output += retryCall;
     output += `\n\`\`\`\n`;
 
     return output;
