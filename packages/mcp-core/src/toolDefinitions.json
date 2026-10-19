@@ -6324,7 +6324,7 @@
       },
       "required": ["organizationSlug", "traceId", "spanId"]
     },
-    "requiredScopes": ["event:read"],
+    "requiredScopes": ["org:read"],
     "skills": ["inspect"],
     "surface": "catalog"
   },
@@ -6363,7 +6363,7 @@
       },
       "required": ["organizationSlug", "traceId"]
     },
-    "requiredScopes": ["event:read"],
+    "requiredScopes": ["org:read"],
     "skills": ["inspect"],
     "surface": "catalog"
   },
@@ -7563,7 +7563,7 @@
       },
       "required": ["organizationSlug"]
     },
-    "requiredScopes": ["event:read"],
+    "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
   },
@@ -7672,7 +7672,7 @@
       },
       "required": ["organizationSlug"]
     },
-    "requiredScopes": ["event:read"],
+    "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "catalog"
   },
@@ -7914,7 +7914,7 @@
       },
       "required": ["organizationSlug"]
     },
-    "requiredScopes": ["event:read"],
+    "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
   },
@@ -8001,7 +8001,7 @@
       },
       "required": ["organizationSlug"]
     },
-    "requiredScopes": ["event:read"],
+    "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
   },
@@ -8088,7 +8088,7 @@
       },
       "required": ["organizationSlug"]
     },
-    "requiredScopes": ["event:read"],
+    "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
   },
@@ -8178,7 +8178,7 @@
       },
       "required": ["organizationSlug"]
     },
-    "requiredScopes": ["event:read"],
+    "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
   },
@@ -8349,7 +8349,7 @@
       },
       "required": ["organizationSlug"]
     },
-    "requiredScopes": ["event:read"],
+    "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
   },

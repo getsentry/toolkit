@@ -11,7 +11,7 @@ import getTraceDetails from "./get-trace-details";
 export default defineTool({
   name: "get_span_details",
   skills: ["inspect"],
-  requiredScopes: ["event:read"],
+  requiredScopes: ["org:read"],
   requiredCapabilities: ["traces"],
   description: [
     "Get detailed information about a specific span within a Sentry trace.",

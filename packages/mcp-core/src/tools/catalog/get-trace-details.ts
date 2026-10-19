@@ -61,7 +61,7 @@ interface SpanExpansionCandidate {
 export default defineTool({
   name: "get_trace_details",
   skills: ["inspect"], // Only available in inspect skill
-  requiredScopes: ["event:read"],
+  requiredScopes: ["org:read"],
   requiredCapabilities: ["traces"],
   description: [
     "Get detailed information about a specific Sentry trace by ID.",

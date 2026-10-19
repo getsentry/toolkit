@@ -557,7 +557,7 @@ export function searchToolBase(toolName: string): {
 } {
   return {
     skills: ["inspect", "triage", "seer"],
-    requiredScopes: ["event:read"],
+    requiredScopes: ["org:read", "project:read"],
     annotations: SEARCH_EVENTS_ANNOTATIONS,
     onError(error, params, context) {
       logSearchEventsError(toolName, error, params, context);

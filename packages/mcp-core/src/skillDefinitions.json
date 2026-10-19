@@ -175,12 +175,12 @@
       {
         "name": "get_span_details",
         "description": "Get detailed information about a specific span within a Sentry trace.\n\nUse this tool when you need to:\n- Inspect a span when you already know its trace ID and span ID\n- Focus a trace investigation on one operation\n- Review a span's attributes, timing, errors, and child spans\n\n<examples>\nget_span_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a', spanId='aa8e7f3384ef4ff5')\n</examples>\n\n<hints>\n- Pass traceId and spanId as separate parameters.\n- Use get_trace_details for a trace overview when no span is selected.\n- Use get_sentry_resource when starting from a Sentry trace or span URL.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read"]
       },
       {
         "name": "get_trace_details",
         "description": "Get detailed information about a specific Sentry trace by ID.\n\nUSE THIS TOOL WHEN USERS:\n- Provide a specific trace ID (e.g., 'a4d1aae7216b47ff8117cf4e09ce9d0a')\n- Ask to 'show me trace [TRACE-ID]', 'explain trace [TRACE-ID]'\n- Want high-level overview and link to view trace details in Sentry\n- Need trace statistics and span breakdown\n- Want an overview first, then a guided pivot into additional spans or events\n\nDO NOT USE for:\n- General searching for traces (use search_traces)\n- Complete span enumeration or branch-by-branch reconstruction (use search_traces scoped to the trace)\n\nTRIGGER PATTERNS:\n- 'Show me trace abc123' → use get_trace_details\n- 'Explain trace a4d1aae7216b47ff8117cf4e09ce9d0a' → use get_trace_details\n- 'What is trace [trace-id]' → use get_trace_details\n\n<examples>\n### Get trace overview\n```\nget_trace_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a')\n```\n\n### Focus a single span\n```\nget_trace_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a', spanId='aa8e7f3384ef4ff5')\n```\n</examples>\n\n<hints>\n- Trace IDs are 32-character hexadecimal strings\n- This returns a condensed trace overview, not a full span dump\n- Provide `spanId` to focus on a single span within the trace\n- If the response says it shows a subset of spans, use search_traces to inspect the rest of the trace\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read"]
       },
       {
         "name": "get_uptime_monitor_details",
@@ -200,7 +200,7 @@
       {
         "name": "search_errors",
         "description": "Search Sentry error events: exceptions and crashes with stack traces. Use for error counts, statistics, trends, and individual error events.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('how many errors today', 'top error types'), individual events ('latest TypeErrors in checkout'), and time series ('errors per hour last 24h').\n\nNOT for log messages, including error/warning logs (use search_logs), requests or latency (use search_traces), or grouped issue lists (use search_issues).\n\n<examples>\nsearch_errors(organizationSlug='my-org', query='how many errors today')\nsearch_errors(organizationSlug='my-org', query='most common error types in production this week')\nsearch_errors(organizationSlug='my-org', query='errors per hour last 24h')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_issue_events",
@@ -215,27 +215,27 @@
       {
         "name": "search_logs",
         "description": "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('warning logs by service'), individual entries ('error logs from the last hour'), and time series ('error logs per hour').\n\nNOT for exceptions/crashes (use search_errors). For requests or spans whose trace also has a matching log, use search_traces.\n\n<examples>\nsearch_logs(organizationSlug='my-org', query='error logs from the last hour')\nsearch_logs(organizationSlug='my-org', query='logs mentioning payment timeout in production')\nsearch_logs(organizationSlug='my-org', query='count warning logs by service over 7 days')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n- Sentry search syntax for logs includes RE2 regex filters, never quoted: `message://^Timeout after \\d+ms//`.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_metrics",
         "description": "Search Sentry metrics: counters, gauges, and distributions, as rows or aggregates. Use for metric values, percentiles, totals, and trends.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('p95 http.request.duration by environment'), individual metric rows, and time series ('total tokens per day this week').\n\nNOT for span or request latency recorded on traces (use search_traces).\n\n<examples>\nsearch_metrics(organizationSlug='my-org', query='p95 http.request.duration grouped by environment over the last 24 hours')\nsearch_metrics(organizationSlug='my-org', query='total tokens used per day this week')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_profiles",
         "description": "Search Sentry profiles: transaction and continuous profile results, profile IDs, and profiled transactions. Use to find profiles to inspect.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nUse get_profile or get_profile_details on a result for flamegraph and hotspot analysis.\n\n<examples>\nsearch_profiles(organizationSlug='my-org', query='recent profiles for the /checkout transaction')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_replays",
         "description": "Search Sentry session replays: rage clicks, dead clicks, visited pages, errors seen, and replay users.\n\n`query` is natural language (preferred) or replay search syntax; a configured agent translates it into a replay search.\n\nReturns replay lists only; count()/avg()/sum() are not supported. Use get_replay_details on a result for one replay.\n\n<examples>\nsearch_replays(organizationSlug='my-org', query='replays with rage clicks on checkout in the last day')\nsearch_replays(organizationSlug='my-org', query='count_errors:>0', sort='-count_errors')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_traces",
         "description": "Search Sentry spans and traces: requests, API/HTTP calls, endpoints, DB queries, AI/LLM calls, and other operations. Use for latency, throughput, slowness, and performance questions.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nAlso use for spans whose trace contains a matching log, metric, or other span, e.g. 'slow checkout requests that also logged an error'.\n\nSupports aggregations ('p95 duration by span.op'), individual spans ('slowest API calls today'), and time series ('requests per minute last hour').\n\nNOT for exceptions/crashes (use search_errors), standalone log lines (use search_logs), or a single trace's span tree (use get_sentry_resource with the trace).\n\n<examples>\nsearch_traces(organizationSlug='my-org', query='slowest API calls in the last 24 hours')\nsearch_traces(organizationSlug='my-org', query='p95 duration of db spans grouped by span.op over 7 days')\nsearch_traces(organizationSlug='my-org', query='checkout requests that also have an error log')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "whoami",
@@ -300,7 +300,7 @@
       {
         "name": "search_errors",
         "description": "Search Sentry error events: exceptions and crashes with stack traces. Use for error counts, statistics, trends, and individual error events.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('how many errors today', 'top error types'), individual events ('latest TypeErrors in checkout'), and time series ('errors per hour last 24h').\n\nNOT for log messages, including error/warning logs (use search_logs), requests or latency (use search_traces), or grouped issue lists (use search_issues).\n\n<examples>\nsearch_errors(organizationSlug='my-org', query='how many errors today')\nsearch_errors(organizationSlug='my-org', query='most common error types in production this week')\nsearch_errors(organizationSlug='my-org', query='errors per hour last 24h')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_issues",
@@ -310,27 +310,27 @@
       {
         "name": "search_logs",
         "description": "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('warning logs by service'), individual entries ('error logs from the last hour'), and time series ('error logs per hour').\n\nNOT for exceptions/crashes (use search_errors). For requests or spans whose trace also has a matching log, use search_traces.\n\n<examples>\nsearch_logs(organizationSlug='my-org', query='error logs from the last hour')\nsearch_logs(organizationSlug='my-org', query='logs mentioning payment timeout in production')\nsearch_logs(organizationSlug='my-org', query='count warning logs by service over 7 days')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n- Sentry search syntax for logs includes RE2 regex filters, never quoted: `message://^Timeout after \\d+ms//`.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_metrics",
         "description": "Search Sentry metrics: counters, gauges, and distributions, as rows or aggregates. Use for metric values, percentiles, totals, and trends.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('p95 http.request.duration by environment'), individual metric rows, and time series ('total tokens per day this week').\n\nNOT for span or request latency recorded on traces (use search_traces).\n\n<examples>\nsearch_metrics(organizationSlug='my-org', query='p95 http.request.duration grouped by environment over the last 24 hours')\nsearch_metrics(organizationSlug='my-org', query='total tokens used per day this week')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_profiles",
         "description": "Search Sentry profiles: transaction and continuous profile results, profile IDs, and profiled transactions. Use to find profiles to inspect.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nUse get_profile or get_profile_details on a result for flamegraph and hotspot analysis.\n\n<examples>\nsearch_profiles(organizationSlug='my-org', query='recent profiles for the /checkout transaction')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_replays",
         "description": "Search Sentry session replays: rage clicks, dead clicks, visited pages, errors seen, and replay users.\n\n`query` is natural language (preferred) or replay search syntax; a configured agent translates it into a replay search.\n\nReturns replay lists only; count()/avg()/sum() are not supported. Use get_replay_details on a result for one replay.\n\n<examples>\nsearch_replays(organizationSlug='my-org', query='replays with rage clicks on checkout in the last day')\nsearch_replays(organizationSlug='my-org', query='count_errors:>0', sort='-count_errors')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_traces",
         "description": "Search Sentry spans and traces: requests, API/HTTP calls, endpoints, DB queries, AI/LLM calls, and other operations. Use for latency, throughput, slowness, and performance questions.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nAlso use for spans whose trace contains a matching log, metric, or other span, e.g. 'slow checkout requests that also logged an error'.\n\nSupports aggregations ('p95 duration by span.op'), individual spans ('slowest API calls today'), and time series ('requests per minute last hour').\n\nNOT for exceptions/crashes (use search_errors), standalone log lines (use search_logs), or a single trace's span tree (use get_sentry_resource with the trace).\n\n<examples>\nsearch_traces(organizationSlug='my-org', query='slowest API calls in the last 24 hours')\nsearch_traces(organizationSlug='my-org', query='p95 duration of db spans grouped by span.op over 7 days')\nsearch_traces(organizationSlug='my-org', query='checkout requests that also have an error log')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "whoami",
@@ -461,7 +461,7 @@
       {
         "name": "search_errors",
         "description": "Search Sentry error events: exceptions and crashes with stack traces. Use for error counts, statistics, trends, and individual error events.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('how many errors today', 'top error types'), individual events ('latest TypeErrors in checkout'), and time series ('errors per hour last 24h').\n\nNOT for log messages, including error/warning logs (use search_logs), requests or latency (use search_traces), or grouped issue lists (use search_issues).\n\n<examples>\nsearch_errors(organizationSlug='my-org', query='how many errors today')\nsearch_errors(organizationSlug='my-org', query='most common error types in production this week')\nsearch_errors(organizationSlug='my-org', query='errors per hour last 24h')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_issue_events",
@@ -476,27 +476,27 @@
       {
         "name": "search_logs",
         "description": "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('warning logs by service'), individual entries ('error logs from the last hour'), and time series ('error logs per hour').\n\nNOT for exceptions/crashes (use search_errors). For requests or spans whose trace also has a matching log, use search_traces.\n\n<examples>\nsearch_logs(organizationSlug='my-org', query='error logs from the last hour')\nsearch_logs(organizationSlug='my-org', query='logs mentioning payment timeout in production')\nsearch_logs(organizationSlug='my-org', query='count warning logs by service over 7 days')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n- Sentry search syntax for logs includes RE2 regex filters, never quoted: `message://^Timeout after \\d+ms//`.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_metrics",
         "description": "Search Sentry metrics: counters, gauges, and distributions, as rows or aggregates. Use for metric values, percentiles, totals, and trends.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('p95 http.request.duration by environment'), individual metric rows, and time series ('total tokens per day this week').\n\nNOT for span or request latency recorded on traces (use search_traces).\n\n<examples>\nsearch_metrics(organizationSlug='my-org', query='p95 http.request.duration grouped by environment over the last 24 hours')\nsearch_metrics(organizationSlug='my-org', query='total tokens used per day this week')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_profiles",
         "description": "Search Sentry profiles: transaction and continuous profile results, profile IDs, and profiled transactions. Use to find profiles to inspect.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nUse get_profile or get_profile_details on a result for flamegraph and hotspot analysis.\n\n<examples>\nsearch_profiles(organizationSlug='my-org', query='recent profiles for the /checkout transaction')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_replays",
         "description": "Search Sentry session replays: rage clicks, dead clicks, visited pages, errors seen, and replay users.\n\n`query` is natural language (preferred) or replay search syntax; a configured agent translates it into a replay search.\n\nReturns replay lists only; count()/avg()/sum() are not supported. Use get_replay_details on a result for one replay.\n\n<examples>\nsearch_replays(organizationSlug='my-org', query='replays with rage clicks on checkout in the last day')\nsearch_replays(organizationSlug='my-org', query='count_errors:>0', sort='-count_errors')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "search_traces",
         "description": "Search Sentry spans and traces: requests, API/HTTP calls, endpoints, DB queries, AI/LLM calls, and other operations. Use for latency, throughput, slowness, and performance questions.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nAlso use for spans whose trace contains a matching log, metric, or other span, e.g. 'slow checkout requests that also logged an error'.\n\nSupports aggregations ('p95 duration by span.op'), individual spans ('slowest API calls today'), and time series ('requests per minute last hour').\n\nNOT for exceptions/crashes (use search_errors), standalone log lines (use search_logs), or a single trace's span tree (use get_sentry_resource with the trace).\n\n<examples>\nsearch_traces(organizationSlug='my-org', query='slowest API calls in the last 24 hours')\nsearch_traces(organizationSlug='my-org', query='p95 duration of db spans grouped by span.op over 7 days')\nsearch_traces(organizationSlug='my-org', query='checkout requests that also have an error log')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
-        "requiredScopes": ["event:read"]
+        "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "unlink_issue",
