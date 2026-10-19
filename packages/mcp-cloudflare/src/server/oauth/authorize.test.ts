@@ -505,32 +505,30 @@ describe("oauth authorize routes", () => {
           .sort();
       }
 
-      it("requests only read scopes from Sentry when only 'inspect' is selected", async () => {
-        const requested = await upstreamScopesFor(["inspect"]);
-
-        expect(requested.filter((s) => s.endsWith(":write"))).toEqual([]);
+      it("requests exactly the read scopes from Sentry when only 'inspect' is selected", async () => {
+        expect(await upstreamScopesFor(["inspect"])).toEqual([
+          "event:read",
+          "org:read",
+          "project:read",
+          "team:read",
+        ]);
       });
 
-      // Write scopes imply read in Sentry, so compare only write scopes:
-      // the consent request must not ask for writes the selected skills
-      // don't need.
       it.each([
         [["inspect"]],
         [["inspect", "seer"]],
         [["inspect", "triage"]],
         [["inspect", "project-management"]],
-      ])("requests no write scopes beyond what %j needs", async (skills) => {
-        const needed = Array.from(
-          await getScopesForSkills(new Set(skills as Skill[])),
-        )
-          .filter((s) => s.endsWith(":write"))
-          .sort();
-        const requested = (await upstreamScopesFor(skills)).filter((s) =>
-          s.endsWith(":write"),
-        );
+      ])(
+        "requests exactly getScopesForSkills(%j) from Sentry",
+        async (skills) => {
+          const expected = Array.from(
+            await getScopesForSkills(new Set(skills as Skill[])),
+          ).sort();
 
-        expect(requested).toEqual(needed);
-      });
+          expect(await upstreamScopesFor(skills)).toEqual(expected);
+        },
+      );
     });
 
     it("uses submitted skills rather than remembered skills for redirect state", async () => {
