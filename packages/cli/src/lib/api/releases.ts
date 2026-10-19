@@ -416,13 +416,9 @@ async function getPreviousReleaseCommit(
 }
 
 /**
- * Set commits on a release using auto-discovery mode.
- *
- * Lists the org's repositories from the Sentry API, matches against the
-/**
  * Message of the client-side {@link ApiError} thrown by {@link setCommitsAuto}
  * when the org has no repository integrations. Exported so callers can
- * distinguish this specific no-repo-integration case from unrelated 400s
+ * distinguish this specific no-repo-integration case from unrelated API errors
  * returned by the server (e.g. invalid commit refs), which must not be masked
  * as "no integration". Matched on `message` (not `detail`) because this error is
  * constructed client-side with `detail: undefined`.
@@ -431,9 +427,16 @@ export const NO_REPO_INTEGRATIONS_MESSAGE =
   "No repository integrations configured for this organization.";
 
 /**
- * local git remote URL to find the corresponding Sentry repo, then sends
- * a refs payload with the HEAD commit SHA. This is the equivalent of the
- * reference sentry-cli's `--auto` mode.
+ * Set commits on a release using auto-discovery mode.
+ *
+ * Looks up the org's repositories by the name from the local git remote URL to
+ * find the corresponding Sentry repo, then sends a refs payload with the HEAD
+ * commit SHA. This is the equivalent of the reference sentry-cli's `--auto`
+ * mode.
+ *
+ * The lookup asks the server to filter by name instead of walking every page,
+ * since orgs can have tens of thousands of repositories. Servers that ignore
+ * the filter return every repository, which the exact name match still handles.
  *
  * Requires a GitHub/GitLab/Bitbucket integration configured in Sentry
  * AND a local git repository whose origin remote matches a Sentry repo.
@@ -442,7 +445,7 @@ export const NO_REPO_INTEGRATIONS_MESSAGE =
  * @param version - Release version
  * @param cwd - Working directory to discover git remote and HEAD from
  * @returns Updated release detail with commit count
- * @throws {ApiError} When the org has no repository integrations (400)
+ * @throws {ApiError} When the org has no repository integrations (404)
  * @throws {ValidationError} When local git remote is missing or doesn't match any Sentry repo
  */
 export async function setCommitsAuto(
@@ -463,8 +466,6 @@ export async function setCommitsAuto(
     );
   }
 
-  // Paginate through org repos to find one matching the local git remote.
-  // Stops as soon as a match is found to avoid unnecessary API calls.
   const localRepoLower = localRepo.toLowerCase();
   let cursor: string | undefined;
   let foundAnyRepos = false;
@@ -473,6 +474,7 @@ export async function setCommitsAuto(
     const result = await listRepositoriesPaginated(orgSlug, {
       cursor,
       perPage: API_MAX_PER_PAGE,
+      query: localRepo,
     });
 
     if (result.data.length > 0) {
@@ -502,9 +504,19 @@ export async function setCommitsAuto(
     cursor = result.nextCursor;
   }
 
+  // The name filter returns nothing for an org whose repositories all have
+  // other names, so only report a missing integration when the org has none.
   if (!foundAnyRepos) {
-    const endpoint = `organizations/${orgSlug}/releases/${encodeURIComponent(version)}/`;
-    throw new ApiError(NO_REPO_INTEGRATIONS_MESSAGE, 400, undefined, endpoint);
+    const anyRepo = await listRepositoriesPaginated(orgSlug, { perPage: 1 });
+    if (anyRepo.data.length === 0) {
+      const endpoint = `organizations/${orgSlug}/releases/${encodeURIComponent(version)}/`;
+      throw new ApiError(
+        NO_REPO_INTEGRATIONS_MESSAGE,
+        404,
+        undefined,
+        endpoint,
+      );
+    }
   }
 
   throw new ValidationError(

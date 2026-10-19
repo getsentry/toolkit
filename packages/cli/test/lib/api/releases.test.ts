@@ -290,6 +290,9 @@ describe("setCommitsAuto", () => {
       // List org repositories (SDK uses /repos/ endpoint)
       if (req.url.includes("/repos/")) {
         expect(req.method).toBe("GET");
+        const params = new URL(req.url).searchParams;
+        expect(params.get("query")).toBe("getsentry/cli");
+        expect(params.get("per_page")).toBe("100");
         return new Response(JSON.stringify([SAMPLE_REPO]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -344,9 +347,13 @@ describe("setCommitsAuto", () => {
         }),
     );
 
-    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /No repository integrations/,
-    );
+    await expect(
+      setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    ).rejects.toMatchObject({
+      name: "ApiError",
+      status: 404,
+      message: expect.stringMatching(/No repository integrations/),
+    });
   });
 
   test.each([
@@ -386,6 +393,26 @@ describe("setCommitsAuto", () => {
       ]);
     },
   );
+
+  test("throws ValidationError when the name filter matches nothing but the org has repos", async () => {
+    const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
+    const repoQueries: (string | null)[] = [];
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const params = new URL(new Request(input!, init).url).searchParams;
+      repoQueries.push(params.get("query"));
+      const repos = params.get("query") ? [] : [otherRepo];
+      return new Response(JSON.stringify(repos), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
+      /No Sentry repository matching/,
+    );
+    expect(repoQueries).toEqual(["getsentry/cli", null]);
+  });
 
   test("throws ValidationError when no repo matches local remote", async () => {
     const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
