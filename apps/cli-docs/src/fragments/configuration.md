@@ -58,7 +58,7 @@ The first source that provides both org and project wins. For org-only commands,
 Full issue short IDs, such as `sentry issue view FRONT-ABC`, only need the org:
 `SENTRY_ORG`, `.sentryclirc`, and persistent defaults scope the lookup in that order.
 Use `sentry issue view other-org/FRONT-ABC` to override the configured organization.
-Project aliases retain their associated organization. See [View an issue](./commands/issue/#view-an-issue).
+Project aliases retain their associated organization. See [View an issue](../commands/issue/#view-an-issue).
 
 ### Backward Compatibility
 
@@ -78,7 +78,7 @@ sentry cli defaults                      # Show all current defaults
 sentry cli defaults org --clear          # Clear a specific default
 ```
 
-See [`sentry cli defaults`](./commands/cli/#sentry-cli-defaults) for full usage.
+See [`sentry cli defaults`](../commands/cli/#sentry-cli-defaults-key-value) for full usage.
 
 ### Disabling tips
 
@@ -127,7 +127,7 @@ We store credentials and caches in a SQLite database (`cli.db`) inside the confi
 - Region URL mappings
 - Project aliases (for monorepo support)
 
-See [Credential Storage](./commands/auth/#credential-storage) in the auth command docs for more details.
+See [Credential Storage](../commands/auth/#credential-storage) in the auth command docs for more details.
 
 ## Binary Install Location
 
