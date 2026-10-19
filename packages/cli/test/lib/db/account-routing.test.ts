@@ -14,6 +14,7 @@ import { markPersistedDefaultUrl } from "../../../src/lib/constants.js";
 import {
   getActiveAccountId,
   getAuthToken,
+  getEffectiveAccountRow,
   getReauthorizationAccountId,
   refreshToken,
   resetAccountSelection,
@@ -345,6 +346,22 @@ describe("organization-based selection", () => {
     selectAccountForOrg("shared-org");
 
     expect(getAuthToken()).toBe("recent-token");
+  });
+
+  test("an account the configured server picked yields to one on it that knows the org", () => {
+    const peer = login("peer-token", ACME, "peer");
+    seeOrg("acme-org", ACME);
+    // More recently used on ACME, but has never seen the org.
+    login("other-token", ACME, "other");
+    const saas = login("saas-token", SAAS, "saas");
+    process.env.SENTRY_URL = ACME;
+    expect(getAuthToken()).toBe("other-token");
+
+    selectAccountForOrg("acme-org");
+
+    expect(getAuthToken()).toBe("peer-token");
+    expect(getEffectiveAccountRow()?.account_id).toBe(peer);
+    expect(getActiveAccountId()).toBe(saas);
   });
 
   test("resolveOrgRegion routes through the org's account", async () => {

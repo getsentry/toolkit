@@ -879,8 +879,8 @@ function followDefaultAccountHost(host: string): void {
  * rest of this invocation, so commands targeting another login's
  * organization work without `sentry auth switch`.
  *
- * No-op when the effective account knows the org or has no cached org
- * list to rule it out, when no stored account knows it, or when an earlier
+ * No-op when the effective account knows the org, or is the active account
+ * and has no cached org list to rule it out, when no stored account knows it, or when an earlier
  * org already chose the invocation's default account — one invocation
  * never mixes identities. An explicit server (`SENTRY_HOST`/`SENTRY_URL`,
  * `--url`, `.sentryclirc`) limits candidates to accounts on it; when several
@@ -901,15 +901,19 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
       return;
     }
     const current = getAuthRow();
-    // Respect the account in effect unless its fresh cached org list shows
-    // it is not a member: after `sentry auth switch`, an account that simply
-    // hasn't used the org yet must not be overridden by one that has. An
+    // Respect the active account unless its fresh cached org list shows it
+    // is not a member: after `sentry auth switch`, an account that simply
+    // hasn't used the org yet must not be overridden by one that has. That
+    // deference is for the user's choice only: an account the configured
+    // server picked by recency yields to one on it that knows the org. An
     // account that can no longer authenticate (credentials invalidated or
     // expired) is never kept over an owner that can.
     if (
       current &&
       (owners.some((o) => o.account_id === current.account_id) ||
-        (isAccountRowUsable(current) && !hasCachedOrgList(current.account_id)))
+        (current.is_active === 1 &&
+          isAccountRowUsable(current) &&
+          !hasCachedOrgList(current.account_id)))
     ) {
       return;
     }
