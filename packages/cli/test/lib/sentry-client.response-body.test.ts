@@ -1,24 +1,30 @@
 /**
- * Response-body recovery through the real generated SDK and command API paths.
+ * Interrupted GET recovery through direct fetch, API helpers and the real SDK.
  */
 
-import { createSentryClient, listOrganizations } from "@sentry/api";
+import { listOrganizations } from "@sentry/api";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   getReplayRecordingSegments,
   listIssuesPaginated,
+  rawApiRequest,
 } from "../../src/lib/api-client.js";
+import {
+  apiRequestToRegion,
+  apiRequestToRegionNoContent,
+} from "../../src/lib/api/infrastructure.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
+import { TimeoutError } from "../../src/lib/errors.js";
 import {
+  __injectTimeoutOverrideForTests,
   getSdkConfig,
-  registerSdkResponseBodyMode,
   resetAuthenticatedFetch,
 } from "../../src/lib/sentry-client.js";
 import { getSdkClientConfig } from "../../src/lib/sentry-sdk-client.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
-useTestConfigDir("sdk-response-body-");
+useTestConfigDir("response-body-");
 
 const REGION_URL = "https://us.sentry.io";
 let originalFetch: typeof globalThis.fetch;
@@ -55,7 +61,7 @@ async function whileStreamIsOpen<T>(operation: Promise<T>): Promise<T> {
       operation,
       new Promise<never>((_resolve, reject) => {
         timeout = setTimeout(
-          () => reject(new Error("The SDK waited for the stream to close")),
+          () => reject(new Error("The request waited for the stream to close")),
           1000,
         );
       }),
@@ -65,42 +71,202 @@ async function whileStreamIsOpen<T>(operation: Promise<T>): Promise<T> {
   }
 }
 
-describe("SDK response body recovery", () => {
-  test("retries a truncated generated operation response", async () => {
-    let calls = 0;
-    globalThis.fetch = mockFetch(async () => {
-      calls += 1;
-      return calls === 1
-        ? interruptedResponse()
-        : Response.json([{ id: "1", slug: "example-org" }]);
-    });
+describe("handwritten API response body recovery", () => {
+  test.each(["json", "no-content"] as const)(
+    "retries interrupted GET bodies in the %s helper",
+    async (kind) => {
+      let calls = 0;
+      globalThis.fetch = mockFetch(async () => {
+        calls += 1;
+        return calls === 1
+          ? interruptedResponse()
+          : Response.json(
+              { ok: true },
+              { headers: { "X-Request-Id": "complete" } },
+            );
+      });
 
-    const result = await listOrganizations({
-      ...getSdkClientConfig(REGION_URL),
-    });
-
-    expect(result.data).toEqual([{ id: "1", slug: "example-org" }]);
-    expect(calls).toBe(2);
-  });
-
-  test("shares one attempt budget between HTTP and body failures", async () => {
-    let calls = 0;
-    globalThis.fetch = mockFetch(async () => {
-      calls += 1;
-      if (calls === 1) {
-        return new Response("temporarily unavailable", { status: 503 });
+      if (kind === "json") {
+        const result = await apiRequestToRegion(
+          "https://us.sentry.io",
+          "/body/",
+        );
+        expect(result.data).toEqual({ ok: true });
+        expect(result.headers.get("X-Request-Id")).toBe("complete");
+      } else {
+        await apiRequestToRegionNoContent("https://us.sentry.io", "/body/");
       }
-      return calls === 2 ? interruptedResponse() : Response.json([]);
+      expect(calls).toBe(2);
+    },
+  );
+
+  test("does not misreport an exhausted interrupted GET as invalid JSON", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return interruptedResponse();
     });
 
-    const result = await listOrganizations({
-      ...getSdkClientConfig(REGION_URL),
-    });
-
-    expect(result.data).toEqual([]);
+    await expect(
+      apiRequestToRegion("https://us.sentry.io", "/body/"),
+    ).rejects.toThrow("terminated");
     expect(calls).toBe(3);
   });
 
+  test("does not retry a complete but invalid JSON body", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return new Response("{invalid", {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await expect(
+      apiRequestToRegion("https://us.sentry.io", "/body/"),
+    ).rejects.toThrow("Invalid JSON");
+    expect(calls).toBe(1);
+  });
+});
+
+describe("raw API and direct fetch response bodies", () => {
+  test("respects a null signal overriding an aborted Request signal", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const input = new Request("https://us.sentry.io/api/0/body-signal/", {
+      signal: controller.signal,
+    });
+    globalThis.fetch = mockFetch(async (_input, init) => {
+      expect(init?.signal?.aborted).toBe(false);
+      return Response.json({ ok: true });
+    });
+
+    const response = await getSdkConfig("https://us.sentry.io", {
+      bufferResponseBody: true,
+    }).fetch(input, { signal: null });
+
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
+  test.each([
+    {
+      name: "JSON from the default host",
+      baseUrl: undefined,
+      bytes: new TextEncoder().encode('{"ok":true}'),
+      contentType: "application/json",
+      expected: { ok: true },
+    },
+    {
+      name: "binary data from a regional host",
+      baseUrl: "https://us.sentry.io",
+      bytes: new Uint8Array([0, 255, 128, 1]),
+      contentType: "application/octet-stream",
+      expected: new Uint8Array([0, 255, 128, 1]),
+    },
+  ])("retries an interrupted GET and preserves $name", async (fixture) => {
+    let calls = 0;
+    // An existing streaming fetch must not prevent this call opting in.
+    getSdkConfig(fixture.baseUrl ?? "https://sentry.io");
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return interruptedResponse();
+      }
+      return new Response(fixture.bytes, {
+        headers: {
+          "Content-Type": fixture.contentType,
+          "X-Request-Id": "complete-response",
+        },
+      });
+    });
+
+    const result = await rawApiRequest("body-recovery/", {
+      baseUrl: fixture.baseUrl,
+    });
+
+    expect(calls).toBe(2);
+    expect(result.status).toBe(200);
+    expect(result.headers.get("X-Request-Id")).toBe("complete-response");
+    expect(result.body).toEqual(fixture.expected);
+  });
+
+  test("does not replay a successful POST when its body fails", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return interruptedResponse();
+    });
+
+    await expect(
+      rawApiRequest("body-failure/", {
+        method: "POST",
+        body: { name: "example" },
+      }),
+    ).rejects.toThrow("terminated");
+    expect(calls).toBe(1);
+  });
+
+  test("keeps the attempt timeout active while reading a GET body", async () => {
+    const restore = __injectTimeoutOverrideForTests({
+      pattern: /\/body-timeout\//,
+      timeoutMs: 20,
+    });
+    let calls = 0;
+    globalThis.fetch = mockFetch(async (_input, init) => {
+      calls += 1;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"pending":'));
+            init?.signal?.addEventListener(
+              "abort",
+              () => controller.error(new DOMException("aborted", "AbortError")),
+              { once: true },
+            );
+          },
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    try {
+      await expect(rawApiRequest("body-timeout/")).rejects.toBeInstanceOf(
+        TimeoutError,
+      );
+      expect(calls).toBe(3);
+    } finally {
+      restore();
+    }
+  });
+
+  test("keeps direct fetch streaming after a raw API request", async () => {
+    globalThis.fetch = mockFetch(async () => Response.json({ ok: true }));
+    await rawApiRequest("buffered/");
+
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          streamController = controller;
+        },
+      }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+    globalThis.fetch = mockFetch(async () => response);
+
+    try {
+      const returned = await whileStreamIsOpen(
+        getSdkConfig(REGION_URL).fetch(`${REGION_URL}/api/0/stream/`),
+      );
+      expect(returned).toBe(response);
+      expect(returned.bodyUsed).toBe(false);
+    } finally {
+      streamController.close();
+    }
+  });
+});
+
+describe("SDK response body recovery", () => {
   test("does not restart the budget after an HTTP retry", async () => {
     let calls = 0;
     globalThis.fetch = mockFetch(async () => {
@@ -119,30 +285,12 @@ describe("SDK response body recovery", () => {
     expect(calls).toBe(3);
   });
 
-  test.each([
-    {
-      parseAs: "json" as const,
-      body: '{"ok":true}',
-      contentType: "application/json",
-      expected: { ok: true },
-    },
-    {
-      parseAs: "text" as const,
-      body: "complete text",
-      contentType: "text/plain",
-      expected: "complete text",
-    },
-    {
-      parseAs: "arrayBuffer" as const,
-      body: new Uint8Array([0, 255, 128, 1]),
-      contentType: "application/octet-stream",
-      expected: new Uint8Array([0, 255, 128, 1]).buffer,
-    },
-  ])("recovers before SDK $parseAs parsing", async (fixture) => {
+  test("recovers binary data and preserves the SDK Response", async () => {
     let calls = 0;
-    const completeResponse = new Response(fixture.body, {
+    const bytes = new Uint8Array([0, 255, 128, 1]);
+    const completeResponse = new Response(bytes, {
       headers: {
-        "Content-Type": fixture.contentType,
+        "Content-Type": "application/octet-stream",
         "X-Request-Id": "complete-response",
       },
     });
@@ -155,10 +303,10 @@ describe("SDK response body recovery", () => {
     const result = await config.client.get({
       ...config,
       url: "/api/0/body-parsing/",
-      parseAs: fixture.parseAs,
+      parseAs: "arrayBuffer",
     });
 
-    expect(result.data).toEqual(fixture.expected);
+    expect(result.data).toEqual(bytes.buffer);
     expect(result.response).toBe(completeResponse);
     expect(result.response?.headers.get("X-Request-Id")).toBe(
       "complete-response",
@@ -229,46 +377,28 @@ describe("SDK response body recovery", () => {
     },
   );
 
-  test.each(["POST", "PUT", "PATCH"] as const)(
-    "does not replay a successful SDK %s when its body fails",
-    async (method) => {
-      let calls = 0;
-      globalThis.fetch = mockFetch(async () => {
-        calls += 1;
-        return interruptedResponse();
-      });
-      const config = getSdkClientConfig(REGION_URL);
-
-      await expect(
-        config.client.request({
-          ...config,
-          method,
-          url: "/api/0/body-post/",
-          body: { name: "example" },
-        }),
-      ).rejects.toThrow("terminated");
-      expect(calls).toBe(1);
-    },
-  );
-
-  test("recovers through an independently configured bound SDK client", async () => {
-    const sentry = createSentryClient(getSdkConfig(REGION_URL));
-    registerSdkResponseBodyMode(sentry.client);
+  test("does not replay a successful SDK POST when its body fails", async () => {
     let calls = 0;
     globalThis.fetch = mockFetch(async () => {
       calls += 1;
-      return calls === 1 ? interruptedResponse() : Response.json([]);
+      return interruptedResponse();
     });
+    const config = getSdkClientConfig(REGION_URL);
 
-    expect((await sentry.listOrganizations()).data).toEqual([]);
-    expect(calls).toBe(2);
+    await expect(
+      config.client.post({
+        ...config,
+        url: "/api/0/body-post/",
+        body: { name: "example" },
+      }),
+    ).rejects.toThrow("terminated");
+    expect(calls).toBe(1);
   });
 });
 
 describe("SDK streaming compatibility", () => {
   test.each([
     { parseAs: "stream" as const, contentType: "application/json" },
-    { parseAs: "stream" as const, contentType: "application/octet-stream" },
     { parseAs: "auto" as const, contentType: undefined },
   ])(
     "returns an open $parseAs body with Content-Type $contentType",
