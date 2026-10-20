@@ -507,6 +507,31 @@ describe("the env token as an account", () => {
     expect(getAuthToken()).toBe("env-token");
   });
 
+  test("ignores orgs it saw while scoped to another server", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env.SENTRY_URL = ACME;
+    login("acme-token", ACME, "acme");
+    seeOrg("shared", ACME);
+    // Cached by an earlier invocation where the same token was on SaaS:
+    // ACME's `shared` is a different org.
+    envSeesOrg("env-token", "shared", SAAS);
+
+    selectAccountForOrg("shared");
+
+    expect(getEnvAccount()?.host).toBe(ACME);
+    expect(getAuthToken()).toBe("acme-token");
+  });
+
+  test("matches orgs it saw on a SaaS region of its SaaS server", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    login("saas-token", SAAS, "saas");
+    envSeesOrg("env-token", "eu-org", "https://de.sentry.io");
+
+    selectAccountForOrg("eu-org");
+
+    expect(getAuthToken()).toBe("env-token");
+  });
+
   test("leaves orgs it doesn't know to the stored login", () => {
     process.env.SENTRY_AUTH_TOKEN = "env-token";
     login("saas-token", SAAS, "saas");

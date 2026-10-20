@@ -511,27 +511,32 @@ export function hasCachedOrgList(accountId: string): boolean {
 
 /**
  * Whether the org cache shows `identity` (a credential fingerprint, see
- * `getIdentityFingerprint`) has seen an organization, by slug or numeric
- * id. Mirrors {@link listUsableAccountRowsForOrg} for a credential that is
- * not a stored account: the env token.
+ * `getIdentityFingerprint`) has seen an organization on `host`'s server, by
+ * slug or numeric id. Mirrors {@link listUsableAccountRowsForOrg} for a
+ * credential that is not a stored account: the env token. Its fingerprint
+ * doesn't depend on the server, so rows cached while it was scoped to
+ * another server (a different `SENTRY_URL`) must not count: that server's
+ * org with the same slug is a different org.
  */
 export function hasCachedOrgForIdentity(
   identity: string,
+  host: string,
   orgSlug: string,
   orgId?: string,
 ): boolean {
   const id = orgId ?? null;
-  const row = getDatabase()
+  const rows = getDatabase()
     .query(
-      `SELECT 1 AS found FROM org_regions r
+      `SELECT DISTINCT r.source_origin FROM org_regions r
        WHERE r.credential_identity = ? AND (
          r.org_slug = ? OR r.org_id = ? OR EXISTS (
            SELECT 1 FROM org_regions m
            WHERE m.org_id = ? AND m.org_slug = r.org_slug
              AND m.source_origin = r.source_origin
          )
-       ) LIMIT 1`,
+       )`,
     )
-    .get(identity, orgSlug, id, id) as { found: number } | null | undefined;
-  return Boolean(row);
+    .all(identity, orgSlug, id, id) as { source_origin: string }[];
+  // Same-server matching (`*.sentry.io` as one server) stays in TypeScript.
+  return rows.some((row) => isSameServer(row.source_origin, host));
 }

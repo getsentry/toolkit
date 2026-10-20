@@ -1023,7 +1023,8 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
 
 /**
  * Use the env token for the rest of this invocation when its org cache
- * shows it knows the org and it is on the explicit server, if any. The
+ * shows it knows the org on its current server, and that server is the
+ * explicit one, if any. The
  * env token wins over stored accounts that know the org too.
  *
  * @returns whether the env token was chosen
@@ -1032,7 +1033,13 @@ function selectEnvAccountForOrg(orgSlug: string, orgId?: string): boolean {
   const envAccount = getEnvAccountInScope();
   if (
     !(
-      envAccount && hasCachedOrgForIdentity(envAccount.identity, orgSlug, orgId)
+      envAccount &&
+      hasCachedOrgForIdentity(
+        envAccount.identity,
+        envAccount.host,
+        orgSlug,
+        orgId,
+      )
     )
   ) {
     return false;
