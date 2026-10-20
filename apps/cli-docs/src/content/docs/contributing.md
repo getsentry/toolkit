@@ -57,6 +57,7 @@ toolkit/
 │       │   ├── commands/       # CLI commands
 │       │   │   ├── agent-conversation/# list, view
 │       │   │   ├── alert/       # create, delete, edit, list, view
+│       │   │   ├── attribute/   # list
 │       │   │   ├── auth/        # list, login, logout, refresh, status, switch, token, whoami
 │       │   │   ├── build/       # download, upload
 │       │   │   ├── cli/         # completion, defaults, feedback, fix, import, setup, uninstall, upgrade

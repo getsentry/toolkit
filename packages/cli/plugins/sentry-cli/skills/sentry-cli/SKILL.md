@@ -463,6 +463,14 @@ Manage Sentry alert rules
 
 → Full flags and examples: `references/alert.md`
 
+### Attribute
+
+Explore span, log, and metric attributes
+
+- `sentry attribute list [<org/project>]` — List attribute keys for spans, logs, or metrics
+
+→ Full flags and examples: `references/attribute.md`
+
 ### Build
 
 Manage mobile build artifacts
