@@ -132,8 +132,8 @@ export const RepositorySchema = z
       })
       .passthrough(),
     status: z.string(),
-    externalSlug: z.string().optional(),
-    externalId: z.string().optional(),
+    externalSlug: z.string().nullish(),
+    externalId: z.string().nullish(),
     integrationId: z.union([z.string(), z.number()]).nullable().optional(),
   })
   .passthrough();
