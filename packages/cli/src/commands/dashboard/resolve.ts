@@ -11,10 +11,7 @@ import {
   API_MAX_PER_PAGE,
   listDashboardsPaginated,
 } from "../../lib/api-client.js";
-import {
-  type parseOrgProjectArg,
-  parseSlashSeparatedArg,
-} from "../../lib/arg-parsing.js";
+import type { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import {
   ApiError,
   ResolutionError,
@@ -160,16 +157,10 @@ export function parseDashboardPositionalArgs(
   if (args.length === 1) {
     const [, target, dashboardRef] = DASHBOARD_REF_PATH_RE.exec(first) ?? [];
     if (target && dashboardRef && isAllDigits(dashboardRef)) {
-      // Like replay targets, org/ID needs handling before the project-scoped parser.
-      if (!target.includes("/")) {
-        return { dashboardRef, targetArg: `${target}/` };
-      }
-      const { id, targetArg } = parseSlashSeparatedArg(
-        first,
-        "Dashboard ID",
-        "sentry dashboard <command> [<org>/<project>/]<dashboard-id>",
-      );
-      return { dashboardRef: id, targetArg };
+      return {
+        dashboardRef,
+        targetArg: target.includes("/") ? target : `${target}/`,
+      };
     }
     return {
       dashboardRef: first,
