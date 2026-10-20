@@ -96,6 +96,42 @@ describe("parseDashboardPositionalArgs", () => {
     expect(result.targetArg).toBeUndefined();
   });
 
+  test.each([
+    ["my-org/12345", "my-org/"],
+    ["my-org/web_app/12345", "my-org/web_app"],
+  ])("extracts a numeric dashboard ID from %s", (input, targetArg) => {
+    expect(parseDashboardPositionalArgs([input])).toEqual({
+      dashboardRef: "12345",
+      targetArg,
+    });
+  });
+
+  test.each([
+    "Latency/p95",
+    "Errors / 2026",
+    "My Dashboard/123",
+    "Errors.v2/123",
+    "org/project/title",
+    "org/",
+    "/123",
+    "org//123",
+    "org/a/b/123",
+  ])("preserves %s as a dashboard title", (title) => {
+    expect(parseDashboardPositionalArgs([title])).toEqual({
+      dashboardRef: title,
+      targetArg: undefined,
+    });
+  });
+
+  test("preserves a numeric slash title with a separate target", () => {
+    expect(parseDashboardPositionalArgs(["my-org/", "incidents/2026"])).toEqual(
+      {
+        dashboardRef: "incidents/2026",
+        targetArg: "my-org/",
+      },
+    );
+  });
+
   test("two args returns target + dashboardRef", () => {
     const result = parseDashboardPositionalArgs(["my-org/", "My Dashboard"]);
     expect(result.dashboardRef).toBe("My Dashboard");
