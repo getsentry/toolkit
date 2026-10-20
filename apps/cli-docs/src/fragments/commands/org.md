@@ -38,7 +38,8 @@ sentry org list -a jane@example.com:sentry.io
 ```
 
 ```bash
-# Only organizations whose slug or name contains "acme" (case-insensitive)
+# Only organizations whose slug or name matches "acme", best matches first
+# (case-insensitive; prefix, substring, and small typos match too)
 sentry org list acme
 # ...or matches a glob
 sentry org list 'acme-*'

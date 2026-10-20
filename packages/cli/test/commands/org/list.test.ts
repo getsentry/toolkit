@@ -329,29 +329,50 @@ describe("org list filter", () => {
     ];
   });
 
-  test("plain text matches anywhere in the slug or name, ignoring case", async () => {
-    expect((await runList({}, "PROD")).map((e) => e.slug)).toEqual([
-      "acme-prod",
+  async function slugsFor(
+    filter: string,
+    flags: { limit?: number } = {},
+  ): Promise<string[]> {
+    return (await runList(flags, filter)).map((e) => e.slug as string);
+  }
+
+  test("matches the slug or name, ignoring case", async () => {
+    expect(await slugsFor("PROD")).toEqual(["acme-prod"]);
+    expect(await slugsFor("corp")).toEqual(["globex"]);
+  });
+
+  test("uses the CLI's fuzzy matching, so small typos still match", async () => {
+    expect(await slugsFor("globx")).toEqual(["globex"]);
+    // The closest match leads; other near matches follow it.
+    expect((await slugsFor("acme-prd"))[0]).toBe("acme-prod");
+    expect(await slugsFor("initech")).toEqual([]);
+  });
+
+  test("lists the best matches first: exact, prefix, substring, then typos", async () => {
+    orgsByToken["saas-token"] = [
+      org("my-sentry"),
+      org("sentry-eu"),
+      org("sentri"),
+      org("sentry"),
+    ];
+
+    expect(await slugsFor("sentry")).toEqual([
+      "sentry",
+      "sentry-eu",
+      "my-sentry",
+      "sentri",
     ]);
-    expect((await runList({}, "corp")).map((e) => e.slug)).toEqual(["globex"]);
   });
 
   test("a glob must match the whole slug or name", async () => {
-    expect((await runList({}, "acme-*")).map((e) => e.slug)).toEqual([
-      "acme-prod",
-      "acme-dev",
-    ]);
-    expect((await runList({}, "acme")).map((e) => e.slug)).toEqual([
-      "acme-prod",
-      "acme-dev",
-    ]);
-    expect(await runList({}, "acme?")).toEqual([]);
+    expect(await slugsFor("acme-*")).toEqual(["acme-prod", "acme-dev"]);
+    expect(await slugsFor("*corp")).toEqual(["globex"]);
+    expect(await slugsFor("acme?")).toEqual([]);
   });
 
   test("--limit applies after filtering", async () => {
-    expect((await runList({ limit: 1 }, "acme")).map((e) => e.slug)).toEqual([
-      "acme-prod",
-    ]);
+    expect(await slugsFor("acme", { limit: 1 })).toHaveLength(1);
+    expect(await slugsFor("acme-dev", { limit: 1 })).toEqual(["acme-dev"]);
   });
 
   test("no match says how many organizations were filtered out", async () => {

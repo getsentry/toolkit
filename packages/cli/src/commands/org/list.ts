@@ -24,6 +24,7 @@ import {
 import { getAllOrgRegions } from "../../lib/db/regions.js";
 import { ApiError, AuthError } from "../../lib/errors.js";
 import { formatAccountLabel } from "../../lib/formatters/accounts.js";
+import { fuzzyMatch } from "../../lib/fuzzy.js";
 import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
@@ -269,9 +270,10 @@ function mergeAccountOrgs(results: AccountOrgs[]): {
 const GLOB_CHARS_RE = /[*?[\]{}]/;
 
 /**
- * Orgs whose slug or name matches `filter`, case-insensitively: a glob
- * (`acme-*`) must match the whole slug or name, plain text may appear
- * anywhere in it.
+ * Orgs whose slug or name matches `filter`, case-insensitively. A glob
+ * (`acme-*`) must match the whole slug or name and keeps the list order.
+ * Plain text uses the shared {@link fuzzyMatch} search (exact, prefix,
+ * substring, then small typos), best matches first.
  */
 function filterOrgs(
   orgs: SentryOrganization[],
@@ -281,12 +283,32 @@ function filterOrgs(
   if (!needle) {
     return orgs;
   }
-  const matches = GLOB_CHARS_RE.test(needle)
-    ? picomatch(needle, { dot: true })
-    : (value: string) => value.includes(needle);
-  return orgs.filter(
-    (org) => matches(org.slug.toLowerCase()) || matches(org.name.toLowerCase()),
+  if (GLOB_CHARS_RE.test(needle)) {
+    const matches = picomatch(needle, { dot: true });
+    return orgs.filter(
+      (org) =>
+        matches(org.slug.toLowerCase()) || matches(org.name.toLowerCase()),
+    );
+  }
+  const candidates = [...new Set(orgs.flatMap((org) => [org.slug, org.name]))];
+  const rankOf = new Map(
+    fuzzyMatch(needle, candidates, { mode: "search" }).map((value, rank) => [
+      value,
+      rank,
+    ]),
   );
+  // An org ranks by its better-matching slug or name; the sort is stable.
+  return orgs
+    .map((org) => ({
+      org,
+      rank: Math.min(
+        rankOf.get(org.slug) ?? Number.POSITIVE_INFINITY,
+        rankOf.get(org.name) ?? Number.POSITIVE_INFINITY,
+      ),
+    }))
+    .filter(({ rank }) => rank !== Number.POSITIVE_INFINITY)
+    .sort((a, b) => a.rank - b.rank)
+    .map(({ org }) => org);
 }
 
 /**
@@ -351,8 +373,9 @@ export const listCommand = buildCommand({
       "list to accounts on that server; --account limits it to one account\n" +
       "(an email, username, or account id; add :<server> to pick one server's\n" +
       "login, e.g. jane@example.com:sentry.example.com, as shown in ACCOUNT).\n\n" +
-      "Pass a filter to only list organizations whose slug or name contains it\n" +
-      "(case-insensitive), or matches it when it is a glob like 'acme-*'.\n\n" +
+      "Pass a filter to only list organizations whose slug or name matches it,\n" +
+      "ignoring case: exactly, as a prefix or substring, or with a small typo\n" +
+      "(best matches first), or as a glob like 'acme-*'.\n\n" +
       "Examples:\n" +
       "  sentry org list\n" +
       "  sentry org list acme\n" +
@@ -384,7 +407,7 @@ export const listCommand = buildCommand({
         {
           placeholder: "filter",
           brief:
-            "Only list organizations whose slug or name contains this text or matches this glob",
+            "Only list organizations whose slug or name fuzzy-matches this text or matches this glob",
           parse: String,
           optional: true,
         },

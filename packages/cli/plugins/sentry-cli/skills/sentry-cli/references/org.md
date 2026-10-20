@@ -36,6 +36,14 @@ sentry org list
 
 # Only one account's organizations
 sentry org list --account jane@acme.com
+# The same email on several servers: add the server
+sentry org list -a jane@example.com:sentry.io
+
+# Only organizations whose slug or name matches "acme", best matches first
+# (case-insensitive; prefix, substring, and small typos match too)
+sentry org list acme
+# ...or matches a glob
+sentry org list 'acme-*'
 
 # View organization details
 sentry org view my-org
