@@ -8,6 +8,7 @@
 import {
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -16,7 +17,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { strToU8, unzipSync, zipSync } from "fflate";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   detectBuildFormat,
   detectBuildFormatFromFile,
@@ -435,6 +436,87 @@ describe("normalizeIpa", () => {
     const b = await normalizeToBuffer((out) => normalizeIpa(src, out, null));
     expect(a.equals(b)).toBe(true);
   });
+
+  test("embeds streamed dSYMs deterministically regardless of input and ZIP order", async () => {
+    const src = writeTmpFile("app.ipa", fakeIpaBytes());
+    const bundle = makeTmpDir("dsym-bundles-");
+    const dsym = join(bundle, "App.dSYM");
+    mkdirSync(dsym);
+    writeFileSync(join(dsym, "symbols"), "app symbols");
+    const firstZip = writeTmpFile(
+      "first.zip",
+      zipSync({
+        "Framework.dSYM/z": strToU8("z"),
+        "Framework.dSYM/a": strToU8("a"),
+      }),
+    );
+    const secondZip = writeTmpFile(
+      "second.zip",
+      zipSync({
+        "Framework.dSYM/a": strToU8("a"),
+        "Framework.dSYM/z": strToU8("z"),
+      }),
+    );
+    const first = await normalizeToBuffer((out) =>
+      normalizeIpa(src, out, null, [dsym, firstZip]),
+    );
+    const second = await normalizeToBuffer((out) =>
+      normalizeIpa(src, out, null, [secondZip, `${dsym}/`]),
+    );
+    expect(first.equals(second)).toBe(true);
+    const entries = unzipSync(first);
+    expect(entries["archive.xcarchive/dSYMs/App.dSYM/symbols"]).toEqual(
+      strToU8("app symbols"),
+    );
+    expect(entries["archive.xcarchive/dSYMs/Framework.dSYM/a"]).toEqual(
+      strToU8("a"),
+    );
+    expect(
+      entries["archive.xcarchive/Products/Applications/MyApp.app/MyApp"],
+    ).toEqual(strToU8("binary"));
+  });
+
+  test.each(["valid", "traversal", "checksum"])(
+    "cleans up staging after dSYM extraction: %s",
+    async (scenario) => {
+      const src = writeTmpFile("app.ipa", fakeIpaBytes());
+      const bytes = Buffer.from(
+        zipSync({
+          "App.dSYM/symbols": strToU8("symbols"),
+          ...(scenario === "traversal"
+            ? { "../escape": strToU8("unsafe") }
+            : {}),
+        }),
+      );
+      if (scenario === "checksum") {
+        const directoryOffset = bytes.readUInt32LE(bytes.length - 6);
+        bytes.writeUInt32LE(0, directoryOffset + 16);
+      }
+      const dsym = writeTmpFile("dsyms.zip", bytes);
+      const stagingRoot = makeTmpDir("build-staging-");
+      vi.stubEnv("TMPDIR", stagingRoot);
+      try {
+        const output = join(stagingRoot, "normalized.zip");
+        if (scenario !== "valid") {
+          await expect(normalizeIpa(src, output, null, [dsym])).rejects.toThrow(
+            scenario === "checksum" ? /checksum/i : /unsafe/i,
+          );
+        } else {
+          await normalizeIpa(src, output, null, [dsym]);
+          expect(
+            unzipSync(readFileSync(output))[
+              "archive.xcarchive/dSYMs/App.dSYM/symbols"
+            ],
+          ).toEqual(strToU8("symbols"));
+        }
+        expect(readdirSync(stagingRoot)).toEqual(
+          scenario === "valid" ? ["normalized.zip"] : [],
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   test("throws when the IPA has no single .app", async () => {
     const src = writeTmpFile(

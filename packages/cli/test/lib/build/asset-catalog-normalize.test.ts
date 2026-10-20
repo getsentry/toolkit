@@ -101,26 +101,43 @@ describe("parsed asset normalization", () => {
     expect(parsed.cleanup).toHaveBeenCalledTimes(1);
   });
 
-  test("expands the staged IPA catalog without loading the whole IPA into memory", async () => {
-    const parsed = await extraction();
-    const source = join(state.directory, "Demo.ipa");
-    await writeFile(
-      source,
-      zipSync({
-        "Payload/DemoApp.app/Info.plist": strToU8("<plist/>"),
-        "Payload/DemoApp.app/Assets.car": CATALOG_BYTES,
-      }),
-    );
-    const output = join(state.directory, "normalized.zip");
-    await normalizeIpa(source, output, null);
-    const entries = unzipSync(await readFile(output));
-    const prefix =
-      "archive.xcarchive/ParsedAssets/Products/Applications/DemoApp.app";
-    expect(entries[`archive.xcarchive/${CATALOG_PATH}`]).toEqual(CATALOG_BYTES);
-    expect(entries[`${prefix}/${IMAGE_ID}.png`]).toEqual(IMAGE_BYTES);
-    expect(entries[`${prefix}/Assets.json`]).toBeDefined();
-    expect(parsed.cleanup).toHaveBeenCalledTimes(1);
-  });
+  test.each([false, true])(
+    "expands the staged IPA catalog with dSYMs: %s",
+    async (includeDsyms) => {
+      const parsed = await extraction();
+      const source = join(state.directory, "Demo.ipa");
+      await writeFile(
+        source,
+        zipSync({
+          "Payload/DemoApp.app/Info.plist": strToU8("<plist/>"),
+          "Payload/DemoApp.app/Assets.car": CATALOG_BYTES,
+        }),
+      );
+      const dsym = join(state.directory, "symbols.zip");
+      if (includeDsyms) {
+        await writeFile(
+          dsym,
+          zipSync({ "DemoApp.dSYM/symbols": strToU8("symbols") }),
+        );
+      }
+      const output = join(state.directory, "normalized.zip");
+      await normalizeIpa(source, output, null, includeDsyms ? [dsym] : []);
+      const entries = unzipSync(await readFile(output));
+      const prefix =
+        "archive.xcarchive/ParsedAssets/Products/Applications/DemoApp.app";
+      expect(entries[`archive.xcarchive/${CATALOG_PATH}`]).toEqual(
+        CATALOG_BYTES,
+      );
+      expect(entries[`${prefix}/${IMAGE_ID}.png`]).toEqual(IMAGE_BYTES);
+      expect(entries[`${prefix}/Assets.json`]).toBeDefined();
+      if (includeDsyms) {
+        expect(entries["archive.xcarchive/dSYMs/DemoApp.dSYM/symbols"]).toEqual(
+          strToU8("symbols"),
+        );
+      }
+      expect(parsed.cleanup).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test("keeps failed or unsupported catalogs unchanged", async () => {
     const output = join(state.directory, "normalized.zip");

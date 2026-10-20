@@ -19,7 +19,7 @@
 import { execSync } from "node:child_process";
 import { closeSync, openSync, readSync, writeSync } from "node:fs";
 import { BANNER_SIXEL } from "../generated/banner-sixel.js";
-import { getGraphicsPreference } from "./db/defaults.js";
+import { getOnOffPreference } from "./db/defaults.js";
 import { getEnv } from "./env.js";
 import { isPlainOutput, isTruthyEnv } from "./formatters/plain-detect.js";
 
@@ -320,7 +320,7 @@ export function canRenderSixel(): boolean {
   if (optedOut()) {
     return false;
   }
-  if (getGraphicsPreference() === false) {
+  if (getOnOffPreference("graphics") === false) {
     return false;
   }
   return detectSixelCaps().supported;
@@ -338,7 +338,7 @@ export function canRenderKitty(): boolean {
   if (optedOut()) {
     return false;
   }
-  if (getGraphicsPreference() === false) {
+  if (getOnOffPreference("graphics") === false) {
     return false;
   }
   return detectSixelCaps().kitty === true;
@@ -400,7 +400,7 @@ export function sixelBanner(
   if (optedOut()) {
     return;
   }
-  if (getGraphicsPreference() === false) {
+  if (getOnOffPreference("graphics") === false) {
     return;
   }
   const caps = detectSixelCaps();

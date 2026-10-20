@@ -223,13 +223,12 @@ describe("EXPECTED_TABLES", () => {
   test("contains all required tables", () => {
     const expectedTableNames = [
       "schema_version",
-      "auth",
+      "accounts",
       "project_cache",
       "dsn_cache",
       "project_aliases",
       "metadata",
       "org_regions",
-      "user_info",
       "instance_info",
       "project_root_cache",
       "pagination_cursors",
@@ -254,11 +253,9 @@ describe("EXPECTED_COLUMNS", () => {
     expect(columnNames).toContain("ttl_expires_at");
   });
 
-  test("user_info includes v3 column", () => {
-    const userInfoColumns = EXPECTED_COLUMNS.user_info;
-    const columnNames = userInfoColumns?.map((c) => c.name) ?? [];
-
-    expect(columnNames).toContain("name");
+  test("legacy single-row auth and user_info tables are no longer expected", () => {
+    expect(EXPECTED_TABLES).not.toHaveProperty("auth");
+    expect(EXPECTED_TABLES).not.toHaveProperty("user_info");
   });
 });
 

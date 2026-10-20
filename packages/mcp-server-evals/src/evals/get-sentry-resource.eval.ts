@@ -49,6 +49,17 @@ describeEval("get-sentry-resource", {
           },
         ],
       },
+      {
+        input: `What widgets are on this dashboard? ${FIXTURES.dashboardUrl}`,
+        expectedTools: [
+          {
+            name: "get_sentry_resource",
+            arguments: {
+              url: FIXTURES.dashboardUrl,
+            },
+          },
+        ],
+      },
     ];
   },
   task: NoOpTaskRunner(),

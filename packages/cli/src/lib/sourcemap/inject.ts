@@ -14,10 +14,10 @@ import { logger } from "../logger.js";
 import { isLikelyBinary } from "../scan/binary.js";
 import { walkFiles } from "../scan/index.js";
 import {
-  EXISTING_DEBUGID_RE,
   hasDebugIdRegistration,
   injectDebugId,
   injectInlineDebugId,
+  readJsDebugId,
   readSourcemapDebugId,
 } from "./debug-id.js";
 import {
@@ -107,8 +107,7 @@ export async function injectDirectory(
       // Match the real run's ID precedence and runtime registration check.
       const jsBytes = await readFile(jsPath);
       const js = jsBytes.toString("utf-8");
-      const existing =
-        js.match(EXISTING_DEBUGID_RE)?.[1] ?? (await readMapDebugId(map));
+      const existing = readJsDebugId(js) ?? (await readMapDebugId(map));
       results.push({
         jsPath,
         map,
@@ -808,7 +807,7 @@ export async function resolveDirectorySourcemaps(
     let debugId: string | undefined;
     try {
       const js = await readFile(jsPath, "utf-8");
-      debugId = js.match(EXISTING_DEBUGID_RE)?.[1];
+      debugId = readJsDebugId(js);
     } catch (err) {
       log.debug(`failed to read JS file for debug ID: ${jsPath}`, err);
     }

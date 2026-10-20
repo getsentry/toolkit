@@ -137,6 +137,9 @@ jobs:
           cache: pnpm
       - run: cp .env.example .env.local
       - run: pnpm install --frozen-lockfile
+      - name: Install zsh for CLI completion regression tests
+        if: matrix.name == 'sentry'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
       - name: Build project dependencies
         env:
           PROJECT_NAME: ${{ matrix.name }}

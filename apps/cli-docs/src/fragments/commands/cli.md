@@ -57,9 +57,10 @@ The CLI detects how it was installed and uses the appropriate upgrade method:
 | brew | Binary in a Homebrew Cellar (`brew install getsentry/tools/sentry`) |
 | npm | Globally installed via `npm install -g sentry` |
 | pnpm | Globally installed via `pnpm add -g sentry` |
-| bun | Globally installed via `bun install -g sentry` |
+| bun | Globally installed via `bun add -g sentry` |
+| yarn | Globally installed via `yarn global add sentry` |
 
-Nightly builds are only available as standalone binaries (via the curl install method). Switching to nightly from a package manager install will automatically migrate to a standalone binary.
+Nightly builds are only available as standalone binaries (via the curl install method). Switching to nightly from a Homebrew or package manager install will automatically migrate to a standalone binary.
 
 ### View and manage defaults
 
@@ -84,6 +85,9 @@ sentry cli defaults ca-cert /path/to/ca.pem
 
 # Disable telemetry
 sentry cli defaults telemetry off
+
+# Hide Tip: hints in command output
+sentry cli defaults tips off
 
 # Clear a single default
 sentry cli defaults org --clear
@@ -123,7 +127,7 @@ sentry cli feedback i love this tool
 sentry cli feedback the issue view is confusing
 ```
 
-Feedback is sent via Sentry's telemetry system. If telemetry is disabled (`SENTRY_CLI_NO_TELEMETRY=1`), feedback cannot be sent.
+Feedback is sent via Sentry's telemetry system. If telemetry is disabled (`SENTRY_CLI_NO_TELEMETRY=1`, `DO_NOT_TRACK=1`, or `sentry cli defaults telemetry off`), feedback cannot be sent.
 
 ### Fix configuration issues
 
@@ -155,6 +159,11 @@ sentry cli setup --no-agent-skills
 # Skip PATH and completion modifications
 sentry cli setup --no-modify-path --no-completions
 ```
+
+For zsh, setup initializes completion when needed and registers Sentry even if
+another tool has already initialized it. Running setup again repairs completion
+configuration from older installs. Restart your shell or source your `.zshrc`
+after setup to load the changes.
 
 ### Uninstall
 

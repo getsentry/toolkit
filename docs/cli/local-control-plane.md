@@ -97,6 +97,17 @@ A loopback-served viewer can reset and close its scoped session. The hosted view
 can read the stream and clear its own displayed feed; it cannot mutate retained
 receiver data. Remote HTTPS streams stay read-only.
 
+The viewer connects to one stream at a time. Use **Change receiver** and a session's
+`streamUrl` from `local session view <session> --json` to switch runs; it does not
+automatically discover or list other daemon sessions. The **Sessions & SDKs** view
+shows SDK session telemetry within the connected stream, not a run picker.
+
+Exception event titles use the current SDK exception type and message, including
+when the event carries a request transaction name. Overview shows the current
+exception, its causes, and stack frames with function names, source locations, and
+captured source lines. Frames appear most recent first; the JSON tab preserves the
+complete original payload.
+
 Switching or reconnecting a receiver isolates pending actions and stream callbacks
 from earlier connections, including when returning to the same receiver URL.
 

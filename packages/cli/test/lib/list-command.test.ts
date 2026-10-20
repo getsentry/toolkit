@@ -5,8 +5,15 @@
  * to `dispatchOrgScopedList`.
  */
 
+import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  advancePaginationState,
+  buildPaginationContextKey,
+  resolveCursor,
+} from "../../src/lib/db/pagination.js";
+import {
+  appendQueryHint,
   buildOrgListCommand,
   type OrgListCommandDocs,
   parseCursorFlag,
@@ -14,6 +21,59 @@ import {
 import type { OrgListConfig } from "../../src/lib/org-list.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as orgListModule from "../../src/lib/org-list.js";
+import { useTestConfigDir } from "../helpers.js";
+
+describe("query pagination hints", () => {
+  useTestConfigDir("query-pagination-hints-");
+
+  test
+    .runIf(process.platform !== "win32")
+    .each([
+      'transaction:"GET /checkout"',
+      'message:"can\'t open file"',
+      'message:"can’t open ‘quoted’ ‚file‛"',
+      'message:"$SENTRY_HINT_TEST $(printf expanded) `printf expanded` C:\\\\tmp"',
+    ])("preserves %s through the shell and cursor lookup", (query) => {
+    const key = buildPaginationContextKey("test-list", "test-org/", {
+      q: query,
+    });
+    advancePaginationState("test-list", key, "first", "page-2");
+
+    const parts: string[] = [];
+    appendQueryHint(parts, query);
+    const args = execFileSync(
+      "/bin/sh",
+      ["-c", `printf '%s\\0' ${parts.join(" ")}`],
+      {
+        encoding: "utf8",
+        env: { ...process.env, SENTRY_HINT_TEST: "expanded" },
+      },
+    )
+      .split("\0")
+      .slice(0, -1);
+    expect(args).toEqual([`--query=${query}`]);
+
+    const resumedKey = buildPaginationContextKey("test-list", "test-org/", {
+      q: args[0]?.slice("--query=".length),
+    });
+    expect(resolveCursor("next", "test-list", resumedKey)).toEqual({
+      cursor: "page-2",
+      direction: "next",
+    });
+    advancePaginationState("test-list", resumedKey, "next", undefined);
+    expect(resolveCursor("prev", "test-list", resumedKey)).toEqual({
+      cursor: undefined,
+      direction: "prev",
+    });
+  });
+
+  test("omits an absent query", () => {
+    const parts: string[] = [];
+    appendQueryHint(parts, undefined);
+    appendQueryHint(parts, "");
+    expect(parts).toEqual([]);
+  });
+});
 
 describe("parseCursorFlag", () => {
   test("passes through 'last' keyword", () => {

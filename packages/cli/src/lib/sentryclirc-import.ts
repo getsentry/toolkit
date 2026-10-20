@@ -33,8 +33,10 @@ import { join } from "node:path";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { DEFAULT_SENTRY_URL, normalizeUrl } from "./constants.js";
 import {
-  clearAuth,
+  getActiveAccountId,
   hasStoredAuthCredentials,
+  removeAccount,
+  setActiveAccount,
   setAuthToken,
 } from "./db/auth.js";
 import {
@@ -503,18 +505,26 @@ function isAuthFailure(error: unknown): boolean {
 /**
  * Validate token against the Sentry API and fetch user info.
  *
- * On auth failure (401): clears the stored token and returns false.
+ * On auth failure (401): removes the imported account (restoring the
+ * previously active one) and returns false.
  * On transient network/permission error (403, 5xx, DNS, timeout): keeps
  * the token stored but warns the user.
  */
-async function validateAndFetchUser(result: ImportResult): Promise<boolean> {
+async function validateAndFetchUser(
+  result: ImportResult,
+  accountId: string,
+  previousAccountId: string | undefined,
+): Promise<boolean> {
   try {
     const { getUserRegions } = await import("./api-client.js");
     await getUserRegions();
     result.tokenValid = true;
   } catch (error) {
     if (isAuthFailure(error)) {
-      await clearAuth();
+      await removeAccount(accountId);
+      if (previousAccountId) {
+        setActiveAccount(previousAccountId);
+      }
       result.stored.token = false;
       result.tokenValid = false;
       result.warnings.push(
@@ -647,10 +657,17 @@ export async function executeImport(
 
     if (!authAcquiredDuringPrompt) {
       const host = effective.url ?? DEFAULT_SENTRY_URL;
-      setAuthToken(effective.token, undefined, undefined, { host });
+      const previousAccountId = getActiveAccountId();
+      const accountId = setAuthToken(effective.token, undefined, undefined, {
+        host,
+        newAccount: true,
+      });
       result.stored.token = true;
 
-      if (validateToken && !(await validateAndFetchUser(result))) {
+      if (
+        validateToken &&
+        !(await validateAndFetchUser(result, accountId, previousAccountId))
+      ) {
         // Mark as declined (not completed) to prevent infinite re-prompting.
         // Using "declined" because: markImportCompleted + hasStoredAuth()=false
         // (auth cleared by validation failure) would re-trigger on next run.

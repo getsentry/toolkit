@@ -132,8 +132,8 @@ export const RepositorySchema = z
       })
       .passthrough(),
     status: z.string(),
-    externalSlug: z.string().optional(),
-    externalId: z.string().optional(),
+    externalSlug: z.string().nullish(),
+    externalId: z.string().nullish(),
     integrationId: z.union([z.string(), z.number()]).nullable().optional(),
   })
   .passthrough();
@@ -1182,8 +1182,6 @@ const BaseEventSchema = z.object({
   _meta: z.unknown().optional(),
   // dateReceived is when the server received the event (may not be present in all contexts)
   dateReceived: z.string().datetime().nullish(),
-  // shared-formatter output, present when the event endpoint is called with ?llmFormat
-  formatted: z.object({ format: z.string(), content: z.string() }).optional(),
 });
 
 export const ErrorEventSchema = BaseEventSchema.omit({
@@ -1418,8 +1416,6 @@ export const AutofixRunStateSchema = z.object({
     })
     .passthrough()
     .nullable(),
-  // shared-formatter output, present when the autofix endpoint is called with ?llmFormat
-  formatted: z.object({ format: z.string(), content: z.string() }).optional(),
 });
 
 /**
@@ -2460,11 +2456,13 @@ export type IngestionMeta = z.infer<typeof IngestionMetaSchema>;
  * One bucket of an events-timeseries series. `timestamp` is in milliseconds.
  * `incomplete` marks buckets that may still receive data (the current bucket,
  * or anything after `meta.ingestion.completeThrough`).
+ * `value` is passed through from the query unchanged, so date-typed
+ * aggregates such as `max(timestamp)` return ISO datetime strings.
  */
 export const EventsTimeSeriesValueSchema = z
   .object({
     timestamp: z.number(),
-    value: z.number().nullish(),
+    value: z.union([z.number(), z.string()]).nullish(),
     incomplete: z.boolean(),
     incompleteReason: z.string().optional(),
   })

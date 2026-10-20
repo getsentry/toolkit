@@ -571,14 +571,14 @@ describe("listCommand.func", () => {
         limit: 20,
         sort: "date",
         json: false,
-        query: "transaction:POST",
+        query: 'transaction:"POST /checkout"',
         period: parsePeriod("7d"),
       },
       "test-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
-    expect(output).toContain('-q "transaction:POST"');
+    expect(output).toContain(`--query='transaction:"POST /checkout"'`);
     expect(output).toContain("-c next");
   });
 

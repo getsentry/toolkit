@@ -1,3 +1,5 @@
+import { ExceptionOverview } from "./components/exception-overview.tsx";
+import { getEventExceptions } from "./lib/exceptions.ts";
 import { RetentionSettings } from "./components/retention-settings.tsx";
 import {
   DEFAULT_MAX_ENVELOPES,
@@ -192,7 +194,9 @@ function EventEntry({
               </Badge>
             ) : null}
             <span className="truncate font-mono text-sm">
-              {metadata.route ?? metadata.title}
+              {item.type === "event"
+                ? metadata.title
+                : (metadata.route ?? metadata.title)}
             </span>
           </div>
           <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
@@ -275,6 +279,8 @@ function WorkspaceEmptyState({
 }
 
 function EventDetail({ item, trace }: EventDetailProps) {
+  const exceptions =
+    item.type === "event" ? getEventExceptions(item.payload) : [];
   const [tab, setTab] = useState<DetailTab>("overview");
   const [copiedField, setCopiedField] = useState<string>();
   const [, copyToClipboard] = useCopyToClipboard();
@@ -285,6 +291,9 @@ function EventDetail({ item, trace }: EventDetailProps) {
     {
       label: "Details",
       fields: [
+        ...(metadata.message
+          ? [{ label: "Message", value: metadata.message }]
+          : []),
         ...(metadata.statusCode !== undefined
           ? [{ label: "Status", value: String(metadata.statusCode) }]
           : []),
@@ -382,7 +391,10 @@ function EventDetail({ item, trace }: EventDetailProps) {
           role="tabpanel"
           className="min-h-0 flex-1 overflow-auto p-3 sm:p-4"
         >
-          <div className="w-full">
+          <div className="w-full space-y-4">
+            {exceptions.length > 0 ? (
+              <ExceptionOverview exceptions={exceptions} />
+            ) : null}
             {hasDetailFields ? (
               <table
                 aria-label="Event details"
@@ -445,11 +457,11 @@ function EventDetail({ item, trace }: EventDetailProps) {
                   )}
                 </tbody>
               </table>
-            ) : (
+            ) : exceptions.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No additional event details.
               </p>
-            )}
+            ) : null}
             {copiedField ? (
               <span
                 role="status"

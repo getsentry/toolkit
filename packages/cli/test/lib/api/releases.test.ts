@@ -290,6 +290,9 @@ describe("setCommitsAuto", () => {
       // List org repositories (SDK uses /repos/ endpoint)
       if (req.url.includes("/repos/")) {
         expect(req.method).toBe("GET");
+        const params = new URL(req.url).searchParams;
+        expect(params.get("query")).toBe("getsentry/cli");
+        expect(params.get("per_page")).toBe("100");
         return new Response(JSON.stringify([SAMPLE_REPO]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -344,9 +347,13 @@ describe("setCommitsAuto", () => {
         }),
     );
 
-    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /No repository integrations/,
-    );
+    await expect(
+      setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    ).rejects.toMatchObject({
+      name: "ApiError",
+      status: 404,
+      message: expect.stringMatching(/No repository integrations/),
+    });
   });
 
   test.each([
@@ -386,6 +393,26 @@ describe("setCommitsAuto", () => {
       ]);
     },
   );
+
+  test("throws ValidationError when the name filter matches nothing but the org has repos", async () => {
+    const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
+    const repoQueries: (string | null)[] = [];
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const params = new URL(new Request(input!, init).url).searchParams;
+      repoQueries.push(params.get("query"));
+      const repos = params.get("query") ? [] : [otherRepo];
+      return new Response(JSON.stringify(repos), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
+      /No Sentry repository matching/,
+    );
+    expect(repoQueries).toEqual(["getsentry/cli", null]);
+  });
 
   test("throws ValidationError when no repo matches local remote", async () => {
     const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
@@ -613,5 +640,51 @@ describe("listReleasesPaginated", () => {
     });
 
     expect(result.data).toHaveLength(0);
+  });
+
+  test.each(["sessions", "users", "crash_free_sessions", "crash_free_users"])(
+    "requests flattened results when sorting by %s",
+    async (sort) => {
+      let flatten: string | null = null;
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const url = new URL(new Request(input!, init).url);
+        flatten = url.searchParams.get("flatten");
+        // Sentry rejects session sorts unless the results are flattened.
+        if (flatten !== "1") {
+          return new Response(
+            JSON.stringify({
+              detail:
+                "sorting by crash statistics requires flattening (flatten=1)",
+            }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify([SAMPLE_RELEASE]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const result = await listReleasesPaginated("test-org", { sort });
+
+      expect(flatten).toBe("1");
+      expect(result.data).toHaveLength(1);
+    },
+  );
+
+  test("does not flatten date-sorted results", async () => {
+    let flatten: string | null = "unset";
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input!, init).url);
+      flatten = url.searchParams.get("flatten");
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await listReleasesPaginated("test-org", { sort: "date" });
+
+    expect(flatten).toBeNull();
   });
 });

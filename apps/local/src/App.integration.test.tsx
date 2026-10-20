@@ -15,6 +15,7 @@ import { BrowserRouter } from "react-router";
 import { ThemeProvider } from "@/components/theme-provider.tsx";
 import { createLocalRetentionBuffer } from "../../../packages/cli/src/commands/local/retention-buffer.ts";
 import App from "./App.tsx";
+import { sdkException } from "./test-fixtures/sdk-exception.ts";
 import { LocalWorkspaceRoute } from "./routes/local-workspace-route.tsx";
 import {
   REMOTE_STREAM_STORAGE_KEY,
@@ -184,6 +185,90 @@ describe("local receiver to viewer integration", () => {
     cleanup();
     vi.unstubAllGlobals();
     window.history.replaceState(null, "", "/");
+  });
+
+  test("shows SDK exception titles, causes and stacks in Overview without losing JSON", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      renderViewer(port, "/errors");
+      await screen.findByText("Connected to local receiver");
+      const response = await fetch(`http://127.0.0.1:${port}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: ["{}", '{"type":"event"}', JSON.stringify(sdkException)].join(
+          "\n",
+        ),
+      });
+      expect(response.status).toBe(204);
+      const row = await screen.findByRole("button", {
+        name: "View event event",
+      });
+      expect(row.textContent).toContain(
+        "TypeError: Cannot read properties of undefined (reading 'total')",
+      );
+      expect(row.textContent).not.toContain("/checkout");
+      const detail = screen.getByTestId("event-detail");
+      await waitFor(() => expect(detail.textContent).toContain("submitOrder"));
+      expect(detail.textContent).toContain("/app/checkout.ts:42:17");
+      expect(detail.textContent).toContain(
+        'throw new TypeError("Checkout failed");',
+      );
+      expect(detail.textContent).toContain("Caused by");
+      expect(detail.textContent).toContain(
+        "Error: Payment gateway unavailable",
+      );
+      expect(detail.textContent).toContain("/app/gateway.ts:15:8");
+      expect(detail.textContent).not.toContain("No additional event details.");
+      const frames = screen.getAllByRole("list", { name: "Stack frames" });
+      expect(frames[0]?.textContent?.indexOf("submitOrder")).toBeLessThan(
+        frames[0]!.textContent!.indexOf("runMain"),
+      );
+      fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("highlighted-json").textContent).toContain(
+          '"exception"',
+        ),
+      );
+      expect(
+        JSON.parse(screen.getByTestId("highlighted-json").textContent!),
+      ).toEqual({ ...sdkException, type: "event" });
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
+  test("shows message-only SDK errors in the title and Overview", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      renderViewer(port, "/errors");
+      await screen.findByText("Connected to local receiver");
+      await fetch(`http://127.0.0.1:${port}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: [
+          "{}",
+          '{"type":"event"}',
+          JSON.stringify({
+            level: "error",
+            message: "Checkout rejected",
+            transaction: "POST /checkout",
+            request: { url: "https://example.test/checkout" },
+          }),
+        ].join("\n"),
+      });
+      const row = await screen.findByRole("button", {
+        name: "View event event",
+      });
+      expect(row.textContent).toContain("Checkout rejected");
+      const detail = screen.getByTestId("event-detail");
+      expect(detail.textContent).toContain("Message");
+      expect(detail.textContent).toContain("Checkout rejected");
+      expect(detail.textContent).not.toContain("No additional event details.");
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
   });
 
   test("keeps the selected live transaction open in the detail pane", async () => {

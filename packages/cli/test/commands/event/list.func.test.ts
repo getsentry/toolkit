@@ -226,7 +226,13 @@ describe("event list command func()", () => {
     const func = await listCommand.loader();
     await func.call(
       context,
-      { limit: 2, json: false, full: false, period: parsePeriod("7d") },
+      {
+        limit: 2,
+        json: false,
+        full: false,
+        period: parsePeriod("7d"),
+        query: 'transaction:"GET /checkout"',
+      },
       "CLI-G5",
     );
 
@@ -235,6 +241,7 @@ describe("event list command func()", () => {
     expect(output).not.toContain("sentry issue events");
     expect(output).toContain("-c next");
     expect(output).toContain("-c prev");
+    expect(output).toContain(`--query='transaction:"GET /checkout"'`);
   });
 
   test("uses 'event-list' pagination key, not 'issue-events'", async () => {

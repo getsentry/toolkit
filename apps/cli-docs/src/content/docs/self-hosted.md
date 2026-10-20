@@ -22,21 +22,17 @@ The OAuth device flow requires **Sentry 26.1.0 or later** and a public OAuth app
 1. In your Sentry instance, go to **Settings → Developer Settings → Applications → Create New Application** (or visit `https://sentry.example.com/settings/account/api/applications/`)
 2. Select **Public** as the application type
 3. Fill in the required fields (name, redirect URL — can be any placeholder URL)
-3. Save the application and copy the **Client ID**
+4. Save the application and copy the **Client ID**
 
 #### 2. Log In
 
-Use the `--url` flag to authenticate against your instance (recommended — this registers the host as trusted):
+Pass your instance URL with the `--url` flag. It registers the host as trusted:
 
 ```bash
 SENTRY_CLIENT_ID=your-client-id sentry auth login --url https://sentry.example.com
 ```
 
-Or pass the instance URL via environment variable:
-
-```bash
-SENTRY_HOST=https://sentry.example.com SENTRY_CLIENT_ID=your-client-id sentry auth login --url https://sentry.example.com
-```
+`--url` is required even when `SENTRY_HOST` or `SENTRY_URL` is already set. Without it, `sentry auth login` refuses to log in to a self-hosted host.
 
 :::tip
 You can export both variables in your shell profile so every CLI invocation picks them up:
@@ -48,7 +44,7 @@ export SENTRY_CLIENT_ID=your-client-id
 :::
 
 :::note
-The `--url` flag is the most secure way to authenticate with a new host — it is the only way to register a trust anchor for that host. Without it, the CLI refuses to log in to an instance URL that was picked up from an untrusted channel (e.g. a `.sentryclirc` file), protecting you from credential leaks and OAuth phishing.
+The `--url` flag is the only way to register a trust anchor for a new host. Without it, the CLI refuses to log in to any self-hosted instance URL, including one picked up from an environment variable or a `.sentryclirc` file. This protects you from credential leaks and OAuth phishing.
 :::
 
 ### With an API Token
@@ -58,7 +54,7 @@ If your instance is on an older version or you prefer not to create an OAuth app
 1. Go to **Settings → Developer Settings → Personal Tokens** in your Sentry instance (or visit `https://sentry.example.com/settings/account/api/auth-tokens/new-token/`)
 2. Create a new token with the following scopes:
 <!-- GENERATED:START oauth-scopes -->
-`project:read`, `project:write`, `project:admin`, `org:read`, `event:read`, `event:write`, `member:read`, `team:read`, `team:write`, `team:admin`, `alerts:read`, `alerts:write`
+`project:read`, `project:write`, `project:admin`, `org:read`, `org:integrations`, `event:read`, `event:write`, `member:read`, `team:read`, `team:write`, `team:admin`, `alerts:read`, `alerts:write`
 <!-- GENERATED:END oauth-scopes -->
 3. Pass it to the CLI:
 
@@ -112,4 +108,4 @@ sentry cli defaults headers "X-IAP: token"
 | `NODE_EXTRA_CA_CERTS` | Path to PEM file with additional CA certificates (for corporate proxies) |
 <!-- GENERATED:END self-hosted-env-vars -->
 
-See [Configuration](./configuration/) for the full environment variable reference.
+See [Configuration](../configuration/) for the full environment variable reference.
