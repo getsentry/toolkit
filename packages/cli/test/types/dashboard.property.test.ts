@@ -24,12 +24,10 @@ import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 const displayTypeArb = constantFrom(...DISPLAY_TYPES);
 
 /** Arbitrary for a widget without a layout */
-const widgetArb = displayTypeArb.map(
-  (dt): DashboardWidget => ({
-    title: `Widget-${dt}`,
-    displayType: dt,
-  })
-);
+const widgetArb = displayTypeArb.map((dt): DashboardWidget => ({
+  title: `Widget-${dt}`,
+  displayType: dt,
+}));
 
 /** Arbitrary for layout mode */
 const modeArb = constantFrom<WidgetLayoutMode>("sequential", "dense");
@@ -40,7 +38,7 @@ const modeArb = constantFrom<WidgetLayoutMode>("sequential", "dense");
  */
 function buildPlacedSequence(
   widgets: DashboardWidget[],
-  mode: WidgetLayoutMode
+  mode: WidgetLayoutMode,
 ): DashboardWidget[] {
   const placed: DashboardWidget[] = [];
   for (const w of widgets) {
@@ -69,9 +67,9 @@ describe("property: assignDefaultLayout", () => {
           expect(l.x).toBeGreaterThanOrEqual(0);
           expect(l.y).toBeGreaterThanOrEqual(0);
           expect(l.x + l.w).toBeLessThanOrEqual(GRID_COLUMNS);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -96,9 +94,9 @@ describe("property: assignDefaultLayout", () => {
               n.y < p.layout.y + p.layout.h && n.y + n.h > p.layout.y;
             expect(overlapX && overlapY).toBe(false);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -109,7 +107,7 @@ describe("property: assignDefaultLayout", () => {
         const again = assignDefaultLayout(placed, [], mode);
         expect(again.layout).toEqual(placed.layout);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -119,11 +117,11 @@ describe("property: assignDefaultLayout", () => {
         const placed = buildPlacedSequence(widgets, "sequential");
         for (let i = 1; i < placed.length; i++) {
           expect(placed[i]!.layout!.y).toBeGreaterThanOrEqual(
-            placed[i - 1]!.layout!.y
+            placed[i - 1]!.layout!.y,
           );
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

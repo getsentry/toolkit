@@ -6,7 +6,7 @@
  * We exercise the pure functions directly and run the whole check as a
  * subprocess against the real source tree.
  *
- * Silent-catch detection moved to the Biome plugin
+ * Silent-catch detection moved to the CLI Oxlint plugin
  * `lint-rules/no-silent-catch.grit`; see #1531.
  */
 

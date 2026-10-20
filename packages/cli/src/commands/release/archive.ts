@@ -9,6 +9,7 @@
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownInline,
@@ -31,7 +32,7 @@ const USAGE_HINT = "sentry release archive [<org>/]<version>";
 function formatReleaseArchived(data: Record<string, unknown>): string {
   if (data.dryRun) {
     return renderMarkdown(
-      `Would archive release ${safeCodeSpan(String(data.version))} (dry run)`
+      `Would archive release ${safeCodeSpan(String(data.version))} (dry run)`,
     );
   }
   const release = data as unknown as SentryRelease;
@@ -67,7 +68,7 @@ export const archiveCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to archive",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },
@@ -83,14 +84,14 @@ export const archiveCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string
+    target: string,
   ) {
     const { cwd } = this;
 
     const { version, org, detectedFrom } = await resolveReleaseTarget(
       target,
       USAGE_HINT,
-      cwd
+      cwd,
     );
 
     if (flags["dry-run"]) {

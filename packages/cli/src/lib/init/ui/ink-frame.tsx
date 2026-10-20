@@ -20,7 +20,7 @@ export function getInkFrameWidth(terminalColumns: number): number {
 
 export function getInkFrameMargin(
   terminalColumns: number,
-  frameWidth: number
+  frameWidth: number,
 ): number {
   return Math.max(0, Math.floor((terminalColumns - frameWidth) / 2));
 }
@@ -65,7 +65,7 @@ export function StatusHistory({
           color = currentColor;
         }
         return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: positional status messages
+          // positional status messages
           <Text color={color} key={index}>
             {glyph} {message}
           </Text>

@@ -18,12 +18,12 @@ vi.mock(
       Object.entries(actual).map(([k, v]) => [
         k,
         typeof v === "function" ? vi.fn(v) : v,
-      ])
+      ]),
     );
-  }
+  },
 );
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as commitSpec from "../../../src/commands/issue/resolve-commit-spec.js";
 import { unresolveCommand } from "../../../src/commands/issue/unresolve.js";
 
@@ -36,11 +36,11 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -50,11 +50,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import type { SentryIssue } from "../../../src/types/sentry.js";
 
@@ -174,7 +174,7 @@ describe("resolveCommand.func()", () => {
       expect(commitSpy).toHaveBeenCalledWith(
         { kind: "auto" },
         "test-org",
-        "/tmp"
+        "/tmp",
       );
       expect(updateSpy).toHaveBeenCalledWith("123456789", "resolved", {
         statusDetails: {
@@ -206,13 +206,13 @@ describe("resolveCommand.func()", () => {
       await func.call(
         context,
         { json: false, in: "@commit:getsentry/cli@abc123" },
-        "CLI-G5"
+        "CLI-G5",
       );
 
       expect(commitSpy).toHaveBeenCalledWith(
         { kind: "explicit", repository: "getsentry/cli", commit: "abc123" },
         "test-org",
-        "/tmp"
+        "/tmp",
       );
       expect(updateSpy).toHaveBeenCalledWith("123456789", "resolved", {
         statusDetails: {

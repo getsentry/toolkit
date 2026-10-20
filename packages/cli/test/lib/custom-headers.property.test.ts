@@ -75,7 +75,7 @@ describe("property: parseCustomHeaders", () => {
         const result = parseCustomHeaders(formatted);
         expect(result).toEqual([[name, value.trim()]]);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -88,7 +88,7 @@ describe("property: parseCustomHeaders", () => {
         const result = parseCustomHeaders(formatted);
         expect(result.length).toBe(pairs.length);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -103,7 +103,7 @@ describe("property: parseCustomHeaders", () => {
           expect(result[i]?.[0]).toBe(pairs[i]?.[0]);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -119,9 +119,9 @@ describe("property: parseCustomHeaders", () => {
           const formatted = `${name}:${padded}`;
           const result = parseCustomHeaders(formatted);
           expect(result[0]?.[1]).toBe(value.trim());
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -134,7 +134,7 @@ describe("property: parseCustomHeaders", () => {
         expect(result.length).toBe(1);
         expect(result[0]?.[0]).toBe(name);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

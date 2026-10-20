@@ -68,6 +68,68 @@ describeEval("search-events-agent-attributes-without-context", {
             !value.includes("http.response.status_code"),
         },
       },
+      {
+        // transaction is picked from span fields
+        input: "total request duration by endpoint (transaction boundaries)",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("transaction") &&
+            !value.includes("sentry.segment.name"),
+        },
+      },
+      {
+        // environment is picked from the common fields
+        input:
+          "Show me spans from non production environments in the last 24 hours",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          query: (value: unknown) =>
+            typeof value === "string" &&
+            value.includes("!environment:production") &&
+            !value.includes("sentry.environment"),
+        },
+      },
+      {
+        // kiosk.firmware and kiosk.firmware_revision are made-up attributes, so
+        // the agent has no prior knowledge of either. Without briefs it can
+        // only match on the name, and kiosk.firmware_revision matches
+        // "firmware revision"
+        input:
+          "Count spans grouped by the kiosk's installed firmware revision over the last 7 days",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("kiosk.firmware_revision") &&
+            !value.includes("kiosk.firmware"),
+        },
+      },
     ];
   },
   task: async (input) => {
@@ -94,12 +156,11 @@ describeEval("search-events-agent-attributes-without-context", {
   ],
 });
 
-// Context not enabled yet so these should not show the correct queries. Asserting them to the wrong queries for now.
 describeEval("search-events-agent-attributes-with-context", {
   data: async () => {
     return [
       {
-        // EVENTUALLY Context marks http.method as deprecated in favor of http.request.method
+        // Context marks http.method as deprecated in favor of http.request.method
         input: "Count spans grouped by HTTP method over the last 7 days",
         expectedTools: [
           {
@@ -113,12 +174,12 @@ describeEval("search-events-agent-attributes-with-context", {
           dataset: "spans",
           fields: (value: unknown) =>
             Array.isArray(value) &&
-            !value.includes("http.request.method") &&
-            value.includes("http.method"),
+            value.includes("http.request.method") &&
+            !value.includes("http.method"),
         },
       },
       {
-        // EVENTUALLY Context marks http.status_code as deprecated in favor of
+        // Context marks http.status_code as deprecated in favor of
         // http.response.status_code
         input: "Show me spans with HTTP status code 503 in the last 24 hours",
         expectedTools: [
@@ -133,8 +194,104 @@ describeEval("search-events-agent-attributes-with-context", {
           dataset: "spans",
           query: (value: unknown) =>
             typeof value === "string" &&
-            !value.includes("http.response.status_code:503") &&
-            value.includes("http.status_code"),
+            value.includes("http.response.status_code:503") &&
+            !value.includes("http.status_code"),
+        },
+      },
+      {
+        // sentry.segment.name is picked from span fields due to transaction deprecation and validation endpoint passing
+        // even though transaction is shown in example queries
+        input: "total request duration by endpoint (transaction boundaries)",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+          {
+            name: "validateSearch",
+            arguments: {
+              dataset: "spans",
+              fields: ["sentry.segment.name"],
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            !value.includes("transaction") &&
+            value.includes("sentry.segment.name"),
+        },
+      },
+      {
+        // Context marks environment as deprecated in favor of
+        // sentry.environment
+        input:
+          "Show me spans from non production environments in the last 24 hours",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          // sentry.environment:production contains environment:production, so
+          // look for a bare environment key not preceded by "sentry."
+          query: (value: unknown) =>
+            typeof value === "string" &&
+            value.includes("!sentry.environment:production") &&
+            !/(?<!sentry\.)environment:/.test(value),
+        },
+      },
+      {
+        // deviceMemory and device.memory both look like a match by name, but
+        // only device.memory has a brief describing the device's total memory
+        input:
+          "What is the average estimated total memory capacity of devices across spans in the last 7 days?",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("avg(device.memory)") &&
+            !value.some(
+              (field) =>
+                typeof field === "string" && field.includes("deviceMemory"),
+            ),
+        },
+      },
+      {
+        // kiosk.firmware_revision matches "firmware revision" by name, but its
+        // brief says it is the staged revision. Only kiosk.firmware's brief
+        // describes the installed firmware
+        input:
+          "Count spans grouped by the kiosk's installed firmware revision over the last 7 days",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "spans",
+            },
+          },
+        ],
+        expected: {
+          dataset: "spans",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("kiosk.firmware") &&
+            !value.includes("kiosk.firmware_revision"),
         },
       },
     ];

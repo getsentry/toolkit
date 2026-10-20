@@ -21,36 +21,16 @@
  * ```
  */
 
-import defaultEventFixtureJson from "./fixtures/default-event.json" with {
-  type: "json",
-};
-import genericEventFixtureJson from "./fixtures/generic-event.json" with {
-  type: "json",
-};
-import unknownEventFixtureJson from "./fixtures/unknown-event.json" with {
-  type: "json",
-};
-import performanceIssueFixtureJson from "./fixtures/performance-issue.json" with {
-  type: "json",
-};
-import regressedIssueFixtureJson from "./fixtures/regressed-issue.json" with {
-  type: "json",
-};
-import unsupportedIssueFixtureJson from "./fixtures/unsupported-issue.json" with {
-  type: "json",
-};
-import performanceEventFixtureJson from "./fixtures/performance-event.json" with {
-  type: "json",
-};
-import cspIssueFixtureJson from "./fixtures/csp-issue.json" with {
-  type: "json",
-};
-import cspEventFixtureJson from "./fixtures/csp-event.json" with {
-  type: "json",
-};
-import feedbackIssueFixtureJson from "./fixtures/feedback-issue.json" with {
-  type: "json",
-};
+import defaultEventFixtureJson from "./fixtures/default-event.json" with { type: "json" };
+import genericEventFixtureJson from "./fixtures/generic-event.json" with { type: "json" };
+import unknownEventFixtureJson from "./fixtures/unknown-event.json" with { type: "json" };
+import performanceIssueFixtureJson from "./fixtures/performance-issue.json" with { type: "json" };
+import regressedIssueFixtureJson from "./fixtures/regressed-issue.json" with { type: "json" };
+import unsupportedIssueFixtureJson from "./fixtures/unsupported-issue.json" with { type: "json" };
+import performanceEventFixtureJson from "./fixtures/performance-event.json" with { type: "json" };
+import cspIssueFixtureJson from "./fixtures/csp-issue.json" with { type: "json" };
+import cspEventFixtureJson from "./fixtures/csp-event.json" with { type: "json" };
+import feedbackIssueFixtureJson from "./fixtures/feedback-issue.json" with { type: "json" };
 
 // Type helper for deep partial overrides
 type DeepPartial<T> = T extends object

@@ -89,7 +89,7 @@ function formatPrintSources(data: PrintSourcesResult): string {
       return `${header} — ${colorTag("muted", "no referenced sources")}`;
     }
     const lines = object.files.map(
-      (file) => `- ${safeCodeSpan(file.path)} — ${describeSource(file)}`
+      (file) => `- ${safeCodeSpan(file.path)} — ${describeSource(file)}`,
     );
     const count = object.files.length;
     return `${header} — ${count} source file${count === 1 ? "" : "s"}:\n\n${lines.join("\n")}`;
@@ -134,7 +134,7 @@ export const printSourcesCommand = buildCommand({
   async *func(
     this: SentryContext,
     _flags: Record<string, never>,
-    path: string
+    path: string,
   ) {
     const content = await readDebugFile(path);
 
@@ -145,7 +145,7 @@ export const printSourcesCommand = buildCommand({
       const msg = err instanceof Error ? err.message : String(err);
       throw new ValidationError(
         `'${path}' is not a recognized debug information file: ${msg}`,
-        "path"
+        "path",
       );
     }
 
@@ -167,7 +167,7 @@ export const printSourcesCommand = buildCommand({
     const failed = objects.filter((object) => object.enumerationError !== null);
     for (const object of failed) {
       log.warn(
-        `Could not enumerate sources for ${object.debugId} in '${path}': ${object.enumerationError}`
+        `Could not enumerate sources for ${object.debugId} in '${path}': ${object.enumerationError}`,
       );
     }
 
@@ -179,7 +179,7 @@ export const printSourcesCommand = buildCommand({
       log.warn(
         `'${path}' contains ${info.objects.length} objects; ` +
           `\`bundle-sources\` would bundle sources for ${bundled.debugId} only. ` +
-          "Other slices are not included."
+          "Other slices are not included.",
       );
     }
 

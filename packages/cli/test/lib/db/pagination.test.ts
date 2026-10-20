@@ -59,10 +59,13 @@ describe("buildMultiTargetContextKey", () => {
     });
     expect(existing).not.toContain("|limit:");
     expect(
-      buildMultiTargetContextKey(targets, { query: "is:unresolved", limit: 10 })
+      buildMultiTargetContextKey(targets, {
+        query: "is:unresolved",
+        limit: 10,
+      }),
     ).toBe(`${existing}|limit:10`);
     expect(buildMultiTargetContextKey(targets, { limit: 10 })).not.toBe(
-      buildMultiTargetContextKey(targets, { limit: 25 })
+      buildMultiTargetContextKey(targets, { limit: 25 }),
     );
   });
 });

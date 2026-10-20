@@ -36,7 +36,7 @@ vi.mock("node:fs", async (importOriginal) => {
       }
       return (actual.readFileSync as (...a: unknown[]) => unknown)(
         path,
-        ...rest
+        ...rest,
       );
     }),
     readlinkSync: vi.fn((path: string, ...rest: unknown[]) => {
@@ -51,7 +51,7 @@ vi.mock("node:fs", async (importOriginal) => {
       }
       return (actual.readlinkSync as (...a: unknown[]) => unknown)(
         path,
-        ...rest
+        ...rest,
       );
     }),
   };
@@ -73,7 +73,7 @@ vi.mock("node:child_process", async (importOriginal) => {
       }
       return (actual.execSync as (...a: unknown[]) => unknown)(
         command,
-        ...rest
+        ...rest,
       );
     }),
   };

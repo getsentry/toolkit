@@ -48,6 +48,64 @@ function looksLikeDisplayName(input: string): boolean {
   return input.includes(" ");
 }
 
+/**
+ * Split a project selector on commas.
+ *
+ * Sentry slugs cannot contain commas, so `org/web,api,worker` is unambiguous.
+ * Trims whitespace, drops empty tokens, and de-duplicates while preserving
+ * first-seen order.
+ *
+ * @param rawProject - Raw project selector, potentially containing commas
+ * @returns A non-empty list of unique project slugs in input order
+ * @throws {ValidationError} When every token is empty (`org/,,,`)
+ */
+function splitProjectSelector(rawProject: string): [string, ...string[]] {
+  const [first, ...rest] = [
+    ...new Set(rawProject.split(",").map((part) => part.trim())),
+  ].filter((slug) => slug !== "");
+  if (first === undefined) {
+    throw new ValidationError(
+      "Invalid project slug: comma-separated list is empty.",
+      "project",
+    );
+  }
+  return [first, ...rest];
+}
+
+/**
+ * Project slugs from an explicit `org/project` parse.
+ *
+ * A single slug stays on {@link ParsedOrgProject}'s `project` field. A
+ * comma-separated list also sets `projects` (including the first slug).
+ *
+ * @param parsed - Explicit project target returned by {@link parseOrgProjectArg}
+ * @returns A non-empty list containing the selected project slugs
+ */
+export function explicitProjectSlugs(
+  parsed: Extract<ParsedOrgProject, { type: "explicit" }>,
+): [string, ...string[]] {
+  return parsed.projects ?? [parsed.project];
+}
+
+/**
+ * Format an explicit target back into its positional form.
+ *
+ * Used for titles, pagination hints, and cursor context keys so every
+ * surface renders `org/web,api` (or `org/` for org-wide) identically.
+ *
+ * @param org - Organization slug
+ * @param projects - Project slugs; omit or pass an empty list for `org/`
+ * @returns `org/a,b` for a project list, or `org/` without projects
+ */
+export function formatProjectTarget(
+  org: string,
+  projects?: readonly string[],
+): string {
+  return projects && projects.length > 0
+    ? `${org}/${projects.join(",")}`
+    : `${org}/`;
+}
+
 // ---------------------------------------------------------------------------
 // Issue short ID detection
 // ---------------------------------------------------------------------------
@@ -95,6 +153,26 @@ const ISSUE_SHORT_ID_MULTI_SEGMENT_PARTS = 3;
 /** Splits a string into lines on LF or CRLF boundaries. */
 const LINE_SPLIT_PATTERN = /\r?\n/;
 
+/**
+ * Return the first non-blank line of `arg`, trimmed, or `""` if every line is
+ * blank.
+ *
+ * A bare `.trim()` only strips leading/trailing whitespace, so multi-line input
+ * (command substitution that captured extra output, a value with an appended
+ * note, or several newline-separated values — common from AI agents) keeps an
+ * internal newline that later fails `validateResourceId` with a cryptic
+ * "contains a newline" error (CLI-1G1, CLI-1RA). Slugs and identifiers are
+ * always single-line tokens, so the first non-blank line is the intended value.
+ */
+function firstNonBlankLine(arg: string): string {
+  return (
+    arg
+      .split(LINE_SPLIT_PATTERN)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? ""
+  );
+}
+
 /** Splits a string on any run of whitespace. */
 const WHITESPACE_SPLIT_PATTERN = /\s+/;
 
@@ -126,7 +204,7 @@ const WHITESPACE_SPLIT_PATTERN = /\s+/;
  */
 export function looksLikeIssueShortId(
   str: string,
-  opts?: { ignoreCase?: boolean }
+  opts?: { ignoreCase?: boolean },
 ): boolean {
   if (opts?.ignoreCase) {
     return matchesIssueShortIdIgnoreCase(str);
@@ -166,7 +244,7 @@ export function isIssueCommandToken(slug: string): boolean {
 function rejectIssueCommandTokenWithNumericSuffix(
   arg: string,
   projectSlug: string,
-  suffix: string
+  suffix: string,
 ): void {
   if (!(isIssueCommandToken(projectSlug) && NUMERIC_SUFFIX_RE.test(suffix))) {
     return;
@@ -181,7 +259,7 @@ function rejectIssueCommandTokenWithNumericSuffix(
       "sentry issue explain 123456789",
       "sentry issue explain my-org/project/PROJECT-G",
     ],
-    "issue"
+    "issue",
   );
 }
 
@@ -345,7 +423,7 @@ export function looksLikePath(arg: string): boolean {
  */
 export function detectSwappedViewArgs(
   first: string,
-  second: string
+  second: string,
 ): string | null {
   if (second.includes("/") && !first.includes("/")) {
     return `Arguments appear reversed. Interpreting as: ${second} ${first}`;
@@ -376,7 +454,7 @@ export function detectSwappedViewArgs(
 export function detectSwappedTrialArgs(
   first: string,
   second: string,
-  isKnownName: (value: string) => boolean
+  isKnownName: (value: string) => boolean,
 ): { name: string; org: string; warning: string } | null {
   // If first is already a known name, order is correct
   if (isKnownName(first)) {
@@ -421,7 +499,7 @@ export function validateLimit(value: string, min = 1, max = 1000): number {
   if (Number.isNaN(num) || num < min || num > max) {
     throw new ValidationError(
       `--limit must be between ${min} and ${max}`,
-      "limit"
+      "limit",
     );
   }
   return num;
@@ -444,7 +522,7 @@ export function parseLogSort(value: string): LogSortDirection {
   if (!VALID_LOG_SORT_DIRECTIONS.includes(value as LogSortDirection)) {
     throw new ValidationError(
       `Invalid sort value. Must be one of: ${VALID_LOG_SORT_DIRECTIONS.join(", ")}`,
-      "sort"
+      "sort",
     );
   }
   return value as LogSortDirection;
@@ -537,6 +615,13 @@ export type ParsedOrgProject =
       type: typeof ProjectSpecificationType.Explicit;
       org: string;
       project: string;
+      /**
+       * All project slugs when the user passed a comma-separated list
+       * (`org/web,api`). Includes {@link project} as the first element and
+       * always holds at least two slugs. Absent for a single slug so existing
+       * equality checks stay stable.
+       */
+      projects?: [string, string, ...string[]];
       /** True if any slug was normalized */
       normalized?: boolean;
     }
@@ -663,14 +748,14 @@ function rejectAtSelector(value: string, label: string): void {
     throw new ValidationError(
       `'${value}' is an issue selector, not ${article} ${label}.\n` +
         `  Use: sentry issue view ${value}`,
-      label
+      label,
     );
   }
 
   throw new ValidationError(
     `Invalid ${label}: '${value}' starts with '@'.\n` +
       "  Slugs contain only letters, numbers, hyphens, and underscores.",
-    label
+    label,
   );
 }
 
@@ -679,7 +764,7 @@ function rejectAtSelector(value: string, label: string): void {
  * Applies {@link normalizeSlug} to both components and validates against
  * URL injection characters.
  */
-function parseSlashOrgProject(input: string): ParsedOrgProject {
+function parseSlashOrgProject(input: string, multi: boolean): ParsedOrgProject {
   const slashIndex = input.indexOf("/");
   const rawOrg = input.slice(0, slashIndex);
   const rawProject = input.slice(slashIndex + 1);
@@ -688,7 +773,7 @@ function parseSlashOrgProject(input: string): ParsedOrgProject {
     // "/cli" → search for project across all orgs
     if (!rawProject) {
       throw new ValidationError(
-        'Invalid format: "/" requires a project slug (e.g., "/cli")'
+        'Invalid format: "/" requires a project slug (e.g., "/cli")',
       );
     }
     rejectAtSelector(rawProject, "project slug");
@@ -722,7 +807,11 @@ function parseSlashOrgProject(input: string): ParsedOrgProject {
     };
   }
 
-  // "sentry/cli" → explicit org and project
+  // "sentry/web,api,worker" for list commands that explicitly opt in
+  if (multi && rawProject.includes(",")) {
+    return parseExplicitProjectList(no, rawProject);
+  }
+
   rejectAtSelector(rawProject, "project slug");
   if (looksLikeDisplayName(rawProject)) {
     // Spaces → display name, not a slug. Skip slug validation and let the
@@ -736,13 +825,65 @@ function parseSlashOrgProject(input: string): ParsedOrgProject {
       org: no.slug,
     };
   }
-  const np = normalizeSlug(rawProject);
-  validateResourceId(np.slug, "project slug");
+  const np = validateProjectSlugToken(rawProject);
   const normalized = no.normalized || np.normalized;
   return {
     type: "explicit",
     org: no.slug,
     project: np.slug,
+    ...(normalized && { normalized: true }),
+  };
+}
+
+/**
+ * Validate one project slug token: reject `@` selectors, normalize, and
+ * check for URL-injection characters. Shared by the single-slug and
+ * comma-list explicit paths.
+ */
+function validateProjectSlugToken(token: string): {
+  slug: string;
+  normalized: boolean;
+} {
+  rejectAtSelector(token, "project slug");
+  const np = normalizeSlug(token);
+  validateResourceId(np.slug, "project slug");
+  return np;
+}
+
+/**
+ * Parse `org/web,api,worker` into an explicit target with `projects` set.
+ *
+ * Display names are rejected here: a comma list is a slug selector, not a
+ * search. Each token is validated independently so a bad slug fails at parse
+ * time instead of as a 404 against the concatenated string.
+ */
+function parseExplicitProjectList(
+  org: { slug: string; normalized: boolean },
+  rawProject: string,
+): ParsedOrgProject {
+  const [firstToken, ...restTokens] = splitProjectSelector(rawProject);
+  if ([firstToken, ...restTokens].some(looksLikeDisplayName)) {
+    throw new ValidationError(
+      "Comma-separated project targets must be slugs, not display names.",
+      "project",
+    );
+  }
+
+  const first = validateProjectSlugToken(firstToken);
+  const rest = restTokens.map(validateProjectSlugToken);
+  const normalized =
+    org.normalized ||
+    first.normalized ||
+    rest.some((token) => token.normalized);
+  const [second, ...others] = rest;
+
+  return {
+    type: "explicit",
+    org: org.slug,
+    project: first.slug,
+    ...(second !== undefined && {
+      projects: [first.slug, second.slug, ...others.map((t) => t.slug)],
+    }),
     ...(normalized && { normalized: true }),
   };
 }
@@ -754,26 +895,37 @@ function parseSlashOrgProject(input: string): ParsedOrgProject {
  * - `undefined` or empty → auto-detect from DSN/config
  * - `https://sentry.io/organizations/org/...` → extract from Sentry URL
  * - `sentry/cli` → explicit org and project
+ * - `sentry/web,api` → explicit org and multiple projects when
+ *   `options.multi` is true
  * - `sentry/` → org with all projects
  * - `/cli` → search for project across all orgs (leading slash)
  * - `cli` → search for project across all orgs
  *
  * @param arg - Input string from CLI positional argument
+ * @param options.multi - Parse comma-separated project slugs after
+ *   the org. Only commands that can query multiple projects together should
+ *   enable it.
  * @returns Parsed result with type discrimination
  *
  * @example
  * parseOrgProjectArg(undefined)     // { type: "auto-detect" }
  * parseOrgProjectArg("sentry/cli")  // { type: "explicit", org: "sentry", project: "cli" }
+ * parseOrgProjectArg("sentry/web,api", { multi: true })
+ * // { type: "explicit", ..., projects: ["web","api"] }
  * parseOrgProjectArg("sentry/")     // { type: "org-all", org: "sentry" }
  * parseOrgProjectArg("/cli")        // { type: "project-search", projectSlug: "cli" }
  * parseOrgProjectArg("cli")         // { type: "project-search", projectSlug: "cli" }
  */
-export function parseOrgProjectArg(arg: string | undefined): ParsedOrgProject {
-  if (!arg || arg.trim() === "") {
+export function parseOrgProjectArg(
+  arg: string | undefined,
+  options: { multi?: boolean } = {},
+): ParsedOrgProject {
+  // Keep only the first non-blank line: agents often pass targets with
+  // appended output or notes after a newline (CLI-1RA).
+  const trimmed = arg ? firstNonBlankLine(arg) : "";
+  if (!trimmed) {
     return { type: "auto-detect" };
   }
-
-  const trimmed = arg.trim();
 
   // URL detection — extract org/project from Sentry web URLs
   const urlParsed = parseSentryUrl(trimmed);
@@ -784,7 +936,7 @@ export function parseOrgProjectArg(arg: string | undefined): ParsedOrgProject {
 
   let parsed: ParsedOrgProject;
   if (trimmed.includes("/")) {
-    parsed = parseSlashOrgProject(trimmed);
+    parsed = parseSlashOrgProject(trimmed, options.multi === true);
   } else {
     // No slash → search for project across all orgs
     rejectAtSelector(trimmed, "project slug");
@@ -906,7 +1058,7 @@ export type ParsedIssueArg =
 function parseMultiSlashIssueArg(
   arg: string,
   org: string,
-  rest: string
+  rest: string,
 ): ParsedIssueArg {
   const slashIdx = rest.indexOf("/");
   const project = rest.slice(0, slashIdx);
@@ -915,7 +1067,7 @@ function parseMultiSlashIssueArg(
   if (!(project && remainder)) {
     throw new ValidationError(
       `Invalid issue format: "${arg}". Missing project or issue ID segment.`,
-      "issue"
+      "issue",
     );
   }
 
@@ -971,7 +1123,7 @@ function parseMultiSlashIssueArg(
 function parseAfterSlash(
   arg: string,
   org: string,
-  rest: string
+  rest: string,
 ): ParsedIssueArg {
   if (isAllDigits(rest)) {
     // "my-org/123456789" → explicit org + numeric ID
@@ -992,14 +1144,14 @@ function parseAfterSlash(
     if (!project) {
       throw new ValidationError(
         `Invalid issue format: "${arg}". Cannot use trailing slash before suffix.`,
-        "issue"
+        "issue",
       );
     }
 
     if (!suffix) {
       throw new ValidationError(
         `Invalid issue format: "${arg}". Missing suffix after dash.`,
-        "issue"
+        "issue",
       );
     }
 
@@ -1025,7 +1177,7 @@ function parseWithSlash(arg: string): ParsedIssueArg {
   if (!rest) {
     throw new ValidationError(
       `Invalid issue format: "${arg}". Missing issue ID after slash.`,
-      "issue"
+      "issue",
     );
   }
 
@@ -1137,14 +1289,14 @@ function parseWithHash(arg: string): ParsedIssueArg {
       `Invalid issue identifier: "${arg}".\n` +
         "  Use a single '#' separating the project from the short ID, e.g. `org/project#PROJ-123`.\n" +
         "  Or use a slash: `org/project/PROJ-123`.",
-      "issue identifier"
+      "issue identifier",
     );
   }
   if (fragment.includes(":")) {
     throw new ValidationError(
       `Invalid issue identifier: "${arg}". Do not mix '#' and ':' separators.\n` +
         "  Use `org/project#PROJ-123` or `project:PROJ-123`.",
-      "issue identifier"
+      "issue identifier",
     );
   }
   // Validate the fragment on its own — it must not contain forbidden characters
@@ -1182,14 +1334,14 @@ function parseWithDash(arg: string): ParsedIssueArg {
   if (!projectSlug) {
     throw new ValidationError(
       `Invalid issue format: "${arg}". Missing project before suffix.`,
-      "issue"
+      "issue",
     );
   }
 
   if (!suffix) {
     throw new ValidationError(
       `Invalid issue format: "${arg}". Missing suffix after dash.`,
-      "issue"
+      "issue",
     );
   }
 
@@ -1226,7 +1378,7 @@ function parseWithDash(arg: string): ParsedIssueArg {
 export function parseSlashSeparatedArg(
   arg: string,
   idLabel: string,
-  usageHint: string
+  usageHint: string,
 ): { id: string; targetArg: string | undefined } {
   // Trim whitespace — agents may pass trailing newlines
   const trimmed = arg.trim();
@@ -1281,16 +1433,12 @@ export function parseIssueArg(arg: string): ParsedIssueArg {
   // lines would produce garbage, so we keep only the first line.
   // Splitting on `\n` (a control char) never breaks project display names with
   // spaces (#1116), since those are rejected as control chars anyway.
-  const input =
-    arg
-      .split(LINE_SPLIT_PATTERN)
-      .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? "";
+  const input = firstNonBlankLine(arg);
 
   if (!input) {
     throw new ValidationError(
       "Issue identifier is empty after trimming whitespace.",
-      "issue identifier"
+      "issue identifier",
     );
   }
 
@@ -1305,7 +1453,7 @@ export function parseIssueArg(arg: string): ParsedIssueArg {
     // URL recognized but no issue ID (e.g., trace or project settings URL)
     throw new ValidationError(
       "This Sentry URL does not contain an issue ID. Use an issue URL like:\n" +
-        "  https://sentry.io/organizations/{org}/issues/{id}/"
+        "  https://sentry.io/organizations/{org}/issues/{id}/",
     );
   }
 
@@ -1407,7 +1555,7 @@ function parseBareIssueIdentifier(input: string): ParsedIssueArg {
  */
 export function buildProjectQuery(
   query: string | undefined,
-  projectFilter: string | undefined
+  projectFilter: string | undefined,
 ): string | undefined {
   if (!projectFilter) {
     return query;

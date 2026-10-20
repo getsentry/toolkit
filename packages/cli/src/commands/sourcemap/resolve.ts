@@ -81,7 +81,7 @@ function formatResolveResult(data: ResolveCommandResult): string {
       ["JS files", String(data.total)],
       ["With sourcemap", String(data.resolved)],
       ["With debug ID", String(data.withDebugId)],
-    ])
+    ]),
   );
 
   if (data.files.length > 0) {
@@ -93,7 +93,7 @@ function formatResolveResult(data: ResolveCommandResult): string {
         ? escapeMarkdownCell(file.debugId)
         : colorTag("muted", "—");
       lines.push(
-        `| ${escapeMarkdownCell(file.path)} | ${describeMapStatus(file)} | ${debugId} |`
+        `| ${escapeMarkdownCell(file.path)} | ${describeMapStatus(file)} | ${debugId} |`,
       );
     }
   }
@@ -161,7 +161,7 @@ export const resolveCommand = buildCommand({
       ignore?: string;
       "ignore-file"?: string;
     },
-    dir: string
+    dir: string,
   ) {
     await assertDirectoryReadable(dir);
 
@@ -175,13 +175,13 @@ export const resolveCommand = buildCommand({
       : undefined;
     const ignoreMatcher = await buildIgnoreMatcher(
       ignorePatterns,
-      flags["ignore-file"]
+      flags["ignore-file"],
     );
 
     const resolutions = await resolveDirectorySourcemaps(
       dir,
       extSet,
-      ignoreMatcher
+      ignoreMatcher,
     );
 
     const absDir = resolvePath(dir);

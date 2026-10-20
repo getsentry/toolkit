@@ -53,9 +53,9 @@ const LINES_PER_UNIT = 6;
 function stripAnsi(str: string): string {
   return (
     str
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI SGR escape codes
+      // oxlint-disable-next-line no-control-regex -- ANSI SGR escape codes
       .replace(/\x1b\[[0-9;]*m/g, "")
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: OSC 8 hyperlink sequences
+      // oxlint-disable-next-line no-control-regex -- OSC 8 hyperlink sequences
       .replace(/\x1b\]8;;[^\x07]*\x07/g, "")
   );
 }
@@ -143,7 +143,7 @@ function useRenderedMode() {
 // ---------------------------------------------------------------------------
 
 function makeTimeseriesData(
-  overrides: Partial<TimeseriesResult> = {}
+  overrides: Partial<TimeseriesResult> = {},
 ): TimeseriesResult {
   return {
     type: "timeseries",
@@ -194,7 +194,7 @@ function makeTextData(overrides: Partial<TextResult> = {}): TextResult {
 }
 
 function makeUnsupportedData(
-  overrides: Partial<UnsupportedResult> = {}
+  overrides: Partial<UnsupportedResult> = {},
 ): UnsupportedResult {
   return {
     type: "unsupported",
@@ -212,7 +212,7 @@ function makeErrorData(overrides: Partial<ErrorResult> = {}): ErrorResult {
 }
 
 function makeWidget(
-  overrides: Partial<DashboardViewWidget> = {}
+  overrides: Partial<DashboardViewWidget> = {},
 ): DashboardViewWidget {
   return {
     title: "Test Widget",
@@ -223,7 +223,7 @@ function makeWidget(
 }
 
 function makeDashboardData(
-  overrides: Partial<DashboardViewData> = {}
+  overrides: Partial<DashboardViewData> = {},
 ): DashboardViewData {
   return {
     id: "12345",
@@ -1239,7 +1239,7 @@ describe("formatDashboardWithData", () => {
       // Both titles should appear on the same terminal line
       // (framebuffer composes widgets side-by-side within the same row range)
       const titleLine = lines.find(
-        (l) => l.includes("Left Widget") && l.includes("Right Widget")
+        (l) => l.includes("Left Widget") && l.includes("Right Widget"),
       );
       expect(titleLine).toBeDefined();
     });
@@ -1266,7 +1266,7 @@ describe("formatDashboardWithData", () => {
 
       // Titles should NOT be on the same line
       const combinedLine = lines.find(
-        (l) => l.includes("Top Widget") && l.includes("Bottom Widget")
+        (l) => l.includes("Top Widget") && l.includes("Bottom Widget"),
       );
       expect(combinedLine).toBeUndefined();
 
@@ -1276,7 +1276,7 @@ describe("formatDashboardWithData", () => {
 
       // Top appears before Bottom
       expect(output.indexOf("Top Widget")).toBeLessThan(
-        output.indexOf("Bottom Widget")
+        output.indexOf("Bottom Widget"),
       );
     });
 
@@ -1364,7 +1364,7 @@ describe("formatDashboardWithData", () => {
 
       // All three titles should be on the same line
       const titleLine = lines.find(
-        (l) => l.includes("W1") && l.includes("W2") && l.includes("W3")
+        (l) => l.includes("W1") && l.includes("W2") && l.includes("W3"),
       );
       expect(titleLine).toBeDefined();
     });
@@ -1393,13 +1393,13 @@ describe("formatDashboardWithData", () => {
       expect(output).toContain("No Layout");
       const lines = output.split("\n");
       const combinedLine = lines.find(
-        (l) => l.includes("Laid Out") && l.includes("No Layout")
+        (l) => l.includes("Laid Out") && l.includes("No Layout"),
       );
       expect(combinedLine).toBeUndefined();
 
       // "No Layout" appears after "Laid Out" (appended after grid)
       expect(output.indexOf("Laid Out")).toBeLessThan(
-        output.indexOf("No Layout")
+        output.indexOf("No Layout"),
       );
     });
 
@@ -1426,11 +1426,11 @@ describe("formatDashboardWithData", () => {
 
       // Both on same line, LeftFirst before RightFirst
       const titleLine = lines.find(
-        (l) => l.includes("LeftFirst") && l.includes("RightFirst")
+        (l) => l.includes("LeftFirst") && l.includes("RightFirst"),
       );
       expect(titleLine).toBeDefined();
       expect(titleLine!.indexOf("LeftFirst")).toBeLessThan(
-        titleLine!.indexOf("RightFirst")
+        titleLine!.indexOf("RightFirst"),
       );
     });
 
@@ -1534,7 +1534,7 @@ describe("createDashboardViewRenderer", () => {
       test("returns hint wrapped in newlines", () => {
         const renderer = createDashboardViewRenderer();
         const result = renderer.finalize!(
-          "Tip: use --json for machine-readable output"
+          "Tip: use --json for machine-readable output",
         );
         expect(result).toContain("Tip: use --json for machine-readable output");
         expect(result.startsWith("\n")).toBe(true);

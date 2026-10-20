@@ -103,7 +103,7 @@ describe.each(DRIVERS)("sqlite adapter [%s driver]", (kind) => {
     db.query("INSERT INTO t (a, b, c) VALUES (?, ?, ?)").run(
       "first",
       99,
-      "last"
+      "last",
     );
 
     const row = db.query("SELECT a, b, c FROM t").get();

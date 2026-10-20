@@ -165,15 +165,13 @@ describe("detectAgent", () => {
     expect(detectAgent()).toEqual(named("cursor"));
   });
 
-  test.each([
-    "",
-    "terminal",
-    "agent-exec-helper",
-    "AGENT-EXEC",
-  ])("CURSOR_EXTENSION_HOST_ROLE=%j does not trigger detection", (role) => {
-    withEnv({ CURSOR_EXTENSION_HOST_ROLE: role });
-    expect(detectAgent()).toBeUndefined();
-  });
+  test.each(["", "terminal", "agent-exec-helper", "AGENT-EXEC"])(
+    "CURSOR_EXTENSION_HOST_ROLE=%j does not trigger detection",
+    (role) => {
+      withEnv({ CURSOR_EXTENSION_HOST_ROLE: role });
+      expect(detectAgent()).toBeUndefined();
+    },
+  );
 
   test("a different Cursor role falls through to other agent markers", () => {
     withEnv({ CURSOR_EXTENSION_HOST_ROLE: "terminal", CLINE_ACTIVE: "1" });
@@ -257,14 +255,17 @@ describe("detectAgent", () => {
     ["GROK_PLUGIN_DATA", "CLAUDECODE", ""],
     ["GROK_PLUGIN_ROOT", "CLAUDECODE", "1"],
     ["GROK_PLUGIN_DATA", "CLAUDE_CODE", "1"],
-  ])("%s takes priority over %s with CLAUDE_CODE_IS_COWORK=%j", (grokVar, claudeVar, cowork) => {
-    withEnv({
-      [grokVar]: "/tmp/grok",
-      [claudeVar]: "1",
-      CLAUDE_CODE_IS_COWORK: cowork,
-    });
-    expect(detectAgent()).toEqual(named("grok"));
-  });
+  ])(
+    "%s takes priority over %s with CLAUDE_CODE_IS_COWORK=%j",
+    (grokVar, claudeVar, cowork) => {
+      withEnv({
+        [grokVar]: "/tmp/grok",
+        [claudeVar]: "1",
+        CLAUDE_CODE_IS_COWORK: cowork,
+      });
+      expect(detectAgent()).toEqual(named("grok"));
+    },
+  );
 
   // ── Excluded env vars (false positive risks) ──────────────────────
 

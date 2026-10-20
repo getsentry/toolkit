@@ -19,7 +19,7 @@ chalk.level = 3;
 
 /** Strip ANSI escape codes for content assertions */
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI codes use control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -176,7 +176,7 @@ describe("terminalLink", () => {
   test("preserves display text on TTY", () => {
     withTTY(() => {
       const result = terminalLink("display", "https://url.com");
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: OSC 8 uses control chars
+      // oxlint-disable-next-line no-control-regex -- OSC 8 uses control chars
       const stripped = result.replace(/\x1b\]8;;[^\x07]*\x07/g, "");
       expect(stripped).toBe("display");
     });
@@ -188,7 +188,7 @@ describe("terminalLink", () => {
       expect(result).toContain("]8;;https://example.com");
       expect(result).toContain("https://example.com");
       expect(result).toBe(
-        terminalLink("https://example.com", "https://example.com")
+        terminalLink("https://example.com", "https://example.com"),
       );
     });
   });

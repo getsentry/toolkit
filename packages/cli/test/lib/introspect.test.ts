@@ -6,6 +6,12 @@
  */
 
 import { describe, expect, test } from "vitest";
+import {
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
+  parseOrgProjectTarget,
+  parseOrgTarget,
+} from "../../src/lib/completion-target.js";
 import type {
   Command,
   FlagDef,
@@ -15,7 +21,9 @@ import type {
 import {
   buildCommandInfo,
   extractAllRoutes,
+  extractCompletionTargets,
   extractFlags,
+  extractPositionals,
   extractRouteGroupCommands,
   getPositionalString,
   isCommand,
@@ -40,7 +48,7 @@ function makeCommand(overrides: Partial<Command> = {}): Command {
 
 function makeRouteMap(
   entries: RouteMapEntry[],
-  overrides: Partial<RouteMap> = {}
+  overrides: Partial<RouteMap> = {},
 ): RouteMap {
   return {
     brief: "Test route",
@@ -52,7 +60,7 @@ function makeRouteMap(
 function makeEntry(
   name: string,
   target: RouteMap | Command,
-  hidden = false
+  hidden = false,
 ): RouteMapEntry {
   return {
     name: { original: name },
@@ -114,6 +122,18 @@ describe("getPositionalString", () => {
     expect(result).toBe("<arg0> <arg1>");
   });
 
+  test("distinguishes optional tuple arguments from required ones", () => {
+    expect(
+      getPositionalString({
+        kind: "tuple",
+        parameters: [
+          { placeholder: "target" },
+          { placeholder: "org", optional: true },
+        ],
+      }),
+    ).toBe("<target> [<org>]");
+  });
+
   test("returns array placeholder with ellipsis", () => {
     const result = getPositionalString({
       kind: "array",
@@ -128,6 +148,29 @@ describe("getPositionalString", () => {
       parameter: {},
     });
     expect(result).toBe("<args...>");
+  });
+});
+
+describe("extractPositionals", () => {
+  test("keeps arrays required and variadic even when the parser accepts zero", () => {
+    expect(
+      extractPositionals({
+        kind: "array",
+        parameter: { placeholder: "issue" },
+      }),
+    ).toEqual([
+      { placeholder: "issue", brief: "", optional: false, variadic: true },
+    ]);
+  });
+  test("preserves optional tuple arguments", () => {
+    expect(
+      extractPositionals({
+        kind: "tuple",
+        parameters: [{ placeholder: "org", optional: true }],
+      }),
+    ).toEqual([
+      { placeholder: "org", brief: "", optional: true, variadic: false },
+    ]);
   });
 });
 
@@ -247,6 +290,12 @@ describe("buildCommandInfo", () => {
 
     const info = buildCommandInfo(cmd, "sentry project create");
     expect(info.positional).toBe("<name>:<kind>...");
+    expect(info.positionals[0]).toMatchObject({
+      placeholder: "name:kind",
+      optional: false,
+      variadic: true,
+      syntax: "<name>:<kind>...",
+    });
   });
 });
 
@@ -299,7 +348,7 @@ describe("extractAllRoutes", () => {
 
     const issueRoute = makeRouteMap(
       [makeEntry("list", listCmd), makeEntry("view", viewCmd)],
-      { brief: "Manage issues" }
+      { brief: "Manage issues" },
     );
 
     const topLevel = makeRouteMap([
@@ -336,6 +385,77 @@ describe("extractAllRoutes", () => {
   });
 });
 
+describe("extractCompletionTargets", () => {
+  /** Command whose positionals use the given parsers. */
+  function commandWith(...parsers: unknown[]): Command {
+    return makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: parsers.map((parse, i) => ({
+            placeholder: `arg${i}`,
+            parse,
+          })),
+        },
+      },
+    });
+  }
+
+  test("classifies commands by their positional parsers with full nested paths", () => {
+    const orgProject = commandWith(parseOrgProjectTarget);
+    const variadic = makeCommand({
+      parameters: {
+        positional: {
+          kind: "array",
+          parameter: { placeholder: "issue", parse: parseOrgProjectTarget },
+        },
+      },
+    });
+    const orgSecond = commandWith(String, parseOrgTarget);
+    const plain = commandWith(String);
+
+    const nested = makeRouteMap([makeEntry("view", orgProject)]);
+    const issueRoute = makeRouteMap([
+      makeEntry("view", variadic),
+      makeEntry("list", orgProject),
+      makeEntry("help", plain),
+      makeEntry("rules", nested),
+    ]);
+    const topLevel = makeRouteMap([
+      makeEntry("issue", issueRoute),
+      makeEntry("trial", orgSecond),
+      makeEntry("api", makeCommand()),
+    ]);
+
+    expect(extractCompletionTargets(topLevel)).toEqual({
+      [ORG_TARGET]: ["trial"],
+      [ORG_PROJECT_TARGET]: ["issue list", "issue rules view", "issue view"],
+    });
+  });
+
+  test("skips hidden commands and hidden groups", () => {
+    const annotated = commandWith(parseOrgTarget);
+    const hiddenGroup = makeRouteMap([makeEntry("list", annotated)]);
+    const topLevel = makeRouteMap([
+      makeEntry("secret", annotated, true),
+      makeEntry("internal", hiddenGroup, true),
+    ]);
+
+    expect(extractCompletionTargets(topLevel)).toEqual({
+      [ORG_TARGET]: [],
+      [ORG_PROJECT_TARGET]: [],
+    });
+  });
+
+  test("rejects commands that mix org and org/project targets", () => {
+    const topLevel = makeRouteMap([
+      makeEntry("bad", commandWith(parseOrgTarget, parseOrgProjectTarget)),
+    ]);
+
+    expect(() => extractCompletionTargets(topLevel)).toThrow(/bad/);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // resolveCommandPath
 // ---------------------------------------------------------------------------
@@ -347,7 +467,7 @@ describe("resolveCommandPath", () => {
 
   const issueRoute = makeRouteMap(
     [makeEntry("list", listCmd), makeEntry("view", viewCmd)],
-    { brief: "Manage issues" }
+    { brief: "Manage issues" },
   );
 
   const topLevel = makeRouteMap([
@@ -413,7 +533,7 @@ describe("resolveCommandPath", () => {
   test("returns null for extra path segments beyond 2 levels", () => {
     expect(resolveCommandPath(topLevel, ["issue", "list", "extra"])).toBeNull();
     expect(
-      resolveCommandPath(topLevel, ["issue", "list", "extra", "more"])
+      resolveCommandPath(topLevel, ["issue", "list", "extra", "more"]),
     ).toBeNull();
   });
 

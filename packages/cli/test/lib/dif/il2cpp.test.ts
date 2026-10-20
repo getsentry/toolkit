@@ -59,7 +59,7 @@ describe("createIl2cppLineMapping", () => {
     const result = createIl2cppLineMapping(
       bytes(BREAKPAD_WITH_CPP),
       () => bytes(CPP_WITH_SOURCE_INFO),
-      KNOWN_DEBUG_ID
+      KNOWN_DEBUG_ID,
     );
     expect(result?.debugId).toBe(KNOWN_DEBUG_ID);
   });
@@ -68,22 +68,22 @@ describe("createIl2cppLineMapping", () => {
     const result = createIl2cppLineMapping(
       bytes(BREAKPAD_WITH_CPP),
       () => bytes(CPP_WITH_SOURCE_INFO),
-      "ffffffff-ffff-ffff-ffff-ffffffffffff"
+      "ffffffff-ffff-ffff-ffff-ffffffffffff",
     );
     expect(result?.debugId).toBe(KNOWN_DEBUG_ID);
   });
 
   test("returns null when no referenced source is available", () => {
     expect(
-      createIl2cppLineMapping(bytes(BREAKPAD_WITH_CPP), () => null)
+      createIl2cppLineMapping(bytes(BREAKPAD_WITH_CPP), () => null),
     ).toBeNull();
   });
 
   test("returns null when the C++ has no source_info markers", () => {
     expect(
       createIl2cppLineMapping(bytes(BREAKPAD_WITH_CPP), () =>
-        bytes("int plain = 0;\n")
-      )
+        bytes("int plain = 0;\n"),
+      ),
     ).toBeNull();
   });
 });
@@ -109,7 +109,7 @@ describe("createSourceBundle collectIl2cppSources", () => {
       read,
       {
         collectIl2cppSources: true,
-      }
+      },
     );
     const files = bundleFiles(result.bundle);
     expect(files).toContain(`files${CPP_PATH}`);
@@ -120,7 +120,7 @@ describe("createSourceBundle collectIl2cppSources", () => {
     const result = createSourceBundle(
       bytes(BREAKPAD_WITH_CPP),
       "example",
-      read
+      read,
     );
     const files = bundleFiles(result.bundle);
     expect(files).toContain(`files${CPP_PATH}`);

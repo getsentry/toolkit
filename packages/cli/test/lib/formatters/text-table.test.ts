@@ -32,7 +32,7 @@ describe("renderTextTable", () => {
         [
           ["1", "Alice", "Admin"],
           ["2", "Bob", "User"],
-        ]
+        ],
       );
       expect(out).toContain("ID");
       expect(out).toContain("Name");
@@ -118,12 +118,12 @@ describe("renderTextTable", () => {
       const withHide = renderTextTable(
         ["LongHeader1", "LongHeader2"],
         [["a", "b"]],
-        { hideHeaders: true, maxWidth: 80 }
+        { hideHeaders: true, maxWidth: 80 },
       );
       const withoutHide = renderTextTable(
         ["LongHeader1", "LongHeader2"],
         [["a", "b"]],
-        { hideHeaders: false, maxWidth: 80 }
+        { hideHeaders: false, maxWidth: 80 },
       );
       // Both should produce the same column widths (same top border line)
       const topBorderHide = withHide.split("\n")[0];
@@ -199,7 +199,7 @@ describe("renderTextTable", () => {
       const out = renderTextTable(
         ["Short", "This is a very long header that needs shrinking"],
         [["a", "b"]],
-        { maxWidth: 30, columnFitter: "proportional" }
+        { maxWidth: 30, columnFitter: "proportional" },
       );
       // Content is present (may be wrapped)
       expect(out.length).toBeGreaterThan(0);
@@ -211,7 +211,7 @@ describe("renderTextTable", () => {
       const out = renderTextTable(
         ["Short", "This is a very long header that needs shrinking"],
         [["a", "b"]],
-        { maxWidth: 30, columnFitter: "balanced" }
+        { maxWidth: 30, columnFitter: "balanced" },
       );
       // Content is present (may be wrapped)
       expect(out.length).toBeGreaterThan(0);
@@ -223,7 +223,7 @@ describe("renderTextTable", () => {
       const out = renderTextTable(
         ["Header One", "Header Two", "Header Three"],
         [["data1", "data2", "data3"]],
-        { maxWidth: 15 }
+        { maxWidth: 15 },
       );
       expect(out.length).toBeGreaterThan(0);
       expect(out.endsWith("\n")).toBe(true);
@@ -251,7 +251,7 @@ describe("renderTextTable", () => {
       const out = renderTextTable(
         ["Name"],
         [["This is a very long cell value that should wrap"]],
-        { maxWidth: 20 }
+        { maxWidth: 20 },
       );
       const dataLines = out
         .split("\n")
@@ -320,7 +320,7 @@ describe("truncate option", () => {
     const out = renderTextTable(
       ["Name"],
       [["This is a very long cell value that should be truncated"]],
-      { maxWidth: 20, truncate: true }
+      { maxWidth: 20, truncate: true },
     );
     const dataLines = out
       .split("\n")
@@ -329,7 +329,7 @@ describe("truncate option", () => {
           l.includes("\u2502") &&
           !l.includes("Name") &&
           !l.includes("\u2500") &&
-          l.trim().length > 2
+          l.trim().length > 2,
       );
     // Should be exactly 1 data line (not wrapped to multiple)
     expect(dataLines.length).toBe(1);
@@ -350,7 +350,7 @@ describe("truncate option", () => {
     const out = renderTextTable(
       ["Very Long Header Name"],
       [["This is an even longer cell value that should be truncated"]],
-      { maxWidth: 30, truncate: true }
+      { maxWidth: 30, truncate: true },
     );
     // Header should not have ellipsis (only data rows truncate)
     const headerLine = out
@@ -385,7 +385,7 @@ describe("truncate option", () => {
     expect(dataLine).toBeDefined();
     // The ellipsis should appear BEFORE the ANSI reset, not after it.
     // i.e., the pattern should be: <text>…<reset> not <text><reset>…
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape detection
+    // oxlint-disable-next-line no-control-regex -- ANSI escape detection
     expect(dataLine).toMatch(/\u2026\x1b\[/);
   });
 });
@@ -395,7 +395,7 @@ describe("minWidths option", () => {
     const out = renderTextTable(
       ["Short", "Long Column Header"],
       [["data", "other data"]],
-      { maxWidth: 25, minWidths: [10, 0] }
+      { maxWidth: 25, minWidths: [10, 0] },
     );
     // First column should maintain at least 10-char content width
     // (10 + 2 padding = 12 total column width)
@@ -409,7 +409,7 @@ describe("minWidths option", () => {
     const out = renderTextTable(
       ["ID", "TITLE"],
       [["SPOTLIGHT-WEB-28", "Very long error message that gets truncated"]],
-      { maxWidth: 50, minWidths: [20, 0], truncate: true }
+      { maxWidth: 50, minWidths: [20, 0], truncate: true },
     );
     expect(out).toContain("SPOTLIGHT-WEB-28");
     // TITLE should be truncated, not SHORT ID
@@ -422,7 +422,7 @@ describe("shrinkable option", () => {
     const out = renderTextTable(
       ["FIXED", "ELASTIC"],
       [["SPOTLIGHT-WEB-28", "A very long title that should absorb all shrink"]],
-      { maxWidth: 50, shrinkable: [false, true] }
+      { maxWidth: 50, shrinkable: [false, true] },
     );
     // The FIXED column should show the full value without wrapping
     expect(out).toContain("SPOTLIGHT-WEB-28");
@@ -435,7 +435,7 @@ describe("shrinkable option", () => {
     const out = renderTextTable(
       ["FIXED", "ELASTIC"],
       [["keep-me", "shrink this very long text value please"]],
-      { maxWidth: 30, shrinkable: [false, true] }
+      { maxWidth: 30, shrinkable: [false, true] },
     );
     // FIXED column should be intact
     expect(out).toContain("keep-me");

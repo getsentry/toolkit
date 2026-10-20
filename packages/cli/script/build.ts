@@ -31,6 +31,7 @@ import { execSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { buildCarExtract } from "./build-car-extract.js";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 import { build as esbuild } from "esbuild";
@@ -183,7 +184,7 @@ async function bundleJs(): Promise<boolean> {
       1024
     ).toFixed(2);
     const mapSize = ((await stat(SOURCEMAP_FILE)).size / 1024 / 1024).toFixed(
-      2
+      2,
     );
     console.log(`    -> ${BUNDLE_JS} (${jsSize} MB)`);
     console.log(`    -> ${SOURCEMAP_FILE} (${mapSize} MB, for Sentry upload)`);
@@ -191,7 +192,7 @@ async function bundleJs(): Promise<boolean> {
   } catch (error) {
     console.error("  Failed to bundle JS:");
     console.error(
-      `    ${error instanceof Error ? error.message : String(error)}`
+      `    ${error instanceof Error ? error.message : String(error)}`,
     );
     return false;
   }
@@ -237,12 +238,12 @@ async function injectDebugIds(): Promise<void> {
     const jsContent = await readFile(BUNDLE_JS, "utf-8");
     await writeFile(
       BUNDLE_JS,
-      jsContent.split(PLACEHOLDER_DEBUG_ID).join(currentDebugId)
+      jsContent.split(PLACEHOLDER_DEBUG_ID).join(currentDebugId),
     );
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.warn(
-      `    Warning: Debug ID placeholder replacement failed: ${msg}`
+      `    Warning: Debug ID placeholder replacement failed: ${msg}`,
     );
   }
 }
@@ -303,7 +304,7 @@ async function uploadSourcemapToSentry(): Promise<void> {
  * (fossilize parallelizes internally), then post-processes each binary.
  */
 async function compileAllTargets(
-  targets: BuildTarget[]
+  targets: BuildTarget[],
 ): Promise<{ successes: number; failures: number }> {
   const platforms = targets.map((t) => getFossilizePlatform(t));
 
@@ -328,16 +329,16 @@ async function compileAllTargets(
   let DIF_WASM_SRC: string;
   try {
     DIF_WASM_SRC = createRequire(import.meta.url).resolve(
-      "@sentry/symbolic/symbolic_bg.wasm"
+      "@sentry/symbolic/symbolic_bg.wasm",
     );
   } catch {
     throw new Error(
-      "Missing @sentry/symbolic WASM (@sentry/symbolic/symbolic_bg.wasm). Run: pnpm install"
+      "Missing @sentry/symbolic WASM (@sentry/symbolic/symbolic_bg.wasm). Run: pnpm install",
     );
   }
   if (!existsSync(DIF_WASM_SRC)) {
     throw new Error(
-      `Missing @sentry/symbolic WASM at ${DIF_WASM_SRC}. Run: pnpm install`
+      `Missing @sentry/symbolic WASM at ${DIF_WASM_SRC}. Run: pnpm install`,
     );
   }
   const DIF_WASM = `${BUILD_DIR}/symbolic_bg.wasm`;
@@ -349,15 +350,25 @@ async function compileAllTargets(
   const SPLEEN_FONT_SRC = "src/lib/formatters/assets/spleen-8x16.bin";
   if (!existsSync(SPLEEN_FONT_SRC)) {
     throw new Error(
-      `Missing Spleen dashboard font asset at ${SPLEEN_FONT_SRC}`
+      `Missing Spleen dashboard font asset at ${SPLEEN_FONT_SRC}`,
     );
   }
   const SPLEEN_FONT = `${BUILD_DIR}/spleen-8x16.bin`;
   copyFileSync(SPLEEN_FONT_SRC, SPLEEN_FONT);
   assetArgs.push("--assets", SPLEEN_FONT);
 
+  if (
+    targets.some((target) => target.os === "darwin" && target.arch === "arm64")
+  ) {
+    // Always build and embed the decoder for darwin-arm64. Its asset path must
+    // match CAR_EXTRACT_ASSET_KEY in src/lib/build/asset-catalog-extract.ts.
+    const CAR_EXTRACT = `${BUILD_DIR}/car-extract`;
+    copyFileSync(buildCarExtract(), CAR_EXTRACT);
+    assetArgs.push("--assets", CAR_EXTRACT);
+  }
+
   console.log(
-    `  Step 2: Compiling ${platforms.length} target(s) (Node SEA via fossilize)...`
+    `  Step 2: Compiling ${platforms.length} target(s) (Node SEA via fossilize)...`,
   );
 
   // Invoke fossilize via `pnpm exec` so it resolves from the workspace bin
@@ -388,12 +399,12 @@ async function compileAllTargets(
         ...assetArgs,
         BUNDLE_JS,
       ].join(" "),
-      { stdio: "inherit" }
+      { stdio: "inherit" },
     );
   } catch (error) {
     console.error("  Fossilize compilation failed:");
     console.error(
-      `    ${error instanceof Error ? error.message : String(error)}`
+      `    ${error instanceof Error ? error.message : String(error)}`,
     );
     return { successes: 0, failures: targets.length };
   }
@@ -407,7 +418,7 @@ async function compileAllTargets(
       successes += 1;
     } catch (error) {
       console.error(
-        `  Post-processing ${getPackageName(target)} failed: ${error}`
+        `  Post-processing ${getPackageName(target)} failed: ${error}`,
       );
       failures += 1;
     }
@@ -480,7 +491,7 @@ async function build(): Promise<void> {
 
   if (!SENTRY_CLIENT_ID) {
     console.error(
-      "\nError: SENTRY_CLIENT_ID environment variable is required."
+      "\nError: SENTRY_CLIENT_ID environment variable is required.",
     );
     console.error("   The CLI requires OAuth to function.");
     console.error("   Set it via: SENTRY_CLIENT_ID=xxx pnpm run build\n");
@@ -496,7 +507,7 @@ async function build(): Promise<void> {
     if (!target) {
       console.error(`Invalid target: ${targetArg}`);
       console.error(
-        `Valid targets: ${ALL_TARGETS.map((t) => `${t.os === "win32" ? "windows" : t.os}-${t.arch}`).join(", ")}`
+        `Valid targets: ${ALL_TARGETS.map((t) => `${t.os === "win32" ? "windows" : t.os}-${t.arch}`).join(", ")}`,
       );
       process.exit(1);
     }
@@ -504,17 +515,17 @@ async function build(): Promise<void> {
     console.log(`\nBuilding for target: ${getPackageName(target)}`);
   } else if (singleBuild) {
     const currentTarget = ALL_TARGETS.find(
-      (t) => t.os === process.platform && t.arch === process.arch
+      (t) => t.os === process.platform && t.arch === process.arch,
     );
     if (!currentTarget) {
       console.error(
-        `Unsupported platform: ${process.platform}-${process.arch}`
+        `Unsupported platform: ${process.platform}-${process.arch}`,
       );
       process.exit(1);
     }
     targets = [currentTarget];
     console.log(
-      `\nBuilding for current platform: ${getPackageName(currentTarget)}`
+      `\nBuilding for current platform: ${getPackageName(currentTarget)}`,
     );
   } else {
     targets = ALL_TARGETS;

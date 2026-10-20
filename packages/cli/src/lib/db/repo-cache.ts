@@ -73,7 +73,7 @@ export function getCachedRepos(orgSlug: string): SentryRepository[] | null {
  */
 export function setCachedRepos(
   orgSlug: string,
-  repos: SentryRepository[]
+  repos: SentryRepository[],
 ): void {
   const db = getDatabase();
   runUpsert(
@@ -84,7 +84,7 @@ export function setCachedRepos(
       repos_json: JSON.stringify(repos),
       cached_at: Date.now(),
     },
-    ["org_slug"]
+    ["org_slug"],
   );
 }
 

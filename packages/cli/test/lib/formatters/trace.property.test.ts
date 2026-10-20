@@ -38,7 +38,7 @@ const invalidDurationArb = constantFrom(
   Number.POSITIVE_INFINITY,
   Number.NEGATIVE_INFINITY,
   -1,
-  -1000
+  -1000,
 );
 
 /** 32-char hex string for trace/event IDs */
@@ -54,7 +54,7 @@ const transactionNameArb = stringMatching(/^[A-Z]{3,6} \/[a-z/]{1,40}$/);
 const isoTimestampArb = constantFrom(
   "2025-01-15T10:30:00Z",
   "2024-12-01T00:00:00Z",
-  "2025-06-15T23:59:59Z"
+  "2025-06-15T23:59:59Z",
 );
 
 /** Realistic Unix timestamp in seconds (2020-2030) */
@@ -82,13 +82,13 @@ function makeSpanArb(): import("fast-check").Arbitrary<TraceSpan> {
       constantFrom("http.server", "db.query", "cache.get", "http.client"),
       {
         nil: undefined,
-      }
+      },
     ),
     description: option(
       constantFrom("GET /api", "SELECT *", "Redis GET", null),
       {
         nil: undefined,
-      }
+      },
     ),
     start_timestamp: unixTimestampArb,
     timestamp: unixTimestampArb,
@@ -96,7 +96,7 @@ function makeSpanArb(): import("fast-check").Arbitrary<TraceSpan> {
     transaction: option(transactionNameArb, { nil: undefined }),
     "transaction.op": option(
       constantFrom("http.server", "browser", "celery_task"),
-      { nil: undefined }
+      { nil: undefined },
     ),
   }) as unknown as import("fast-check").Arbitrary<TraceSpan>;
 }
@@ -112,7 +112,7 @@ describe("property: formatTraceDuration", () => {
         expect(result.length).toBeGreaterThan(0);
         expect(result).not.toBe("—");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -121,7 +121,7 @@ describe("property: formatTraceDuration", () => {
       property(invalidDurationArb, (ms) => {
         expect(formatTraceDuration(ms)).toBe("—");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -130,7 +130,7 @@ describe("property: formatTraceDuration", () => {
       property(positiveDurationArb, (ms) => {
         expect(formatTraceDuration(ms)).toBe(formatTraceDuration(ms));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -147,7 +147,7 @@ describe("property: formatTraceDuration", () => {
           expect(result).toContain("s");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -169,7 +169,7 @@ describe("property: formatTraceRow", () => {
         // Trace ID is sliced to 32 chars max
         expect(row).toContain(item.trace.slice(0, 32));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -178,7 +178,7 @@ describe("property: formatTraceRow", () => {
       property(transactionItemArb, (item) => {
         expect(formatTraceRow(item).endsWith("\n")).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -187,7 +187,7 @@ describe("property: formatTraceRow", () => {
       property(transactionItemArb, (item) => {
         expect(formatTraceRow(item)).toBe(formatTraceRow(item));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -199,7 +199,7 @@ describe("property: computeTraceSummary", () => {
         const summary = computeTraceSummary(traceId, spans);
         expect(summary.spanCount).toBe(spans.length);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -209,7 +209,7 @@ describe("property: computeTraceSummary", () => {
         const summary = computeTraceSummary(traceId, spans);
         expect(summary.traceId).toBe(traceId);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -221,7 +221,7 @@ describe("property: computeTraceSummary", () => {
           expect(summary.duration).toBeGreaterThanOrEqual(0);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -232,7 +232,7 @@ describe("property: computeTraceSummary", () => {
         const uniqueProjects = new Set(summary.projects);
         expect(uniqueProjects.size).toBe(summary.projects.length);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -243,7 +243,7 @@ describe("property: computeTraceSummary", () => {
         const b = computeTraceSummary(traceId, spans);
         expect(a).toEqual(b);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -254,14 +254,14 @@ describe("property: computeTraceSummary", () => {
         expect(summary.spanCount).toBe(0);
         expect(summary.projects).toEqual([]);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
 
 /** Strip ANSI escape codes */
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -273,7 +273,7 @@ describe("property: formatTraceSummary", () => {
         const output = stripAnsi(formatTraceSummary(summary));
         expect(output).toContain(traceId);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -284,7 +284,7 @@ describe("property: formatTraceSummary", () => {
         const output = stripAnsi(formatTraceSummary(summary));
         expect(output).toContain("Duration");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -295,7 +295,7 @@ describe("property: formatTraceSummary", () => {
         const output = stripAnsi(formatTraceSummary(summary));
         expect(output).toContain("Spans");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -307,7 +307,7 @@ describe("property: formatTraceSummary", () => {
         expect(typeof result).toBe("string");
         expect(result.length).toBeGreaterThan(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -319,7 +319,7 @@ describe("property: formatTraceSummary", () => {
         const b = formatTraceSummary(summary);
         expect(a).toEqual(b);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

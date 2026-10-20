@@ -12,11 +12,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { downloadCommand } from "../../../src/commands/build/download.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as region from "../../../src/lib/region.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 let tmpDir: string;
@@ -29,7 +29,7 @@ function createContext() {
       stdout: {
         write: (data: string | Uint8Array) => {
           writes.push(
-            typeof data === "string" ? data : new TextDecoder().decode(data)
+            typeof data === "string" ? data : new TextDecoder().decode(data),
           );
           return true;
         },
@@ -56,9 +56,11 @@ describe("build download", () => {
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "build-download-"));
-    vi.spyOn(resolveTarget, "resolveOrg").mockResolvedValue({ org: "test-org" });
+    vi.spyOn(resolveTarget, "resolveOrg").mockResolvedValue({
+      org: "test-org",
+    });
     vi.spyOn(region, "resolveOrgRegion").mockResolvedValue(
-      "https://us.sentry.io"
+      "https://us.sentry.io",
     );
     installSpy = vi.spyOn(preprod, "getBuildInstallDetails");
     downloadSpy = vi
@@ -114,7 +116,7 @@ describe("build download", () => {
     const func = await downloadCommand.loader();
 
     await expect(
-      func.call(context, { output: undefined }, "b3")
+      func.call(context, { output: undefined }, "b3"),
     ).rejects.toThrow(/not installable/i);
     expect(downloadSpy).not.toHaveBeenCalled();
   });

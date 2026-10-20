@@ -55,7 +55,7 @@ export async function openBrowser(url: string): Promise<boolean> {
     return false;
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const proc = spawn(command, args, {
       stdio: ["ignore", "ignore", "ignore"],
@@ -113,7 +113,7 @@ export async function openOrShowUrl(url: string): Promise<boolean> {
  */
 export async function openInBrowser(
   url: string | undefined,
-  entityName = "resource"
+  entityName = "resource",
 ): Promise<void> {
   if (!url) {
     process.stdout.write(`No URL available for this ${entityName}.\n`);

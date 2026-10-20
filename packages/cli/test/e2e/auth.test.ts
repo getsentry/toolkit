@@ -111,7 +111,7 @@ describe("sentry auth login --token", () => {
 
     expect(result.exitCode).toBe(EXIT.AUTH_HOST_SCOPE);
     expect(result.stderr + result.stdout).toMatch(
-      /invalid|unauthorized|error/i
+      /invalid|unauthorized|error/i,
     );
   });
 });
@@ -123,7 +123,7 @@ describe("sentry auth whoami", () => {
     // Model a pre-validation credential; the setter now rejects this input.
     const db = new Database(join(ctx.configDir, "cli.db"));
     try {
-      db.query("UPDATE auth SET token = ? WHERE id = 1").run(token);
+      db.query("UPDATE accounts SET token = ? WHERE is_active = 1").run(token);
     } finally {
       db.close();
     }

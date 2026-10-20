@@ -103,14 +103,14 @@ export const bundleJvmCommand = buildCommand({
       "debug-id": string;
       exclude?: string[];
     },
-    sourcePath: string
+    sourcePath: string,
   ) {
     // 1. Validate debug ID format
     if (!UUID_RE.test(flags["debug-id"])) {
       throw new ValidationError(
         `Invalid debug ID format: '${flags["debug-id"]}'. ` +
           "Expected UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-        "debug-id"
+        "debug-id",
       );
     }
 
@@ -119,13 +119,13 @@ export const bundleJvmCommand = buildCommand({
     const srcStat = await stat(resolvedSource).catch(() => {
       throw new ValidationError(
         `Source path '${sourcePath}' does not exist.`,
-        "path"
+        "path",
       );
     });
     if (!srcStat.isDirectory()) {
       throw new ValidationError(
         `Source path '${sourcePath}' is not a directory.`,
-        "path"
+        "path",
       );
     }
 

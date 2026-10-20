@@ -32,10 +32,10 @@ test("writes valid CRCs when zlib.crc32 is unavailable", async () => {
 
     const entries = unzipSync(await readFile(outputPath));
     expect(Buffer.from(entries["memory.txt"])).toEqual(
-      Buffer.from("in-memory contents")
+      Buffer.from("in-memory contents"),
     );
     expect(Buffer.from(entries["streamed.txt"])).toEqual(
-      Buffer.from("streamed contents")
+      Buffer.from("streamed contents"),
     );
   } finally {
     await rm(tmpDir, { recursive: true, force: true });

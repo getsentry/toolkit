@@ -30,10 +30,13 @@
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { DEFAULT_SENTRY_URL, normalizeUrl } from "./constants.js";
 import {
-  clearAuth,
+  getActiveAccountId,
   hasStoredAuthCredentials,
+  removeAccount,
+  setActiveAccount,
   setAuthToken,
 } from "./db/auth.js";
 import {
@@ -49,7 +52,7 @@ import { setUserInfo } from "./db/user.js";
 import { clearMetadata, getMetadata, setMetadata } from "./db/utils.js";
 import { parseIni } from "./ini.js";
 import { logger } from "./logger.js";
-import { isSaaSTrustOrigin, normalizeOrigin } from "./sentry-urls.js";
+import { normalizeOrigin } from "./sentry-urls.js";
 import {
   CONFIG_FILENAME,
   getGlobalPaths,
@@ -215,7 +218,7 @@ function extractFields(iniData: ReturnType<typeof parseIni>): {
 /** Read and parse a single .sentryclirc file into a DiscoveredRcFile */
 async function readRcFile(
   rcPath: string,
-  location: RcFileLocation
+  location: RcFileLocation,
 ): Promise<DiscoveredRcFile | null> {
   const content = await tryReadSentryCliRc(rcPath);
   if (content === null) {
@@ -241,7 +244,7 @@ async function readRcFile(
  * content hashes, and location classification.
  */
 export async function discoverRcFiles(
-  cwd: string
+  cwd: string,
 ): Promise<DiscoveredRcFile[]> {
   const files: DiscoveredRcFile[] = [];
   const globalPathSet = getGlobalPaths();
@@ -268,7 +271,7 @@ export async function discoverRcFiles(
     seen.add(globalPath);
     const file = await readRcFile(
       globalPath,
-      classifyRcFileLocation(globalPath)
+      classifyRcFileLocation(globalPath),
     );
     if (file) {
       files.push(file);
@@ -351,7 +354,7 @@ function isDefaultSet(getter: () => string | null): boolean {
 /** Determine which effective fields would be new (not already in SQLite) */
 function computeNewFields(
   effective: ImportPlan["effective"],
-  isSaas: boolean
+  isSaas: boolean,
 ): ImportableField[] {
   const fields: ImportableField[] = [];
 
@@ -388,7 +391,7 @@ function computeNewFields(
  */
 export function checkSntrysClaim(
   token: string,
-  url: string
+  url: string,
 ): string | undefined {
   const claim = parseSntrysClaim(token);
   if (!claim?.url) {
@@ -408,7 +411,7 @@ export function checkSntrysClaim(
 function buildSecurityWarnings(
   effectiveSources: ImportPlan["effectiveSources"],
   effective: ImportPlan["effective"],
-  isSaas: boolean
+  isSaas: boolean,
 ): string[] {
   const warnings: string[] = [];
 
@@ -422,7 +425,7 @@ function buildSecurityWarnings(
     warnings.push(
       "Token and URL come from different files — URL may have been injected.\n" +
         `  Token: ${effectiveSources.token}\n` +
-        `  URL:   ${effectiveSources.url}`
+        `  URL:   ${effectiveSources.url}`,
     );
   }
 
@@ -502,29 +505,37 @@ function isAuthFailure(error: unknown): boolean {
 /**
  * Validate token against the Sentry API and fetch user info.
  *
- * On auth failure (401): clears the stored token and returns false.
+ * On auth failure (401): removes the imported account (restoring the
+ * previously active one) and returns false.
  * On transient network/permission error (403, 5xx, DNS, timeout): keeps
  * the token stored but warns the user.
  */
-async function validateAndFetchUser(result: ImportResult): Promise<boolean> {
+async function validateAndFetchUser(
+  result: ImportResult,
+  accountId: string,
+  previousAccountId: string | undefined,
+): Promise<boolean> {
   try {
     const { getUserRegions } = await import("./api-client.js");
     await getUserRegions();
     result.tokenValid = true;
   } catch (error) {
     if (isAuthFailure(error)) {
-      await clearAuth();
+      await removeAccount(accountId);
+      if (previousAccountId) {
+        setActiveAccount(previousAccountId);
+      }
       result.stored.token = false;
       result.tokenValid = false;
       result.warnings.push(
-        "Token validation failed (invalid credentials) — the token was not stored."
+        "Token validation failed (invalid credentials) — the token was not stored.",
       );
       return false;
     }
     // Transient network error — keep the token, warn the user
     log.debug("Token validation failed with transient error", error);
     result.warnings.push(
-      "Could not validate token (network error). Token was stored — run 'sentry auth status' to verify."
+      "Could not validate token (network error). Token was stored — run 'sentry auth status' to verify.",
     );
     return true;
   }
@@ -563,7 +574,7 @@ function trySetDefault(
   getter: () => string | null,
   setter: (v: string) => void,
   value: string,
-  label: string
+  label: string,
 ): boolean {
   try {
     if (!getter()) {
@@ -579,14 +590,14 @@ function trySetDefault(
 /** Store default values that are not already set */
 function storeDefaults(
   effective: ImportPlan["effective"],
-  result: ImportResult
+  result: ImportResult,
 ): void {
   if (effective.url && !isSaaSTrustOrigin(effective.url)) {
     result.stored.url = trySetDefault(
       getDefaultUrl,
       setDefaultUrl,
       effective.url,
-      "URL"
+      "URL",
     );
   }
   if (effective.org) {
@@ -594,7 +605,7 @@ function storeDefaults(
       getDefaultOrganization,
       setDefaultOrganization,
       effective.org,
-      "org"
+      "org",
     );
   }
   if (effective.project) {
@@ -602,7 +613,7 @@ function storeDefaults(
       getDefaultProject,
       setDefaultProject,
       effective.project,
-      "project"
+      "project",
     );
   }
 }
@@ -619,7 +630,7 @@ function storeDefaults(
  */
 export async function executeImport(
   plan: ImportPlan,
-  options: ExecuteImportOptions = {}
+  options: ExecuteImportOptions = {},
 ): Promise<ImportResult> {
   const { validateToken = true } = options;
   const { effective } = plan;
@@ -646,10 +657,17 @@ export async function executeImport(
 
     if (!authAcquiredDuringPrompt) {
       const host = effective.url ?? DEFAULT_SENTRY_URL;
-      setAuthToken(effective.token, undefined, undefined, { host });
+      const previousAccountId = getActiveAccountId();
+      const accountId = setAuthToken(effective.token, undefined, undefined, {
+        host,
+        newAccount: true,
+      });
       result.stored.token = true;
 
-      if (validateToken && !(await validateAndFetchUser(result))) {
+      if (
+        validateToken &&
+        !(await validateAndFetchUser(result, accountId, previousAccountId))
+      ) {
         // Mark as declined (not completed) to prevent infinite re-prompting.
         // Using "declined" because: markImportCompleted + hasStoredAuth()=false
         // (auth cleared by validation failure) would re-trigger on next run.
@@ -718,7 +736,7 @@ function getImportRecord(): ImportRecord | null {
   try {
     const db = getDatabase();
     const raw = getMetadata(db, [IMPORT_COMPLETED_KEY]).get(
-      IMPORT_COMPLETED_KEY
+      IMPORT_COMPLETED_KEY,
     );
     if (!raw) {
       return null;
@@ -836,7 +854,7 @@ function hasStoredAuth(): boolean {
  */
 async function verifyFileHash(
   filePath: string,
-  expectedHash: string
+  expectedHash: string,
 ): Promise<boolean> {
   try {
     const content = await tryReadSentryCliRc(filePath);

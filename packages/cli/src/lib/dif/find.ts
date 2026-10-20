@@ -161,7 +161,7 @@ type SearchState = {
 /** Find the remaining id that matches `debugId`, or undefined. */
 function matchRemaining(
   state: SearchState,
-  debugId: string
+  debugId: string,
 ): string | undefined {
   const normalized = normalizeDebugId(debugId);
   return state.remaining.has(normalized) ? normalized : undefined;
@@ -171,7 +171,7 @@ function matchRemaining(
 async function tryProguard(
   path: string,
   size: number,
-  state: SearchState
+  state: SearchState,
 ): Promise<void> {
   if (
     !state.wantProguard ||
@@ -190,7 +190,7 @@ async function tryProguard(
   } catch (error) {
     logger.debug(
       `Skipping ProGuard candidate ${path}: read/hash failed`,
-      error
+      error,
     );
     return;
   }
@@ -213,7 +213,7 @@ function satisfy(state: SearchState, id: string): void {
 async function tryObject(
   path: string,
   size: number,
-  state: SearchState
+  state: SearchState,
 ): Promise<void> {
   let format: string;
   try {
@@ -304,7 +304,7 @@ export async function findDebugFiles(opts: FindOptions): Promise<FindResult> {
     formats: new Set(
       wantedTypes
         .map((t) => TYPE_TO_FORMAT[t.toLowerCase()])
-        .filter((f): f is string => Boolean(f))
+        .filter((f): f is string => Boolean(f)),
     ),
     sourcebundleType: sourcebundleDisplayType(wantedTypes),
     wantProguard: wantedTypes.some((t) => t.toLowerCase() === "proguard"),

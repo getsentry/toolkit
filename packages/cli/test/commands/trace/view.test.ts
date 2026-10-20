@@ -18,11 +18,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ResolutionError, ValidationError } from "../../../src/lib/errors.js";
 import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
@@ -100,7 +100,7 @@ describe("resolveProjectBoundSlug", () => {
       findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
 
       await expect(resolveProjectBoundSlug("my-project", HINT)).rejects.toThrow(
-        ResolutionError
+        ResolutionError,
       );
     });
 
@@ -113,10 +113,10 @@ describe("resolveProjectBoundSlug", () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ResolutionError);
         expect((error as ResolutionError).message).toContain(
-          'Project "frontend"'
+          'Project "frontend"',
         );
         expect((error as ResolutionError).message).toContain(
-          "Check that you have access"
+          "Check that you have access",
         );
         expect((error as ResolutionError).message).toContain("not found");
       }
@@ -134,7 +134,7 @@ describe("resolveProjectBoundSlug", () => {
       });
 
       await expect(resolveProjectBoundSlug("frontend", HINT)).rejects.toThrow(
-        ValidationError
+        ValidationError,
       );
     });
 
@@ -161,7 +161,7 @@ describe("resolveProjectBoundSlug", () => {
         await resolveProjectBoundSlug(
           "frontend",
           HINT,
-          "sentry trace view <org>/frontend trace-456"
+          "sentry trace view <org>/frontend trace-456",
         );
         expect.unreachable("Should have thrown");
       } catch (error) {

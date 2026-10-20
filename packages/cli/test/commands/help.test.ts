@@ -73,12 +73,12 @@ describe("sentry help --json", () => {
 
     // Find a command that should have framework-injected flags
     const issueRoute = parsed.routes.find(
-      (r: { name: string }) => r.name === "issue"
+      (r: { name: string }) => r.name === "issue",
     );
     expect(issueRoute).toBeDefined();
 
     const listCmd = issueRoute.commands.find(
-      (c: { path: string }) => c.path === "sentry issue list"
+      (c: { path: string }) => c.path === "sentry issue list",
     );
     expect(listCmd).toBeDefined();
 
@@ -146,7 +146,7 @@ describe("sentry help --json <group> <command>", () => {
     const output = await runHelp(["--json", "event", "view"]);
     const parsed = JSON.parse(output);
     const attachments = parsed.jsonFields?.find(
-      (field: { name: string }) => field.name === "attachments"
+      (field: { name: string }) => field.name === "attachments",
     );
 
     expect(attachments).toMatchObject({

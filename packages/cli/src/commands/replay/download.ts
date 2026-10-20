@@ -101,7 +101,7 @@ export const downloadCommand = buildCommand({
     const resolved = await resolveOrgOptionalFromArg(
       parsedArgs.targetArg,
       cwd,
-      "replay download"
+      "replay download",
     );
 
     let replay: ReplayDetails;
@@ -118,7 +118,7 @@ export const downloadCommand = buildCommand({
           [
             "Check that you are querying the right organization",
             "The replay may be past your retention window",
-          ]
+          ],
         );
       }
       throw error;
@@ -142,7 +142,7 @@ export const downloadCommand = buildCommand({
     const segments = await getReplayRecordingSegments(
       resolved.org,
       String(replay.project_id),
-      replay.id
+      replay.id,
     );
     const events = toRRWebEvents(segments);
     if (events.length === 0) {
@@ -150,7 +150,7 @@ export const downloadCommand = buildCommand({
     }
     if (!hasFullSnapshot(events)) {
       log.warn(
-        "This recording has no full DOM snapshot (e.g. a mobile replay), so rrweb players cannot render it."
+        "This recording has no full DOM snapshot (e.g. a mobile replay), so rrweb players cannot render it.",
       );
     }
 
@@ -176,6 +176,6 @@ function noRecordingError(org: string, replayId: string): ResolutionError {
     `Replay '${replayId}'`,
     "has no recording to download",
     `sentry replay view ${org}/${replayId}`,
-    ["The replay may be archived or past your retention window"]
+    ["The replay may be archived or past your retention window"],
   );
 }

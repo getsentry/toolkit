@@ -117,7 +117,7 @@ async function requestTrace(
   regionUrl: string,
   orgSlug: string,
   traceId: string,
-  params: GetDetailedTraceOptions & { statsPeriod?: string }
+  params: GetDetailedTraceOptions & { statsPeriod?: string },
 ): Promise<TraceSpan[]> {
   const { data } = await apiRequestToRegion<TraceSpan[]>(
     regionUrl,
@@ -130,7 +130,7 @@ async function requestTrace(
         project: params.projectId ?? -1,
         additional_attributes: params.additionalAttributes,
       },
-    }
+    },
   );
   return data.map(normalizeTraceSpan);
 }
@@ -155,7 +155,7 @@ async function requestTrace(
 export async function getDetailedTrace(
   orgSlug: string,
   traceId: string,
-  options: GetDetailedTraceOptions = {}
+  options: GetDetailedTraceOptions = {},
 ): Promise<TraceSpan[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const shared = {
@@ -180,7 +180,7 @@ export async function getDetailedTrace(
   }
 
   log.debug(
-    `No spans for trace ${traceId} in ${TRACE_LOOKUP_STATS_PERIOD}; retrying ${TRACE_LOOKUP_FALLBACK_STATS_PERIOD}`
+    `No spans for trace ${traceId} in ${TRACE_LOOKUP_STATS_PERIOD}; retrying ${TRACE_LOOKUP_FALLBACK_STATS_PERIOD}`,
   );
   return requestTrace(regionUrl, orgSlug, traceId, {
     ...shared,
@@ -209,7 +209,7 @@ export async function getTraceItemDetail(
   orgSlug: string,
   projectSlug: string,
   itemId: string,
-  { traceId, itemType }: GetTraceItemDetailOptions
+  { traceId, itemType }: GetTraceItemDetailOptions,
 ): Promise<TraceItemDetail> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const { data } = await apiRequestToRegion<TraceItemDetail>(
@@ -218,7 +218,7 @@ export async function getTraceItemDetail(
     {
       params: { trace_id: traceId, item_type: itemType },
       schema: TraceItemDetailSchema,
-    }
+    },
   );
   return data;
 }
@@ -235,7 +235,7 @@ export function getSpanDetails(
   orgSlug: string,
   projectSlug: string,
   spanId: string,
-  traceId: string
+  traceId: string,
 ): Promise<TraceItemDetail> {
   return getTraceItemDetail(orgSlug, projectSlug, spanId, {
     traceId,
@@ -253,7 +253,7 @@ export function getSpanDetails(
 export async function getTraceMeta(
   orgSlug: string,
   traceId: string,
-  statsPeriod = "14d"
+  statsPeriod = "14d",
 ): Promise<TraceMeta> {
   const regionUrl = await resolveOrgRegion(orgSlug);
 
@@ -263,7 +263,7 @@ export async function getTraceMeta(
     {
       params: { statsPeriod },
       schema: TraceMetaSchema,
-    }
+    },
   );
   return data;
 }
@@ -281,15 +281,15 @@ const SPAN_DETAIL_CONCURRENCY = 15;
  * and EAP storage internals (tags[], precise timestamps, etc.).
  */
 export function attributesToDict(
-  attributes: TraceItemDetail["attributes"]
+  attributes: TraceItemDetail["attributes"],
 ): Record<string, unknown> {
   return Object.fromEntries(
     attributes
       .filter(
         (a) =>
-          !(REDUNDANT_DETAIL_ATTRS.has(a.name) || a.name.startsWith("tags["))
+          !(REDUNDANT_DETAIL_ATTRS.has(a.name) || a.name.startsWith("tags[")),
       )
-      .map((a) => [a.name, a.value])
+      .map((a) => [a.name, a.value]),
   );
 }
 
@@ -318,7 +318,7 @@ export type FetchMultiSpanDetailsOptions = {
  */
 export async function fetchMultiSpanDetails(
   spans: Array<{ span_id: string; project_slug?: string }>,
-  options: FetchMultiSpanDetailsOptions
+  options: FetchMultiSpanDetailsOptions,
 ): Promise<Map<string, TraceItemDetail>> {
   const { org, fallbackProject, traceId, onProgress } = options;
   const limit = pLimit(SPAN_DETAIL_CONCURRENCY);
@@ -334,7 +334,7 @@ export async function fetchMultiSpanDetails(
     // targets where neither the span nor the fallback has a project.
     if (!projectSlug) {
       log.debug(
-        `Skipping detail fetch for span ${span.span_id}: no project slug available`
+        `Skipping detail fetch for span ${span.span_id}: no project slug available`,
       );
       completed += 1;
       onProgress?.(completed, total);
@@ -345,7 +345,7 @@ export async function fetchMultiSpanDetails(
         org,
         projectSlug,
         span.span_id,
-        traceId
+        traceId,
       );
       details.set(span.span_id, detail);
     } catch {
@@ -399,7 +399,7 @@ const TRANSACTION_FIELDS = [
  */
 function resolveNumericProjectId(
   projectSlug: string,
-  projectId: number | undefined
+  projectId: number | undefined,
 ): number | undefined {
   if (projectId !== undefined) {
     return projectId;
@@ -436,19 +436,18 @@ type ListTransactionsOptions = {
  * Internal helper used by {@link listTransactions} for both single-page and
  * multi-page (auto-paginating) fetches.
  */
-// biome-ignore lint/nursery/useMaxParams: internal helper mirrors the public API surface
 async function fetchTransactionsPage(
   regionUrl: string,
   orgSlug: string,
   projectSlug: string,
   options: ListTransactionsOptions,
-  perPage: number
+  perPage: number,
 ): Promise<PaginatedResponse<TransactionListItem[]>> {
   // Prefer the numeric `project=` param — `project:<slug>` in the search query
   // only matches projects that are actively selected (#1317).
   const numericProjectId = resolveNumericProjectId(
     projectSlug,
-    options.projectId
+    options.projectId,
   );
   const projectFilter =
     numericProjectId === undefined ? `project:${projectSlug}` : "";
@@ -483,7 +482,7 @@ async function fetchTransactionsPage(
           cursor: options.cursor,
         },
         schema: TransactionsResponseSchema,
-      }
+      },
     );
 
   const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
@@ -510,7 +509,7 @@ async function fetchTransactionsPage(
 export async function listTransactions(
   orgSlug: string,
   projectSlug: string,
-  options: ListTransactionsOptions = {}
+  options: ListTransactionsOptions = {},
 ): Promise<PaginatedResponse<TransactionListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   return paginate(options, (perPage, cursor) =>
@@ -519,8 +518,8 @@ export async function listTransactions(
       orgSlug,
       projectSlug,
       { ...options, cursor },
-      perPage
-    )
+      perPage,
+    ),
   );
 }
 
@@ -575,13 +574,12 @@ type ListSpansOptions = {
  * Internal helper used by {@link listSpans} for both single-page and
  * multi-page (auto-paginating) fetches.
  */
-// biome-ignore lint/nursery/useMaxParams: internal helper mirrors the public API surface
 async function fetchSpansPage(
   regionUrl: string,
   orgSlug: string,
   projectSlug: string,
   options: ListSpansOptions,
-  perPage: number
+  perPage: number,
 ): Promise<PaginatedResponse<SpanListItem[]>> {
   // Prefer the numeric `project=` param — `project:<slug>` in the search query
   // only matches projects that are actively selected (#1317).
@@ -625,7 +623,7 @@ async function fetchSpansPage(
         cursor: options.cursor,
       },
       schema: SpansResponseSchema,
-    }
+    },
   );
 
   const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
@@ -647,7 +645,7 @@ async function fetchSpansPage(
 export async function listSpans(
   orgSlug: string,
   projectSlug: string,
-  options: ListSpansOptions = {}
+  options: ListSpansOptions = {},
 ): Promise<PaginatedResponse<SpanListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   return paginate(options, (perPage, cursor) =>
@@ -656,7 +654,7 @@ export async function listSpans(
       orgSlug,
       projectSlug,
       { ...options, cursor },
-      perPage
-    )
+      perPage,
+    ),
   );
 }

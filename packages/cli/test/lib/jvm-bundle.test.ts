@@ -28,7 +28,7 @@ describe("isInAmbiguousBuildDir", () => {
 
   test("keeps build/ under src/", () => {
     expect(
-      _isInAmbiguousBuildDir("src/main/java/com/example/build/Builder.java")
+      _isInAmbiguousBuildDir("src/main/java/com/example/build/Builder.java"),
     ).toBe(false);
   });
 
@@ -51,8 +51,8 @@ describe("isInAmbiguousBuildDir", () => {
   test("keeps deeply nested build/ under src/", () => {
     expect(
       _isInAmbiguousBuildDir(
-        "module/src/main/java/com/build/target/out/Foo.java"
-      )
+        "module/src/main/java/com/build/target/out/Foo.java",
+      ),
     ).toBe(false);
   });
 });
@@ -60,37 +60,37 @@ describe("isInAmbiguousBuildDir", () => {
 describe("stripSourceSetPrefix", () => {
   test("strips src/main/java/", () => {
     expect(_stripSourceSetPrefix("src/main/java/io/sentry/core/Foo.java")).toBe(
-      "io/sentry/core/Foo.java"
+      "io/sentry/core/Foo.java",
     );
   });
 
   test("strips module/src/main/kotlin/", () => {
     expect(
-      _stripSourceSetPrefix("sentry-core/src/main/kotlin/io/sentry/Foo.kt")
+      _stripSourceSetPrefix("sentry-core/src/main/kotlin/io/sentry/Foo.kt"),
     ).toBe("io/sentry/Foo.kt");
   });
 
   test("strips src/test/java/", () => {
     expect(
-      _stripSourceSetPrefix("src/test/java/com/example/FooTest.java")
+      _stripSourceSetPrefix("src/test/java/com/example/FooTest.java"),
     ).toBe("com/example/FooTest.java");
   });
 
   test("strips src/main/scala/", () => {
     expect(_stripSourceSetPrefix("src/main/scala/com/example/App.scala")).toBe(
-      "com/example/App.scala"
+      "com/example/App.scala",
     );
   });
 
   test("strips src/main/groovy/", () => {
     expect(
-      _stripSourceSetPrefix("src/main/groovy/com/example/Script.groovy")
+      _stripSourceSetPrefix("src/main/groovy/com/example/Script.groovy"),
     ).toBe("com/example/Script.groovy");
   });
 
   test("strips src/main/clojure/", () => {
     expect(_stripSourceSetPrefix("src/main/clojure/com/example/core.clj")).toBe(
-      "com/example/core.clj"
+      "com/example/core.clj",
     );
   });
 
@@ -100,7 +100,7 @@ describe("stripSourceSetPrefix", () => {
 
   test("normalizes backslashes", () => {
     expect(
-      _stripSourceSetPrefix("src\\main\\java\\com\\example\\Foo.java")
+      _stripSourceSetPrefix("src\\main\\java\\com\\example\\Foo.java"),
     ).toBe("com/example/Foo.java");
   });
 });
@@ -108,7 +108,7 @@ describe("stripSourceSetPrefix", () => {
 describe("buildSourceUrl", () => {
   test("adds ~/ prefix and .jvm extension", () => {
     expect(_buildSourceUrl("io/sentry/core/Foo.java")).toBe(
-      "~/io/sentry/core/Foo.jvm"
+      "~/io/sentry/core/Foo.jvm",
     );
   });
 
@@ -118,7 +118,7 @@ describe("buildSourceUrl", () => {
 
   test("replaces .scala extension", () => {
     expect(_buildSourceUrl("com/example/App.scala")).toBe(
-      "~/com/example/App.jvm"
+      "~/com/example/App.jvm",
     );
   });
 });
@@ -143,7 +143,7 @@ describe("buildJvmBundle", () => {
     });
     await writeFile(
       join(tempDir, "src", "main", "java", "com", "example", "Main.java"),
-      "public class Main {}"
+      "public class Main {}",
     );
 
     const result = await buildJvmBundle({
@@ -163,7 +163,7 @@ describe("buildJvmBundle", () => {
     });
     await writeFile(
       join(tempDir, "src", "main", "kotlin", "com", "example", "App.kt"),
-      "fun main() {}"
+      "fun main() {}",
     );
 
     const result = await buildJvmBundle({
@@ -180,14 +180,14 @@ describe("buildJvmBundle", () => {
     await mkdir(join(tempDir, "build", "generated"), { recursive: true });
     await writeFile(
       join(tempDir, "build", "generated", "R.java"),
-      "// generated"
+      "// generated",
     );
 
     // File in src/ should be included
     await mkdir(join(tempDir, "src", "main", "java"), { recursive: true });
     await writeFile(
       join(tempDir, "src", "main", "java", "App.java"),
-      "class App {}"
+      "class App {}",
     );
 
     const result = await buildJvmBundle({
@@ -205,7 +205,7 @@ describe("buildJvmBundle", () => {
     await mkdir(join(tempDir, "src", "main", "java"), { recursive: true });
     await writeFile(
       join(tempDir, "src", "main", "java", "App.java"),
-      "class App {}"
+      "class App {}",
     );
 
     const result = await buildJvmBundle({
@@ -235,7 +235,7 @@ describe("buildJvmBundle", () => {
     });
     await writeFile(
       join(srcDir, "main", "java", "com", "example", "App.java"),
-      "class App {}"
+      "class App {}",
     );
 
     const result = await buildJvmBundle({
@@ -254,7 +254,7 @@ describe("buildJvmBundle", () => {
     await mkdir(join(tempDir, "src", "main", "java"), { recursive: true });
     await writeFile(
       join(tempDir, "src", "main", "java", "App.java"),
-      "class App {}"
+      "class App {}",
     );
 
     const debugId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";

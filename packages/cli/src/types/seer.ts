@@ -195,7 +195,7 @@ export const AutofixStateSchema = looseObject({
       organization_id: optional(number()),
       project_id: optional(number()),
       repos: optional(array(unknown())),
-    })
+    }),
   ),
   codebases: optional(record(string(), CodebaseInfoSchema)),
   steps: optional(array(AutofixStepSchema)),
@@ -264,7 +264,7 @@ export function requireAutofixRunId(state: AutofixState): string | number {
   const runId = state.sentry_run_id ?? state.run_id;
   if (runId === undefined) {
     throw new Error(
-      "Unexpected autofix response: missing both sentry_run_id and run_id."
+      "Unexpected autofix response: missing both sentry_run_id and run_id.",
     );
   }
   return runId;
@@ -278,7 +278,7 @@ type WithCauses = { key: string; causes?: RootCause[] };
  * in the legacy format where causes are stored directly on the container.
  */
 function searchContainersForRootCauses(
-  containers: WithCauses[]
+  containers: WithCauses[],
 ): RootCause[] | null {
   for (const container of containers) {
     // Require a non-empty causes array. An empty `causes: []` is truthy and
@@ -311,7 +311,7 @@ type AgentRootCauseData = {
  * Maps to the existing {@link RootCause} shape for downstream compatibility.
  */
 function searchBlocksForAgentRootCause(
-  blocks: WithArtifacts[]
+  blocks: WithArtifacts[],
 ): RootCause[] | null {
   for (const block of blocks) {
     if (!block.artifacts) {
@@ -384,7 +384,7 @@ type WithArtifacts = { artifacts?: ArtifactEntry[] };
  * Search artifacts array for a solution artifact.
  */
 function findSolutionInArtifacts(
-  artifacts: ArtifactEntry[]
+  artifacts: ArtifactEntry[],
 ): SolutionArtifact | null {
   for (const artifact of artifacts) {
     if (artifact.key === "solution") {
@@ -418,7 +418,7 @@ function findNoSolutionReason(artifacts: ArtifactEntry[]): string | undefined {
  * Search containers (blocks or steps) for a no-solution reason in artifacts.
  */
 function searchContainersForNoSolutionReason(
-  containers: WithArtifacts[]
+  containers: WithArtifacts[],
 ): string | undefined {
   for (const container of containers) {
     if (container.artifacts) {
@@ -440,7 +440,7 @@ function searchContainersForNoSolutionReason(
  * {@link searchContainersForStepLevelSolution} for the no-solution path.
  */
 function searchContainersForStepLevelNoSolutionReason(
-  containers: StepWithSolution[]
+  containers: StepWithSolution[],
 ): string | undefined {
   for (const container of containers) {
     if (
@@ -458,7 +458,7 @@ function searchContainersForStepLevelNoSolutionReason(
  * Search an array of containers (blocks or steps) for a solution artifact.
  */
 function searchContainersForSolution(
-  containers: WithArtifacts[]
+  containers: WithArtifacts[],
 ): SolutionArtifact | null {
   for (const container of containers) {
     if (container.artifacts) {
@@ -494,7 +494,7 @@ type StepWithSolution = {
  * formatters and commands don't need changes.
  */
 function searchContainersForStepLevelSolution(
-  containers: StepWithSolution[]
+  containers: StepWithSolution[],
 ): SolutionArtifact | null {
   for (const container of containers) {
     if (
@@ -540,7 +540,7 @@ export function extractSolution(state: AutofixState): SolutionArtifact | null {
   // Search blocks first (explorer mode / newer API)
   if (stateWithExtras.blocks) {
     const stepLevel = searchContainersForStepLevelSolution(
-      stateWithExtras.blocks
+      stateWithExtras.blocks,
     );
     if (stepLevel) {
       return stepLevel;
@@ -554,7 +554,7 @@ export function extractSolution(state: AutofixState): SolutionArtifact | null {
   // Search steps (regular autofix API)
   if (stateWithExtras.steps) {
     const stepLevel = searchContainersForStepLevelSolution(
-      stateWithExtras.steps
+      stateWithExtras.steps,
     );
     if (stepLevel) {
       return stepLevel;
@@ -583,7 +583,7 @@ export function extractSolution(state: AutofixState): SolutionArtifact | null {
  * @returns Reason string if found, undefined otherwise
  */
 export function extractNoSolutionReason(
-  state: AutofixState
+  state: AutofixState,
 ): string | undefined {
   const stateWithExtras = state as AutofixState & {
     blocks?: (WithArtifacts & StepWithSolution)[];
@@ -614,7 +614,7 @@ export function extractNoSolutionReason(
  * the cognitive-complexity budget.
  */
 function findNoSolutionReasonInContainers(
-  containers: (WithArtifacts & StepWithSolution)[]
+  containers: (WithArtifacts & StepWithSolution)[],
 ): string | undefined {
   const stepLevel = searchContainersForStepLevelNoSolutionReason(containers);
   if (stepLevel) {

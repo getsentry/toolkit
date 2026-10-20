@@ -98,7 +98,7 @@ function tryAbsoluteDate(raw: string): number | undefined {
   const deltaMinutes = Math.ceil((ts - Date.now()) / 60_000);
   if (deltaMinutes < 1) {
     throw new ValidationError(
-      `--until date must be in the future, got '${raw}'`
+      `--until date must be in the future, got '${raw}'`,
     );
   }
   return deltaMinutes;
@@ -118,7 +118,7 @@ function parseDurationMinutes(raw: string): number | undefined {
 
 /** Try parsing a single-char count suffix: "10x", "10u". */
 function tryShortCount(
-  raw: string
+  raw: string,
 ): { type: "x" | "u"; value: number } | undefined {
   const lastChar = raw.at(-1)?.toLowerCase();
   if (lastChar !== "x" && lastChar !== "u") {
@@ -133,7 +133,7 @@ function tryShortCount(
 
 /** Try parsing a verbose count: "10events", "10users". */
 function tryVerboseCount(
-  raw: string
+  raw: string,
 ): { type: "x" | "u"; value: number } | undefined {
   const m = NUMERIC_WORD_RE.exec(raw);
   if (!m) {
@@ -152,7 +152,7 @@ function tryVerboseCount(
  * Parse a single atom: count (`10x`), user count (`10u`), or duration.
  */
 function parseAtom(
-  raw: string
+  raw: string,
 ):
   | { type: "x" | "u"; value: number }
   | { type: "duration"; minutes: number }
@@ -175,7 +175,7 @@ function parseSlashPair(raw: string, trimmed: string): UntilSpec {
   const right = trimmed.slice(slashIdx + 1).trim();
   if (!(left && right)) {
     throw new ValidationError(
-      `invalid --until format: '${raw}' (expected '<count>/<window>', e.g., '10x/5m')`
+      `invalid --until format: '${raw}' (expected '<count>/<window>', e.g., '10x/5m')`,
     );
   }
 
@@ -184,18 +184,18 @@ function parseSlashPair(raw: string, trimmed: string): UntilSpec {
 
   if (!(leftAtom && rightAtom)) {
     throw new ValidationError(
-      `invalid --until format: '${raw}' (expected '<count>/<window>', e.g., '10x/5m')`
+      `invalid --until format: '${raw}' (expected '<count>/<window>', e.g., '10x/5m')`,
     );
   }
 
   if (leftAtom.type === "duration") {
     throw new ValidationError(
-      `invalid --until format: '${raw}' (left of '/' must be a count like '10x' or '10u', not a duration)`
+      `invalid --until format: '${raw}' (left of '/' must be a count like '10x' or '10u', not a duration)`,
     );
   }
   if (rightAtom.type !== "duration") {
     throw new ValidationError(
-      `invalid --until format: '${raw}' (right of '/' must be a duration like '5m' or '2h', not a count)`
+      `invalid --until format: '${raw}' (right of '/' must be a duration like '5m' or '2h', not a count)`,
     );
   }
 
@@ -225,7 +225,7 @@ function throwUnrecognizedUntil(raw: string): never {
       "  10x               Archive until 10 more events\n" +
       "  10u               Archive until 10 more users\n" +
       "  10x/5m            10 events within 5 minutes\n" +
-      "  10events/2hours   Same, verbose form"
+      "  10events/2hours   Same, verbose form",
   );
 }
 

@@ -33,7 +33,7 @@ describe("filterFields edge cases", () => {
       contexts: { trace: { traceId: "abc" } },
     };
     expect(
-      filter(data, ["id", "metadata.value", "contexts.trace.traceId"])
+      filter(data, ["id", "metadata.value", "contexts.trace.traceId"]),
     ).toEqual({
       id: 1,
       metadata: { value: "ReferenceError" },
@@ -68,7 +68,7 @@ describe("filterFields edge cases", () => {
       filter({ user: { name: "Alice", email: "alice@example.com", age: 30 } }, [
         "user.name",
         "user.email",
-      ])
+      ]),
     ).toEqual({
       user: { name: "Alice", email: "alice@example.com" },
     });
@@ -79,7 +79,7 @@ describe("filterFields edge cases", () => {
       filter({ active: true, deleted: false, name: "test" }, [
         "active",
         "deleted",
-      ])
+      ]),
     ).toEqual({
       active: true,
       deleted: false,
@@ -91,7 +91,7 @@ describe("filterFields edge cases", () => {
       filter({ id: 1, tags: ["bug", "critical"], title: "test" }, [
         "id",
         "tags",
-      ])
+      ]),
     ).toEqual({
       id: 1,
       tags: ["bug", "critical"],
@@ -118,7 +118,7 @@ describe("parseFieldsList", () => {
 
   test("handles dot-notation fields", () => {
     expect(parseFieldsList("id,metadata.value,contexts.trace.traceId")).toEqual(
-      ["id", "metadata.value", "contexts.trace.traceId"]
+      ["id", "metadata.value", "contexts.trace.traceId"],
     );
   });
 
@@ -185,7 +185,7 @@ describe("writeJson with fields", () => {
         issue: { id: 1, title: "bug" },
         event: { id: "abc", contexts: { trace: { traceId: "def" } } },
       },
-      ["issue.id", "event.contexts.trace.traceId"]
+      ["issue.id", "event.contexts.trace.traceId"],
     );
     expect(JSON.parse(output())).toEqual({
       issue: { id: 1 },
@@ -201,7 +201,7 @@ describe("writeJson with fields", () => {
         { id: 1, title: "first", extra: true },
         { id: 2, title: "second", extra: false },
       ],
-      ["id", "title"]
+      ["id", "title"],
     );
     expect(JSON.parse(output())).toEqual([
       { id: 1, title: "first" },

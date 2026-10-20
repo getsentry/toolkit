@@ -20,6 +20,7 @@ import {
   type AgentConversationSpan,
   type ConversationListItem,
   ConversationListItemSchema,
+  type ConversationStats,
 } from "../../types/conversation.js";
 
 import { logger } from "../logger.js";
@@ -47,13 +48,14 @@ async function fetchConversationsPage(
   orgSlug: string,
   options: {
     query?: string;
+    sort?: string;
     cursor?: string;
     statsPeriod?: string;
     start?: string;
     end?: string;
     project?: string;
   },
-  perPage: number
+  perPage: number,
 ): Promise<PaginatedResponse<ConversationListItem[]>> {
   const params: Record<string, string> = {
     per_page: String(perPage),
@@ -73,6 +75,9 @@ async function fetchConversationsPage(
   if (options.query) {
     params.query = options.query;
   }
+  if (options.sort) {
+    params.sort = options.sort;
+  }
   if (options.project) {
     params.project = options.project;
   }
@@ -80,7 +85,7 @@ async function fetchConversationsPage(
   const { data, headers } = await apiRequestToRegion<ConversationListItem[]>(
     regionUrl,
     `/organizations/${orgSlug}/agents/conversations/`,
-    { params, schema: array(ConversationListItemSchema) }
+    { params, schema: array(ConversationListItemSchema) },
   );
 
   const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
@@ -95,24 +100,25 @@ async function fetchConversationsPage(
  * pages using cursor-based pagination (bounded by {@link MAX_PAGINATION_PAGES}).
  *
  * @param orgSlug - Organization slug
- * @param options - Query options (query, limit, cursor, statsPeriod, etc.)
+ * @param options - Query options (query, sort, limit, cursor, statsPeriod, etc.)
  * @returns Paginated response with conversation items and optional next cursor
  */
 export async function listConversations(
   orgSlug: string,
   options: {
     query?: string;
+    sort?: string;
     limit?: number;
     cursor?: string;
     statsPeriod?: string;
     start?: string;
     end?: string;
     project?: string;
-  } = {}
+  } = {},
 ): Promise<PaginatedResponse<ConversationListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   return paginate(options, (perPage, cursor) =>
-    fetchConversationsPage(regionUrl, orgSlug, { ...options, cursor }, perPage)
+    fetchConversationsPage(regionUrl, orgSlug, { ...options, cursor }, perPage),
   );
 }
 
@@ -123,9 +129,10 @@ export async function getConversationSpans(
     statsPeriod?: string;
     project?: string;
     perPage?: number;
-  } = {}
+  } = {},
 ): Promise<{
   spans: AgentConversationSpan[];
+  stats?: ConversationStats;
   truncated: boolean;
   title: string | null;
 }> {
@@ -140,6 +147,7 @@ export async function getConversationSpans(
   }
 
   const spans: AgentConversationSpan[] = [];
+  let stats: ConversationStats | undefined;
   let title: string | null = null;
   let cursor: string | undefined;
 
@@ -152,10 +160,11 @@ export async function getConversationSpans(
       await apiRequestToRegion<AgentConversationDetails>(
         regionUrl,
         `/organizations/${orgSlug}/agents/conversations/${encodeURIComponent(conversationId)}/`,
-        { params, schema: AgentConversationDetailsSchema }
+        { params, schema: AgentConversationDetailsSchema },
       );
 
     if (page === 0) {
+      stats = data.stats;
       title = data.title;
     }
     spans.push(...data.spans);
@@ -169,9 +178,9 @@ export async function getConversationSpans(
   const truncated = !!cursor;
   if (truncated) {
     log.warn(
-      `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${spans.length} spans). Conversation transcript may be incomplete.`
+      `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${spans.length} spans). Conversation transcript may be incomplete.`,
     );
   }
 
-  return { spans, truncated, title };
+  return { spans, stats, truncated, title };
 }

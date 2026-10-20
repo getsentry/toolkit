@@ -78,7 +78,7 @@ function createStats(): GrepStats {
 
 async function* tapWalkerStats<T extends WalkEntry>(
   source: AsyncIterable<T>,
-  stats: GrepStats
+  stats: GrepStats,
 ): AsyncGenerator<T> {
   for await (const item of source) {
     stats.filesConsidered += 1;
@@ -93,7 +93,7 @@ async function* applyGrepFilters(
     excludes: CompiledMatcher[];
     includeBinary: boolean;
     stats: GrepStats;
-  }
+  },
 ): AsyncGenerator<WalkEntry> {
   for await (const entry of source) {
     if (entry.isBinary && !opts.includeBinary) {
@@ -145,7 +145,7 @@ type PerFileOptions = {
  */
 async function readAndGrep(
   entry: WalkEntry,
-  opts: PerFileOptions
+  opts: PerFileOptions,
 ): Promise<GrepMatch[] | null> {
   let content: string;
   try {
@@ -183,7 +183,7 @@ async function readAndGrep(
 function grepByWholeBuffer(
   content: string,
   entry: WalkEntry,
-  opts: PerFileOptions
+  opts: PerFileOptions,
 ): GrepMatch[] {
   const ensured = opts.multiline
     ? ensureGlobalMultilineFlags(opts.regex)
@@ -292,9 +292,9 @@ type GrepPipelineOptions = {
  */
 const WORKER_BATCH_SIZE = 200;
 
-// biome-ignore lint/suspicious/useAwait: yield* delegates to sub-generators
+// yield* delegates to sub-generators
 async function* grepFilesInternal(
-  opts: GrepPipelineOptions
+  opts: GrepPipelineOptions,
 ): AsyncGenerator<GrepMatch> {
   if (shouldUseWorkers()) {
     yield* grepViaWorkers(opts);
@@ -315,7 +315,7 @@ function shouldUseWorkers(): boolean {
  * ~4× slower on 10k-file many-match workloads.
  */
 async function* grepViaAsyncMain(
-  opts: GrepPipelineOptions
+  opts: GrepPipelineOptions,
 ): AsyncGenerator<GrepMatch> {
   for await (const match of mapFilesConcurrentStream(
     opts.walkSource,
@@ -328,7 +328,7 @@ async function* grepViaAsyncMain(
       }
       return matches;
     },
-    opts.concurrent
+    opts.concurrent,
   )) {
     opts.stats.matchesEmitted += 1;
     yield match;
@@ -349,9 +349,9 @@ async function* grepViaAsyncMain(
  * workers return packed results via transferable `Uint32Array`.
  * Main thread decodes and yields in worker-completion order.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: producer/consumer pattern with early exit, batch dispatch, and abort-signal propagation is inherently branchy
+// producer/consumer pattern with early exit, batch dispatch, and abort-signal propagation is inherently branchy
 async function* grepViaWorkers(
-  opts: GrepPipelineOptions
+  opts: GrepPipelineOptions,
 ): AsyncGenerator<GrepMatch> {
   const pool = getWorkerPool();
 
@@ -386,7 +386,7 @@ async function* grepViaWorkers(
   const dispatchBatch = (
     paths: string[],
     rels: string[],
-    mtimes: readonly number[] | null
+    mtimes: readonly number[] | null,
   ): void => {
     opts.stats.filesRead += paths.length;
     inflightCount += 1;
@@ -408,7 +408,7 @@ async function* grepViaWorkers(
         },
         () => {
           failedBatches += 1;
-        }
+        },
       )
       .finally(() => {
         inflightCount -= 1;
@@ -419,7 +419,7 @@ async function* grepViaWorkers(
 
   let producerError: unknown = null;
   const recordMtimes = opts.perFile.recordMtimes;
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: walker drain + path-prefix handling + batch flush + error capture is inherently branchy
+  // walker drain + path-prefix handling + batch flush + error capture is inherently branchy
   const producer = (async () => {
     let batch: string[] = [];
     let batchRel: string[] = [];
@@ -435,7 +435,7 @@ async function* grepViaWorkers(
         batchRel.push(
           opts.perFile.pathPrefix
             ? joinPosix(opts.perFile.pathPrefix, entry.relativePath)
-            : entry.relativePath
+            : entry.relativePath,
         );
         if (batchMtimes !== null) {
           batchMtimes.push(entry.mtime);
@@ -528,7 +528,7 @@ async function* grepViaWorkers(
       await Promise.allSettled(dispatchPromises);
     }
     if (producerError !== null) {
-      // biome-ignore lint/correctness/noUnsafeFinally: re-raising walker error (e.g. AbortError) so callers see it
+      // oxlint-disable-next-line no-unsafe-finally -- re-raising walker error (e.g. AbortError) so callers see it
       throw producerError;
     }
     // If every dispatched batch failed, the "no matches" result is
@@ -536,9 +536,9 @@ async function* grepViaWorkers(
     // callers (notably the DSN cache layer) don't persist a
     // false-negative empty result.
     if (dispatchedBatches > 0 && failedBatches === dispatchedBatches) {
-      // biome-ignore lint/correctness/noUnsafeFinally: surfacing pipeline-wide failure so false-negative empty result doesn't leak upstream
+      // oxlint-disable-next-line no-unsafe-finally -- surfacing pipeline-wide failure so false-negative empty result doesn't leak upstream
       throw new Error(
-        `worker pipeline: all ${dispatchedBatches} dispatched batch(es) failed`
+        `worker pipeline: all ${dispatchedBatches} dispatched batch(es) failed`,
       );
     }
   }
@@ -597,7 +597,7 @@ function setupGrepPipeline(opts: GrepOptions): GrepPipelineSetup {
   const stats = createStats();
   const walkSource = applyGrepFilters(
     tapWalkerStats(walkFiles(walkOpts), stats),
-    { includes, excludes, includeBinary, stats }
+    { includes, excludes, includeBinary, stats },
   );
 
   return {
@@ -622,7 +622,7 @@ function setupGrepPipeline(opts: GrepOptions): GrepPipelineSetup {
  * Consumer `break` halts in-flight work. Throws `ValidationError`
  * on bad regex input; propagates `AbortError` from `opts.signal`.
  */
-// biome-ignore lint/suspicious/useAwait: yield* delegates to async generator
+// yield* delegates to async generator
 export async function* grepFiles(opts: GrepOptions): AsyncGenerator<GrepMatch> {
   const setup = setupGrepPipeline(opts);
 

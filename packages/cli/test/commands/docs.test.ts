@@ -9,7 +9,7 @@ const { detectDocsContext, listDocs, queryDocs, withProgress } = vi.hoisted(
     listDocs: vi.fn(),
     queryDocs: vi.fn(),
     withProgress: vi.fn(),
-  })
+  }),
 );
 
 vi.mock("../../src/lib/docs-context.js", () => ({ detectDocsContext }));
@@ -41,7 +41,7 @@ function createContext(): {
 
 async function runDocsRoute(
   context: SentryContext,
-  args: string[]
+  args: string[],
 ): Promise<void> {
   const app = buildApplication(docsRoute, { name: "sentry docs" });
   await run(app, args, context);
@@ -52,7 +52,7 @@ beforeEach(() => {
   withProgress.mockImplementation(async (_options, fn) =>
     fn(() => {
       /* Progress rendering is covered by polling tests. */
-    })
+    }),
   );
   detectDocsContext.mockResolvedValue({
     frameworks: ["nextjs"],
@@ -88,7 +88,7 @@ describe("docs commands", () => {
       sentryConfigured: true,
     });
     expect(
-      JSON.parse(stdoutWrite.mock.calls.map((call) => call[0]).join(""))
+      JSON.parse(stdoutWrite.mock.calls.map((call) => call[0]).join("")),
     ).toEqual({
       answer:
         "Use [tracing](https://docs.sentry.io/platforms/javascript/tracing/).\n\n## Sources\n\n- <https://docs.sentry.io/platforms/javascript/tracing/>",
@@ -112,7 +112,7 @@ describe("docs commands", () => {
         ],
         rotationIntervalMs: 4000,
       },
-      expect.any(Function)
+      expect.any(Function),
     );
   });
 
@@ -140,7 +140,7 @@ describe("docs commands", () => {
 
     expect(listDocs).toHaveBeenCalledWith("nextjs tracing", 5);
     expect(stdoutWrite.mock.calls.map((call) => call[0]).join("")).toContain(
-      "Tracing"
+      "Tracing",
     );
     expect(withProgress).not.toHaveBeenCalled();
   });

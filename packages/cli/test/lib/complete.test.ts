@@ -28,7 +28,7 @@ useTestConfigDir("test-complete-");
 // -- Helpers --
 
 async function seedOrgs(
-  orgs: { slug: string; name: string; regionUrl?: string }[]
+  orgs: { slug: string; name: string; regionUrl?: string }[],
 ): Promise<void> {
   const entries: OrgRegionEntry[] = orgs.map((o) => ({
     slug: o.slug,
@@ -46,7 +46,7 @@ async function seedProjects(
     orgSlug: string;
     projectSlug: string;
     projectName: string;
-  }[]
+  }[],
 ): Promise<void> {
   for (const p of projects) {
     setCachedProject(p.orgId, p.projectId, {
@@ -112,7 +112,7 @@ describe("getCompletions: context detection", () => {
     ]);
     setProjectAliases(
       { app: { orgSlug: "acme", projectSlug: "existing" } },
-      "fingerprint"
+      "fingerprint",
     );
 
     expect(getCompletions(["project", "create"], "")).toEqual([
@@ -132,7 +132,7 @@ describe("getCompletions: context detection", () => {
     // Completion only ever looks at the current partial — a self-contained
     // colon pair completes the same way no matter what preceded it.
     expect(
-      getCompletions(["project", "create", "api:node"], "worker:java")
+      getCompletions(["project", "create", "api:node"], "worker:java"),
     ).toContainEqual({
       value: "worker:javascript",
       description: "Platform",
@@ -150,7 +150,7 @@ describe("completeProjectCreateSpec", () => {
       description: "Platform",
     });
     expect(result.every((completion) => completion.value.includes(":"))).toBe(
-      true
+      true,
     );
   });
 
@@ -162,6 +162,13 @@ describe("completeProjectCreateSpec", () => {
     ]);
   });
 
+  test("tolerates a typo in an unfinished platform name", () => {
+    expect(completeProjectCreateSpec("example:javascipt-r")).toContainEqual({
+      value: "example:javascript-react",
+      description: "Platform",
+    });
+  });
+
   test("does not complete existing project names before the colon", () => {
     expect(completeProjectCreateSpec("acme/new-project")).toEqual([]);
   });
@@ -170,14 +177,12 @@ describe("completeProjectCreateSpec", () => {
     expect(completeProjectCreateSpec("My App:java")).toEqual([]);
   });
 
-  test.each([
-    ":java",
-    "acme/:java",
-    "/app:java",
-    "acme/app/child:java",
-  ])("does not complete a malformed project target in %s", (partial) => {
-    expect(completeProjectCreateSpec(partial)).toEqual([]);
-  });
+  test.each([":java", "acme/:java", "/app:java", "acme/app/child:java"])(
+    "does not complete a malformed project target in %s",
+    (partial) => {
+      expect(completeProjectCreateSpec(partial)).toEqual([]);
+    },
+  );
 });
 
 describe("completeOrgSlugs", () => {
@@ -215,6 +220,14 @@ describe("completeOrgSlugs", () => {
     // "senry" → "sentry" (distance 1, within threshold)
     const result = completeOrgSlugs("senry");
     expect(result.some((c) => c.value === "sentry")).toBe(true);
+  });
+
+  test("tolerates a typo in an unfinished organization name", async () => {
+    await seedOrgs([{ slug: "frontend-web", name: "Frontend web" }]);
+
+    expect(completeOrgSlugs("frone")).toEqual([
+      { value: "frontend-web", description: "Frontend web" },
+    ]);
   });
 });
 
@@ -275,6 +288,21 @@ describe("completeOrgSlashProject", () => {
     expect(result).toEqual([]);
   });
 
+  test("does not treat the organization before a slash as unfinished", async () => {
+    await seedOrgs([{ slug: "frontend-web", name: "Frontend web" }]);
+    await seedProjects([
+      {
+        orgId: "1",
+        projectId: "10",
+        orgSlug: "frontend-web",
+        projectSlug: "backend",
+        projectName: "Backend",
+      },
+    ]);
+
+    expect(completeOrgSlashProject("frone/")).toEqual([]);
+  });
+
   test("with slash and partial project filters", async () => {
     await seedOrgs([{ slug: "my-org", name: "My Org" }]);
     await seedProjects([
@@ -329,6 +357,22 @@ describe("completeProjectSlugs", () => {
     expect(result[0].value).toBe("my-org/web");
     expect(result[0].description).toBe("Web App");
   });
+
+  test("tolerates a typo in an unfinished project name", async () => {
+    await seedProjects([
+      {
+        orgId: "1",
+        projectId: "10",
+        orgSlug: "my-org",
+        projectSlug: "frontend-web",
+        projectName: "Frontend web",
+      },
+    ]);
+
+    expect(completeProjectSlugs("frone", "my-org")).toEqual([
+      { value: "my-org/frontend-web", description: "Frontend web" },
+    ]);
+  });
 });
 
 describe("completeAliases", () => {
@@ -343,7 +387,7 @@ describe("completeAliases", () => {
         a: { orgSlug: "my-org", projectSlug: "frontend" },
         b: { orgSlug: "my-org", projectSlug: "backend" },
       },
-      "fingerprint"
+      "fingerprint",
     );
 
     const result = completeAliases("");
@@ -354,19 +398,17 @@ describe("completeAliases", () => {
     expect(aCompletion!.description).toBe("my-org/frontend");
   });
 
-  test("filters aliases by prefix (exact match ranks first)", async () => {
+  test("filters short aliases literally with the exact match first", async () => {
     setProjectAliases(
       {
         a: { orgSlug: "org", projectSlug: "proj-a" },
         b: { orgSlug: "org", projectSlug: "proj-b" },
         abc: { orgSlug: "org", projectSlug: "proj-abc" },
       },
-      "fingerprint"
+      "fingerprint",
     );
 
     const result = completeAliases("a");
-    // "a" is exact match, "abc" is prefix match, "b" is fuzzy match
-    expect(result[0].value).toBe("a"); // exact match first
-    expect(result.some((c) => c.value === "abc")).toBe(true); // prefix match
+    expect(result.map((c) => c.value)).toEqual(["a", "abc"]);
   });
 });

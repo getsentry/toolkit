@@ -14,10 +14,10 @@ import { logger } from "../logger.js";
 import { isLikelyBinary } from "../scan/binary.js";
 import { walkFiles } from "../scan/index.js";
 import {
-  EXISTING_DEBUGID_RE,
   hasDebugIdRegistration,
   injectDebugId,
   injectInlineDebugId,
+  readJsDebugId,
   readSourcemapDebugId,
 } from "./debug-id.js";
 import {
@@ -90,7 +90,7 @@ export type InjectDirectoryOptions = {
  */
 export async function injectDirectory(
   dir: string,
-  options: InjectDirectoryOptions = {}
+  options: InjectDirectoryOptions = {},
 ): Promise<InjectResult[]> {
   const extensions = options.extensions
     ? new Set(options.extensions.map((e) => (e.startsWith(".") ? e : `.${e}`)))
@@ -107,8 +107,7 @@ export async function injectDirectory(
       // Match the real run's ID precedence and runtime registration check.
       const jsBytes = await readFile(jsPath);
       const js = jsBytes.toString("utf-8");
-      const existing =
-        js.match(EXISTING_DEBUGID_RE)?.[1] ?? (await readMapDebugId(map));
+      const existing = readJsDebugId(js) ?? (await readMapDebugId(map));
       results.push({
         jsPath,
         map,
@@ -160,11 +159,11 @@ async function readMapDebugId(map: MapSource): Promise<string | undefined> {
   }
   try {
     return readSourcemapDebugId(
-      JSON.parse(await readFile(map.mapPath, "utf-8"))
+      JSON.parse(await readFile(map.mapPath, "utf-8")),
     );
   } catch (err) {
     log.warn(
-      `could not read a debug ID from ${map.mapPath}: ${err instanceof Error ? err.message : String(err)}`
+      `could not read a debug ID from ${map.mapPath}: ${err instanceof Error ? err.message : String(err)}`,
     );
     return;
   }
@@ -300,7 +299,7 @@ async function readDirectiveTail(filePath: string): Promise<Buffer> {
  * enough back to include its start.
  */
 function findSourceMappingDirective(
-  tail: Buffer
+  tail: Buffer,
 ): SourceMappingDirective | undefined {
   for (const line of linesFromEnd(tail)) {
     const directive = parseSourceMappingDirective(line);
@@ -349,7 +348,7 @@ function skipSpaces(buf: Buffer, from: number): number {
  *   `sourceMappingURL` directive.
  */
 export function parseSourceMappingDirective(
-  line: Buffer
+  line: Buffer,
 ): SourceMappingDirective | undefined {
   // Trim trailing whitespace/CR at the byte level.
   let endIdx = line.length;
@@ -409,7 +408,7 @@ export function parseSourceMappingDirective(
  * `undefined` when no directive is present or the file cannot be read.
  */
 async function extractSourceMappingDirective(
-  jsPath: string
+  jsPath: string,
 ): Promise<SourceMappingDirective | undefined> {
   try {
     const tail = await readDirectiveTail(jsPath);
@@ -446,7 +445,7 @@ async function fileExists(path: string): Promise<boolean> {
  * @returns A {@link MapSource} if a sourcemap is found, undefined otherwise.
  */
 async function findCompanionMap(
-  jsPath: string
+  jsPath: string,
 ): Promise<MapSource | undefined> {
   // Fast path: convention-based naming (most bundlers use this)
   const conventionPath = `${jsPath}.map`;
@@ -467,7 +466,7 @@ async function findCompanionMap(
     const decoded = tryDecodeInlineSourcemap(directive.value);
     if (!decoded) {
       log.warn(
-        `skipping ${jsPath}: inline sourcemap is not valid base64 JSON; leaving file unmodified`
+        `skipping ${jsPath}: inline sourcemap is not valid base64 JSON; leaving file unmodified`,
       );
       return;
     }
@@ -531,7 +530,7 @@ const SOURCEMAP_SKIP_DIRS: readonly string[] = [NODE_MODULES_DIRNAME];
  */
 export async function buildIgnoreMatcher(
   patterns?: string[],
-  ignoreFilePath?: string
+  ignoreFilePath?: string,
 ): Promise<ReturnType<typeof ignore> | undefined> {
   const hasPatterns = patterns && patterns.length > 0;
   if (!(hasPatterns || ignoreFilePath)) {
@@ -550,7 +549,7 @@ export async function buildIgnoreMatcher(
       if (code === "ENOENT") {
         throw new ValidationError(
           `Ignore file '${ignoreFilePath}' does not exist.`,
-          "ignore-file"
+          "ignore-file",
         );
       }
       throw err;
@@ -568,7 +567,7 @@ export async function buildIgnoreMatcher(
 export async function discoverFilePairs(
   dir: string,
   extensions: Set<string> = DEFAULT_EXTENSIONS,
-  ignoreMatcher?: ReturnType<typeof ignore>
+  ignoreMatcher?: ReturnType<typeof ignore>,
 ): Promise<FilePair[]> {
   // `walkFiles` requires an absolute cwd. CLI callers pass
   // user-supplied positional args like `./dist` directly through to
@@ -613,7 +612,7 @@ export async function discoverFilePairs(
 function isMapInsideDir(
   map: MapSource,
   absDir: string,
-  jsPath: string
+  jsPath: string,
 ): boolean {
   if (map.kind === "inline") {
     return true;
@@ -623,7 +622,7 @@ function isMapInsideDir(
     return true;
   }
   log.debug(
-    `skipping sourcemap outside directory: ${map.mapPath} (resolved from ${jsPath})`
+    `skipping sourcemap outside directory: ${map.mapPath} (resolved from ${jsPath})`,
   );
   return false;
 }
@@ -639,7 +638,7 @@ export async function assertDirectoryReadable(dir: string): Promise<void> {
     if (!s.isDirectory()) {
       throw new ValidationError(
         `Path '${dir}' is not a directory.`,
-        "directory"
+        "directory",
       );
     }
   } catch (err) {
@@ -650,13 +649,13 @@ export async function assertDirectoryReadable(dir: string): Promise<void> {
     if (code === "ENOENT") {
       throw new ValidationError(
         `Directory '${dir}' does not exist.`,
-        "directory"
+        "directory",
       );
     }
     const msg = err instanceof Error ? err.message : String(err);
     throw new ValidationError(
       `Cannot read directory '${dir}': ${msg}`,
-      "directory"
+      "directory",
     );
   }
 }
@@ -676,7 +675,7 @@ export type DiscoveryDiagnostic = {
  */
 export async function diagnoseEmptyDiscovery(
   dir: string,
-  options: InjectDirectoryOptions = {}
+  options: InjectDirectoryOptions = {},
 ): Promise<DiscoveryDiagnostic> {
   // Build one set covering JS extensions + `.map` so the walker visits
   // both in a single pass.
@@ -778,7 +777,7 @@ function compareByteWise(a: string, b: string): number {
 export async function resolveDirectorySourcemaps(
   dir: string,
   extensions: Set<string> = DEFAULT_EXTENSIONS,
-  ignoreMatcher?: ReturnType<typeof ignore>
+  ignoreMatcher?: ReturnType<typeof ignore>,
 ): Promise<SourcemapResolution[]> {
   const absDir = resolvePath(dir);
   const results: SourcemapResolution[] = [];
@@ -808,7 +807,7 @@ export async function resolveDirectorySourcemaps(
     let debugId: string | undefined;
     try {
       const js = await readFile(jsPath, "utf-8");
-      debugId = js.match(EXISTING_DEBUGID_RE)?.[1];
+      debugId = readJsDebugId(js);
     } catch (err) {
       log.debug(`failed to read JS file for debug ID: ${jsPath}`, err);
     }
@@ -842,7 +841,7 @@ export async function resolveDirectorySourcemaps(
  */
 export function buildEmptyDiscoveryError(
   dir: string,
-  diag: DiscoveryDiagnostic
+  diag: DiscoveryDiagnostic,
 ): ValidationError {
   const { jsFiles, mapFiles } = diag;
   if (jsFiles === 0 && mapFiles === 0) {
@@ -850,7 +849,7 @@ export function buildEmptyDiscoveryError(
       `Directory '${dir}' contains no JS or sourcemap files. ` +
         "Check the path points at your build output, or pass " +
         "--allow-empty to suppress this error.",
-      "directory"
+      "directory",
     );
   }
   if (jsFiles > 0 && mapFiles === 0) {
@@ -859,7 +858,7 @@ export function buildEmptyDiscoveryError(
         "files. Your bundler is not emitting sourcemaps. For Vite/Astro: " +
         "`vite.environments.client.build.sourcemap: 'hidden'`. For webpack: " +
         "`devtool: 'hidden-source-map'`. Pass --allow-empty to suppress.",
-      "directory"
+      "directory",
     );
   }
   if (mapFiles > 0 && jsFiles === 0) {
@@ -867,7 +866,7 @@ export function buildEmptyDiscoveryError(
       `Found ${mapFiles} .map file(s) in '${dir}' but no companion JS ` +
         "files. Ensure your build emits both JS and maps to the same " +
         "directory. Pass --allow-empty to suppress.",
-      "directory"
+      "directory",
     );
   }
   return new ValidationError(
@@ -875,6 +874,6 @@ export function buildEmptyDiscoveryError(
       "no JS file has a matching `<name>.map` companion. Check that your " +
       "bundler emits JS and sourcemaps with matching basenames. Pass " +
       "--allow-empty to suppress.",
-    "directory"
+    "directory",
   );
 }

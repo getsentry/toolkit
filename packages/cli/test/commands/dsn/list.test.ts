@@ -123,14 +123,14 @@ const DEFAULT_PROJECTS = [
 /** Serve organization discovery and project metadata before the key endpoint. */
 function mockProjectApi(
   projects: Project[],
-  fetchKeys: (target: Project, url: URL) => Response
+  fetchKeys: (target: Project, url: URL) => Response,
 ) {
   return mockFetch(async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
     const organizations = [
       ...new Map(
-        projects.map((item) => [item.organization.slug, item.organization])
+        projects.map((item) => [item.organization.slug, item.organization]),
       ).values(),
     ].map((org) => ({
       ...org,
@@ -143,7 +143,7 @@ function mockProjectApi(
     for (const org of organizations) {
       if (
         [org.slug, org.id, `o${org.id}`].some(
-          (value) => url.pathname === `/api/0/organizations/${value}/`
+          (value) => url.pathname === `/api/0/organizations/${value}/`,
         )
       ) {
         return response(org);
@@ -158,7 +158,7 @@ function mockProjectApi(
             item.organization.id,
             `o${item.organization.id}`,
           ].includes(match[1] ?? "") &&
-          [item.slug, item.id].includes(match[2] ?? "")
+          [item.slug, item.id].includes(match[2] ?? ""),
       );
       if (target) {
         return match[3] ? fetchKeys(target, url) : response(target);
@@ -183,7 +183,7 @@ function keyPage(target: Project, url: URL, count: number) {
   const next = offset + limit;
   return response(
     keys.slice(offset, next),
-    next < count ? `0:${next}:0` : undefined
+    next < count ? `0:${next}:0` : undefined,
   );
 }
 
@@ -195,7 +195,7 @@ function cacheOrganizations(projects: Project[]) {
       orgId: organization.id,
       orgName: organization.slug,
       regionUrl: "https://us.sentry.io",
-    }))
+    })),
   );
 }
 
@@ -206,7 +206,7 @@ async function invoke(
     limit?: number;
     cursor?: string;
     fields?: string[];
-  } = {}
+  } = {},
 ) {
   const ctx = createContext();
   const func = await listCommand.loader();
@@ -219,7 +219,7 @@ async function invoke(
       cursor: options.cursor,
       fields: options.fields,
     },
-    options.target
+    options.target,
   );
   return ctx;
 }
@@ -233,7 +233,7 @@ describe("dsn list", () => {
     const projects = CROSS_ORG_PROJECTS;
     cacheOrganizations(projects);
     globalThis.fetch = mockProjectApi(projects, (target, url) =>
-      keyPage(target, url, target.organization.slug === "org-one" ? 5 : 1)
+      keyPage(target, url, target.organization.slug === "org-one" ? 5 : 1),
     );
 
     const first = await invokeJson({ target: "frontend", limit: 4 });
@@ -244,7 +244,7 @@ describe("dsn list", () => {
         "org-one/frontend 2",
         "org-one/frontend 3",
         "org-two/frontend 1",
-      ])
+      ]),
     );
     expect(first).toMatchObject({ hasMore: true, hasPrev: false });
 
@@ -259,82 +259,82 @@ describe("dsn list", () => {
     ]);
     expect(next).toMatchObject({ hasMore: false, hasPrev: true });
     expect(
-      await invokeJson({ target: "frontend", limit: 4, cursor: "prev" })
+      await invokeJson({ target: "frontend", limit: 4, cursor: "prev" }),
     ).toEqual(first);
   });
 
-  test.each([
-    true,
-    false,
-  ])("detects all monorepo projects with public slugs from cold caches (json=%s)", async (json) => {
-    const projects = [
-      project("test-org", "1", "frontend", "42"),
-      project("test-org", "1", "backend", "43"),
-    ];
-    setDefaultOrganization(null);
-    setDefaultProject(null);
-    clearOrgRegions();
-    await writeFile(
-      join(configDir(), "package.json"),
-      JSON.stringify({ private: true, workspaces: ["apps/*"] })
-    );
-    for (const target of projects) {
-      const directory = join(configDir(), "apps", target.slug);
-      await mkdir(directory, { recursive: true });
+  test.each([true, false])(
+    "detects all monorepo projects with public slugs from cold caches (json=%s)",
+    async (json) => {
+      const projects = [
+        project("test-org", "1", "frontend", "42"),
+        project("test-org", "1", "backend", "43"),
+      ];
+      setDefaultOrganization(null);
+      setDefaultProject(null);
+      clearOrgRegions();
       await writeFile(
-        join(directory, ".env"),
-        `SENTRY_DSN=https://${"a".repeat(32)}@o1.ingest.us.sentry.io/${target.id}\n`
+        join(configDir(), "package.json"),
+        JSON.stringify({ private: true, workspaces: ["apps/*"] }),
       );
-    }
-    globalThis.fetch = mockProjectApi(projects, (target, url) =>
-      keyPage(target, url, 2)
-    );
-
-    const first = await invoke({ limit: 2, json });
-    if (json) {
-      const result = JSON.parse(first.output());
-      expect(result).toMatchObject({ hasMore: true, hasPrev: false });
-      expect(result.data).toHaveLength(2);
-      expect(result.data).toEqual(
-        expect.arrayContaining(
-          projects.map((target) => ({
-            org: "test-org",
-            project: target.slug,
-            name: `test-org/${target.slug} 1`,
-            isActive: true,
-            dateCreated: KEY.dateCreated,
-            dsn: `https://${"a".repeat(32)}@o1.ingest.us.sentry.io/${target.id}`,
-          }))
-        )
+      for (const target of projects) {
+        const directory = join(configDir(), "apps", target.slug);
+        await mkdir(directory, { recursive: true });
+        await writeFile(
+          join(directory, ".env"),
+          `SENTRY_DSN=https://${"a".repeat(32)}@o1.ingest.us.sentry.io/${target.id}\n`,
+        );
+      }
+      globalThis.fetch = mockProjectApi(projects, (target, url) =>
+        keyPage(target, url, 2),
       );
-    } else {
-      expect(first.output()).toContain("test-org/frontend");
-      expect(first.output()).toContain("test-org/backend");
-    }
-    expect(`${first.output()}\n${first.diagnostics()}`).not.toMatch(
-      /\b(?:test-org|1)\s*\/\s*(?:42|43)\b|\b1\s*\/\s*(?:frontend|backend)\b/
-    );
 
-    // The cold listing populated the cache; navigation must keep the same history.
-    const next = await invokeJson({ limit: 2, cursor: "next" });
-    expect(next).toMatchObject({ hasMore: false, hasPrev: true });
-    expect(next.data.map((item: { name: string }) => item.name)).toEqual(
-      expect.arrayContaining(["test-org/frontend 2", "test-org/backend 2"])
-    );
-    expect(next.data).toHaveLength(2);
-    const previous = await invokeJson({ limit: 2, cursor: "prev" });
-    expect(previous.data.map((item: { name: string }) => item.name)).toEqual(
-      expect.arrayContaining(["test-org/frontend 1", "test-org/backend 1"])
-    );
-    expect(previous).toMatchObject({ hasMore: true, hasPrev: false });
-  });
+      const first = await invoke({ limit: 2, json });
+      if (json) {
+        const result = JSON.parse(first.output());
+        expect(result).toMatchObject({ hasMore: true, hasPrev: false });
+        expect(result.data).toHaveLength(2);
+        expect(result.data).toEqual(
+          expect.arrayContaining(
+            projects.map((target) => ({
+              org: "test-org",
+              project: target.slug,
+              name: `test-org/${target.slug} 1`,
+              isActive: true,
+              dateCreated: KEY.dateCreated,
+              dsn: `https://${"a".repeat(32)}@o1.ingest.us.sentry.io/${target.id}`,
+            })),
+          ),
+        );
+      } else {
+        expect(first.output()).toContain("test-org/frontend");
+        expect(first.output()).toContain("test-org/backend");
+      }
+      expect(`${first.output()}\n${first.diagnostics()}`).not.toMatch(
+        /\b(?:test-org|1)\s*\/\s*(?:42|43)\b|\b1\s*\/\s*(?:frontend|backend)\b/,
+      );
+
+      // The cold listing populated the cache; navigation must keep the same history.
+      const next = await invokeJson({ limit: 2, cursor: "next" });
+      expect(next).toMatchObject({ hasMore: false, hasPrev: true });
+      expect(next.data.map((item: { name: string }) => item.name)).toEqual(
+        expect.arrayContaining(["test-org/frontend 2", "test-org/backend 2"]),
+      );
+      expect(next.data).toHaveLength(2);
+      const previous = await invokeJson({ limit: 2, cursor: "prev" });
+      expect(previous.data.map((item: { name: string }) => item.name)).toEqual(
+        expect.arrayContaining(["test-org/frontend 1", "test-org/backend 1"]),
+      );
+      expect(previous).toMatchObject({ hasMore: true, hasPrev: false });
+    },
+  );
 
   test("explains when detected DSNs cannot be resolved", async () => {
     setDefaultOrganization(null);
     setDefaultProject(null);
     await writeFile(
       join(configDir(), ".env"),
-      `SENTRY_DSN=https://${"a".repeat(32)}@sentry.example.com/42\n`
+      `SENTRY_DSN=https://${"a".repeat(32)}@sentry.example.com/42\n`,
     );
     globalThis.fetch = mockFetch(async (input, init) => {
       const url = new URL(new Request(input, init).url);
@@ -349,55 +349,55 @@ describe("dsn list", () => {
       name: "ContextError",
       command: "sentry dsn list <org>/<project>",
       message: expect.stringContaining(
-        "Found 1 DSN(s) that could not be resolved — you may not have access to these projects"
+        "Found 1 DSN(s) that could not be resolved — you may not have access to these projects",
       ),
     });
   });
 
-  test.each([
-    false,
-    true,
-  ])("surfaces failed projects without treating them as empty (allDenied=%s)", async (allDenied) => {
-    const projects = CROSS_ORG_PROJECTS;
-    cacheOrganizations(projects);
-    globalThis.fetch = mockProjectApi(projects, (target, url) => {
-      if (allDenied || target.organization.slug === "org-two") {
-        return response({ detail: "Permission denied" }, undefined, 403);
+  test.each([false, true])(
+    "surfaces failed projects without treating them as empty (allDenied=%s)",
+    async (allDenied) => {
+      const projects = CROSS_ORG_PROJECTS;
+      cacheOrganizations(projects);
+      globalThis.fetch = mockProjectApi(projects, (target, url) => {
+        if (allDenied || target.organization.slug === "org-two") {
+          return response({ detail: "Permission denied" }, undefined, 403);
+        }
+        return keyPage(target, url, 1);
+      });
+      if (allDenied) {
+        await expect(invoke({ target: "frontend" })).rejects.toThrow(ApiError);
+        return;
       }
-      return keyPage(target, url, 1);
-    });
-    if (allDenied) {
-      await expect(invoke({ target: "frontend" })).rejects.toThrow(ApiError);
-      return;
-    }
-    const result = await invokeJson({ target: "frontend", limit: 4 });
-    expect(result.data).toMatchObject([
-      { org: "org-one", project: "frontend", name: "org-one/frontend 1" },
-    ]);
-    expect(result.errors).toMatchObject([
-      { project: "org-two/frontend", status: 403 },
-    ]);
-  });
+      const result = await invokeJson({ target: "frontend", limit: 4 });
+      expect(result.data).toMatchObject([
+        { org: "org-one", project: "frontend", name: "org-one/frontend 1" },
+      ]);
+      expect(result.errors).toMatchObject([
+        { project: "org-two/frontend", status: 403 },
+      ]);
+    },
+  );
 
   test("does not advertise an unsafe cursor when the limit cannot include every target", async () => {
     const projects = CROSS_ORG_PROJECTS;
     cacheOrganizations(projects);
     globalThis.fetch = mockProjectApi(projects, (target, url) =>
-      keyPage(target, url, 2)
+      keyPage(target, url, 2),
     );
     const result = await invokeJson({ target: "frontend", limit: 1 });
     expect(result.data).toHaveLength(1);
     expect(result.hasMore).toBe(true);
     expect(result.nextCursor).toBeUndefined();
     await expect(
-      invoke({ target: "frontend", limit: 1, cursor: "next" })
+      invoke({ target: "frontend", limit: 1, cursor: "next" }),
     ).rejects.toThrow("No next page");
   });
 
   test("returns an empty organization page without project lookups", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       expect(new URL(new Request(input, init).url).pathname).toBe(
-        "/api/0/organizations/test-org/project-keys/"
+        "/api/0/organizations/test-org/project-keys/",
       );
       return response([]);
     });
@@ -408,22 +408,22 @@ describe("dsn list", () => {
     });
   });
 
-  test.each([
-    "0",
-    "1001",
-  ])("rejects --limit %s before any API call", async (limit) => {
-    const fetch = vi.fn(mockFetch(async () => response([])));
-    globalThis.fetch = fetch;
-    const ctx = createContext();
-    const cliProcess = { ...process, exitCode: undefined };
-    await run(
-      buildApplication(dsnRoute, { name: "sentry dsn" }),
-      ["list", "test-org/", "--limit", limit],
-      { ...ctx.context, process: cliProcess }
-    );
-    expect(cliProcess.exitCode).toBe(ExitCode.InvalidArgument);
-    expect(fetch).not.toHaveBeenCalled();
-  });
+  test.each(["0", "1001"])(
+    "rejects --limit %s before any API call",
+    async (limit) => {
+      const fetch = vi.fn(mockFetch(async () => response([])));
+      globalThis.fetch = fetch;
+      const ctx = createContext();
+      const cliProcess = { ...process, exitCode: undefined };
+      await run(
+        buildApplication(dsnRoute, { name: "sentry dsn" }),
+        ["list", "test-org/", "--limit", limit],
+        { ...ctx.context, process: cliProcess },
+      );
+      expect(cliProcess.exitCode).toBe(ExitCode.InvalidArgument);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 
   test("ls honors an explicit project over defaults and exposes only public JSON fields", async () => {
     globalThis.fetch = mockProjectApi(DEFAULT_PROJECTS, (_target, url) => {
@@ -434,7 +434,7 @@ describe("dsn list", () => {
     await run(
       buildApplication(dsnRoute, { name: "sentry dsn" }),
       ["ls", "test-org/other-project", "--json"],
-      ctx.context
+      ctx.context,
     );
     expect(JSON.parse(ctx.output())).toEqual({
       data: [
@@ -462,7 +462,7 @@ describe("dsn list", () => {
       response([
         KEY,
         { ...KEY, name: "Old browser", isActive: false, dateCreated: null },
-      ])
+      ]),
     );
     const ctx = await invoke({ json: false, target: "test-org/test-project" });
     for (const visible of [
@@ -476,7 +476,7 @@ describe("dsn list", () => {
       expect(ctx.output()).toContain(visible);
     }
     expect(ctx.output()).not.toMatch(
-      /internal-key-id|private-key|private-dsn|internal-purpose/
+      /internal-key-id|private-key|private-dsn|internal-purpose/,
     );
   });
 
@@ -502,7 +502,7 @@ describe("dsn list", () => {
         return response({ detail: "Not found" }, undefined, 404);
       }
       const target = DEFAULT_PROJECTS.find(
-        (item) => url.pathname === `/api/0/projects/test-org/${item.id}/`
+        (item) => url.pathname === `/api/0/projects/test-org/${item.id}/`,
       );
       if (target) {
         return response(target);
@@ -542,13 +542,13 @@ describe("dsn list", () => {
     });
     expect(prev).toEqual(first);
     await expect(
-      invoke({ target: "test-org/test-project", limit: 2, cursor: "next" })
+      invoke({ target: "test-org/test-project", limit: 2, cursor: "next" }),
     ).rejects.toThrow("No next page");
   });
 
   test("uses the configured project and scopes its pagination history to project and page size", async () => {
     globalThis.fetch = mockProjectApi(DEFAULT_PROJECTS, (target, url) =>
-      keyPage(target, url, 2)
+      keyPage(target, url, 2),
     );
     const first = await invokeJson({ limit: 1 });
     expect(first).toMatchObject({
@@ -566,10 +566,10 @@ describe("dsn list", () => {
     const previous = await invokeJson({ limit: 1, cursor: "prev" });
     expect(previous).toEqual(first);
     await expect(
-      invoke({ target: "test-org/other-project", limit: 1, cursor: "next" })
+      invoke({ target: "test-org/other-project", limit: 1, cursor: "next" }),
     ).rejects.toThrow("No next page");
     await expect(
-      invoke({ target: "test-org/test-project", limit: 2, cursor: "next" })
+      invoke({ target: "test-org/test-project", limit: 2, cursor: "next" }),
     ).rejects.toThrow("No next page");
   });
 });

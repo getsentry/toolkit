@@ -11,8 +11,9 @@ import {
   listOrganizationDashboards,
   updateOrganizationDashboard,
 } from "@sentry/api";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
+import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 
 import { array, safeParse } from "valibot";
 
@@ -62,7 +63,7 @@ import {
  */
 export async function listDashboardsPaginated(
   orgSlug: string,
-  options: { perPage?: number; cursor?: string } = {}
+  options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<DashboardListItem[]>> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -74,7 +75,7 @@ export async function listDashboardsPaginated(
 
   return unwrapPaginatedResult<DashboardListItem[]>(
     result,
-    "Failed to list dashboards"
+    "Failed to list dashboards",
   );
 }
 
@@ -87,7 +88,7 @@ export async function listDashboardsPaginated(
  */
 export async function getDashboard(
   orgSlug: string,
-  dashboardId: string
+  dashboardId: string,
 ): Promise<DashboardDetail> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -101,7 +102,7 @@ export async function getDashboard(
 
   return unwrapResult<DashboardDetail>(
     result,
-    `Failed to get dashboard '${dashboardId}'`
+    `Failed to get dashboard '${dashboardId}'`,
   );
 }
 
@@ -114,7 +115,7 @@ export async function getDashboard(
  */
 export async function createDashboard(
   orgSlug: string,
-  body: { title: string; widgets?: DashboardWidget[]; projects?: number[] }
+  body: { title: string; widgets?: DashboardWidget[]; projects?: number[] },
 ): Promise<DashboardDetail> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -147,7 +148,7 @@ export async function updateDashboard(
     projects?: number[];
     environment?: string[];
     period?: string | null;
-  }
+  },
 ): Promise<DashboardDetail> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -164,7 +165,7 @@ export async function updateDashboard(
 
   return unwrapResult<DashboardDetail>(
     result,
-    `Failed to update dashboard '${dashboardId}'`
+    `Failed to update dashboard '${dashboardId}'`,
   );
 }
 
@@ -183,7 +184,7 @@ export async function updateDashboard(
 export async function listDashboardRevisionsPaginated(
   orgSlug: string,
   dashboardId: string,
-  options: { perPage?: number; cursor?: string } = {}
+  options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<DashboardRevision[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const params: Record<string, string | number | undefined> = {
@@ -194,11 +195,11 @@ export async function listDashboardRevisionsPaginated(
   const { data, headers } = await apiRequestToRegion<DashboardRevision[]>(
     regionUrl,
     `/organizations/${orgSlug}/dashboards/${dashboardId}/revisions/`,
-    { params, schema: array(DashboardRevisionSchema) }
+    { params, schema: array(DashboardRevisionSchema) },
   );
 
   const { nextCursor, prevCursor } = parseLinkHeader(
-    headers.get("link") ?? null
+    headers.get("link") ?? null,
   );
   const out: PaginatedResponse<DashboardRevision[]> = { data };
   if (nextCursor !== undefined) {
@@ -221,14 +222,14 @@ export async function listDashboardRevisionsPaginated(
 export async function restoreDashboardRevision(
   orgSlug: string,
   dashboardId: string,
-  revisionId: string
+  revisionId: string,
 ): Promise<DashboardDetail> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const encodedRevisionId = encodeURIComponent(revisionId);
   const { data } = await apiRequestToRegion<DashboardDetail>(
     regionUrl,
     `/organizations/${orgSlug}/dashboards/${dashboardId}/revisions/${encodedRevisionId}/restore/`,
-    { method: "POST", schema: DashboardDetailSchema }
+    { method: "POST", schema: DashboardDetailSchema },
   );
   return data;
 }
@@ -309,7 +310,7 @@ const VALID_INTERVALS = ["1m", "5m", "15m", "30m", "1h", "4h", "12h", "1d"];
 export function computeOptimalInterval(
   statsPeriod: string | undefined,
   widget: DashboardWidget,
-  periodSeconds?: number
+  periodSeconds?: number,
 ): string | undefined {
   const totalSeconds =
     periodSeconds ?? (statsPeriod ? periodToSeconds(statsPeriod) : undefined);
@@ -321,7 +322,7 @@ export function computeOptimalInterval(
   // Use DEFAULT_TERM_WIDTH as fallback for non-TTY (matches formatter).
   const termWidth = Math.max(
     MIN_TERM_WIDTH,
-    process.stdout.columns || DEFAULT_TERM_WIDTH
+    process.stdout.columns || DEFAULT_TERM_WIDTH,
   );
   const layoutW = widget.layout?.w ?? GRID_COLS;
   const chartWidth =
@@ -358,7 +359,7 @@ export function computeOptimalInterval(
  */
 function parseEventsStatsResponse(
   raw: unknown,
-  yAxis: string[]
+  yAxis: string[],
 ): TimeseriesResult {
   const series: TimeseriesResult["series"] = [];
 
@@ -378,7 +379,7 @@ function parseEventsStatsResponse(
   // Grouped response: record of group-label → series
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const entries = Object.entries(raw as Record<string, unknown>).filter(
-      ([, v]) => v && typeof v === "object" && "data" in (v as object)
+      ([, v]) => v && typeof v === "object" && "data" in (v as object),
     );
 
     // Sort by order field if present
@@ -405,7 +406,7 @@ function parseEventsStatsResponse(
 
 /** Extract {timestamp, value} pairs from an events-stats series. */
 function extractTimeseriesValues(
-  series: EventsStatsSeries
+  series: EventsStatsSeries,
 ): { timestamp: number; value: number }[] {
   return series.data.map(([timestamp, counts]) => ({
     timestamp,
@@ -442,7 +443,7 @@ type WidgetQueryParams = {
 };
 
 async function queryWidgetTimeseries(
-  params: WidgetQueryParams
+  params: WidgetQueryParams,
 ): Promise<TimeseriesResult> {
   const {
     regionUrl,
@@ -476,20 +477,22 @@ async function queryWidgetTimeseries(
 
     // Group-by columns enable topEvents mode
     if (hasGroupBy) {
-      reqParams.field = columns;
+      // Sort by the aggregate to get the actual top N groups. Every dataset
+      // honors sort, but the errors path rejects a sort column that is not in
+      // `field`, so select the aggregates alongside the group-by columns.
+      const { fields, sort } = resolveEventsSort({
+        fields: [...columns, ...aggregates],
+        sort: query.orderby,
+      });
+      reqParams.field = fields;
+      reqParams.sort = sort;
       reqParams.topEvents = widget.limit ?? 5;
-      // Sort by the aggregate to get the actual top N groups.
-      // The sort param is only supported on the spans dataset —
-      // the errors endpoint rejects it with 400.
-      if (dataset === "spans") {
-        reqParams.sort = query.orderby ?? `-${aggregates[0] ?? "count()"}`;
-      }
     }
 
     const { data: raw } = await apiRequestToRegion<unknown>(
       regionUrl,
       `/organizations/${orgSlug}/events-stats/`,
-      { params: reqParams }
+      { params: reqParams },
     );
 
     const parsed = parseEventsStatsResponse(raw, aggregates);
@@ -512,7 +515,7 @@ async function queryWidgetTimeseries(
  * @param options - Additional query options
  */
 async function queryWidgetTable(
-  params: WidgetQueryParams
+  params: WidgetQueryParams,
 ): Promise<TableResult> {
   const {
     regionUrl,
@@ -529,27 +532,26 @@ async function queryWidgetTable(
     ...(query?.aggregates ?? []),
   ];
   const dataset = mapWidgetTypeToDataset(widget.widgetType);
+  const request = resolveEventsSort({ fields, sort: query?.orderby });
 
   const { data } = await apiRequestToRegion(
     regionUrl,
     `/organizations/${orgSlug}/events/`,
     {
       params: {
-        field: fields,
+        field: request.fields,
         query: query?.conditions || undefined,
         dataset: dataset ?? undefined,
         statsPeriod,
         start,
         end,
-        // sort is only supported on the spans dataset —
-        // the errors endpoint rejects it with 400.
-        sort: dataset === "spans" ? query?.orderby || undefined : undefined,
+        sort: request.sort,
         per_page: widget.limit ?? 10,
         environment: options.environment,
         project: options.project?.map(String),
       },
       schema: EventsTableResponseSchema,
-    }
+    },
   );
 
   const meta = data.meta;
@@ -575,7 +577,7 @@ async function queryWidgetTable(
  * doesn't break the entire dashboard render.
  */
 async function queryWidgetData(
-  params: WidgetQueryParams
+  params: WidgetQueryParams,
 ): Promise<WidgetDataResult> {
   const { widget } = params;
 
@@ -653,7 +655,7 @@ async function queryWidgetData(
 function collectBatchResults(
   batchResults: PromiseSettledResult<WidgetDataResult>[],
   startIndex: number,
-  results: Map<number, WidgetDataResult>
+  results: Map<number, WidgetDataResult>,
 ): void {
   for (let j = 0; j < batchResults.length; j++) {
     const result = batchResults[j];
@@ -675,7 +677,7 @@ export async function queryAllWidgets(
   regionUrl: string,
   orgSlug: string,
   dashboard: DashboardDetail,
-  options: WidgetQueryOptions = {}
+  options: WidgetQueryOptions = {},
 ): Promise<Map<number, WidgetDataResult>> {
   const widgets = dashboard.widgets ?? [];
   // When absolute start/end are provided, skip relative statsPeriod —
@@ -712,8 +714,8 @@ export async function queryAllWidgets(
           end: options.end,
           periodSeconds: options.periodSeconds,
           options: mergedOptions,
-        })
-      )
+        }),
+      ),
     );
     collectBatchResults(batchResults, i, results);
   }

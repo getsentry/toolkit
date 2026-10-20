@@ -9,7 +9,7 @@
  */
 
 import { isatty } from "node:tty";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
@@ -48,7 +48,7 @@ export const feedbackCommand = buildCommand({
   },
   async *func(
     this: SentryContext,
-    // biome-ignore lint/complexity/noBannedTypes: Stricli requires empty object for commands with no flags
+    // Stricli requires empty object for commands with no flags
     _flags: {},
     ...messageParts: string[]
   ) {
@@ -71,7 +71,7 @@ export const feedbackCommand = buildCommand({
     if (!Sentry.isEnabled()) {
       throw new ConfigError(
         "Feedback not sent: telemetry is disabled.",
-        "Unset SENTRY_CLI_NO_TELEMETRY to enable feedback."
+        "Unset SENTRY_CLI_NO_TELEMETRY to enable feedback.",
       );
     }
 

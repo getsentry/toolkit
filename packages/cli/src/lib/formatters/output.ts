@@ -223,7 +223,7 @@ type RenderContext = {
  */
 function applyJsonExclude(
   data: unknown,
-  excludeKeys: readonly string[] | undefined
+  excludeKeys: readonly string[] | undefined,
 ): unknown {
   if (!excludeKeys || excludeKeys.length === 0) {
     return data;
@@ -281,15 +281,14 @@ function emitJsonObject(stdout: Writer, obj: unknown): void {
  * @param renderer - Per-invocation renderer (from `config.human()`)
  * @param ctx - Rendering context with flag values
  */
-// biome-ignore lint/nursery/useMaxParams: Framework function — config/renderer/ctx are all required for JSON vs human split.
 export function renderCommandOutput(
   stdout: Writer,
   data: unknown,
-  // biome-ignore lint/suspicious/noExplicitAny: Variance erasure — config/renderer are paired at build time, but the framework iterates over unknown yields.
+  // oxlint-disable-next-line typescript/no-explicit-any -- Variance erasure — config/renderer are paired at build time, but the framework iterates over unknown yields.
   config: OutputConfig<any>,
-  // biome-ignore lint/suspicious/noExplicitAny: Renderer type mirrors erased OutputConfig<T>
+  // oxlint-disable-next-line typescript/no-explicit-any -- Renderer type mirrors erased OutputConfig<T>
   renderer: HumanRenderer<any>,
-  ctx: RenderContext
+  ctx: RenderContext,
 ): void {
   // Binary bodies (Uint8Array) must bypass text formatters entirely — no
   // JSON pretty-print, no trailing newline, no string coercion. This is the

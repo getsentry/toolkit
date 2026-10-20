@@ -408,7 +408,7 @@ export function logIssue(
 
   const { attachments, ...baseOptions } = options;
   const extra: LogContext = {
-    ...(baseOptions.extra ?? {}),
+    ...baseOptions.extra,
     ...(attachments && Object.keys(attachments).length > 0
       ? { attachments: Object.keys(attachments) }
       : {}),

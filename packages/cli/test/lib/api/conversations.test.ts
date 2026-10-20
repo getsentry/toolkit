@@ -19,6 +19,7 @@ import {
   listConversations,
 } from "../../../src/lib/api/conversations.js";
 import { MAX_PAGINATION_PAGES } from "../../../src/lib/api/infrastructure.js";
+import type { ConversationStats } from "../../../src/types/conversation.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
 // ============================================================================
@@ -30,7 +31,7 @@ const ORG = "test-org";
 /** Helper to mock fetch with a single OK response */
 function mockOk(
   body: unknown,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
 ): { getCapturedUrl: () => string; getCapturedMethod: () => string } {
   let capturedUrl = "";
   let capturedMethod = "";
@@ -56,7 +57,7 @@ function mockOk(
  * Each call to fetch returns the next response in the queue.
  */
 function mockSequential(
-  responses: Array<{ body: unknown; headers?: Record<string, string> }>
+  responses: Array<{ body: unknown; headers?: Record<string, string> }>,
 ): { getCapturedUrls: () => string[] } {
   const capturedUrls: string[] = [];
   let callIndex = 0;
@@ -112,7 +113,7 @@ describe("listConversations", () => {
 
     expect(getCapturedMethod()).toBe("GET");
     expect(getCapturedUrl()).toContain(
-      `/api/0/organizations/${ORG}/agents/conversations/`
+      `/api/0/organizations/${ORG}/agents/conversations/`,
     );
   });
 
@@ -138,6 +139,14 @@ describe("listConversations", () => {
     await listConversations(ORG, { query: "has:errors" });
 
     expect(decodeURIComponent(getCapturedUrl())).toContain("query=has:errors");
+  });
+
+  test("passes sort param", async () => {
+    const { getCapturedUrl } = mockOk([]);
+
+    await listConversations(ORG, { sort: "-conversation.totalCost" });
+
+    expect(getCapturedUrl()).toContain("sort=-conversation.totalCost");
   });
 
   test("passes statsPeriod param", async () => {
@@ -167,7 +176,7 @@ describe("listConversations", () => {
     await listConversations(ORG, { cursor: "1735689600000:0:0" });
 
     expect(getCapturedUrl()).toContain(
-      `cursor=${encodeURIComponent("1735689600000:0:0")}`
+      `cursor=${encodeURIComponent("1735689600000:0:0")}`,
     );
   });
 
@@ -186,6 +195,7 @@ describe("listConversations", () => {
 
     const url = getCapturedUrl();
     expect(url).not.toContain("query=");
+    expect(url).not.toContain("sort=");
     expect(url).not.toContain("statsPeriod=");
     expect(url).not.toContain("start=");
     expect(url).not.toContain("end=");
@@ -310,12 +320,14 @@ describe("getConversationSpans", () => {
   /** Details envelope returned by the conversation details endpoint. */
   function makeEnvelope(
     spans: ReturnType<typeof makeSpan>[],
-    title: string | null = "Test conversation"
+    title: string | null = "Test conversation",
+    stats?: ConversationStats,
   ) {
     return {
       conversationId: CONV_ID,
       title,
       spans,
+      ...(stats ? { stats } : {}),
     };
   }
 
@@ -326,7 +338,7 @@ describe("getConversationSpans", () => {
 
     expect(getCapturedMethod()).toBe("GET");
     expect(getCapturedUrl()).toContain(
-      `/api/0/organizations/${ORG}/agents/conversations/${CONV_ID}/`
+      `/api/0/organizations/${ORG}/agents/conversations/${CONV_ID}/`,
     );
   });
 
@@ -340,15 +352,26 @@ describe("getConversationSpans", () => {
     expect(url).toContain("statsPeriod=30d");
   });
 
-  test("returns spans from a single page envelope", async () => {
+  test("returns spans and stats from a single page envelope", async () => {
     const spans = [makeSpan("span-1-aabb1122")];
-    mockOk(makeEnvelope(spans, "Refund flow"));
+    mockOk(
+      makeEnvelope(spans, "Refund flow", {
+        errors: 1,
+        llmCalls: 1,
+        toolCalls: 2,
+        toolErrors: 1,
+        totalCost: 0.0042,
+        totalTokens: 100,
+      }),
+    );
 
     const result = await getConversationSpans(ORG, CONV_ID);
 
     expect(result.spans).toHaveLength(1);
     expect(result.spans[0].span_id).toBe("span-1-aabb1122");
     expect(result.title).toBe("Refund flow");
+    expect(result.stats?.totalCost).toBe(0.0042);
+    expect(result.stats?.totalTokens).toBe(100);
     expect(result.truncated).toBe(false);
   });
 
@@ -356,7 +379,7 @@ describe("getConversationSpans", () => {
     mockOk([makeSpan("span-1-aabb1122")]);
 
     await expect(getConversationSpans(ORG, CONV_ID)).rejects.toThrow(
-      /Unexpected response format/
+      /Unexpected response format/,
     );
   });
 
@@ -435,7 +458,7 @@ describe("getConversationSpans", () => {
     await getConversationSpans(ORG, specialId);
 
     expect(getCapturedUrl()).toContain(
-      `/agents/conversations/${encodeURIComponent(specialId)}/`
+      `/agents/conversations/${encodeURIComponent(specialId)}/`,
     );
   });
 });

@@ -71,7 +71,7 @@ function makeRelease(tag: string, assets: GitHubAsset[] = []): GitHubRelease {
 function makePatchManifest(
   fromVersion: string,
   sha256Map: Record<string, string> = {},
-  layers: OciManifest["layers"] = []
+  layers: OciManifest["layers"] = [],
 ): OciManifest {
   const annotations: Record<string, string> = {
     "from-version": fromVersion,
@@ -228,7 +228,7 @@ describe("extractStableChain", () => {
     versions: string[],
     binaryName: string,
     patchSize = 1000,
-    gzSize = 100_000
+    gzSize = 100_000,
   ): GitHubRelease[] {
     return versions.map((v) =>
       makeRelease(v, [
@@ -245,12 +245,12 @@ describe("extractStableChain", () => {
           name: `${binaryName}.gz`,
           size: gzSize,
         }),
-      ])
+      ]),
     );
   }
 
   function makeOpts(
-    overrides: Partial<ExtractStableChainOpts> = {}
+    overrides: Partial<ExtractStableChainOpts> = {},
   ): ExtractStableChainOpts {
     return {
       releases: [],
@@ -270,7 +270,7 @@ describe("extractStableChain", () => {
         currentVersion: "0.12.0",
         targetVersion: "0.13.0",
         fullGzSize: 100_000,
-      })
+      }),
     );
     expect(result).not.toBeNull();
     expect(result?.patchUrls).toHaveLength(1);
@@ -284,10 +284,10 @@ describe("extractStableChain", () => {
   test("resolves multi-hop chain (0.12→0.13→0.14)", () => {
     const releases = buildReleases(
       ["0.14.0", "0.13.0", "0.12.0"],
-      "sentry-linux-x64"
+      "sentry-linux-x64",
     );
     const result = extractStableChain(
-      makeOpts({ releases, fullGzSize: 100_000 })
+      makeOpts({ releases, fullGzSize: 100_000 }),
     );
     expect(result).not.toBeNull();
     expect(result?.patchUrls).toHaveLength(2);
@@ -307,7 +307,7 @@ describe("extractStableChain", () => {
         releases,
         targetVersion: "0.15.0",
         fullGzSize: 100_000,
-      })
+      }),
     );
     expect(result).toBeNull();
   });
@@ -315,7 +315,7 @@ describe("extractStableChain", () => {
   test("returns null when target is older than current (downgrade)", () => {
     const releases = buildReleases(
       ["0.14.0", "0.13.0", "0.12.0"],
-      "sentry-linux-x64"
+      "sentry-linux-x64",
     );
     const result = extractStableChain(
       makeOpts({
@@ -323,7 +323,7 @@ describe("extractStableChain", () => {
         currentVersion: "0.14.0",
         targetVersion: "0.12.0",
         fullGzSize: 100_000,
-      })
+      }),
     );
     expect(result).toBeNull();
   });
@@ -336,7 +336,7 @@ describe("extractStableChain", () => {
         currentVersion: "0.13.0",
         targetVersion: "0.13.0",
         fullGzSize: 100_000,
-      })
+      }),
     );
     expect(result).toBeNull();
   });
@@ -345,10 +345,10 @@ describe("extractStableChain", () => {
     const releases = buildReleases(
       ["0.14.0", "0.13.0", "0.12.0"],
       "sentry-linux-x64",
-      70_000
+      70_000,
     );
     const result = extractStableChain(
-      makeOpts({ releases, fullGzSize: 100_000 })
+      makeOpts({ releases, fullGzSize: 100_000 }),
     );
     expect(result).toBeNull();
   });
@@ -370,7 +370,7 @@ describe("extractStableChain", () => {
         currentVersion: "0.13.0",
         targetVersion: "0.14.0",
         fullGzSize: 100_000,
-      })
+      }),
     );
     expect(result).toBeNull();
   });
@@ -394,7 +394,7 @@ describe("extractStableChain", () => {
         currentVersion: "0.13.0",
         targetVersion: "0.14.0",
         fullGzSize: 100_000,
-      })
+      }),
     );
     expect(result).toBeNull();
   });
@@ -409,7 +409,7 @@ describe("extractStableChain", () => {
         currentVersion: "0.1.0",
         targetVersion: "0.12.0",
         fullGzSize: 100_000,
-      })
+      }),
     );
     expect(result).toBeNull();
   });
@@ -424,7 +424,7 @@ describe("extractStableChain", () => {
         currentVersion: "0.1.0",
         targetVersion: "0.11.0",
         fullGzSize: 100_000,
-      })
+      }),
     );
     expect(result).not.toBeNull();
     expect(result?.patchUrls).toHaveLength(10);
@@ -433,7 +433,7 @@ describe("extractStableChain", () => {
   test("patch URLs are returned in apply order (oldest first)", () => {
     const releases = buildReleases(
       ["0.15.0", "0.14.0", "0.13.0", "0.12.0"],
-      "sentry-linux-x64"
+      "sentry-linux-x64",
     );
     const result = extractStableChain(
       makeOpts({
@@ -441,7 +441,7 @@ describe("extractStableChain", () => {
         currentVersion: "0.12.0",
         targetVersion: "0.15.0",
         fullGzSize: 100_000,
-      })
+      }),
     );
     expect(result).not.toBeNull();
     expect(result?.patchUrls).toEqual([
@@ -479,7 +479,7 @@ describe("extractStableChain", () => {
       makeRelease("0.12.0", [makeAsset({ name: "sentry-linux-x64" })]),
     ];
     const result = extractStableChain(
-      makeOpts({ releases, fullGzSize: 100_000 })
+      makeOpts({ releases, fullGzSize: 100_000 }),
     );
     expect(result).toBeNull();
   });
@@ -531,7 +531,7 @@ describe("getPatchTargetSha256", () => {
     });
     expect(getPatchTargetSha256(manifest, "sentry-linux-x64")).toBe("abc123");
     expect(getPatchTargetSha256(manifest, "sentry-darwin-arm64")).toBe(
-      "def456"
+      "def456",
     );
   });
 
@@ -565,7 +565,7 @@ describe("filterAndSortChainTags", () => {
     const result = filterAndSortChainTags(
       tags,
       "0.0.0-dev.100",
-      "0.0.0-dev.105"
+      "0.0.0-dev.105",
     );
     expect(result).toEqual([]);
   });
@@ -585,7 +585,7 @@ describe("filterAndSortChainTags", () => {
     const result = filterAndSortChainTags(
       tags,
       "0.0.0-dev.100",
-      "0.0.0-dev.102"
+      "0.0.0-dev.102",
     );
     // currentVersion (100) excluded, target (102) included
     expect(result).toEqual(["patch-0.0.0-dev.101", "patch-0.0.0-dev.102"]);
@@ -600,7 +600,7 @@ describe("filterAndSortChainTags", () => {
     const result = filterAndSortChainTags(
       tags,
       "0.0.0-dev.100",
-      "0.0.0-dev.103"
+      "0.0.0-dev.103",
     );
     expect(result).toEqual(["patch-0.0.0-dev.101"]);
   });
@@ -615,7 +615,7 @@ describe("filterAndSortChainTags", () => {
     const result = filterAndSortChainTags(
       tags,
       "0.0.0-dev.100",
-      "0.0.0-dev.103"
+      "0.0.0-dev.103",
     );
     expect(result).toEqual([
       "patch-0.0.0-dev.101",
@@ -629,7 +629,7 @@ describe("filterAndSortChainTags", () => {
     const result = filterAndSortChainTags(
       tags,
       "0.0.0-dev.100",
-      "0.0.0-dev.101"
+      "0.0.0-dev.101",
     );
     expect(result).toEqual(["patch-0.0.0-dev.101"]);
   });
@@ -639,7 +639,7 @@ describe("filterAndSortChainTags", () => {
     const result = filterAndSortChainTags(
       tags,
       "0.0.0-dev.100",
-      "0.0.0-dev.101"
+      "0.0.0-dev.101",
     );
     expect(result).toEqual(["patch-0.0.0-dev.101"]);
   });
@@ -653,7 +653,7 @@ describe("filterAndSortChainTags", () => {
     const result = filterAndSortChainTags(
       tags,
       "0.14.0-dev.1772661724",
-      "0.14.0-dev.1772800000"
+      "0.14.0-dev.1772800000",
     );
     expect(result).toEqual([
       "patch-0.14.0-dev.1772732047",
@@ -666,12 +666,12 @@ describe("filterAndSortChainTags", () => {
     // chains allow up to MAX_NIGHTLY_CHAIN_DEPTH (30) hops
     const tags = Array.from(
       { length: 25 },
-      (_, i) => `patch-0.14.0-dev.${1000 + i + 1}`
+      (_, i) => `patch-0.14.0-dev.${1000 + i + 1}`,
     );
     const result = filterAndSortChainTags(
       tags,
       "0.14.0-dev.1000",
-      "0.14.0-dev.1025"
+      "0.14.0-dev.1025",
     );
     expect(result).toHaveLength(25);
     expect(result[0]).toBe("patch-0.14.0-dev.1001");
@@ -689,7 +689,7 @@ describe("filterAndSortChainTags", () => {
     const result = filterAndSortChainTags(
       tags,
       "0.16.0-dev.100",
-      "0.17.0-dev.500"
+      "0.17.0-dev.500",
     );
     expect(result).toEqual([
       "patch-0.16.0-dev.200",
@@ -708,7 +708,7 @@ describe("filterAndSortChainTags", () => {
     const result = filterAndSortChainTags(
       tags,
       "0.0.0-dev.101",
-      "0.0.0-dev.102"
+      "0.0.0-dev.102",
     );
     expect(result).toEqual(["patch-0.0.0-dev.102"]);
   });
@@ -721,7 +721,7 @@ describe("validateChainStep", () => {
 
   function makeLayer(
     title: string,
-    size: number
+    size: number,
   ): OciManifest["layers"][number] {
     return {
       digest: `sha256:${title.replace(/\W/g, "")}`,
@@ -807,7 +807,7 @@ describe("validateChainStep", () => {
 
 /** Helper to mock globalThis.fetch */
 function mockFetch(
-  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>
+  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
   globalThis.fetch = fn as typeof globalThis.fetch;
 }
@@ -835,7 +835,7 @@ describe("fetchRecentReleases", () => {
 
     mockFetch(async (url) => {
       expect(String(url)).toContain(
-        "api.github.com/repos/getsentry/toolkit/releases"
+        "api.github.com/repos/getsentry/toolkit/releases",
       );
       expect(String(url)).toContain("per_page=");
       return new Response(JSON.stringify(releases), { status: 200 });
@@ -849,21 +849,24 @@ describe("fetchRecentReleases", () => {
   test.each([
     ["Toolkit", undefined, "cli@0.14.0-dev.1", "cli@0.14.0"],
     ["legacy", LEGACY_UPGRADE_SOURCE, "0.14.0-dev.1", "0.14.0"],
-  ])("excludes semantic prereleases from the %s stable source", async (_name, source, prereleaseTag, stableTag) => {
-    mockFetch(
-      async () =>
-        new Response(
-          JSON.stringify([
-            { ...makeRelease(prereleaseTag, []), prerelease: false },
-            makeRelease(stableTag, []),
-          ]),
-          { status: 200 }
-        )
-    );
+  ])(
+    "excludes semantic prereleases from the %s stable source",
+    async (_name, source, prereleaseTag, stableTag) => {
+      mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify([
+              { ...makeRelease(prereleaseTag, []), prerelease: false },
+              makeRelease(stableTag, []),
+            ]),
+            { status: 200 },
+          ),
+      );
 
-    const result = await fetchRecentReleases(undefined, source);
-    expect(result.map((release) => release.tag_name)).toEqual(["0.14.0"]);
-  });
+      const result = await fetchRecentReleases(undefined, source);
+      expect(result.map((release) => release.tag_name)).toEqual(["0.14.0"]);
+    },
+  );
 
   test("uses the selected legacy GitHub repository", async () => {
     const urls: string[] = [];
@@ -947,7 +950,7 @@ describe("resolveStableChain", () => {
   /** Build a mock that serves both releases API and patch downloads */
   function setupStableMocks(
     releases: GitHubRelease[],
-    patches: Map<string, Uint8Array>
+    patches: Map<string, Uint8Array>,
   ): void {
     mockFetch(async (url) => {
       const urlStr = String(url);
@@ -1006,7 +1009,7 @@ describe("resolveStableChain", () => {
     });
 
     await expect(
-      resolveStableChain("0.13.0", "0.14.0", undefined, LEGACY_UPGRADE_SOURCE)
+      resolveStableChain("0.13.0", "0.14.0", undefined, LEGACY_UPGRADE_SOURCE),
     ).resolves.toBeNull();
     expect(urls).toEqual([
       "https://api.github.com/repos/getsentry/cli/releases?per_page=12",
@@ -1054,7 +1057,7 @@ describe("resolveStableChain", () => {
       new Map([
         [urlA, patchA],
         [urlB, patchB],
-      ])
+      ]),
     );
 
     const chain = await resolveStableChain("0.13.0", "0.15.0");
@@ -1125,7 +1128,7 @@ describe("resolveStableChain", () => {
           browser_download_url: `https://example.com/${v}.patch`,
         }),
         makeAsset({ name: `${binaryName}.gz`, size: 100_000 }),
-      ])
+      ]),
     );
 
     setupStableMocks(releases, new Map());
@@ -1145,7 +1148,7 @@ describe("resolveNightlyChain", () => {
   function setupNightlyMocks(
     tags: string[],
     manifests: Map<string, OciManifest>,
-    blobs: Map<string, Uint8Array>
+    blobs: Map<string, Uint8Array>,
   ): void {
     mockFetch(async (url) => {
       const urlStr = String(url);
@@ -1217,13 +1220,13 @@ describe("resolveNightlyChain", () => {
             "org.opencontainers.image.title": PATCH_NAME,
           },
         },
-      ]
+      ],
     );
 
     setupNightlyMocks(
       ["patch-0.0.0-dev.101"],
       new Map([["patch-0.0.0-dev.101", patchManifest]]),
-      new Map([[patchDigest, patchData]])
+      new Map([[patchDigest, patchData]]),
     );
 
     const chain = await resolveNightlyChain({
@@ -1255,7 +1258,7 @@ describe("resolveNightlyChain", () => {
         targetVersion: "0.0.0-dev.101",
         fullGzSize: 100_000,
         source: LEGACY_UPGRADE_SOURCE,
-      })
+      }),
     ).resolves.toBeNull();
     expect(urls).toEqual(["https://ghcr.io/v2/getsentry/cli/tags/list?n=100"]);
     expect(urls.every((url) => !url.includes("getsentry/toolkit"))).toBe(true);
@@ -1278,7 +1281,7 @@ describe("resolveNightlyChain", () => {
     // 35 tags exceeds the nightly limit of 30
     const tags = Array.from(
       { length: 35 },
-      (_, i) => `patch-0.0.0-dev.${101 + i}`
+      (_, i) => `patch-0.0.0-dev.${101 + i}`,
     );
 
     setupNightlyMocks(tags, new Map(), new Map());
@@ -1323,7 +1326,7 @@ describe("resolveNightlyChain", () => {
             "org.opencontainers.image.title": PATCH_NAME,
           },
         },
-      ]
+      ],
     );
 
     setupNightlyMocks(
@@ -1335,7 +1338,7 @@ describe("resolveNightlyChain", () => {
       new Map([
         [digestA, patchA],
         [digestB, patchB],
-      ])
+      ]),
     );
 
     const chain = await resolveNightlyChain({
@@ -1370,13 +1373,13 @@ describe("resolveNightlyChain", () => {
             "org.opencontainers.image.title": PATCH_NAME,
           },
         },
-      ]
+      ],
     );
 
     setupNightlyMocks(
       ["patch-0.0.0-dev.101"],
       new Map([["patch-0.0.0-dev.101", patchManifest]]),
-      new Map()
+      new Map(),
     );
 
     const chain = await resolveNightlyChain({
@@ -1403,13 +1406,13 @@ describe("resolveNightlyChain", () => {
             "org.opencontainers.image.title": PATCH_NAME,
           },
         },
-      ]
+      ],
     );
 
     setupNightlyMocks(
       ["patch-0.0.0-dev.101"],
       new Map([["patch-0.0.0-dev.101", patchManifest]]),
-      new Map()
+      new Map(),
     );
 
     const chain = await resolveNightlyChain({
@@ -1427,7 +1430,7 @@ describe("resolveNightlyChain", () => {
     setupNightlyMocks(
       ["patch-0.0.0-dev.101"],
       new Map(), // no manifests — will 404
-      new Map()
+      new Map(),
     );
 
     const chain = await resolveNightlyChain({
@@ -1454,7 +1457,7 @@ describe("resolveNightlyChain", () => {
             "org.opencontainers.image.title": PATCH_NAME,
           },
         },
-      ]
+      ],
     );
 
     // Only patch-dev.101 is in the graph, but target is dev.102
@@ -1463,7 +1466,7 @@ describe("resolveNightlyChain", () => {
     setupNightlyMocks(
       ["patch-0.0.0-dev.101"],
       new Map([["patch-0.0.0-dev.101", patchManifest]]),
-      new Map()
+      new Map(),
     );
 
     const chain = await resolveNightlyChain({
@@ -1491,13 +1494,13 @@ describe("resolveNightlyChain", () => {
             "org.opencontainers.image.title": PATCH_NAME,
           },
         },
-      ]
+      ],
     );
 
     setupNightlyMocks(
       ["patch-0.0.0-dev.101"],
       new Map([["patch-0.0.0-dev.101", patchManifest]]),
-      new Map()
+      new Map(),
     );
 
     const chain = await resolveNightlyChain({
@@ -1524,13 +1527,13 @@ describe("resolveNightlyChain", () => {
             "org.opencontainers.image.title": "wrong-name.patch",
           },
         },
-      ]
+      ],
     );
 
     setupNightlyMocks(
       ["patch-0.0.0-dev.101"],
       new Map([["patch-0.0.0-dev.101", patchManifest]]),
-      new Map()
+      new Map(),
     );
 
     const chain = await resolveNightlyChain({
@@ -1608,7 +1611,7 @@ describe("applyPatchChain", () => {
 
     try {
       await expect(applyPatchChain(chain, oldPath, destPath)).rejects.toThrow(
-        "SHA-256 mismatch"
+        "SHA-256 mismatch",
       );
     } finally {
       if (existsSync(destPath)) {
@@ -1687,8 +1690,8 @@ describe("applyPatchChain", () => {
       expect(
         await access(destPath).then(
           () => true,
-          () => false
-        )
+          () => false,
+        ),
       ).toBe(true);
     } finally {
       if (existsSync(destPath)) {
@@ -1713,14 +1716,14 @@ describe("resolveStableDelta", () => {
               makeAsset({ name: "sentry-linux-x64.patch" }),
             ]),
           ]),
-          { status: 200 }
-        )
+          { status: 200 },
+        ),
     );
 
     const result = await resolveStableDelta(
       "0.14.0",
       "/tmp/fake-old",
-      "/tmp/fake-out"
+      "/tmp/fake-out",
     );
     expect(result).toBeNull();
   });
@@ -1802,7 +1805,7 @@ describe("resolveNightlyDelta", () => {
     mockFetch(async () => new Response("Unauthorized", { status: 401 }));
 
     await expect(
-      resolveNightlyDelta("0.14.0-dev.123", "/tmp/fake-old", "/tmp/fake-out")
+      resolveNightlyDelta("0.14.0-dev.123", "/tmp/fake-old", "/tmp/fake-out"),
     ).resolves.toBeNull();
   });
 
@@ -1841,7 +1844,7 @@ describe("resolveNightlyDelta", () => {
     const result = await resolveNightlyDelta(
       "0.14.0-dev.200",
       "/tmp/fake-old",
-      "/tmp/fake-out"
+      "/tmp/fake-out",
     );
     expect(result).toBeNull();
   });
@@ -1881,7 +1884,7 @@ describe("resolveNightlyDelta", () => {
     const result = await resolveNightlyDelta(
       "0.14.0-dev.200",
       "/tmp/fake-old",
-      "/tmp/fake-out"
+      "/tmp/fake-out",
     );
     expect(result).toBeNull();
   });
@@ -1894,7 +1897,7 @@ describe("attemptDeltaUpgrade", () => {
     const result = await attemptDeltaUpgrade(
       "0.14.0",
       "/tmp/fake-old",
-      "/tmp/fake-out"
+      "/tmp/fake-out",
     );
     expect(result).toBeNull();
   });
@@ -1959,8 +1962,8 @@ describe("selected source affinity", () => {
         "/tmp/fake-out",
         false,
         undefined,
-        LEGACY_UPGRADE_SOURCE
-      )
+        LEGACY_UPGRADE_SOURCE,
+      ),
     ).resolves.toBeNull();
     expect(urls).toEqual([
       "https://api.github.com/repos/getsentry/cli/releases?per_page=12",
@@ -1984,8 +1987,8 @@ describe("selected source affinity", () => {
         "/tmp/fake-out",
         false,
         undefined,
-        LEGACY_UPGRADE_SOURCE
-      )
+        LEGACY_UPGRADE_SOURCE,
+      ),
     ).resolves.toBeNull();
     expect(urls).toEqual([
       "https://ghcr.io/token?scope=repository:getsentry/cli:pull",
@@ -2004,7 +2007,7 @@ describe("selected source affinity", () => {
     await versionedDelta.prefetchStablePatches(
       "0.14.0",
       undefined,
-      LEGACY_UPGRADE_SOURCE
+      LEGACY_UPGRADE_SOURCE,
     );
     expect(urls).toEqual([
       "https://api.github.com/repos/getsentry/cli/releases?per_page=12",
@@ -2024,7 +2027,7 @@ describe("selected source affinity", () => {
     await versionedDelta.prefetchNightlyPatches(
       "0.14.0-dev.101",
       undefined,
-      LEGACY_UPGRADE_SOURCE
+      LEGACY_UPGRADE_SOURCE,
     );
     expect(urls).toEqual([
       "https://ghcr.io/token?scope=repository:getsentry/cli:pull",

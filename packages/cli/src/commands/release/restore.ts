@@ -8,6 +8,7 @@
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownInline,
@@ -30,7 +31,7 @@ const USAGE_HINT = "sentry release restore [<org>/]<version>";
 function formatReleaseRestored(data: Record<string, unknown>): string {
   if (data.dryRun) {
     return renderMarkdown(
-      `Would restore release ${safeCodeSpan(String(data.version))} (dry run)`
+      `Would restore release ${safeCodeSpan(String(data.version))} (dry run)`,
     );
   }
   const release = data as unknown as SentryRelease;
@@ -65,7 +66,7 @@ export const restoreCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to restore",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },
@@ -81,14 +82,14 @@ export const restoreCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string
+    target: string,
   ) {
     const { cwd } = this;
 
     const { version, org, detectedFrom } = await resolveReleaseTarget(
       target,
       USAGE_HINT,
-      cwd
+      cwd,
     );
 
     if (flags["dry-run"]) {

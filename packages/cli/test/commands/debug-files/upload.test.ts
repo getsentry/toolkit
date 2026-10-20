@@ -16,9 +16,9 @@ import { zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { app } from "../../../src/app.js";
 import type { SentryContext } from "../../../src/context.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as chunkUpload from "../../../src/lib/api/chunk-upload.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as debugFilesApi from "../../../src/lib/api/debug-files.js";
 import { useTestConfigDir } from "../../helpers.js";
 
@@ -80,7 +80,7 @@ async function writeBreakpadZip(name = "symbols.zip"): Promise<string> {
   const path = join(tempDir, name);
   await writeFile(
     path,
-    zipSync({ "example.sym": new TextEncoder().encode(BREAKPAD_FIXTURE) })
+    zipSync({ "example.sym": new TextEncoder().encode(BREAKPAD_FIXTURE) }),
   );
   return path;
 }
@@ -91,7 +91,7 @@ const EMBEDDED_PE_DEBUG_ID = "d8eb7dca-4883-4b10-a1f7-048ea1ea388b-cfb0fc89";
 /** Copy a committed binary DIF fixture into `tempDir` under `name`. */
 async function writeDifFixture(fixture: string, name: string): Promise<string> {
   const bytes = readFileSync(
-    new URL(`../../fixtures/dif/${fixture}`, import.meta.url)
+    new URL(`../../fixtures/dif/${fixture}`, import.meta.url),
   );
   const path = join(tempDir, name);
   await writeFile(path, bytes);
@@ -117,7 +117,7 @@ async function writeIl2cppFixture(): Promise<void> {
 
 /** Run `debug-files upload` and capture stdout + exit code. */
 async function runUpload(
-  args: string[]
+  args: string[],
 ): Promise<{ output: string; error: string; exitCode: number | undefined }> {
   let output = "";
   let error = "";
@@ -200,7 +200,7 @@ describe("sentry debug-files upload", () => {
     async () => {
       const { exitCode } = await runUpload(["--derived-data", "--no-upload"]);
       expect(exitCode).not.toBe(0);
-    }
+    },
   );
 
   // ── --no-upload (dry-run) ────────────────────────────────────────
@@ -387,7 +387,7 @@ describe("sentry debug-files upload", () => {
       "INFO CODE_ID DAA5130F2A41F7FBC8662048F3294F3D439CA7FF",
     ].join("\n")}\n${Array.from(
       { length: 500 },
-      (_, i) => `PUBLIC ${i.toString(16)} 0 sym_${i}`
+      (_, i) => `PUBLIC ${i.toString(16)} 0 sym_${i}`,
     ).join("\n")}`;
     await writeFile(join(tempDir, "big.sym"), bigBody);
 

@@ -18,11 +18,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
@@ -40,11 +40,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
@@ -74,7 +74,7 @@ describe("validateSpanId", () => {
 
   test("throws for too long", () => {
     expect(() => validateSpanId("a1b2c3d4e5f678901234")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -149,7 +149,7 @@ describe("parsePositionalArgs", () => {
       expect(result.kind).toBe("resolved");
       if (result.kind !== "resolved") throw new Error("unreachable");
       expect(result.traceTarget.traceId).toBe(
-        "aaaa1111bbbb2222cccc3333dddd4444"
+        "aaaa1111bbbb2222cccc3333dddd4444",
       );
       expect(result.traceTarget.type).toBe("auto-detect");
       expect(result.rawSpanIds).toEqual(["a1b2c3d4e5f67890"]);
@@ -162,7 +162,7 @@ describe("parsePositionalArgs", () => {
       expect(result.kind).toBe("resolved");
       if (result.kind !== "resolved") throw new Error("unreachable");
       expect(result.traceTarget.traceId).toBe(
-        "aaaa1111bbbb2222cccc3333dddd4444"
+        "aaaa1111bbbb2222cccc3333dddd4444",
       );
       expect(result.rawSpanIds).toEqual(["a1b2c3d4e5f67890"]);
     });
@@ -176,7 +176,7 @@ describe("parsePositionalArgs", () => {
       expect(result.kind).toBe("deferred");
       if (result.kind !== "deferred") throw new Error("unreachable");
       expect(result.rawTraceArg).toBe(
-        "my-org/aaaa1111bbbb2222cccc3333dddd4444"
+        "my-org/aaaa1111bbbb2222cccc3333dddd4444",
       );
       expect(result.rawSpanIds).toEqual(["a1b2c3d4e5f67890"]);
     });
@@ -187,7 +187,7 @@ describe("parsePositionalArgs", () => {
       // branch and throws ContextError. (A two-arg variant would defer
       // to the command layer — covered by other tests.)
       expect(() =>
-        parsePositionalArgs(["not-a-hex-id/a1b2c3d4e5f67890"])
+        parsePositionalArgs(["not-a-hex-id/a1b2c3d4e5f67890"]),
       ).toThrow(ContextError);
     });
 
@@ -198,7 +198,7 @@ describe("parsePositionalArgs", () => {
       expect(() =>
         parsePositionalArgs([
           "aaaa1111bbbb2222cccc3333dddd4444/bbbb2222cccc3333dddd4444eeee5555",
-        ])
+        ]),
       ).toThrow(ContextError);
     });
 
@@ -224,7 +224,7 @@ describe("parsePositionalArgs", () => {
         expect(msg).toContain(VALID_SPAN_ID);
         // Does not misdirect the user to `span list` with the span ID.
         expect(msg).not.toContain(
-          `span list my-org/my-project/${VALID_SPAN_ID}`
+          `span list my-org/my-project/${VALID_SPAN_ID}`,
         );
       }
     });
@@ -294,7 +294,7 @@ describe("parsePositionalArgs", () => {
 
     test("throws ContextError for bare span ID without trace ID (CLI-SC)", () => {
       expect(() => parsePositionalArgs(["a1b2c3d4e5f67890"])).toThrow(
-        ContextError
+        ContextError,
       );
     });
 
@@ -314,7 +314,7 @@ describe("parsePositionalArgs", () => {
     test("bare span ID with dashes is still detected (CLI-SC)", () => {
       // Some tools format span IDs with dashes
       expect(() => parsePositionalArgs(["a1b2-c3d4-e5f6-7890"])).toThrow(
-        ContextError
+        ContextError,
       );
     });
   });
@@ -410,7 +410,7 @@ describe("viewCommand.func", () => {
         fresh: false,
       },
       VALID_TRACE_ID,
-      VALID_SPAN_ID
+      VALID_SPAN_ID,
     );
 
     const output = getStdout();
@@ -431,8 +431,8 @@ describe("viewCommand.func", () => {
           fresh: false,
         },
         VALID_TRACE_ID,
-        VALID_SPAN_ID
-      )
+        VALID_SPAN_ID,
+      ),
     ).rejects.toThrow(ResolutionError);
   });
 
@@ -449,8 +449,8 @@ describe("viewCommand.func", () => {
           fresh: false,
         },
         VALID_TRACE_ID,
-        VALID_SPAN_ID
-      )
+        VALID_SPAN_ID,
+      ),
     ).rejects.toThrow(ResolutionError);
   });
 
@@ -466,7 +466,7 @@ describe("viewCommand.func", () => {
         fresh: false,
       },
       `my-org/my-project/${VALID_TRACE_ID}`,
-      VALID_SPAN_ID
+      VALID_SPAN_ID,
     );
 
     expect(getDetailedTraceSpy).toHaveBeenCalledWith("my-org", VALID_TRACE_ID);
@@ -486,7 +486,7 @@ describe("viewCommand.func", () => {
       { spans: 0, fresh: false },
       VALID_TRACE_ID,
       FOUND_SPAN,
-      MISSING_SPAN
+      MISSING_SPAN,
     );
 
     const output = getStdout();
@@ -505,7 +505,7 @@ describe("viewCommand.func", () => {
       context,
       { spans: 3, fresh: false },
       VALID_TRACE_ID,
-      VALID_SPAN_ID
+      VALID_SPAN_ID,
     );
 
     const output = getStdout();
@@ -523,7 +523,7 @@ describe("viewCommand.func", () => {
       context,
       { spans: 0, fresh: false, json: true },
       VALID_TRACE_ID,
-      VALID_SPAN_ID
+      VALID_SPAN_ID,
     );
 
     const output = getStdout();
@@ -543,9 +543,9 @@ describe("viewCommand.func", () => {
       func.call(
         context,
         { spans: 0, fresh: false },
-        `my-org/my-project/${VALID_TRACE_ID}`
+        `my-org/my-project/${VALID_TRACE_ID}`,
         // No span IDs — but we need at least one
-      )
+      ),
     ).rejects.toThrow(ContextError);
   });
 
@@ -560,8 +560,8 @@ describe("viewCommand.func", () => {
         { spans: 0, fresh: false },
         VALID_TRACE_ID,
         VALID_SPAN_ID,
-        VALID_SPAN_ID_2
-      )
+        VALID_SPAN_ID_2,
+      ),
     ).rejects.toThrow(ResolutionError);
   });
 });

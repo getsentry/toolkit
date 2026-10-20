@@ -100,7 +100,7 @@ function isSofJpegMarker(marker: number): boolean {
  * found within the buffer or the stream is malformed.
  */
 function readJpegDimensions(
-  body: Uint8Array
+  body: Uint8Array,
 ): { width: number; height: number } | undefined {
   // Must read up to offset+8 (the 2-byte width) for a SOF, so require
   // offset+8 to be in bounds (offset+9 <= body.length).
@@ -153,7 +153,7 @@ function readJpegDimensions(
  */
 export function readImageDimensions(
   body: Uint8Array,
-  format: SupportedImageFormat
+  format: SupportedImageFormat,
 ): { width: number; height: number } | undefined {
   if (format === "png") {
     if (body.length < 24) {
@@ -174,7 +174,7 @@ export function readImageDimensions(
  */
 export function detectImageFormat(
   body: Uint8Array,
-  contentType?: string | null
+  contentType?: string | null,
 ): SupportedImageFormat | undefined {
   // PNG signature: 89 50 4E 47 0D 0A 1A 0A
   if (
@@ -212,7 +212,7 @@ export function detectImageFormat(
  */
 export function decodeImage(
   body: Uint8Array,
-  format: SupportedImageFormat
+  format: SupportedImageFormat,
 ): DecodedImage | undefined {
   const dims = readImageDimensions(body, format);
   if (
@@ -220,7 +220,7 @@ export function decodeImage(
     (dims.width > MAX_DECODE_DIMENSION || dims.height > MAX_DECODE_DIMENSION)
   ) {
     log.debug(
-      `Refusing to decode ${format} image: declared dimensions ${dims.width}×${dims.height} exceed ${MAX_DECODE_DIMENSION}px cap`
+      `Refusing to decode ${format} image: declared dimensions ${dims.width}×${dims.height} exceed ${MAX_DECODE_DIMENSION}px cap`,
     );
     return;
   }
@@ -247,7 +247,7 @@ export function decodeImage(
 function pixelAt(
   img: DecodedImage,
   x: number,
-  y: number
+  y: number,
 ): [number, number, number, number] {
   const i = (y * img.width + x) * 4;
   return [
@@ -271,7 +271,7 @@ function pixelAt(
 export function downscale(
   img: DecodedImage,
   maxWidth: number,
-  maxHeight: number
+  maxHeight: number,
 ): DecodedImage {
   if (img.width <= maxWidth && img.height <= maxHeight) {
     return img;
@@ -362,7 +362,7 @@ function collectOpaqueColors(img: DecodedImage): [number, number, number][] {
  * when none can be usefully divided further.
  */
 function selectSplitTarget(
-  boxes: ColorBox[]
+  boxes: ColorBox[],
 ): { index: number; channel: number } | undefined {
   let index = -1;
   let channel = 0;
@@ -382,7 +382,7 @@ function selectSplitTarget(
 /** Split a box in two at the median of the given channel. */
 function splitBox(box: ColorBox, channel: number): [ColorBox, ColorBox] {
   const sorted = [...box.colors].sort(
-    (a, b) => (a[channel] as number) - (b[channel] as number)
+    (a, b) => (a[channel] as number) - (b[channel] as number),
   );
   const mid = Math.floor(sorted.length / 2);
   return [{ colors: sorted.slice(0, mid) }, { colors: sorted.slice(mid) }];
@@ -394,7 +394,7 @@ function splitBox(box: ColorBox, channel: number): [ColorBox, ColorBox] {
  */
 export function buildPalette(
   img: DecodedImage,
-  size: number
+  size: number,
 ): [number, number, number][] {
   const colors = collectOpaqueColors(img);
   if (colors.length === 0) {
@@ -409,7 +409,7 @@ export function buildPalette(
     }
     const [left, right] = splitBox(
       boxes[target.index] as ColorBox,
-      target.channel
+      target.channel,
     );
     boxes = [
       ...boxes.slice(0, target.index),
@@ -427,7 +427,7 @@ function nearestPaletteIndex(
   palette: [number, number, number][],
   r: number,
   g: number,
-  b: number
+  b: number,
 ): number {
   let best = 0;
   let bestDist = Number.POSITIVE_INFINITY;
@@ -466,7 +466,7 @@ type IndexedPlane = {
 function encodeColorBand(
   plane: IndexedPlane,
   y0: number,
-  colorIndex: number
+  colorIndex: number,
 ): string {
   const { indices, width, height } = plane;
   const parts: string[] = [];
@@ -534,7 +534,7 @@ function colorsInBand(plane: IndexedPlane, y0: number): number[] {
 export function encodeImageToSixel(
   img: DecodedImage,
   maxWidth?: number,
-  preserveDimensions = false
+  preserveDimensions = false,
 ): string | undefined {
   const effectiveMaxWidth = preserveDimensions
     ? (maxWidth ?? DEFAULT_MAX_WIDTH)
@@ -542,7 +542,7 @@ export function encodeImageToSixel(
   const scaled = downscale(
     img,
     effectiveMaxWidth,
-    preserveDimensions ? img.height : DEFAULT_MAX_HEIGHT
+    preserveDimensions ? img.height : DEFAULT_MAX_HEIGHT,
   );
   const palette = buildPalette(scaled, PALETTE_SIZE);
   if (palette.length === 0) {
@@ -597,7 +597,7 @@ export function encodeImageToSixel(
 export function imageBytesToSixel(
   body: Uint8Array,
   contentType?: string | null,
-  maxWidth?: number
+  maxWidth?: number,
 ): string | undefined {
   const format = detectImageFormat(body, contentType);
   if (!format) {

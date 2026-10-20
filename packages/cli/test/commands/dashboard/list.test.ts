@@ -25,11 +25,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
@@ -39,11 +39,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 import { ContextError } from "../../../src/lib/errors.js";
 
@@ -54,11 +54,11 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
@@ -68,11 +68,11 @@ vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -82,11 +82,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { DashboardListItem } from "../../../src/types/dashboard.js";
 
@@ -159,14 +159,14 @@ const DASHBOARD_C: DashboardListItem = {
 
 describe("dashboard list command", () => {
   const listDashboardsPaginatedSpy = vi.mocked(
-    apiClient.listDashboardsPaginated
+    apiClient.listDashboardsPaginated,
   );
   const resolveOrgSpy = vi.mocked(resolveTarget.resolveOrgOnlyTarget);
   const openInBrowserSpy = vi.mocked(browser.openInBrowser);
   const withProgressSpy = vi.mocked(polling.withProgress);
   const resolveCursorSpy = vi.mocked(paginationDb.resolveCursor);
   const advancePaginationStateSpy = vi.mocked(
-    paginationDb.advancePaginationState
+    paginationDb.advancePaginationState,
   );
   const hasPreviousPageSpy = vi.mocked(paginationDb.hasPreviousPage);
 
@@ -176,7 +176,7 @@ describe("dashboard list command", () => {
     withProgressSpy.mockImplementation((_opts, fn) =>
       fn(() => {
         /* no-op setMessage */
-      })
+      }),
     );
     resolveCursorSpy.mockReturnValue({
       cursor: undefined,
@@ -310,7 +310,7 @@ describe("dashboard list command", () => {
     // perPage derivation tested via integration in the command's own tests.
     expect(listDashboardsPaginatedSpy).toHaveBeenCalledWith(
       "test-org",
-      expect.objectContaining({ cursor: undefined })
+      expect.objectContaining({ cursor: undefined }),
     );
   });
 
@@ -503,20 +503,20 @@ describe("dashboard list command", () => {
 
     expect(listDashboardsPaginatedSpy).toHaveBeenCalledWith(
       "my-org",
-      expect.objectContaining({ cursor: undefined })
+      expect.objectContaining({ cursor: undefined }),
     );
   });
 
   test("throws ContextError when org cannot be resolved", async () => {
     resolveOrgSpy.mockRejectedValue(
-      new ContextError("Organization", "sentry dashboard list")
+      new ContextError("Organization", "sentry dashboard list"),
     );
 
     const { context } = createMockContext();
     const func = await listCommand.loader();
 
     await expect(func.call(context, defaultFlags())).rejects.toThrow(
-      "organization"
+      "organization",
     );
   });
 

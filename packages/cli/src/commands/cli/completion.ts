@@ -48,11 +48,11 @@ export const completionCommand = buildCommand({
       ],
     },
   },
-  // biome-ignore lint/suspicious/useAwait: Stricli requires AsyncGenerator but script generation is synchronous
+  // Stricli requires AsyncGenerator but script generation is synchronous
   async *func(
     this: SentryContext,
     _flags: Record<string, never>,
-    shell?: string
+    shell?: string,
   ) {
     const shellType = shell
       ? detectShellType(shell)
@@ -62,7 +62,7 @@ export const completionCommand = buildCommand({
     if (script === null) {
       throw new ValidationError(
         `Unsupported shell: ${shell || shellType}. Supported shells: bash, zsh, fish`,
-        "shell"
+        "shell",
       );
     }
 

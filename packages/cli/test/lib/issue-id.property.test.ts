@@ -36,14 +36,17 @@ const numericArb = array(constantFrom(..."0123456789".split("")), {
 const alphanumericWithLetterArb = tuple(
   array(
     constantFrom(
-      ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")
+      ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""),
     ),
     {
       minLength: 1,
       maxLength: 10,
-    }
+    },
   ),
-  array(constantFrom(..."0123456789".split("")), { minLength: 0, maxLength: 5 })
+  array(constantFrom(..."0123456789".split("")), {
+    minLength: 0,
+    maxLength: 5,
+  }),
 ).map(([letters, digits]) => [...letters, ...digits].join(""));
 
 /** Generate valid project slugs (lowercase alphanumeric with hyphens) */
@@ -52,7 +55,7 @@ const projectSlugArb = array(
   {
     minLength: 1,
     maxLength: 30,
-  }
+  },
 )
   .map((chars) => chars.join(""))
   .filter((s) => !(s.startsWith("-") || s.endsWith("-")) && s.length > 0);
@@ -61,10 +64,10 @@ const projectSlugArb = array(
 const shortSuffixArb = array(
   constantFrom(
     ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split(
-      ""
-    )
+      "",
+    ),
   ),
-  { minLength: 1, maxLength: 10 }
+  { minLength: 1, maxLength: 10 },
 ).map((chars) => chars.join(""));
 
 /** Generate alias-suffix format strings */
@@ -73,7 +76,7 @@ const aliasSuffixFormatArb = tuple(
     minLength: 1,
     maxLength: 10,
   }),
-  shortSuffixArb
+  shortSuffixArb,
 ).map(([aliasChars, suffix]) => `${aliasChars.join("")}-${suffix}`);
 
 // Properties for isAllDigits
@@ -84,7 +87,7 @@ describe("property: isAllDigits", () => {
       property(numericArb, (digits) => {
         expect(isAllDigits(digits)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -93,7 +96,7 @@ describe("property: isAllDigits", () => {
       property(alphanumericWithLetterArb, (str) => {
         expect(isAllDigits(str)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -103,7 +106,7 @@ describe("property: isAllDigits", () => {
         const withHyphen = `${a}-${b}`;
         expect(isAllDigits(withHyphen)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -116,7 +119,7 @@ describe("property: isAllDigits", () => {
       property(nat(999_999_999), (n) => {
         expect(isAllDigits(String(n))).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -129,7 +132,7 @@ describe("property: isShortSuffix", () => {
       property(shortSuffixArb, (suffix) => {
         expect(isShortSuffix(suffix)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -139,7 +142,7 @@ describe("property: isShortSuffix", () => {
         const withHyphen = `${a}-${b}`;
         expect(isShortSuffix(withHyphen)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -148,7 +151,7 @@ describe("property: isShortSuffix", () => {
       property(numericArb, (digits) => {
         expect(isShortSuffix(digits)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -159,9 +162,9 @@ describe("property: isShortSuffix", () => {
         tuple(shortSuffixArb, constantFrom(...specialChars.split(""))),
         ([suffix, special]) => {
           expect(isShortSuffix(suffix + special)).toBe(false);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -174,7 +177,7 @@ describe("property: isShortId", () => {
       property(alphanumericWithLetterArb, (str) => {
         expect(isShortId(str)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -183,7 +186,7 @@ describe("property: isShortId", () => {
       property(numericArb, (digits) => {
         expect(isShortId(digits)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -200,9 +203,9 @@ describe("property: isShortId", () => {
           const isShort = isShortId(str);
           const isNumeric = isAllDigits(str);
           expect(isShort && isNumeric).toBe(false);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -218,7 +221,7 @@ describe("property: parseAliasSuffix", () => {
         expect(result?.alias).toBeDefined();
         expect(result?.suffix).toBeDefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -230,7 +233,7 @@ describe("property: parseAliasSuffix", () => {
           expect(result.alias).toBe(result.alias.toLowerCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -242,7 +245,7 @@ describe("property: parseAliasSuffix", () => {
           expect(result.suffix).toBe(result.suffix.toUpperCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -253,7 +256,7 @@ describe("property: parseAliasSuffix", () => {
         const result = parseAliasSuffix(input);
         expect(result).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -267,7 +270,7 @@ describe("property: parseAliasSuffix", () => {
           expect(reconstructed.toLowerCase()).toBe(input.toLowerCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -282,9 +285,9 @@ describe("property: expandToFullShortId", () => {
         ([suffix, projectSlug]) => {
           const result = expandToFullShortId(suffix, projectSlug);
           expect(result).toBe(result.toUpperCase());
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -295,9 +298,9 @@ describe("property: expandToFullShortId", () => {
         ([suffix, projectSlug]) => {
           const result = expandToFullShortId(suffix, projectSlug);
           expect(result).toContain("-");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -308,9 +311,9 @@ describe("property: expandToFullShortId", () => {
         ([suffix, projectSlug]) => {
           const result = expandToFullShortId(suffix, projectSlug);
           expect(result.endsWith(suffix.toUpperCase())).toBe(true);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -321,9 +324,9 @@ describe("property: expandToFullShortId", () => {
         ([suffix, projectSlug]) => {
           const result = expandToFullShortId(suffix, projectSlug);
           expect(result.startsWith(projectSlug.toUpperCase())).toBe(true);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -335,9 +338,9 @@ describe("property: expandToFullShortId", () => {
           const result = expandToFullShortId(suffix, projectSlug);
           const expected = `${projectSlug.toUpperCase()}-${suffix.toUpperCase()}`;
           expect(result).toBe(expected);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -349,12 +352,12 @@ describe("property: expandToFullShortId", () => {
           const result1 = expandToFullShortId(suffix, projectSlug);
           const result2 = expandToFullShortId(
             suffix.toUpperCase(),
-            projectSlug.toUpperCase()
+            projectSlug.toUpperCase(),
           );
           expect(result1).toBe(result2);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -372,9 +375,9 @@ describe("property: cross-function invariants", () => {
 
           const expanded = expandToFullShortId(suffix, projectSlug);
           expect(isShortId(expanded)).toBe(true);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -386,11 +389,11 @@ describe("property: cross-function invariants", () => {
           // Use alias as project slug for expansion
           const expanded = expandToFullShortId(parsed.suffix, parsed.alias);
           expect(expanded).toBe(
-            `${parsed.alias.toUpperCase()}-${parsed.suffix}`
+            `${parsed.alias.toUpperCase()}-${parsed.suffix}`,
           );
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -414,7 +417,7 @@ describe("property: cross-function invariants", () => {
           expect(numeric || short).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

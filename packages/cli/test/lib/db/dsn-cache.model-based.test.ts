@@ -5,7 +5,7 @@
  * and verify the system behaves correctly against a simplified model.
  */
 
-// biome-ignore-all lint/suspicious/noMisplacedAssertion: Model-based testing uses expect() inside command classes
+// Model-based tests use expect() inside command classes, as required by fast-check.
 
 import {
   type AsyncCommand,
@@ -111,19 +111,19 @@ const directoryArb = constantFrom(
   "/home/user/project1",
   "/home/user/project2",
   "/tmp/test",
-  "/var/app"
+  "/var/app",
 );
 
 const dsnArb = tuple(
   constantFrom("abc123", "def456", "xyz789"),
   constantFrom("12345", "67890", "11111"),
-  constantFrom("sentry.io", "us.sentry.io", "de.sentry.io")
+  constantFrom("sentry.io", "us.sentry.io", "de.sentry.io"),
 ).map(([key, projectId, host]) => `https://${key}@${host}/${projectId}`);
 
 const sourceArb = constantFrom(
   "env" as CachedDsnEntry["source"],
   "env_file" as CachedDsnEntry["source"],
-  "code" as CachedDsnEntry["source"]
+  "code" as CachedDsnEntry["source"],
 );
 
 const slugArb = constantFrom(
@@ -132,7 +132,7 @@ const slugArb = constantFrom(
   "test-org",
   "my-project",
   "backend",
-  "frontend"
+  "frontend",
 );
 
 const projectIdArb = constantFrom("12345", "67890", "11111", "22222");
@@ -145,7 +145,7 @@ const resolvedInfoArb = tuple(slugArb, slugArb, slugArb, slugArb).map(
     orgName,
     projectSlug,
     projectName,
-  })
+  }),
 );
 
 // DSN Cache Commands
@@ -215,9 +215,10 @@ class GetCachedDsnCommand implements AsyncCommand<CacheModel, RealCache> {
   }
 }
 
-class UpdateCachedResolutionCommand
-  implements AsyncCommand<CacheModel, RealCache>
-{
+class UpdateCachedResolutionCommand implements AsyncCommand<
+  CacheModel,
+  RealCache
+> {
   private readonly directory: string;
   private readonly resolved: ResolvedInfo;
 
@@ -340,9 +341,10 @@ type DsnKeyInput = {
   info: ResolvedInfo;
 };
 
-class SetCachedProjectByDsnKeyCommand
-  implements AsyncCommand<CacheModel, RealCache>
-{
+class SetCachedProjectByDsnKeyCommand implements AsyncCommand<
+  CacheModel,
+  RealCache
+> {
   private readonly input: DsnKeyInput;
 
   constructor(input: DsnKeyInput) {
@@ -364,9 +366,10 @@ class SetCachedProjectByDsnKeyCommand
   }
 }
 
-class GetCachedProjectByDsnKeyCommand
-  implements AsyncCommand<CacheModel, RealCache>
-{
+class GetCachedProjectByDsnKeyCommand implements AsyncCommand<
+  CacheModel,
+  RealCache
+> {
   private readonly publicKey: string;
 
   constructor(publicKey: string) {
@@ -415,7 +418,7 @@ const dsnEntryArb = tuple(
   projectIdArb,
   option(orgIdArb, { nil: undefined }),
   sourceArb,
-  option(constantFrom(".env", "src/index.ts", "config.py"), { nil: undefined })
+  option(constantFrom(".env", "src/index.ts", "config.py"), { nil: undefined }),
 ).map(([directory, dsn, projectId, orgId, source, sourcePath]) => ({
   directory,
   dsn,
@@ -426,41 +429,41 @@ const dsnEntryArb = tuple(
 }));
 
 const setCachedDsnCmdArb = dsnEntryArb.map(
-  (entry) => new SetCachedDsnCommand(entry)
+  (entry) => new SetCachedDsnCommand(entry),
 );
 
 const getCachedDsnCmdArb = directoryArb.map(
-  (dir) => new GetCachedDsnCommand(dir)
+  (dir) => new GetCachedDsnCommand(dir),
 );
 
 const updateResolutionCmdArb = tuple(directoryArb, resolvedInfoArb).map(
-  ([dir, resolved]) => new UpdateCachedResolutionCommand(dir, resolved)
+  ([dir, resolved]) => new UpdateCachedResolutionCommand(dir, resolved),
 );
 
 const clearDsnCacheCmdArb = option(directoryArb, { nil: undefined }).map(
-  (dir) => new ClearDsnCacheCommand(dir)
+  (dir) => new ClearDsnCacheCommand(dir),
 );
 
 const setCachedProjectCmdArb = tuple(
   orgIdArb,
   projectIdArb,
-  resolvedInfoArb
+  resolvedInfoArb,
 ).map(
   ([orgId, projectId, info]) =>
-    new SetCachedProjectCommand({ orgId, projectId, info })
+    new SetCachedProjectCommand({ orgId, projectId, info }),
 );
 
 const getCachedProjectCmdArb = tuple(orgIdArb, projectIdArb).map(
-  ([orgId, projectId]) => new GetCachedProjectCommand({ orgId, projectId })
+  ([orgId, projectId]) => new GetCachedProjectCommand({ orgId, projectId }),
 );
 
 const setCachedProjectByDsnKeyCmdArb = tuple(publicKeyArb, resolvedInfoArb).map(
   ([publicKey, info]) =>
-    new SetCachedProjectByDsnKeyCommand({ publicKey, info })
+    new SetCachedProjectByDsnKeyCommand({ publicKey, info }),
 );
 
 const getCachedProjectByDsnKeyCmdArb = publicKeyArb.map(
-  (key) => new GetCachedProjectByDsnKeyCommand(key)
+  (key) => new GetCachedProjectByDsnKeyCommand(key),
 );
 
 const clearProjectCacheCmdArb = constant(new ClearProjectCacheCommand());
@@ -502,7 +505,7 @@ describe("model-based: DSN and project cache", () => {
       {
         numRuns: DEFAULT_NUM_RUNS,
         verbose: false,
-      }
+      },
     );
   });
 
@@ -522,9 +525,9 @@ describe("model-based: DSN and project cache", () => {
           } finally {
             cleanup();
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -551,9 +554,9 @@ describe("model-based: DSN and project cache", () => {
           } finally {
             cleanup();
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -577,9 +580,9 @@ describe("model-based: DSN and project cache", () => {
           } finally {
             cleanup();
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

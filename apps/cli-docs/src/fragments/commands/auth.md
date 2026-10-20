@@ -44,11 +44,12 @@ sentry auth --scope project:read,event:read
 
 ### Self-hosted Sentry
 
-Use `--url` (recommended) or the `SENTRY_URL` environment variable:
+Pass `--url` to log in to a self-hosted instance. Setting `SENTRY_HOST` or
+`SENTRY_URL` alone is not enough: the CLI refuses to log in to a self-hosted
+host unless `--url` confirms it.
 
 ```bash
 sentry auth --url https://sentry.example.com
-SENTRY_URL=https://sentry.example.com sentry auth
 ```
 
 For token-based auth with self-hosted:
@@ -57,12 +58,89 @@ For token-based auth with self-hosted:
 sentry auth --token YOUR_TOKEN --url https://sentry.example.com
 ```
 
-See [Self-Hosted Sentry](../self-hosted/) for details.
+See [Self-Hosted Sentry](../../self-hosted/) for details.
+
+### Multiple accounts
+
+The CLI can store several accounts at once — for example a work and a personal
+account, or a SaaS and a self-hosted login. When you're already logged in,
+`sentry auth login` asks whether to add another account and makes it active;
+logging in again as the same user on the same server replaces that account's
+credentials instead of adding a duplicate. `--force` skips the prompt and
+replaces the stored login for that server instead (or adds one when that
+server has none); accounts on other servers are never replaced.
+
+```bash
+# Add (or log in again to) a specific account without prompting
+sentry auth login jane@example.com
+sentry auth login jane@example.com --url https://sentry.example.com
+sentry auth login jane@example.com:sentry.example.com   # same as --url
+
+# Show stored accounts; * marks the active one
+sentry auth list
+
+# Switch the account commands use (pick from a searchable list without an argument)
+sentry auth switch jane@example.com
+sentry auth switch
+```
+
+Sentry approves a device-flow login as whoever is signed in to the browser, so
+`sentry auth login <email>` checks the approved account and refuses (saving
+nothing) if it belongs to someone else.
+
+Select an account by email, username, user ID, or account ID (from
+`sentry auth list --json`). `sentry auth switch` also accepts a close match —
+`sentry auth switch jane` picks `jane@example.com` with a warning when it's the
+only candidate. If the same email is stored on several servers, add the server
+after a colon, as `sentry org list` shows it
+(`sentry auth switch jane@example.com:sentry.example.com`), or pass `--url`:
+`sentry auth switch jane@example.com --url https://sentry.example.com`.
+
+Most of the time you don't need to switch: commands pick the stored account
+that fits what they target, without changing the active account:
+
+- **Organization** — when the target organization isn't in the active
+  account's organization list (cached at login and by `sentry org list`,
+  which lists every stored account's organizations) but another stored
+  account has used it, that account is used. This includes `oNNNN` IDs from
+  DSNs.
+- **Server** — `SENTRY_HOST`/`SENTRY_URL`, `.sentryclirc`, or a pasted Sentry
+  URL for another account's server (for example a self-hosted issue link) uses
+  the account stored for that server.
+
+```bash
+# Active account is personal; this uses the work account that knows acme-corp
+sentry issue list acme-corp/
+
+# Uses the self-hosted account without switching
+sentry issue view https://sentry.example.com/organizations/acme/issues/123/
+```
+
+Otherwise the active account is used. One command never mixes accounts; when
+several other accounts know the organization, the most recently used wins.
+This works even when the active account is logged out: the target can still
+pick a stored account that can authenticate.
+
+Switching also points the default URL (`sentry cli defaults url`) at the
+account's server. `SENTRY_HOST`/`SENTRY_URL` and `SENTRY_AUTH_TOKEN` (with
+`SENTRY_FORCE_ENV_TOKEN=1`) still take precedence over the active account.
+Default organization and project settings are shared by all accounts.
 
 ### Logout
 
 ```bash
+# Log out of the active account (the most recently used other account becomes active)
 sentry auth logout
+
+# Log out of specific accounts (space- or comma-separated)
+sentry auth logout jane@example.com
+sentry auth logout jane@example.com,jane@personal.dev
+
+# Pick the account on one server when the same email is stored twice
+sentry auth logout jane@example.com --url https://sentry.example.com
+
+# Log out of every stored account
+sentry auth logout all
 ```
 
 ### Refresh the OAuth access token

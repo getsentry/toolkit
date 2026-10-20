@@ -14,16 +14,16 @@ import {
   formatDashboardWithData,
 } from "../../../src/lib/formatters/dashboard.js";
 import { logger } from "../../../src/lib/logger.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.spyOn mocking
 import * as sixelModule from "../../../src/lib/sixel.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.spyOn mocking
 import * as sixelImageModule from "../../../src/lib/sixel-image.js";
 import type { TimeseriesResult } from "../../../src/types/dashboard.js";
 
 const ESC = "\x1b";
 
 function makeTimeseries(
-  overrides: Partial<TimeseriesResult> = {}
+  overrides: Partial<TimeseriesResult> = {},
 ): TimeseriesResult {
   return {
     type: "timeseries",
@@ -43,7 +43,7 @@ function makeTimeseries(
 }
 
 function makeWidget(
-  overrides: Partial<DashboardViewWidget> = {}
+  overrides: Partial<DashboardViewWidget> = {},
 ): DashboardViewWidget {
   return {
     title: "Test Widget",
@@ -54,7 +54,7 @@ function makeWidget(
 }
 
 function makeDashboardData(
-  overrides: Partial<DashboardViewData> = {}
+  overrides: Partial<DashboardViewData> = {},
 ): DashboardViewData {
   return {
     id: "12345",
@@ -122,10 +122,10 @@ describe("dashboard sixel integration", () => {
     formatDashboardWithData(makeDashboardData());
 
     expect(debugSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Dashboard graphics renderer: sixel")
+      expect.stringContaining("Dashboard graphics renderer: sixel"),
     );
     expect(debugSpy).toHaveBeenCalledWith(
-      expect.stringContaining("capabilities: kitty=no, sixel=yes")
+      expect.stringContaining("capabilities: kitty=no, sixel=yes"),
     );
   });
 
@@ -153,11 +153,11 @@ describe("dashboard sixel integration", () => {
 
   test("uses a requested sixel renderer instead of an available kitty renderer", () => {
     vi.mocked(sixelModule.selectGraphicsFormat).mockImplementation(
-      (renderer) => (renderer === "sixel" ? "sixel" : "kitty")
+      (renderer) => (renderer === "sixel" ? "sixel" : "kitty"),
     );
 
     const output = formatDashboardWithData(
-      makeDashboardData({ rendererPreference: "sixel" })
+      makeDashboardData({ rendererPreference: "sixel" }),
     );
 
     expect(output).toContain(`${ESC}P`);
@@ -173,12 +173,12 @@ describe("dashboard sixel integration", () => {
     const debugSpy = vi.spyOn(logger, "debug");
 
     const output = formatDashboardWithData(
-      makeDashboardData({ rendererPreference: "sixel" })
+      makeDashboardData({ rendererPreference: "sixel" }),
     );
 
     expect(output).toContain(`${ESC}_G`);
     expect(debugSpy).toHaveBeenCalledWith(
-      expect.stringContaining("requested=sixel")
+      expect.stringContaining("requested=sixel"),
     );
   });
 
@@ -193,10 +193,10 @@ describe("dashboard sixel integration", () => {
     formatDashboardWithData(makeDashboardData());
 
     expect(debugSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Dashboard graphics renderer: kitty")
+      expect.stringContaining("Dashboard graphics renderer: kitty"),
     );
     expect(debugSpy).toHaveBeenCalledWith(
-      expect.stringContaining("capabilities: kitty=yes, sixel=no")
+      expect.stringContaining("capabilities: kitty=yes, sixel=no"),
     );
   });
 
@@ -258,7 +258,7 @@ describe("dashboard sixel integration", () => {
             data: { type: "unsupported", reason: "Not implemented" },
           }),
         ],
-      })
+      }),
     );
 
     expect(output.split(`${ESC}P`)).toHaveLength(2);
@@ -313,7 +313,7 @@ describe("dashboard sixel integration", () => {
     const output = formatDashboardWithData(
       makeDashboardData({
         widgets: [makeWidget({ layout: { x: 0, y: 0, w: 6, h: 1 } })],
-      })
+      }),
     );
 
     expect(output).toContain('"1;1;1024;72');
@@ -324,7 +324,7 @@ describe("dashboard sixel integration", () => {
     const output = formatDashboardWithData(
       makeDashboardData({
         widgets: [makeWidget({ layout: { x: 0, y: 0, w: 6, h: 1 } })],
-      })
+      }),
     );
 
     expect(output).toContain('"1;1;320;72');
@@ -342,7 +342,7 @@ describe("dashboard sixel integration", () => {
             layout: { x: 1, y: 0, w: 1, h: 1 },
           }),
         ],
-      })
+      }),
     );
 
     expect(output).toContain('"1;1;32;72');
@@ -362,7 +362,7 @@ describe("dashboard sixel integration", () => {
             layout: { x: 0, y: 0, w: 6, h: 1 },
           }),
         ],
-      })
+      }),
     );
 
     expect(output).not.toContain(`${ESC}P`);
@@ -381,12 +381,12 @@ describe("dashboard sixel integration", () => {
     formatDashboardWithData(makeDashboardData());
 
     expect(debugSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Dashboard graphics renderer: ascii")
+      expect.stringContaining("Dashboard graphics renderer: ascii"),
     );
     expect(debugSpy).toHaveBeenCalledWith(
       expect.stringContaining(
-        "reason: no compatible graphics protocol detected"
-      )
+        "reason: no compatible graphics protocol detected",
+      ),
     );
   });
 
@@ -398,10 +398,10 @@ describe("dashboard sixel integration", () => {
     expect(output).not.toContain(`${ESC}P`);
     expect(output).not.toContain(`${ESC}_G`);
     expect(debugSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Dashboard graphics renderer: ascii")
+      expect.stringContaining("Dashboard graphics renderer: ascii"),
     );
     expect(debugSpy).toHaveBeenCalledWith(
-      expect.stringContaining("reason: no dashboard widgets")
+      expect.stringContaining("reason: no dashboard widgets"),
     );
   });
 
@@ -418,19 +418,19 @@ describe("dashboard sixel integration", () => {
       makeDashboardData({
         graphicsCap: false,
         widgets: [makeWidget({ layout: { x: 0, y: 12, w: 6, h: 1 } })],
-      })
+      }),
     );
 
     expect(output).not.toContain(`${ESC}P`);
     expect(debugSpy).toHaveBeenCalledWith(
       expect.stringContaining(
-        "reason: canvas 3416x2496 (8.53M pixels) exceeds the 8M pixel limit"
-      )
+        "reason: canvas 3416x2496 (8.53M pixels) exceeds the 8M pixel limit",
+      ),
     );
     expect(debugSpy).toHaveBeenCalledWith(
       expect.stringContaining(
-        "native pixel width=3416; effective pixel width=3416; graphics cap=not applied"
-      )
+        "native pixel width=3416; effective pixel width=3416; graphics cap=not applied",
+      ),
     );
   });
 
@@ -442,21 +442,21 @@ describe("dashboard sixel integration", () => {
       cellHeight: 32,
     });
     vi.spyOn(sixelImageModule, "encodeImageToSixel").mockImplementation(
-      (image) => `${ESC}P${image.width}x${image.height}${ESC}\\`
+      (image) => `${ESC}P${image.width}x${image.height}${ESC}\\`,
     );
     const debugSpy = vi.spyOn(logger, "debug");
 
     const output = formatDashboardWithData(
       makeDashboardData({
         widgets: [makeWidget({ layout: { x: 0, y: 12, w: 6, h: 1 } })],
-      })
+      }),
     );
 
     expect(output).toContain(`${ESC}P2548x2496${ESC}\\`);
     expect(debugSpy).toHaveBeenCalledWith(
       expect.stringContaining(
-        "native pixel width=3416; effective pixel width=2548; graphics cap=applied"
-      )
+        "native pixel width=3416; effective pixel width=2548; graphics cap=applied",
+      ),
     );
   });
 
@@ -479,7 +479,7 @@ describe("dashboard sixel integration", () => {
             layout: { x: 0, y: 0, w: 6, h: 1 },
           }),
         ],
-      })
+      }),
     );
 
     expect(output).toContain(`${ESC}_G`);

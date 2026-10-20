@@ -16,11 +16,11 @@ vi.mock("../../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
 import { ValidationError } from "../../../../src/lib/errors.js";
 
@@ -33,11 +33,11 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
 
@@ -141,7 +141,7 @@ describe("dashboard widget delete", () => {
         widgets: expect.not.arrayContaining([
           expect.objectContaining({ title: "Error Count" }),
         ]),
-      })
+      }),
     );
     // Only one widget should remain after deleting index 0
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -155,7 +155,7 @@ describe("dashboard widget delete", () => {
     await func.call(
       context,
       { json: false, yes: true, title: "Slow Spans" },
-      "123"
+      "123",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];

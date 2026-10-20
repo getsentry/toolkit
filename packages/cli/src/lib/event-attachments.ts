@@ -70,7 +70,7 @@ function trimTrailingSlashes(value: string): string {
 
 function attachmentDownloadUrl(
   target: AttachmentTarget,
-  attachmentId: string
+  attachmentId: string,
 ): string {
   const origin = trimTrailingSlashes(target.apiBase);
   const path = [
@@ -110,7 +110,7 @@ async function resolveAttachmentApiBase(org: string): Promise<string> {
 export async function loadEventAttachments(
   org: string,
   project: string | undefined,
-  eventId: string
+  eventId: string,
 ): Promise<EventViewAttachment[]> {
   if (!project) {
     return [];
@@ -152,13 +152,13 @@ function formatAttachment(attachment: EventAttachmentDetailsResponse): string {
  * Human-readable attachments section, or empty string when there are none.
  */
 export function formatEventAttachments(
-  attachments: EventAttachmentDetailsResponse[]
+  attachments: EventAttachmentDetailsResponse[],
 ): string {
   if (attachments.length === 0) {
     return "";
   }
   return renderMarkdown(
-    ["### Attachments", "", ...attachments.map(formatAttachment)].join("\n")
+    ["### Attachments", "", ...attachments.map(formatAttachment)].join("\n"),
   );
 }
 
@@ -166,7 +166,7 @@ export function formatEventAttachments(
  * Footer hint with a copy-pasteable download command for the first attachment.
  */
 export function attachmentDownloadHint(
-  attachments: EventViewAttachment[]
+  attachments: EventViewAttachment[],
 ): string | undefined {
   const [first] = attachments;
   if (!first) {

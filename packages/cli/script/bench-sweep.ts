@@ -49,8 +49,8 @@ const DEFAULT_VALUES = [1, 2, 4, 8, 16, 32, 50, 100, 200] as const;
 const DEFAULT_SIZES: readonly PresetName[] = ["medium", "large"];
 
 /**
- * DSN scanner hot regex — reused by the `scan.grepFiles` op. Kept at
- * module scope to satisfy Biome's `useTopLevelRegex` rule.
+ * DSN scanner hot regex — reused by the `scan.grepFiles` op. Kept
+ * at module scope to avoid recompiling it.
  */
 const DSN_PATTERN =
   /https?:\/\/[a-z0-9]+(?::[a-z0-9]+)?@[a-z0-9.-]+(?:\.[a-z]+|:[0-9]+)\/\d+/i;
@@ -64,7 +64,7 @@ type SweepArgs = {
   kneeThresholdPct: number;
 };
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: CLI flag switch is inherently branchy
+// CLI flag switch is inherently branchy
 function parseArgs(argv: readonly string[]): SweepArgs {
   const sizes: PresetName[] = [...DEFAULT_SIZES];
   let values: number[] = [...DEFAULT_VALUES];
@@ -89,7 +89,7 @@ function parseArgs(argv: readonly string[]): SweepArgs {
           sizes.push(next as PresetName);
         } else {
           throw new Error(
-            `Unknown size '${next}'. Valid: ${PRESET_NAMES.join(", ")}, all`
+            `Unknown size '${next}'. Valid: ${PRESET_NAMES.join(", ")}, all`,
           );
         }
         i += 1;
@@ -153,7 +153,6 @@ function printHelp(): void {
 /** Resolve (or create) a synthetic fixture, same as bench.ts. */
 function resolveFixture(name: PresetName): { label: string; rootDir: string } {
   const preset = PRESETS[name];
-  // biome-ignore lint/suspicious/noBitwiseOperators: deterministic seed mix
   const seed = (0xde_ad_be_ef ^ hashStr(name)) >>> 0;
   const spec: FixtureSpec = {
     ...preset,
@@ -169,7 +168,6 @@ function resolveFixture(name: PresetName): { label: string; rootDir: string } {
 }
 
 /** Cheap 32-bit FNV-1a over a short string — same as bench.ts. */
-// biome-ignore-start lint/suspicious/noBitwiseOperators: FNV-1a is a bitwise hash
 function hashStr(s: string): number {
   let h = 0x81_1c_9d_c5;
   for (let i = 0; i < s.length; i += 1) {
@@ -177,7 +175,6 @@ function hashStr(s: string): number {
   }
   return h >>> 0;
 }
-// biome-ignore-end lint/suspicious/noBitwiseOperators: FNV-1a is a bitwise hash
 
 /**
  * Single op × concurrency → p50 in ms. Returns NaN when the op
@@ -257,7 +254,7 @@ async function sweepFixture(
   fx: { label: string; rootDir: string },
   ops: Awaited<ReturnType<typeof buildOps>>,
   args: SweepArgs,
-  results: SweepResult[]
+  results: SweepResult[],
 ): Promise<void> {
   for (const op of ops) {
     for (const concurrency of args.values) {
@@ -277,7 +274,7 @@ async function sweepFixture(
       });
       if (!args.json) {
         console.log(
-          `  ${op.label.padEnd(24)}  conc=${String(concurrency).padStart(3)}  p50 ${stats.p50.toFixed(1).padStart(6)}ms  p95 ${stats.p95.toFixed(1).padStart(6)}ms`
+          `  ${op.label.padEnd(24)}  conc=${String(concurrency).padStart(3)}  p50 ${stats.p50.toFixed(1).padStart(6)}ms  p95 ${stats.p95.toFixed(1).padStart(6)}ms`,
         );
       }
     }
@@ -291,7 +288,7 @@ async function sweepFixture(
  */
 function findKnee(
   entries: readonly SweepResult[],
-  thresholdPct: number
+  thresholdPct: number,
 ): number | null {
   const sorted = [...entries].sort((a, b) => a.concurrency - b.concurrency);
   let bestP50 = Number.POSITIVE_INFINITY;
@@ -315,7 +312,7 @@ function findKnee(
 /** Render the per-(fixture, op) knee table. */
 function printKnees(
   results: readonly SweepResult[],
-  thresholdPct: number
+  thresholdPct: number,
 ): void {
   const byKey = new Map<string, SweepResult[]>();
   for (const r of results) {
@@ -326,7 +323,7 @@ function printKnees(
   }
   console.log("");
   console.log(
-    `Knee analysis (smallest concurrency past which each additional step gains < ${(thresholdPct * 100).toFixed(0)}%)`
+    `Knee analysis (smallest concurrency past which each additional step gains < ${(thresholdPct * 100).toFixed(0)}%)`,
   );
   console.log("─".repeat(72));
   for (const [key, entries] of byKey) {
@@ -334,7 +331,7 @@ function printKnees(
     const knee = findKnee(entries, thresholdPct);
     const minP50 = Math.min(...entries.map((e) => e.p50));
     console.log(
-      `  ${String(fixture).padEnd(20)}  ${String(operation).padEnd(24)}  knee = ${knee ?? "?"} (best p50 ${minP50.toFixed(1)}ms)`
+      `  ${String(fixture).padEnd(20)}  ${String(operation).padEnd(24)}  knee = ${knee ?? "?"} (best p50 ${minP50.toFixed(1)}ms)`,
     );
   }
   console.log("");
@@ -359,7 +356,7 @@ async function main(): Promise<number> {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
     console.log(
-      `\nsystem: ${platform()}/${arch()}, availableParallelism=${availableParallelism()}`
+      `\nsystem: ${platform()}/${arch()}, availableParallelism=${availableParallelism()}`,
     );
     printKnees(results, args.kneeThresholdPct);
   }

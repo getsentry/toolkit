@@ -16,11 +16,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
@@ -30,11 +30,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browserMod from "../../../src/lib/browser.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 
@@ -45,11 +45,11 @@ vi.mock("../../../src/lib/qrcode.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as qrcodeMod from "../../../src/lib/qrcode.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -59,11 +59,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type {
   CustomerTrialInfo,
@@ -173,7 +173,7 @@ describe("trial start command", () => {
     const func = await startCommand.loader();
 
     await expect(
-      func.call(context, { json: false }, "unknown-name")
+      func.call(context, { json: false }, "unknown-name"),
     ).rejects.toThrow(ValidationError);
   });
 
@@ -185,7 +185,7 @@ describe("trial start command", () => {
     const func = await startCommand.loader();
 
     await expect(func.call(context, { json: false }, "seer")).rejects.toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -212,7 +212,7 @@ describe("trial start command", () => {
     const func = await startCommand.loader();
 
     await expect(func.call(context, { json: false }, "seer")).rejects.toThrow(
-      "organization"
+      "organization",
     );
   });
 
@@ -225,7 +225,7 @@ describe("trial start command", () => {
     await func.call(context, { json: true }, "seer", "my-org");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: "my-org" })
+      expect.objectContaining({ org: "my-org" }),
     );
   });
 
@@ -240,7 +240,7 @@ describe("trial start command", () => {
 
     // Should resolve correctly despite swap
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: "my-org" })
+      expect.objectContaining({ org: "my-org" }),
     );
     expect(getProductTrialsSpy).toHaveBeenCalledWith("my-org");
   });
@@ -263,7 +263,7 @@ describe("trial start command", () => {
 
     // Should resolve correctly despite swap
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: "my-org" })
+      expect.objectContaining({ org: "my-org" }),
     );
     getInfoSpy.mockRestore();
   });
@@ -293,7 +293,7 @@ describe("trial start command", () => {
 // ---------------------------------------------------------------------------
 
 function makeCustomerInfo(
-  overrides: Partial<CustomerTrialInfo> = {}
+  overrides: Partial<CustomerTrialInfo> = {},
 ): CustomerTrialInfo {
   return {
     productTrials: [],
@@ -332,7 +332,7 @@ describe("trial start plan", () => {
   test("returns JSON with url and opened fields", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getCustomerTrialInfoSpy.mockResolvedValue(
-      makeCustomerInfo({ canTrial: true })
+      makeCustomerInfo({ canTrial: true }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -351,7 +351,7 @@ describe("trial start plan", () => {
   test("shows billing URL in output", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getCustomerTrialInfoSpy.mockResolvedValue(
-      makeCustomerInfo({ canTrial: true })
+      makeCustomerInfo({ canTrial: true }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -367,7 +367,7 @@ describe("trial start plan", () => {
   test("generates QR code for billing URL", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getCustomerTrialInfoSpy.mockResolvedValue(
-      makeCustomerInfo({ canTrial: true })
+      makeCustomerInfo({ canTrial: true }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -387,7 +387,7 @@ describe("trial start plan", () => {
         canTrial: false,
         isTrial: true,
         planDetails: { name: "Business", trialPlan: null },
-      })
+      }),
     );
 
     const { context } = createMockContext();
@@ -406,14 +406,14 @@ describe("trial start plan", () => {
   test("throws when no plan trial available", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getCustomerTrialInfoSpy.mockResolvedValue(
-      makeCustomerInfo({ canTrial: false, isTrial: false })
+      makeCustomerInfo({ canTrial: false, isTrial: false }),
     );
 
     const { context } = createMockContext();
     const func = await startCommand.loader();
 
     await expect(func.call(context, { json: false }, "plan")).rejects.toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -424,7 +424,7 @@ describe("trial start plan", () => {
 
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getCustomerTrialInfoSpy.mockResolvedValue(
-      makeCustomerInfo({ canTrial: true })
+      makeCustomerInfo({ canTrial: true }),
     );
 
     const { context } = createMockContext();
@@ -441,7 +441,7 @@ describe("trial start plan", () => {
       makeCustomerInfo({
         canTrial: true,
         planDetails: { name: "Team", trialPlan: "am3_t" },
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();

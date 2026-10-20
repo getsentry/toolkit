@@ -16,11 +16,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
@@ -30,11 +30,11 @@ vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
 
 vi.mock("../../../src/lib/db/user.js", async (importOriginal) => {
@@ -44,11 +44,11 @@ vi.mock("../../../src/lib/db/user.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbUser from "../../../src/lib/db/user.js";
 import {
   AuthError,
@@ -127,6 +127,7 @@ function createContext() {
 describe("whoamiCommand.func", () => {
   let isAuthenticatedSpy: ReturnType<typeof spyOn>;
   let getAuthTokenSpy: ReturnType<typeof spyOn>;
+  let storedAuthConfigSpy: ReturnType<typeof spyOn>;
   let getCurrentUserSpy: ReturnType<typeof spyOn>;
   let setUserInfoSpy: ReturnType<typeof spyOn>;
   let func: WhoamiFunc;
@@ -134,6 +135,10 @@ describe("whoamiCommand.func", () => {
   beforeEach(async () => {
     isAuthenticatedSpy = vi.spyOn(dbAuth, "isAuthenticated");
     getAuthTokenSpy = vi.spyOn(dbAuth, "getAuthToken");
+    // Default credential source: a stored OAuth login.
+    storedAuthConfigSpy = vi
+      .spyOn(dbAuth, "getAuthConfig")
+      .mockReturnValue({ token: OAUTH_TOKEN, source: "oauth" });
     getCurrentUserSpy = vi.spyOn(apiClient, "getCurrentUser");
     setUserInfoSpy = vi.spyOn(dbUser, "setUserInfo");
     // Default token type: OAuth (not org, not PAT). Tests that need a
@@ -145,6 +150,7 @@ describe("whoamiCommand.func", () => {
   afterEach(() => {
     isAuthenticatedSpy.mockRestore();
     getAuthTokenSpy.mockRestore();
+    storedAuthConfigSpy.mockRestore();
     getCurrentUserSpy.mockRestore();
     setUserInfoSpy.mockRestore();
   });
@@ -178,7 +184,7 @@ describe("whoamiCommand.func", () => {
       const { context } = createContext();
 
       await expect(func.call(context, { json: false })).rejects.toBeInstanceOf(
-        AuthError
+        AuthError,
       );
     });
 
@@ -351,6 +357,21 @@ describe("whoamiCommand.func", () => {
         username: "janedoe",
         email: "jane@example.com",
       });
+    });
+
+    test("does not write an env token's user onto the stored account", async () => {
+      isAuthenticatedSpy.mockReturnValue(true);
+      storedAuthConfigSpy.mockReturnValue({
+        token: OAUTH_TOKEN,
+        source: "env:SENTRY_AUTH_TOKEN",
+      });
+      getCurrentUserSpy.mockResolvedValue(FULL_USER);
+
+      const { context, getOutput } = createContext();
+      await func.call(context, { json: false });
+
+      expect(setUserInfoSpy).not.toHaveBeenCalled();
+      expect(getOutput()).toContain("Jane Doe");
     });
 
     test("still displays identity when DB cache write fails", async () => {

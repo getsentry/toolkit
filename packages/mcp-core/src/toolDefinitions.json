@@ -1575,6 +1575,74 @@
     "surface": "catalog"
   },
   {
+    "name": "delete_monitor_environment",
+    "description": "Delete one environment from a Sentry cron monitor.\n\nUse find_monitors or get_monitor_details to identify the monitor and exact environment name.\n\nDeletion is irreversible and completes in the background. The monitor and its other environments are preserved. An already absent environment is treated as success.\n\n<examples>\ndelete_monitor_environment(organizationSlug='my-organization', projectSlug='backend', monitorSlug='nightly-import', environment='production')\n</examples>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "monitorSlug": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Monitor slug or GUID."
+        },
+        "environment": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact environment name to delete. Preserve whitespace and casing."
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "projectSlug",
+        "monitorSlug",
+        "environment"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "monitorSlug": {
+          "type": "string"
+        },
+        "projectSlug": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        }
+      },
+      "required": ["success", "monitorSlug", "projectSlug", "environment"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["project:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
     "name": "delete_uptime_monitor",
     "description": "Delete a Sentry HTTP uptime monitor.\n\nUse this tool when you need to permanently remove an uptime monitor.\n\nBe careful when using this tool! Deletion cannot be undone.\n\n<examples>\ndelete_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\n</examples>",
     "inputSchema": {
@@ -2220,6 +2288,232 @@
     "requiredScopes": ["org:read"],
     "skills": ["inspect"],
     "surface": "catalog"
+  },
+  {
+    "name": "find_dropped_events",
+    "description": "Find events dropped before they were stored in Sentry — ground-truth data-fidelity information about what was and wasn't captured.\n\nEvents can be dropped client-side in the SDK (sample_rate, before_send) or\nserver-side at ingest (rate limited, over quota, filtered, invalid, abuse/spike\nprotection, cardinality limited). Accepted-only views (searches, aggregates,\ncharts) can't show this, so the data may be incomplete in ways they don't reveal\n— for example, a flat or spiky chart caused entirely by drops.\n\nUse this tool when you need to:\n- Explain why a chart is flat, lower than expected, or doesn't match what the user is sending\n- Confirm the data you need is actually in Sentry (not dropped) before trusting a query, aggregate, or dashboard\n- Attribute a volume anomaly to a specific drop reason (quota, spike protection, sampling, filters)\n- Tell the user why their data is missing and what to do about it (raise quota, fix sampling, etc.)\n\nReturns dropped event volume bucketed over time, with the drop `outcome` and `reason`\nfor each bucket, plus the accepted volume per bucket so you can compute the dropped share.\n\n<examples>\nfind_dropped_events(organizationSlug='my-org', dataset='spans', projectSlug='my-project')\nfind_dropped_events(organizationSlug='my-org', dataset='logs', statsPeriod='30d')\nfind_dropped_events(organizationSlug='my-org', dataset='errors', outcome='rate_limited')\n</examples>\n\n<hints>\n- This is independent of any search query — it reports drops for the whole project/time range.\n- `outcome` is the drop kind (e.g. rate_limited, filtered); `reason` is the sub-cause (e.g. key_quota, sample_rate).\n- Each bucket's `tags` classify the drop: `intentional` (user-configured, e.g. sampling or filters) vs `unintentional` (not intended, e.g. quota or abuse).\n- Pass `outcome` and/or `reason` to scope the dropped side to one classification; the accepted volume is always returned in full.\n- An empty `droppedEvents` list means no drops in the window — the data can be trusted.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dataset": {
+          "default": "spans",
+          "type": "string",
+          "enum": ["spans", "logs", "metrics", "errors"],
+          "description": "Which data type to report drops for."
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statsPeriod": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Relative time range, e.g. '24h', '7d', '30d'. Mutually exclusive with start/end."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Absolute start (ISO 8601). Must be paired with end."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Absolute end (ISO 8601). Must be paired with start."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interval": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Bucket size, e.g. '1h', '1d'. Omit to let Sentry pick for the range."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "rate_limited",
+                "filtered",
+                "invalid",
+                "abuse",
+                "client_discard",
+                "cardinality_limited"
+              ],
+              "description": "Scope the dropped side to one top-level drop classification. Accepted volume is still returned in full."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Scope the dropped side to one reason (sub-classification within an outcome, e.g. 'spike_protection'). Combine with `outcome`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["organizationSlug"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string"
+        },
+        "interval": {
+          "type": "number"
+        },
+        "droppedEvents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "count": {
+                "type": "number"
+              },
+              "tags": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "outcome",
+              "reason",
+              "category",
+              "start",
+              "end",
+              "count",
+              "tags"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "acceptedEvents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "count": {
+                "type": "number"
+              },
+              "tags": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "outcome",
+              "reason",
+              "category",
+              "start",
+              "end",
+              "count",
+              "tags"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["dataset", "interval", "droppedEvents", "acceptedEvents"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect"],
+    "surface": "direct"
   },
   {
     "name": "find_dsns",
@@ -5901,7 +6195,7 @@
   },
   {
     "name": "get_sentry_resource",
-    "description": "Fetch a Sentry resource by URL, or by resourceType plus resourceId.\nPass a Sentry URL directly when possible; the resource type is auto-detected.\n\nSupports issues, events, traces, spans, agent conversations, replays, monitors, preprod snapshots, and snapshot images.\nTrace lookups return a condensed overview by default.\nFor installed package versions recorded with an exact event, pass packageNames with an event URL or resourceType='event'.\n\nAgent Conversations: A conversation is a set of spans sharing the same gen_ai.conversation.id. Use resourceType='ai_conversation' with a conversation ID, or pass a Sentry conversation URL, to fetch the transcript/details. To discover or list conversations, use search_agent_conversations. Conversations are NOT issues — do not use search_issues for conversation queries.\n\nFor preprod snapshot URLs (matching 'sentry.io/preprod/snapshots/'):\n- Without ?selectedSnapshot=: returns the snapshot diff summary (changed, added, removed images)\n- With ?selectedSnapshot=<image_file_name>: returns the image preview and metadata. Use the Sentry tool `get_snapshot_image` for full-resolution image bytes.\n\nResource IDs:\n- monitor: <monitorSlug>\n- snapshot: <snapshotId>\n\n<examples>\nget_sentry_resource(url='https://sentry.io/issues/PROJECT-123/')\nget_sentry_resource(resourceType='issue', organizationSlug='my-org', resourceId='PROJECT-123')\nget_sentry_resource(resourceType='ai_conversation', organizationSlug='my-org', resourceId='conversation-123')\nget_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/')\nget_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/?selectedSnapshot=login_screen.png')\n</examples>",
+    "description": "Fetch a Sentry resource by URL, or by resourceType plus resourceId.\nPass a Sentry URL directly when possible; the resource type is auto-detected.\n\nSupports issues, events, traces, spans, agent conversations, replays, monitors, dashboards, preprod snapshots, and snapshot images.\nTrace lookups return a condensed overview by default.\nFor installed package versions recorded with an exact event, pass packageNames with an event URL or resourceType='event'.\n\nAgent Conversations: A conversation is a set of spans sharing the same gen_ai.conversation.id. Use resourceType='ai_conversation' with a conversation ID, or pass a Sentry conversation URL, to fetch the transcript/details. To discover or list conversations, use search_agent_conversations. Conversations are NOT issues — do not use search_issues for conversation queries.\n\nFor preprod snapshot URLs (matching 'sentry.io/preprod/snapshots/'):\n- Without ?selectedSnapshot=: returns the snapshot diff summary (changed, added, removed images)\n- With ?selectedSnapshot=<image_file_name>: returns the image preview and metadata. Use the Sentry tool `get_snapshot_image` for full-resolution image bytes.\n\nResource IDs:\n- monitor: <monitorSlug>\n- dashboard: <dashboardId or title>\n- snapshot: <snapshotId>\n\n<examples>\nget_sentry_resource(url='https://sentry.io/issues/PROJECT-123/')\nget_sentry_resource(resourceType='issue', organizationSlug='my-org', resourceId='PROJECT-123')\nget_sentry_resource(resourceType='ai_conversation', organizationSlug='my-org', resourceId='conversation-123')\nget_sentry_resource(url='https://sentry.sentry.io/dashboard/542438/')\nget_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/')\nget_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/?selectedSnapshot=login_screen.png')\n</examples>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5911,7 +6205,7 @@
           "format": "uri"
         },
         "resourceType": {
-          "description": "Resource type. With a URL, can override a span-focused trace URL with `trace`. Use `monitor` with a monitor slug only when inspect monitor tools are available or `snapshot` with a snapshot artifact ID.",
+          "description": "Resource type. With a URL, can override a span-focused trace URL with `trace`. Use `monitor` with a monitor slug only when inspect monitor tools are available, `snapshot` with a snapshot artifact ID, or `dashboard` with a dashboard ID or exact title when inspect dashboard tools are available.",
           "type": "string",
           "enum": [
             "issue",
@@ -5920,11 +6214,12 @@
             "ai_conversation",
             "replay",
             "monitor",
-            "snapshot"
+            "snapshot",
+            "dashboard"
           ]
         },
         "resourceId": {
-          "description": "Resource identifier: issue shortId (e.g., 'PROJECT-123'), event ID, trace ID, agent conversation ID, replay ID, monitor slug when inspect monitor tools are available, or snapshot artifact ID. Required when not using a URL.",
+          "description": "Resource identifier: issue shortId (e.g., 'PROJECT-123'), event ID, trace ID, agent conversation ID, replay ID, monitor slug when inspect monitor tools are available, dashboard ID or title when inspect dashboard tools are available, or snapshot artifact ID. Required when not using a URL.",
           "type": "string"
         },
         "organizationSlug": {
@@ -7576,7 +7871,7 @@
   },
   {
     "name": "search_logs",
-    "description": "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('warning logs by service'), individual entries ('error logs from the last hour'), and time series ('error logs per hour').\n\nNOT for exceptions/crashes (use search_errors). For requests or spans whose trace also has a matching log, use search_traces.\n\n<examples>\nsearch_logs(organizationSlug='my-org', query='error logs from the last hour')\nsearch_logs(organizationSlug='my-org', query='logs mentioning payment timeout in production')\nsearch_logs(organizationSlug='my-org', query='count warning logs by service over 7 days')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "description": "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('warning logs by service'), individual entries ('error logs from the last hour'), and time series ('error logs per hour').\n\nNOT for exceptions/crashes (use search_errors). For requests or spans whose trace also has a matching log, use search_traces.\n\n<examples>\nsearch_logs(organizationSlug='my-org', query='error logs from the last hour')\nsearch_logs(organizationSlug='my-org', query='logs mentioning payment timeout in production')\nsearch_logs(organizationSlug='my-org', query='count warning logs by service over 7 days')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n- Sentry search syntax for logs includes RE2 regex filters, never quoted: `message://^Timeout after \\d+ms//`.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {

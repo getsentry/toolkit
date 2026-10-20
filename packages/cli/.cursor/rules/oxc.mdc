@@ -1,0 +1,23 @@
+---
+description: Oxc formatting and lint rules
+globs: "**/*.{ts,tsx,js,jsx,json,jsonc,html,css,md,mdx}"
+alwaysApply: false
+---
+
+# CLI code standards
+
+Run `pnpm run lint` from `packages/cli` for Oxlint, CLI-specific rules, and
+Oxfmt. Run `pnpm run lint:fix` to apply safe fixes and formatting. The root
+pre-commit hook uses the same tools for staged files.
+
+- Prefer strict types and `unknown` to `any`; narrow input before use.
+- Use `const`, Node `node:*` APIs, and argument arrays for child processes.
+- Await promises and handle errors at the right boundary. Never use an async
+  Promise executor or silently discard a failed operation.
+- Keep command output in `CommandOutput` and diagnostics in the tagged logger.
+- Avoid top-level browser/Node APIs that break supported runtimes.
+- Keep tests isolated, with assertions in `it()`/`test()` and no disabled cases.
+- Use `// oxlint-disable-next-line <rule> -- <reason>` only for an intentional
+  exception. Unused suppressions fail CI; remove them when fixing the code.
+
+The CLI-specific Oxlint rules live in `lint-rules/cli-oxlint-plugin.js`.

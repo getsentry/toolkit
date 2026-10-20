@@ -143,13 +143,13 @@ export type UploadEncoding = (typeof UPLOAD_CODECS)[number];
  * @returns Server-provided upload options (chunk size, concurrency, etc.)
  */
 export async function getChunkUploadOptions(
-  orgSlug: string
+  orgSlug: string,
 ): Promise<ChunkServerOptions> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const { data } = await apiRequestToRegion<ChunkServerOptions>(
     regionUrl,
     `organizations/${orgSlug}/chunk-upload/`,
-    { schema: ChunkServerOptionsSchema }
+    { schema: ChunkServerOptionsSchema },
   );
   return data;
 }
@@ -163,7 +163,7 @@ export async function getChunkUploadOptions(
  * Exported for testing.
  */
 export function pickUploadEncoding(
-  compression: string[]
+  compression: string[],
 ): UploadEncoding | undefined {
   for (const codec of UPLOAD_CODECS) {
     // Skip zstd when the local runtime can't produce it (Node < 22.15).
@@ -176,7 +176,7 @@ export function pickUploadEncoding(
   }
   if (compression.length > 0) {
     log.debug(
-      `server advertised unsupported codecs [${compression.join(", ")}]; falling back to plain upload`
+      `server advertised unsupported codecs [${compression.join(", ")}]; falling back to plain upload`,
     );
   }
   return;
@@ -191,7 +191,7 @@ export function pickUploadEncoding(
  */
 export async function encodeChunk(
   buf: Buffer,
-  encoding: UploadEncoding | undefined
+  encoding: UploadEncoding | undefined,
 ): Promise<Uint8Array> {
   if (encoding === "zstd") {
     // pickUploadEncoding never selects zstd when the runtime lacks it, so this
@@ -200,7 +200,7 @@ export async function encodeChunk(
     // corrupt the upload on the server.
     if (!zstdCompressAsync) {
       throw new Error(
-        "zstd encoding requested but unavailable on this runtime (Node < 22.15)"
+        "zstd encoding requested but unavailable on this runtime (Node < 22.15)",
       );
     }
     // L3 is libzstd's default; passed explicitly for self-documenting
@@ -264,7 +264,7 @@ export async function uploadChunk(params: {
   form.append(
     fieldName,
     new Blob([payload], { type: "application/octet-stream" }),
-    chunk.sha1
+    chunk.sha1,
   );
 
   const init: RequestInit = { method: "POST", body: form };
@@ -278,7 +278,7 @@ export async function uploadChunk(params: {
       `Chunk upload failed: ${response.status} ${response.statusText}`,
       response.status,
       await response.text().catch(() => ""),
-      url
+      url,
     );
   }
 }
@@ -294,7 +294,7 @@ export async function uploadChunk(params: {
  */
 export async function hashChunks(
   zipPath: string,
-  chunkSize: number
+  chunkSize: number,
 ): Promise<{ chunks: ChunkInfo[]; overallChecksum: string }> {
   const fh = await open(zipPath, "r");
   try {
@@ -330,7 +330,7 @@ export async function hashChunks(
  */
 export function hashBuffer(
   content: Buffer,
-  chunkSize: number
+  chunkSize: number,
 ): { chunks: ChunkInfo[]; overallChecksum: string } {
   const chunks: ChunkInfo[] = [];
   const overallHasher = createHash("sha1");
@@ -394,9 +394,9 @@ export async function uploadMissingChunks(params: {
           encoding,
           fetch: authFetch,
           url: serverOptions.url,
-        })
-      )
-    )
+        }),
+      ),
+    ),
   );
 }
 
@@ -423,7 +423,7 @@ async function uploadBufferChunk(params: {
   form.append(
     fieldName,
     new Blob([payload], { type: "application/octet-stream" }),
-    chunk.sha1
+    chunk.sha1,
   );
 
   const init: RequestInit = { method: "POST", body: form };
@@ -440,7 +440,7 @@ async function uploadBufferChunk(params: {
         log.debug("Failed to read chunk upload error response body", err);
         return "";
       }),
-      url
+      url,
     );
   }
 }
@@ -486,9 +486,9 @@ export async function uploadMissingBufferChunks(params: {
           encoding,
           fetch: authFetch,
           url: serverOptions.url,
-        })
-      )
-    )
+        }),
+      ),
+    ),
   );
 }
 
@@ -538,7 +538,7 @@ export async function pollAssembly(params: {
         method: "POST",
         body,
         schema,
-      }
+      },
     );
 
     if (pollResult.state === "ok") {
@@ -556,7 +556,7 @@ export async function pollAssembly(params: {
         `${entityName} assembly failed`,
         500,
         pollResult.detail ?? "Unknown error",
-        endpoint
+        endpoint,
       );
     }
     // "not_found", "assembling", or ("created" while waiting) — keep polling
@@ -566,6 +566,6 @@ export async function pollAssembly(params: {
     `${entityName} assembly timed out`,
     408,
     `Assembly did not complete within ${deadlineMs / 1000}s`,
-    endpoint
+    endpoint,
   );
 }

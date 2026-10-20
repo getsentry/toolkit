@@ -235,18 +235,6 @@
     }
   },
   {
-    "key": "user.geo.region",
-    "name": "user.geo.region",
-    "context": {
-      "isConvention": true,
-      "brief": "The region of the user's location.",
-      "isDeprecated": false,
-      "examples": [
-        "Canada"
-      ]
-    }
-  },
-  {
     "key": "geo.city",
     "name": "geo.city",
     "context": {
@@ -267,5 +255,29 @@
     "key": "custom.feature_flag",
     "name": "custom.feature_flag",
     "context": {}
+  },
+  {
+    "key": "kiosk.firmware",
+    "name": "kiosk.firmware",
+    "context": {
+      "isConvention": true,
+      "brief": "The firmware revision currently installed and running on the kiosk.",
+      "isDeprecated": false,
+      "examples": [
+        "4.1.3"
+      ]
+    }
+  },
+  {
+    "key": "kiosk.firmware_revision",
+    "name": "kiosk.firmware_revision",
+    "context": {
+      "isConvention": true,
+      "brief": "The firmware revision downloaded and staged for the kiosk's next update. It is not installed until the kiosk restarts.",
+      "isDeprecated": false,
+      "examples": [
+        "4.2.0"
+      ]
+    }
   }
 ]

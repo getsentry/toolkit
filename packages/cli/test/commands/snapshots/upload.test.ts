@@ -12,12 +12,12 @@ import { join } from "node:path";
 import { PNG } from "pngjs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { uploadCommand } from "../../../src/commands/snapshots/upload.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
 import { ValidationError } from "../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as objectstore from "../../../src/lib/objectstore.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 let tmpDir: string;
@@ -29,7 +29,7 @@ function createContext() {
       stdout: {
         write: (data: string | Uint8Array) => {
           writes.push(
-            typeof data === "string" ? data : new TextDecoder().decode(data)
+            typeof data === "string" ? data : new TextDecoder().decode(data),
           );
           return true;
         },
@@ -104,50 +104,50 @@ describe("snapshots upload", () => {
     return dir;
   }
 
-  test.each([
-    "preprod",
-    "preprod_snapshots",
-  ])("uploads images to %s and creates a snapshot with a correct manifest", async (usecase) => {
-    const config = { ...UPLOAD_OPTIONS.objectstore, usecase };
-    uploadOptionsSpy.mockResolvedValue({ objectstore: config });
-    const dir = await writeShots();
-    const harness = createContext();
-    const func = await uploadCommand.loader();
+  test.each(["preprod", "preprod_snapshots"])(
+    "uploads images to %s and creates a snapshot with a correct manifest",
+    async (usecase) => {
+      const config = { ...UPLOAD_OPTIONS.objectstore, usecase };
+      uploadOptionsSpy.mockResolvedValue({ objectstore: config });
+      const dir = await writeShots();
+      const harness = createContext();
+      const func = await uploadCommand.loader();
 
-    await func.call(harness.context, { "app-id": "com.example.app" }, dir);
+      await func.call(harness.context, { "app-id": "com.example.app" }, dir);
 
-    // Two images uploaded (none pre-existing).
-    expect(putSpy).toHaveBeenCalledTimes(2);
-    expect(createSpy).toHaveBeenCalledTimes(1);
+      // Two images uploaded (none pre-existing).
+      expect(putSpy).toHaveBeenCalledTimes(2);
+      expect(createSpy).toHaveBeenCalledTimes(1);
 
-    const [, , manifest] = createSpy.mock.calls[0] as [
-      string,
-      string,
-      Record<string, unknown>,
-    ];
-    expect(manifest.app_id).toBe("com.example.app");
-    const images = manifest.images as Record<string, Record<string, unknown>>;
-    expect(Object.keys(images).sort()).toEqual(["a.png", "sub/b.png"]);
-    expect(images["a.png"]).toMatchObject({
-      width: 4,
-      height: 3,
-      note: "hi",
-    });
-    expect(images["a.png"].content_hash).toMatch(/^[0-9a-f]{64}$/);
-    // selective omitted when not requested.
-    expect(manifest.selective).toBeUndefined();
-    expect(harness.output()).toContain("snap-1");
+      const [, , manifest] = createSpy.mock.calls[0] as [
+        string,
+        string,
+        Record<string, unknown>,
+      ];
+      expect(manifest.app_id).toBe("com.example.app");
+      const images = manifest.images as Record<string, Record<string, unknown>>;
+      expect(Object.keys(images).sort()).toEqual(["a.png", "sub/b.png"]);
+      expect(images["a.png"]).toMatchObject({
+        width: 4,
+        height: 3,
+        note: "hi",
+      });
+      expect(images["a.png"].content_hash).toMatch(/^[0-9a-f]{64}$/);
+      // selective omitted when not requested.
+      expect(manifest.selective).toBeUndefined();
+      expect(harness.output()).toContain("snap-1");
 
-    // The objectstore key is `{orgId}/{projectId}/{sha256}` from the scope.
-    const hash = images["a.png"].content_hash as string;
-    const key = putSpy.mock.calls.find(([, k]) =>
-      (k as string).endsWith(hash)
-    )?.[1] as string;
-    expect(key).toMatch(/^1\/2\/[0-9a-f]{64}$/);
-    expect(key.endsWith(hash)).toBe(true);
-    expect(existsSpy).toHaveBeenCalledWith(config, key);
-    expect(putSpy).toHaveBeenCalledWith(config, key, expect.any(Uint8Array));
-  });
+      // The objectstore key is `{orgId}/{projectId}/{sha256}` from the scope.
+      const hash = images["a.png"].content_hash as string;
+      const key = putSpy.mock.calls.find(([, k]) =>
+        (k as string).endsWith(hash),
+      )?.[1] as string;
+      expect(key).toMatch(/^1\/2\/[0-9a-f]{64}$/);
+      expect(key.endsWith(hash)).toBe(true);
+      expect(existsSpy).toHaveBeenCalledWith(config, key);
+      expect(putSpy).toHaveBeenCalledWith(config, key, expect.any(Uint8Array));
+    },
+  );
 
   test("CLI width/height/content_hash override sidecar keys", async () => {
     const dir = join(tmpDir, "shots");
@@ -155,7 +155,12 @@ describe("snapshots upload", () => {
     await writeFile(join(dir, "a.png"), pngBytes(4, 3));
     await writeFile(
       join(dir, "a.json"),
-      JSON.stringify({ width: 999, height: 888, content_hash: "nope", keep: 1 })
+      JSON.stringify({
+        width: 999,
+        height: 888,
+        content_hash: "nope",
+        keep: 1,
+      }),
     );
     const harness = createContext();
     const func = await uploadCommand.loader();
@@ -183,8 +188,8 @@ describe("snapshots upload", () => {
       func.call(
         createContext().context,
         { "app-id": "app", "pr-number": 7 },
-        dir
-      )
+        dir,
+      ),
     ).rejects.toThrow(ValidationError);
   });
 
@@ -241,7 +246,7 @@ describe("snapshots upload", () => {
         "app-id": "app",
         "all-image-file-names": "./a.png,sub\\b.jpg",
       },
-      dir
+      dir,
     );
 
     expect(uploadOptionsSpy).not.toHaveBeenCalled();
@@ -273,7 +278,7 @@ describe("snapshots upload", () => {
     await func.call(
       createContext().context,
       { "app-id": "app", "all-image-file-names-file": namesFile },
-      dir
+      dir,
     );
 
     expect(uploadOptionsSpy).not.toHaveBeenCalled();
@@ -311,8 +316,8 @@ describe("snapshots upload", () => {
           "app-id": "app",
           "all-image-file-names-file": join(tmpDir, "missing.txt"),
         },
-        dir
-      )
+        dir,
+      ),
     ).rejects.toThrow(ValidationError);
     expect(createSpy).not.toHaveBeenCalled();
   });
@@ -328,8 +333,8 @@ describe("snapshots upload", () => {
       func.call(
         createContext().context,
         { "app-id": "app", "all-image-file-names-file": namesFile },
-        dir
-      )
+        dir,
+      ),
     ).rejects.toThrow(ValidationError);
     expect(createSpy).not.toHaveBeenCalled();
   });
@@ -343,7 +348,7 @@ describe("snapshots upload", () => {
     const func = await uploadCommand.loader();
 
     await expect(
-      func.call(createContext().context, { "app-id": "app", ...flag }, dir)
+      func.call(createContext().context, { "app-id": "app", ...flag }, dir),
     ).rejects.toThrow(ValidationError);
     expect(createSpy).not.toHaveBeenCalled();
   });
@@ -353,7 +358,7 @@ describe("snapshots upload", () => {
     await writeFile(file, pngBytes(1, 1));
     const func = await uploadCommand.loader();
     await expect(
-      func.call(createContext().context, { "app-id": "app" }, file)
+      func.call(createContext().context, { "app-id": "app" }, file),
     ).rejects.toThrow(ValidationError);
   });
 
@@ -364,8 +369,8 @@ describe("snapshots upload", () => {
       func.call(
         createContext().context,
         { "app-id": "app", "all-image-file-names": "a.png" },
-        dir
-      )
+        dir,
+      ),
     ).rejects.toThrow(ValidationError);
   });
 
@@ -377,7 +382,7 @@ describe("snapshots upload", () => {
     await func.call(
       harness.context,
       { "app-id": "app", "diff-threshold": 0.05, selective: true },
-      dir
+      dir,
     );
 
     const [, , manifest] = createSpy.mock.calls[0] as [

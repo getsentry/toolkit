@@ -58,7 +58,7 @@ export const listCommand = buildCommand({
     },
     aliases: { q: "search" },
   },
-  // biome-ignore lint/suspicious/useAwait: Stricli requires AsyncGenerator but this is synchronous (in-memory data)
+  // Stricli requires AsyncGenerator but this is synchronous (in-memory data)
   async *func(this: SentryContext, flags: PlatformsFlags) {
     if (!flags.search) {
       return yield new CommandOutput<readonly string[]>(VALID_PLATFORMS);
@@ -66,7 +66,7 @@ export const listCommand = buildCommand({
 
     const term = flags.search.toLowerCase();
     const matches = VALID_PLATFORMS.filter((p) =>
-      p.toLowerCase().includes(term)
+      p.toLowerCase().includes(term),
     );
     if (matches.length === 0) {
       // No matches genuinely means nothing found for this search — exit non-zero,

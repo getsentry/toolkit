@@ -73,7 +73,7 @@ function validateDebugId(debugId: string): void {
   if (!UUID_RE.test(debugId)) {
     throw new ValidationError(
       `Invalid debug ID format: '${debugId}'. Expected UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
-      "debug-id"
+      "debug-id",
     );
   }
 }
@@ -92,14 +92,14 @@ function validateDartSymbolMap(content: Buffer, path: string): void {
   } catch {
     throw new ValidationError(
       `Invalid dart symbol map '${path}': not valid JSON`,
-      "path"
+      "path",
     );
   }
 
   if (!Array.isArray(parsed)) {
     throw new ValidationError(
       `Invalid dart symbol map '${path}': expected a JSON array, got ${typeof parsed}`,
-      "path"
+      "path",
     );
   }
 
@@ -107,7 +107,7 @@ function validateDartSymbolMap(content: Buffer, path: string): void {
     if (typeof parsed[i] !== "string") {
       throw new ValidationError(
         `Invalid dart symbol map '${path}': entry at index ${i} is ${typeof parsed[i]}, expected string`,
-        "path"
+        "path",
       );
     }
   }
@@ -115,7 +115,7 @@ function validateDartSymbolMap(content: Buffer, path: string): void {
   if (parsed.length % 2 !== 0) {
     throw new ValidationError(
       `Invalid dart symbol map '${path}': expected an even number of entries (pairs), got ${parsed.length}`,
-      "path"
+      "path",
     );
   }
 }
@@ -135,19 +135,19 @@ async function readMappingFile(path: string): Promise<Buffer> {
     if (code === "ENOENT") {
       throw new ValidationError(
         `Dart symbol map '${path}' does not exist.`,
-        "path"
+        "path",
       );
     }
     if (code === "EISDIR") {
       throw new ValidationError(
         `Path '${path}' is a directory, not a dart symbol map file.`,
-        "path"
+        "path",
       );
     }
     const msg = err instanceof Error ? err.message : String(err);
     throw new ValidationError(
       `Cannot read dart symbol map '${path}': ${msg}`,
-      "path"
+      "path",
     );
   }
 }
@@ -210,7 +210,7 @@ export const uploadCommand = buildCommand({
       "debug-id": string;
       "no-upload"?: boolean;
     },
-    mappingPath: string
+    mappingPath: string,
   ) {
     // 1. Validate debug ID format
     validateDebugId(flags["debug-id"]);
@@ -220,7 +220,7 @@ export const uploadCommand = buildCommand({
     if (content.length === 0) {
       throw new ValidationError(
         `Dart symbol map '${mappingPath}' is empty.`,
-        "path"
+        "path",
       );
     }
     validateDartSymbolMap(content, mappingPath);
@@ -249,7 +249,7 @@ export const uploadCommand = buildCommand({
 
     // 5. Upload
     log.debug(
-      `Uploading dart symbol map '${mappingPath}' (debug ID: ${flags["debug-id"]}) to ${org}/${project}`
+      `Uploading dart symbol map '${mappingPath}' (debug ID: ${flags["debug-id"]}) to ${org}/${project}`,
     );
     await uploadDartSymbolMap({
       org,

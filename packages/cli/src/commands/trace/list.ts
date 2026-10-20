@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { listTransactions } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -18,6 +19,7 @@ import { formatTraceTable } from "../../lib/formatters/index.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
+  appendQueryHint,
   buildListCommand,
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
@@ -93,15 +95,13 @@ const DEFAULT_PERIOD = "7d";
 /** Append active non-default flags to a base command string. */
 function appendTraceFlags(
   base: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   const parts: string[] = [];
   if (flags.sort !== "date") {
     parts.push(`--sort ${flags.sort}`);
   }
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   appendPeriodHint(parts, flags.period, DEFAULT_PERIOD);
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }
@@ -110,7 +110,7 @@ function appendTraceFlags(
 function nextPageHint(
   org: string,
   project: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendTraceFlags(`sentry trace list ${org}/${project} -c next`, flags);
 }
@@ -119,7 +119,7 @@ function nextPageHint(
 function prevPageHint(
   org: string,
   project: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendTraceFlags(`sentry trace list ${org}/${project} -c prev`, flags);
 }
@@ -140,7 +140,7 @@ function parseLimit(value: string): number {
 export function parseSort(value: string): SortValue {
   if (!VALID_SORT_VALUES.includes(value as SortValue)) {
     throw new Error(
-      `Invalid sort value. Must be one of: ${VALID_SORT_VALUES.join(", ")}`
+      `Invalid sort value. Must be one of: ${VALID_SORT_VALUES.join(", ")}`,
     );
   }
   return value as SortValue;
@@ -173,7 +173,7 @@ function formatTraceListHuman(result: TraceListResult): string {
  */
 function jsonTransformTraceList(
   result: TraceListResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const items =
     fields && fields.length > 0
@@ -225,7 +225,7 @@ export const listCommand = buildListCommand("trace", {
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search)",
-          parse: String,
+          parse: parseOrgProjectTarget,
           optional: true,
         },
       ],
@@ -267,7 +267,7 @@ export const listCommand = buildListCommand("trace", {
     const { org, project } = await resolveProjectBoundFromArg(
       target,
       cwd,
-      COMMAND_NAME
+      COMMAND_NAME,
     );
     // Resolve slug → numeric ID so the Events query scopes via the `project`
     // param. `project:<slug>` only matches actively-selected projects and can
@@ -282,7 +282,7 @@ export const listCommand = buildListCommand("trace", {
     const { cursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const { data: traces, nextCursor } = await withProgress(
@@ -301,7 +301,7 @@ export const listCommand = buildListCommand("trace", {
         }).catch((error: unknown): never => {
           // An unparseable user --query is a user input mistake, not a CLI bug.
           throw toSearchQueryError(error, flags.query);
-        })
+        }),
     );
 
     // Update pagination state (handles both advance and truncation)

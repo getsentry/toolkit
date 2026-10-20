@@ -100,7 +100,7 @@ describe("queryEvents", () => {
     });
 
     expect(capturedUrl).toContain(
-      `query=${encodeURIComponent("is:unresolved")}`
+      `query=${encodeURIComponent("is:unresolved")}`,
     );
   });
 
@@ -150,10 +150,10 @@ describe("queryEvents", () => {
     });
 
     expect(capturedUrl).toContain(
-      `start=${encodeURIComponent("2024-01-15T00:00:00Z")}`
+      `start=${encodeURIComponent("2024-01-15T00:00:00Z")}`,
     );
     expect(capturedUrl).toContain(
-      `end=${encodeURIComponent("2024-01-16T00:00:00Z")}`
+      `end=${encodeURIComponent("2024-01-16T00:00:00Z")}`,
     );
     expect(capturedUrl).not.toContain("statsPeriod=");
   });
@@ -189,7 +189,7 @@ describe("queryEvents", () => {
       },
       {
         Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="${cursor}"`,
-      }
+      },
     );
 
     const result = await queryEvents("my-org", {
@@ -212,7 +212,7 @@ describe("queryEvents", () => {
       },
       {
         Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
-      }
+      },
     );
 
     const result = await queryEvents("my-org", { fields: ["title"] });
@@ -229,7 +229,7 @@ describe("queryEvents", () => {
    * Each call to fetch returns the next response in the queue.
    */
   function mockSequential(
-    responses: Array<{ body: unknown; headers?: Record<string, string> }>
+    responses: Array<{ body: unknown; headers?: Record<string, string> }>,
   ): { getCapturedUrls: () => string[] } {
     const capturedUrls: string[] = [];
     let callIndex = 0;

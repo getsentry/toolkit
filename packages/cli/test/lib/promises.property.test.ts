@@ -30,9 +30,9 @@ describe("anyTrue properties", () => {
           const actualResult = await anyTrue(items, async (i) => results[i]);
 
           expect(actualResult).toBe(expectedResult);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -42,7 +42,7 @@ describe("anyTrue properties", () => {
         const result = await anyTrue([], async () => predicateResult);
         expect(result).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -52,7 +52,7 @@ describe("anyTrue properties", () => {
         const result = await anyTrue([1], async () => predicateResult);
         expect(result).toBe(predicateResult);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -76,9 +76,9 @@ describe("anyTrue properties", () => {
           const expectedTrue =
             trueIndex % arrayLength !== errorIndex % arrayLength;
           expect(result).toBe(expectedTrue);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -93,7 +93,7 @@ describe("anyTrue properties", () => {
 
         expect(result).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -113,9 +113,9 @@ describe("anyTrue properties", () => {
           });
 
           expect(result).toBe(true);
-        }
+        },
       ),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) } // Fewer runs since we use delays
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) }, // Fewer runs since we use delays
     );
   });
 
@@ -132,9 +132,9 @@ describe("anyTrue properties", () => {
           });
 
           expect(result).toBe(false);
-        }
+        },
       ),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) },
     );
   });
 
@@ -152,7 +152,7 @@ describe("anyTrue properties", () => {
         // All items should have been checked
         expect(called.size).toBe(arrayLength);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

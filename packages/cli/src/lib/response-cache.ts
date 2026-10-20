@@ -14,7 +14,7 @@
  * @module
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import {
   mkdir,
   readdir,
@@ -119,11 +119,13 @@ export function classifyUrl(url: string): TtlTier {
  *
  * @internal Exported for testing
  */
-export function buildCacheKey(method: string, url: string): string {
+export function buildCacheKey(
+  method: string,
+  url: string,
+  identity = getIdentityFingerprint(),
+): string {
   const normalized = normalizeUrl(method, url);
-  return createHash("sha256")
-    .update(`${getIdentityFingerprint()}|${normalized}`)
-    .digest("hex");
+  return createHmac("sha256", identity).update(normalized).digest("hex");
 }
 
 /**
@@ -144,7 +146,7 @@ export function normalizeUrl(method: string, url: string): string {
         return 1;
       }
       return 0;
-    })
+    }),
   );
   parsed.search = sortedParams.toString() ? `?${sortedParams.toString()}` : "";
   return `${method.toUpperCase()}|${parsed.toString()}`;
@@ -267,7 +269,7 @@ function isEntryFresh(
   policy: CachePolicy,
   entry: CacheEntry,
   requestHeaders: Record<string, string>,
-  url: string
+  url: string,
 ): boolean {
   const newRequest = { url, method: "GET", headers: requestHeaders };
   if (policy.satisfiesWithoutRevalidation(newRequest)) {
@@ -294,7 +296,7 @@ function isEntryFresh(
  */
 function buildResponseHeaders(
   policy: CachePolicy,
-  entry: CacheEntry
+  entry: CacheEntry,
 ): Record<string, string> {
   const policyHeaders = policy.responseHeaders();
   const result: Record<string, string> = {};
@@ -426,7 +428,8 @@ function isCacheWriteDisabled(): boolean {
 export async function getCachedResponse(
   method: string,
   url: string,
-  requestHeaders: Record<string, string>
+  requestHeaders: Record<string, string>,
+  identity = getIdentityFingerprint(),
 ): Promise<Response | undefined> {
   if (
     method !== "GET" ||
@@ -437,9 +440,9 @@ export async function getCachedResponse(
   }
 
   let key: string;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    key = buildCacheKey(method, url);
+    key = buildCacheKey(method, url, identity);
   } catch {
     // Malformed URL — skip cache lookup. The request itself will surface
     // any real URL error.
@@ -483,7 +486,7 @@ export async function getCachedResponse(
         // Best-effort cleanup of the broken entry.
         span.setAttribute("cache.hit", false);
         recordCacheHit("http", false);
-        // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+        // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
         unlink(cacheFilePath(key)).catch(() => {
           // Ignored — fire-and-forget
         });
@@ -493,7 +496,7 @@ export async function getCachedResponse(
     {
       "cache.key": [key],
       "network.peer.address": getCacheDir(),
-    }
+    },
   );
 }
 
@@ -504,7 +507,7 @@ export async function getCachedResponse(
 async function readCacheEntry(key: string): Promise<CacheEntry | undefined> {
   const filePath = cacheFilePath(key);
   let raw: string;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     raw = await readFile(filePath, "utf-8");
   } catch {
@@ -516,7 +519,7 @@ async function readCacheEntry(key: string): Promise<CacheEntry | undefined> {
     return JSON.parse(raw) as CacheEntry;
   } catch {
     // Corrupted cache file — delete it
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     await unlink(filePath).catch(() => {
       // Best-effort cleanup of corrupted file
     });
@@ -543,7 +546,8 @@ export async function storeCachedResponse(
   method: string,
   url: string,
   requestHeaders: Record<string, string>,
-  response: Response
+  response: Response,
+  identity = getIdentityFingerprint(),
 ): Promise<void> {
   if (
     method !== "GET" ||
@@ -555,15 +559,15 @@ export async function storeCachedResponse(
   }
 
   let key: string;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    key = buildCacheKey(method, url);
+    key = buildCacheKey(method, url, identity);
   } catch {
     // Malformed URL — skip caching this response
     return;
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     await withCacheSpan(
       url,
@@ -571,7 +575,7 @@ export async function storeCachedResponse(
       async (span) => {
         const size = await writeResponseToCache({
           key,
-          identity: getIdentityFingerprint(),
+          identity,
           url,
           requestHeaders,
           response,
@@ -583,7 +587,7 @@ export async function storeCachedResponse(
       {
         "cache.key": [key],
         "network.peer.address": getCacheDir(),
-      }
+      },
     );
   } catch {
     // Cache write failures are non-fatal — silently ignore
@@ -607,7 +611,7 @@ export async function storeCachedResponse(
  */
 async function atomicWriteCacheFile(
   finalPath: string,
-  serialized: string
+  serialized: string,
 ): Promise<void> {
   const tmpPath = `${finalPath}.${process.pid}.${randomUUID()}.tmp`;
   try {
@@ -643,7 +647,7 @@ async function writeResponseToCache(req: WriteRequest): Promise<number> {
   const policy = new CachePolicy(
     { url, method: "GET", headers: requestHeaders },
     { status: response.status, headers: responseHeadersObj },
-    POLICY_OPTIONS
+    POLICY_OPTIONS,
   );
 
   if (!policy.storable()) {
@@ -678,7 +682,7 @@ async function writeResponseToCache(req: WriteRequest): Promise<number> {
 
   // Probabilistic cleanup to avoid unbounded cache growth
   if (Math.random() < CLEANUP_PROBABILITY) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     cleanupCache().catch(() => {
       // Non-fatal: cleanup failure doesn't affect cache correctness
     });
@@ -699,9 +703,10 @@ async function writeResponseToCache(req: WriteRequest): Promise<number> {
  * `identity` field and are treated as foreign.
  */
 export async function invalidateCachedResponsesMatching(
-  prefix: string
+  prefix: string,
+  identity = getIdentityFingerprint(),
 ): Promise<void> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const cacheDir = getCacheDir();
     const files = await readdir(cacheDir);
@@ -710,19 +715,14 @@ export async function invalidateCachedResponsesMatching(
       return;
     }
 
-    const currentIdentity = getIdentityFingerprint();
-
     await cacheIO.map(jsonFiles, async (file) => {
       const filePath = join(cacheDir, file);
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         const raw = await readFile(filePath, "utf-8");
         const entry = JSON.parse(raw) as CacheEntry;
-        if (
-          entry.identity === currentIdentity &&
-          entry.url?.startsWith(prefix)
-        ) {
-          // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+        if (entry.identity === identity && entry.url?.startsWith(prefix)) {
+          // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
           await unlink(filePath).catch(() => {
             /* another process may have deleted it */
           });
@@ -741,7 +741,7 @@ export async function invalidateCachedResponsesMatching(
  * Called on `auth logout` and `auth login` since cached data is tied to the user.
  */
 export async function clearResponseCache(): Promise<void> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     await rm(getCacheDir(), { recursive: true, force: true });
   } catch {
@@ -815,7 +815,7 @@ const STALE_TEMP_FILE_MS = 60_000;
 /** Delete `.tmp` files older than {@link STALE_TEMP_FILE_MS}. Best-effort. */
 async function deleteStaleTempFiles(
   cacheDir: string,
-  tmpFiles: string[]
+  tmpFiles: string[],
 ): Promise<void> {
   const cutoff = Date.now() - STALE_TEMP_FILE_MS;
   await cacheIO.map(tmpFiles, async (file) => {
@@ -823,7 +823,7 @@ async function deleteStaleTempFiles(
     try {
       const stats = await stat(filePath);
       if (stats.mtimeMs < cutoff) {
-        // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+        // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
         await unlink(filePath).catch(() => {
           // Already gone — another sweep or the owning process removed it.
         });
@@ -846,7 +846,7 @@ type EntryMetadata = { file: string; createdAt: number; expired: boolean };
  */
 async function collectEntryMetadata(
   cacheDir: string,
-  jsonFiles: string[]
+  jsonFiles: string[],
 ): Promise<EntryMetadata[]> {
   const entries: EntryMetadata[] = [];
   const now = Date.now();
@@ -893,21 +893,21 @@ async function collectEntryMetadata(
 /** Delete cache files that have expired */
 async function deleteExpiredEntries(
   cacheDir: string,
-  entries: EntryMetadata[]
+  entries: EntryMetadata[],
 ): Promise<void> {
   const expired = entries.filter((e) => e.expired);
   await cacheIO.map(expired, (entry) =>
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     unlink(join(cacheDir, entry.file)).catch(() => {
       // Best-effort: file may have been deleted by another process
-    })
+    }),
   );
 }
 
 /** Evict the oldest entries when over the max count */
 async function evictExcessEntries(
   cacheDir: string,
-  entries: EntryMetadata[]
+  entries: EntryMetadata[],
 ): Promise<void> {
   const remaining = entries.filter((e) => !e.expired);
   if (remaining.length <= MAX_CACHE_ENTRIES) {
@@ -917,9 +917,9 @@ async function evictExcessEntries(
   remaining.sort((a, b) => a.createdAt - b.createdAt);
   const toEvict = remaining.slice(0, remaining.length - MAX_CACHE_ENTRIES);
   await cacheIO.map(toEvict, (entry) =>
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     unlink(join(cacheDir, entry.file)).catch(() => {
       // Best-effort eviction
-    })
+    }),
   );
 }

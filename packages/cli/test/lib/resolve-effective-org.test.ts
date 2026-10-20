@@ -188,7 +188,7 @@ describe("resolveEffectiveOrg with API refresh", () => {
             JSON.stringify({
               regions: [{ name: "us", url: regionUrl }],
             }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
+            { status: 200, headers: { "Content-Type": "application/json" } },
           );
         }
 
@@ -206,12 +206,12 @@ describe("resolveEffectiveOrg with API refresh", () => {
                 },
               },
             ]),
-            { status: 200, headers: { "Content-Type": "application/json" } }
+            { status: 200, headers: { "Content-Type": "application/json" } },
           );
         }
 
         return new Response("Not found", { status: 404 });
-      }
+      },
     );
   }
 
@@ -249,7 +249,7 @@ describe("resolveEffectiveOrg with API refresh", () => {
       async () =>
         new Response(JSON.stringify({ detail: "Unauthorized" }), {
           status: 401,
-        })
+        }),
     );
 
     const result = await resolveEffectiveOrg("o1081365");
@@ -271,7 +271,7 @@ describe("resolveEffectiveOrg with API refresh", () => {
       expect(result).toBe("missing-org");
       expect(debugSpy).toHaveBeenCalledWith(
         "resolveOrgRegion failed for 'missing-org', using raw slug",
-        expect.anything()
+        expect.anything(),
       );
     } finally {
       debugSpy.mockRestore();

@@ -50,7 +50,7 @@ const FILTERED_HEADERS = [
 /** Simple description text */
 const descriptionArb = array(
   constantFrom(..."abcdefghijklmnopqrstuvwxyz ".split("")),
-  { minLength: 3, maxLength: 30 }
+  { minLength: 3, maxLength: 30 },
 ).map((chars) => chars.join("").trim() || "change");
 
 /** Generate a section body with list items */
@@ -70,7 +70,7 @@ const releaseBodyArb = tuple(
   array(tuple(constantFrom(...FILTERED_HEADERS), sectionBodyArb), {
     minLength: 0,
     maxLength: 2,
-  })
+  }),
 ).map(([kept, filtered]) => {
   // Interleave kept and filtered sections
   const all = [...kept, ...filtered];
@@ -87,13 +87,13 @@ const commitPrefixArb = constantFrom(
   "chore",
   "test",
   "ci",
-  "meta"
+  "meta",
 );
 const commitScopeArb = constantFrom("", "(dashboard)", "(issue)", "(api)");
 const commitMessageArb = tuple(
   commitPrefixArb,
   commitScopeArb,
-  descriptionArb
+  descriptionArb,
 ).map(([prefix, scope, desc]) => `${prefix}${scope}: ${desc}`);
 
 // ─────────────────────────── Tests ─────────────────────────────────────────
@@ -107,7 +107,7 @@ describe("property: extractSections", () => {
           expect(VALID_CATEGORIES).toContain(section.category);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -122,7 +122,7 @@ describe("property: extractSections", () => {
           expect(section.category).not.toBe("documentation");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -143,9 +143,9 @@ describe("property: extractSections", () => {
             .map(([header, items]) => `${header}\n\n${items}`)
             .join("\n\n");
           expect(extractSections(body)).toEqual([]);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -163,9 +163,9 @@ describe("property: parseCommitMessages", () => {
           for (const section of sections) {
             expect(VALID_CATEGORIES).toContain(section.category);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -181,7 +181,7 @@ describe("property: parseCommitMessages", () => {
         // All commits have #skip-changelog, so no sections should be produced
         expect(sections).toEqual([]);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -204,9 +204,9 @@ describe("property: extractNightlyTimestamp", () => {
         ([major, minor, patch], ts) => {
           const version = `${major}.${minor}.${patch}-dev.${ts}`;
           expect(extractNightlyTimestamp(version)).toBe(ts);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 

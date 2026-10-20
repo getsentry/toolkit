@@ -6,10 +6,13 @@
  */
 
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { Hono } from "hono";
 import { describe, expect, test, vi } from "vitest";
 import {
   buildApp,
+  consumeSSE,
+  configureExistingRetention,
   feedSSELine,
   isServerRunning,
   parsePort,
@@ -35,7 +38,7 @@ type ServeFunc = (
     format: "human" | "json";
     attributes: boolean;
     open: boolean;
-  }
+  },
 ) => Promise<void>;
 
 function interceptShutdownSignal() {
@@ -44,7 +47,7 @@ function interceptShutdownSignal() {
   const originalOnce = process.once.bind(process);
   const onSpy = vi.spyOn(process, "on").mockImplementation(((
     event: string,
-    listener: () => void
+    listener: () => void,
   ) => {
     if (event === "SIGINT") {
       handler = listener;
@@ -54,7 +57,7 @@ function interceptShutdownSignal() {
   }) as typeof process.on);
   const onceSpy = vi.spyOn(process, "once").mockImplementation(((
     event: string,
-    listener: () => void
+    listener: () => void,
   ) => {
     if (event === "SIGINT") {
       handler = listener;
@@ -76,6 +79,34 @@ function interceptShutdownSignal() {
     },
   };
 }
+
+test("reports the scoped SSE endpoint without leaking its capability on initial attach failure", async () => {
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(null, { status: 401 }));
+  const writes: string[] = [];
+  const spy = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation((chunk: string | Uint8Array) => {
+      writes.push(chunk.toString());
+      return true;
+    });
+  try {
+    await consumeSSE({
+      url: "http://127.0.0.1:8969",
+      streamUrl:
+        "http://127.0.0.1:8969/_local/v1/sessions/session-id/stream?cap=fixture-secret",
+      activeFilters: new Set(),
+      signal: new AbortController().signal,
+    });
+  } finally {
+    globalThis.fetch = savedFetch;
+    spy.mockRestore();
+  }
+  expect(writes.join("")).toContain("/_local/v1/sessions/session-id/stream");
+  expect(writes.join("")).not.toContain("fixture-secret");
+});
 
 describe("parsePort", () => {
   test("parses valid port numbers", () => {
@@ -128,8 +159,8 @@ describe("sentry local serve --open", () => {
 
     expect(openBrowserMock).toHaveBeenCalledWith(
       expect.stringMatching(
-        /^http:\/\/localhost:5173\/#stream=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fstream$/
-      )
+        /^http:\/\/localhost:5173\/#stream=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fstream$/,
+      ),
     );
   });
 
@@ -147,7 +178,7 @@ describe("sentry local serve --open", () => {
     const { server, port } = await tryListen(
       buildApp(createSpotlightBuffer(10)),
       0,
-      "127.0.0.1"
+      "127.0.0.1",
     );
     const func = (await serverCommand.loader()) as unknown as ServeFunc;
 
@@ -163,7 +194,7 @@ describe("sentry local serve --open", () => {
     }
 
     expect(openBrowserMock).toHaveBeenCalledWith(
-      `http://localhost:5173/#stream=http%3A%2F%2F127.0.0.1%3A${port}%2Fstream`
+      `http://localhost:5173/#stream=http%3A%2F%2F127.0.0.1%3A${port}%2Fstream`,
     );
   });
 });
@@ -179,7 +210,7 @@ describe("feedSSELine", () => {
     feedSSELine(
       "event: application/x-sentry-envelope",
       state,
-      (type, data, id) => events.push({ type, data, id })
+      (type, data, id) => events.push({ type, data, id }),
     );
     expect(state.eventType).toBe("application/x-sentry-envelope");
     expect(events).toHaveLength(0);
@@ -189,7 +220,7 @@ describe("feedSSELine", () => {
     const state = makeState();
     const events: Array<{ type: string; data: string; id: string }> = [];
     feedSSELine("data: hello", state, (type, data, id) =>
-      events.push({ type, data, id })
+      events.push({ type, data, id }),
     );
     expect(state.dataLines).toEqual(["hello"]);
     expect(events).toHaveLength(0);
@@ -199,7 +230,7 @@ describe("feedSSELine", () => {
     const state = makeState();
     const events: Array<{ type: string; data: string; id: string }> = [];
     feedSSELine("id: abc-123", state, (type, data, id) =>
-      events.push({ type, data, id })
+      events.push({ type, data, id }),
     );
     expect(state.id).toBe("abc-123");
   });
@@ -318,6 +349,56 @@ async function readFirstSSEEvent(streamPath: string): Promise<string> {
 }
 
 describe("buildApp", () => {
+  test("changes legacy retention only when explicit and preserves history on rejected decreases", async () => {
+    const retention = createLocalRetentionBuffer(2);
+    const app = buildApp(retention.buffer, { uiActions: true, retention });
+    await app.request("/stream", {
+      method: "POST",
+      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+      body: TEST_ENVELOPE,
+    });
+    const retained = retention.buffer.read({ all: true });
+    for (const origin of ["https://example.com", "https://local.sentry.dev"]) {
+      expect(
+        (
+          await app.request("/retention", {
+            method: "POST",
+            headers: { Origin: origin },
+            body: '{"maxEnvelopes":1000}',
+          })
+        ).status,
+      ).toBe(403);
+    }
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
+      app.request(new URL(url).pathname, init),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await configureExistingRetention("http://127.0.0.1:8969");
+      expect(fetchMock).not.toHaveBeenCalled();
+      await configureExistingRetention("http://127.0.0.1:8969", 1000);
+      expect(retention.getSettings().maxEnvelopes).toBe(1000);
+      expect(retention.buffer.read({ all: true })).toEqual(retained);
+      await expect(
+        configureExistingRetention("http://127.0.0.1:8969", 0),
+      ).rejects.toThrow(/integer/);
+      fetchMock.mockImplementation(
+        async () => new Response("{}", { status: 200 }),
+      );
+      await expect(
+        configureExistingRetention("http://127.0.0.1:8969", 2000),
+      ).rejects.toThrow(/did not confirm/);
+      fetchMock.mockImplementation(
+        async () => new Response(null, { status: 404 }),
+      );
+      await expect(
+        configureExistingRetention("http://127.0.0.1:8969", 2000),
+      ).rejects.toThrow(/does not support/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("health endpoint returns OK", async () => {
     const buffer = createSpotlightBuffer(10);
     const app = buildApp(buffer);
@@ -412,7 +493,7 @@ describe("buildApp", () => {
       headers: { Origin: "http://localhost:3000" },
     });
     expect(res.headers.get("access-control-allow-origin")).toBe(
-      "http://localhost:3000"
+      "http://localhost:3000",
     );
   });
 
@@ -424,7 +505,7 @@ describe("buildApp", () => {
       headers: { Origin: "https://local.sentry.dev" },
     });
     expect(res.headers.get("access-control-allow-origin")).toBe(
-      "https://local.sentry.dev"
+      "https://local.sentry.dev",
     );
     if (res.body) {
       await res.body.cancel();
@@ -489,13 +570,13 @@ describe("buildApp", () => {
       },
     });
     expect(res.headers.get("access-control-allow-headers")).toContain(
-      "Last-Event-ID"
+      "Last-Event-ID",
     );
     expect(res.headers.get("access-control-allow-private-network")).toBe(
-      "true"
+      "true",
     );
     expect(res.headers.get("vary")).toContain(
-      "Access-Control-Request-Private-Network"
+      "Access-Control-Request-Private-Network",
     );
   });
 
@@ -530,7 +611,7 @@ describe("buildApp", () => {
 
     expect((await app.request("/capabilities")).status).toBe(403);
     expect((await app.request("/clear", { method: "DELETE" })).status).toBe(
-      403
+      403,
     );
   });
 
@@ -658,7 +739,7 @@ describe("isServerRunning", () => {
 
     try {
       await expect(isServerRunning(`http://127.0.0.1:${port}`)).resolves.toBe(
-        true
+        true,
       );
     } finally {
       globalThis.fetch = savedFetch;

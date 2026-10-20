@@ -58,7 +58,7 @@ async function evalModel(
   client: Awaited<ReturnType<typeof createClient>>,
   model: string,
   skillContent: string,
-  testCases: TestCase[]
+  testCases: TestCase[],
 ): Promise<ModelResult> {
   console.log(`\nEvaluating: ${model}`);
   console.log("─".repeat(40));
@@ -72,7 +72,7 @@ async function evalModel(
       client,
       model,
       skillContent,
-      testCase.prompt
+      testCase.prompt,
     );
     const result = await judgePlan(client, testCase, plan);
     results.push(result);
@@ -97,10 +97,10 @@ async function main(): Promise<void> {
   const provider = resolveEvalProvider();
   if (!provider) {
     console.error(
-      "Error: an eval provider credential is required for the skill eval."
+      "Error: an eval provider credential is required for the skill eval.",
     );
     console.error(
-      "Set OPENROUTER_API_KEY (preferred) or ANTHROPIC_API_KEY, e.g.:"
+      "Set OPENROUTER_API_KEY (preferred) or ANTHROPIC_API_KEY, e.g.:",
     );
     console.error("  export OPENROUTER_API_KEY=<your-key>");
     process.exit(1);
@@ -114,7 +114,7 @@ async function main(): Promise<void> {
     : DEFAULT_THRESHOLD;
 
   console.log(
-    `Skill eval: ${testCases.length} cases × ${client.agentModels.length} models`
+    `Skill eval: ${testCases.length} cases × ${client.agentModels.length} models`,
   );
   console.log(`Provider: ${provider.provider}`);
   console.log(`Agent models: ${client.agentModels.join(", ")}`);

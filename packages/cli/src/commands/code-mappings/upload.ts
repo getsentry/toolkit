@@ -89,7 +89,7 @@ function formatUploadResult(data: CodeMappingsUploadResult): string {
  * Read and validate the code mappings JSON file.
  */
 async function readAndValidateMappings(
-  path: string
+  path: string,
 ): Promise<Array<{ stackRoot: string; sourceRoot: string }>> {
   let content: string;
   try {
@@ -99,19 +99,19 @@ async function readAndValidateMappings(
     if (code === "ENOENT") {
       throw new ValidationError(
         `Code mappings file '${path}' does not exist.`,
-        "path"
+        "path",
       );
     }
     if (code === "EISDIR") {
       throw new ValidationError(
         `Path '${path}' is a directory, not a code mappings file.`,
-        "path"
+        "path",
       );
     }
     const msg = err instanceof Error ? err.message : String(err);
     throw new ValidationError(
       `Cannot read code mappings file '${path}': ${msg}`,
-      "path"
+      "path",
     );
   }
 
@@ -121,21 +121,21 @@ async function readAndValidateMappings(
   } catch {
     throw new ValidationError(
       `Invalid code mappings file '${path}': not valid JSON`,
-      "path"
+      "path",
     );
   }
 
   if (!Array.isArray(parsed)) {
     throw new ValidationError(
       `Invalid code mappings file '${path}': expected a JSON array`,
-      "path"
+      "path",
     );
   }
 
   if (parsed.length === 0) {
     throw new ValidationError(
       `Code mappings file '${path}' contains no mappings`,
-      "path"
+      "path",
     );
   }
 
@@ -152,7 +152,7 @@ async function readAndValidateMappings(
         .join(", ");
       throw new ValidationError(
         `Invalid code mapping at index ${i}: ${issues}`,
-        "path"
+        "path",
       );
     }
     mappings.push(result.output);
@@ -218,7 +218,7 @@ export const uploadCommand = buildCommand({
       repo?: string;
       "default-branch"?: string;
     },
-    mappingPath: string
+    mappingPath: string,
   ) {
     // 1. Read and validate the mappings file
     const mappings = await readAndValidateMappings(mappingPath);
@@ -243,7 +243,7 @@ export const uploadCommand = buildCommand({
         [
           "Could not auto-detect repository from git remotes",
           "Provide --repo explicitly",
-        ]
+        ],
       );
     }
 
@@ -253,7 +253,7 @@ export const uploadCommand = buildCommand({
       inferDefaultBranch(repoInfo?.remote ?? "origin", this.cwd);
 
     log.info(
-      `Uploading ${mappings.length} code mapping(s) for ${org}/${project} → ${repository}`
+      `Uploading ${mappings.length} code mapping(s) for ${org}/${project} → ${repository}`,
     );
 
     // 5. Upload

@@ -53,7 +53,7 @@ function createRegionRoutes(
   organizationsFixture: unknown[],
   projectsFixture: unknown[],
   issuesFixture: unknown[],
-  orgSlugs: readonly string[]
+  orgSlugs: readonly string[],
 ): MockRoute[] {
   const orgSet = new Set(orgSlugs);
   const projectsByOrg = new Map<string, unknown[]>();
@@ -98,7 +98,7 @@ function createRegionRoutes(
       response: (_req, params) => {
         if (orgSet.has(params.orgSlug)) {
           const org = (organizationsFixture as Array<{ slug: string }>).find(
-            (o) => o.slug === params.orgSlug
+            (o) => o.slug === params.orgSlug,
           );
           if (org) {
             return { body: org };
@@ -133,7 +133,7 @@ function createRegionRoutes(
         if (orgSet.has(params.orgSlug)) {
           const projects = projectsByOrg.get(params.orgSlug) ?? [];
           const project = (projects as Array<{ slug: string }>).find(
-            (p) => p.slug === params.projectSlug
+            (p) => p.slug === params.projectSlug,
           );
           if (project) {
             return { body: project };
@@ -160,7 +160,7 @@ function createRegionRoutes(
           // No project filter: return all issues for all projects in this org
           const orgProjects = projectsByOrg.get(params.orgSlug) ?? [];
           const allIssues = (orgProjects as Array<{ slug: string }>).flatMap(
-            (p) => issuesByProject.get(p.slug) ?? []
+            (p) => issuesByProject.get(p.slug) ?? [],
           );
           return { body: allIssues };
         }
@@ -204,7 +204,7 @@ function createRegionRoutes(
  */
 function withRegionLinks(
   orgs: readonly unknown[],
-  regionUrl: string
+  regionUrl: string,
 ): unknown[] {
   return (orgs as Array<{ slug: string }>).map((org) => ({
     ...org,
@@ -221,7 +221,7 @@ function withRegionLinks(
 function createControlSiloRoutes(
   usRegionUrl: string,
   euRegionUrl: string,
-  options: MultiRegionOptions
+  options: MultiRegionOptions,
 ): MockRoute[] {
   const routes: MockRoute[] = [
     // Auth / current user via /auth/ endpoint (works with all token types)
@@ -326,7 +326,7 @@ export type MultiRegionMockServer = {
  * @returns Multi-region mock server instance
  */
 export function createMultiRegionMockServer(
-  options: MultiRegionOptions = {}
+  options: MultiRegionOptions = {},
 ): MultiRegionMockServer {
   // Create region servers first (we need their URLs for control silo)
   const usRegion = createMockServer(
@@ -334,9 +334,9 @@ export function createMultiRegionMockServer(
       usOrganizationsFixture,
       usProjectsFixture,
       usIssuesFixture,
-      US_ORGS
+      US_ORGS,
     ),
-    { validTokens: [TEST_TOKEN] }
+    { validTokens: [TEST_TOKEN] },
   );
 
   const euRegion = createMockServer(
@@ -344,9 +344,9 @@ export function createMultiRegionMockServer(
       euOrganizationsFixture,
       euProjectsFixture,
       euIssuesFixture,
-      EU_ORGS
+      EU_ORGS,
     ),
-    { validTokens: [TEST_TOKEN] }
+    { validTokens: [TEST_TOKEN] },
   );
 
   // Control silo needs region URLs, but they're not available until servers start
@@ -382,7 +382,7 @@ export function createMultiRegionMockServer(
       const controlRoutes = createControlSiloRoutes(
         usRegion.url,
         euRegion.url,
-        options
+        options,
       );
       controlSilo = createMockServer(controlRoutes, {
         validTokens: [TEST_TOKEN],

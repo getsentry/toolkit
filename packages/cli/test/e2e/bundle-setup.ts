@@ -80,7 +80,9 @@ async function runBundleBuild(): Promise<void> {
 }
 
 async function waitForBundle(): Promise<void> {
-  const deadline = Date.now() + 55_000;
+  // Building the bundled CLI also builds its MCP runtime dependencies. On
+  // cold CI runners that can take longer than the old 55-second allowance.
+  const deadline = Date.now() + 115_000;
   while (Date.now() < deadline) {
     if (existsSync(BUNDLE_INDEX_PATH) && !existsSync(LOCK_DIR)) {
       return;

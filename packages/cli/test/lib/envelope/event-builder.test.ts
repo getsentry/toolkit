@@ -126,14 +126,14 @@ describe("buildEventFromFlags", () => {
 
   test("--timestamp with Unix epoch float", async () => {
     const event = await buildEventFromFlags(
-      flags({ timestamp: "1700000000.123" })
+      flags({ timestamp: "1700000000.123" }),
     );
     expect(event.timestamp).toBe(1_700_000_000.123);
   });
 
   test("--timestamp with ISO 8601 string", async () => {
     const event = await buildEventFromFlags(
-      flags({ timestamp: "2024-01-15T12:00:00Z" })
+      flags({ timestamp: "2024-01-15T12:00:00Z" }),
     );
     // ISO 8601 → parsed via Date.parse, converted to seconds
     expect(event.timestamp).toBe(Date.parse("2024-01-15T12:00:00Z") / 1000);
@@ -141,7 +141,7 @@ describe("buildEventFromFlags", () => {
 
   test("--timestamp with invalid string throws ValidationError", async () => {
     await expect(
-      buildEventFromFlags(flags({ timestamp: "not-a-date" }))
+      buildEventFromFlags(flags({ timestamp: "not-a-date" })),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -153,27 +153,27 @@ describe("buildEventFromFlags", () => {
 
   test("--level sets level", async () => {
     expect((await buildEventFromFlags(flags({ level: "warning" }))).level).toBe(
-      "warning"
+      "warning",
     );
   });
 
   test("--message joined with newline", async () => {
     const event = await buildEventFromFlags(
-      flags({ message: ["hello", "world"] })
+      flags({ message: ["hello", "world"] }),
     );
     expect(event.logentry?.message).toBe("hello\nworld");
   });
 
   test("--message-arg sets params", async () => {
     const event = await buildEventFromFlags(
-      flags({ message: ["hello %s"], "message-arg": ["world"] })
+      flags({ message: ["hello %s"], "message-arg": ["world"] }),
     );
     expect(event.logentry?.params).toEqual(["world"]);
   });
 
   test("--tag parses into tags object", async () => {
     const event = await buildEventFromFlags(
-      flags({ tag: ["env:prod", "ver:1.0"] })
+      flags({ tag: ["env:prod", "ver:1.0"] }),
     );
     expect(event.tags).toEqual({ env: "prod", ver: "1.0" });
   });
@@ -195,7 +195,7 @@ describe("buildEventFromFlags", () => {
 
   test("--user routes known fields correctly", async () => {
     const event = await buildEventFromFlags(
-      flags({ user: ["id:99", "email:a@b.com"] })
+      flags({ user: ["id:99", "email:a@b.com"] }),
     );
     expect(event.user?.id).toBe("99");
     expect(event.user?.email).toBe("a@b.com");
@@ -203,32 +203,32 @@ describe("buildEventFromFlags", () => {
 
   test("--fingerprint sets fingerprint array", async () => {
     const event = await buildEventFromFlags(
-      flags({ fingerprint: ["my-error", "{{ default }}"] })
+      flags({ fingerprint: ["my-error", "{{ default }}"] }),
     );
     expect(event.fingerprint).toEqual(["my-error", "{{ default }}"]);
   });
 
   test("--release sets release", async () => {
     expect(
-      (await buildEventFromFlags(flags({ release: "1.2.3" }))).release
+      (await buildEventFromFlags(flags({ release: "1.2.3" }))).release,
     ).toBe("1.2.3");
   });
 
   test("--env sets environment", async () => {
     expect(
-      (await buildEventFromFlags(flags({ env: "staging" }))).environment
+      (await buildEventFromFlags(flags({ env: "staging" }))).environment,
     ).toBe("staging");
   });
 
   test("--platform sets platform", async () => {
     expect(
-      (await buildEventFromFlags(flags({ platform: "python" }))).platform
+      (await buildEventFromFlags(flags({ platform: "python" }))).platform,
     ).toBe("python");
   });
 
   test("--dist sets dist", async () => {
     expect((await buildEventFromFlags(flags({ dist: "x86" }))).dist).toBe(
-      "x86"
+      "x86",
     );
   });
 
@@ -265,10 +265,10 @@ describe("buildEventFromFlags", () => {
     try {
       writeFileSync(
         logPath,
-        "INFO: Server started\nERROR: Connection lost\nplain line\n"
+        "INFO: Server started\nERROR: Connection lost\nplain line\n",
       );
       const event = await buildEventFromFlags(
-        flags({ logfile: logPath, "with-categories": true })
+        flags({ logfile: logPath, "with-categories": true }),
       );
       expect(event.breadcrumbs).toHaveLength(3);
       expect(event.breadcrumbs?.[0]).toMatchObject({
@@ -291,7 +291,7 @@ describe("buildEventFromFlags", () => {
 
   test("--logfile with nonexistent file throws ValidationError", async () => {
     await expect(
-      buildEventFromFlags(flags({ logfile: "/nonexistent/logfile.log" }))
+      buildEventFromFlags(flags({ logfile: "/nonexistent/logfile.log" })),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -303,7 +303,7 @@ describe("buildEventFromFlags", () => {
     const logPath = join(dir, "big.log");
     try {
       const lines = Array.from({ length: 150 }, (_, i) => `line ${i}`).join(
-        "\n"
+        "\n",
       );
       writeFileSync(logPath, lines);
       const event = await buildEventFromFlags(flags({ logfile: logPath }));

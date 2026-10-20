@@ -15,11 +15,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
@@ -29,11 +29,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 import {
   ApiError,
@@ -49,11 +49,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { ReplayDetails } from "../../../src/types/index.js";
 
@@ -135,7 +135,7 @@ describe("parsePositionalArgs", () => {
 
   test("throws ValidationError for extra positional args", () => {
     expect(() =>
-      parsePositionalArgs(["test-org/cli", REPLAY_ID, "extra-arg"])
+      parsePositionalArgs(["test-org/cli", REPLAY_ID, "extra-arg"]),
     ).toThrow(ValidationError);
   });
 });
@@ -216,7 +216,7 @@ describe("viewCommand.func", () => {
     resolveReplaySpy.mockResolvedValue(
       sampleReplay({
         error_ids: ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -224,7 +224,7 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: true, web: false, fresh: false },
-      REPLAY_ID
+      REPLAY_ID,
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -239,7 +239,7 @@ describe("viewCommand.func", () => {
       "test-org",
       "42",
       REPLAY_ID,
-      { expectedSegments: 5 }
+      { expectedSegments: 5 },
     );
     expect(listIssuesPaginatedSpy).toHaveBeenCalledWith(
       "test-org",
@@ -247,7 +247,7 @@ describe("viewCommand.func", () => {
       expect.objectContaining({
         perPage: 1,
         query: "event.id:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      })
+      }),
     );
   });
 
@@ -260,12 +260,12 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: false, web: true, fresh: false },
-      `test-org/${REPLAY_ID}`
+      `test-org/${REPLAY_ID}`,
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       "https://test-org.sentry.io/explore/replays/346789a703f6454384f1de473b8b9fcc/",
-      "replay"
+      "replay",
     );
   });
 
@@ -278,12 +278,12 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: false, web: true, fresh: false },
-      `https://sentry.io/organizations/test-org/explore/replays/${REPLAY_ID}/`
+      `https://sentry.io/organizations/test-org/explore/replays/${REPLAY_ID}/`,
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       "https://test-org.sentry.io/explore/replays/346789a703f6454384f1de473b8b9fcc/",
-      "replay"
+      "replay",
     );
   });
 
@@ -296,26 +296,26 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: false, web: true, fresh: false },
-      TRACE_ID
+      TRACE_ID,
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       "https://test-org.sentry.io/explore/replays/346789a703f6454384f1de473b8b9fcc/",
-      "replay"
+      "replay",
     );
   });
 
   test("converts missing replays into ResolutionError", async () => {
     resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "cli" });
     resolveReplaySpy.mockRejectedValue(
-      new ApiError("Failed to get replay", 404, "Not Found")
+      new ApiError("Failed to get replay", 404, "Not Found"),
     );
 
     const { context } = createMockContext();
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false, fresh: false }, REPLAY_ID)
+      func.call(context, { json: false, web: false, fresh: false }, REPLAY_ID),
     ).rejects.toThrow(ResolutionError);
   });
 
@@ -327,7 +327,7 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false, fresh: false }, REPLAY_ID)
+      func.call(context, { json: false, web: false, fresh: false }, REPLAY_ID),
     ).rejects.toThrow(ResolutionError);
   });
 
@@ -338,7 +338,7 @@ describe("viewCommand.func", () => {
         count_segments: 0,
         is_archived: true,
         project_id: null,
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -346,7 +346,7 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: true, web: false, fresh: false },
-      REPLAY_ID
+      REPLAY_ID,
     );
 
     expect(getProjectSpy).not.toHaveBeenCalled();
@@ -361,7 +361,7 @@ describe("viewCommand.func", () => {
       sampleReplay({
         error_ids: ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
         urls: ["/checkout"],
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -369,7 +369,7 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: false, web: false, fresh: false },
-      REPLAY_ID
+      REPLAY_ID,
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -385,7 +385,7 @@ describe("viewCommand.func", () => {
     resolveReplaySpy.mockResolvedValue(
       sampleReplay({
         started_at: "2025-01-01T00:00:00.000Z",
-      })
+      }),
     );
     getReplayRecordingSegmentsSpy.mockResolvedValue([
       [
@@ -401,7 +401,7 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: false, web: false, fresh: false },
-      REPLAY_ID
+      REPLAY_ID,
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");

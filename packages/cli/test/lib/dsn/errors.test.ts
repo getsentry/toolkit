@@ -300,11 +300,11 @@ describe("formatMultipleProjectsFooter", () => {
 
     expect(footer).toContain("Found 2 Sentry projects:");
     expect(footer).toContain(
-      "• my-org / frontend (from packages/frontend/.env)"
+      "• my-org / frontend (from packages/frontend/.env)",
     );
     expect(footer).toContain("• my-org / backend (from src/sentry.ts)");
     expect(footer).toContain(
-      "Use <org>/<project> to target a specific project."
+      "Use <org>/<project> to target a specific project.",
     );
   });
 
@@ -354,7 +354,7 @@ describe("formatMultipleProjectsFooter", () => {
     expect(footer).toContain("• my-org / backend");
     expect(footer).not.toContain("• my-org / backend (from");
     expect(footer).toContain(
-      "• other-org / shared (from libs/shared/sentry.config.js)"
+      "• other-org / shared (from libs/shared/sentry.config.js)",
     );
   });
 

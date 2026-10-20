@@ -48,7 +48,7 @@ vi.mock("node:child_process", async (importOriginal) => {
           child.stderr.write("SyntaxError: Windows verification fixture\n");
         });
         return child;
-      }
+      },
     ),
     spawnSync: vi.fn(
       (command: string, args: string[], options: { timeout?: number }) => {
@@ -62,7 +62,7 @@ vi.mock("node:child_process", async (importOriginal) => {
           stderr: null,
           stdout: null,
         };
-      }
+      },
     ),
   };
 });
@@ -95,7 +95,7 @@ beforeEach(async () => {
   tmpDir = await mkdtemp(join(TEST_TMP_DIR, "verify-setup-windows-test-"));
   await writeFile(
     join(tmpDir, "package.json"),
-    JSON.stringify({ scripts: { dev: "node server.js" } })
+    JSON.stringify({ scripts: { dev: "node server.js" } }),
   );
 });
 
@@ -112,7 +112,7 @@ describe("verifySetup Windows cleanup", () => {
     await verifySetup(
       { status: "success", result: { platform: "javascript-nextjs" } },
       ui,
-      tmpDir
+      tmpDir,
     );
 
     expect(mocks.spawnCalls[0]?.options.detached).toBe(false);
@@ -134,14 +134,14 @@ describe("verifySetup Windows cleanup", () => {
     await verifySetup(
       { status: "success", result: { platform: "javascript-nextjs" } },
       ui,
-      tmpDir
+      tmpDir,
     );
 
     expect(mocks.taskkillCalls.map(({ args }) => args)).toEqual([
       ["/PID", "4321", "/T", "/F"],
     ]);
     expect(debugSpy).toHaveBeenCalledWith(
-      expect.stringContaining("taskkill exited with status 1")
+      expect.stringContaining("taskkill exited with status 1"),
     );
     expect(mocks.childKillCalls).toEqual(["SIGKILL"]);
   });
@@ -151,7 +151,7 @@ describe("verifySetup Windows cleanup", () => {
       new Error("spawnSync taskkill ETIMEDOUT"),
       {
         code: "ETIMEDOUT",
-      }
+      },
     );
     mocks.taskkillErrors.push(timeoutError);
     const debugSpy = vi.spyOn(logger, "debug");
@@ -160,14 +160,14 @@ describe("verifySetup Windows cleanup", () => {
     await verifySetup(
       { status: "success", result: { platform: "javascript-nextjs" } },
       ui,
-      tmpDir
+      tmpDir,
     );
 
     expect(debugSpy).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Failed to terminate Windows verification process tree"
+        "Failed to terminate Windows verification process tree",
       ),
-      timeoutError
+      timeoutError,
     );
     expect(mocks.childKillCalls).toEqual(["SIGKILL"]);
   });

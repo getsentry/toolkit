@@ -45,13 +45,13 @@ describe("withProgress", () => {
         rotatingMessages: ["Finding the relevant bits…"],
         rotationIntervalMs: 4000,
       },
-      async () => deferred.promise
+      async () => deferred.promise,
     );
 
     await vi.advanceTimersByTimeAsync(4000);
 
     expect(stdoutWrite.mock.calls.flat().join("")).toContain(
-      "Finding the relevant bits…"
+      "Finding the relevant bits…",
     );
 
     deferred.resolve("done");
@@ -72,12 +72,12 @@ describe("withProgress", () => {
         rotatingMessages: ["It’s getting there…"],
         rotationIntervalMs: 4000,
       },
-      async () => deferred.promise
+      async () => deferred.promise,
     );
 
     await vi.advanceTimersByTimeAsync(4000);
     expect(stdoutWrite.mock.calls.flat().join("")).toContain(
-      "It’s getting there…"
+      "It’s getting there…",
     );
 
     deferred.reject(new Error("docs unavailable"));
@@ -99,8 +99,8 @@ describe("withProgress", () => {
           rotatingMessages: ["It’s getting there…"],
           rotationIntervalMs: 4000,
         },
-        async () => "done"
-      )
+        async () => "done",
+      ),
     ).resolves.toBe("done");
 
     expect(stdoutWrite).not.toHaveBeenCalled();
@@ -121,8 +121,8 @@ describe("withProgress", () => {
           rotatingMessages: ["It’s getting there…"],
           rotationIntervalMs: 4000,
         },
-        async () => "done"
-      )
+        async () => "done",
+      ),
     ).resolves.toBe("done");
 
     expect(stdoutWrite).not.toHaveBeenCalled();
@@ -144,8 +144,8 @@ describe("withProgress", () => {
           rotatingMessages: ["It’s getting there…"],
           rotationIntervalMs: 4000,
         },
-        async () => "done"
-      )
+        async () => "done",
+      ),
     ).resolves.toBe("done");
 
     expect(stdoutWrite).not.toHaveBeenCalled();

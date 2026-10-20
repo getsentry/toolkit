@@ -7,7 +7,7 @@ const AuthStatusSchema = object({
   auth: nullable(
     object({
       scopes: array(string()),
-    })
+    }),
   ),
 });
 

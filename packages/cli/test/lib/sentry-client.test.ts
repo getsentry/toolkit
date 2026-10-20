@@ -67,7 +67,7 @@ describe("fetchWithRetry / buildAttemptFactory", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: "acme" }),
-      }
+      },
     );
 
     expect(res.status).toBe(200);
@@ -194,7 +194,7 @@ describe("fetchWithRetry / buildAttemptFactory", () => {
       new Blob([new Uint8Array([1, 2, 3, 4])], {
         type: "application/octet-stream",
       }),
-      "chunk.bin"
+      "chunk.bin",
     );
 
     const authFetch = getAuthenticatedFetch();
@@ -248,7 +248,7 @@ describe("fetchWithTimeout internal timeout classification", () => {
           signal.addEventListener(
             "abort",
             () => reject(new DOMException("aborted", "AbortError")),
-            { once: true }
+            { once: true },
           );
         });
       });
@@ -263,7 +263,7 @@ describe("fetchWithTimeout internal timeout classification", () => {
 
       expect(thrown).toBeInstanceOf(TimeoutError);
       expect((thrown as TimeoutError).message).toContain(
-        "Request timed out after"
+        "Request timed out after",
       );
       // MAX_RETRIES = 2 → attempts 0, 1, 2.
       expect(calls).toBe(3);
@@ -288,7 +288,7 @@ describe("user abort passthrough", () => {
         signal?.addEventListener(
           "abort",
           () => reject(new DOMException("aborted", "AbortError")),
-          { once: true }
+          { once: true },
         );
       });
     });
@@ -319,37 +319,37 @@ describe("resolveTimeoutMs", () => {
   test("returns 120 000 ms for Seer /autofix/ POST paths", () => {
     expect(
       __resolveRequestTimeoutMsForTests(
-        "https://us.sentry.io/api/0/organizations/acme/issues/1/autofix/"
-      )
+        "https://us.sentry.io/api/0/organizations/acme/issues/1/autofix/",
+      ),
     ).toBe(120_000);
     expect(
       __resolveRequestTimeoutMsForTests(
-        "https://us.sentry.io/api/0/organizations/acme/issues/1/autofix/?run_id=42"
-      )
+        "https://us.sentry.io/api/0/organizations/acme/issues/1/autofix/?run_id=42",
+      ),
     ).toBe(120_000);
     expect(
       __resolveRequestTimeoutMsForTests(
-        "https://us.sentry.io/api/0/organizations/acme/issues/1/autofix"
-      )
+        "https://us.sentry.io/api/0/organizations/acme/issues/1/autofix",
+      ),
     ).toBe(120_000);
   });
 
   test("returns the 30 000 ms default for non-overridden paths", () => {
     expect(
       __resolveRequestTimeoutMsForTests(
-        "https://us.sentry.io/api/0/organizations/"
-      )
+        "https://us.sentry.io/api/0/organizations/",
+      ),
     ).toBe(30_000);
     expect(
       __resolveRequestTimeoutMsForTests(
-        "https://us.sentry.io/api/0/issues/1/events/"
-      )
+        "https://us.sentry.io/api/0/issues/1/events/",
+      ),
     ).toBe(30_000);
     // Substring-only matches must not inherit the override.
     expect(
       __resolveRequestTimeoutMsForTests(
-        "https://us.sentry.io/api/0/autofixation-report/"
-      )
+        "https://us.sentry.io/api/0/autofixation-report/",
+      ),
     ).toBe(30_000);
   });
 });

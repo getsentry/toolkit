@@ -49,7 +49,7 @@ afterEach(() => {
 function mockResponse(
   body: unknown,
   status = 200,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -96,7 +96,7 @@ describe("store and retrieve", () => {
     const cached = await getCachedResponse(
       TEST_METHOD,
       "https://us.sentry.io/api/0/organizations/nonexistent/projects/",
-      {}
+      {},
     );
     expect(cached).toBeUndefined();
   });
@@ -165,7 +165,7 @@ describe("non-2xx responses", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse({ detail: "not found" }, 404)
+      mockResponse({ detail: "not found" }, 404),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
@@ -177,7 +177,7 @@ describe("non-2xx responses", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse({ detail: "server error" }, 500)
+      mockResponse({ detail: "server error" }, 500),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
@@ -240,7 +240,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     process.env.SENTRY_NO_CACHE = "1";
@@ -256,7 +256,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     // Remove the bypass to verify nothing was written
@@ -271,7 +271,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     disableResponseCache();
@@ -288,7 +288,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(freshBody)
+      mockResponse(freshBody),
     );
 
     // Re-enable cache reads to verify the write succeeded
@@ -308,7 +308,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(staleBody)
+      mockResponse(staleBody),
     );
 
     // Activate --fresh: reads are bypassed, but writes still go through
@@ -323,7 +323,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(freshBody)
+      mockResponse(freshBody),
     );
 
     // Re-enable cache reads (simulates next invocation without --fresh)
@@ -344,7 +344,7 @@ describe("normalizeUrl", () => {
   test("sorts query params alphabetically", () => {
     const result = normalizeUrl(
       "GET",
-      "https://sentry.io/api/0/issues/?b=2&a=1"
+      "https://sentry.io/api/0/issues/?b=2&a=1",
     );
     expect(result).toBe("GET|https://sentry.io/api/0/issues/?a=1&b=2");
   });
@@ -361,7 +361,7 @@ describe("normalizeUrl", () => {
   test("handles self-hosted URLs with unusual schemes", () => {
     const result = normalizeUrl(
       "GET",
-      "https://sentry.mycompany.internal/api/0/issues/"
+      "https://sentry.mycompany.internal/api/0/issues/",
     );
     expect(result).toBe("GET|https://sentry.mycompany.internal/api/0/issues/");
   });
@@ -382,7 +382,7 @@ describe("buildCacheKey", () => {
 
   test("different methods produce different keys", () => {
     expect(buildCacheKey("GET", TEST_URL)).not.toBe(
-      buildCacheKey("POST", TEST_URL)
+      buildCacheKey("POST", TEST_URL),
     );
   });
 
@@ -413,7 +413,7 @@ describe("invalid URL handling", () => {
       "GET",
       "not-a-valid-url",
       {},
-      mockResponse({ ok: true })
+      mockResponse({ ok: true }),
     );
   });
 });
@@ -430,7 +430,7 @@ describe("no-cache tier", () => {
       TEST_METHOD,
       autofixUrl,
       {},
-      mockResponse({ autofix: { status: "PROCESSING" } })
+      mockResponse({ autofix: { status: "PROCESSING" } }),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, autofixUrl, {});
@@ -444,7 +444,7 @@ describe("no-cache tier", () => {
       TEST_METHOD,
       rootCauseUrl,
       {},
-      mockResponse({ cause: "something" })
+      mockResponse({ cause: "something" }),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, rootCauseUrl, {});
@@ -462,7 +462,7 @@ describe("file structure", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     const cacheDir = join(getConfigDir(), "cache", "responses");
@@ -476,7 +476,7 @@ describe("file structure", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     const cacheDir = join(getConfigDir(), "cache", "responses");
@@ -505,14 +505,14 @@ describe("atomic write regression", () => {
         TEST_METHOD,
         TEST_URL,
         {},
-        mockResponse({ data: `stale-${i}` })
+        mockResponse({ data: `stale-${i}` }),
       );
       const freshBody = { data: `fresh-${i}` };
       await storeCachedResponse(
         TEST_METHOD,
         TEST_URL,
         {},
-        mockResponse(freshBody)
+        mockResponse(freshBody),
       );
 
       const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
@@ -537,13 +537,13 @@ describe("invalidateCachedResponsesMatching", () => {
       "GET",
       ORG_LIST_URL,
       {},
-      mockResponse({ matched: true })
+      mockResponse({ matched: true }),
     );
     await storeCachedResponse(
       "GET",
       `${OTHER_PREFIX}?cursor=def`,
       {},
-      mockResponse({ matched: false })
+      mockResponse({ matched: false }),
     );
 
     await invalidateCachedResponsesMatching(ORG_PREFIX);
@@ -553,7 +553,7 @@ describe("invalidateCachedResponsesMatching", () => {
     const survivor = await getCachedResponse(
       "GET",
       `${OTHER_PREFIX}?cursor=def`,
-      {}
+      {},
     );
     expect(survivor).toBeDefined();
   });
@@ -566,7 +566,7 @@ describe("invalidateCachedResponsesMatching", () => {
       "GET",
       ORG_LIST_URL,
       {},
-      mockResponse({ owner: "a" })
+      mockResponse({ owner: "a" }),
     );
     expect(await getCachedResponse("GET", ORG_LIST_URL, {})).toBeDefined();
 
@@ -598,14 +598,14 @@ describe("invalidateCachedResponsesMatching with query params", () => {
       "GET",
       `${DETAIL_BASE}?collapse=stats&collapse=lifetime`,
       {},
-      mockResponse({ id: "12345" })
+      mockResponse({ id: "12345" }),
     );
     expect(
       await getCachedResponse(
         "GET",
         `${DETAIL_BASE}?collapse=stats&collapse=lifetime`,
-        {}
-      )
+        {},
+      ),
     ).toBeDefined();
 
     // Mutation-side invalidator uses the base URL (no params).
@@ -615,8 +615,8 @@ describe("invalidateCachedResponsesMatching with query params", () => {
       await getCachedResponse(
         "GET",
         `${DETAIL_BASE}?collapse=stats&collapse=lifetime`,
-        {}
-      )
+        {},
+      ),
     ).toBeUndefined();
   });
 });

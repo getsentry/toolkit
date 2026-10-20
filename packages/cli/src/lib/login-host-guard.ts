@@ -14,14 +14,12 @@
  * unconfirmed self-hosted login that `sentry auth login` would have refused.
  */
 
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { DEFAULT_SENTRY_URL } from "./constants.js";
 import { getStoredAuthHost } from "./db/auth.js";
 import { getDefaultUrl } from "./db/defaults.js";
 import { getEnv } from "./env.js";
-import {
-  isSaaSTrustOrigin,
-  normalizeUserInputToOrigin,
-} from "./sentry-urls.js";
+import { normalizeUserInputToOrigin } from "./sentry-urls.js";
 import { isHostTrusted, isLoginTrustAnchorFor } from "./token-host.js";
 
 /**
@@ -57,10 +55,10 @@ export function isLoginHostTrusted(host: string): boolean {
  *    Covers 403 scope-recovery re-auth: the user is already authenticated to
  *    this exact instance, so re-authing to add scopes is safe. `setAuthToken`
  *    always records this, even when default-URL persistence failed.
- *  - **Persisted default URL** (`defaults.url`) — survives `clearAuth()`, so
- *    it covers the expired-session path, where both expired branches call
- *    `clearAuth()` before the `AuthError` reaches the middleware (see db/auth
- *    `refreshToken`) and the token row is already gone.
+ *  - **Persisted default URL** (`defaults.url`) — survives credential
+ *    invalidation, so it covers the expired-session path, where both expired
+ *    branches drop the active account's token before the `AuthError` reaches
+ *    the middleware (see db/auth `refreshToken`) and no token is left.
  *
  * Both are written only by explicit, confirmed user actions — never by the
  * `.sentryclirc` env shim — and {@link isHostTrusted} requires an exact match
@@ -84,7 +82,7 @@ export function isAutoLoginHostTrusted(host: string): boolean {
  */
 export function buildHostRefusalMessage(
   host: string,
-  opts?: { tokenFlag?: boolean; rcSource?: string }
+  opts?: { tokenFlag?: boolean; rcSource?: string },
 ): string {
   const tokenFlag = opts?.tokenFlag ? " --token <your-token>" : "";
   const sourceClause = opts?.rcSource

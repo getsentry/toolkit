@@ -1,6 +1,7 @@
 # Pull Request Management
 
-Comprehensive guide for managing pull requests in the Sentry MCP project, including GitHub CLI usage, review feedback handling, and structured commit practices.
+Guide to Toolkit pull requests, GitHub CLI usage, review feedback, and commits
+for CLI, MCP, and shared packages.
 
 ## GitHub CLI Usage
 
@@ -53,7 +54,7 @@ gh pr list --state open --author @me
 
 # View specific PR
 gh pr view 123
-gh pr view https://github.com/getsentry/sentry-mcp/pull/123
+gh pr view https://github.com/getsentry/toolkit/pull/123
 
 # Check CI status
 gh pr checks 123
@@ -69,10 +70,10 @@ gh pr merge 123 --squash --delete-branch
 gh pr view 123 --comments
 
 # View specific review
-gh api repos/getsentry/sentry-mcp/pulls/123/reviews
+gh api repos/getsentry/toolkit/pulls/123/reviews
 
 # List review comments on specific files
-gh api repos/getsentry/sentry-mcp/pulls/123/comments
+gh api repos/getsentry/toolkit/pulls/123/comments
 ```
 
 ## Handling Review Feedback
@@ -89,22 +90,25 @@ gh api repos/getsentry/sentry-mcp/pulls/123/comments
 **CRITICAL**: Always verify feedback validity before implementing changes.
 
 #### For Human Review Feedback
+
 - ✅ **Always implement** - Human reviewers understand context and requirements
 - ✅ **Ask for clarification** if feedback is unclear
 - ✅ **Discuss trade-offs** if you disagree with approach
 
 #### For AI Agent Feedback
+
 - ⚠️ **Verify accuracy** - AI suggestions may be outdated or context-unaware
 - ⚠️ **Check compatibility** - Ensure suggestions align with project patterns
 - ⚠️ **Test thoroughly** - AI changes can introduce subtle bugs
 
 **Common AI feedback to validate carefully:**
+
 ```bash
 # AI suggests error handling - verify it's needed
-- "Add error handling for JSON.parse" 
+- "Add error handling for JSON.parse"
   → Check if error handling exists elsewhere in call chain
 
-# AI suggests performance optimizations - verify impact  
+# AI suggests performance optimizations - verify impact
 - "Use useMemo for expensive calculations"
   → Measure if optimization is actually needed
 
@@ -114,6 +118,7 @@ gh api repos/getsentry/sentry-mcp/pulls/123/comments
 ```
 
 #### For CI/CD Feedback
+
 - ✅ **Fix immediately** - Build/test failures block progress
 - ✅ **Address linting** - Maintains code quality standards
 - ✅ **Resolve conflicts** - Required for merge
@@ -131,7 +136,7 @@ git checkout feat-better-search
 # 3. Commit with reference to feedback
 git commit -m "fix: address review feedback about error handling
 
-Per @reviewer suggestion, add proper error boundaries around 
+Per @reviewer suggestion, add proper error boundaries around
 JSON.parse operations in search-events.ts.
 
 Co-Authored-By: Codex CLI Agent <noreply@openai.com>"
@@ -154,8 +159,9 @@ gh pr comment --body "✅ Addressed all review feedback"
 ```
 
 ### Types
+
 - `feat`: New feature
-- `fix`: Bug fix  
+- `fix`: Bug fix
 - `refactor`: Code change that neither fixes a bug nor adds a feature
 - `perf`: Performance improvement
 - `test`: Adding or modifying tests
@@ -164,8 +170,9 @@ gh pr comment --body "✅ Addressed all review feedback"
 - `chore`: Changes to build process or auxiliary tools
 
 ### Scope (optional)
+
 - `server`: MCP server changes
-- `client`: Test client changes  
+- `client`: Test client changes
 - `cloudflare`: Cloudflare Worker changes
 - `evals`: Evaluation test changes
 - `tools`: Tool-specific changes
@@ -186,8 +193,8 @@ Co-Authored-By: Codex CLI Agent <noreply@openai.com>"
 # Bug fix
 git commit -m "fix(evals): update search-events eval to use available exports
 
-Replace missing TaskRunner and Factuality imports with NoOpTaskRunner 
-and ToolPredictionScorer to resolve CI build failures after factuality 
+Replace missing TaskRunner and Factuality imports with NoOpTaskRunner
+and ToolPredictionScorer to resolve CI build failures after factuality
 checker removal.
 
 Co-Authored-By: Codex CLI Agent <noreply@openai.com>"
@@ -214,12 +221,14 @@ Do not include generator or "Generated with" banners in PR descriptions or commi
 ### Focus on Reviewer Needs
 
 **Good PR descriptions help reviewers understand:**
+
 - What problem was solved
-- What changes were made  
+- What changes were made
 - Why these changes were necessary
 - Any potential impact or risks
 
 **Avoid including:**
+
 - Test plans or instructions (CI handles testing)
 - Implementation details that are clear from the code
 - Line-by-line walkthroughs
@@ -229,56 +238,69 @@ Do not include generator or "Generated with" banners in PR descriptions or commi
 
 ```markdown
 ## Summary
+
 <!-- Brief description of what was changed and why -->
+
 Fixes [issue] by [solution approach]. This addresses [problem] and enables [benefit].
 
 ### Key Changes
+
 <!-- High-level changes that reviewers should focus on -->
+
 - Fixed [specific issue]: [brief explanation]
-- Added [new feature]: [brief explanation]  
+- Added [new feature]: [brief explanation]
 - Refactored [component]: [brief explanation]
 
 ### Breaking Changes
+
 <!-- If any breaking changes -->
+
 - None
+
 <!-- OR -->
+
 - Updated tool interface (see migration guide)
 
 ### Dependencies
+
 <!-- Related PRs or external dependencies -->
+
 - Depends on #123
 - Requires Sentry API version X.Y
-
- 
 ```
 
 ### Real Examples
 
 **Good - Concise and reviewer-focused:**
+
 ```markdown
 ## Summary
+
 Fixes search_events tool to properly understand OpenTelemetry semantic conventions and refactors the code into a clean module structure.
 
 ### Key Changes
+
 - Fixed semantic understanding: "agent calls" now correctly maps to GenAI conventions (`gen_ai.*`) instead of MCP tool calls
 - Refactored 1385-line monolithic file into 8 focused modules with clear responsibilities
 - Added dynamic semantic lookup for better attribute disambiguation
-
- 
 ```
 
 **Bad - Too verbose with unnecessary details:**
+
 ```markdown
 ## Summary
+
 This PR implements comprehensive improvements to the search_events tool...
 
 ### Technical Implementation Details
+
 - Uses OpenAI GPT-4 for natural language processing
 - Implements sophisticated caching mechanisms
 - Creates extensive test coverage with MSW mocks
 - Follows advanced TypeScript patterns
 
 ### Test Plan
+
 1. Run `pnpm test` to verify all tests pass
 2. Test with various query types:
    - "agent calls" should return GenAI spans
@@ -287,6 +309,7 @@ This PR implements comprehensive improvements to the search_events tool...
 4. Check that performance remains optimal
 
 ### File Structure Changes
+
 - src/tools/search-events.ts → src/tools/catalog/search-events.ts
 - Added src/tools/support/search-events/agent.ts for AI logic
 - [... detailed file-by-file breakdown ...]
@@ -299,7 +322,7 @@ This PR implements comprehensive improvements to the search_events tool...
 ```bash
 # Run all quality checks before requesting review
 pnpm run tsc     # TypeScript compilation
-pnpm run lint    # Code linting  
+pnpm run lint    # Code linting
 pnpm run test    # Unit tests
 
 # Check git status is clean
@@ -405,7 +428,7 @@ gh pr view --comments | grep -A5 -B5 "REQUESTED_CHANGES"
 
 # Ensure you've addressed all feedback:
 # 1. Made code changes
-# 2. Committed changes  
+# 2. Committed changes
 # 3. Pushed to branch
 # 4. Responded to comments
 ```
@@ -413,6 +436,7 @@ gh pr view --comments | grep -A5 -B5 "REQUESTED_CHANGES"
 ## Best Practices
 
 ### Do's
+
 - ✅ Always verify AI feedback before implementing
 - ✅ Write clear, descriptive commit messages
 - ✅ Focus PR descriptions on reviewer needs, not test plans
@@ -420,7 +444,8 @@ gh pr view --comments | grep -A5 -B5 "REQUESTED_CHANGES"
 - ✅ Run quality checks before pushing
 - ✅ Use GitHub CLI for efficient workflow
 
-### Don'ts  
+### Don'ts
+
 - ❌ Never auto-apply AI suggestions without validation
 - ❌ Don't commit without running tests locally
 - ❌ Don't merge without reviewer approval
@@ -428,6 +453,7 @@ gh pr view --comments | grep -A5 -B5 "REQUESTED_CHANGES"
 - ❌ Don't force push without `--force-with-lease`
 
 ### AI Agent Collaboration
+
 - 🤖 AI agents may suggest improvements via comments
 - 🤖 Always evaluate AI suggestions for correctness and fit
 - 🤖 Test AI-suggested changes thoroughly

@@ -50,7 +50,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted /organizations/{org}/", () => {
       const result = parseSentryUrl(
-        "https://sentry.example.com/organizations/acme-corp/"
+        "https://sentry.example.com/organizations/acme-corp/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.example.com",
@@ -60,7 +60,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted Feedback permalink supports legacy mixed-case project slugs", () => {
       const result = parseSentryUrl(
-        "https://sentry.example.com/organizations/acme-corp/feedback/?feedbackSlug=Legacy_Project%3A5146636313"
+        "https://sentry.example.com/organizations/acme-corp/feedback/?feedbackSlug=Legacy_Project%3A5146636313",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.example.com",
@@ -81,7 +81,7 @@ describe("parseSentryUrl", () => {
   describe("issue URLs", () => {
     test("/organizations/{org}/issues/{numericId}/", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/issues/32886/"
+        "https://sentry.io/organizations/my-org/issues/32886/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -92,7 +92,7 @@ describe("parseSentryUrl", () => {
 
     test("/organizations/{org}/issues/{shortId}/", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/issues/CLI-G/"
+        "https://sentry.io/organizations/my-org/issues/CLI-G/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -103,7 +103,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted issue URL with query params", () => {
       const result = parseSentryUrl(
-        "https://sentry.example.com/organizations/acme-corp/issues/32886/?project=2"
+        "https://sentry.example.com/organizations/acme-corp/issues/32886/?project=2",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.example.com",
@@ -114,7 +114,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted issue URL with port", () => {
       const result = parseSentryUrl(
-        "https://sentry.acme.internal:9000/organizations/devops/issues/100/"
+        "https://sentry.acme.internal:9000/organizations/devops/issues/100/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.acme.internal:9000",
@@ -125,7 +125,7 @@ describe("parseSentryUrl", () => {
 
     test("HTTP (non-HTTPS) self-hosted URL", () => {
       const result = parseSentryUrl(
-        "http://sentry.local:8080/organizations/dev/issues/42/"
+        "http://sentry.local:8080/organizations/dev/issues/42/",
       );
       expect(result).toEqual({
         baseUrl: "http://sentry.local:8080",
@@ -138,7 +138,7 @@ describe("parseSentryUrl", () => {
   describe("event URLs", () => {
     test("/organizations/{org}/issues/{id}/events/{eventId}/", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/issues/32886/events/abc123def456/"
+        "https://sentry.io/organizations/my-org/issues/32886/events/abc123def456/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -150,7 +150,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted event URL", () => {
       const result = parseSentryUrl(
-        "https://sentry.example.com/organizations/acme/issues/999/events/deadbeef/"
+        "https://sentry.example.com/organizations/acme/issues/999/events/deadbeef/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.example.com",
@@ -162,7 +162,7 @@ describe("parseSentryUrl", () => {
 
     test("event URL without trailing slash", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/issues/1/events/evt001"
+        "https://sentry.io/organizations/my-org/issues/1/events/evt001",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -176,7 +176,7 @@ describe("parseSentryUrl", () => {
   describe("trace URLs", () => {
     test("/organizations/{org}/explore/traces/trace/{traceId}/", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/explore/traces/trace/a4d1aae7216b47ff8117cf4e09ce9d0a/"
+        "https://sentry.io/organizations/my-org/explore/traces/trace/a4d1aae7216b47ff8117cf4e09ce9d0a/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -187,7 +187,7 @@ describe("parseSentryUrl", () => {
 
     test("org-domain /explore/traces/trace/{traceId}/", () => {
       const result = parseSentryUrl(
-        "https://my-org.sentry.io/explore/traces/trace/a4d1aae7216b47ff8117cf4e09ce9d0a/"
+        "https://my-org.sentry.io/explore/traces/trace/a4d1aae7216b47ff8117cf4e09ce9d0a/",
       );
       expect(result).toEqual({
         baseUrl: "https://my-org.sentry.io",
@@ -198,7 +198,7 @@ describe("parseSentryUrl", () => {
 
     test("/organizations/{org}/traces/{traceId}/", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/traces/a4d1aae7216b47ff8117cf4e09ce9d0a/"
+        "https://sentry.io/organizations/my-org/traces/a4d1aae7216b47ff8117cf4e09ce9d0a/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -209,7 +209,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted trace URL", () => {
       const result = parseSentryUrl(
-        "https://sentry.example.com/organizations/devops/traces/00112233445566778899aabbccddeeff/"
+        "https://sentry.example.com/organizations/devops/traces/00112233445566778899aabbccddeeff/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.example.com",
@@ -223,7 +223,7 @@ describe("parseSentryUrl", () => {
       // unrelated sub-route — the slug must not be captured as a trace ID. It
       // resolves to the org (like the replay list), not a trace detail.
       const result = parseSentryUrl(
-        "https://my-org.sentry.io/explore/traces/some-subroute/"
+        "https://my-org.sentry.io/explore/traces/some-subroute/",
       );
       expect(result).toEqual({
         baseUrl: "https://my-org.sentry.io",
@@ -241,7 +241,7 @@ describe("parseSentryUrl", () => {
 
     test("organizations explore/traces without trace segment is org-only", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/explore/traces/some-subroute/"
+        "https://sentry.io/organizations/my-org/explore/traces/some-subroute/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -253,7 +253,7 @@ describe("parseSentryUrl", () => {
   describe("replay URLs", () => {
     test("/organizations/{org}/explore/replays/{replayId}/", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/"
+        "https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -264,7 +264,7 @@ describe("parseSentryUrl", () => {
 
     test("legacy /organizations/{org}/replays/{replayId}/", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/replays/346789a703f6454384f1de473b8b9fcc/"
+        "https://sentry.io/organizations/my-org/replays/346789a703f6454384f1de473b8b9fcc/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -275,7 +275,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted replay URL", () => {
       const result = parseSentryUrl(
-        "https://sentry.example.com/organizations/acme-corp/explore/replays/346789a703f6454384f1de473b8b9fcc/"
+        "https://sentry.example.com/organizations/acme-corp/explore/replays/346789a703f6454384f1de473b8b9fcc/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.example.com",
@@ -286,7 +286,7 @@ describe("parseSentryUrl", () => {
 
     test("normalizes uppercase replay IDs in replay URLs", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/explore/replays/346789A703F6454384F1DE473B8B9FCC/"
+        "https://sentry.io/organizations/my-org/explore/replays/346789A703F6454384F1DE473B8B9FCC/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -297,7 +297,7 @@ describe("parseSentryUrl", () => {
 
     test("falls back to org for replay listing URL", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/explore/replays/"
+        "https://sentry.io/organizations/my-org/explore/replays/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -307,7 +307,7 @@ describe("parseSentryUrl", () => {
 
     test("falls back to org for legacy replay listing URL", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/replays/"
+        "https://sentry.io/organizations/my-org/replays/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -318,30 +318,30 @@ describe("parseSentryUrl", () => {
     test("rejects non-hex replay ID on explore path", () => {
       expect(
         parseSentryUrl(
-          "https://sentry.io/organizations/my-org/explore/replays/some-random-page/"
-        )
+          "https://sentry.io/organizations/my-org/explore/replays/some-random-page/",
+        ),
       ).toBeNull();
     });
 
     test("rejects non-hex replay ID on legacy path", () => {
       expect(
         parseSentryUrl(
-          "https://sentry.io/organizations/my-org/replays/some-random-page/"
-        )
+          "https://sentry.io/organizations/my-org/replays/some-random-page/",
+        ),
       ).toBeNull();
     });
 
     test("rejects non-hex replay ID on subdomain explore path", () => {
       expect(
         parseSentryUrl(
-          "https://my-org.sentry.io/explore/replays/some-random-page/"
-        )
+          "https://my-org.sentry.io/explore/replays/some-random-page/",
+        ),
       ).toBeNull();
     });
 
     test("falls back to org for subdomain replay listing URL", () => {
       const result = parseSentryUrl(
-        "https://my-org.sentry.io/explore/replays/"
+        "https://my-org.sentry.io/explore/replays/",
       );
       expect(result).toEqual({
         baseUrl: "https://my-org.sentry.io",
@@ -353,7 +353,7 @@ describe("parseSentryUrl", () => {
   describe("dashboard URLs", () => {
     test("/organizations/{org}/dashboard/{id}/", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/dashboard/4326879/"
+        "https://sentry.io/organizations/my-org/dashboard/4326879/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -364,7 +364,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted dashboard URL", () => {
       const result = parseSentryUrl(
-        "https://sentry.example.com/organizations/devops/dashboard/12345/"
+        "https://sentry.example.com/organizations/devops/dashboard/12345/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.example.com",
@@ -375,7 +375,7 @@ describe("parseSentryUrl", () => {
 
     test("dashboard URL without trailing slash", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/organizations/my-org/dashboard/999"
+        "https://sentry.io/organizations/my-org/dashboard/999",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -388,7 +388,7 @@ describe("parseSentryUrl", () => {
   describe("project settings URLs", () => {
     test("/settings/{org}/projects/{project}/", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/settings/my-org/projects/backend/"
+        "https://sentry.io/settings/my-org/projects/backend/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -399,7 +399,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted project settings URL", () => {
       const result = parseSentryUrl(
-        "https://sentry.example.com/settings/acme/projects/web-frontend/"
+        "https://sentry.example.com/settings/acme/projects/web-frontend/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.example.com",
@@ -412,7 +412,7 @@ describe("parseSentryUrl", () => {
   describe("SaaS subdomain-style URLs (org in hostname)", () => {
     test("issue URL extracts org from subdomain", () => {
       const result = parseSentryUrl(
-        "https://my-org.sentry.io/issues/99124558/"
+        "https://my-org.sentry.io/issues/99124558/",
       );
       expect(result).toEqual({
         baseUrl: "https://my-org.sentry.io",
@@ -423,7 +423,7 @@ describe("parseSentryUrl", () => {
 
     test("issue URL with event ID", () => {
       const result = parseSentryUrl(
-        "https://my-org.sentry.io/issues/99124558/events/abc123/"
+        "https://my-org.sentry.io/issues/99124558/events/abc123/",
       );
       expect(result).toEqual({
         baseUrl: "https://my-org.sentry.io",
@@ -435,7 +435,7 @@ describe("parseSentryUrl", () => {
 
     test("trace URL extracts org from subdomain", () => {
       const result = parseSentryUrl(
-        "https://my-org.sentry.io/traces/a4d1aae7216b47ff8117cf4e09ce9d0a/"
+        "https://my-org.sentry.io/traces/a4d1aae7216b47ff8117cf4e09ce9d0a/",
       );
       expect(result).toEqual({
         baseUrl: "https://my-org.sentry.io",
@@ -446,7 +446,7 @@ describe("parseSentryUrl", () => {
 
     test("replay URL extracts org from subdomain", () => {
       const result = parseSentryUrl(
-        "https://my-org.sentry.io/explore/replays/346789a703f6454384f1de473b8b9fcc/"
+        "https://my-org.sentry.io/explore/replays/346789a703f6454384f1de473b8b9fcc/",
       );
       expect(result).toEqual({
         baseUrl: "https://my-org.sentry.io",
@@ -457,7 +457,7 @@ describe("parseSentryUrl", () => {
 
     test("legacy replay URL extracts org from subdomain", () => {
       const result = parseSentryUrl(
-        "https://my-org.sentry.io/replays/346789a703f6454384f1de473b8b9fcc/"
+        "https://my-org.sentry.io/replays/346789a703f6454384f1de473b8b9fcc/",
       );
       expect(result).toEqual({
         baseUrl: "https://my-org.sentry.io",
@@ -468,7 +468,7 @@ describe("parseSentryUrl", () => {
 
     test("dashboard URL extracts org from subdomain", () => {
       const result = parseSentryUrl(
-        "https://sentry-sdks.sentry.io/dashboard/4326879/"
+        "https://sentry-sdks.sentry.io/dashboard/4326879/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry-sdks.sentry.io",
@@ -487,7 +487,7 @@ describe("parseSentryUrl", () => {
 
     test("modern Feedback permalink returns its org", () => {
       const result = parseSentryUrl(
-        "https://my-org.sentry.io/feedback/?feedbackSlug=my-project%3A5146636313"
+        "https://my-org.sentry.io/feedback/?feedbackSlug=my-project%3A5146636313",
       );
       expect(result).toEqual({
         baseUrl: "https://my-org.sentry.io",
@@ -503,7 +503,7 @@ describe("parseSentryUrl", () => {
       "my-project%250A%3A5146636313",
     ])("does not extract malformed Feedback slug %s", (feedbackSlug) => {
       const result = parseSentryUrl(
-        `https://my-org.sentry.io/feedback/?feedbackSlug=${feedbackSlug}`
+        `https://my-org.sentry.io/feedback/?feedbackSlug=${feedbackSlug}`,
       );
       expect(result).toEqual({
         baseUrl: "https://my-org.sentry.io",
@@ -513,7 +513,7 @@ describe("parseSentryUrl", () => {
 
     test("hyphenated org slug", () => {
       const result = parseSentryUrl(
-        "https://acme-corp.sentry.io/issues/12345/"
+        "https://acme-corp.sentry.io/issues/12345/",
       );
       expect(result).toEqual({
         baseUrl: "https://acme-corp.sentry.io",
@@ -539,10 +539,10 @@ describe("parseSentryUrl", () => {
       // Self-hosted hostname doesn't end with .sentry.io — subdomain extraction must not apply.
       // The path /issues/123/ has no /organizations/ prefix, so no matcher handles it.
       expect(
-        parseSentryUrl("https://sentry.example.com/issues/123/")
+        parseSentryUrl("https://sentry.example.com/issues/123/"),
       ).toBeNull();
       expect(
-        parseSentryUrl("https://sentry.acme.internal:9000/issues/456/")
+        parseSentryUrl("https://sentry.acme.internal:9000/issues/456/"),
       ).toBeNull();
     });
   });
@@ -550,7 +550,7 @@ describe("parseSentryUrl", () => {
   describe("share URLs", () => {
     test("SaaS subdomain share URL extracts org and shareId", () => {
       const result = parseSentryUrl(
-        "https://gibush-kq.sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/"
+        "https://gibush-kq.sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/",
       );
       expect(result).toEqual({
         baseUrl: "https://gibush-kq.sentry.io",
@@ -561,7 +561,7 @@ describe("parseSentryUrl", () => {
 
     test("bare sentry.io share URL has no org", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/"
+        "https://sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -571,7 +571,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted share URL", () => {
       const result = parseSentryUrl(
-        "https://sentry.example.com/share/issue/aabbccdd11223344aabbccdd11223344/"
+        "https://sentry.example.com/share/issue/aabbccdd11223344aabbccdd11223344/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.example.com",
@@ -581,7 +581,7 @@ describe("parseSentryUrl", () => {
 
     test("self-hosted share URL with port", () => {
       const result = parseSentryUrl(
-        "https://sentry.acme.internal:9000/share/issue/deadbeefdeadbeefdeadbeefdeadbeef/"
+        "https://sentry.acme.internal:9000/share/issue/deadbeefdeadbeefdeadbeefdeadbeef/",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.acme.internal:9000",
@@ -592,7 +592,7 @@ describe("parseSentryUrl", () => {
     test("region subdomain share URL has no org", () => {
       // us.sentry.io is a region, not an org — share URL falls through to matchSharePath
       const result = parseSentryUrl(
-        "https://us.sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/"
+        "https://us.sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5/",
       );
       expect(result).toEqual({
         baseUrl: "https://us.sentry.io",
@@ -602,7 +602,7 @@ describe("parseSentryUrl", () => {
 
     test("share URL without trailing slash", () => {
       const result = parseSentryUrl(
-        "https://sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5"
+        "https://sentry.io/share/issue/f1abd515c51346778384ff25dfb341e5",
       );
       expect(result).toEqual({
         baseUrl: "https://sentry.io",
@@ -634,7 +634,7 @@ describe("parseSentryUrl", () => {
 
     test("/settings/{org}/projects/ without project slug", () => {
       expect(
-        parseSentryUrl("https://sentry.io/settings/my-org/projects/")
+        parseSentryUrl("https://sentry.io/settings/my-org/projects/"),
       ).toBeNull();
     });
   });
@@ -660,9 +660,8 @@ describe("applySentryUrlContext", () => {
     delete process.env.SENTRY_HOST;
     // Reset env-token-host capture so each test can re-pin based on the
     // SENTRY_HOST they set (or leave unset → SaaS default).
-    const { resetEnvTokenHostForTesting } = await import(
-      "../../src/lib/env-token-host.js"
-    );
+    const { resetEnvTokenHostForTesting } =
+      await import("../../src/lib/env-token-host.js");
     resetEnvTokenHostForTesting();
   });
 
@@ -677,9 +676,8 @@ describe("applySentryUrlContext", () => {
     } else {
       delete process.env.SENTRY_HOST;
     }
-    const { resetEnvTokenHostForTesting } = await import(
-      "../../src/lib/env-token-host.js"
-    );
+    const { resetEnvTokenHostForTesting } =
+      await import("../../src/lib/env-token-host.js");
     resetEnvTokenHostForTesting();
   });
 
@@ -696,7 +694,7 @@ describe("applySentryUrlContext", () => {
     // Env-token defaults to SaaS (no SENTRY_HOST set), so a self-hosted URL
     // is a host-scope mismatch → CliError, env untouched.
     expect(() => applySentryUrlContext("https://sentry.example.com")).toThrow(
-      /does not match|sentry auth login --url/
+      /does not match|sentry auth login --url/,
     );
     expect(process.env.SENTRY_HOST).toBeUndefined();
     expect(process.env.SENTRY_URL).toBeUndefined();
@@ -721,7 +719,7 @@ describe("applySentryUrlContext", () => {
     process.env.SENTRY_HOST = "https://existing.example.com";
     process.env.SENTRY_URL = "https://existing.example.com";
     expect(() => applySentryUrlContext("https://sentry.other.com")).toThrow(
-      /does not match|sentry auth login --url/
+      /does not match|sentry auth login --url/,
     );
     // Existing env left intact — throw happens before any write.
     expect(process.env.SENTRY_HOST).toBe("https://existing.example.com");

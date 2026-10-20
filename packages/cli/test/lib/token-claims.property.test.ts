@@ -31,7 +31,7 @@ const mint = mintSntrysToken;
 
 /** Arbitrary URL-shaped string (https://<host>) */
 const httpsUrlArb = stringMatching(
-  /^[a-z][a-z0-9-]{0,30}(\.[a-z][a-z0-9-]{0,30}){0,4}$/
+  /^[a-z][a-z0-9-]{0,30}(\.[a-z][a-z0-9-]{0,30}){0,4}$/,
 ).map((host) => `https://${host}`);
 
 describe("property: parseSntrysClaim never throws on adversarial input", () => {
@@ -45,19 +45,19 @@ describe("property: parseSntrysClaim never throws on adversarial input", () => {
           expect(result.url.length).toBeGreaterThan(0);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS * 4 }
+      { numRuns: DEFAULT_NUM_RUNS * 4 },
     );
   });
 
   test("strings starting with sntrys_ but with weird content → never throws", () => {
     const sntrysPrefixed = string({ maxLength: 1000 }).map(
-      (rest) => `sntrys_${rest}`
+      (rest) => `sntrys_${rest}`,
     );
     fcAssert(
       property(sntrysPrefixed, (input) => {
         expect(() => parseSntrysClaim(input)).not.toThrow();
       }),
-      { numRuns: DEFAULT_NUM_RUNS * 4 }
+      { numRuns: DEFAULT_NUM_RUNS * 4 },
     );
   });
 });
@@ -69,7 +69,7 @@ describe("property: round-trip — minted tokens parse back to the same url", ()
         const token = mint({ iat: 1_700_000_000, url, org: "x" });
         expect(parseSntrysClaim(token)?.url).toBe(url);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -80,9 +80,9 @@ describe("property: round-trip — minted tokens parse back to the same url", ()
         ([iat, url]) => {
           const token = mint({ iat, url, org: "x" });
           expect(parseSntrysClaim(token)).toBeDefined();
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -101,7 +101,7 @@ describe("property: forged claims parse identically (NOT a security signal)", ()
         });
         expect(parseSntrysClaim(forged)?.url).toBe(forgedUrl);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

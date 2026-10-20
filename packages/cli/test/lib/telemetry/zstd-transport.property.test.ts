@@ -46,9 +46,9 @@ describe("property: maybeCompress round-trip (zstd path)", () => {
           expect(result.encodingApplied).toBe("zstd");
           const decompressed = await promisify(zstdDecompress)(result.payload);
           expect(Buffer.from(decompressed).equals(buf)).toBe(true);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -63,9 +63,9 @@ describe("property: maybeCompress round-trip (gzip path)", () => {
           const result = await maybeCompress(buf, "gzip");
           expect(result.encodingApplied).toBe("gzip");
           expect(gunzipSync(result.payload).equals(buf)).toBe(true);
-        }
+        },
       ),
-      { numRuns: 25 } // gzip on 96 KiB is slower; fewer runs
+      { numRuns: 25 }, // gzip on 96 KiB is slower; fewer runs
     );
   });
 });
@@ -78,7 +78,7 @@ describe("property: normalizeBody string/Uint8Array equivalence", () => {
         const fromBytes = normalizeBody(new TextEncoder().encode(s));
         expect(fromString.equals(fromBytes)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -90,13 +90,13 @@ describe("property: normalizeBody string/Uint8Array equivalence", () => {
           const fromString = await maybeCompress(normalizeBody(s), "zstd");
           const fromBytes = await maybeCompress(
             normalizeBody(new TextEncoder().encode(s)),
-            "zstd"
+            "zstd",
           );
           expect(fromString.encodingApplied).toBe(fromBytes.encodingApplied);
           expect(fromString.payload.equals(fromBytes.payload)).toBe(true);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -111,9 +111,9 @@ describe("property: maybeCompress passthrough below threshold", () => {
           const result = await maybeCompress(buf, "zstd");
           expect(result.encodingApplied).toBe("none");
           expect(result.payload).toBe(buf);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -126,9 +126,9 @@ describe("property: maybeCompress passthrough below threshold", () => {
           const result = await maybeCompress(buf, "gzip");
           expect(result.encodingApplied).toBe("none");
           expect(result.payload).toBe(buf);
-        }
+        },
       ),
-      { numRuns: 25 } // 32 KiB arbitrary alloc is slower; fewer runs
+      { numRuns: 25 }, // 32 KiB arbitrary alloc is slower; fewer runs
     );
   });
 });

@@ -34,7 +34,7 @@ const NIL_DEBUG_ID = "00000000-0000-0000-0000-000000000000";
 
 const hexGroup = (length: number) =>
   tuple(
-    ...Array.from({ length }, () => constantFrom(..."0123456789abcdef"))
+    ...Array.from({ length }, () => constantFrom(..."0123456789abcdef")),
   ).map((chars) => chars.join(""));
 
 /** A non-nil UUID (8-4-4-4-12). May coincide with nil with negligible odds. */
@@ -43,14 +43,14 @@ const uuidArb = tuple(
   hexGroup(4),
   hexGroup(4),
   hexGroup(4),
-  hexGroup(12)
+  hexGroup(12),
 ).map((parts) => parts.join("-"));
 
 /** A debug id: valid UUID, UUID+age suffix, or the nil id. */
 const debugIdArb = oneof(
   uuidArb,
   tuple(uuidArb, hexGroup(8)).map(([id, age]) => `${id}-${age}`),
-  constant(NIL_DEBUG_ID)
+  constant(NIL_DEBUG_ID),
 );
 
 const formatArb = constantFrom(
@@ -62,7 +62,7 @@ const formatArb = constantFrom(
   "wasm",
   "breakpad",
   "sourcebundle",
-  "unknown"
+  "unknown",
 );
 
 const difObjectArb: Arbitrary<DifObjectInfo> = record({
@@ -87,7 +87,7 @@ describe("property: normalizeDebugId", () => {
         const once = normalizeDebugId(id);
         expect(normalizeDebugId(once)).toBe(once);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -100,7 +100,7 @@ describe("property: normalizeDebugId", () => {
         expect(normalized).not.toContain("{");
         expect(normalized).not.toContain("}");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -112,7 +112,7 @@ describe("property: objectPassesFilters", () => {
         const nilObj = { ...obj, debugId: NIL_DEBUG_ID };
         expect(objectPassesFilters(nilObj, defaultFilters())).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -128,7 +128,7 @@ describe("property: objectPassesFilters", () => {
         };
         expect(objectPassesFilters(featureless, defaultFilters())).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -142,7 +142,7 @@ describe("property: objectPassesFilters", () => {
       property(difObjectArb, (obj) => {
         expect(objectPassesFilters(obj, noFeatures)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -155,7 +155,7 @@ describe("property: objectPassesFilters", () => {
           expect(objectPassesFilters(obj, elfOnly)).toBe(false);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -175,7 +175,7 @@ describe("property: objectPassesFilters", () => {
         };
         expect(objectPassesFilters(obj, defaultFilters())).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -197,7 +197,7 @@ describe("property: objectPassesFilters", () => {
         const idFilter = buildDifFilters({ ids: [id] });
         expect(objectPassesFilters(obj, idFilter)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -209,7 +209,7 @@ describe("property: debugIdMatches", () => {
         expect(debugIdMatches(id, id)).toBe(true);
         expect(debugIdMatches(id, `{${id.toUpperCase()}}`)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -219,7 +219,7 @@ describe("property: debugIdMatches", () => {
         expect(debugIdMatches(id, `${id}-${age}`)).toBe(true);
         expect(debugIdMatches(`${id}-${age}`, id)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -233,7 +233,7 @@ describe("buildDifFilters", () => {
 
   test("throws ValidationError on an unknown type", () => {
     expect(() => buildDifFilters({ types: ["bogus"] })).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 

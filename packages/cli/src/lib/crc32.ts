@@ -14,7 +14,7 @@ const POLYNOMIAL = 0xed_b8_83_20;
 
 let table: Uint32Array | undefined;
 
-// biome-ignore-start lint/suspicious/noBitwiseOperators: CRC-32 is defined in terms of bitwise operations
+// oxlint-disable no-bitwise -- CRC-32 is defined in terms of bitwise operations
 function getTable(): Uint32Array {
   if (!table) {
     table = new Uint32Array(256);
@@ -42,7 +42,7 @@ export function crc32Fallback(data: Uint8Array, value = 0): number {
   }
   return ~crc >>> 0;
 }
-// biome-ignore-end lint/suspicious/noBitwiseOperators: CRC-32 is defined in terms of bitwise operations
+// oxlint-enable no-bitwise
 
 /**
  * Compute the CRC-32 of `data`, optionally continuing from a previous

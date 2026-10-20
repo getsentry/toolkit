@@ -13,6 +13,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { toSearchQueryError } from "../../lib/errors.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { formatLogTable } from "../../lib/formatters/log.js";
@@ -25,7 +26,7 @@ import {
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
-import { buildTraceUrl } from "../../lib/sentry-urls.js";
+import { buildTraceUrl } from "../../lib/sentry-web-urls.js";
 import {
   formatTimeRangeFlag,
   PERIOD_BRIEF,
@@ -132,7 +133,7 @@ export const logsCommand = buildCommand({
         placeholder: "org/project/trace-id",
         brief:
           "[<org>/[<project>/]]<trace-id> - Optional org/project and required trace ID",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -211,7 +212,7 @@ export const logsCommand = buildCommand({
         }).catch((error: unknown): never => {
           // An unparseable user --query is a user input mistake, not a CLI bug.
           throw toSearchQueryError(error, flags.query);
-        })
+        }),
     );
 
     const hasMore = logs.length >= flags.limit;

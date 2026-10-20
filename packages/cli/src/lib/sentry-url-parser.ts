@@ -8,12 +8,20 @@
  * so that subsequent API calls reach the correct instance.
  */
 
-import { DEFAULT_SENTRY_HOST } from "./constants.js";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
+import {
+  clearPersistedDefaultUrl,
+  DEFAULT_SENTRY_HOST,
+  DEFAULT_SENTRY_URL,
+} from "./constants.js";
+import {
+  hasStoredAccountForHost,
+  shouldPinSaaSForPastedUrl,
+} from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { HostScopeError } from "./errors.js";
 import { tryNormalizeHexId } from "./hex-id.js";
 import { logger } from "./logger.js";
-import { isSaaSTrustOrigin } from "./sentry-urls.js";
 import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
 
 const log = logger.withTag("url-parser");
@@ -57,7 +65,7 @@ export type ParsedSentryUrl = {
 function matchOrganizationsPath(
   baseUrl: string,
   segments: string[],
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): ParsedSentryUrl | null {
   if (segments[0] !== "organizations" || !segments[1]) {
     return null;
@@ -110,7 +118,7 @@ function matchOrganizationsPath(
  */
 function matchSettingsPath(
   baseUrl: string,
-  segments: string[]
+  segments: string[],
 ): ParsedSentryUrl | null {
   if (
     segments[0] !== "settings" ||
@@ -133,7 +141,7 @@ function matchSettingsPath(
  */
 function matchSubdomainPath(
   segments: string[],
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): Omit<ParsedSentryUrl, "baseUrl" | "org"> | null {
   // /issues/{id}/ (optionally with /events/{eventId}/)
   if (segments[0] === "issues" && segments[1]) {
@@ -166,7 +174,7 @@ function matchSubdomainPath(
 
 function matchSubdomainTailPath(
   segments: string[],
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): Omit<ParsedSentryUrl, "baseUrl" | "org"> | null {
   // /settings/projects/{project}/ (org-scoped subdomain settings URL)
   if (segments[0] === "settings" && segments[1] === "projects" && segments[2]) {
@@ -207,7 +215,7 @@ function matchSubdomainTailPath(
  */
 function matchTracePath(
   segments: string[],
-  startIndex: number
+  startIndex: number,
 ): { status: "absent" | "list" } | { status: "detail"; traceId: string } {
   let index = startIndex;
   const hasExplorePrefix = segments[index] === "explore";
@@ -240,7 +248,7 @@ function matchTracePath(
 function matchFeedbackPath(
   segments: string[],
   startIndex: number,
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): Omit<ParsedSentryUrl, "baseUrl" | "org"> | null {
   if (
     segments[startIndex] !== "feedback" ||
@@ -259,7 +267,7 @@ function matchFeedbackPath(
 
 function matchReplayPath(
   segments: string[],
-  startIndex: number
+  startIndex: number,
 ):
   | { status: "absent" | "list" | "invalid" }
   | { status: "detail"; replayId: string } {
@@ -301,7 +309,7 @@ function matchSubdomainOrg(
   baseUrl: string,
   hostname: string,
   segments: string[],
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
 ): ParsedSentryUrl | null {
   // Must be a subdomain of sentry.io (e.g., "my-org.sentry.io")
   if (!hostname.endsWith(`.${DEFAULT_SENTRY_HOST}`)) {
@@ -334,7 +342,7 @@ function matchSubdomainOrg(
  */
 function matchSharePath(
   baseUrl: string,
-  segments: string[]
+  segments: string[],
 ): ParsedSentryUrl | null {
   if (segments[0] !== "share" || segments[1] !== "issue" || !segments[2]) {
     return null;
@@ -417,15 +425,36 @@ export function applySentryUrlContext(baseUrl: string): void {
   // the trust check.
   if (isSaaSTrustOrigin(baseUrl)) {
     // Clear any self-hosted URL so API calls fall back to default SaaS routing.
-    // biome-ignore lint/performance/noDelete: env registry requires delete to truly unset; assignment coerces to string in Node.js
+    // env registry requires delete to truly unset; assignment coerces to string in Node.js
     delete env.SENTRY_HOST;
-    // biome-ignore lint/performance/noDelete: env registry requires delete to truly unset; assignment coerces to string in Node.js
+    // env registry requires delete to truly unset; assignment coerces to string in Node.js
     delete env.SENTRY_URL;
+    // Pin the server to SaaS explicitly when other stored accounts could
+    // claim the URL (see `shouldPinSaaSForPastedUrl`): a usable SaaS account
+    // is used even when the active one is self-hosted (db/auth `getAuthRow`),
+    // and org-based selection only considers SaaS accounts, so the URL can't
+    // route to a self-hosted account sharing the org slug or id — even when
+    // the SaaS login is logged out (the request then fails to authenticate).
+    // Checks stored accounts only: reading the active token host would
+    // snapshot an env token's host (as SaaS, now that the URL is cleared).
+    if (shouldPinSaaSForPastedUrl()) {
+      env.SENTRY_URL = DEFAULT_SENTRY_URL;
+      // The pin is the user's choice even when `defaults.url` is already
+      // SaaS: otherwise it would still read as the persisted default, which
+      // org-based selection lets yield to a self-hosted account.
+      clearPersistedDefaultUrl();
+    }
     return;
   }
 
+  // A stored account on this server is used for it (see db/auth `getAuthRow`).
   const tokenHost = getActiveTokenHost();
-  if (!(tokenHost && isHostTrusted(baseUrl, tokenHost))) {
+  if (
+    !(
+      (tokenHost && isHostTrusted(baseUrl, tokenHost)) ||
+      hasStoredAccountForHost(baseUrl)
+    )
+  ) {
     throw new HostScopeError("URL argument", baseUrl, tokenHost);
   }
 

@@ -9,6 +9,7 @@
 import type { SentryContext } from "../../context.js";
 import { getCustomerTrialInfo } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -220,7 +221,7 @@ export const listCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (auto-detected if omitted)",
-          parse: String,
+          parse: parseOrgTarget,
           optional: true as const,
         },
       ],
@@ -238,7 +239,7 @@ export const listCommand = buildCommand({
 
     const info = await withProgress(
       { message: "Fetching trials...", json: flags.json },
-      () => getCustomerTrialInfo(resolved.org)
+      () => getCustomerTrialInfo(resolved.org),
     );
     const productTrials = info.productTrials ?? [];
 
@@ -253,7 +254,7 @@ export const listCommand = buildCommand({
         lengthDays: t.lengthDays,
         startDate: t.startDate,
         endDate: t.endDate,
-      }))
+      })),
     );
 
     // Add plan-level trial entry (available or active) at the top
@@ -264,14 +265,14 @@ export const listCommand = buildCommand({
 
     const hints: string[] = [];
     const hasAvailableProduct = entries.some(
-      (e) => e.status === "available" && e.category !== "plan"
+      (e) => e.status === "available" && e.category !== "plan",
     );
     if (hasAvailableProduct) {
       hints.push("Tip: Use 'sentry trial start <name>' to start a trial");
     }
     if (planEntry?.status === "available") {
       hints.push(
-        "Tip: Use 'sentry trial start plan' to start a Business plan trial"
+        "Tip: Use 'sentry trial start plan' to start a Business plan trial",
       );
     }
 

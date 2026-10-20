@@ -19,7 +19,7 @@ type InjectFuncArgs = {
 type CmdFunc = (
   this: unknown,
   flags: InjectFuncArgs,
-  dir: string
+  dir: string,
 ) => Promise<unknown>;
 
 function makeContext() {
@@ -56,11 +56,11 @@ describe("sourcemap inject command — runs without authentication", () => {
   test("injects debug IDs with no stored credentials and no env token", async () => {
     await writeFile(
       join(dir, "app.js"),
-      "console.log(1);\n//# sourceMappingURL=app.js.map\n"
+      "console.log(1);\n//# sourceMappingURL=app.js.map\n",
     );
     await writeFile(
       join(dir, "app.js.map"),
-      '{"version":3,"file":"app.js","sources":["app.ts"],"names":[],"mappings":"AAAA"}\n'
+      '{"version":3,"file":"app.js","sources":["app.ts"],"names":[],"mappings":"AAAA"}\n',
     );
     const ctx = makeContext();
 

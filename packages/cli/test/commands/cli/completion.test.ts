@@ -18,7 +18,7 @@ import type { SentryContext } from "../../../src/context.js";
  */
 async function runCompletion(
   args: string[],
-  shellEnv?: string
+  shellEnv?: string,
 ): Promise<{ output: string; exitCode: number | undefined }> {
   let output = "";
   const env = { ...process.env, SHELL: shellEnv };

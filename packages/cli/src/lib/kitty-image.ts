@@ -48,7 +48,7 @@ const CHUNK_SIZE = 4096;
 export function encodeImageToKitty(
   img: DecodedImage,
   maxWidth?: number,
-  preserveDimensions = false
+  preserveDimensions = false,
 ): string | undefined {
   const effectiveMaxWidth = preserveDimensions
     ? (maxWidth ?? DEFAULT_MAX_WIDTH)
@@ -56,7 +56,7 @@ export function encodeImageToKitty(
   const scaled = downscale(
     img,
     effectiveMaxWidth,
-    preserveDimensions ? img.height : DEFAULT_MAX_HEIGHT
+    preserveDimensions ? img.height : DEFAULT_MAX_HEIGHT,
   );
   const { width, height } = scaled;
   if (width <= 0 || height <= 0) {
@@ -66,7 +66,7 @@ export function encodeImageToKitty(
   const payload = Buffer.from(
     scaled.data.buffer,
     scaled.data.byteOffset,
-    width * height * 4
+    width * height * 4,
   ).toString("base64");
 
   // a=T transmit+display, f=32 RGBA, s/v pixel dimensions of the raw buffer.
@@ -95,7 +95,7 @@ export function encodeImageToKitty(
 export function imageBytesToKitty(
   body: Uint8Array,
   contentType?: string | null,
-  maxWidth?: number
+  maxWidth?: number,
 ): string | undefined {
   const format = detectImageFormat(body, contentType);
   if (!format) {

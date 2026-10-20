@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createCommand } from "../../../../src/commands/alert/metrics/create.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
 import { DEFAULT_SENTRY_URL } from "../../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../../src/lib/db/regions.js";
@@ -45,7 +45,7 @@ describe("alert metrics create", () => {
       Promise.resolve({
         projects: [],
         orgs: [{ slug, name: slug }],
-      })
+      }),
     );
     createSpy = vi.spyOn(apiClient, "createMetricAlertRule");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
@@ -62,7 +62,7 @@ describe("alert metrics create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
@@ -78,8 +78,8 @@ describe("alert metrics create", () => {
           "dry-run": true,
           json: true,
         },
-        "test-org"
-      )
+        "test-org",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -101,7 +101,7 @@ describe("alert metrics create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
@@ -117,8 +117,8 @@ describe("alert metrics create", () => {
           "dry-run": true,
           json: true,
         },
-        "test-org"
-      )
+        "test-org",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -127,7 +127,7 @@ describe("alert metrics create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
@@ -143,8 +143,8 @@ describe("alert metrics create", () => {
           "dry-run": true,
           json: true,
         },
-        "test-org"
-      )
+        "test-org",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -153,7 +153,7 @@ describe("alert metrics create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -169,7 +169,7 @@ describe("alert metrics create", () => {
         "dry-run": true,
         json: true,
       },
-      "test-org"
+      "test-org",
     );
 
     expect(createSpy).not.toHaveBeenCalled();
@@ -195,7 +195,7 @@ describe("alert metrics create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -211,11 +211,11 @@ describe("alert metrics create", () => {
         "dry-run": true,
         json: true,
       },
-      "shared"
+      "shared",
     );
 
     const output = JSON.parse(
-      context.stdoutWrite.mock.calls.map((call) => call[0]).join("")
+      context.stdoutWrite.mock.calls.map((call) => call[0]).join(""),
     );
     expect(output.org).toBe("project-owner");
   });
@@ -225,7 +225,7 @@ describe("alert metrics create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -241,7 +241,7 @@ describe("alert metrics create", () => {
         "dry-run": true,
         json: true,
       },
-      "my-org/frontend"
+      "my-org/frontend",
     );
 
     expect(findProjectsBySlugSpy).not.toHaveBeenCalled();
@@ -253,7 +253,7 @@ describe("alert metrics create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -271,11 +271,11 @@ describe("alert metrics create", () => {
         "dry-run": true,
         json: true,
       },
-      "test-org"
+      "test-org",
     );
 
     const parsed = JSON.parse(
-      context.stdoutWrite.mock.calls.map((c) => c[0]).join("")
+      context.stdoutWrite.mock.calls.map((c) => c[0]).join(""),
     );
     expect(parsed).toEqual({
       org: "test-org",
@@ -306,7 +306,7 @@ describe("alert metrics create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -322,7 +322,7 @@ describe("alert metrics create", () => {
         "dry-run": false,
         json: true,
       },
-      "test-org"
+      "test-org",
     );
 
     expect(createSpy).toHaveBeenCalledWith("test-org", {
@@ -346,7 +346,7 @@ describe("alert metrics create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -362,7 +362,7 @@ describe("alert metrics create", () => {
         "dry-run": false,
         json: true,
       },
-      "test-org"
+      "test-org",
     );
 
     expect(createSpy).toHaveBeenCalledWith("test-org", {
@@ -375,7 +375,7 @@ describe("alert metrics create", () => {
       projects: ["backend"],
     });
     expect(context.stderr.write).toHaveBeenCalledWith(
-      expect.stringContaining("is_transaction:true")
+      expect.stringContaining("is_transaction:true"),
     );
   });
 });

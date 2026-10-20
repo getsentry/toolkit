@@ -87,7 +87,7 @@ async function assertNotRamBundle(bundlePath: string): Promise<void> {
   if (isRamBundle) {
     throw new ValidationError(
       "Indexed RAM bundles are not supported. Use a plain or Hermes bundle.",
-      "bundle"
+      "bundle",
     );
   }
 }
@@ -96,7 +96,7 @@ async function assertNotRamBundle(bundlePath: string): Promise<void> {
 function buildArtifacts(
   bundlePath: string,
   sourcemapPath: string,
-  debugId: string
+  debugId: string,
 ): ArtifactFile[] {
   const bundleName = basename(bundlePath);
   const sourcemapName = basename(sourcemapPath);
@@ -198,7 +198,7 @@ export const gradleCommand = buildCommand({
     if (flags.release && dists.length > 0) {
       for (const dist of dists) {
         log.info(
-          `Uploading sourcemaps for release ${flags.release} distribution ${dist}`
+          `Uploading sourcemaps for release ${flags.release} distribution ${dist}`,
         );
         await uploadSourcemaps({
           org,

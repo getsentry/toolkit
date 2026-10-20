@@ -58,9 +58,10 @@ let warnedSaas = false;
  * the lazy loading in `resolve()` — single source of truth for PEM validation.
  */
 export function readCaCertFile(
-  path: string
+  path: string,
 ): { ok: true; content: string } | { ok: false; reason: string } {
   let content: string;
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- A read failure is returned as a typed validation result.
   try {
     content = readFileSync(path, "utf-8");
   } catch {
@@ -196,7 +197,7 @@ export function warnIfSaasWithEnvCa(targetUrl: string): void {
   log.warn(
     `Using custom CA certificates from ${resolvedLabel} for sentry.io connections.\n` +
       "  If you intended this (e.g. corporate proxy), silence this warning:\n" +
-      "    sentry cli defaults ca-cert /path/to/cert.pem"
+      "    sentry cli defaults ca-cert /path/to/cert.pem",
   );
 }
 
@@ -304,7 +305,7 @@ export function getCustomCaCerts(): string | undefined {
  */
 export function customFetch(
   input: string | URL | Request,
-  init?: RequestInit
+  init?: RequestInit,
 ): Promise<Response> {
   const tlsOpts = getCustomTlsOptions();
   if (!tlsOpts) {

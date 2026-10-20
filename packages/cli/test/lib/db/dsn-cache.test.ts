@@ -30,7 +30,7 @@ beforeEach(() => {
   mkdirSync(join(testProjectDir, "src"), { recursive: true });
   writeFileSync(
     join(testProjectDir, "src/app.ts"),
-    'const DSN = "https://abc@o123.ingest.sentry.io/456";'
+    'const DSN = "https://abc@o123.ingest.sentry.io/456";',
   );
 });
 
@@ -232,7 +232,7 @@ describe("disableDsnCache / enableDsnCache", () => {
     const testDsn = createTestDsn();
     const sourceMtimes = {
       "src/app.ts": Math.floor(
-        statSync(join(testProjectDir, "src/app.ts")).mtimeMs
+        statSync(join(testProjectDir, "src/app.ts")).mtimeMs,
       ),
     };
     const { stat } = await import("node:fs/promises");
@@ -291,7 +291,7 @@ describe("getCachedDetection", () => {
     const testDsn = createTestDsn();
     const sourceMtimes = {
       "src/app.ts": Math.floor(
-        statSync(join(testProjectDir, "src/app.ts")).mtimeMs
+        statSync(join(testProjectDir, "src/app.ts")).mtimeMs,
       ),
     };
 
@@ -319,7 +319,7 @@ describe("getCachedDetection", () => {
     const testDsn = createTestDsn();
     const sourceMtimes = {
       "src/app.ts": Math.floor(
-        statSync(join(testProjectDir, "src/app.ts")).mtimeMs
+        statSync(join(testProjectDir, "src/app.ts")).mtimeMs,
       ),
     };
 
@@ -344,7 +344,7 @@ describe("getCachedDetection", () => {
     const srcFile = join(testProjectDir, "src/app.ts");
     writeFileSync(
       srcFile,
-      'const DSN = "https://changed@o123.ingest.sentry.io/789";'
+      'const DSN = "https://changed@o123.ingest.sentry.io/789";',
     );
     const futureTime = new Date(sourceMtimes["src/app.ts"] + 5000);
     utimesSync(srcFile, futureTime, futureTime);
@@ -358,7 +358,7 @@ describe("getCachedDetection", () => {
     const testDsn = createTestDsn();
     const sourceMtimes = {
       "src/app.ts": Math.floor(
-        statSync(join(testProjectDir, "src/app.ts")).mtimeMs
+        statSync(join(testProjectDir, "src/app.ts")).mtimeMs,
       ),
     };
 
@@ -387,7 +387,7 @@ describe("getCachedDetection", () => {
     const testDsn = createTestDsn();
     const sourceMtimes = {
       "src/app.ts": Math.floor(
-        statSync(join(testProjectDir, "src/app.ts")).mtimeMs
+        statSync(join(testProjectDir, "src/app.ts")).mtimeMs,
       ),
     };
 
@@ -421,7 +421,7 @@ describe("getCachedDetection", () => {
     const testDsn = createTestDsn();
     const sourceMtimes = {
       "src/app.ts": Math.floor(
-        statSync(join(testProjectDir, "src/app.ts")).mtimeMs
+        statSync(join(testProjectDir, "src/app.ts")).mtimeMs,
       ),
     };
 
@@ -461,7 +461,7 @@ describe("setCachedDetection", () => {
     const testDsn = createTestDsn();
     const sourceMtimes = {
       "src/app.ts": Math.floor(
-        statSync(join(testProjectDir, "src/app.ts")).mtimeMs
+        statSync(join(testProjectDir, "src/app.ts")).mtimeMs,
       ),
     };
 
@@ -488,7 +488,7 @@ describe("setCachedDetection", () => {
     const dsn2 = createTestDsn({ raw: "https://b@o2.ingest.sentry.io/2" });
     const sourceMtimes = {
       "src/app.ts": Math.floor(
-        statSync(join(testProjectDir, "src/app.ts")).mtimeMs
+        statSync(join(testProjectDir, "src/app.ts")).mtimeMs,
       ),
     };
 
@@ -531,7 +531,7 @@ describe("setCachedDetection", () => {
     const dsn2 = createTestDsn({ raw: "https://second@o2.ingest.sentry.io/2" });
     const sourceMtimes = {
       "src/app.ts": Math.floor(
-        statSync(join(testProjectDir, "src/app.ts")).mtimeMs
+        statSync(join(testProjectDir, "src/app.ts")).mtimeMs,
       ),
     };
 

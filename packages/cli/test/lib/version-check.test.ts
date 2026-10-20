@@ -10,7 +10,7 @@ import {
   getVersionCheckInfo,
   setVersionCheckInfo,
 } from "../../src/lib/db/version-check.js";
-// biome-ignore lint/performance/noNamespaceImport: Vitest requires the module namespace to spy on an ESM export
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Vitest requires the module namespace to spy on an ESM export
 import * as deltaUpgrade from "../../src/lib/delta-upgrade.js";
 import {
   ApiError,
@@ -62,7 +62,7 @@ describe("shouldSuppressNotification", () => {
         "--install",
         "--method",
         "curl",
-      ])
+      ]),
     ).toBe(true);
   });
 
@@ -70,14 +70,14 @@ describe("shouldSuppressNotification", () => {
     // Global flags are no longer hoisted to the tail, so they may sit between
     // `cli` and the subcommand. Suppression must still find `setup`/`fix`.
     expect(shouldSuppressNotification(["cli", "--verbose", "setup"])).toBe(
-      true
+      true,
     );
     expect(shouldSuppressNotification(["cli", "-v", "fix"])).toBe(true);
     expect(
-      shouldSuppressNotification(["cli", "--log-level", "debug", "setup"])
+      shouldSuppressNotification(["cli", "--log-level", "debug", "setup"]),
     ).toBe(true);
     expect(shouldSuppressNotification(["cli", "--org", "acme", "setup"])).toBe(
-      true
+      true,
     );
     expect(shouldSuppressNotification(["cli", "--org=acme", "fix"])).toBe(true);
   });
@@ -86,15 +86,21 @@ describe("shouldSuppressNotification", () => {
     // Global flags can also precede the command group (`sentry --verbose cli
     // setup`) since they're no longer hoisted; `cli` need not be args[0].
     expect(shouldSuppressNotification(["--verbose", "cli", "setup"])).toBe(
-      true
+      true,
     );
     expect(shouldSuppressNotification(["-v", "cli", "fix"])).toBe(true);
     expect(shouldSuppressNotification(["--org", "acme", "cli", "setup"])).toBe(
-      true
+      true,
     );
     expect(shouldSuppressNotification(["--org=acme", "cli", "fix"])).toBe(true);
     expect(
-      shouldSuppressNotification(["--verbose", "cli", "--org", "acme", "setup"])
+      shouldSuppressNotification([
+        "--verbose",
+        "cli",
+        "--org",
+        "acme",
+        "setup",
+      ]),
     ).toBe(true);
   });
 
@@ -110,10 +116,10 @@ describe("shouldSuppressNotification", () => {
 
   test("does not suppress when setup/fix appear as non-cli args", () => {
     expect(
-      shouldSuppressNotification(["issue", "list", "--project", "setup"])
+      shouldSuppressNotification(["issue", "list", "--project", "setup"]),
     ).toBe(false);
     expect(
-      shouldSuppressNotification(["issue", "list", "--query", "fix"])
+      shouldSuppressNotification(["issue", "list", "--query", "fix"]),
     ).toBe(false);
   });
 
@@ -281,14 +287,14 @@ describe("getErrorUpdateNotification", () => {
 
   test("returns null when no version info is cached", () => {
     expect(
-      getErrorUpdateNotification(new Error("boom"), defaultArgs)
+      getErrorUpdateNotification(new Error("boom"), defaultArgs),
     ).toBeNull();
   });
 
   test("returns null when cached version is same as current", () => {
     setVersionCheckInfo("0.0.0-dev");
     expect(
-      getErrorUpdateNotification(new Error("boom"), defaultArgs)
+      getErrorUpdateNotification(new Error("boom"), defaultArgs),
     ).toBeNull();
   });
 
@@ -296,7 +302,7 @@ describe("getErrorUpdateNotification", () => {
     setVersionCheckInfo("99.0.0");
     const notification = getErrorUpdateNotification(
       new Error("boom"),
-      defaultArgs
+      defaultArgs,
     );
 
     expect(notification).not.toBeNull();
@@ -309,7 +315,7 @@ describe("getErrorUpdateNotification", () => {
     setVersionCheckInfo("99.0.0");
     const notification = getErrorUpdateNotification(
       new Error("boom"),
-      defaultArgs
+      defaultArgs,
     );
 
     expect(notification).not.toBeNull();
@@ -333,14 +339,17 @@ describe("getErrorUpdateNotification", () => {
     ["ApiError 400", new ApiError("bad request", 400)],
     ["ApiError 500", new ApiError("server error", 500)],
     ["generic Error", new Error("boom")],
-  ])("returns contextual update copy for non-user error %s", (_label, errorValue) => {
-    setVersionCheckInfo("99.0.0");
-    const notification = getErrorUpdateNotification(errorValue, defaultArgs);
+  ])(
+    "returns contextual update copy for non-user error %s",
+    (_label, errorValue) => {
+      setVersionCheckInfo("99.0.0");
+      const notification = getErrorUpdateNotification(errorValue, defaultArgs);
 
-    expect(notification).not.toBeNull();
-    expect(notification).toContain("Upgrading may resolve this");
-    expect(notification).not.toContain("Update available:");
-  });
+      expect(notification).not.toBeNull();
+      expect(notification).toContain("Upgrading may resolve this");
+      expect(notification).not.toContain("Update available:");
+    },
+  );
 
   test.each([
     ["json flag", ["issue", "list", "--json"]],
@@ -358,7 +367,7 @@ describe("getErrorUpdateNotification", () => {
 
     setVersionCheckInfo("99.0.0");
     expect(
-      getErrorUpdateNotification(new Error("boom"), defaultArgs)
+      getErrorUpdateNotification(new Error("boom"), defaultArgs),
     ).toBeNull();
   });
 
@@ -431,7 +440,7 @@ describe("maybeCheckForUpdateInBackground", () => {
       async () =>
         new Response(JSON.stringify({ tag_name: "v0.0.0-dev" }), {
           status: 200,
-        })
+        }),
     );
   });
 
@@ -514,7 +523,7 @@ describe("maybeCheckForUpdateInBackground", () => {
       }
       return new Response(
         JSON.stringify([{ tag_name: "cli@99.0.0", draft: false }]),
-        { status: 200 }
+        { status: 200 },
       );
     });
     const prefetch = vi
@@ -527,7 +536,7 @@ describe("maybeCheckForUpdateInBackground", () => {
       expect(prefetch).toHaveBeenCalledWith(
         "99.0.0",
         expect.any(AbortSignal),
-        toolkitSource
+        toolkitSource,
       );
     });
     expect(requestedUrls).toEqual([
@@ -563,7 +572,7 @@ describe("maybeCheckForUpdateInBackground", () => {
       expect(prefetch).toHaveBeenCalledWith(
         "99.0.0",
         expect.any(AbortSignal),
-        legacySource
+        legacySource,
       );
     });
     expect(requestedUrls).toEqual([
@@ -597,7 +606,7 @@ describe("maybeCheckForUpdateInBackground", () => {
             layers: [],
             annotations: { version: "99.0.0-dev.200" },
           }),
-          { status: 200 }
+          { status: 200 },
         );
       }
       throw new Error(`Unexpected request: ${url}`);
@@ -612,7 +621,7 @@ describe("maybeCheckForUpdateInBackground", () => {
       expect(prefetch).toHaveBeenCalledWith(
         "99.0.0-dev.200",
         expect.any(AbortSignal),
-        toolkitSource
+        toolkitSource,
       );
     });
     expect(requestedUrls).toEqual([

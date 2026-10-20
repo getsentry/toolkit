@@ -499,7 +499,7 @@ describe("collectGrep — regex errors", () => {
     const { cwd, cleanup } = makeSandbox({ "a.txt": "foo" });
     try {
       await expect(collectGrep({ cwd, pattern: "[unclosed" })).rejects.toThrow(
-        ValidationError
+        ValidationError,
       );
     } finally {
       cleanup();
@@ -685,7 +685,7 @@ describe("collectGrep — literal prefilter fast path", () => {
   test("case-insensitive literal prefilter finds all casings", async () => {
     const { cwd, cleanup } = makeSandbox({
       "a.ts": ["IMPORT X FROM Y", "import y from z", "Import Z From W"].join(
-        "\n"
+        "\n",
       ),
     });
     try {

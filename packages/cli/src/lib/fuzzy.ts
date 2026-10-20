@@ -16,6 +16,16 @@
  * @returns The minimum number of single-character edits (insert, delete, replace)
  */
 export function levenshtein(a: string, b: string): number {
+  return editDistance(a, b);
+}
+
+/**
+ * Return the full-string edit distance, allowing a smaller distance to a
+ * non-empty prefix of `b` when it is within `prefixThreshold`.
+ *
+ * Omit `prefixThreshold` to compare only the complete strings.
+ */
+function editDistance(a: string, b: string, prefixThreshold?: number): number {
   const m = a.length;
   const n = b.length;
   const dp = new Map<number, number>();
@@ -35,12 +45,23 @@ export function levenshtein(a: string, b: string): number {
             Math.min(
               dp.get(key(i - 1, j - 1)) ?? 0,
               dp.get(key(i - 1, j)) ?? 0,
-              dp.get(key(i, j - 1)) ?? 0
+              dp.get(key(i, j - 1)) ?? 0,
             );
       dp.set(key(i, j), cost);
     }
   }
-  return dp.get(key(m, n)) ?? 0;
+  let distance = dp.get(key(m, n)) ?? 0;
+  if (prefixThreshold !== undefined) {
+    const firstLength = Math.max(1, m - prefixThreshold);
+    const lastLength = Math.min(n, m + prefixThreshold);
+    for (let length = firstLength; length <= lastLength; length++) {
+      const prefixDistance = dp.get(key(m, length)) ?? Number.POSITIVE_INFINITY;
+      if (prefixDistance <= prefixThreshold) {
+        distance = Math.min(distance, prefixDistance);
+      }
+    }
+  }
+  return distance;
 }
 
 /** Score tiers for fuzzy matching, ordered by relevance. */
@@ -54,6 +75,8 @@ const FUZZY_BASE_SCORE = 3;
 export type FuzzyMatchOptions = {
   /** Maximum number of results to return (default: unlimited). */
   maxResults?: number;
+  /** Search unfinished input; omit to preserve submitted-name matching. */
+  mode?: "search";
 };
 
 /**
@@ -65,9 +88,15 @@ export type FuzzyMatchOptions = {
  * 3. **Contains match** → score 2 (partial appears as substring)
  * 4. **Fuzzy match** → score 3 + Levenshtein distance (capped by threshold)
  *
- * Threshold: `max(2, floor(partial.length / 3))`. This means `"tnry"`
- * (length 4, threshold 2) matches `"sentry"` (distance 2). Candidates
+ * Threshold: `max(2, floor(partial.length / 3))`. This means `"isseu"`
+ * (length 5, threshold 2) matches `"issue"` (distance 2). Candidates
  * beyond the threshold are excluded entirely.
+ *
+ * Search mode requires literal matches for one- and two-character queries.
+ * Longer queries also match candidate prefixes within `floor(length / 3)`
+ * edits, without counting the unfinished suffix. Full-name typo tolerance
+ * stays unchanged. Use this mode for selectors and incomplete completions,
+ * not automatic resolution of submitted names.
  *
  * When `partial` is empty, all candidates are returned (sorted alphabetically).
  *
@@ -79,7 +108,7 @@ export type FuzzyMatchOptions = {
 export function fuzzyMatch(
   partial: string,
   candidates: readonly string[],
-  opts?: FuzzyMatchOptions
+  opts?: FuzzyMatchOptions,
 ): string[] {
   if (partial === "") {
     const sorted = [...candidates].sort();
@@ -88,6 +117,7 @@ export function fuzzyMatch(
 
   const lowerPartial = partial.toLowerCase();
   const threshold = Math.max(2, Math.floor(partial.length / 3));
+  const search = opts?.mode === "search";
   const scored: { candidate: string; score: number }[] = [];
 
   for (const candidate of candidates) {
@@ -99,8 +129,12 @@ export function fuzzyMatch(
       scored.push({ candidate, score: PREFIX_SCORE });
     } else if (lowerCandidate.includes(lowerPartial)) {
       scored.push({ candidate, score: CONTAINS_SCORE });
-    } else {
-      const dist = levenshtein(lowerPartial, lowerCandidate);
+    } else if (!search || partial.length >= 3) {
+      const dist = editDistance(
+        lowerPartial,
+        lowerCandidate,
+        search ? Math.floor(partial.length / 3) : undefined,
+      );
       if (dist <= threshold) {
         scored.push({ candidate, score: FUZZY_BASE_SCORE + dist });
       }
@@ -108,7 +142,7 @@ export function fuzzyMatch(
   }
 
   scored.sort(
-    (a, b) => a.score - b.score || a.candidate.localeCompare(b.candidate)
+    (a, b) => a.score - b.score || a.candidate.localeCompare(b.candidate),
   );
 
   const results = scored.map((s) => s.candidate);

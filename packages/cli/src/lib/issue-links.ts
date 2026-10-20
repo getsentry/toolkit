@@ -1,17 +1,23 @@
 /**
- * Link existing external issues through Sentry's native integrations
+ * Link and unlink existing external issues through Sentry's native integrations
  * and Sentry Apps. These operations leave the Sentry issue's status unchanged.
  */
 
 import {
   type AppIssueLink,
+  findAppIssueLink,
   linkAppIssue,
+  listAppIssueLinks,
   resolveAppIssueLink,
+  unlinkAppIssueLink,
 } from "./api/issue-app-links.js";
 import {
+  findNativeIssueLink,
   linkNativeIssue,
+  listNativeIssueLinks,
   type NativeIssueLink,
   resolveNativeIssueLink,
+  unlinkNativeIssueLink,
 } from "./api/issue-integrations.js";
 import { ValidationError } from "./errors.js";
 import { resolveOrgRegion } from "./region.js";
@@ -46,7 +52,7 @@ export type ExternalIssueLinkResult = {
   /** Numeric Sentry issue ID. */
   issueId: string;
   /** Requested operation. */
-  action: "link";
+  action: "link" | "unlink";
   /** Whether the external issue remains linked after the operation. */
   linked: boolean;
   /** Whether this invocation changed an association. */
@@ -78,33 +84,40 @@ type LinkPlan = {
   submit: () => Promise<{ ref: ExternalIssueRef; changed: boolean }>;
 };
 
+/** A stored association matching the requested URL. */
+type StoredLink = {
+  ref: ExternalIssueRef;
+  /** Delete the association, leaving the remote issue untouched. */
+  remove: () => Promise<void>;
+};
+
 /** Validate the URL and return the Sentry App slug, or undefined for a native integration. */
 function selectSentryApp(
-  options: ExternalIssueLinkOptions
+  options: ExternalIssueLinkOptions,
 ): string | undefined {
   const url = parseHttpUrl(options.url);
   if (!url) {
     throw new ValidationError(
       "External issue must be an absolute HTTP(S) URL without credentials.",
-      "url"
+      "url",
     );
   }
   const appSlug =
     options.appSlug || (url.hostname === "linear.app" ? "linear" : undefined);
   if (appSlug && options.integrationId) {
     throw new ValidationError(
-      "--integration selects a native integration. Use --app for a Sentry App."
+      "--integration selects a native integration. Use --app for a Sentry App.",
     );
   }
   if (appSlug && options.appSlug === "") {
     throw new ValidationError(
       "Specify --app for this external issue URL",
-      "app"
+      "app",
     );
   }
   if (!appSlug && options.fields && Object.keys(options.fields).length > 0) {
     throw new ValidationError(
-      "--field requires a Sentry App selected with --app."
+      "--field requires a Sentry App selected with --app.",
     );
   }
   return appSlug;
@@ -130,7 +143,7 @@ function nativeRef(link: NativeIssueLink): ExternalIssueRef {
 
 async function planLink(
   options: ExternalIssueLinkOptions,
-  appSlug: string | undefined
+  appSlug: string | undefined,
 ): Promise<LinkPlan> {
   if (appSlug) {
     const prepared = await resolveAppIssueLink({ ...options, appSlug });
@@ -164,14 +177,46 @@ async function planLink(
   };
 }
 
+async function findStoredLink(
+  options: ExternalIssueLinkOptions,
+  appSlug: string | undefined,
+): Promise<StoredLink | undefined> {
+  const { orgSlug, issueId, url } = options;
+  if (appSlug) {
+    const links = await listAppIssueLinks(orgSlug, issueId);
+    // Only an explicit --app narrows the match: another App may store a Linear URL.
+    const link = findAppIssueLink(links, url, options.appSlug);
+    if (!link) {
+      return;
+    }
+    return {
+      ref: appRef(link),
+      remove: () => unlinkAppIssueLink(orgSlug, issueId, link.id),
+    };
+  }
+  const links = await listNativeIssueLinks(orgSlug, issueId);
+  const link = findNativeIssueLink(links, url, options.integrationId);
+  if (!link) {
+    return;
+  }
+  return {
+    ref: nativeRef(link),
+    remove: () => unlinkNativeIssueLink(orgSlug, issueId, link),
+  };
+}
+
 function toResult(
   options: ExternalIssueLinkOptions,
-  outcome: Pick<ExternalIssueLinkResult, "linked" | "changed" | "externalIssue">
+  action: ExternalIssueLinkResult["action"],
+  outcome: Pick<
+    ExternalIssueLinkResult,
+    "linked" | "changed" | "externalIssue"
+  >,
 ): ExternalIssueLinkResult {
   return {
     org: options.orgSlug,
     issueId: options.issueId,
-    action: "link",
+    action,
     dryRun: options.dryRun,
     ...outcome,
   };
@@ -179,7 +224,7 @@ function toResult(
 
 /** App callbacks run on the control silo, so invalidate the issue's regional cache too. */
 async function invalidateIssueLinks(
-  options: ExternalIssueLinkOptions
+  options: ExternalIssueLinkOptions,
 ): Promise<void> {
   const regionUrl = await resolveOrgRegion(options.orgSlug);
   const base = getApiBaseUrl();
@@ -189,18 +234,18 @@ async function invalidateIssueLinks(
     invalidateCachedResponsesMatching(new URL(issuePath, base).href),
     invalidateCachedResponsesMatching(
       new URL(`/api/0/issues/${encodeURIComponent(options.issueId)}/`, base)
-        .href
+        .href,
     ),
   ]);
 }
 
 /** Associate an existing ticket; a dry run performs only discovery and validation. */
 export async function linkExternalIssue(
-  options: ExternalIssueLinkOptions
+  options: ExternalIssueLinkOptions,
 ): Promise<ExternalIssueLinkResult> {
   const plan = await planLink(options, selectSentryApp(options));
   if (options.dryRun) {
-    return toResult(options, {
+    return toResult(options, "link", {
       linked: plan.linked,
       changed: false,
       externalIssue: plan.preview,
@@ -210,9 +255,26 @@ export async function linkExternalIssue(
   if (changed) {
     await invalidateIssueLinks(options);
   }
-  return toResult(options, {
+  return toResult(options, "link", {
     linked: true,
     changed,
     externalIssue: ref,
+  });
+}
+
+/** Remove a stored association without contacting or deleting the remote ticket. */
+export async function unlinkExternalIssue(
+  options: ExternalIssueLinkOptions,
+): Promise<ExternalIssueLinkResult> {
+  const appSlug = selectSentryApp(options);
+  const link = await findStoredLink(options, appSlug);
+  if (link && !options.dryRun) {
+    await link.remove();
+    await invalidateIssueLinks(options);
+  }
+  return toResult(options, "unlink", {
+    linked: Boolean(link && options.dryRun),
+    changed: Boolean(link && !options.dryRun),
+    externalIssue: link?.ref ?? { url: options.url, provider: appSlug },
   });
 }

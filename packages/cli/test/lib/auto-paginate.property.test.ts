@@ -38,7 +38,7 @@ function makePagedFetcher(total: number, pageSize: number) {
     const offset = cursor ? Number(cursor) : 0;
     const data = Array.from(
       { length: Math.min(cappedPageSize, Math.max(0, total - offset)) },
-      (_unused, i) => offset + i
+      (_unused, i) => offset + i,
     );
     const nextOffset = offset + data.length;
     const nextCursor = nextOffset < total ? String(nextOffset) : undefined;
@@ -70,12 +70,12 @@ describe("property: autoPaginate multi-page contract", () => {
         async (total, limit, pageSize) => {
           const result = await autoPaginate(
             makePagedFetcher(total, pageSize),
-            limit
+            limit,
           );
           expect(result.data.length).toBeLessThanOrEqual(limit);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -88,7 +88,7 @@ describe("property: autoPaginate multi-page contract", () => {
         async (total, limit, pageSize) => {
           const result = await autoPaginate(
             makePagedFetcher(total, pageSize),
-            limit
+            limit,
           );
 
           // Only meaningful when more rows exist than the limit.
@@ -119,9 +119,9 @@ describe("property: autoPaginate multi-page contract", () => {
             // that cursor. This is the original skip-bug guard.
             expect(result.nextCursor).toBeUndefined();
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -134,15 +134,15 @@ describe("property: autoPaginate multi-page contract", () => {
         async (total, limit, pageSize) => {
           const result = await autoPaginate(
             makePagedFetcher(total, pageSize),
-            limit
+            limit,
           );
           const expectedLen = Math.min(total, limit);
           expect(result.data).toEqual(
-            Array.from({ length: expectedLen }, (_unused, i) => i)
+            Array.from({ length: expectedLen }, (_unused, i) => i),
           );
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

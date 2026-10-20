@@ -29,7 +29,7 @@ describe("property: isLikelyBinary", () => {
       property(uint8Array({ minLength: 0, maxLength: 9000 }), (buf) => {
         expect(isLikelyBinary(buf)).toBe(referenceHasNul(buf));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -40,7 +40,7 @@ describe("property: isLikelyBinary", () => {
         const b = isLikelyBinary(buf);
         expect(a).toBe(b);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -54,9 +54,9 @@ describe("property: isLikelyBinary", () => {
           const idx = offsetSeed % buf2.length;
           buf2[idx] = 0;
           expect(isLikelyBinary(buf2)).toBe(true);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -68,9 +68,9 @@ describe("property: isLikelyBinary", () => {
           // Strip NULs by flipping each to 1.
           const clean = buf.map((b) => (b === 0 ? 1 : b));
           expect(isLikelyBinary(clean)).toBe(false);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

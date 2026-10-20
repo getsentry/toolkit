@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-build
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Manage mobile build artifacts
 requires:
   bins: ["sentry"]
@@ -19,6 +19,7 @@ Upload builds to a project
 - `--build-configuration <value> - Build configuration for the upload (defaults to the current version)`
 - `--release-notes <value> - Release notes for the build`
 - `--install-group <value>... - Install group(s) for this build (repeatable); builds sharing a group show updates for each other`
+- `--dsym <value>... - dSYM bundle, directory of bundles, or ZIP for a single IPA (repeatable)`
 - `--head-sha <value> - VCS commit SHA (defaults to the current commit)`
 - `--base-sha <value> - VCS base commit SHA (defaults to the merge-base with the base ref)`
 - `--vcs-provider <value> - VCS provider (defaults to the current remote's provider)`
@@ -30,6 +31,31 @@ Upload builds to a project
 - `--force-git-metadata - Force collecting git metadata even outside CI (conflicts with --no-git-metadata)`
 - `--no-git-metadata - Disable automatic git metadata collection`
 
+**Examples:**
+
+```bash
+# Upload an Android build
+sentry build upload ./app-release.apk
+
+# Upload an XCArchive directory
+sentry build upload ./MyApp.xcarchive
+
+# Upload an IPA with a build configuration
+sentry build upload ./MyApp.ipa --build-configuration Release
+
+# Attach debug symbols to an IPA
+sentry build upload ./MyApp.ipa --dsym ./MyApp.app.dSYM --dsym ./frameworks-dsyms.zip
+
+# Upload with release notes
+sentry build upload ./app.aab --build-configuration Release --release-notes "Nightly"
+
+# Tag a build with install groups
+sentry build upload ./app.aab --install-group qa --install-group beta
+
+# Attach explicit git metadata
+sentry build upload ./app.aab --head-sha "$GIT_SHA" --pr-number 42 --base-ref main
+```
+
 ### `sentry build download <build-id>`
 
 Download a build artifact
@@ -40,22 +66,6 @@ Download a build artifact
 **Examples:**
 
 ```bash
-# Upload an Android build (APK or AAB) for size analysis
-sentry build upload ./app-release.apk
-
-# Upload an iOS build (XCArchive directory or IPA)
-sentry build upload ./MyApp.xcarchive
-sentry build upload ./MyApp.ipa
-
-# Upload with a build configuration and release notes
-sentry build upload ./app.aab --build-configuration Release --release-notes "Nightly"
-
-# Tag a build with install groups (repeatable)
-sentry build upload ./app.aab --install-group qa --install-group beta
-
-# Attach explicit git metadata (otherwise auto-collected in CI)
-sentry build upload ./app.aab --head-sha "$GIT_SHA" --pr-number 42 --base-ref main
-
 # Download a build artifact by ID
 sentry build download 1234567890
 

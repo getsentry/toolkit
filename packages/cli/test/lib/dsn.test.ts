@@ -82,13 +82,12 @@ describe("placeholder helpers", () => {
     expect(isPlaceholderNumericId(id)).toBe(true);
   });
 
-  test.each([
-    "1",
-    "10",
-    "1169445",
-  ])("isPlaceholderNumericId rejects %s", (id) => {
-    expect(isPlaceholderNumericId(id)).toBe(false);
-  });
+  test.each(["1", "10", "1169445"])(
+    "isPlaceholderNumericId rejects %s",
+    (id) => {
+      expect(isPlaceholderNumericId(id)).toBe(false);
+    },
+  );
 
   test.each([
     "examplePublicKey",
@@ -101,14 +100,12 @@ describe("placeholder helpers", () => {
     expect(isPlaceholderPublicKey(key)).toBe(true);
   });
 
-  test.each([
-    "abc123def456",
-    "public",
-    "publickey",
-    "public-app-key",
-  ])("isPlaceholderPublicKey rejects %s", (key) => {
-    expect(isPlaceholderPublicKey(key)).toBe(false);
-  });
+  test.each(["abc123def456", "public", "publickey", "public-app-key"])(
+    "isPlaceholderPublicKey rejects %s",
+    (key) => {
+      expect(isPlaceholderPublicKey(key)).toBe(false);
+    },
+  );
 });
 
 describe("createDsnFingerprint: self-hosted DSNs", () => {
@@ -158,7 +155,7 @@ describe("createDetectedDsn edge cases", () => {
       "https://abc123@o123.ingest.sentry.io/456",
       "code",
       "packages/web/src/config.ts",
-      "packages/web"
+      "packages/web",
     );
     expect(result?.packagePath).toBe("packages/web");
   });
@@ -167,7 +164,7 @@ describe("createDetectedDsn edge cases", () => {
 describe("inferPackagePath", () => {
   test("infers package path from packages/ directory", () => {
     expect(inferPackagePath("packages/frontend/src/index.ts")).toBe(
-      "packages/frontend"
+      "packages/frontend",
     );
   });
 

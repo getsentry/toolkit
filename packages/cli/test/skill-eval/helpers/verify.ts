@@ -58,7 +58,7 @@ function extractRoute(command: string): string[] {
  * (pre-built binary in e2e CI) or falls back to `bun run src/bin.ts`.
  */
 export async function verifyPlannedCommands(
-  commands: PlannedCommand[]
+  commands: PlannedCommand[],
 ): Promise<CommandVerification[]> {
   const cliCmd = getCliCommand();
   const results: CommandVerification[] = [];
@@ -91,7 +91,7 @@ export async function verifyPlannedCommands(
     });
 
     const exitCode = await new Promise<number>((resolve) =>
-      proc.on("close", (code) => resolve(code ?? 1))
+      proc.on("close", (code) => resolve(code ?? 1)),
     );
 
     const valid = exitCode === 0;
@@ -107,7 +107,7 @@ export async function verifyPlannedCommands(
 
 /** Format verification results as a human-readable string for the judge prompt */
 export function formatVerifications(
-  verifications: CommandVerification[]
+  verifications: CommandVerification[],
 ): string {
   return verifications
     .map((v, i) => {

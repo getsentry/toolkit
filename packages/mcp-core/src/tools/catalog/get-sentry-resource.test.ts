@@ -13,6 +13,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getStructuredContent } from "../../test-utils/structured-content";
 import { getIssueDetailsOutputSchema } from "./get-issue-details";
 import getSentryResource from "./get-sentry-resource.js";
+import { resolveDescription } from "../../tools/types.js";
 
 const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -49,7 +50,8 @@ function callHandler(params: {
     | "trace"
     | "replay"
     | "monitor"
-    | "snapshot";
+    | "snapshot"
+    | "dashboard";
   resourceId?: string;
   organizationSlug?: string;
 }) {
@@ -593,6 +595,56 @@ describe("get_sentry_resource", () => {
     });
   });
 
+  // ─── URL mode: dashboard URLs ──────────────────────────────────────────────
+  describe("URL mode — dashboard URLs", () => {
+    it("dispatches dashboard URL to get_dashboard_details", async () => {
+      const result = await callHandler({
+        url: "https://sentry-mcp-evals.sentry.io/dashboard/101/",
+      });
+      expect(result).toContain(
+        "# Dashboard Errors Overview in **sentry-mcp-evals**",
+      );
+      expect(result).toContain("**ID**: 101");
+      expect(result).toContain("[Open Dashboard]");
+    });
+
+    it("dispatches explicit dashboard resourceType to get_dashboard_details by ID", async () => {
+      const result = await callHandler({
+        resourceType: "dashboard",
+        resourceId: "101",
+        organizationSlug: "sentry-mcp-evals",
+      });
+      expect(result).toContain(
+        "# Dashboard Errors Overview in **sentry-mcp-evals**",
+      );
+      expect(result).toContain("**ID**: 101");
+    });
+
+    it("dispatches explicit dashboard resourceType to get_dashboard_details by title", async () => {
+      const result = await callHandler({
+        resourceType: "dashboard",
+        resourceId: "Errors Overview",
+        organizationSlug: "sentry-mcp-evals",
+      });
+      expect(result).toContain(
+        "# Dashboard Errors Overview in **sentry-mcp-evals**",
+      );
+      expect(result).toContain("**ID**: 101");
+    });
+
+    it("rejects dashboard URL when get_dashboard_details is not available", async () => {
+      await expect(
+        getSentryResource.handler(
+          { url: "https://sentry-mcp-evals.sentry.io/dashboard/101/" },
+          {
+            ...baseContext,
+            availableToolNames: new Set(["get_sentry_resource"]),
+          },
+        ),
+      ).rejects.toThrow("Dashboard resources require the inspect skill");
+    });
+  });
+
   // ─── URL mode: error cases ────────────────────────────────────────────────
   describe("URL mode — error cases", () => {
     it("throws for unsupported URL path (settings)", async () => {
@@ -1010,6 +1062,44 @@ describe("get_sentry_resource", () => {
         "packageNames",
       ]);
     });
+
+    it("omits dashboard hints when get_dashboard_details is unavailable", () => {
+      const desc = resolveDescription(getSentryResource.description, {
+        experimentalMode: false,
+        availableToolNames: new Set([
+          "get_sentry_resource",
+          "get_monitor_details",
+        ]),
+      });
+      expect(desc).not.toContain("dashboard");
+      expect(desc).toContain("monitor");
+    });
+
+    it("includes dashboard hints when get_dashboard_details is available", () => {
+      const desc = resolveDescription(getSentryResource.description, {
+        experimentalMode: false,
+        availableToolNames: new Set([
+          "get_sentry_resource",
+          "get_monitor_details",
+          "get_dashboard_details",
+        ]),
+      });
+      expect(desc).toContain("dashboards");
+      expect(desc).toContain("dashboard: <dashboardId or title>");
+      expect(desc).toContain("/dashboard/542438/");
+    });
+
+    it("omits monitor hints when get_monitor_details is unavailable", () => {
+      const desc = resolveDescription(getSentryResource.description, {
+        experimentalMode: false,
+        availableToolNames: new Set([
+          "get_sentry_resource",
+          "get_dashboard_details",
+        ]),
+      });
+      expect(desc).not.toContain("monitor");
+      expect(desc).toContain("dashboard");
+    });
   });
 });
 
@@ -1050,46 +1140,54 @@ describe("event package selection", () => {
       );
       expect(result).not.toContain("unrelated");
       expect(result).toMatchInlineSnapshot(`
-      "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
+        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
 
-      **Description**: Error: Tool list_organizations is already registered
-      **Culprit**: Object.fetch(index)
-      **First Seen**: 2025-04-03T22:51:19.403Z
-      **Last Seen**: 2025-04-12T11:34:11.000Z
-      **Occurrences**: 25
-      **Users Impacted**: 1
-      **Status**: unresolved
-      **Substatus**: ongoing
-      **Assigned To**: Jane Developer (User)
-      **Issue Type**: error
-      **Issue Category**: error
-      **Platform**: javascript
-      **Project**: CLOUDFLARE-MCP
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
+        **Description**: Error: Tool list_organizations is already registered
+        **Culprit**: Object.fetch(index)
+        **First Seen**: 2025-04-03T22:51:19.403Z
+        **Last Seen**: 2025-04-12T11:34:11.000Z
+        **Occurrences**: 25
+        **Users Impacted**: 1
+        **Status**: unresolved
+        **Substatus**: ongoing
+        **Assigned To**: Jane Developer (User)
+        **Issue Type**: error
+        **Issue Category**: error
+        **Platform**: javascript
+        **Project**: CLOUDFLARE-MCP
+        **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
 
-      ## Event Details
+        ## Event Details
 
-      **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
-      **Type**: default
-      **Occurred At**: 2025-10-02T12:00:00.000Z
-      **Message**:
-      Something went wrong
+        **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
+        **Type**: default
+        **Occurred At**: 2025-10-02T12:00:00.000Z
+        **Message**:
+        Something went wrong
 
-      ### Message
+        ### Error
 
-      Synthetic event
+        \`\`\`
+        Something went wrong
+        \`\`\`
 
-      ### Selected Package Versions
+        ### Tags
 
-      - example: 1.2.3
+        **level**: error
+        **environment**: production
 
-      ## Response Notes
 
-      - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
-      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
-      - Issue event search: Use the Sentry tool \`search_issue_events\`
-      "
-    `);
+        ### Selected Package Versions
+
+        - example: 1.2.3
+
+        ## Response Notes
+
+        - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
+        - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
+        - Issue event search: Use the Sentry tool \`search_issue_events\`
+        "
+      `);
     },
   );
 
@@ -1113,7 +1211,7 @@ describe("event package selection", () => {
         url: `https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/events/${eventId}/`,
         packageNames: ["example"],
       },
-      baseContext,
+      { ...baseContext, experimentalMode: true },
     );
     const payload = getIssueDetailsOutputSchema.parse(
       getStructuredContent(result),

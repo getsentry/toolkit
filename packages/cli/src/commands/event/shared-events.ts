@@ -12,6 +12,7 @@ import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import {
+  appendQueryHint,
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
@@ -150,7 +151,7 @@ export function formatEventsHuman(result: EventsResult): string {
  */
 export function jsonTransformEvents(
   result: EventsResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const items =
     fields && fields.length > 0
@@ -179,12 +180,10 @@ export function jsonTransformEvents(
 /** Append active non-default flags to a base command string. */
 export function appendEventsFlags(
   base: string,
-  flags: Pick<EventsFlags, "query" | "full" | "period">
+  flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
   const parts: string[] = [];
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   if (flags.full) {
     parts.push("--full");
   }

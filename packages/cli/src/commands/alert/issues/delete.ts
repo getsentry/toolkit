@@ -96,7 +96,7 @@ export const deleteCommand = buildDeleteCommand({
     if (parsed.type !== "explicit") {
       throw new ValidationError(
         "Issue alert delete requires an explicit <org>/<project>/<rule-id-or-name> target.",
-        "target"
+        "target",
       );
     }
 
@@ -111,7 +111,7 @@ export const deleteCommand = buildDeleteCommand({
     const { target, rule } = await resolveIssueAlertRule(
       targets,
       ref,
-      USAGE_HINT
+      USAGE_HINT,
     );
 
     const key = `${target.org}/${target.project}/${rule.id}`;
@@ -130,7 +130,7 @@ export const deleteCommand = buildDeleteCommand({
     if (!isConfirmationBypassed(flags)) {
       const ok = await confirmByTyping(
         key,
-        `Type '${key}' to permanently delete this issue alert rule:`
+        `Type '${key}' to permanently delete this issue alert rule:`,
       );
       if (!ok) {
         logger.info("Delete cancelled.");

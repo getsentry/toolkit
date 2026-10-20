@@ -35,12 +35,12 @@ describe("listOrganizationsPage", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
-        )
+          },
+        ),
     );
 
     const { data: orgs } = await listOrganizationsPage(
-      "https://sentry.example.com"
+      "https://sentry.example.com",
     );
     expect(orgs).toHaveLength(1);
     expect(orgs[0].slug).toBe("test-org");
@@ -52,11 +52,11 @@ describe("listOrganizationsPage", () => {
         new Response(JSON.stringify({}), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     await expect(
-      listOrganizationsPage("https://sentry.example.com")
+      listOrganizationsPage("https://sentry.example.com"),
     ).rejects.toThrow(ApiError);
 
     try {
@@ -75,11 +75,11 @@ describe("listOrganizationsPage", () => {
         new Response("", {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     await expect(
-      listOrganizationsPage("https://sentry.example.com")
+      listOrganizationsPage("https://sentry.example.com"),
     ).rejects.toThrow(ApiError);
   });
 });

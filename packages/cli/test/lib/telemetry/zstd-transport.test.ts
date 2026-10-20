@@ -69,14 +69,14 @@ function buildMockHttpModule(response: MockResponseShape): {
       };
       req.write = (chunk: Buffer | string) => {
         captured.chunks.push(
-          Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
         );
         return true;
       };
       req.end = (chunk?: Buffer | string) => {
         if (chunk !== undefined) {
           captured.chunks.push(
-            Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+            Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
           );
         }
         // Fire the response on next tick so the caller has time to
@@ -197,7 +197,7 @@ describe("makeCompressedTransport", () => {
     expect(response.statusCode).toBe(429);
     expect(response.headers?.["retry-after"]).toBe("60");
     expect(response.headers?.["x-sentry-rate-limits"]).toBe(
-      "60:error:organization"
+      "60:error:organization",
     );
   });
 
@@ -226,7 +226,7 @@ describe("makeCompressedTransport", () => {
 
     // Array collapsed to first element
     expect(response.headers?.["x-sentry-rate-limits"]).toBe(
-      "30:transaction:organization"
+      "30:transaction:organization",
     );
   });
 
@@ -560,7 +560,7 @@ describe("shouldFallbackToDefault", () => {
       shouldFallbackToDefault(httpsUrl, {
         ...opts,
         proxy: "http://proxy.internal:3128",
-      })
+      }),
     ).toBe(true);
   });
 

@@ -151,7 +151,7 @@ for (const [name, location] of referenced) {
   errors.push(
     `Undocumented env var: ${name} (read at ${location})\n` +
       "    Add it to ENV_VAR_REGISTRY in src/lib/env-registry.ts so it appears in configuration.md,\n" +
-      "    or add it to INTERNAL_ENV_VARS in this script with a reason if it is internal-only."
+      "    or add it to INTERNAL_ENV_VARS in this script with a reason if it is internal-only.",
   );
 }
 
@@ -160,7 +160,7 @@ for (const name of INTERNAL_ENV_VARS.keys()) {
   if (registryNames.has(name)) {
     errors.push(
       `Contradictory entry: ${name} is in both ENV_VAR_REGISTRY and INTERNAL_ENV_VARS. ` +
-        "Remove it from INTERNAL_ENV_VARS."
+        "Remove it from INTERNAL_ENV_VARS.",
     );
   }
 }
@@ -169,7 +169,7 @@ for (const name of INTERNAL_ENV_VARS.keys()) {
 for (const name of INTERNAL_ENV_VARS.keys()) {
   if (!referenced.has(name)) {
     errors.push(
-      `Stale INTERNAL_ENV_VARS entry: ${name} is no longer read in src/. Remove it.`
+      `Stale INTERNAL_ENV_VARS entry: ${name} is no longer read in src/. Remove it.`,
     );
   }
 }
@@ -184,5 +184,5 @@ if (errors.length > 0) {
 
 console.log(
   `✓ All ${referenced.size} user-facing env var(s) read in src/ are documented ` +
-    `(${registryNames.size} in registry, ${INTERNAL_ENV_VARS.size} internal).`
+    `(${registryNames.size} in registry, ${INTERNAL_ENV_VARS.size} internal).`,
 );

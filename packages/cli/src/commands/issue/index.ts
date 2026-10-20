@@ -7,6 +7,7 @@ import { listCommand } from "./list.js";
 import { mergeCommand } from "./merge.js";
 import { planCommand } from "./plan.js";
 import { resolveCommand } from "./resolve.js";
+import { unlinkCommand } from "./unlink.js";
 import { unresolveCommand } from "./unresolve.js";
 import { viewCommand } from "./view.js";
 
@@ -22,6 +23,7 @@ export const issueRoute = buildRouteMap({
     archive: archiveCommand,
     merge: mergeCommand,
     link: linkCommand,
+    unlink: unlinkCommand,
   },
   // `reopen` is a friendlier synonym for `unresolve`, `ignore` for `archive`.
   aliases: { reopen: "unresolve", ignore: "archive" },
@@ -40,7 +42,8 @@ export const issueRoute = buildRouteMap({
       "  unresolve  Reopen a resolved issue (alias: reopen)\n" +
       "  archive    Archive/ignore an issue (alias: ignore)\n" +
       "  merge      Merge 2+ issues into a single group\n" +
-      "  link       Link an existing external issue\n\n" +
+      "  link       Link an existing external issue\n" +
+      "  unlink     Remove an external issue link\n\n" +
       "Magic selectors (available for view, events, explain, plan, resolve, unresolve, archive):\n" +
       "  @latest          Most recent unresolved issue\n" +
       "  @most_frequent   Issue with the highest event frequency\n\n" +

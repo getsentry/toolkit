@@ -10,10 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { gradleCommand } from "../../../src/commands/react-native/gradle.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as sourcemaps from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 let tmpDir: string;
@@ -27,7 +27,7 @@ function createContext() {
       stdout: {
         write: (data: string | Uint8Array) => {
           writes.push(
-            typeof data === "string" ? data : new TextDecoder().decode(data)
+            typeof data === "string" ? data : new TextDecoder().decode(data),
           );
           return true;
         },
@@ -57,7 +57,7 @@ describe("react-native gradle", () => {
         names: [],
         mappings: "",
         sourcesContent: ["console.log('hello');"],
-      })
+      }),
     );
     vi.spyOn(resolveTarget, "resolveOrgAndProject").mockResolvedValue({
       org: "acme",
@@ -106,7 +106,7 @@ describe("react-native gradle", () => {
 
     expect(uploadSpy).toHaveBeenCalledTimes(2);
     const dists = uploadSpy.mock.calls.map(
-      (c) => (c[0] as sourcemaps.UploadOptions).dist
+      (c) => (c[0] as sourcemaps.UploadOptions).dist,
     );
     expect(dists).toEqual(["1000", "1001"]);
     for (const call of uploadSpy.mock.calls) {
@@ -140,7 +140,7 @@ describe("react-native gradle", () => {
       func.call(createContext().context, {
         bundle: join(tmpDir, "nope.bundle"),
         sourcemap,
-      })
+      }),
     ).rejects.toThrow(ValidationError);
   });
 
@@ -148,7 +148,7 @@ describe("react-native gradle", () => {
     await writeFile(bundle, Buffer.from([0xe5, 0xd1, 0x0b, 0xfb, 0x00, 0x00]));
     const func = await gradleCommand.loader();
     await expect(
-      func.call(createContext().context, { bundle, sourcemap })
+      func.call(createContext().context, { bundle, sourcemap }),
     ).rejects.toThrow(/RAM bundle/);
   });
 });

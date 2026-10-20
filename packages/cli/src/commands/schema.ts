@@ -78,7 +78,7 @@ function formatResourceList(resources: ResourceSummary[]): string {
 
   const maxName = Math.max(...resources.map((r) => r.name.length));
   const maxCount = Math.max(
-    ...resources.map((r) => String(r.endpointCount).length)
+    ...resources.map((r) => String(r.endpointCount).length),
   );
   const padding = 4;
 
@@ -222,7 +222,7 @@ function noResourceMatchError(resource: string): ResolutionError {
     `Resource "${resource}"`,
     "does not exist in the schema",
     primaryHint,
-    suggestions
+    suggestions,
   );
 }
 
@@ -242,7 +242,7 @@ function queryLabel(resource: string, operation?: string): string {
 /** Detect `GET /api/0/...` (quoted or as two positionals) and bare `/api/...` paths. */
 function resolvePathQuery(
   resource: string,
-  operation?: string
+  operation?: string,
 ): { method?: string; path: string } | undefined {
   const raw = operation ? `${resource} ${operation}` : resource;
   const parsed = parseEndpointQuery(raw);
@@ -265,7 +265,7 @@ function lastConcreteSegment(path: string): string | undefined {
 
 function pathNotFoundError(
   label: string,
-  query: { method?: string; path: string }
+  query: { method?: string; path: string },
 ): never {
   const samePath = findEndpointsByPath(query.path);
   if (query.method && samePath.length > 0) {
@@ -280,7 +280,7 @@ function pathNotFoundError(
       example
         ? `sentry schema "${example.method} ${example.path}"`
         : "sentry schema",
-      [`Available methods at this path: ${methods}`]
+      [`Available methods at this path: ${methods}`],
     );
   }
 
@@ -296,21 +296,21 @@ function pathNotFoundError(
   const suggestions = ["sentry schema                    Browse all resources"];
   if (resourceExists && segment) {
     suggestions.unshift(
-      `sentry schema --search ${segment}    Search endpoints by keyword`
+      `sentry schema --search ${segment}    Search endpoints by keyword`,
     );
   }
   throw new ResolutionError(
     `Endpoint '${label}'`,
     "does not exist in the schema",
     hint,
-    suggestions
+    suggestions,
   );
 }
 
 function resolvePathLookup(
   query: { method?: string; path: string },
   resource: string,
-  operation?: string
+  operation?: string,
 ): SchemaResult {
   const matches = findEndpointsByPath(query.path, query.method);
   const [single] = matches;
@@ -345,7 +345,7 @@ function resolveIdentifierLookup(identifier: string): SchemaResult | undefined {
  */
 export function resolveResourceQuery(
   resource: string,
-  operation?: string
+  operation?: string,
 ): SchemaResult {
   const pathQuery = resolvePathQuery(resource, operation);
   if (pathQuery) {
@@ -363,14 +363,14 @@ export function resolveResourceQuery(
     const pattern = new RegExp(`^${escaped}$`);
     const allResources = getResourceSummaries();
     const matched = allResources.filter((r) =>
-      pattern.test(r.name.toLowerCase())
+      pattern.test(r.name.toLowerCase()),
     );
     if (matched.length === 0) {
       throw new ResolutionError(
         `Pattern "${resource}"`,
         "matched no resources",
         "sentry schema",
-        ["sentry schema --all    List every endpoint in a flat table"]
+        ["sentry schema --all    List every endpoint in a flat table"],
       );
     }
     const endpoints = matched.flatMap((r) => getEndpointsByResource(r.name));
@@ -461,7 +461,7 @@ export const schemaCommand = buildCommand({
       },
     },
   },
-  // biome-ignore lint/suspicious/useAwait: Stricli requires AsyncGenerator but schema queries are synchronous (in-memory JSON)
+  // Stricli requires AsyncGenerator but schema queries are synchronous (in-memory JSON)
   async *func(this: SentryContext, flags: SchemaFlags, ...args: string[]) {
     const [resource, operation] = args;
 

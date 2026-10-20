@@ -14,6 +14,7 @@ import type { SentryContext } from "../../context.js";
 import type { SpanSortValue } from "../../lib/api/traces.js";
 import { listSpans } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -31,6 +32,7 @@ import { filterFields } from "../../lib/formatters/json.js";
 import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
+  appendQueryHint,
   buildListCommand,
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
@@ -117,7 +119,7 @@ const FIELD_GROUP_ALIASES: Record<string, string[]> = {
  * @returns Deduplicated extra API field names, or undefined if none are needed
  */
 function extractExtraApiFields(
-  fields: string[] | undefined
+  fields: string[] | undefined,
 ): string[] | undefined {
   if (!fields?.length) {
     return;
@@ -179,7 +181,7 @@ function parseLimit(value: string): number {
 export function parseSort(value: string): SpanSortValue {
   if (!VALID_SORT_VALUES.includes(value as SpanSortValue)) {
     throw new Error(
-      `Invalid sort value. Must be one of: ${VALID_SORT_VALUES.join(", ")}`
+      `Invalid sort value. Must be one of: ${VALID_SORT_VALUES.join(", ")}`,
     );
   }
   return value as SpanSortValue;
@@ -192,7 +194,7 @@ export function parseSort(value: string): SpanSortValue {
  * trace-mode usage hint for span list.
  */
 export function parseSpanListArgs(
-  args: string[]
+  args: string[],
 ): ReturnType<typeof parseDualModeArgs> {
   return parseDualModeArgs(args, TRACE_USAGE_HINT);
 }
@@ -204,15 +206,13 @@ export function parseSpanListArgs(
 /** Append active non-default flags to a base next-page command. */
 function appendFlagHints(
   base: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   const parts: string[] = [];
   if (flags.sort !== DEFAULT_SORT) {
     parts.push(`--sort ${flags.sort}`);
   }
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   appendPeriodHint(parts, flags.period, DEFAULT_PERIOD);
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }
@@ -222,11 +222,11 @@ function traceNextPageHint(
   org: string,
   project: string,
   traceId: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendFlagHints(
     `sentry span list ${org}/${project}/${traceId} -c next`,
-    flags
+    flags,
   );
 }
 
@@ -235,11 +235,11 @@ function tracePrevPageHint(
   org: string,
   project: string,
   traceId: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendFlagHints(
     `sentry span list ${org}/${project}/${traceId} -c prev`,
-    flags
+    flags,
   );
 }
 
@@ -247,7 +247,7 @@ function tracePrevPageHint(
 function projectNextPageHint(
   org: string,
   project: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendFlagHints(`sentry span list ${org}/${project} -c next`, flags);
 }
@@ -256,7 +256,7 @@ function projectNextPageHint(
 function projectPrevPageHint(
   org: string,
   project: string,
-  flags: Pick<ListFlags, "sort" | "query" | "period">
+  flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendFlagHints(`sentry span list ${org}/${project} -c prev`, flags);
 }
@@ -336,7 +336,7 @@ function jsonTransformSpanList(data: SpanListData, fields?: string[]): unknown {
 }
 
 // ---------------------------------------------------------------------------
-// Mode handlers — extracted from func() to stay under biome complexity limit
+// Mode handlers — extracted from func() to keep it readable
 // ---------------------------------------------------------------------------
 
 /** Shared context passed to mode handlers from the Stricli command function. */
@@ -357,14 +357,14 @@ type ModeContext = {
  */
 async function handleTraceMode(
   parsed: ParsedTraceTarget,
-  ctx: ModeContext
+  ctx: ModeContext,
 ): Promise<{ output: SpanListData; hint?: string }> {
   const { flags, cwd, extraApiFields, timeRange } = ctx;
   warnIfNormalized(parsed, "span.list");
   const { traceId, org, project } = await resolveTraceOrgProject(
     parsed,
     cwd,
-    TRACE_USAGE_HINT
+    TRACE_USAGE_HINT,
   );
   const queryParts = [`trace:${traceId}`];
   if (flags.query) {
@@ -375,12 +375,12 @@ async function handleTraceMode(
   const contextKey = buildPaginationContextKey(
     "span",
     `${org}/${project}/${traceId}`,
-    { sort: flags.sort, q: flags.query, period: serializeTimeRange(timeRange) }
+    { sort: flags.sort, q: flags.query, period: serializeTimeRange(timeRange) },
   );
   const { cursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
 
   const { data: spanItems, nextCursor } = await withProgress(
@@ -397,7 +397,7 @@ async function handleTraceMode(
       }).catch((error: unknown): never => {
         // An unparseable user --query is a user input mistake, not a CLI bug.
         throw toSearchQueryError(error, flags.query);
-      })
+      }),
   );
 
   // Update pagination state (handles both advance and truncation)
@@ -405,7 +405,7 @@ async function handleTraceMode(
   const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 
   const flatSpans = spanItems.map((item) =>
-    spanListItemToFlatSpan(item, extraApiFields)
+    spanListItemToFlatSpan(item, extraApiFields),
   );
   const hasMore = !!nextCursor;
 
@@ -447,13 +447,13 @@ async function handleTraceMode(
  */
 async function handleProjectMode(
   target: string | undefined,
-  ctx: ModeContext
+  ctx: ModeContext,
 ): Promise<{ output: SpanListData; hint?: string }> {
   const { flags, cwd, extraApiFields, timeRange } = ctx;
   const { org, project } = await resolveProjectBoundFromArg(
     target,
     cwd,
-    COMMAND_NAME
+    COMMAND_NAME,
   );
   // Resolve slug → numeric ID so the Events query scopes via the `project`
   // param. `project:<slug>` only matches actively-selected projects (#1317).
@@ -463,12 +463,12 @@ async function handleProjectMode(
   const contextKey = buildPaginationContextKey(
     "span-search",
     `${org}/${project}`,
-    { sort: flags.sort, q: flags.query, period: serializeTimeRange(timeRange) }
+    { sort: flags.sort, q: flags.query, period: serializeTimeRange(timeRange) },
   );
   const { cursor, direction } = resolveCursor(
     flags.cursor,
     PROJECT_PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
 
   const { data: spanItems, nextCursor } = await withProgress(
@@ -485,7 +485,7 @@ async function handleProjectMode(
       }).catch((error: unknown): never => {
         // An unparseable user --query is a user input mistake, not a CLI bug.
         throw toSearchQueryError(error, flags.query);
-      })
+      }),
   );
 
   // Update pagination state (handles both advance and truncation)
@@ -493,12 +493,12 @@ async function handleProjectMode(
     PROJECT_PAGINATION_KEY,
     contextKey,
     direction,
-    nextCursor
+    nextCursor,
   );
   const hasPrev = hasPreviousPage(PROJECT_PAGINATION_KEY, contextKey);
 
   const flatSpans = spanItems.map((item) =>
-    spanListItemToFlatSpan(item, extraApiFields)
+    spanListItemToFlatSpan(item, extraApiFields),
   );
   const hasMore = !!nextCursor;
 
@@ -576,7 +576,7 @@ export const listCommand = buildListCommand("span", {
       parameter: {
         placeholder: "org/project/trace-id",
         brief: "[<org>/<project>] or [<org>/<project>/]<trace-id>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

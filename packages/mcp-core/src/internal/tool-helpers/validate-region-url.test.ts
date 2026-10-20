@@ -78,6 +78,21 @@ describe("validateRegionUrl", () => {
   });
 
   describe("protocol validation", () => {
+    it.each([
+      ["https://user:password@us.sentry.io", "sentry.io"],
+      ["https://user:password@sentry.company.com", "sentry.company.com"],
+    ])("rejects embedded credentials in %s", (regionUrl, baseHost) => {
+      expect(() => validateRegionUrl(regionUrl, baseHost)).toThrow(
+        "URL credentials are not allowed",
+      );
+      try {
+        validateRegionUrl(regionUrl, baseHost);
+      } catch (error) {
+        expect(error).toBeInstanceOf(UserInputError);
+        expect(String(error)).not.toContain("password");
+      }
+    });
+
     it("rejects URLs without protocol", () => {
       expect(() => validateRegionUrl("sentry.io", "sentry.io")).toThrow(
         UserInputError,

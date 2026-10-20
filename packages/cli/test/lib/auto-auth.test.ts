@@ -32,7 +32,7 @@ const alwaysInteractive = () => true;
 describe("shouldAutoAuth", () => {
   test("true for not_authenticated in an interactive TTY", () => {
     expect(shouldAutoAuth(new AuthError("not_authenticated"), () => true)).toBe(
-      true
+      true,
     );
   });
 
@@ -116,7 +116,7 @@ describe("recoverWithAutoLogin", () => {
       recoverWithAutoLogin(boom, retry, {
         runInteractiveLogin,
         isInteractive: alwaysInteractive,
-      })
+      }),
     ).rejects.toBe(boom);
     expect(runInteractiveLogin).not.toHaveBeenCalled();
     expect(retry).not.toHaveBeenCalled();
@@ -129,7 +129,7 @@ describe("recoverWithAutoLogin", () => {
     const err = new AuthError("not_authenticated");
 
     await expect(
-      recoverWithAutoLogin(err, vi.fn(), { runInteractiveLogin })
+      recoverWithAutoLogin(err, vi.fn(), { runInteractiveLogin }),
     ).rejects.toBe(err);
     expect(runInteractiveLogin).not.toHaveBeenCalled();
   });
@@ -144,7 +144,7 @@ describe("recoverWithAutoLogin", () => {
         runInteractiveLogin,
         isInteractive: alwaysInteractive,
         write: (m) => writes.push(m),
-      })
+      }),
     ).rejects.toBeInstanceOf(HostScopeError);
 
     // No login attempt, no browser, no status output.
@@ -164,7 +164,7 @@ describe("recoverWithAutoLogin", () => {
         runInteractiveLogin,
         isInteractive: alwaysInteractive,
         write: (m) => writes.push(m),
-      }
+      },
     );
 
     expect(exitCode).toBeUndefined();
@@ -197,7 +197,7 @@ describe("recoverWithAutoLogin", () => {
         runInteractiveLogin: vi.fn().mockResolvedValue(null),
         isInteractive: alwaysInteractive,
         write: (m) => writes.push(m),
-      }
+      },
     );
 
     expect(exitCode).toBe(1);
@@ -218,7 +218,7 @@ describe("recoverWithAutoLogin", () => {
         runInteractiveLogin,
         isInteractive: alwaysInteractive,
         write: noop,
-      }
+      },
     );
 
     expect(exitCode).toBeUndefined();

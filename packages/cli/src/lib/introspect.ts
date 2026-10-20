@@ -10,6 +10,14 @@
  * for introspection and documentation generation.
  */
 
+import type { CommandExample } from "./command.js";
+import {
+  COMPLETION_TARGETS,
+  type CompletionTarget,
+  getCompletionTarget,
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
+} from "./completion-target.js";
 import {
   extractSchemaFields,
   type SchemaFieldInfo,
@@ -59,6 +67,7 @@ export type Command = {
    * introspection because Stricli does not expose it on the built command.
    */
   __primaryUsage?: string;
+  __examples?: readonly CommandExample[];
 };
 
 /** Positional parameter definitions — either fixed-length tuple or variadic array */
@@ -71,13 +80,20 @@ export type PositionalParam = {
   brief?: string;
   placeholder?: string;
   optional?: boolean;
+  /** Stricli parser; completion-aware parsers carry a {@link CompletionTarget}. */
+  parse?: unknown;
 };
 
 /** Extracted metadata for a single positional argument */
 export type PositionalInfo = {
+  /** Placeholder text without angle brackets or an ellipsis. */
   placeholder: string;
   brief: string;
+  /** Only fixed tuple parameters can be omitted. */
   optional: boolean;
+  variadic: boolean;
+  /** Canonical public syntax for compound positional forms. */
+  syntax?: string;
 };
 
 /** Flag definition as stored in Stricli's command parameters */
@@ -196,7 +212,10 @@ export function getPositionalString(params?: PositionalParams): string {
 
   if (params.kind === "tuple") {
     return params.parameters
-      .map((p, i) => `<${p.placeholder ?? `arg${i}`}>`)
+      .map((p, i) => {
+        const value = `<${p.placeholder ?? `arg${i}`}>`;
+        return p.optional ? `[${value}]` : value;
+      })
       .join(" ");
   }
 
@@ -219,7 +238,7 @@ export function getPositionalString(params?: PositionalParams): string {
  * @returns Array of positional info objects
  */
 export function extractPositionals(
-  params?: PositionalParams
+  params?: PositionalParams,
 ): PositionalInfo[] {
   if (!params) {
     return [];
@@ -230,15 +249,17 @@ export function extractPositionals(
       placeholder: p.placeholder ?? `arg${i}`,
       brief: p.brief ?? "",
       optional: p.optional ?? false,
+      variadic: false,
     }));
   }
 
   if (params.kind === "array") {
     return [
       {
-        placeholder: `${params.parameter.placeholder ?? "args"}...`,
+        placeholder: params.parameter.placeholder ?? "args",
         brief: params.parameter.brief ?? "",
-        optional: true,
+        optional: false,
+        variadic: true,
       },
     ];
   }
@@ -253,7 +274,7 @@ export function extractPositionals(
  * @returns Normalized flag info array
  */
 export function extractFlags(
-  flags: Record<string, FlagDef> | undefined
+  flags: Record<string, FlagDef> | undefined,
 ): FlagInfo[] {
   if (!flags) {
     return [];
@@ -280,11 +301,16 @@ export function extractFlags(
 export function buildCommandInfo(
   cmd: Command,
   path: string,
-  examples: string[] = []
+  examples: string[] = [],
 ): CommandInfo {
   const jsonFields = cmd.__jsonSchema
     ? extractSchemaFields(cmd.__jsonSchema)
     : undefined;
+  const positionals = extractPositionals(cmd.parameters.positional);
+  const [positional] = positionals;
+  if (cmd.__primaryUsage && positional && positionals.length === 1) {
+    positionals[0] = { ...positional, syntax: cmd.__primaryUsage };
+  }
 
   return {
     path,
@@ -293,9 +319,13 @@ export function buildCommandInfo(
     flags: extractFlags(cmd.parameters.flags),
     positional:
       cmd.__primaryUsage ?? getPositionalString(cmd.parameters.positional),
-    positionals: extractPositionals(cmd.parameters.positional),
+    positionals,
     aliases: cmd.parameters.aliases ?? {},
-    examples,
+    examples: cmd.__examples?.length
+      ? cmd.__examples.map(
+          ({ description, command }) => `# ${description}\n${command}`,
+        )
+      : examples,
     jsonFields: jsonFields?.length ? jsonFields : undefined,
   };
 }
@@ -310,7 +340,7 @@ export function buildCommandInfo(
 export function extractRouteGroupCommands(
   routeMap: RouteMap,
   routeName: string,
-  docExamples: Map<string, string[]> = new Map()
+  docExamples: Map<string, string[]> = new Map(),
 ): CommandInfo[] {
   const commands: CommandInfo[] = [];
 
@@ -327,7 +357,7 @@ export function extractRouteGroupCommands(
     } else if (isRouteMap(subTarget)) {
       const nestedPrefix = `${routeName} ${subEntry.name.original}`;
       commands.push(
-        ...extractRouteGroupCommands(subTarget, nestedPrefix, docExamples)
+        ...extractRouteGroupCommands(subTarget, nestedPrefix, docExamples),
       );
     }
   }
@@ -373,6 +403,94 @@ export function extractAllRoutes(routeMap: RouteMap): RouteInfo[] {
   return result;
 }
 
+/** Command paths (without the `sentry` prefix) grouped by completion target. */
+export type CompletionTargets = Record<CompletionTarget, string[]>;
+
+/**
+ * Read a command's completion target from its positional parsers.
+ *
+ * A command completes org or org/project slugs when one of its positionals
+ * uses `parseOrgTarget` or `parseOrgProjectTarget` (see
+ * `completion-target.ts`). Mixing both kinds in one command is rejected
+ * because `__complete` classifies whole commands, not argument positions.
+ *
+ * @param command - Command to inspect
+ * @param path - Command path, used in the error message
+ */
+function getCommandCompletionTarget(
+  command: Command,
+  path: string,
+): CompletionTarget | undefined {
+  const positional = command.parameters.positional;
+  if (!positional) {
+    return;
+  }
+  const params =
+    positional.kind === "tuple"
+      ? positional.parameters
+      : [positional.parameter];
+  const kinds = new Set<CompletionTarget>();
+  for (const param of params) {
+    const kind = getCompletionTarget(param.parse);
+    if (kind) {
+      kinds.add(kind);
+    }
+  }
+  if (kinds.size > 1) {
+    throw new Error(
+      `Command "${path}" mixes org and org/project completion targets`,
+    );
+  }
+  return kinds.values().next().value;
+}
+
+/**
+ * Collect every visible command whose positionals declare a completion target.
+ *
+ * Paths are space-separated route segments without the binary name (e.g.
+ * `"issue list"`); nested groups contribute their full path. Sorted for
+ * stable generated output.
+ *
+ * @param routeMap - Top-level Stricli route map
+ * @param prefix - Route segments above `routeMap` (used for recursion)
+ */
+export function extractCompletionTargets(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+): CompletionTargets {
+  const targets: CompletionTargets = {
+    [ORG_TARGET]: [],
+    [ORG_PROJECT_TARGET]: [],
+  };
+
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden) {
+      continue;
+    }
+
+    const segments = [...prefix, entry.name.original];
+    const path = segments.join(" ");
+    const target = entry.target;
+
+    if (isRouteMap(target)) {
+      const nested = extractCompletionTargets(target, segments);
+      for (const kind of COMPLETION_TARGETS) {
+        targets[kind].push(...nested[kind]);
+      }
+    } else if (isCommand(target)) {
+      const kind = getCommandCompletionTarget(target, path);
+      if (kind) {
+        targets[kind].push(path);
+      }
+    }
+  }
+
+  for (const kind of COMPLETION_TARGETS) {
+    targets[kind].sort();
+  }
+  return targets;
+}
+
 /** Matches the "sentry " prefix at the start of a command path. */
 const SENTRY_PREFIX_RE = /^sentry /;
 
@@ -396,7 +514,7 @@ const MAX_SUGGESTIONS = 3;
  */
 export function resolveCommandPath(
   routeMap: RouteMap,
-  path: string[]
+  path: string[],
 ): ResolvedPath | UnresolvedPath | null {
   if (path.length === 0) {
     return null;

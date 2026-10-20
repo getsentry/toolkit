@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-team
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Work with Sentry teams
 requires:
   bins: ["sentry"]
@@ -11,7 +11,7 @@ requires:
 
 Work with Sentry teams
 
-### `sentry team list <org/project>`
+### `sentry team list [<org/project>]`
 
 List teams
 

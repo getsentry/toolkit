@@ -7,10 +7,10 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { refreshCommand } from "../../../src/commands/auth/refresh.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
 import { AuthError, ValidationError } from "../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as interactiveLogin from "../../../src/lib/interactive-login.js";
 
 type RefreshFlags = {
@@ -73,7 +73,7 @@ describe("refreshCommand.func", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(AuthError);
       expect((err as AuthError).message).toContain(
-        "Cannot refresh an environment variable token"
+        "Cannot refresh an environment variable token",
       );
       expect((err as AuthError).message).toContain("Update SENTRY_AUTH_TOKEN");
     }
@@ -301,7 +301,7 @@ describe("refreshCommand.func scope re-authentication (--scope / --read-only)", 
         force: false,
         "read-only": true,
         scope: ["project:read"],
-      })
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
     expect(refreshTokenSpy).not.toHaveBeenCalled();
@@ -314,7 +314,7 @@ describe("refreshCommand.func scope re-authentication (--scope / --read-only)", 
         json: false,
         force: false,
         scope: ["not:valid"],
-      })
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
   });
@@ -332,7 +332,7 @@ describe("refreshCommand.func scope re-authentication (--scope / --read-only)", 
         json: false,
         force: false,
         scope: ["project:read"],
-      })
+      }),
     ).rejects.toBeInstanceOf(AuthError);
     expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
   });

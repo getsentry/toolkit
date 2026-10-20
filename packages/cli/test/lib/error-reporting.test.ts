@@ -8,7 +8,7 @@
  * - End-to-end behavior of reportCliError (metric emission + capture)
  */
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
@@ -42,25 +42,27 @@ import {
 describe("extractResourceKind", () => {
   test("strips single-quoted user data", () => {
     expect(
-      extractResourceKind("Project 'api-track' not found in organization 'foo'")
+      extractResourceKind(
+        "Project 'api-track' not found in organization 'foo'",
+      ),
     ).toBe("Project not found");
   });
 
   test("strips double-quoted user data", () => {
     expect(extractResourceKind('Event "abc123" not found in org "foo"')).toBe(
-      "Event not found"
+      "Event not found",
     );
   });
 
   test("strips long hex IDs", () => {
     expect(
-      extractResourceKind("Trace abcdef0123456789abcdef0123456789 not found")
+      extractResourceKind("Trace abcdef0123456789abcdef0123456789 not found"),
     ).toBe("Trace not found");
   });
 
   test("strips long numeric IDs", () => {
     expect(extractResourceKind("Issue 7420431306 not found.")).toBe(
-      "Issue not found."
+      "Issue not found.",
     );
   });
 
@@ -71,13 +73,13 @@ describe("extractResourceKind", () => {
 
   test("strips org/project paths after 'in'", () => {
     expect(extractResourceKind("not found in neurio/installer-app")).toBe(
-      "not found"
+      "not found",
     );
     expect(extractResourceKind("not found in olli-inc/olli-app")).toBe(
-      "not found"
+      "not found",
     );
     expect(extractResourceKind("access denied in sentry-sdks/cli")).toBe(
-      "access denied"
+      "access denied",
     );
   });
 
@@ -96,7 +98,7 @@ describe("extractResourceKind", () => {
   test("strips 'in <slug>' combined with entity names and numeric IDs", () => {
     expect(extractResourceKind("Dashboard 42 in my-org")).toBe("Dashboard");
     expect(
-      extractResourceKind("Organization my-org not found or has no dashboards")
+      extractResourceKind("Organization my-org not found or has no dashboards"),
     ).toBe("Organization not found or has no dashboards");
   });
 
@@ -116,20 +118,20 @@ describe("extractResourceKind", () => {
 describe("extractMessagePrefix", () => {
   test("returns first 3 words by default", () => {
     expect(
-      extractMessagePrefix('Invalid trace ID "abc". Expected a 32-character.')
+      extractMessagePrefix('Invalid trace ID "abc". Expected a 32-character.'),
     ).toBe("Invalid trace ID");
   });
 
   test("strips quoted substrings before word-counting", () => {
     // Quoted input doesn't push the real content past the word limit.
     expect(extractMessagePrefix('Invalid event ID "anything"')).toBe(
-      "Invalid event ID"
+      "Invalid event ID",
     );
   });
 
   test("stops at first newline", () => {
     expect(
-      extractMessagePrefix("Invalid slug.\n\nTry: sentry project create")
+      extractMessagePrefix("Invalid slug.\n\nTry: sentry project create"),
     ).toBe("Invalid slug.");
   });
 
@@ -144,7 +146,7 @@ describe("extractMessagePrefix", () => {
   test("same kind across different user-supplied values", () => {
     // Invariant: slug variation should not change the kind
     expect(extractMessagePrefix('Invalid trace ID "abc"')).toBe(
-      extractMessagePrefix('Invalid trace ID "def"')
+      extractMessagePrefix('Invalid trace ID "def"'),
     );
   });
 });
@@ -156,49 +158,49 @@ describe("extractMessagePrefix", () => {
 describe("normalizeEndpoint", () => {
   test("parameterizes org slug in organizations path", () => {
     expect(normalizeEndpoint("/api/0/organizations/my-org/issues/")).toBe(
-      "/api/0/organizations/{org}/issues/"
+      "/api/0/organizations/{org}/issues/",
     );
   });
 
   test("parameterizes org and project in projects path", () => {
     expect(
-      normalizeEndpoint("/api/0/projects/my-org/my-project/events/abc123/")
+      normalizeEndpoint("/api/0/projects/my-org/my-project/events/abc123/"),
     ).toBe("/api/0/projects/{org}/{project}/events/{id}/");
   });
 
   test("parameterizes issue, event, group, release IDs", () => {
     expect(normalizeEndpoint("/api/0/issues/12345/")).toBe(
-      "/api/0/issues/{id}/"
+      "/api/0/issues/{id}/",
     );
     expect(normalizeEndpoint("/api/0/groups/99/events/abc/")).toBe(
-      "/api/0/groups/{id}/events/{id}/"
+      "/api/0/groups/{id}/events/{id}/",
     );
     expect(normalizeEndpoint("/api/0/releases/1.0.0/")).toBe(
-      "/api/0/releases/{version}/"
+      "/api/0/releases/{version}/",
     );
   });
 
   test("parameterizes teams path", () => {
     expect(normalizeEndpoint("/api/0/teams/my-org/backend/")).toBe(
-      "/api/0/teams/{org}/{team}/"
+      "/api/0/teams/{org}/{team}/",
     );
   });
 
   test("parameterizes dashboards path", () => {
     expect(normalizeEndpoint("/api/0/dashboards/42/")).toBe(
-      "/api/0/dashboards/{id}/"
+      "/api/0/dashboards/{id}/",
     );
   });
 
   test("parameterizes customers path", () => {
     expect(normalizeEndpoint("/api/0/customers/my-org/")).toBe(
-      "/api/0/customers/{org}/"
+      "/api/0/customers/{org}/",
     );
   });
 
   test("parameterizes bare numeric segments", () => {
     expect(normalizeEndpoint("/api/0/some/123/thing/456")).toBe(
-      "/api/0/some/{id}/thing/{id}"
+      "/api/0/some/{id}/thing/{id}",
     );
   });
 
@@ -218,7 +220,7 @@ describe("classifySilenced", () => {
 
   test("silences AuthError(not_authenticated)", () => {
     expect(classifySilenced(new AuthError("not_authenticated"))).toBe(
-      "auth_expected"
+      "auth_expected",
     );
   });
 
@@ -235,11 +237,14 @@ describe("classifySilenced", () => {
     expect(classifySilenced(new MalformedAuthTokenError())).toBeNull();
   });
 
-  test.each([
-    401, 403, 404, 429, 418,
-  ])("silences ApiError with status %i", (status) => {
-    expect(classifySilenced(new ApiError("x", status))).toBe("api_user_error");
-  });
+  test.each([401, 403, 404, 429, 418])(
+    "silences ApiError with status %i",
+    (status) => {
+      expect(classifySilenced(new ApiError("x", status))).toBe(
+        "api_user_error",
+      );
+    },
+  );
 
   test("does NOT silence ApiError 400 (CLI bug)", () => {
     expect(classifySilenced(new ApiError("bad", 400))).toBeNull();
@@ -247,7 +252,7 @@ describe("classifySilenced", () => {
 
   test("silences a raw 'fetch failed' TypeError (network failure)", () => {
     expect(classifySilenced(new TypeError("fetch failed"))).toBe(
-      "network_error"
+      "network_error",
     );
   });
 
@@ -255,7 +260,7 @@ describe("classifySilenced", () => {
     // status 0 is shared by network failures and TLS cert errors; the latter
     // are actionable (missing CA) and must stay captured.
     expect(
-      classifySilenced(new ApiError("TLS certificate error", 0))
+      classifySilenced(new ApiError("TLS certificate error", 0)),
     ).toBeNull();
   });
 
@@ -273,26 +278,27 @@ describe("classifySilenced", () => {
         new ApiError(
           "Failed to list issues: 400 Bad Request",
           400,
-          "Error parsing search query: invalid status value of '403'"
-        )
-      )
+          "Error parsing search query: invalid status value of '403'",
+        ),
+      ),
     ).toBeNull();
   });
 
   test("does NOT silence any 400 regardless of detail", () => {
     expect(
       classifySilenced(
-        new ApiError("bad", 400, "Invalid dashboard widget configuration")
-      )
+        new ApiError("bad", 400, "Invalid dashboard widget configuration"),
+      ),
     ).toBeNull();
     expect(classifySilenced(new ApiError("bad", 400))).toBeNull();
   });
 
-  test.each([
-    500, 502, 503,
-  ])("does NOT silence ApiError with 5xx status %i", (status) => {
-    expect(classifySilenced(new ApiError("x", status))).toBeNull();
-  });
+  test.each([500, 502, 503])(
+    "does NOT silence ApiError with 5xx status %i",
+    (status) => {
+      expect(classifySilenced(new ApiError("x", status))).toBeNull();
+    },
+  );
 
   test.each([
     ["auto-detect failure", new ContextError("Organization and project", "x")],
@@ -310,9 +316,9 @@ describe("classifySilenced", () => {
       classifySilenced(
         new ValidationError(
           'Project "webapp-backend" exists in multiple organizations.',
-          "project.ambiguous_org"
-        )
-      )
+          "project.ambiguous_org",
+        ),
+      ),
     ).toBe("user_validation");
   });
 
@@ -320,16 +326,19 @@ describe("classifySilenced", () => {
     // A missing --input file is pure user-input noise, not a CLI bug (CLI-1JY).
     expect(
       classifySilenced(
-        new ValidationError("File not found: /tmp/does-not-exist.json", "input")
-      )
+        new ValidationError(
+          "File not found: /tmp/does-not-exist.json",
+          "input",
+        ),
+      ),
     ).toBe("user_input_error");
   });
 
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(
-        new ResolutionError("Project 'x'", "not found", "sentry issue list")
-      )
+        new ResolutionError("Project 'x'", "not found", "sentry issue list"),
+      ),
     ).toBe("user_input_error");
   });
   test.each([
@@ -345,17 +354,16 @@ describe("classifySilenced", () => {
     expect(classifySilenced(err)).toBeNull();
   });
 
-  test.each([
-    "not_enabled",
-    "no_budget",
-    "ai_disabled",
-  ] as const)("silences SeerError(%s) on self-hosted (CLI-1WP)", (reason) => {
-    withSentryUrl("https://sentry.example.com", () => {
-      expect(classifySilenced(new SeerError(reason, "my-org"))).toBe(
-        "seer_unavailable_self_hosted"
-      );
-    });
-  });
+  test.each(["not_enabled", "no_budget", "ai_disabled"] as const)(
+    "silences SeerError(%s) on self-hosted (CLI-1WP)",
+    (reason) => {
+      withSentryUrl("https://sentry.example.com", () => {
+        expect(classifySilenced(new SeerError(reason, "my-org"))).toBe(
+          "seer_unavailable_self_hosted",
+        );
+      });
+    },
+  );
 
   test("does NOT silence SeerError when SENTRY_URL points at SaaS", () => {
     withSentryUrl("https://sentry.io", () => {
@@ -394,7 +402,7 @@ function withSentryUrl(url: string, fn: () => void): void {
 describe("enrichEventWithGroupingTags", () => {
   function makeEvent(
     type: string,
-    tags?: Record<string, string>
+    tags?: Record<string, string>,
   ): Sentry.ErrorEvent {
     return {
       exception: { values: [{ type, value: "msg" }] },
@@ -456,7 +464,7 @@ describe("enrichEventWithGroupingTags", () => {
     const result1 = enrichEventWithGroupingTags(event1);
     const result2 = enrichEventWithGroupingTags(event2);
     expect(result1.tags?.["cli_error.kind"]).toBe(
-      result2.tags?.["cli_error.kind"]
+      result2.tags?.["cli_error.kind"],
     );
   });
 
@@ -532,7 +540,7 @@ describe("reportCliError integration", () => {
 
   test("captures ContextError (no longer silenced) so its volume stays visible", () => {
     reportCliError(
-      new ContextError("Organization and project", "sentry org view <slug>")
+      new ContextError("Organization and project", "sentry org view <slug>"),
     );
     // CLI-3B: ContextError is the signal for auto-detection/UX improvements, so
     // it is captured rather than dropped to a silenced-metric.
@@ -542,7 +550,7 @@ describe("reportCliError integration", () => {
       1,
       expect.objectContaining({
         attributes: expect.objectContaining({ error_class: "ContextError" }),
-      })
+      }),
     );
   });
 
@@ -556,7 +564,7 @@ describe("reportCliError integration", () => {
     // Without a stable fallback, every unfielded ValidationError would get
     // kind="" and collapse into one huge mixed group.
     const err = new ValidationError(
-      'Invalid trace ID "d2ad4a2d947b5983". Expected 32-char hex.'
+      'Invalid trace ID "d2ad4a2d947b5983". Expected 32-char hex.',
     );
     const { tags } = capturedScopeTags(err);
     expect(tags["cli_error.class"]).toBe("ValidationError");
@@ -565,20 +573,20 @@ describe("reportCliError integration", () => {
 
   test("ValidationError kind is stable across different user inputs", () => {
     const a = capturedScopeTags(
-      new ValidationError('Invalid trace ID "abc"')
+      new ValidationError('Invalid trace ID "abc"'),
     ).tags;
     const b = capturedScopeTags(
-      new ValidationError('Invalid trace ID "xyz-different"')
+      new ValidationError('Invalid trace ID "xyz-different"'),
     ).tags;
     expect(a["cli_error.kind"]).toBe(b["cli_error.kind"]);
   });
 
   test("ValidationError kind differentiates by validator", () => {
     const traceErr = capturedScopeTags(
-      new ValidationError('Invalid trace ID "abc"')
+      new ValidationError('Invalid trace ID "abc"'),
     ).tags;
     const eventErr = capturedScopeTags(
-      new ValidationError('Invalid event ID "abc"')
+      new ValidationError('Invalid event ID "abc"'),
     ).tags;
     expect(traceErr["cli_error.kind"]).not.toBe(eventErr["cli_error.kind"]);
   });
@@ -589,7 +597,7 @@ describe("reportCliError integration", () => {
     const err = new ResolutionError(
       "Project 'x'",
       "not found",
-      "sentry issue list <org>/x"
+      "sentry issue list <org>/x",
     );
     reportCliError(err);
     expect(captureSpy).not.toHaveBeenCalled();
@@ -601,7 +609,7 @@ describe("reportCliError integration", () => {
           error_class: "ResolutionError",
           reason: "user_input_error",
         }),
-      })
+      }),
     );
   });
 
@@ -625,7 +633,7 @@ describe("reportCliError integration", () => {
           reason: "seer_unavailable_self_hosted",
           seer_reason: "not_enabled",
         }),
-      })
+      }),
     );
   });
 
@@ -640,7 +648,7 @@ describe("reportCliError integration", () => {
           reason: "auth_expected",
           auth_reason: "invalid",
         }),
-      })
+      }),
     );
   });
 
@@ -679,13 +687,13 @@ describe("reportCliError integration", () => {
       "failed",
       400,
       undefined,
-      "/api/0/organizations/my-org/issues/"
+      "/api/0/organizations/my-org/issues/",
     );
     const { tags } = capturedScopeTags(err);
     expect(tags["cli_error.api_status"]).toBe("400");
     expect(tags["cli_error.kind"]).toBe("400");
     expect(tags["cli_error.api_endpoint"]).toBe(
-      "/api/0/organizations/{org}/issues/"
+      "/api/0/organizations/{org}/issues/",
     );
   });
 
@@ -697,7 +705,11 @@ describe("reportCliError integration", () => {
 
   test("HostScopeError gets kind=host_scope", () => {
     const { tags } = capturedScopeTags(
-      new HostScopeError("URL argument", "https://other.sentry.io", "sentry.io")
+      new HostScopeError(
+        "URL argument",
+        "https://other.sentry.io",
+        "sentry.io",
+      ),
     );
     expect(tags["cli_error.class"]).toBe("HostScopeError");
     expect(tags["cli_error.kind"]).toBe("host_scope");
@@ -705,7 +717,7 @@ describe("reportCliError integration", () => {
 
   test("WizardError gets kind=wizard", () => {
     const { tags } = capturedScopeTags(
-      new WizardError("Workflow returned an error")
+      new WizardError("Workflow returned an error"),
     );
     expect(tags["cli_error.class"]).toBe("WizardError");
     expect(tags["cli_error.kind"]).toBe("wizard");
@@ -713,7 +725,7 @@ describe("reportCliError integration", () => {
 
   test("bare CliError gets kind from message prefix", () => {
     const { tags } = capturedScopeTags(
-      new CliError("Failed to create project 'my-app' in my-org.")
+      new CliError("Failed to create project 'my-app' in my-org."),
     );
     expect(tags["cli_error.class"]).toBe("CliError");
     expect(tags["cli_error.kind"]).toBe("Failed to create project");
@@ -721,31 +733,32 @@ describe("reportCliError integration", () => {
 
   test("bare CliError kind is stable across different user inputs", () => {
     const a = capturedScopeTags(
-      new CliError("Failed to create project 'app-a' in org-a.")
+      new CliError("Failed to create project 'app-a' in org-a."),
     ).tags;
     const b = capturedScopeTags(
-      new CliError("Failed to create project 'app-b' in org-b.")
+      new CliError("Failed to create project 'app-b' in org-b."),
     ).tags;
     expect(a["cli_error.kind"]).toBe(b["cli_error.kind"]);
   });
 
-  test.each([
-    401, 403, 404, 429,
-  ])("SILENCES ApiError(%i) and emits metric", (status) => {
-    reportCliError(new ApiError("user err", status, "detail", "/api/0/foo/"));
-    expect(captureSpy).not.toHaveBeenCalled();
-    expect(metricSpy).toHaveBeenCalledWith(
-      "cli.error.silenced",
-      1,
-      expect.objectContaining({
-        attributes: expect.objectContaining({
-          error_class: "ApiError",
-          reason: "api_user_error",
-          api_status: status,
+  test.each([401, 403, 404, 429])(
+    "SILENCES ApiError(%i) and emits metric",
+    (status) => {
+      reportCliError(new ApiError("user err", status, "detail", "/api/0/foo/"));
+      expect(captureSpy).not.toHaveBeenCalled();
+      expect(metricSpy).toHaveBeenCalledWith(
+        "cli.error.silenced",
+        1,
+        expect.objectContaining({
+          attributes: expect.objectContaining({
+            error_class: "ApiError",
+            reason: "api_user_error",
+            api_status: status,
+          }),
         }),
-      })
-    );
-  });
+      );
+    },
+  );
 
   test("silences OutputError and emits metric", () => {
     reportCliError(new OutputError(null));
@@ -755,7 +768,7 @@ describe("reportCliError integration", () => {
       1,
       expect.objectContaining({
         attributes: expect.objectContaining({ reason: "output_error" }),
-      })
+      }),
     );
   });
 
@@ -767,27 +780,27 @@ describe("reportCliError integration", () => {
       1,
       expect.objectContaining({
         attributes: expect.objectContaining({ reason: "network_error" }),
-      })
+      }),
     );
   });
 
-  test.each([
-    "not_authenticated",
-    "expired",
-  ] as const)("silences AuthError(%s) and emits metric", (reason) => {
-    reportCliError(new AuthError(reason));
-    expect(captureSpy).not.toHaveBeenCalled();
-    expect(metricSpy).toHaveBeenCalledWith(
-      "cli.error.silenced",
-      1,
-      expect.objectContaining({
-        attributes: expect.objectContaining({
-          reason: "auth_expected",
-          auth_reason: reason,
+  test.each(["not_authenticated", "expired"] as const)(
+    "silences AuthError(%s) and emits metric",
+    (reason) => {
+      reportCliError(new AuthError(reason));
+      expect(captureSpy).not.toHaveBeenCalled();
+      expect(metricSpy).toHaveBeenCalledWith(
+        "cli.error.silenced",
+        1,
+        expect.objectContaining({
+          attributes: expect.objectContaining({
+            reason: "auth_expected",
+            auth_reason: reason,
+          }),
         }),
-      })
-    );
-  });
+      );
+    },
+  );
 
   test("captures ApiError(500) without silencing metric", () => {
     reportCliError(new ApiError("server fail", 500));

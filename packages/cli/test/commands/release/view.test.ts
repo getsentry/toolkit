@@ -15,11 +15,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -29,11 +29,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRelease } from "../../../src/types/index.js";
 import { useTestConfigDir } from "../../helpers.js";
@@ -204,7 +204,7 @@ describe("release view", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { fresh: false, json: false })
+      func.call(context, { fresh: false, json: false }),
     ).rejects.toThrow("Release version");
   });
 
@@ -215,7 +215,7 @@ describe("release view", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { fresh: false, json: false }, "1.0.0")
+      func.call(context, { fresh: false, json: false }, "1.0.0"),
     ).rejects.toThrow("organization");
   });
 

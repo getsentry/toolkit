@@ -94,7 +94,7 @@ export type MergedCodeMappingsResponse = {
  * @returns Merged response with created/updated/errors counts
  */
 export async function uploadCodeMappings(
-  options: CodeMappingsUploadOptions
+  options: CodeMappingsUploadOptions,
 ): Promise<MergedCodeMappingsResponse> {
   const { org, project, repository, defaultBranch, mappings } = options;
   const regionUrl = await resolveOrgRegion(org);
@@ -115,7 +115,7 @@ export async function uploadCodeMappings(
 
     if (totalBatches > 1) {
       log.debug(
-        `Uploading batch ${batchNum}/${totalBatches} (${batch.length} mappings)`
+        `Uploading batch ${batchNum}/${totalBatches} (${batch.length} mappings)`,
       );
     }
 
@@ -131,7 +131,7 @@ export async function uploadCodeMappings(
           mappings: batch,
         },
         schema: BulkCodeMappingsResponseSchema,
-      }
+      },
     );
 
     merged.created += data.created;

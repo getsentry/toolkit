@@ -82,7 +82,7 @@ export type MeasureOptions = {
  */
 export async function measure(
   fn: () => Promise<void> | void,
-  options: MeasureOptions = {}
+  options: MeasureOptions = {},
 ): Promise<number[]> {
   const runs = options.runs ?? 10;
   const warmup = options.warmup ?? 3;
@@ -132,7 +132,7 @@ export function summarize(samples: readonly number[]): BenchStats {
 function percentile(sorted: readonly number[], p: number): number {
   const idx = Math.min(
     sorted.length - 1,
-    Math.max(0, Math.ceil(p * sorted.length) - 1)
+    Math.max(0, Math.ceil(p * sorted.length) - 1),
   );
   return sorted[idx] as number;
 }
@@ -146,7 +146,7 @@ function percentile(sorted: readonly number[], p: number): number {
  * user cache even if the harness crashes (finally-block cleanup).
  */
 export async function withBenchDb<T>(
-  fn: (configDir: string) => Promise<T>
+  fn: (configDir: string) => Promise<T>,
 ): Promise<T> {
   // Import lazily — importing `src/lib/db/index.js` has non-trivial side
   // effects (loads bun:sqlite, @sentry/node-core via createTracedDatabase).
@@ -189,12 +189,11 @@ export async function withBenchDb<T>(
  * the bench DB (though in practice the bench DB only contains bench rows).
  */
 export async function clearDsnDetectionCache(
-  projectRoot: string
+  projectRoot: string,
 ): Promise<void> {
   const { clearDsnCache } = await import("../../../src/lib/db/dsn-cache.js");
-  const { clearProjectRootCacheFor } = await import(
-    "../../../src/lib/db/project-root-cache.js"
-  );
+  const { clearProjectRootCacheFor } =
+    await import("../../../src/lib/db/project-root-cache.js");
   clearDsnCache(projectRoot);
   await clearProjectRootCacheFor(projectRoot);
 }
@@ -211,7 +210,7 @@ export function printReport(report: BenchReport): void {
 
   console.log("");
   console.log(
-    `Bench report  (${report.runtime.platform}/${report.runtime.arch}, bun ${report.runtime.bun}, ${report.runtime.cpus} cpus)`
+    `Bench report  (${report.runtime.platform}/${report.runtime.arch}, bun ${report.runtime.bun}, ${report.runtime.cpus} cpus)`,
   );
   console.log("─".repeat(72));
 
@@ -219,13 +218,13 @@ export function printReport(report: BenchReport): void {
     console.log(`\n${fixture}`);
     const longest = entries.reduce(
       (acc, e) => Math.max(acc, e.operation.length),
-      0
+      0,
     );
     for (const entry of entries) {
       const pad = entry.operation.padEnd(longest);
       const { p50, p95, runs } = entry.stats;
       console.log(
-        `  ${pad}  p50 ${fmtMs(p50)}  p95 ${fmtMs(p95)}  (${runs} runs)`
+        `  ${pad}  p50 ${fmtMs(p50)}  p95 ${fmtMs(p95)}  (${runs} runs)`,
       );
     }
   }
@@ -242,7 +241,7 @@ function fmtMs(ms: number): string {
 /** Write the report to `path` as indented JSON. */
 export async function writeJsonReport(
   report: BenchReport,
-  path: string
+  path: string,
 ): Promise<void> {
   await writeFile(path, `${JSON.stringify(report, null, 2)}\n`);
 }
@@ -272,7 +271,7 @@ export type ComparisonRow = {
 export function compareReports(
   baseline: BenchReport,
   current: BenchReport,
-  thresholdPct: number
+  thresholdPct: number,
 ): ComparisonRow[] {
   const keys = new Set<string>();
   const index = new Map<string, BenchEntry>();
@@ -345,7 +344,7 @@ const VERDICT_ICONS: Record<ComparisonRow["verdict"], string> = {
 function formatComparisonRow(
   r: ComparisonRow,
   widthFixture: number,
-  widthOp: number
+  widthOp: number,
 ): string {
   const base = r.baseline ? fmtMs(r.baseline.p50) : "—".padStart(7);
   const cur = r.current ? fmtMs(r.current.p50) : "—".padStart(7);
@@ -359,20 +358,20 @@ function formatComparisonRow(
 /** Render comparison rows to stdout. Returns true when no regressions. */
 export function printComparison(
   rows: readonly ComparisonRow[],
-  thresholdPct: number
+  thresholdPct: number,
 ): boolean {
   const widthFixture = rows.reduce(
     (acc, r) => Math.max(acc, r.fixture.length),
-    8
+    8,
   );
   const widthOp = rows.reduce((acc, r) => Math.max(acc, r.operation.length), 9);
   console.log("");
   console.log(
-    `Comparison vs baseline  (threshold ±${(thresholdPct * 100).toFixed(0)}%)`
+    `Comparison vs baseline  (threshold ±${(thresholdPct * 100).toFixed(0)}%)`,
   );
   console.log("─".repeat(72));
   console.log(
-    `${"fixture".padEnd(widthFixture)}  ${"operation".padEnd(widthOp)}  ${"base p50".padStart(10)}  ${"cur p50".padStart(10)}  ${"Δms".padStart(9)}  ${"Δ%".padStart(7)}  verdict`
+    `${"fixture".padEnd(widthFixture)}  ${"operation".padEnd(widthOp)}  ${"base p50".padStart(10)}  ${"cur p50".padStart(10)}  ${"Δms".padStart(9)}  ${"Δ%".padStart(7)}  verdict`,
   );
   let ok = true;
   for (const r of rows) {

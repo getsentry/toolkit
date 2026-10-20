@@ -5,13 +5,13 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { viewCommand } from "../../../../src/commands/alert/issues/view.js";
 import type { IssueAlertRule } from "../../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../../src/lib/browser.js";
 import { ApiError, ValidationError } from "../../../../src/lib/errors.js";
 import type { ResolvedTarget } from "../../../../src/lib/resolve-target.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../../helpers.js";
 
@@ -82,11 +82,11 @@ describe("alert issues view", () => {
     const func = (await viewCommand.loader()) as unknown as (
       this: unknown,
       flags: ViewFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
-      func.call(context, { web: false, json: true }, "acme/frontend")
+      func.call(context, { web: false, json: true }, "acme/frontend"),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -97,11 +97,15 @@ describe("alert issues view", () => {
     const func = (await viewCommand.loader()) as unknown as (
       this: unknown,
       flags: ViewFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
-      func.call(context, { web: false, json: true }, "test-org/test-project/42")
+      func.call(
+        context,
+        { web: false, json: true },
+        "test-org/test-project/42",
+      ),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -120,13 +124,13 @@ describe("alert issues view", () => {
     const func = (await viewCommand.loader()) as unknown as (
       this: unknown,
       flags: ViewFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
       context,
       { web: false, json: false },
-      "test-org/test-project/42"
+      "test-org/test-project/42",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -145,22 +149,22 @@ describe("alert issues view", () => {
     const func = (await viewCommand.loader()) as unknown as (
       this: unknown,
       flags: ViewFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
       context,
       { web: true, json: false },
-      "test-org/test-project/42"
+      "test-org/test-project/42",
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-org"),
-      "issue alert rules"
+      "issue alert rules",
     );
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-project"),
-      "issue alert rules"
+      "issue alert rules",
     );
     expect(resolveSpy).not.toHaveBeenCalled();
     expect(getRuleSpy).not.toHaveBeenCalled();
@@ -177,14 +181,14 @@ describe("alert issues view", () => {
     const func = (await viewCommand.loader()) as unknown as (
       this: unknown,
       flags: ViewFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     const err = await func
       .call(
         context,
         { web: false, json: true },
-        "test-org/test-project/Rule Alph"
+        "test-org/test-project/Rule Alph",
       )
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ValidationError);

@@ -139,7 +139,7 @@ export function bannerLinesForWidth(columns: number): BannerLine[] {
  * string when the terminal is too narrow for even the text mark.
  */
 export function formatBanner(
-  columns: number = process.stdout.columns ?? 80
+  columns: number = process.stdout.columns ?? 80,
 ): string {
   return bannerLinesForWidth(columns)
     .map(({ content, color }) => chalk.hex(color)(content))

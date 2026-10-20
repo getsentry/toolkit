@@ -30,8 +30,8 @@ describe("sendEnvelopeCommand (deprecation shim)", () => {
       func.call(
         ctx,
         { dsn: "https://x@o1.ingest.sentry.io/1" },
-        "file.envelope"
-      )
+        "file.envelope",
+      ),
     ).rejects.toBeInstanceOf(CliError);
   });
 
@@ -41,7 +41,7 @@ describe("sendEnvelopeCommand (deprecation shim)", () => {
       await func.call(
         ctx,
         { dsn: "https://x@o1.ingest.sentry.io/1" },
-        "my.envelope"
+        "my.envelope",
       );
       expect.unreachable("should have thrown");
     } catch (err) {
@@ -57,7 +57,7 @@ describe("sendEnvelopeCommand (deprecation shim)", () => {
       expect.unreachable("should have thrown");
     } catch (err) {
       expect((err as CliError).message).toContain(
-        "sentry event send --raw <file>"
+        "sentry event send --raw <file>",
       );
     }
   });

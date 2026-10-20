@@ -29,11 +29,14 @@ import { feedbackRoute } from "./commands/feedback/index.js";
 import { helpCommand } from "./commands/help.js";
 import { infoCommand } from "./commands/info.js";
 import { initCommand } from "./commands/init.js";
+import { integrationRoute } from "./commands/integration/index.js";
+import { listCommand as integrationListCommand } from "./commands/integration/list.js";
 import { issueRoute } from "./commands/issue/index.js";
 import { listCommand as issueListCommand } from "./commands/issue/list.js";
 import { localRoute } from "./commands/local/index.js";
 import { logRoute } from "./commands/log/index.js";
 import { listCommand as logListCommand } from "./commands/log/list.js";
+import { mcpCommand } from "./commands/mcp.js";
 import { monitorRoute } from "./commands/monitor/index.js";
 import { listCommand as monitorListCommand } from "./commands/monitor/list.js";
 import { orgRoute } from "./commands/org/index.js";
@@ -96,6 +99,7 @@ const PLURAL_TO_SINGULAR: Record<string, string> = {
   dashboards: "dashboard",
   dsns: "dsn",
   events: "event",
+  integrations: "integration",
   issues: "issue",
   orgs: "org",
   platforms: "platform",
@@ -136,12 +140,14 @@ export const routes = buildRouteMap({
     release: releaseRoute,
     repo: repoRoute,
     team: teamRoute,
+    integration: integrationRoute,
     issue: issueRoute,
     event: eventRoute,
     events: eventListCommand,
     explore: exploreCommand,
     feedback: feedbackRoute,
     log: logRoute,
+    mcp: mcpCommand,
     monitor: monitorRoute,
     snapshots: snapshotsRoute,
     sourcemap: sourcemapRoute,
@@ -163,6 +169,7 @@ export const routes = buildRouteMap({
     "agent-conversations": conversationListCommand,
     dashboards: dashboardListCommand,
     dsns: dsnListCommand,
+    integrations: integrationListCommand,
     issues: issueListCommand,
     orgs: orgListCommand,
     platforms: platformListCommand,
@@ -189,6 +196,7 @@ export const routes = buildRouteMap({
       "agent-conversations": true,
       dashboards: true,
       events: true,
+      integrations: true,
       issues: true,
       orgs: true,
       platforms: true,
@@ -224,9 +232,9 @@ const routesWithDefaultCommand: ReadonlySet<string> = new Set(
     .filter(
       (e) =>
         isRouteMap(e.target as unknown) &&
-        (e.target as unknown as RouteMap).getDefaultCommand?.()
+        (e.target as unknown as RouteMap).getDefaultCommand?.(),
     )
-    .map((e) => e.name.original)
+    .map((e) => e.name.original),
 );
 
 /**
@@ -278,7 +286,7 @@ function detectPluralAliasMisuse(ansiColor: boolean): string | undefined {
  */
 function formatSynonymError(
   exc: unknown,
-  ansiColor: boolean
+  ansiColor: boolean,
 ): string | undefined {
   if (!(exc instanceof CliError)) {
     return;
@@ -315,7 +323,7 @@ const customText: ApplicationText = {
   ...text_en,
   exceptionWhileParsingArguments: (
     exc: unknown,
-    ansiColor: boolean
+    ansiColor: boolean,
   ): string => {
     // Case A: bare route group with no subcommand (e.g., `sentry issue`)
     if (exc instanceof UnsatisfiedPositionalError) {

@@ -61,12 +61,12 @@ afterEach(() => {
 
 /** Valid subdomain parts (lowercase alphanumeric with hyphens, not starting/ending with hyphen) */
 const subdomainPartArb = stringMatching(
-  /^[a-z][a-z0-9-]{0,10}[a-z0-9]$/
+  /^[a-z][a-z0-9-]{0,10}[a-z0-9]$/,
 ).filter((s) => !s.includes("--") && s.length >= 2);
 
 /** Valid org/project slugs (exclude xn-- punycode prefix — invalid IDN breaks URL parser) */
 const slugArb = stringMatching(/^[a-z][a-z0-9-]{1,30}[a-z0-9]$/).filter(
-  (s) => !s.startsWith("xn--")
+  (s) => !s.startsWith("xn--"),
 );
 
 /** Valid event IDs (32-char hex) */
@@ -96,12 +96,12 @@ const nonSentryDomainArb = oneof(
     "sentry-fake.com",
     "notsentry.io",
     "sentry.io.evil.com",
-    "example.sentry.io.evil.com"
+    "example.sentry.io.evil.com",
   ),
   // Generate random domains
   tuple(subdomainPartArb, constantFrom(".com", ".org", ".net", ".io")).map(
-    ([sub, tld]) => `${sub}${tld}`
-  )
+    ([sub, tld]) => `${sub}${tld}`,
+  ),
 ).filter((domain) => {
   // Ensure it's not actually sentry.io or a subdomain
   return domain !== "sentry.io" && !domain.endsWith(".sentry.io");
@@ -127,7 +127,7 @@ describe("isSentrySaasUrl properties", () => {
         const url = `https://${region}.sentry.io`;
         expect(isSentrySaasUrl(url)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -137,7 +137,7 @@ describe("isSentrySaasUrl properties", () => {
         const url = `https://${subdomain}.sentry.io`;
         expect(isSentrySaasUrl(url)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -147,7 +147,7 @@ describe("isSentrySaasUrl properties", () => {
         const url = `https://${domain}`;
         expect(isSentrySaasUrl(url)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -191,15 +191,15 @@ describe("isSentrySaasUrl properties", () => {
       property(
         oneof(
           constantFrom("https://sentry.io", "https://us.sentry.io"),
-          nonSentryDomainArb.map((d) => `https://${d}`)
+          nonSentryDomainArb.map((d) => `https://${d}`),
         ),
         (url) => {
           const result1 = isSentrySaasUrl(url);
           const result2 = isSentrySaasUrl(url);
           expect(result1).toBe(result2);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -211,7 +211,7 @@ describe("buildOrgUrl properties", () => {
         const result = buildOrgUrl(orgSlug);
         expect(result.startsWith(getOrgBaseUrl(orgSlug))).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -221,7 +221,7 @@ describe("buildOrgUrl properties", () => {
         const result = buildOrgUrl(orgSlug);
         expect(result).toContain(orgSlug);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -231,7 +231,7 @@ describe("buildOrgUrl properties", () => {
         const result = buildOrgUrl(orgSlug);
         expect(result).toBe(`${getOrgBaseUrl(orgSlug)}/`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -241,7 +241,7 @@ describe("buildOrgUrl properties", () => {
         const result = buildOrgUrl(orgSlug);
         expect(() => new URL(result)).not.toThrow();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -254,7 +254,7 @@ describe("buildProjectUrl properties", () => {
         expect(result).toContain(orgSlug);
         expect(result).toContain(projectSlug);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -263,10 +263,10 @@ describe("buildProjectUrl properties", () => {
       property(tuple(slugArb, slugArb), ([orgSlug, projectSlug]) => {
         const result = buildProjectUrl(orgSlug, projectSlug);
         expect(result).toBe(
-          `${getOrgBaseUrl(orgSlug)}/settings/projects/${projectSlug}/`
+          `${getOrgBaseUrl(orgSlug)}/settings/projects/${projectSlug}/`,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -276,7 +276,7 @@ describe("buildProjectUrl properties", () => {
         const result = buildProjectUrl(orgSlug, projectSlug);
         expect(() => new URL(result)).not.toThrow();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -288,7 +288,7 @@ describe("buildEventSearchUrl properties", () => {
         const result = buildEventSearchUrl(orgSlug, eventId);
         expect(result).toContain(`event.id:${eventId}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -299,7 +299,7 @@ describe("buildEventSearchUrl properties", () => {
         const url = new URL(result);
         expect(url.searchParams.get("query")).toContain(eventId);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -310,11 +310,11 @@ describe("buildProjectIssuesUrl properties", () => {
       property(tuple(slugArb, projectIdArb), ([orgSlug, projectId]) => {
         const result = buildProjectIssuesUrl(orgSlug, projectId);
         expect(result).toBe(
-          `${getOrgBaseUrl(orgSlug)}/issues/?project=${projectId}`
+          `${getOrgBaseUrl(orgSlug)}/issues/?project=${projectId}`,
         );
         expect(new URL(result).searchParams.get("project")).toBe(projectId);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -324,7 +324,7 @@ describe("buildProjectIssuesUrl properties", () => {
         const result = buildProjectIssuesUrl(orgSlug);
         expect(result).toBe(`${getOrgBaseUrl(orgSlug)}/issues/`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -335,7 +335,7 @@ describe("buildProjectIssuesUrl properties", () => {
         expect(() => new URL(result)).not.toThrow();
         expect(new URL(result).pathname).toBe("/issues/");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -350,7 +350,7 @@ describe("parseOrgProjectFromSettingsUrl properties", () => {
           projectSlug,
         });
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -364,7 +364,7 @@ describe("parseOrgProjectFromSettingsUrl properties", () => {
           projectSlug,
         });
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -380,7 +380,7 @@ describe("buildOrgSettingsUrl properties", () => {
         const result = buildOrgSettingsUrl(orgSlug);
         expect(result.endsWith("/")).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -390,7 +390,7 @@ describe("buildOrgSettingsUrl properties", () => {
         const result = buildOrgSettingsUrl(orgSlug, hash);
         expect(result).toContain(`#${hash}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -400,7 +400,7 @@ describe("buildOrgSettingsUrl properties", () => {
         const result = buildOrgSettingsUrl(orgSlug, hash);
         expect(result.endsWith(`#${hash}`)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -412,7 +412,7 @@ describe("buildSeerSettingsUrl properties", () => {
         const result = buildSeerSettingsUrl(orgSlug);
         expect(result).toContain("/seer/");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -422,7 +422,7 @@ describe("buildSeerSettingsUrl properties", () => {
         const result = buildSeerSettingsUrl(orgSlug);
         expect(result).toContain("/settings/seer/");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -434,7 +434,7 @@ describe("buildBillingUrl properties", () => {
         const result = buildBillingUrl(orgSlug);
         expect(result.includes("?")).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -444,7 +444,7 @@ describe("buildBillingUrl properties", () => {
         const result = buildBillingUrl(orgSlug, product);
         expect(result).toContain(`?product=${product}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -454,7 +454,7 @@ describe("buildBillingUrl properties", () => {
         const result = buildBillingUrl(orgSlug);
         expect(result).toContain("/billing/overview/");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -466,7 +466,7 @@ describe("buildLogsUrl properties", () => {
         const result = buildLogsUrl(orgSlug);
         expect(result.includes("?")).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -476,7 +476,7 @@ describe("buildLogsUrl properties", () => {
         const result = buildLogsUrl(orgSlug, logId);
         expect(result).toContain(`?query=sentry.item_id:${logId}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -486,7 +486,7 @@ describe("buildLogsUrl properties", () => {
         const result = buildLogsUrl(orgSlug);
         expect(result).toContain("/explore/logs/");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -496,7 +496,7 @@ describe("buildLogsUrl properties", () => {
         expect(() => new URL(buildLogsUrl(orgSlug))).not.toThrow();
         expect(() => new URL(buildLogsUrl(orgSlug, logId))).not.toThrow();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -508,7 +508,7 @@ describe("buildTraceUrl properties", () => {
         const result = buildTraceUrl(orgSlug, traceId);
         expect(result).toContain(`/explore/traces/trace/${traceId}/`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -518,7 +518,7 @@ describe("buildTraceUrl properties", () => {
         const result = buildTraceUrl(orgSlug, traceId);
         expect(result).toContain(orgSlug);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -528,7 +528,7 @@ describe("buildTraceUrl properties", () => {
         const result = buildTraceUrl(orgSlug, traceId);
         expect(() => new URL(result)).not.toThrow();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -537,10 +537,10 @@ describe("buildTraceUrl properties", () => {
       property(tuple(slugArb, traceIdArb), ([orgSlug, traceId]) => {
         const result = buildTraceUrl(orgSlug, traceId);
         expect(result).toBe(
-          `${getOrgBaseUrl(orgSlug)}/explore/traces/trace/${traceId}/`
+          `${getOrgBaseUrl(orgSlug)}/explore/traces/trace/${traceId}/`,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -552,7 +552,7 @@ describe("buildDashboardsListUrl properties", () => {
         const result = buildDashboardsListUrl(orgSlug);
         expect(result).toContain("/dashboards/");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -562,7 +562,7 @@ describe("buildDashboardsListUrl properties", () => {
         const result = buildDashboardsListUrl(orgSlug);
         expect(result).toContain(orgSlug);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -572,7 +572,7 @@ describe("buildDashboardsListUrl properties", () => {
         const result = buildDashboardsListUrl(orgSlug);
         expect(() => new URL(result)).not.toThrow();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -584,7 +584,7 @@ describe("buildDashboardUrl properties", () => {
         const result = buildDashboardUrl(orgSlug, dashboardId);
         expect(result).toContain(`/dashboard/${dashboardId}/`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -595,7 +595,7 @@ describe("buildDashboardUrl properties", () => {
         expect(result).toContain(orgSlug);
         expect(result).toContain(dashboardId);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -605,7 +605,7 @@ describe("buildDashboardUrl properties", () => {
         const result = buildDashboardUrl(orgSlug, dashboardId);
         expect(() => new URL(result)).not.toThrow();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -622,7 +622,7 @@ describe("SENTRY_HOST precedence", () => {
     process.env.SENTRY_HOST = "https://sentry.company.com";
     expect(getOrgBaseUrl("my-org")).toBe("https://sentry.company.com");
     expect(buildOrgUrl("my-org")).toBe(
-      "https://sentry.company.com/organizations/my-org/"
+      "https://sentry.company.com/organizations/my-org/",
     );
   });
 });
@@ -640,63 +640,63 @@ describe("self-hosted URLs", () => {
 
   test("buildOrgUrl uses path-based pattern", () => {
     expect(buildOrgUrl("my-org")).toBe(
-      `${SELF_HOSTED_URL}/organizations/my-org/`
+      `${SELF_HOSTED_URL}/organizations/my-org/`,
     );
   });
 
   test("buildEventSearchUrl uses path-based pattern", () => {
     expect(
-      buildEventSearchUrl("my-org", "abc123def456abc123def456abc123de")
+      buildEventSearchUrl("my-org", "abc123def456abc123def456abc123de"),
     ).toBe(
-      `${SELF_HOSTED_URL}/organizations/my-org/issues/?query=event.id:abc123def456abc123def456abc123de`
+      `${SELF_HOSTED_URL}/organizations/my-org/issues/?query=event.id:abc123def456abc123def456abc123de`,
     );
   });
 
   test("buildLogsUrl uses path-based pattern", () => {
     expect(buildLogsUrl("my-org")).toBe(
-      `${SELF_HOSTED_URL}/organizations/my-org/explore/logs/`
+      `${SELF_HOSTED_URL}/organizations/my-org/explore/logs/`,
     );
   });
 
   test("buildTraceUrl uses path-based pattern", () => {
     expect(buildTraceUrl("my-org", "abc123def456abc123def456abc123de")).toBe(
-      `${SELF_HOSTED_URL}/organizations/my-org/explore/traces/trace/abc123def456abc123def456abc123de/`
+      `${SELF_HOSTED_URL}/organizations/my-org/explore/traces/trace/abc123def456abc123def456abc123de/`,
     );
   });
 
   test("buildDashboardsListUrl uses path-based pattern", () => {
     expect(buildDashboardsListUrl("my-org")).toBe(
-      `${SELF_HOSTED_URL}/organizations/my-org/dashboards/`
+      `${SELF_HOSTED_URL}/organizations/my-org/dashboards/`,
     );
   });
 
   test("buildDashboardUrl uses path-based pattern", () => {
     expect(buildDashboardUrl("my-org", "42")).toBe(
-      `${SELF_HOSTED_URL}/organizations/my-org/dashboard/42/`
+      `${SELF_HOSTED_URL}/organizations/my-org/dashboard/42/`,
     );
   });
 
   test("buildProjectUrl uses path-based pattern", () => {
     expect(buildProjectUrl("my-org", "my-project")).toBe(
-      `${SELF_HOSTED_URL}/settings/my-org/projects/my-project/`
+      `${SELF_HOSTED_URL}/settings/my-org/projects/my-project/`,
     );
   });
 
   test("buildOrgSettingsUrl uses path-based pattern", () => {
     expect(buildOrgSettingsUrl("my-org")).toBe(
-      `${SELF_HOSTED_URL}/settings/my-org/`
+      `${SELF_HOSTED_URL}/settings/my-org/`,
     );
   });
 
   test("buildSeerSettingsUrl uses path-based pattern", () => {
     expect(buildSeerSettingsUrl("my-org")).toBe(
-      `${SELF_HOSTED_URL}/settings/my-org/seer/`
+      `${SELF_HOSTED_URL}/settings/my-org/seer/`,
     );
   });
 
   test("buildBillingUrl uses path-based pattern", () => {
     expect(buildBillingUrl("my-org")).toBe(
-      `${SELF_HOSTED_URL}/settings/my-org/billing/overview/`
+      `${SELF_HOSTED_URL}/settings/my-org/billing/overview/`,
     );
   });
 
@@ -722,9 +722,9 @@ describe("self-hosted URLs", () => {
             const parsed = new URL(url);
             expect(parsed.hostname).toBe("sentry.company.com");
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -751,9 +751,9 @@ describe("URL building cross-function properties", () => {
           for (const url of urls) {
             expect(() => new URL(url)).not.toThrow();
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -764,29 +764,29 @@ describe("URL building cross-function properties", () => {
         ([orgSlug, projectSlug, eventId, hash, product]) => {
           expect(buildOrgUrl(orgSlug)).toBe(buildOrgUrl(orgSlug));
           expect(buildProjectUrl(orgSlug, projectSlug)).toBe(
-            buildProjectUrl(orgSlug, projectSlug)
+            buildProjectUrl(orgSlug, projectSlug),
           );
           expect(buildEventSearchUrl(orgSlug, eventId)).toBe(
-            buildEventSearchUrl(orgSlug, eventId)
+            buildEventSearchUrl(orgSlug, eventId),
           );
           expect(buildOrgSettingsUrl(orgSlug, hash)).toBe(
-            buildOrgSettingsUrl(orgSlug, hash)
+            buildOrgSettingsUrl(orgSlug, hash),
           );
           expect(buildSeerSettingsUrl(orgSlug)).toBe(
-            buildSeerSettingsUrl(orgSlug)
+            buildSeerSettingsUrl(orgSlug),
           );
           expect(buildBillingUrl(orgSlug, product)).toBe(
-            buildBillingUrl(orgSlug, product)
+            buildBillingUrl(orgSlug, product),
           );
           expect(buildDashboardsListUrl(orgSlug)).toBe(
-            buildDashboardsListUrl(orgSlug)
+            buildDashboardsListUrl(orgSlug),
           );
           expect(buildDashboardUrl(orgSlug, "42")).toBe(
-            buildDashboardUrl(orgSlug, "42")
+            buildDashboardUrl(orgSlug, "42"),
           );
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

@@ -381,8 +381,8 @@ describe("formatSingleLog", () => {
     const result = stripAnsi(
       formatSingleLog(
         { level: "info", body: "User logged in", timestamp: 1_700_000_000 },
-        "[SERVER]  "
-      )
+        "[SERVER]  ",
+      ),
     );
     expect(result).toContain("[INFO]");
     expect(result).toContain("User logged in");
@@ -399,8 +399,8 @@ describe("formatSingleLog", () => {
             user_id: { value: 42 },
           },
         },
-        "[SERVER]  "
-      )
+        "[SERVER]  ",
+      ),
     );
     expect(result).toContain("[user_id=42]");
     expect(result).not.toContain("sentry.sdk.name");
@@ -428,8 +428,8 @@ describe("formatSingleLog", () => {
             mid: { value: 3 },
           },
         },
-        "[SERVER]  "
-      )
+        "[SERVER]  ",
+      ),
     );
     const alphaIdx = result.indexOf("[alpha=2]");
     const midIdx = result.indexOf("[mid=3]");
@@ -451,8 +451,8 @@ describe("formatSingleLog", () => {
             },
           },
         },
-        "[SERVER]  "
-      )
+        "[SERVER]  ",
+      ),
     );
     expect(result).toContain("[trace:abcdef01]");
     expect(result).not.toContain("sentry.trace.trace_id");
@@ -644,7 +644,7 @@ describe("extractTraceId", () => {
 
   test("returns undefined for a malformed trace ID", () => {
     expect(
-      extractTraceId({ contexts: { trace: { trace_id: "nope" } } })
+      extractTraceId({ contexts: { trace: { trace_id: "nope" } } }),
     ).toBeUndefined();
   });
 
@@ -688,35 +688,35 @@ describe("inferSource", () => {
 
   test("detects mobile SDK (react-native)", () => {
     const result = stripAnsi(
-      inferSource({ sdk: { name: "sentry.javascript.react-native" } })
+      inferSource({ sdk: { name: "sentry.javascript.react-native" } }),
     );
     expect(result).toContain("[MOBILE]");
   });
 
   test("detects mobile SDK (flutter)", () => {
     const result = stripAnsi(
-      inferSource({ sdk: { name: "sentry.dart.flutter" } })
+      inferSource({ sdk: { name: "sentry.dart.flutter" } }),
     );
     expect(result).toContain("[MOBILE]");
   });
 
   test("detects browser SDK", () => {
     const result = stripAnsi(
-      inferSource({ sdk: { name: "sentry.javascript.browser" } })
+      inferSource({ sdk: { name: "sentry.javascript.browser" } }),
     );
     expect(result).toContain("[BROWSER]");
   });
 
   test("detects server JS SDK (node)", () => {
     const result = stripAnsi(
-      inferSource({ sdk: { name: "sentry.javascript.node" } })
+      inferSource({ sdk: { name: "sentry.javascript.node" } }),
     );
     expect(result).toContain("[SERVER]");
   });
 
   test("detects server JS SDK (nextjs)", () => {
     const result = stripAnsi(
-      inferSource({ sdk: { name: "sentry.javascript.nextjs" } })
+      inferSource({ sdk: { name: "sentry.javascript.nextjs" } }),
     );
     expect(result).toContain("[SERVER]");
   });
@@ -776,7 +776,7 @@ describe("formatItemJson", () => {
     const lines = formatItemJson(
       "error",
       { timestamp: 1_700_000_000, message: "boom" },
-      serverHeader
+      serverHeader,
     );
 
     expect(JSON.parse(lines[0]).schema_version).toBe(1);
@@ -794,7 +794,7 @@ describe("formatItemJson", () => {
         ...serverHeader,
         // Spotlight stores its internal envelope identity as a UUID object.
         __spotlight_envelope_id: { toString: () => "envelope-123" },
-      }
+      },
     );
 
     expect(JSON.parse(lines[0])).toMatchObject({
@@ -831,7 +831,7 @@ describe("formatItemJson", () => {
         message: "boom",
         contexts: { trace: { trace_id: traceId } },
       },
-      serverHeader
+      serverHeader,
     );
     expect(JSON.parse(errorLines[0]).trace_id).toBe(traceId);
 
@@ -843,7 +843,7 @@ describe("formatItemJson", () => {
         transaction: "GET /",
         contexts: { trace: { op: "http.server", trace_id: traceId } },
       },
-      serverHeader
+      serverHeader,
     );
     expect(JSON.parse(txnLines[0]).trace_id).toBe(traceId);
   });
@@ -863,7 +863,7 @@ describe("formatItemJson", () => {
           },
         ],
       },
-      serverHeader
+      serverHeader,
     );
     expect(JSON.parse(lines[0]).trace_id).toBe(traceId);
   });
@@ -955,7 +955,7 @@ describe("formatItemJson", () => {
     const lines = formatItemJson(
       "attachment\u202e",
       { timestamp: "2026-09-08\u009b", event_id: "event\u202e-123" },
-      serverHeader
+      serverHeader,
     );
     const parsed = JSON.parse(lines[0]);
 
@@ -977,7 +977,7 @@ describe("formatItemJson", () => {
           },
         ],
       },
-      serverHeader
+      serverHeader,
     );
     expect(JSON.parse(logLines[0]).attributes).toEqual({
       nested: { child: "unsafevalue" },
@@ -997,11 +997,11 @@ describe("formatItemJson", () => {
       contexts: { trace: { op: "http.server", data: { "user.id": "42" } } },
     };
     const without = JSON.parse(
-      formatItemJson("transaction", event, serverHeader)[0]
+      formatItemJson("transaction", event, serverHeader)[0],
     );
     expect(without.attributes).toBeUndefined();
     const withAttrs = JSON.parse(
-      formatItemJson("transaction", event, serverHeader, true)[0]
+      formatItemJson("transaction", event, serverHeader, true)[0],
     );
     expect(withAttrs.attributes.user).toEqual({ "user.id": "42" });
   });
@@ -1032,7 +1032,7 @@ describe("formatAttributeTable", () => {
     expect(out).toContain("http.method");
     // user group is rendered before the sdk group
     expect(out.indexOf("user attributes")).toBeLessThan(
-      out.indexOf("sdk attributes")
+      out.indexOf("sdk attributes"),
     );
   });
 
@@ -1235,7 +1235,7 @@ describe("standalone span support", () => {
 describe("inferSource cloudflare SDK", () => {
   test("detects Cloudflare Workers SDK as server", () => {
     const result = stripAnsi(
-      inferSource({ sdk: { name: "sentry.javascript.cloudflare" } })
+      inferSource({ sdk: { name: "sentry.javascript.cloudflare" } }),
     );
     expect(result).toContain("[SERVER]");
   });

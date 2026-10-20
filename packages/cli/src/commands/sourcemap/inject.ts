@@ -37,7 +37,7 @@ function formatInjectResult(data: InjectCommandResult): string {
     mdKvTable([
       ["Files modified", String(data.modified)],
       ["Files skipped", String(data.skipped)],
-    ])
+    ]),
   );
 
   if (data.files.length > 0) {
@@ -45,7 +45,7 @@ function formatInjectResult(data: InjectCommandResult): string {
     for (const file of data.files) {
       const status = file.injected ? "✓" : "–";
       lines.push(
-        `${status} ${file.jsPath} → ${colorTag("muted", file.debugId)}`
+        `${status} ${file.jsPath} → ${colorTag("muted", file.debugId)}`,
       );
     }
   }
@@ -132,7 +132,7 @@ export const injectCommand = buildCommand({
       "dry-run"?: boolean;
       "allow-empty"?: boolean;
     },
-    dir: string
+    dir: string,
   ) {
     // Discover pairs read-only first so we don't error after partially
     // mutating files. Zero *discovered* pairs (distinct from zero
@@ -150,7 +150,7 @@ export const injectCommand = buildCommand({
       : undefined;
     const ignoreMatcher = await buildIgnoreMatcher(
       ignorePatterns,
-      flags["ignore-file"]
+      flags["ignore-file"],
     );
 
     const pairs = await discoverFilePairs(dir, extSet, ignoreMatcher);

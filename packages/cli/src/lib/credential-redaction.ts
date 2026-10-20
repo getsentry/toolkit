@@ -4,6 +4,13 @@
  * Successful API responses are not passed through this redactor.
  */
 
+// Session URLs are credentials too. SDK HTTP instrumentation records both full
+// URLs and relative request targets, including query-based viewer/UI routes.
+const LOCAL_INGEST_CAPABILITY =
+  /(\/_local\/v1\/sessions\/[^/?#\s"'\\]+\/ingest\/)[A-Za-z0-9_-]+/g;
+const LOCAL_SCOPED_QUERY =
+  /\/_local\/v1\/sessions\/[^/?#\s"'\\]+\/(?:stream|ui\/(?:reset|close|retention))\?[^#\s"'\\]*/g;
+
 const INVALID_BEARER_HEADER_START =
   /(\bHeaders\.(?:set|append):[ \t]*)(\\*["'])Bearer[ \t]+/gi;
 const INVALID_HEADER_END = /(?<!\\)(\\*["']) is an invalid header value/gi;
@@ -18,11 +25,11 @@ const BEARER_PART = String.raw`(?:${ESCAPED_CONTROL}[ \t]*|\\+[^"'\s\\]|[^\s"'\\
 // Quotes (including JSON-escaped quotes) delimit the diagnostic string.
 const BEARER_CREDENTIAL = new RegExp(
   String.raw`\bBearer[ \t]+${BEARER_PART}+(?:(?:\r\n|(?! )[\s\x00-\x1f\x7f-\x9f])[ \t]*${BEARER_PART}+)*`,
-  "gi"
+  "gi",
 );
 const SENTRY_CREDENTIAL = new RegExp(
   String.raw`\bsntry[su]_[A-Za-z0-9._~+/=-]+(?:(?:\r\n|(?! )[\s\x00-\x1f\x7f-\x9f]|${ESCAPED_CONTROL})[ \t]*[A-Za-z0-9._~+/=-]+)*`,
-  "gi"
+  "gi",
 );
 
 /**
@@ -59,7 +66,7 @@ function redactInvalidBearerHeaders(text: string): string {
     }
     parts.push(
       text.slice(cursor, match.index),
-      `${prefix}${quote}Bearer [REDACTED]${quote}`
+      `${prefix}${quote}Bearer [REDACTED]${quote}`,
     );
     cursor = end + quote.length;
   }
@@ -70,10 +77,14 @@ function redactInvalidBearerHeaders(text: string): string {
 /** Remove recognizable credentials from diagnostics without retaining secrets. */
 export function redactCredentialText(text: string): string {
   return redactInvalidBearerHeaders(text)
+    .replace(LOCAL_INGEST_CAPABILITY, "$1[REDACTED]")
+    .replace(LOCAL_SCOPED_QUERY, (url) =>
+      url.replace(/([?&]cap=)[^&#\s"'\\]+/g, "$1[REDACTED]"),
+    )
     .replace(QUOTED_CREDENTIAL, (_match, quote: string, prefix: string) =>
       prefix.toLowerCase().startsWith("bearer")
         ? `${quote}Bearer [REDACTED]${quote}`
-        : `${quote}[REDACTED]${quote}`
+        : `${quote}[REDACTED]${quote}`,
     )
     .replace(BEARER_CREDENTIAL, "Bearer [REDACTED]")
     .replace(SENTRY_CREDENTIAL, "[REDACTED]");

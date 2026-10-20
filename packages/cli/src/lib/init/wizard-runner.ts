@@ -125,7 +125,7 @@ const SENTRY_PROJECT_OPERATIONS = new Set<ToolPayload["operation"]>([
 
 /** Narrow a tool result's `data` to a Sentry project identity, if it has one. */
 function extractSentryProjectIdentity(
-  data: unknown
+  data: unknown,
 ): SentryProjectIdentity | undefined {
   if (!data || typeof data !== "object") {
     return;
@@ -150,7 +150,7 @@ function extractSentryProjectIdentity(
 function nextPhase(
   stepPhases: Map<string, number>,
   stepId: string,
-  names: string[]
+  names: string[],
 ): string {
   const phase = (stepPhases.get(stepId) ?? 0) + 1;
   stepPhases.set(stepId, phase);
@@ -158,7 +158,7 @@ function nextPhase(
 }
 
 function hasFileMap(
-  value: unknown
+  value: unknown,
 ): value is { files: Record<string, unknown> } {
   return (
     typeof value === "object" &&
@@ -206,14 +206,14 @@ function hasActiveStepsPath(value: Record<string, unknown>): value is Record<
 }
 
 function filePathMarkersForHistory(
-  data: unknown
+  data: unknown,
 ): Record<string, null> | undefined {
   if (!hasFileMap(data)) {
     return;
   }
 
   return Object.fromEntries(
-    Object.keys(data.files).map((path) => [path, null])
+    Object.keys(data.files).map((path) => [path, null]),
   );
 }
 
@@ -224,7 +224,7 @@ function filePathMarkersForHistory(
 function summarizeToolPhaseForHistory(
   payload: ToolPayload,
   phase: string,
-  result: ToolResult
+  result: ToolResult,
 ): CompactPhaseHistoryEntry {
   const summary: CompactPhaseHistoryEntry = {
     ok: result.ok,
@@ -342,7 +342,7 @@ const NOOP_ROTATION: ProgressRotationHandle = {
 function startProgressRotation(
   stepId: string,
   spin: SpinnerHandle,
-  spinState: SpinState
+  spinState: SpinState,
 ): ProgressRotationHandle {
   const messages = STEP_PROGRESS_MESSAGES[stepId];
   if (!messages || messages.length === 0) {
@@ -377,11 +377,11 @@ function startProgressRotation(
   };
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: suspend handling needs to branch across tool and interactive payload kinds
+// suspend handling needs to branch across tool and interactive payload kinds
 async function handleSuspendedStep(
   ctx: StepContext,
   stepPhases: Map<string, number>,
-  stepHistory: Map<string, CompactPhaseHistoryEntry[]>
+  stepHistory: Map<string, CompactPhaseHistoryEntry[]>,
 ): Promise<Record<string, unknown>> {
   const { payload, stepId, spin, spinState, context, ui, sentryProject } = ctx;
 
@@ -430,14 +430,14 @@ async function handleSuspendedStep(
       // stopping the spinner to persist a ✔ line that just duplicates the
       // checklist.
       spin.message(
-        renderInlineMarkdown(truncateForTerminal(toolResult.message))
+        renderInlineMarkdown(truncateForTerminal(toolResult.message)),
       );
     } else {
       const followUpMessage =
         toolResult.ok === false ? undefined : describePostTool(payload);
       if (followUpMessage) {
         spin.message(
-          renderInlineMarkdown(truncateForTerminal(followUpMessage))
+          renderInlineMarkdown(truncateForTerminal(followUpMessage)),
         );
       }
     }
@@ -492,7 +492,7 @@ async function handleSuspendedStep(
     if (interactiveResult.cancelled === true) {
       throw new WizardError(
         "Setup could not complete: interactive step was not resolved.",
-        { rendered: false }
+        { rendered: false },
       );
     }
 
@@ -501,7 +501,7 @@ async function handleSuspendedStep(
     spin.start(
       stepId === "select-features"
         ? STEP_ACTIVE_LABELS["plan-codemods"]
-        : "Processing..."
+        : "Processing...",
     );
     spinState.running = true;
 
@@ -576,7 +576,7 @@ function assertSuspendPayload(raw: unknown): SuspendPayload {
 
 /** Keep transport identity at the wire boundary, outside local tool and UI contracts. */
 function localSuspendPayload(
-  payload: SuspendPayload
+  payload: SuspendPayload,
 ): InteractivePayload | ToolPayload {
   const {
     protocolVersion: _protocolVersion,
@@ -589,12 +589,12 @@ function localSuspendPayload(
 function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
-  label: string
+  label: string,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error(`${label} timed out after ${ms / 1000}s`)),
-      ms
+      ms,
     );
     promise.then(
       (val) => {
@@ -604,7 +604,7 @@ function withTimeout<T>(
       (err) => {
         clearTimeout(timer);
         reject(err);
-      }
+      },
     );
   });
 }
@@ -622,7 +622,7 @@ function buildWelcomeOptions(): WelcomeOptions {
 
 async function confirmExperimental(
   options: WizardOptions,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<boolean> {
   if (options.yes || options.dryRun) {
     return true;
@@ -661,12 +661,12 @@ async function confirmExperimental(
 
 async function preamble(
   options: WizardOptions,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<boolean> {
   if (!(options.yes || options.dryRun || process.stdin.isTTY)) {
     throw new WizardError(
       "Interactive mode requires a terminal. Use --yes for non-interactive mode.",
-      { rendered: false }
+      { rendered: false },
     );
   }
 
@@ -693,7 +693,7 @@ async function preamble(
     if (err instanceof LoggingUIPromptError) {
       throw new WizardError(
         "The interactive UI failed to load. Run with --yes for non-interactive mode.",
-        { rendered: false }
+        { rendered: false },
       );
     }
     throw err;
@@ -782,7 +782,7 @@ function runStateRecoveryBackoffMs(): number[] {
   while (totalWaitMs < RUN_STATE_RECOVERY_MAX_WAIT_MS) {
     const delayMs = Math.min(
       RUN_STATE_RECOVERY_POLL_MS,
-      RUN_STATE_RECOVERY_MAX_WAIT_MS - totalWaitMs
+      RUN_STATE_RECOVERY_MAX_WAIT_MS - totalWaitMs,
     );
     delays.push(delayMs);
     totalWaitMs += delayMs;
@@ -794,7 +794,7 @@ function runStateRecoveryBackoffMs(): number[] {
 function isRecoverableRunState(
   result: WorkflowRunResult,
   resumedStepId: string,
-  resumedPayload: SuspendPayload
+  resumedPayload: SuspendPayload,
 ): boolean {
   if (result.status !== "suspended") {
     return true;
@@ -817,7 +817,7 @@ async function tryRecoverCurrentRunState(
   workflow: ResumeRetryArgs["workflow"],
   runId: string,
   resumedStepId: string,
-  resumedPayload: SuspendPayload
+  resumedPayload: SuspendPayload,
 ): Promise<WorkflowRunResult | null> {
   const deadlineAt = Date.now() + RUN_STATE_RECOVERY_MAX_WAIT_MS;
   for (const delayMs of runStateRecoveryBackoffMs()) {
@@ -827,17 +827,17 @@ async function tryRecoverCurrentRunState(
     }
     if (delayMs > 0) {
       await new Promise((resolve) =>
-        setTimeout(resolve, Math.min(delayMs, remainingMs))
+        setTimeout(resolve, Math.min(delayMs, remainingMs)),
       );
     }
     const timeoutMs = Math.min(
       RUN_STATE_RECOVERY_TIMEOUT_MS,
-      deadlineAt - Date.now()
+      deadlineAt - Date.now(),
     );
     if (timeoutMs <= 0) {
       return null;
     }
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       const raw = await withTimeout(
         workflow.runById(runId, {
@@ -852,7 +852,7 @@ async function tryRecoverCurrentRunState(
           ],
         }),
         timeoutMs,
-        "Run state recovery"
+        "Run state recovery",
       );
       const result = assertWorkflowResult(raw);
       if (isRecoverableRunState(result, resumedStepId, resumedPayload)) {
@@ -872,7 +872,7 @@ async function tryRecoverCurrentRunState(
  * re-executes the local tool when a response was lost or its request is stale.
  */
 async function resumeWithRecovery(
-  args: ResumeRetryArgs
+  args: ResumeRetryArgs,
 ): Promise<WorkflowRunResult> {
   const {
     run,
@@ -898,10 +898,10 @@ async function resumeWithRecovery(
             resumeData: wireResumeData,
             tracingOptions,
           }),
-        WORKFLOW_RESUME_ASYNC_ENDPOINT
+        WORKFLOW_RESUME_ASYNC_ENDPOINT,
       ),
       API_TIMEOUT_MS,
-      "Workflow resume"
+      "Workflow resume",
     );
     return assertWorkflowResult(raw);
   } catch (err) {
@@ -912,7 +912,7 @@ async function resumeWithRecovery(
         workflow,
         run.runId,
         stepId,
-        payload
+        payload,
       );
       if (recovered) {
         addBreadcrumb({
@@ -949,7 +949,7 @@ async function resumeWithRecovery(
       workflow,
       run.runId,
       stepId,
-      payload
+      payload,
     );
     ui.clearOverlay?.();
     if (recovered) {
@@ -966,7 +966,7 @@ async function resumeWithRecovery(
 }
 
 /** Run the wizard while negotiating v1 and echoing each suspended request ID. */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: sequential wizard orchestration with error handling branches
+// sequential wizard orchestration with error handling branches
 export async function runWizard(initialOptions: WizardOptions): Promise<void> {
   // Note: a previous `forwardFreshTtyToStdin()` call lived here as a
   // macOS-only workaround for clack reading from a broken inherited
@@ -1091,7 +1091,7 @@ export async function runWizard(initialOptions: WizardOptions): Promise<void> {
     spin.message("Connecting to wizard...");
     run = await withInitServiceAuthClassification(
       () => workflow.createRun(),
-      WORKFLOW_CREATE_RUN_ENDPOINT
+      WORKFLOW_CREATE_RUN_ENDPOINT,
     );
     // Large shared context (dirListing, fileCache, existingSentry)
     // travels via Mastra's workflow `initialState` instead of `inputData`.
@@ -1123,11 +1123,11 @@ export async function runWizard(initialOptions: WizardOptions): Promise<void> {
               },
               tracingOptions,
             }),
-          WORKFLOW_START_ASYNC_ENDPOINT
+          WORKFLOW_START_ASYNC_ENDPOINT,
         ),
         API_TIMEOUT_MS,
-        "Workflow start"
-      )
+        "Workflow start",
+      ),
     );
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
@@ -1206,13 +1206,13 @@ export async function runWizard(initialOptions: WizardOptions): Promise<void> {
           sentryProject: sentryProjectRef,
         },
         stepPhases,
-        stepHistory
+        stepHistory,
       );
 
       const progressRotation = startProgressRotation(
         extracted.stepId,
         spin,
-        spinState
+        spinState,
       );
       try {
         result = await resumeWithRecovery({
@@ -1300,7 +1300,7 @@ export async function runWizard(initialOptions: WizardOptions): Promise<void> {
     spinState,
     ui,
     directory,
-    sentryProjectRef.current
+    sentryProjectRef.current,
   );
   setTag("wizard.outcome", "completed");
   if (result.result?.platform) {
@@ -1312,7 +1312,7 @@ export async function runWizard(initialOptions: WizardOptions): Promise<void> {
       "wizard.features",
       Array.isArray(resultFeatures)
         ? resultFeatures.join(",")
-        : String(resultFeatures)
+        : String(resultFeatures),
     );
   }
 }
@@ -1327,7 +1327,7 @@ export async function runWizard(initialOptions: WizardOptions): Promise<void> {
  */
 function syncWorkflowStepStatuses(
   result: WorkflowRunResult,
-  ui: WizardUI
+  ui: WizardUI,
 ): void {
   for (const [stepId, step] of Object.entries(result.steps ?? {})) {
     if (step.status === "success") {
@@ -1345,7 +1345,7 @@ type WorkflowFailure = {
 };
 
 function getWorkflowFailure(
-  result: WorkflowRunResult
+  result: WorkflowRunResult,
 ): WorkflowFailure | undefined {
   const workflowCode = result.result?.exitCode;
   if (result.status === "success" && workflowCode === 0) {
@@ -1371,14 +1371,14 @@ function getWorkflowFailure(
   };
 }
 
-// biome-ignore lint/nursery/useMaxParams: cwd and sentryProject are optional trailing extensions
+// oxlint-disable-next-line max-params -- cwd and sentryProject are optional trailing extensions
 export async function handleFinalResult(
   result: WorkflowRunResult,
   spin: SpinnerHandle,
   spinState: SpinState,
   ui: WizardUI,
   cwd?: string,
-  sentryProject?: SentryProjectIdentity
+  sentryProject?: SentryProjectIdentity,
 ): Promise<void> {
   const failure = getWorkflowFailure(result);
 
@@ -1465,7 +1465,7 @@ function activeStepIdsFor(result: WorkflowRunResult, stepId: string): string[] {
 
 function extractSuspendPayloadFromStep(
   result: WorkflowRunResult,
-  stepId: string
+  stepId: string,
 ): { payload: SuspendPayload; stepId: string } | undefined {
   const stepPayload = result.steps?.[stepId]?.suspendPayload;
   if (!stepPayload) {
@@ -1476,7 +1476,7 @@ function extractSuspendPayloadFromStep(
 
 function extractSuspendPayload(
   result: WorkflowRunResult,
-  stepId: string
+  stepId: string,
 ): { payload: SuspendPayload; stepId: string } | undefined {
   const activeStepIds = activeStepIdsFor(result, stepId);
   if (activeStepIds.length > 0) {
@@ -1500,7 +1500,7 @@ function extractSuspendPayload(
   }
 
   const payloadEntries = Object.entries(result.steps ?? {}).filter(
-    ([, entry]) => entry.suspendPayload
+    ([, entry]) => entry.suspendPayload,
   );
   if (payloadEntries.length !== 1) {
     return;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { listCommand } from "../../../../src/commands/alert/metrics/list.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../../src/lib/browser.js";
 import { DEFAULT_SENTRY_URL } from "../../../../src/lib/constants.js";
 import { setAuthToken } from "../../../../src/lib/db/auth.js";
@@ -76,7 +76,7 @@ type ListFlags = {
 type ListFunc = (
   this: unknown,
   flags: ListFlags,
-  target?: string
+  target?: string,
 ) => Promise<void>;
 
 function createContext() {
@@ -140,7 +140,7 @@ describe("alert metrics list pagination", () => {
               "Content-Type": "application/json",
               Link: '<https://sentry.io/api/0/>; rel="next"; results="false"; cursor="0:0:0"',
             },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -157,7 +157,7 @@ describe("alert metrics list pagination", () => {
         limit: 1,
         json: true,
       },
-      "test-org/"
+      "test-org/",
     );
 
     const parsed = JSON.parse(stdout.output);
@@ -177,7 +177,7 @@ describe("alert metrics list pagination", () => {
               "Content-Type": "application/json",
               Link: '<https://sentry.io/api/0/>; rel="next"; results="true"; cursor="next:0:0"',
             },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -195,7 +195,7 @@ describe("alert metrics list pagination", () => {
         json: true,
         query: "zzz",
       },
-      "test-org/"
+      "test-org/",
     );
 
     const parsed = JSON.parse(stdout.output);
@@ -217,12 +217,12 @@ describe("alert metrics list pagination", () => {
         limit: 30,
         json: false,
       },
-      "test-org/"
+      "test-org/",
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-org"),
-      "metric alert rules"
+      "metric alert rules",
     );
   });
 
@@ -257,12 +257,12 @@ describe("alert metrics list pagination", () => {
         limit: 30,
         json: false,
       },
-      "acme-corp"
+      "acme-corp",
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("acme-corp"),
-      "metric alert rules"
+      "metric alert rules",
     );
   });
 
@@ -299,12 +299,12 @@ describe("alert metrics list pagination", () => {
         limit: 30,
         json: false,
       },
-      "myproj"
+      "myproj",
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       expect.stringContaining("org-one"),
-      "metric alert rules"
+      "metric alert rules",
     );
   });
 
@@ -322,7 +322,7 @@ describe("alert metrics list pagination", () => {
         ]);
       }
       const projectMatch = url.pathname.match(
-        /\/api\/0\/projects\/([^/]+)\/myproj\//
+        /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
         const org = projectMatch[1] as string;
@@ -350,8 +350,8 @@ describe("alert metrics list pagination", () => {
           limit: 30,
           json: false,
         },
-        "myproj"
-      )
+        "myproj",
+      ),
     ).rejects.toThrow("multiple organizations");
 
     expect(openInBrowserSpy).not.toHaveBeenCalled();
@@ -396,7 +396,7 @@ describe("alert metrics list pagination", () => {
         limit: 10,
         json: false,
       },
-      "metrics"
+      "metrics",
     );
 
     expect(stdout.output).toContain("metrics-ru");
@@ -421,7 +421,7 @@ describe("alert metrics list pagination", () => {
       const req = new Request(input, init);
       const url = new URL(req.url);
       const alertMatch = url.pathname.match(
-        /\/api\/0\/organizations\/([^/]+)\/detectors\//
+        /\/api\/0\/organizations\/([^/]+)\/detectors\//,
       );
       if (alertMatch) {
         return Response.json([rule(alertMatch[1] as string)]);
@@ -433,7 +433,7 @@ describe("alert metrics list pagination", () => {
         ]);
       }
       const projectMatch = url.pathname.match(
-        /\/api\/0\/projects\/([^/]+)\/myproj\//
+        /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
         const org = projectMatch[1] as string;
@@ -457,7 +457,7 @@ describe("alert metrics list pagination", () => {
         limit: 10,
         json: false,
       },
-      "myproj"
+      "myproj",
     );
 
     expect(stdout.output).toContain("Metric alert rules from 2 organizations:");
@@ -478,7 +478,7 @@ describe("alert metrics list pagination", () => {
       const req = new Request(input, init);
       const url = new URL(req.url);
       const alertMatch = url.pathname.match(
-        /\/api\/0\/organizations\/([^/]+)\/detectors\//
+        /\/api\/0\/organizations\/([^/]+)\/detectors\//,
       );
       if (alertMatch) {
         const org = alertMatch[1] as string;
@@ -502,7 +502,7 @@ describe("alert metrics list pagination", () => {
         ]);
       }
       const projectMatch = url.pathname.match(
-        /\/api\/0\/projects\/([^/]+)\/myproj\//
+        /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
         const org = projectMatch[1] as string;
@@ -526,7 +526,7 @@ describe("alert metrics list pagination", () => {
         limit: 10,
         json: true,
       },
-      "myproj"
+      "myproj",
     );
 
     const parsed = JSON.parse(stdout.output);
@@ -540,7 +540,9 @@ describe("alert metrics list pagination", () => {
       }),
     ]);
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to fetch metric alert rules from org-two")
+      expect.stringContaining(
+        "Failed to fetch metric alert rules from org-two",
+      ),
     );
   });
 
@@ -568,8 +570,8 @@ describe("alert metrics list pagination", () => {
           limit: 10,
           json: true,
         },
-        "test-org/"
-      )
+        "test-org/",
+      ),
     ).rejects.toMatchObject({
       name: "ApiError",
       status: 403,
@@ -589,7 +591,7 @@ describe("alert metrics list pagination", () => {
       const req = new Request(input, init);
       const url = new URL(req.url);
       const alertMatch = url.pathname.match(
-        /\/api\/0\/organizations\/([^/]+)\/detectors\//
+        /\/api\/0\/organizations\/([^/]+)\/detectors\//,
       );
       if (alertMatch) {
         const org = alertMatch[1] as string;
@@ -597,7 +599,7 @@ describe("alert metrics list pagination", () => {
         perPageByOrg.set(org, perPage);
         return new Response(
           JSON.stringify(
-            Array.from({ length: perPage }, (_, i) => rule(org, i + 1))
+            Array.from({ length: perPage }, (_, i) => rule(org, i + 1)),
           ),
           {
             status: 200,
@@ -605,7 +607,7 @@ describe("alert metrics list pagination", () => {
               "Content-Type": "application/json",
               Link: `<https://sentry.io/api/0/>; rel="next"; results="true"; cursor="${org}-next:0:0"`,
             },
-          }
+          },
         );
       }
 
@@ -618,7 +620,7 @@ describe("alert metrics list pagination", () => {
       }
 
       const projectMatch = url.pathname.match(
-        /\/api\/0\/projects\/([^/]+)\/myproj\//
+        /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
         const org = projectMatch[1] as string;
@@ -643,7 +645,7 @@ describe("alert metrics list pagination", () => {
         limit: 10,
         json: true,
       },
-      "myproj"
+      "myproj",
     );
 
     const parsed = JSON.parse(stdout.output);

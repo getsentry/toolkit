@@ -43,7 +43,7 @@ const segmentArb = array(constantFrom(...SEGMENT_CHARS), {
   maxLength: 10,
 }).map((chars) => chars.join(""));
 const relPathArb = array(segmentArb, { minLength: 1, maxLength: 4 }).map((xs) =>
-  xs.join("/")
+  xs.join("/"),
 );
 /**
  * Pattern alphabet kept small and safe — the `ignore` package treats
@@ -59,7 +59,7 @@ const patternArb = constantFrom(
   "*.bak",
   "src/**/*.generated.ts",
   "coverage",
-  ".env"
+  ".env",
 );
 
 describe("property: IgnoreStack root-only == plain ignore instance", () => {
@@ -75,7 +75,7 @@ describe("property: IgnoreStack root-only == plain ignore instance", () => {
               writeFileSync(
                 join(cwd, ".gitignore"),
                 `${patterns.join("\n")}\n`,
-                "utf8"
+                "utf8",
               );
             }
             const stack = await IgnoreStack.create({
@@ -84,16 +84,16 @@ describe("property: IgnoreStack root-only == plain ignore instance", () => {
             });
             const plain = ignore().add(patterns);
             expect(stack.isIgnored(relPath, false)).toBe(
-              plain.ignores(relPath)
+              plain.ignores(relPath),
             );
           } finally {
             rmSync(cwd, { recursive: true, force: true });
           }
-        }
+        },
       ),
       // Fewer runs: each run writes fs state. 25 is enough to catch
       // regressions without blowing up CI time.
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 25) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 25) },
     );
   });
 });
@@ -117,9 +117,9 @@ describe("property: alwaysSkipDirs always ignore their basename", () => {
           } finally {
             rmSync(cwd, { recursive: true, force: true });
           }
-        }
+        },
       ),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 25) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 25) },
     );
   });
 });

@@ -39,7 +39,7 @@ function startMockIngest(
   responder: (req: IncomingMessage) => {
     statusCode: number;
     headers?: Record<string, string | string[]>;
-  }
+  },
 ): Promise<{
   url: string;
   captures: CapturedRequest[];
@@ -77,8 +77,8 @@ describe("makeCompressedTransport (e2e)", () => {
         (s) =>
           new Promise<void>((resolve) => {
             s.close(() => resolve());
-          })
-      )
+          }),
+      ),
     );
   });
 
@@ -112,7 +112,7 @@ describe("makeCompressedTransport (e2e)", () => {
     const text = Buffer.from(
       decompressed.buffer,
       decompressed.byteOffset,
-      decompressed.byteLength
+      decompressed.byteLength,
     ).toString("utf-8");
     expect(text).toContain(message);
     expect(text).toContain('"type":"event"');
@@ -140,7 +140,7 @@ describe("makeCompressedTransport (e2e)", () => {
     expect(response.statusCode).toBe(429);
     expect(response.headers?.["retry-after"]).toBe("60");
     expect(response.headers?.["x-sentry-rate-limits"]).toBe(
-      "60:error:organization"
+      "60:error:organization",
     );
     expect(captures).toHaveLength(1);
   });

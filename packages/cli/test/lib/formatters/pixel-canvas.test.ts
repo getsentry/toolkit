@@ -30,6 +30,7 @@ describe("drawPixelText", () => {
 
     expect(opaquePixelCount(image)).toBe(44);
     expect(image.data[(2 * image.width + 2) * 4 + 3]).toBe(255);
+    // oxlint-disable-next-line oxc/erasing-op -- This test intentionally exercises the zero-valued pixel operation.
     expect(image.data[(0 * image.width + 1) * 4 + 3]).toBe(0);
   });
 

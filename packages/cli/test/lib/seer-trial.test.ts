@@ -9,10 +9,10 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../src/lib/api-client.js";
 import { SeerError } from "../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as loggerModule from "../../src/lib/logger.js";
 import {
   isTrialEligible,
@@ -104,7 +104,7 @@ describe("promptAndStartTrial", () => {
     loggerWithTagSpy = vi
       .spyOn(loggerModule.logger, "withTag")
       .mockReturnValue(
-        mockLogInstance as ReturnType<typeof loggerModule.logger.withTag>
+        mockLogInstance as ReturnType<typeof loggerModule.logger.withTag>,
       );
   });
 
@@ -125,10 +125,10 @@ describe("promptAndStartTrial", () => {
     expect(loggerPromptSpy).not.toHaveBeenCalled();
     // Should show expired/upgrade message
     expect(
-      logInfoCalls.some((m) => m.includes("No Seer trial available"))
+      logInfoCalls.some((m) => m.includes("No Seer trial available")),
     ).toBe(true);
     expect(logInfoCalls.some((m) => m.includes("upgrading your plan"))).toBe(
-      true
+      true,
     );
   });
 
@@ -171,7 +171,7 @@ describe("promptAndStartTrial", () => {
 
     expect(result).toBe(false);
     expect(logInfoCalls.some((m) => m.includes("run out of Seer quota"))).toBe(
-      true
+      true,
     );
     expect(startProductTrialSpy).not.toHaveBeenCalled();
   });
@@ -197,10 +197,10 @@ describe("promptAndStartTrial", () => {
     expect(result).toBe(true);
     expect(startProductTrialSpy).toHaveBeenCalledWith("test-org", "seerUsers");
     expect(logInfoCalls.some((m) => m.includes("Starting Seer trial"))).toBe(
-      true
+      true,
     );
     expect(
-      logSuccessCalls.some((m) => m.includes("Seer trial activated"))
+      logSuccessCalls.some((m) => m.includes("Seer trial activated")),
     ).toBe(true);
   });
 
@@ -230,7 +230,7 @@ describe("promptAndStartTrial", () => {
     expect(result).toBe(true);
     expect(startProductTrialSpy).toHaveBeenCalledWith(
       "test-org",
-      "seerAutofix"
+      "seerAutofix",
     );
   });
 
@@ -243,11 +243,11 @@ describe("promptAndStartTrial", () => {
 
     expect(result).toBe(false);
     expect(logWarnCalls.some((m) => m.includes("Failed to start trial"))).toBe(
-      true
+      true,
     );
     // Should include a link to billing/settings
     expect(
-      logWarnCalls.some((m) => m.includes("settings/billing/overview"))
+      logWarnCalls.some((m) => m.includes("settings/billing/overview")),
     ).toBe(true);
     // Should mention support contact
     expect(logWarnCalls.some((m) => m.includes("support@sentry"))).toBe(true);
@@ -260,7 +260,7 @@ describe("promptAndStartTrial", () => {
     await promptAndStartTrial("test-org", "not_enabled");
 
     expect(
-      logInfoCalls.some((m) => m.includes("not enabled for your organization"))
+      logInfoCalls.some((m) => m.includes("not enabled for your organization")),
     ).toBe(true);
   });
 
@@ -271,7 +271,7 @@ describe("promptAndStartTrial", () => {
     await promptAndStartTrial("test-org", "no_budget");
 
     expect(logInfoCalls.some((m) => m.includes("run out of Seer quota"))).toBe(
-      true
+      true,
     );
   });
 

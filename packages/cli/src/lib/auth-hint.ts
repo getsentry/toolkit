@@ -23,7 +23,7 @@
  *   is wrong, just a helpful breadcrumb).
  */
 
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import {
   getActiveEnvVarName,
@@ -85,7 +85,7 @@ export function maybeWarnEnvTokenIgnored(): void {
 
   log.info(
     `${describeIgnoredTokenSource()} but using stored login for ${userLabel}.\n` +
-      "  Set SENTRY_FORCE_ENV_TOKEN=1 to prefer it."
+      "  Set SENTRY_FORCE_ENV_TOKEN=1 to prefer it.",
   );
 }
 

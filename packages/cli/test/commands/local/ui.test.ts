@@ -25,19 +25,19 @@ describe("local UI URLs", () => {
   test("formats IPv6 loopback URLs correctly", () => {
     expect(formatLocalServerUrl("::1", 8969)).toBe("http://[::1]:8969");
     expect(buildLocalUiUrl("http://[::1]:8969")).toBe(
-      "http://localhost:5173/#stream=http%3A%2F%2F%5B%3A%3A1%5D%3A8969%2Fstream"
+      "http://localhost:5173/#stream=http%3A%2F%2F%5B%3A%3A1%5D%3A8969%2Fstream",
     );
   });
 
   test("refuses to send the browser to a non-loopback receiver", () => {
     expect(() => buildLocalUiUrl("http://example.com:8969")).toThrow(
-      "--open requires a loopback --host"
+      "--open requires a loopback --host",
     );
   });
 
   test("validates an --open host before a receiver is started", () => {
     expect(() => assertLoopbackHostForUi("0.0.0.0")).toThrow(
-      "--open requires a loopback --host"
+      "--open requires a loopback --host",
     );
   });
 

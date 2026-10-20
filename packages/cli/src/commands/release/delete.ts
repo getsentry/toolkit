@@ -9,6 +9,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { deleteRelease, getRelease } from "../../lib/api-client.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ApiError } from "../../lib/errors.js";
 import { renderMarkdown, safeCodeSpan } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -17,7 +18,7 @@ import {
   confirmByTyping,
   isConfirmationBypassed,
 } from "../../lib/mutate-command.js";
-import { buildReleaseUrl } from "../../lib/sentry-urls.js";
+import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
 import { resolveReleaseTarget } from "./parse.js";
 
 const USAGE_HINT = "sentry release delete [<org>/]<version>";
@@ -32,14 +33,14 @@ type DeleteResult = {
 function formatReleaseDeleted(result: DeleteResult): string {
   if (result.dryRun) {
     return renderMarkdown(
-      `Would delete release ${safeCodeSpan(result.version)} from **${result.org}**. (dry run)`
+      `Would delete release ${safeCodeSpan(result.version)} from **${result.org}**. (dry run)`,
     );
   }
   if (!result.deleted) {
     return "Cancelled.";
   }
   return renderMarkdown(
-    `Release ${safeCodeSpan(result.version)} deleted from **${result.org}**.`
+    `Release ${safeCodeSpan(result.version)} deleted from **${result.org}**.`,
   );
 }
 
@@ -50,7 +51,7 @@ function formatReleaseDeleted(result: DeleteResult): string {
 function enrichDeleteError(
   error: unknown,
   orgSlug: string,
-  version: string
+  version: string,
 ): unknown {
   if (
     error instanceof ApiError &&
@@ -64,7 +65,7 @@ function enrichDeleteError(
       "Releases with active session or crash-free data are protected by Sentry " +
         "and cannot be removed via the API. The health data must age out before " +
         `the release can be deleted.\n  Release: ${url}`,
-      error.endpoint
+      error.endpoint,
     );
   }
   return error;
@@ -99,7 +100,7 @@ export const deleteCommand = buildDeleteCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to delete",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },
@@ -110,7 +111,7 @@ export const deleteCommand = buildDeleteCommand({
     const { version, org } = await resolveReleaseTarget(
       target,
       USAGE_HINT,
-      cwd
+      cwd,
     );
 
     // Verify the release exists before prompting for confirmation
@@ -135,7 +136,7 @@ export const deleteCommand = buildDeleteCommand({
           : "";
       const confirmed = await confirmByTyping(
         version,
-        `Type '${version}' to permanently delete this release${deployInfo}:`
+        `Type '${version}' to permanently delete this release${deployInfo}:`,
       );
       if (!confirmed) {
         yield new CommandOutput({

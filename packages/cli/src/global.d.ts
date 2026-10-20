@@ -22,12 +22,12 @@ declare class Worker {
   onerror: ((event: ErrorEvent) => void) | null;
   addEventListener<K extends keyof WorkerEventMap>(
     type: K,
-    listener: (event: WorkerEventMap[K]) => void
+    listener: (event: WorkerEventMap[K]) => void,
   ): void;
   addEventListener(type: string, listener: (event: Event) => void): void;
   removeEventListener<K extends keyof WorkerEventMap>(
     type: K,
-    listener: (event: WorkerEventMap[K]) => void
+    listener: (event: WorkerEventMap[K]) => void,
   ): void;
   removeEventListener(type: string, listener: (event: Event) => void): void;
   ref(): void;
@@ -36,7 +36,7 @@ declare class Worker {
 
 // RegExp.escape — ES2025 proposal, available in Node 23.6+
 // Used by src/lib/api/projects.ts with a runtime feature-detection guard.
-// biome-ignore lint/style/useConsistentTypeDefinitions: interface augmentation requires `interface`, not `type`
+// interface augmentation requires `interface`, not `type`
 interface RegExpConstructor {
   escape?(s: string): string;
 }

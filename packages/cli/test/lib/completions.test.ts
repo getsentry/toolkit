@@ -72,7 +72,7 @@ describe("completions", () => {
       const tree = extractCommandTree();
       // At least one group should have subcommands with flags
       const hasFlags = tree.groups.some((g) =>
-        g.subcommands.some((s) => s.flags.length > 0)
+        g.subcommands.some((s) => s.flags.length > 0),
       );
       expect(hasFlags).toBe(true);
     });
@@ -90,7 +90,7 @@ describe("completions", () => {
     test("returns bash completion path", () => {
       const path = getCompletionPath("bash", homeDir);
       expect(path).toBe(
-        "/home/user/.local/share/bash-completion/completions/sentry"
+        "/home/user/.local/share/bash-completion/completions/sentry",
       );
     });
 
@@ -121,7 +121,7 @@ describe("completions", () => {
     beforeEach(() => {
       testDir = join(
         "/tmp",
-        `completions-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        `completions-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       mkdirSync(testDir, { recursive: true });
     });
@@ -186,7 +186,7 @@ describe("completions", () => {
         const result = await installCompletions(
           "bash",
           "/nonexistent",
-          join(restrictedDir, "subdir")
+          join(restrictedDir, "subdir"),
         );
         expect(result).toBeNull();
       } finally {
@@ -206,7 +206,7 @@ describe("completions", () => {
         const result = await installCompletions(
           "zsh",
           "/nonexistent",
-          join(lockedParent, "deep", "nested")
+          join(lockedParent, "deep", "nested"),
         );
         expect(result).toBeNull();
       } finally {

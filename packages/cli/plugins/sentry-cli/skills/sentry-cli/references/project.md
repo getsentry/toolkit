@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-project
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Work with Sentry projects
 requires:
   bins: ["sentry"]
@@ -55,7 +55,7 @@ sentry project delete my-org/old-project
 sentry project delete my-org/old-project --yes
 ```
 
-### `sentry project list <org/project>`
+### `sentry project list [<org/project>]`
 
 List projects
 
@@ -65,7 +65,7 @@ List projects
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
-### `sentry project view <org/project>`
+### `sentry project view [<org/project>]`
 
 View details of a project
 
@@ -78,6 +78,9 @@ View details of a project
 ```bash
 # List all projects in an org
 sentry project list my-org/
+
+# Several projects in the same org
+sentry project list my-org/frontend,backend
 
 # Filter by platform
 sentry project list my-org/ --platform javascript

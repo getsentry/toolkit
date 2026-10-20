@@ -9,7 +9,7 @@ import type {
   SentryLog,
   TraceItemAttribute,
 } from "../../types/index.js";
-import { buildTraceUrl } from "../sentry-urls.js";
+import { buildTraceUrl } from "../sentry-web-urls.js";
 import {
   colorTag,
   escapeMarkdownCell,
@@ -119,6 +119,8 @@ function formatTimestamp(timestamp: string): string {
 
 /**
  * Extract cell values for a log row (shared by streaming and batch paths).
+ * Preserve the full log ID for copying into `log view`: UUIDv7 timestamp
+ * prefixes can identify many logs rather than a single entry.
  *
  * When `includeTrace` is true (the default), a short trace-ID suffix is
  * appended to the message cell — useful in Explore/Events lists where rows
@@ -138,10 +140,10 @@ export function buildLogRowCells(
   log: LogLike,
   padSeverity = true,
   includeTrace = true,
-  extraFields?: string[]
+  extraFields?: string[],
 ): string[] {
   const logId = getLogId(log);
-  const shortId = logId ? colorTag("muted", logId.slice(0, 8)) : "";
+  const id = logId ? colorTag("muted", logId) : "";
   const timestamp = formatTimestamp(log.timestamp);
   const level = padSeverity
     ? formatSeverity(log.severity)
@@ -149,12 +151,14 @@ export function buildLogRowCells(
   const message = escapeMarkdownCell(log.message ?? "");
   const trace =
     includeTrace && log.trace ? ` \`[${log.trace.slice(0, 8)}]\`` : "";
-  const cells: string[] = [shortId, timestamp, level, `${message}${trace}`];
+  const cells: string[] = [id, timestamp, level, `${message}${trace}`];
   if (extraFields) {
     for (const field of extraFields) {
       const val = log[field];
       cells.push(
-        escapeMarkdownCell(val !== null && val !== undefined ? String(val) : "")
+        escapeMarkdownCell(
+          val !== null && val !== undefined ? String(val) : "",
+        ),
       );
     }
   }
@@ -173,7 +177,7 @@ export function buildLogRowCells(
 export function formatLogRow(
   log: LogLike,
   includeTrace = true,
-  extraFields?: string[]
+  extraFields?: string[],
 ): string {
   return mdRow(buildLogRowCells(log, true, includeTrace, extraFields));
 }
@@ -181,7 +185,7 @@ export function formatLogRow(
 /** Hint rows for column width estimation in streaming mode. */
 const LOG_HINT_ROWS: string[][] = [
   [
-    "ace106b2",
+    "019a0000123470008000000000000001",
     "2026-01-15 23:59:59",
     "WARNING",
     "A typical log message with some detail",
@@ -201,7 +205,7 @@ const LOG_HINT_ROWS: string[][] = [
  */
 export function createLogStreamingTable(
   options: Partial<StreamingTableOptions> = {},
-  extraColumns?: string[]
+  extraColumns?: string[],
 ): StreamingTable {
   const cols = [...LOG_TABLE_COLS, ...(extraColumns ?? [])];
   // ID, Timestamp, Level are fixed-width; Message + extra columns are shrinkable
@@ -261,15 +265,15 @@ export function formatLogsHeader(extraColumns?: string[]): string {
 export function formatLogTable(
   logs: LogLike[],
   includeTrace = true,
-  extraFields?: string[]
+  extraFields?: string[],
 ): string {
   const headers = [...LOG_TABLE_COLS, ...(extraFields ?? [])];
   const rows = logs.map((log) =>
     buildLogRowCells(log, false, includeTrace, extraFields).map((c) =>
-      renderInlineMarkdown(c)
-    )
+      renderInlineMarkdown(c),
+    ),
   );
-  return renderTextTable(headers, rows);
+  return renderTextTable(headers, rows, { shrinkable: [false] });
 }
 
 /**
@@ -338,12 +342,12 @@ const REDUNDANT_LOG_DETAIL_ATTRS = new Set([
  * @param extraFields - Optional --fields filter: limits which custom attributes are shown
  * @returns Rendered terminal string
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: log detail formatting requires multiple conditional sections
+// log detail formatting requires multiple conditional sections
 export function formatLogDetails(
   log: DetailedSentryLog,
   orgSlug: string,
   allAttributes?: TraceItemAttribute[],
-  extraFields?: string[]
+  extraFields?: string[],
 ): string {
   const logId = log["sentry.item_id"];
   const lines: string[] = [];
@@ -357,7 +361,7 @@ export function formatLogDetails(
       ["ID", `\`${logId}\``],
       ["Timestamp", formatTimestamp(log.timestamp)],
       ["Severity", formatSeverityLabel(log.severity)],
-    ])
+    ]),
   );
 
   if (log.message) {
@@ -448,7 +452,7 @@ export function formatLogDetails(
   // Custom Attributes — from trace-items detail endpoint (all non-standard attributes)
   if (allAttributes?.length) {
     let customAttrs = allAttributes.filter(
-      (a) => !REDUNDANT_LOG_DETAIL_ATTRS.has(a.name)
+      (a) => !REDUNDANT_LOG_DETAIL_ATTRS.has(a.name),
     );
     if (extraFields?.length) {
       const wanted = new Set(extraFields);
@@ -462,8 +466,8 @@ export function formatLogDetails(
             a.name,
             a.type === "array" ? JSON.stringify(a.value) : String(a.value),
           ]),
-          "Custom Attributes"
-        )
+          "Custom Attributes",
+        ),
       );
     }
   } else if (extraFields?.length) {

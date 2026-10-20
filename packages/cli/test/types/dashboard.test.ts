@@ -169,10 +169,10 @@ describe("ERROR_AGGREGATE_FUNCTIONS", () => {
 
   test("valibot schema validates error-event functions", () => {
     expect(safeParse(ErrorAggregateFunctionSchema, "count_if").success).toBe(
-      true
+      true,
     );
     expect(safeParse(ErrorAggregateFunctionSchema, "last_seen").success).toBe(
-      true
+      true,
     );
   });
 });
@@ -307,7 +307,7 @@ describe("DashboardWidgetInputSchema", () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect((result.output as Record<string, unknown>).customField).toBe(
-        "hello"
+        "hello",
       );
     }
   });
@@ -356,13 +356,13 @@ describe("parseWidgetInput", () => {
       parseWidgetInput({
         title: "Bad Widget",
         displayType: "invalid_chart",
-      })
+      }),
     ).toThrow(/Invalid displayType/);
     expect(() =>
       parseWidgetInput({
         title: "Bad Widget",
         displayType: "invalid_chart",
-      })
+      }),
     ).toThrow(/line/);
   });
 
@@ -372,14 +372,14 @@ describe("parseWidgetInput", () => {
         title: "Bad Widget",
         displayType: "line",
         widgetType: "span",
-      })
+      }),
     ).toThrow(/Invalid widgetType/);
     expect(() =>
       parseWidgetInput({
         title: "Bad Widget",
         displayType: "line",
         widgetType: "span",
-      })
+      }),
     ).toThrow(/spans/);
   });
 
@@ -443,7 +443,7 @@ describe("parseSortExpression", () => {
 
   test("descending colon syntax", () => {
     expect(parseSortExpression("-p95:span.duration")).toBe(
-      "-p95(span.duration)"
+      "-p95(span.duration)",
     );
   });
 
@@ -633,7 +633,7 @@ describe("assignDefaultLayout", () => {
     ];
     const result = assignDefaultLayout(
       { title: "C", displayType: "big_number" },
-      existing
+      existing,
     );
     expect(result.layout).toMatchObject({ x: 4, y: 0, w: 2, h: 1 });
   });
@@ -653,7 +653,7 @@ describe("assignDefaultLayout", () => {
     ];
     const result = assignDefaultLayout(
       { title: "C", displayType: "line" },
-      existing
+      existing,
     );
     // cursor=(6,0) → 6+3=9 > 6, overflow → (0, 2)
     expect(result.layout).toMatchObject({ x: 0, y: 2, w: 3, h: 2 });
@@ -674,7 +674,7 @@ describe("assignDefaultLayout", () => {
     ];
     const result = assignDefaultLayout(
       { title: "KPI-2", displayType: "big_number" },
-      existing
+      existing,
     );
     // Old greedy algorithm would place at (4,1) — the gap beside the line chart.
     // Sequential mode wraps to below everything instead.
@@ -691,7 +691,7 @@ describe("assignDefaultLayout", () => {
     ];
     const result = assignDefaultLayout(
       { title: "Chart", displayType: "line" },
-      existing
+      existing,
     );
     // cursor=(6,0) → 6+3=9 > 6, overflow → (0, 2)
     expect(result.layout).toMatchObject({ x: 0, y: 2, w: 3, h: 2 });
@@ -704,7 +704,7 @@ describe("assignDefaultLayout", () => {
     ];
     const result = assignDefaultLayout(
       { title: "New", displayType: "big_number" },
-      existing
+      existing,
     );
     expect(result.layout).toMatchObject({ x: 0, y: 0, w: 2, h: 1 });
   });
@@ -720,7 +720,7 @@ describe("assignDefaultLayout", () => {
     ];
     const result = assignDefaultLayout(
       { title: "New", displayType: "big_number" },
-      existing
+      existing,
     );
     // Last with layout is at (0,0) w=2, cursor=(2,0)
     expect(result.layout).toMatchObject({ x: 2, y: 0, w: 2, h: 1 });
@@ -745,7 +745,7 @@ describe("assignDefaultLayout", () => {
     ];
     const result = assignDefaultLayout(
       { title: "New", displayType: "big_number" },
-      existing
+      existing,
     );
     expect(result.layout).toMatchObject({ x: 0, y: 2 });
   });
@@ -768,7 +768,7 @@ describe("assignDefaultLayout", () => {
     const result = assignDefaultLayout(
       { title: "KPI-2", displayType: "big_number" },
       existing,
-      "dense"
+      "dense",
     );
     // Dense mode finds the gap at (4,1) beside the line chart
     expect(result.layout).toMatchObject({ x: 4, y: 1, w: 2, h: 1 });
@@ -785,7 +785,7 @@ describe("assignDefaultLayout", () => {
     const result = assignDefaultLayout(
       { title: "B", displayType: "big_number" },
       existing,
-      "dense"
+      "dense",
     );
     // First gap is at (2,0)
     expect(result.layout).toMatchObject({ x: 2, y: 0 });
@@ -796,7 +796,7 @@ describe("assignDefaultLayout", () => {
   test("unknown displayType uses fallback size 3x2", () => {
     const result = assignDefaultLayout(
       { title: "Custom", displayType: "some_future_type" } as DashboardWidget,
-      []
+      [],
     );
     expect(result.layout).toMatchObject({ x: 0, y: 0, w: 3, h: 2 });
   });
@@ -971,8 +971,8 @@ describe("validateAggregateNames", () => {
     expect(() =>
       validateAggregateNames(
         ["p50(value,completion.duration_ms,distribution,none)"],
-        "tracemetrics"
-      )
+        "tracemetrics",
+      ),
     ).not.toThrow();
   });
 
@@ -982,14 +982,14 @@ describe("validateAggregateNames", () => {
         [
           "equation|p50(value,a,distribution,none) / p50(value,b,distribution,none)",
         ],
-        "tracemetrics"
-      )
+        "tracemetrics",
+      ),
     ).not.toThrow();
   });
 
   test("rejects span-style aggregates for tracemetrics", () => {
     expect(() => validateAggregateNames(["count()"], "tracemetrics")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 });
@@ -1005,10 +1005,10 @@ describe("validateWidgetLayout", () => {
 
   test("accepts valid layout flags", () => {
     expect(() =>
-      validateWidgetLayout({ col: 0, row: 0, width: 3, height: 2 })
+      validateWidgetLayout({ col: 0, row: 0, width: 3, height: 2 }),
     ).not.toThrow();
     expect(() =>
-      validateWidgetLayout({ col: 5, row: 10, width: 1, height: 1 })
+      validateWidgetLayout({ col: 5, row: 10, width: 1, height: 1 }),
     ).not.toThrow();
   });
 
@@ -1051,10 +1051,10 @@ describe("validateWidgetLayout", () => {
 
   test("rejects col + width > GRID_COLUMNS", () => {
     expect(() => validateWidgetLayout({ col: 4, width: 4 })).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() => validateWidgetLayout({ col: 5, width: 2 })).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -1067,11 +1067,11 @@ describe("validateWidgetLayout", () => {
     const existing = { x: 4, y: 0, w: 2, h: 1 };
     // Changing only col=5 with existing w=2 → 5+2=7 > 6
     expect(() => validateWidgetLayout({ col: 5 }, existing)).toThrow(
-      ValidationError
+      ValidationError,
     );
     // Changing only width=3 with existing x=4 → 4+3=7 > 6
     expect(() => validateWidgetLayout({ width: 3 }, existing)).toThrow(
-      ValidationError
+      ValidationError,
     );
     // Valid: col=4 with existing w=2 → 4+2=6 ≤ 6
     expect(() => validateWidgetLayout({ col: 4 }, existing)).not.toThrow();

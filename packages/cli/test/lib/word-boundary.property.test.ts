@@ -37,7 +37,7 @@ const containingSlugArb = tuple(simpleSlugArb, simpleSlugArb).map(
   ([prefix, suffix]) => ({
     container: `${prefix}-${suffix}`,
     contained: prefix,
-  })
+  }),
 );
 
 /** Generate a slug that contains another slug at end */
@@ -45,7 +45,7 @@ const suffixContainingSlugArb = tuple(simpleSlugArb, simpleSlugArb).map(
   ([prefix, suffix]) => ({
     container: `${prefix}-${suffix}`,
     contained: suffix,
-  })
+  }),
 );
 
 // Properties for word boundary matching
@@ -56,7 +56,7 @@ describe("property: matchesWordBoundary symmetry", () => {
       property(simpleSlugArb, (slug) => {
         expect(matchesWordBoundary(slug, slug)).toBe(true);
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -66,7 +66,7 @@ describe("property: matchesWordBoundary symmetry", () => {
         // If a matches b, then b matches a
         expect(matchesWordBoundary(a, b)).toBe(matchesWordBoundary(b, a));
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -84,7 +84,7 @@ describe("property: matchesWordBoundary symmetry", () => {
         expect(matchesWordBoundary(lower, mixed)).toBe(true);
         expect(matchesWordBoundary(upper, mixed)).toBe(true);
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 });
@@ -96,7 +96,7 @@ describe("property: word boundary with hyphens", () => {
         // "prefix" should match "prefix-suffix"
         expect(matchesWordBoundary(contained, container)).toBe(true);
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -106,7 +106,7 @@ describe("property: word boundary with hyphens", () => {
         // "suffix" should match "prefix-suffix"
         expect(matchesWordBoundary(contained, container)).toBe(true);
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -118,9 +118,9 @@ describe("property: word boundary with hyphens", () => {
           const container = `${prefix}-${middle}-${suffix}`;
           // "middle" should match "prefix-middle-suffix"
           expect(matchesWordBoundary(middle, container)).toBe(true);
-        }
+        },
       ),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 });
@@ -145,9 +145,9 @@ describe("property: non-matches", () => {
           ) {
             expect(matchesWordBoundary(infix, container)).toBe(false);
           }
-        }
+        },
       ),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -169,7 +169,7 @@ describe("property: non-matches", () => {
           expect(matchesWordBoundary(a, b)).toBe(false);
         }
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 });
@@ -188,7 +188,7 @@ describe("property: underscore behavior", () => {
           expect(matchesWordBoundary(prefix, container)).toBe(false);
         }
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 });

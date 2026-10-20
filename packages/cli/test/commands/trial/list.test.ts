@@ -16,11 +16,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -30,11 +30,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type {
   CustomerTrialInfo,
@@ -72,7 +72,7 @@ function daysFromNow(days: number): string {
 function makeCustomerInfo(
   overrides: Partial<CustomerTrialInfo> & {
     productTrials?: ProductTrial[] | null;
-  } = {}
+  } = {},
 ): CustomerTrialInfo {
   return {
     productTrials: [],
@@ -138,7 +138,7 @@ describe("trial list command", () => {
     getCustomerTrialInfoSpy.mockResolvedValue(
       makeCustomerInfo({
         productTrials: [AVAILABLE_TRIAL, ACTIVE_TRIAL],
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -159,7 +159,7 @@ describe("trial list command", () => {
   test("excludes displayName from JSON output", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getCustomerTrialInfoSpy.mockResolvedValue(
-      makeCustomerInfo({ productTrials: [AVAILABLE_TRIAL] })
+      makeCustomerInfo({ productTrials: [AVAILABLE_TRIAL] }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -176,7 +176,7 @@ describe("trial list command", () => {
     getCustomerTrialInfoSpy.mockResolvedValue(
       makeCustomerInfo({
         productTrials: [AVAILABLE_TRIAL, ACTIVE_TRIAL, EXPIRED_TRIAL],
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -199,7 +199,7 @@ describe("trial list command", () => {
   test("shows empty state message when no trials and no plan trial", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getCustomerTrialInfoSpy.mockResolvedValue(
-      makeCustomerInfo({ productTrials: [], canTrial: false })
+      makeCustomerInfo({ productTrials: [], canTrial: false }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -213,7 +213,7 @@ describe("trial list command", () => {
   test("outputs empty JSON array when no trials and no plan trial", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getCustomerTrialInfoSpy.mockResolvedValue(
-      makeCustomerInfo({ productTrials: [], canTrial: false })
+      makeCustomerInfo({ productTrials: [], canTrial: false }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -227,7 +227,7 @@ describe("trial list command", () => {
   test("uses org from positional argument", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
     getCustomerTrialInfoSpy.mockResolvedValue(
-      makeCustomerInfo({ productTrials: [AVAILABLE_TRIAL] })
+      makeCustomerInfo({ productTrials: [AVAILABLE_TRIAL] }),
     );
 
     const { context } = createMockContext();
@@ -235,7 +235,7 @@ describe("trial list command", () => {
     await func.call(context, { json: true }, "my-org");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: "my-org" })
+      expect.objectContaining({ org: "my-org" }),
     );
     expect(getCustomerTrialInfoSpy).toHaveBeenCalledWith("my-org");
   });
@@ -247,14 +247,14 @@ describe("trial list command", () => {
     const func = await listCommand.loader();
 
     await expect(
-      func.call(context, { json: false }, undefined)
+      func.call(context, { json: false }, undefined),
     ).rejects.toThrow("organization");
   });
 
   test("includes hint about starting trial when available product trials exist", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getCustomerTrialInfoSpy.mockResolvedValue(
-      makeCustomerInfo({ productTrials: [AVAILABLE_TRIAL] })
+      makeCustomerInfo({ productTrials: [AVAILABLE_TRIAL] }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -276,7 +276,7 @@ describe("trial list command", () => {
         productTrials: [],
         canTrial: true,
         planDetails: { name: "Developer", trialPlan: "am3_t" },
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -298,7 +298,7 @@ describe("trial list command", () => {
         productTrials: [],
         canTrial: true,
         planDetails: { name: "Developer", trialPlan: "am3_t" },
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -318,7 +318,7 @@ describe("trial list command", () => {
         isTrial: true,
         trialEnd: daysFromNow(10),
         planDetails: { name: "Business", trialPlan: null },
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -341,7 +341,7 @@ describe("trial list command", () => {
         productTrials: [AVAILABLE_TRIAL],
         canTrial: true,
         planDetails: { name: "Developer", trialPlan: "am3_t" },
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -362,7 +362,7 @@ describe("trial list command", () => {
         productTrials: [],
         canTrial: true,
         planDetails: { name: "Developer", trialPlan: "am3_t" },
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -380,7 +380,7 @@ describe("trial list command", () => {
         productTrials: null,
         canTrial: true,
         planDetails: { name: "Developer", trialPlan: "am3_t" },
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -401,7 +401,7 @@ describe("trial list command", () => {
         productTrials: [EXPIRED_TRIAL],
         canTrial: false,
         isTrial: false,
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -422,7 +422,7 @@ describe("trial list command", () => {
           { ...EXPIRED_TRIAL, category: "monitorSeats" },
           { ...EXPIRED_TRIAL, category: "profileDurationUI" },
         ],
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -443,7 +443,7 @@ describe("trial list command", () => {
           { ...EXPIRED_TRIAL, category: "profileDuration" },
           { ...EXPIRED_TRIAL, category: "profileDurationUI" },
         ],
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -454,7 +454,7 @@ describe("trial list command", () => {
     const parsed = JSON.parse(output);
     // Should show only one "profiling" entry, not two
     const profilingEntries = parsed.filter(
-      (e: { name: string }) => e.name === "profiling"
+      (e: { name: string }) => e.name === "profiling",
     );
     expect(profilingEntries).toHaveLength(1);
   });
@@ -471,7 +471,7 @@ describe("trial list command", () => {
             endDate: daysFromNow(5),
           },
         ],
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -481,7 +481,7 @@ describe("trial list command", () => {
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
     const profiling = parsed.find(
-      (e: { name: string }) => e.name === "profiling"
+      (e: { name: string }) => e.name === "profiling",
     );
     expect(profiling.status).toBe("active");
   });
@@ -494,7 +494,7 @@ describe("trial list command", () => {
           { ...EXPIRED_TRIAL, category: "profileDuration" },
           { ...EXPIRED_TRIAL, category: "profileDurationUI" },
         ],
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();

@@ -27,7 +27,7 @@ import {
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
 /** ANSI escape pattern — should not appear in sanitize output. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI control chars
+// oxlint-disable-next-line no-control-regex -- ANSI control chars
 const ANSI_RE = /\x1b\[[0-9;]*m/;
 
 describe("property: sanitize", () => {
@@ -37,7 +37,7 @@ describe("property: sanitize", () => {
         const result = sanitize(input);
         expect(ANSI_RE.test(result)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -48,7 +48,7 @@ describe("property: sanitize", () => {
         expect(result).not.toContain("\n");
         expect(result).not.toContain("\r");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -59,7 +59,7 @@ describe("property: sanitize", () => {
         const twice = sanitize(once);
         expect(twice).toBe(once);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -72,7 +72,7 @@ describe("property: formatTime", () => {
         expect(typeof result).toBe("string");
         expect(result.length).toBeGreaterThan(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -83,7 +83,7 @@ describe("property: formatTime", () => {
         expect(typeof result).toBe("string");
         expect(result.length).toBeGreaterThan(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -101,7 +101,7 @@ describe("property: formatTime", () => {
         const result = formatTime(epoch);
         expect(result).toMatch(/^\d{2}:\d{2}:\d{2}$/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -115,18 +115,18 @@ describe("property: isItemIncluded", () => {
         "transaction",
         "log",
         "attachment",
-        "session"
+        "session",
       ),
-      option(string(), { nil: undefined })
+      option(string(), { nil: undefined }),
     );
     fcAssert(
       property(itemTypes, (itemType) => {
         const empty = new Set<FilterValue>();
         expect(isItemIncluded(itemType as string | undefined, empty)).toBe(
-          true
+          true,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -144,7 +144,7 @@ describe("property: isItemIncluded", () => {
           expect(included).toBe(false);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -156,7 +156,7 @@ describe("property: itemTypeToFilterCategory", () => {
       property(errorTypes, (itemType) => {
         expect(itemTypeToFilterCategory(itemType)).toBe("error");
       }),
-      { numRuns: 10 }
+      { numRuns: 10 },
     );
   });
 
@@ -171,13 +171,13 @@ describe("property: itemTypeToFilterCategory", () => {
   test("random non-matching strings return undefined", () => {
     const nonMatching = stringMatching(/^[a-z]{3,10}$/).filter(
       (s) =>
-        s !== "error" && s !== "event" && s !== "transaction" && s !== "log"
+        s !== "error" && s !== "event" && s !== "transaction" && s !== "log",
     );
     fcAssert(
       property(nonMatching, (itemType) => {
         expect(itemTypeToFilterCategory(itemType)).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 

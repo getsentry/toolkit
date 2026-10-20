@@ -53,13 +53,13 @@ const {
       all: [],
       hasMultiple: false,
       fingerprint: "",
-    })
+    }),
   ),
   mockFindProjectRoot: vi.fn(() =>
     Promise.resolve({
       projectRoot: "/test/project",
       detectedFrom: "package.json",
-    })
+    }),
   ),
   mockGetDsnSourceDescription: vi.fn(() => "SENTRY_DSN environment variable"),
   mockGetCachedProject: vi.fn(() => null),
@@ -79,7 +79,7 @@ const {
   mockFindProjectsByPattern: vi.fn(() => Promise.resolve([])),
   mockListOrganizationsUncached: vi.fn(() => Promise.resolve([])),
   mockGetOrgByNumericId: vi.fn(
-    () => undefined as { slug: string; regionUrl: string } | undefined
+    () => undefined as { slug: string; regionUrl: string } | undefined,
   ),
 }));
 
@@ -197,7 +197,7 @@ function resetAllMocks() {
     detectedFrom: "package.json",
   });
   mockGetDsnSourceDescription.mockReturnValue(
-    "SENTRY_DSN environment variable"
+    "SENTRY_DSN environment variable",
   );
   mockGetCachedProject.mockReturnValue(null);
   mockGetCachedProjectByDsnKey.mockReturnValue(null);
@@ -580,13 +580,13 @@ describe("resolveOrgAndProject", () => {
 
   test("throws ContextError when only org provided", async () => {
     await expect(
-      resolveOrgAndProject({ org: "my-org", cwd: "/test" })
+      resolveOrgAndProject({ org: "my-org", cwd: "/test" }),
     ).rejects.toThrow(ContextError);
   });
 
   test("throws ContextError when only project provided", async () => {
     await expect(
-      resolveOrgAndProject({ project: "my-project", cwd: "/test" })
+      resolveOrgAndProject({ project: "my-project", cwd: "/test" }),
     ).rejects.toThrow(ContextError);
   });
 
@@ -694,7 +694,7 @@ describe("resolveAllTargets", () => {
 
   test("throws ContextError when only org provided", async () => {
     await expect(
-      resolveAllTargets({ org: "my-org", cwd: "/test" })
+      resolveAllTargets({ org: "my-org", cwd: "/test" }),
     ).rejects.toThrow(ContextError);
   });
 

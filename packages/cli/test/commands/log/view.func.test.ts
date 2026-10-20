@@ -16,11 +16,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
@@ -30,11 +30,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 import { ContextError, ResolutionError } from "../../../src/lib/errors.js";
 
@@ -45,11 +45,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { DetailedSentryLog } from "../../../src/types/sentry.js";
 
@@ -110,7 +110,7 @@ describe("viewCommand.func", () => {
     resolveOrgAndProjectSpy = vi.spyOn(resolveTarget, "resolveOrgAndProject");
     resolveProjectBoundSlugSpy = vi.spyOn(
       resolveTarget,
-      "resolveProjectBoundSlug"
+      "resolveProjectBoundSlug",
     );
     vi.spyOn(resolveTarget, "resolveLogProjectId").mockResolvedValue(1234);
     openInBrowserSpy = vi.spyOn(browser, "openInBrowser");
@@ -162,14 +162,14 @@ describe("viewCommand.func", () => {
           context,
           { json: false, web: false },
           "my-org/proj",
-          ID1
+          ID1,
         );
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ResolutionError);
         expect((error as ResolutionError).message).toContain(ID1);
         expect((error as ResolutionError).message).toContain(
-          "not found in my-org/proj"
+          "not found in my-org/proj",
         );
       }
     });
@@ -187,7 +187,7 @@ describe("viewCommand.func", () => {
         { json: true, web: false },
         "my-org/proj",
         ID1,
-        ID2
+        ID2,
       );
 
       const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -209,7 +209,7 @@ describe("viewCommand.func", () => {
         { json: false, web: false },
         "my-org/proj",
         ID1,
-        ID2
+        ID2,
       );
 
       const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -229,7 +229,7 @@ describe("viewCommand.func", () => {
         context,
         { json: true, web: false },
         "my-org/proj",
-        combined
+        combined,
       );
 
       // getLogs should have been called with both IDs
@@ -255,7 +255,7 @@ describe("viewCommand.func", () => {
         "my-org/proj",
         ID1,
         ID2,
-        ID3
+        ID3,
       );
 
       // Should still output the found log as JSON
@@ -278,7 +278,7 @@ describe("viewCommand.func", () => {
           { json: false, web: false },
           "my-org/proj",
           ID1,
-          ID2
+          ID2,
         );
         expect.unreachable("Should have thrown");
       } catch (error) {
@@ -317,7 +317,7 @@ describe("viewCommand.func", () => {
         { json: false, web: true },
         "my-org/proj",
         ID1,
-        ID2
+        ID2,
       );
 
       // Non-interactive (no TTY in tests) — should warn and not open any tabs
@@ -342,7 +342,7 @@ describe("viewCommand.func", () => {
         "resolved-org",
         "resolved-proj",
         [ID1],
-        { extraFields: undefined, projectId: 1234 }
+        { extraFields: undefined, projectId: 1234 },
       );
     });
 
@@ -377,7 +377,7 @@ describe("viewCommand.func", () => {
         "detected-org",
         "detected-proj",
         [ID1],
-        { extraFields: undefined, projectId: 1234 }
+        { extraFields: undefined, projectId: 1234 },
       );
 
       // Human output should include the detected-from hint
@@ -397,7 +397,7 @@ describe("viewCommand.func", () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ContextError);
         expect((error as ContextError).message).toContain(
-          "organization and project"
+          "organization and project",
         );
       }
     });
@@ -416,7 +416,7 @@ describe("viewCommand.func", () => {
         "my-org",
         "proj",
         ID1,
-        log.trace
+        log.trace,
       );
     });
 

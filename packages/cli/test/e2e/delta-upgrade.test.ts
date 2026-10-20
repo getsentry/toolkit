@@ -64,11 +64,11 @@ describe.skipIf(!canRun)("e2e: delta upgrade", () => {
         const baseUrl = "https://github.com/getsentry/cli/releases/download";
         await downloadBinary(
           `${baseUrl}/${OLD_VERSION}/${binaryName}`,
-          oldPath
+          oldPath,
         );
         await downloadBinary(
           `${baseUrl}/${NEW_VERSION}/${binaryName}`,
-          newPath
+          newPath,
         );
 
         // Generate TRDIFF10 patch
@@ -76,7 +76,7 @@ describe.skipIf(!canRun)("e2e: delta upgrade", () => {
           `${BSDIFF_PATH} ${oldPath} ${newPath} ${patchPath} --use-zstd`,
           {
             stdio: "pipe",
-          }
+          },
         );
 
         // Apply patch with our implementation
@@ -101,18 +101,18 @@ describe.skipIf(!canRun)("e2e: delta upgrade", () => {
         // the new binary while keeping the intermediate entirely in memory.
         execSync(
           `${BSDIFF_PATH} ${newPath} ${newPath} ${chainPatchPath} --use-zstd`,
-          { stdio: "pipe" }
+          { stdio: "pipe" },
         );
         const p1 = new Uint8Array(await readFile(patchPath));
         const p2 = new Uint8Array(await readFile(chainPatchPath));
         const chainSha = await applyPatchChainInMemory(
           oldPath,
           [p1, p2],
-          chainOutputPath
+          chainOutputPath,
         );
         expect(chainSha).toBe(expectedHash);
         expect(new Uint8Array(await readFile(chainOutputPath))).toEqual(
-          expectedBytes
+          expectedBytes,
         );
         // Intermediates never touch disk.
         expect(existsSync(`${chainOutputPath}.patching.a`)).toBe(false);
@@ -134,7 +134,7 @@ describe.skipIf(!canRun)("e2e: delta upgrade", () => {
           }
         }
       }
-    }
+    },
   );
 });
 

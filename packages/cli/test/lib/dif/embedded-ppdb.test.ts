@@ -17,7 +17,7 @@ import {
 /** Read a committed binary DIF fixture as raw bytes. */
 function readFixture(name: string): Uint8Array {
   return new Uint8Array(
-    readFileSync(new URL(`../../fixtures/dif/${name}`, import.meta.url))
+    readFileSync(new URL(`../../fixtures/dif/${name}`, import.meta.url)),
   );
 }
 
@@ -54,7 +54,7 @@ describe("extractEmbeddedPpdb", () => {
       [
         "MODULE Linux x86_64 0F13A5DA412AFBF7C8662048F3294F3D0 example",
         "FUNC 1000 10 0 main",
-      ].join("\n")
+      ].join("\n"),
     );
     expect(extractEmbeddedPpdb(breakpad)).toBeNull();
   });

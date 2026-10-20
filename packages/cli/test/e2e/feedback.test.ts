@@ -81,7 +81,7 @@ describe("sentry feedback routes", () => {
       expect(unresolveHelp.stdout).toContain("--json");
       expect(spamHelp.exitCode, spamHelp.stderr).toBe(0);
       expect(spamHelp.stdout).toContain("--json");
-    }
+    },
   );
 });
 
@@ -173,13 +173,13 @@ describe.each([
           },
         },
       ],
-      { validTokens: [TEST_TOKEN] }
+      { validTokens: [TEST_TOKEN] },
     );
     await selectionServer.start();
     try {
       const selectionContext = createE2EContext(
         testConfigDir,
-        selectionServer.url
+        selectionServer.url,
       );
       await selectionContext.setAuthToken(TEST_TOKEN);
       const args = [`${TEST_ORG}/@latest`, "--json", "--fields", "id"];
@@ -193,7 +193,7 @@ describe.each([
         ...args,
       ]);
       expect(cachedView.exitCode, cachedView.stderr + cachedView.stdout).toBe(
-        0
+        0,
       );
       expect(JSON.parse(cachedView.stdout)).toEqual({ id: TEST_FEEDBACK_ID });
       expect(reads).toBe(1);
@@ -286,7 +286,7 @@ describe("sentry feedback list", () => {
       ]);
       expect(firstPage.exitCode, firstPage.stderr + firstPage.stdout).toBe(0);
       expect(JSON.parse(firstPage.stdout).nextCursor).toBe(
-        `feedback-limit-${limit}-next`
+        `feedback-limit-${limit}-next`,
       );
     }
 
@@ -319,7 +319,7 @@ describe("sentry feedback view", () => {
     ]);
     expect(
       defaultsResult.exitCode,
-      defaultsResult.stderr + defaultsResult.stdout
+      defaultsResult.stderr + defaultsResult.stdout,
     ).toBe(0);
 
     for (const input of ["@latest", `${TEST_FEEDBACK_LATEST_ORG}/@latest`]) {
@@ -394,10 +394,10 @@ describe("sentry feedback view", () => {
 
     expect(
       defaultResult.exitCode,
-      defaultResult.stderr + defaultResult.stdout
+      defaultResult.stderr + defaultResult.stdout,
     ).toBe(0);
     expect(aliasResult.exitCode, aliasResult.stderr + aliasResult.stdout).toBe(
-      0
+      0,
     );
     expect(JSON.parse(defaultResult.stdout)).toEqual({ id: TEST_FEEDBACK_ID });
     expect(JSON.parse(aliasResult.stdout)).toEqual({ id: TEST_FEEDBACK_ID });
@@ -455,7 +455,7 @@ describe("sentry feedback view", () => {
     ]);
 
     expect(result.exitCode, result.stderr + result.stdout).toBe(
-      EXIT.RESOLUTION
+      EXIT.RESOLUTION,
     );
     expect(result.stderr + result.stdout).toContain("is not User Feedback");
     expect(result.stderr + result.stdout).toContain("sentry issue view");

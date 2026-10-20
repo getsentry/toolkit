@@ -1,3 +1,4 @@
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { UserInputError } from "../../errors";
 import { SENTRY_ALLOWED_REGION_DOMAINS } from "../../constants";
 
@@ -21,21 +22,27 @@ export function validateRegionUrl(regionUrl: string, baseHost: string): string {
     parsedUrl = new URL(regionUrl);
   } catch {
     throw new UserInputError(
-      `Invalid regionUrl provided: ${regionUrl}. Must be a valid URL.`,
+      "Invalid regionUrl provided. Must be a valid URL.",
     );
   }
 
   // Validate protocol - MUST be HTTPS for security
   if (parsedUrl.protocol !== "https:") {
     throw new UserInputError(
-      `Invalid regionUrl provided: ${regionUrl}. Must use HTTPS protocol for security.`,
+      "Invalid regionUrl provided. Must use HTTPS protocol for security.",
     );
   }
 
   // Validate that the host is not just the protocol name
   if (parsedUrl.host === "https" || parsedUrl.host === "http") {
     throw new UserInputError(
-      `Invalid regionUrl provided: ${regionUrl}. The host cannot be just a protocol name.`,
+      "Invalid regionUrl provided. The host cannot be just a protocol name.",
+    );
+  }
+
+  if (parsedUrl.username || parsedUrl.password) {
+    throw new UserInputError(
+      "Invalid regionUrl provided. URL credentials are not allowed.",
     );
   }
 
@@ -48,9 +55,12 @@ export function validateRegionUrl(regionUrl: string, baseHost: string): string {
   }
 
   // Otherwise, check against the allowlist
-  if (!SENTRY_ALLOWED_REGION_DOMAINS.has(regionHost)) {
+  if (
+    !SENTRY_ALLOWED_REGION_DOMAINS.has(regionHost) ||
+    !isSaaSTrustOrigin(regionUrl)
+  ) {
     throw new UserInputError(
-      `Invalid regionUrl: ${regionUrl}. The domain '${regionHost}' is not allowed. Allowed domains are: ${Array.from(SENTRY_ALLOWED_REGION_DOMAINS).join(", ")}`,
+      `Invalid regionUrl. The domain '${regionHost}' is not allowed. Allowed domains are: ${Array.from(SENTRY_ALLOWED_REGION_DOMAINS).join(", ")}`,
     );
   }
 

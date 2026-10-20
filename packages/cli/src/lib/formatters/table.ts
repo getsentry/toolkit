@@ -48,14 +48,14 @@ export type Column<T> = {
  */
 export function buildMarkdownTable<T>(
   items: T[],
-  columns: Column<T>[]
+  columns: Column<T>[],
 ): string {
   const header = `| ${columns.map((c) => c.header).join(" | ")} |`;
   const separator = `| ${columns.map((c) => (c.align === "right" ? "---:" : "---")).join(" | ")} |`;
   const rows = items
     .map(
       (item) =>
-        `| ${columns.map((c) => stripColorTags(c.value(item))).join(" | ")} |`
+        `| ${columns.map((c) => stripColorTags(c.value(item))).join(" | ")} |`,
     )
     .join("\n");
   return `${header}\n${separator}\n${rows}`;
@@ -106,7 +106,7 @@ export type WriteTableOptions = {
 export function formatTable<T>(
   items: T[],
   columns: Column<T>[],
-  options?: WriteTableOptions
+  options?: WriteTableOptions,
 ): string {
   const headers = columns.map((c) => c.header);
   const alignments: Alignment[] = columns.map((c) => c.align ?? "left");
@@ -114,7 +114,7 @@ export function formatTable<T>(
   const shrinkable = columns.map((c) => c.shrinkable ?? true);
 
   const rows = items.map((item) =>
-    columns.map((c) => renderInlineMarkdown(c.value(item)))
+    columns.map((c) => renderInlineMarkdown(c.value(item))),
   );
 
   return renderTextTable(headers, rows, {
@@ -140,7 +140,7 @@ export function writeTable<T>(
   stdout: Writer,
   items: T[],
   columns: Column<T>[],
-  options?: WriteTableOptions
+  options?: WriteTableOptions,
 ): void {
   stdout.write(formatTable(items, columns, options));
 }

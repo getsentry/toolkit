@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 function mockFetch(
-  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>
+  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
   globalThis.fetch = fn as typeof globalThis.fetch;
 }
@@ -81,7 +81,7 @@ function versionHex(version: string): string {
 function tempFile(name: string): string {
   return join(
     tmpdir(),
-    `delta-iso-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`
+    `delta-iso-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`,
   );
 }
 
@@ -163,7 +163,7 @@ describe("resolveStableDelta", () => {
       // 4. Apply patch (produces empty file)
       // 5. SHA-256 check fails → throws
       await expect(
-        resolveStableDelta("0.14.0", oldBinaryPath, destPath)
+        resolveStableDelta("0.14.0", oldBinaryPath, destPath),
       ).rejects.toThrow("SHA-256 mismatch");
     } finally {
       if (existsSync(oldBinaryPath)) unlinkSync(oldBinaryPath);
@@ -182,7 +182,7 @@ describe("resolveStableDelta", () => {
       const result = await resolveStableDelta(
         "0.14.0",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).toBeNull();
     } finally {
@@ -230,7 +230,7 @@ describe("resolveNightlyDelta", () => {
               },
             ],
           }),
-          { status: 200 }
+          { status: 200 },
         );
       }
       // listTags runs in parallel with fetchManifest — must not 404
@@ -244,7 +244,7 @@ describe("resolveNightlyDelta", () => {
       const result = await resolveNightlyDelta(
         "0.0.0-dev.200",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).toBeNull();
     } finally {
@@ -286,7 +286,7 @@ describe("resolveNightlyDelta", () => {
               },
             ],
           }),
-          { status: 200 }
+          { status: 200 },
         );
       }
       if (urlStr.includes("/tags/list")) {
@@ -299,7 +299,7 @@ describe("resolveNightlyDelta", () => {
       const result = await resolveNightlyDelta(
         "0.0.0-dev.200",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).toBeNull();
     } finally {
@@ -318,7 +318,7 @@ describe("attemptDeltaUpgrade", () => {
     const result = await attemptDeltaUpgrade(
       "0.0.0-dev.100",
       "/tmp/fake-binary",
-      "/tmp/fake-dest"
+      "/tmp/fake-dest",
     );
     expect(result).toBeNull();
   });
@@ -335,7 +335,7 @@ describe("attemptDeltaUpgrade", () => {
       const result = await attemptDeltaUpgrade(
         "0.14.0",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).toBeNull();
     } finally {
@@ -395,7 +395,7 @@ describe("attemptDeltaUpgrade", () => {
           new Uint8Array([0, 1, 2, 3]).buffer as ArrayBuffer,
           {
             status: 200,
-          }
+          },
         );
       }
       return new Response("Not Found", { status: 404 });
@@ -406,7 +406,7 @@ describe("attemptDeltaUpgrade", () => {
       const result = await attemptDeltaUpgrade(
         "0.14.0",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).toBeNull();
     } finally {
@@ -481,7 +481,7 @@ describe("attemptDeltaUpgrade", () => {
       const result = await attemptDeltaUpgrade(
         "0.14.0",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).not.toBeNull();
       expect(result!.sha256).toBe(expectedSha256);

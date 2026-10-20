@@ -18,9 +18,8 @@
  * one, which is what matters for repeated uploads from the same tool.
  *
  * Handles Android APK/AAB (file wrappers) and iOS XCArchive (directory) / IPA
- * (converted to an XCArchive layout). Unlike the legacy CLI, iOS is not gated to
- * Apple Silicon — the only native dependency was `Assets.car` parsing, which is
- * intentionally skipped (see `normalizeBuildDirectory`).
+ * (converted to an XCArchive layout). iOS upload works on every platform;
+ * macOS arm64 also expands asset catalogs with the legacy CoreUI parser.
  */
 
 import {
@@ -33,7 +32,7 @@ import {
 } from "node:fs";
 import { lstat, mkdtemp, open, readdir, readlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, join, posix, resolve } from "node:path";
 import {
   strToU8,
   Unzip,
@@ -45,6 +44,11 @@ import {
 import { CLI_VERSION } from "../constants.js";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
+import {
+  type AssetCatalogExtraction,
+  extractAssetCatalogImages,
+} from "./asset-catalog-extract.js";
+import { collectDsymEntries } from "./dsyms.js";
 import { DeterministicZipWriter } from "./zip-writer.js";
 
 const log = logger.withTag("build.normalize");
@@ -138,7 +142,7 @@ export function detectBuildFormat(content: Uint8Array): BuildFormat | null {
  * @param filePath - Path to the build file.
  */
 export async function detectBuildFormatFromFile(
-  filePath: string
+  filePath: string,
 ): Promise<BuildFormat | null> {
   const src = await open(filePath, "r");
   try {
@@ -170,7 +174,7 @@ export async function detectBuildFormatFromFile(
       position += read.bytesRead;
       unzip.push(
         Uint8Array.prototype.slice.call(buf, 0, read.bytesRead),
-        position >= size
+        position >= size,
       );
     }
     return classifyBuildFormat(names);
@@ -194,7 +198,7 @@ export type PipelinePlugin = { name: string; version: string };
  * @param pipeline - The `SENTRY_PIPELINE` value, if set.
  */
 export function parsePluginFromPipeline(
-  pipeline: string | undefined
+  pipeline: string | undefined,
 ): PipelinePlugin | null {
   if (!pipeline) {
     return null;
@@ -240,7 +244,7 @@ function buildMetadataFile(plugin: PipelinePlugin | null): string {
 export async function normalizeBuildFile(
   filePath: string,
   outPath: string,
-  plugin: PipelinePlugin | null
+  plugin: PipelinePlugin | null,
 ): Promise<void> {
   const zip = await DeterministicZipWriter.create(outPath);
   try {
@@ -292,28 +296,28 @@ export function validateXcarchiveDirectory(dirPath: string): void {
   if (!existsSync(join(root, "Info.plist"))) {
     throw new ValidationError(
       "Invalid XCArchive: missing Info.plist at the archive root",
-      "path"
+      "path",
     );
   }
   const products = join(root, "Products");
   if (!(existsSync(products) && statSync(products).isDirectory())) {
     throw new ValidationError(
       "Invalid XCArchive: missing Products/ directory",
-      "path"
+      "path",
     );
   }
   const apps = findAppBundles(products);
   if (apps.length === 0) {
     throw new ValidationError(
       "Invalid XCArchive: no .app bundles found under Products/",
-      "path"
+      "path",
     );
   }
   for (const app of apps) {
     if (!existsSync(join(app, "Info.plist"))) {
       throw new ValidationError(
         `Invalid XCArchive: missing Info.plist in .app bundle: ${basename(app)}`,
-        "path"
+        "path",
       );
     }
   }
@@ -377,7 +381,9 @@ async function collectArchiveEntries(root: string): Promise<ArchiveEntry[]> {
   };
 
   await walk(root, "");
-  entries.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
+  entries.sort((a, b) =>
+    a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0,
+  );
   return entries;
 }
 
@@ -395,9 +401,8 @@ async function collectArchiveEntries(root: string): Promise<ArchiveEntry[]> {
  * scale with the archive size (a large XCArchive with dSYMs no longer risks
  * Node's ~2 GiB Buffer cap).
  *
- * Documented gap: `Assets.car` asset catalogs are not parsed into per-asset
- * images (that required native macOS frameworks), so no `ParsedAssets/` tree is
- * added — the raw `.car` is uploaded as-is.
+ * On macOS arm64, asset catalogs also produce the legacy `ParsedAssets/` tree.
+ * Every original catalog remains unchanged, including when extraction fails.
  *
  * @param dirPath - Path to the XCArchive directory.
  * @param outPath - Destination path for the normalized wrapper ZIP.
@@ -406,14 +411,15 @@ async function collectArchiveEntries(root: string): Promise<ArchiveEntry[]> {
 export async function normalizeBuildDirectory(
   dirPath: string,
   outPath: string,
-  plugin: PipelinePlugin | null
+  plugin: PipelinePlugin | null,
 ): Promise<void> {
   const root = resolve(dirPath);
   const dirName = basename(root);
 
   const zip = await DeterministicZipWriter.create(outPath);
   try {
-    for (const entry of await collectArchiveEntries(root)) {
+    const entries = await collectArchiveEntries(root);
+    for (const entry of entries) {
       const name = `${dirName}/${entry.relPath}`;
       const options = { os: ZIP_OS_UNIX, attrs: entry.attrs };
       if ("sourcePath" in entry) {
@@ -422,11 +428,76 @@ export async function normalizeBuildDirectory(
         await zip.addData(name, entry.linkTarget, options);
       }
     }
+    await addParsedAssetCatalogs(
+      zip,
+      entries.flatMap((entry) =>
+        "sourcePath" in entry && entry.relPath.endsWith(".car")
+          ? [{ relPath: entry.relPath, sourcePath: entry.sourcePath }]
+          : [],
+      ),
+      dirName,
+      new Set(entries.map((entry) => `${dirName}/${entry.relPath}`)),
+    );
     await zip.addData(METADATA_FILENAME, strToU8(buildMetadataFile(plugin)));
     await zip.finalize();
   } catch (err) {
     await zip.close();
     throw err;
+  }
+}
+
+/** Append legacy parsed assets after original entries, streaming images from disk. */
+async function addParsedAssetCatalogs(
+  zip: DeterministicZipWriter,
+  catalogs: readonly { relPath: string; sourcePath: string }[],
+  archiveName: string,
+  originalNames: ReadonlySet<string>,
+): Promise<void> {
+  const extractions: AssetCatalogExtraction[] = [];
+  const files = new Map<string, string>();
+  try {
+    for (const catalog of catalogs) {
+      const extraction = await extractAssetCatalogImages(
+        catalog.relPath,
+        catalog.sourcePath,
+      );
+      if (!extraction) {
+        continue;
+      }
+      extractions.push(extraction);
+      const prefix = posix.join(
+        archiveName,
+        "ParsedAssets",
+        posix.dirname(catalog.relPath),
+      );
+      const prefixParts = prefix.split("/");
+      // Preserve original files and symlinks, including occupied parent paths.
+      // Skip the whole result so its manifest never loses its image association.
+      if (
+        prefixParts.some((_part, index) =>
+          originalNames.has(prefixParts.slice(0, index + 1).join("/")),
+        ) ||
+        extraction.files.some((file) =>
+          originalNames.has(`${prefix}/${file.name}`),
+        )
+      ) {
+        continue;
+      }
+      for (const file of extraction.files) {
+        // Multiple .car files in one folder share Assets.json in the legacy
+        // parser. Keep its last manifest, never emit duplicate ZIP entry names.
+        files.set(`${prefix}/${file.name}`, file.sourcePath);
+      }
+    }
+    for (const [name, sourcePath] of [...files].sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    )) {
+      await zip.addFile(name, sourcePath);
+    }
+  } finally {
+    for (const extraction of extractions) {
+      await extraction.cleanup();
+    }
   }
 }
 
@@ -484,7 +555,7 @@ type StagedIpaEntry = { name: string; stagePath: string };
  */
 async function stageIpaPayload(
   ipaPath: string,
-  stageDir: string
+  stageDir: string,
 ): Promise<StagedIpaEntry[]> {
   const staged: StagedIpaEntry[] = [];
   let index = 0;
@@ -533,7 +604,7 @@ async function stageIpaPayload(
       position += bytesRead;
       unzip.push(
         Uint8Array.prototype.slice.call(buf, 0, bytesRead),
-        position >= size
+        position >= size,
       );
     }
   } finally {
@@ -553,20 +624,24 @@ async function stageIpaPayload(
  * `ipa_to_xcarchive` + `normalize_directory`.
  *
  * The IPA is stream-unzipped to temp files and stream-wrapped, so neither the
- * IPA nor the wrapper is held in memory in full.
+ * IPA nor the wrapper is held in memory in full. Additional dSYM bundles are
+ * streamed under `archive.xcarchive/dSYMs/`; ZIP inputs are staged on disk.
  *
  * @param ipaPath - Path to the IPA file.
  * @param outPath - Destination path for the normalized wrapper ZIP.
  * @param plugin - Optional plugin identity for the metadata file.
+ * @param dsymPaths - Additional bundles, directories of bundles, or ZIPs.
  * @throws {Error} If the IPA does not contain exactly one `.app`.
  */
 export async function normalizeIpa(
   ipaPath: string,
   outPath: string,
-  plugin: PipelinePlugin | null
+  plugin: PipelinePlugin | null,
+  dsymPaths: readonly string[] = [],
 ): Promise<void> {
   const stageDir = await mkdtemp(join(tmpdir(), "sentry-ipa-"));
   try {
+    const dsyms = await collectDsymEntries(dsymPaths, stageDir);
     const staged = await stageIpaPayload(ipaPath, stageDir);
     const appName = extractIpaAppName(staged.map((e) => e.name));
 
@@ -586,6 +661,10 @@ export async function normalizeIpa(
         name: `${archiveDir}/Info.plist`,
         data: strToU8(xcarchiveInfoPlist(appName)),
       },
+      ...dsyms.map((entry) => ({
+        name: `${archiveDir}/dSYMs/${entry.relPath}`,
+        stagePath: entry.sourcePath,
+      })),
     ];
     for (const entry of staged) {
       if (!entry.name.startsWith(appPrefix)) {
@@ -613,6 +692,21 @@ export async function normalizeIpa(
           await zip.addData(item.name, item.data);
         }
       }
+      await addParsedAssetCatalogs(
+        zip,
+        items.flatMap((item) =>
+          item.stagePath !== undefined && item.name.endsWith(".car")
+            ? [
+                {
+                  relPath: item.name.slice(archiveDir.length + 1),
+                  sourcePath: item.stagePath,
+                },
+              ]
+            : [],
+        ),
+        archiveDir,
+        new Set(items.map((item) => item.name)),
+      );
       await zip.addData(METADATA_FILENAME, strToU8(buildMetadataFile(plugin)));
       await zip.finalize();
     } catch (err) {

@@ -128,16 +128,16 @@ type FetchReplayRecordingSegmentsPageOptions = {
  * its object boundary. The SDK invokes response validators outside its normal
  * error-result path, so convert Zod failures to the CLI's API error type here.
  */
-// biome-ignore lint/suspicious/useAwait: the SDK's responseValidator hook requires a Promise-returning function
+// the SDK's responseValidator hook requires a Promise-returning function
 async function validateReplayRecordingSegmentsResponse(
-  data: unknown
+  data: unknown,
 ): Promise<void> {
   const result = safeParse(vListProjectReplayRecordingSegmentsResponse, data);
   if (!result.success) {
     throw new ApiError(
       "Unexpected replay recording segments response",
       0,
-      result.issues.map((issue) => issue.message).join(", ")
+      result.issues.map((issue) => issue.message).join(", "),
     );
   }
 }
@@ -186,7 +186,7 @@ function normalizeReplayProjectId<
 async function fetchReplayPage(
   regionUrl: string,
   orgSlug: string,
-  page: FetchReplayPageOptions
+  page: FetchReplayPageOptions,
 ): Promise<PaginatedResponse<ReplayListItem[]>> {
   const { cursor, options, perPage } = page;
   const { data, headers } = await apiRequestToRegion(
@@ -216,7 +216,7 @@ async function fetchReplayPage(
         unknown,
         ReplayListResponse
       >,
-    }
+    },
   );
 
   const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
@@ -233,14 +233,14 @@ async function fetchReplayPage(
  */
 export async function listReplays(
   orgSlug: string,
-  options: ListReplaysOptions = {}
+  options: ListReplaysOptions = {},
 ): Promise<PaginatedResponse<ReplayListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   return paginate(
     options,
     (perPage, cursor) =>
       fetchReplayPage(regionUrl, orgSlug, { options, perPage, cursor }),
-    25
+    25,
   );
 }
 
@@ -249,7 +249,7 @@ export async function listReplays(
  */
 export async function getReplay(
   orgSlug: string,
-  replayId: string
+  replayId: string,
 ): Promise<ReplayDetails> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const { data } = await apiRequestToRegion(
@@ -260,7 +260,7 @@ export async function getReplay(
         unknown,
         ReplayDetailsResponse
       >,
-    }
+    },
   );
   return normalizeReplayProjectId(data.data);
 }
@@ -276,7 +276,7 @@ export async function getReplay(
 export async function resolveReplay(
   orgSlug: string,
   replayOrTraceId: string,
-  options: Pick<ListReplaysOptions, "projectSlugs"> = {}
+  options: Pick<ListReplaysOptions, "projectSlugs"> = {},
 ): Promise<ReplayDetails> {
   try {
     return await getReplay(orgSlug, replayOrTraceId);
@@ -286,7 +286,7 @@ export async function resolveReplay(
     }
 
     log.debug(
-      `Replay ${replayOrTraceId} not found by id; searching by linked trace`
+      `Replay ${replayOrTraceId} not found by id; searching by linked trace`,
     );
     const { data } = await listReplays(orgSlug, {
       query: `trace:${replayOrTraceId}`,
@@ -317,7 +317,7 @@ export async function getReplayRecordingSegments(
   orgSlug: string,
   projectSlugOrId: string,
   replayId: string,
-  options: GetReplayRecordingSegmentsOptions = {}
+  options: GetReplayRecordingSegmentsOptions = {},
 ): Promise<ListProjectReplayRecordingSegmentsResponse> {
   const expectedSegments = options.expectedSegments ?? Number.POSITIVE_INFINITY;
   const segments: ListProjectReplayRecordingSegmentsResponse = [];
@@ -342,7 +342,7 @@ export async function getReplayRecordingSegments(
 
   log.warn(
     `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${segments.length} segments). ` +
-      "The recording may be incomplete."
+      "The recording may be incomplete.",
   );
   return segments;
 }
@@ -351,7 +351,7 @@ export async function getReplayRecordingSegments(
  * Fetch one SDK-backed recording page while preserving its cursor metadata.
  */
 async function fetchReplayRecordingSegmentsPage(
-  options: FetchReplayRecordingSegmentsPageOptions
+  options: FetchReplayRecordingSegmentsPageOptions,
 ): Promise<PaginatedResponse<ListProjectReplayRecordingSegmentsResponse>> {
   const { cursor, orgSlug, projectSlugOrId, replayId } = options;
   const config = await getOrgSdkConfig(orgSlug);
@@ -374,7 +374,7 @@ async function fetchReplayRecordingSegmentsPage(
 
   return unwrapPaginatedResult<ListProjectReplayRecordingSegmentsResponse>(
     result,
-    "Failed to fetch replay recording segments"
+    "Failed to fetch replay recording segments",
   );
 }
 
@@ -383,7 +383,7 @@ async function fetchReplayRecordingSegmentsPage(
  */
 export async function listReplayIdsForIssue(
   orgSlug: string,
-  issueId: string | number
+  issueId: string | number,
 ): Promise<string[]> {
   const normalizedIssueId = String(issueId);
   const regionUrl = await resolveOrgRegion(orgSlug);
@@ -399,7 +399,7 @@ export async function listReplayIdsForIssue(
         statsPeriod: "90d",
       },
       schema: ReplayIdsByResourceSchema,
-    }
+    },
   );
 
   return data[normalizedIssueId] ?? [];

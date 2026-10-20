@@ -125,7 +125,7 @@ describe("parseIssueRuleArg", () => {
 
   test("single slash throws ValidationError (missing rule)", () => {
     expect(() => parseIssueRuleArg("org/project", HINT)).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -145,7 +145,7 @@ describe("parseIssueRuleArg", () => {
 
   test("trailing slash after two slashes throws ValidationError", () => {
     expect(() => parseIssueRuleArg("org/project/", HINT)).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -193,7 +193,7 @@ describe("parseMetricRuleArg", () => {
 
   test("two slashes (org/project/rule) throws — metric alerts are org-scoped", () => {
     expect(() => parseMetricRuleArg("org/project/42", HINT)).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 });
@@ -218,13 +218,13 @@ describe("listAllIssueRulesForTarget", () => {
       1,
       "test-org",
       "test-project",
-      { perPage: 100, cursor: undefined }
+      { perPage: 100, cursor: undefined },
     );
     expect(mockListIssueAlertsPaginated).toHaveBeenNthCalledWith(
       2,
       "test-org",
       "test-project",
-      { perPage: 100, cursor: "cursor-1" }
+      { perPage: 100, cursor: "cursor-1" },
     );
     expect(fakeLog.warn).not.toHaveBeenCalled();
   });
@@ -241,11 +241,11 @@ describe("listAllIssueRulesForTarget", () => {
 
     expect(rules).toHaveLength(MAX_PAGINATION_PAGES);
     expect(mockListIssueAlertsPaginated).toHaveBeenCalledTimes(
-      MAX_PAGINATION_PAGES
+      MAX_PAGINATION_PAGES,
     );
     expect(fakeLog.warn).toHaveBeenCalledTimes(1);
     expect(fakeLog.warn.mock.calls[0]?.[0]).toContain(
-      "Pagination limit reached for issue alert rules in test-org/test-project."
+      "Pagination limit reached for issue alert rules in test-org/test-project.",
     );
   });
 });
@@ -267,7 +267,7 @@ describe("resolveMetricAlertRule name matching with null names", () => {
     const resolution = await resolveMetricAlertRule(
       ["test-org"],
       "Prod Errors",
-      HINT_METRIC
+      HINT_METRIC,
     );
 
     expect(resolution.rule.id).toBe("1");
@@ -286,7 +286,7 @@ describe("resolveMetricAlertRule name matching with null names", () => {
     // Null names are skipped, so the ref matches nothing and we get the
     // domain-level "not found" error rather than a TypeError on toLowerCase().
     await expect(
-      resolveMetricAlertRule(["test-org"], "missing", HINT_METRIC)
+      resolveMetricAlertRule(["test-org"], "missing", HINT_METRIC),
     ).rejects.not.toThrow(TypeError);
   });
 });
@@ -313,7 +313,7 @@ describe("listAllMetricRulesForOrg", () => {
       {
         perPage: 100,
         cursor: undefined,
-      }
+      },
     );
     expect(mockListMetricAlertsPaginated).toHaveBeenNthCalledWith(
       2,
@@ -321,7 +321,7 @@ describe("listAllMetricRulesForOrg", () => {
       {
         perPage: 100,
         cursor: "cursor-1",
-      }
+      },
     );
     expect(fakeLog.warn).not.toHaveBeenCalled();
   });
@@ -338,11 +338,11 @@ describe("listAllMetricRulesForOrg", () => {
 
     expect(rules).toHaveLength(MAX_PAGINATION_PAGES);
     expect(mockListMetricAlertsPaginated).toHaveBeenCalledTimes(
-      MAX_PAGINATION_PAGES
+      MAX_PAGINATION_PAGES,
     );
     expect(fakeLog.warn).toHaveBeenCalledTimes(1);
     expect(fakeLog.warn.mock.calls[0]?.[0]).toContain(
-      "Pagination limit reached for metric alert rules in test-org."
+      "Pagination limit reached for metric alert rules in test-org.",
     );
   });
 });

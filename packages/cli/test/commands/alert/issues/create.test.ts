@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createCommand } from "../../../../src/commands/alert/issues/create.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
 import { ValidationError } from "../../../../src/lib/errors.js";
 import type { ResolvedTarget } from "../../../../src/lib/resolve-target.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../../helpers.js";
 
@@ -65,7 +65,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
@@ -79,8 +79,8 @@ describe("alert issues create", () => {
           "dry-run": true,
           json: true,
         },
-        "test-org/test-project"
-      )
+        "test-org/test-project",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -89,7 +89,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
@@ -103,8 +103,8 @@ describe("alert issues create", () => {
           "dry-run": true,
           json: true,
         },
-        "test-org/test-project"
-      )
+        "test-org/test-project",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -114,7 +114,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -127,7 +127,7 @@ describe("alert issues create", () => {
         "dry-run": true,
         json: true,
       },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     expect(createSpy).not.toHaveBeenCalled();
@@ -139,7 +139,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -155,11 +155,11 @@ describe("alert issues create", () => {
         "dry-run": true,
         json: true,
       },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const parsed = JSON.parse(
-      context.stdoutWrite.mock.calls.map((c) => c[0]).join("")
+      context.stdoutWrite.mock.calls.map((c) => c[0]).join(""),
     );
     expect(parsed).toEqual({
       org: "test-org",
@@ -203,7 +203,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
@@ -217,8 +217,8 @@ describe("alert issues create", () => {
           "dry-run": true,
           json: true,
         },
-        "test-org/"
-      )
+        "test-org/",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(createSpy).not.toHaveBeenCalled();
   });
@@ -234,7 +234,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -247,7 +247,7 @@ describe("alert issues create", () => {
         "dry-run": false,
         json: true,
       },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     expect(createSpy).toHaveBeenCalledWith("test-org", {

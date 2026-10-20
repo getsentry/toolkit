@@ -10,7 +10,7 @@ import {
   listOrganizationTeams,
   listProjectTeams as sdkListProjectTeams,
 } from "@sentry/api";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 
 import type { SentryTeam } from "../../types/index.js";
@@ -49,7 +49,7 @@ export async function listTeams(orgSlug: string): Promise<SentryTeam[]> {
  */
 export async function listTeamsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {}
+  options: { cursor?: string; perPage?: number } = {},
 ): Promise<PaginatedResponse<SentryTeam[]>> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -77,7 +77,7 @@ export async function listTeamsPaginated(
  */
 export async function listProjectTeams(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<SentryTeam[]> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await sdkListProjectTeams({
@@ -104,7 +104,7 @@ export async function listProjectTeams(
  */
 export async function createTeam(
   orgSlug: string,
-  slug: string
+  slug: string,
 ): Promise<SentryTeam> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await createOrganizationTeam({
@@ -122,7 +122,7 @@ export async function createTeam(
       extra: { orgSlug, teamSlug: team.slug, context: "auto-add member" },
     });
     logger.warn(
-      `Team '${team.slug}' was created but you could not be added as a member.`
+      `Team '${team.slug}' was created but you could not be added as a member.`,
     );
   }
 
@@ -139,7 +139,7 @@ export async function createTeam(
 export async function addMemberToTeam(
   orgSlug: string,
   teamSlug: string,
-  memberId: string
+  memberId: string,
 ): Promise<void> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await addOrganizationMemberTeam({

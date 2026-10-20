@@ -11,8 +11,8 @@
  *    → Should use ResolutionError with structured hint/suggestions
  *
  * Silent catch blocks used to be checked here via a ratchet baseline. That
- * check now lives in the Biome plugin `lint-rules/no-silent-catch.grit`, whose
- * grandfathered backlog is pinned inline with `// biome-ignore lint/plugin`
+ * check now lives in the CLI Oxlint plugin `lint-rules/cli-oxlint-plugin.js`, whose
+ * grandfathered backlog is pinned inline with Oxlint disable directives
  * comments (an unused suppression is itself reported, so the backlog can only
  * shrink). See #1531.
  *
@@ -129,7 +129,7 @@ function skipString(content: string, start: number): number {
  */
 function advanceToken(
   content: string,
-  i: number
+  i: number,
 ): { next: number; ch: string } {
   const ch = content[i] ?? "";
   if (isQuote(ch)) {
@@ -145,7 +145,7 @@ function advanceToken(
  */
 function findCallBounds(
   content: string,
-  startIdx: number
+  startIdx: number,
 ): { commaIdx: number; closingIdx: number } | null {
   let depth = 1;
   let commaCount = 0;
@@ -212,7 +212,7 @@ function extractSecondArg(content: string, startIdx: number): string | null {
  */
 export function findContextErrorNewlines(
   content: string,
-  filePath: string
+  filePath: string,
 ): Violation[] {
   const found: Violation[] = [];
   let match = CONTEXT_ERROR_RE.exec(content);
@@ -240,7 +240,7 @@ export function findContextErrorNewlines(
  */
 export function findAdHocTryPatterns(
   content: string,
-  filePath: string
+  filePath: string,
 ): Violation[] {
   const found: Violation[] = [];
   const lines = content.split("\n");
@@ -285,17 +285,17 @@ async function main(): Promise<void> {
 
   if (violations.length > 0) {
     console.error(
-      `✗ Found ${violations.length} error class anti-pattern(s):\n`
+      `✗ Found ${violations.length} error class anti-pattern(s):\n`,
     );
     for (const v of violations) {
       console.error(`  ${v.file}:${v.line}`);
       console.error(`    ${v.message}\n`);
     }
     console.error(
-      "Fix: Use ResolutionError for resolution failures, ValidationError for input errors."
+      "Fix: Use ResolutionError for resolution failures, ValidationError for input errors.",
     );
     console.error(
-      "See ContextError JSDoc in src/lib/errors.ts for usage guidance.\n"
+      "See ContextError JSDoc in src/lib/errors.ts for usage guidance.\n",
     );
     process.exit(1);
   }

@@ -34,7 +34,7 @@ describe("property: slugify", () => {
       property(messyInputArb, (input) => {
         expect(slugify(input)).toMatch(VALID_SLUG_RE);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -47,7 +47,7 @@ describe("property: slugify", () => {
           expect(out.endsWith("-")).toBe(false);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -56,7 +56,7 @@ describe("property: slugify", () => {
       property(messyInputArb, (input) => {
         expect(slugify(input).includes("--")).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -67,7 +67,7 @@ describe("property: slugify", () => {
         const twice = slugify(once);
         expect(twice).toBe(once);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -78,7 +78,7 @@ describe("property: slugify", () => {
       property(string(), (input) => {
         expect(slugify(input)).toMatch(VALID_SLUG_RE);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -96,7 +96,7 @@ describe("property: slugify", () => {
       property(segmentArb, segmentArb, constantFrom("/", "\\"), (a, b, sep) => {
         expect(slugify(`${a}${sep}${b}`)).toBe(`${a}-${b}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

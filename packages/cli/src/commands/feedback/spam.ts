@@ -36,7 +36,7 @@ export const spamCommand = buildCommand({
     const { org, feedback } = await resolveFeedback(
       feedbackArg,
       this.cwd,
-      "spam"
+      "spam",
     );
     const updated = await updateIssueStatus(feedback.id, "ignored", {
       orgSlug: org,

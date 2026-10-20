@@ -43,7 +43,7 @@ async function analyzeIssue(
   issueArg: string,
   cwd: string,
   flags: ExplainFlags,
-  suppressProgress: boolean
+  suppressProgress: boolean,
 ): Promise<IssueExplainResult> {
   let resolvedOrg: string | undefined;
 
@@ -65,7 +65,7 @@ async function analyzeIssue(
     if (rootCauses.length === 0) {
       throw new Error(
         "Analysis completed but no root causes found. " +
-          "The issue may not have enough context for root cause analysis."
+          "The issue may not have enough context for root cause analysis.",
       );
     }
 
@@ -95,9 +95,11 @@ export const explainCommand = buildCommand({
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7, sentry/cli-G\n" +
       "  <org>/@selector  - Selector with org: my-org/@latest\n" +
       "  <project>-suffix - Project + suffix: cli-G, spotlight-electron-4Y\n" +
-      "  ID               - Short ID: CLI-G (searches across orgs)\n" +
+      "  ID               - Short ID: CLI-G (uses configured org when set)\n" +
       "  suffix           - Suffix only: G (requires DSN context)\n" +
       "  numeric          - Numeric ID: 123456789\n\n" +
+      "Full short IDs use SENTRY_ORG, .sentryclirc, or 'sentry cli defaults' for the org.\n" +
+      "Without a configured org, the CLI uses a matching DSN or searches accessible orgs.\n\n" +
       "Multiple issue IDs can be passed as separate arguments or newline-separated\n" +
       "within a single argument.\n\n" +
       "Examples:\n" +
@@ -144,7 +146,7 @@ export const explainCommand = buildCommand({
       (issueArg) => analyzeIssue(issueArg, cwd, flags, flags.json || isBatch),
       (issueArg, reason) => {
         log.warn(`Failed to analyze issue ${issueArg}: ${reason}`);
-      }
+      },
     );
 
     yield new CommandOutput({

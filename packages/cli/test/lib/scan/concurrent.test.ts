@@ -31,7 +31,7 @@ describe("mapFilesConcurrent — gather variant", () => {
   test("null return values are filtered out", async () => {
     const out = await mapFilesConcurrent<number, number>(
       emitRange(5),
-      async (i) => (i % 2 === 0 ? i : null)
+      async (i) => (i % 2 === 0 ? i : null),
     );
     expect(out.sort((a, b) => a - b)).toEqual([0, 2, 4]);
   });
@@ -48,7 +48,7 @@ describe("mapFilesConcurrent — gather variant", () => {
         inFlight -= 1;
         return 1;
       },
-      { concurrency: 3 }
+      { concurrency: 3 },
     );
     expect(maxSeen).toBeLessThanOrEqual(3);
     expect(maxSeen).toBeGreaterThanOrEqual(1);
@@ -64,7 +64,7 @@ describe("mapFilesConcurrent — gather variant", () => {
       },
       {
         onResult: (result) => ({ done: result === 3 }),
-      }
+      },
     );
     // With concurrency 50 and `done` on hit 4, we expect well under
     // all 100 items to have been processed before the flag stopped
@@ -95,7 +95,7 @@ describe("mapFilesConcurrentStream — streaming variant", () => {
     const collected: number[] = [];
     for await (const item of mapFilesConcurrentStream(
       emitRange(5),
-      async (i) => [i, i + 10]
+      async (i) => [i, i + 10],
     )) {
       collected.push(item);
     }
@@ -110,7 +110,7 @@ describe("mapFilesConcurrentStream — streaming variant", () => {
     const collected: number[] = [];
     for await (const item of mapFilesConcurrentStream(
       emitRange(5),
-      async (i) => (i % 2 === 0 ? [i] : null)
+      async (i) => (i % 2 === 0 ? [i] : null),
     )) {
       collected.push(item);
     }
@@ -126,7 +126,7 @@ describe("mapFilesConcurrentStream — streaming variant", () => {
         produced += 1;
         return [i];
       },
-      { concurrency: 4 }
+      { concurrency: 4 },
     )) {
       consumed.push(item);
       if (consumed.length === 2) {
@@ -149,7 +149,7 @@ describe("mapFilesConcurrentStream — streaming variant", () => {
         await new Promise((r) => setTimeout(r, 20));
         return [i];
       },
-      { signal: controller.signal, concurrency: 2 }
+      { signal: controller.signal, concurrency: 2 },
     );
     let threw: unknown = null;
     try {
@@ -181,7 +181,7 @@ describe("mapFilesConcurrentStream — streaming variant", () => {
       for await (const _ of mapFilesConcurrentStream(
         erroringSource,
         async (i) => [i * 2],
-        { concurrency: 1 }
+        { concurrency: 1 },
       )) {
         // break immediately — the error hasn't been observed yet.
         break;

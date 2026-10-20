@@ -5,7 +5,7 @@
 import { userInfo } from "node:os";
 
 const ALL_DIGITS_PATTERN = /^\d+$/;
-const SINGLE_QUOTE_PATTERN = /'/g;
+const SINGLE_QUOTE_PATTERN = /['\u2018-\u201b]/g;
 
 /**
  * Check if a string contains only digits (0-9).
@@ -46,11 +46,14 @@ export function parseHttpUrl(value: string): URL | undefined {
 /**
  * Quote a value for safe use as one POSIX shell argument.
  *
+ * Double-quoted apostrophe segments also support inline flag values in
+ * PowerShell, which treats typographic apostrophes as single quotes.
+ *
  * @param value - Untrusted value to quote
  * @returns A single-quoted shell argument
  */
 export function shellQuote(value: string): string {
-  return `'${value.replace(SINGLE_QUOTE_PATTERN, "'\\''")}'`;
+  return `'${value.replace(SINGLE_QUOTE_PATTERN, (quote) => `'"${quote}"'`)}'`;
 }
 
 /**
@@ -91,7 +94,7 @@ export function slugify(name: string): string {
 export function getRealUsername(): string {
   // userInfo() can throw on systems with missing or corrupted passwd entries.
   let osUsername = "";
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     osUsername = userInfo().username;
   } catch {

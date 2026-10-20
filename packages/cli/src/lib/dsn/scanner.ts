@@ -37,7 +37,7 @@ export type SpecificFileScanResult = {
  */
 export type FileProcessor = (
   relativePath: string,
-  content: string
+  content: string,
 ) => FileProcessResult | null;
 
 /**
@@ -59,9 +59,9 @@ export async function scanSpecificFiles(
     createDsn: (
       raw: string,
       relativePath: string,
-      metadata?: { packagePath?: string }
+      metadata?: { packagePath?: string },
     ) => DetectedDsn | null;
-  }
+  },
 ): Promise<SpecificFileScanResult> {
   const { stopOnFirst = false, processFile, createDsn } = options;
   const dsns: DetectedDsn[] = [];

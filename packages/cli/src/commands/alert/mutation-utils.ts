@@ -59,7 +59,7 @@ const METRIC_TIME_WINDOWS = new Set([
 /** Parse and validate an "all" | "any" match mode flag. Returns `undefined` when absent. */
 export function parseMatchMode(
   value: string | undefined,
-  field: "action-match" | "filter-match"
+  field: "action-match" | "filter-match",
 ): "all" | "any" | undefined {
   if (value === undefined || value === "") {
     return;
@@ -70,7 +70,7 @@ export function parseMatchMode(
   }
   throw new ValidationError(
     `${field} must be 'all' or 'any' (got ${JSON.stringify(value)}).`,
-    field
+    field,
   );
 }
 
@@ -83,7 +83,7 @@ export function parseMatchMode(
  * accepts either logic type here.
  */
 export function matchToLogicType(
-  match: "all" | "any" | undefined
+  match: "all" | "any" | undefined,
 ): "all" | "any-short" {
   return match === "any" ? "any-short" : "all";
 }
@@ -106,7 +106,7 @@ export function triggerLogicType(): "any-short" {
 
 /** Parse and validate an "active" | "disabled" status flag. Returns `undefined` when absent. */
 export function parseStatusFlag(
-  value: string | undefined
+  value: string | undefined,
 ): "active" | "disabled" | undefined {
   if (value === undefined || value === "") {
     return;
@@ -117,7 +117,7 @@ export function parseStatusFlag(
   }
   throw new ValidationError(
     `Status must be 'active' or 'disabled' (got ${JSON.stringify(value)}).`,
-    "status"
+    "status",
   );
 }
 
@@ -127,7 +127,7 @@ function parseJsonValue(raw: string, field: string): unknown {
   } catch {
     throw new ValidationError(
       `${field} must be valid JSON (got ${JSON.stringify(raw)}).`,
-      field
+      field,
     );
   }
 }
@@ -151,7 +151,7 @@ function toObject(value: unknown, field: string): Record<string, unknown> {
  */
 export function parseJsonObjectList(
   values: readonly string[] | undefined,
-  field: string
+  field: string,
 ): Record<string, unknown>[] | undefined {
   if (!values || values.length === 0) {
     return;
@@ -176,13 +176,13 @@ export function parseJsonObjectList(
 export function validateIssueRuleArrays(
   conditions: readonly Record<string, unknown>[] | undefined,
   actions: readonly Record<string, unknown>[] | undefined,
-  field: "conditions" | "actions"
+  field: "conditions" | "actions",
 ): void {
   if (field === "conditions") {
     if (!conditions || conditions.length === 0) {
       throw new ValidationError(
         "Pass at least one --condition JSON object.",
-        "condition"
+        "condition",
       );
     }
     return;
@@ -191,14 +191,14 @@ export function validateIssueRuleArrays(
   if (!actions || actions.length === 0) {
     throw new ValidationError(
       "Pass at least one --action JSON object.",
-      "action"
+      "action",
     );
   }
 }
 
 /** Split comma-separated project slugs, trim whitespace, and filter empties. */
 export function normalizeProjectList(
-  projects: readonly string[] | undefined
+  projects: readonly string[] | undefined,
 ): string[] | undefined {
   if (!projects || projects.length === 0) {
     return;
@@ -262,7 +262,7 @@ function appendIsTransactionFilter(query: string): string {
  */
 export function resolveMetricDataset(
   dataset: string,
-  query: string
+  query: string,
 ): ResolvedMetricDataset {
   const lower = dataset.trim().toLowerCase();
   if (TRANSACTION_DATASET_NAMES.has(lower)) {
@@ -283,7 +283,7 @@ export function validateMetricDataset(dataset: string): void {
   }
   throw new ValidationError(
     `dataset must be one of: ${[...METRIC_DATASET_VALUES].join(", ")}.`,
-    "dataset"
+    "dataset",
   );
 }
 
@@ -294,18 +294,18 @@ export function validateMetricTimeWindow(timeWindow: number): void {
   }
   throw new ValidationError(
     `timeWindow must be one of: ${[...METRIC_TIME_WINDOWS].join(", ")} minutes.`,
-    "timeWindow"
+    "timeWindow",
   );
 }
 
 /** Validate that each trigger has an `alertThreshold` and a non-empty `actions` array. */
 export function validateMetricTriggers(
-  triggers: readonly Record<string, unknown>[] | undefined
+  triggers: readonly Record<string, unknown>[] | undefined,
 ): void {
   if (!triggers || triggers.length === 0) {
     throw new ValidationError(
       "Pass at least one --trigger JSON object.",
-      "trigger"
+      "trigger",
     );
   }
 
@@ -314,14 +314,14 @@ export function validateMetricTriggers(
     if (typeof threshold !== "number" && typeof threshold !== "string") {
       throw new ValidationError(
         "Each trigger must include alertThreshold.",
-        "trigger"
+        "trigger",
       );
     }
     const actions = trigger.actions;
     if (!Array.isArray(actions) || actions.length === 0) {
       throw new ValidationError(
         "Each trigger must include a non-empty actions array.",
-        "trigger"
+        "trigger",
       );
     }
   }

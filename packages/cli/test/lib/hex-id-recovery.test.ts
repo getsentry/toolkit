@@ -254,7 +254,7 @@ describe("isOverNestedPath", () => {
 
   test("4 segments: over-nested", () => {
     expect(isOverNestedPath("gohighlevel/highlevel-flutter/27bc063/abc")).toBe(
-      true
+      true,
     );
   });
 
@@ -277,7 +277,7 @@ describe("recoverHexId decision tree", () => {
   afterEach(() => {
     // Restore original adapters
     for (const key of Object.keys(
-      originalAdapters
+      originalAdapters,
     ) as (keyof typeof ADAPTERS)[]) {
       ADAPTERS[key] = originalAdapters[key];
     }
@@ -303,7 +303,7 @@ describe("recoverHexId decision tree", () => {
     const r = await recoverHexId(
       "gohighlevel/highlevel-flutter/27bc063/abc",
       "event",
-      CLEAN_CTX
+      CLEAN_CTX,
     );
     expect(r.kind).toBe("failed");
     expect(r.kind === "failed" && r.reason).toBe("over-nested");
@@ -356,7 +356,7 @@ describe("recoverHexId decision tree", () => {
     const r = await recoverHexId(
       "14d9a67fda344df0a138a88d62e41be",
       "event",
-      CLEAN_CTX
+      CLEAN_CTX,
     );
     expect(r.kind).toBe("fuzzy");
     expect(r.kind === "fuzzy" && r.id).toBe(full);
@@ -556,7 +556,7 @@ describe("handleRecoveryResult", () => {
         stripped: "ios",
       },
       fallback,
-      opts
+      opts,
     );
     expect(id).toBe(VALID_32);
   });
@@ -570,7 +570,7 @@ describe("handleRecoveryResult", () => {
         prefix: "05d6975ab9bb",
       },
       fallback,
-      opts
+      opts,
     );
     expect(id).toBe(VALID_32);
   });
@@ -585,7 +585,7 @@ describe("handleRecoveryResult", () => {
         toEntity: "trace",
       },
       fallback,
-      { ...opts, entityType: "trace" }
+      { ...opts, entityType: "trace" },
     );
     expect(id).toBe(VALID_32);
   });
@@ -602,7 +602,7 @@ describe("handleRecoveryResult", () => {
           candidates: [id1, id2],
         },
         fallback,
-        opts
+        opts,
       );
       expect.unreachable("Should have thrown");
     } catch (err) {
@@ -622,7 +622,7 @@ describe("handleRecoveryResult", () => {
           hint: "shell variable leak",
         },
         fallback,
-        opts
+        opts,
       );
       expect.unreachable("Should have thrown");
     } catch (err) {
@@ -636,7 +636,7 @@ describe("handleRecoveryResult", () => {
       handleRecoveryResult(
         { kind: "failed", original: "abc", reason: "api-error" },
         fallback,
-        opts
+        opts,
       );
       expect.unreachable("Should have thrown");
     } catch (err) {

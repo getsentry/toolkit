@@ -42,7 +42,7 @@ function createContext() {
       stdout: {
         write: (data: string | Uint8Array) => {
           writes.push(
-            typeof data === "string" ? data : new TextDecoder().decode(data)
+            typeof data === "string" ? data : new TextDecoder().decode(data),
           );
           return true;
         },
@@ -59,7 +59,7 @@ function createContext() {
 /** Run the command, returning its stdout. */
 async function run(
   flags: Record<string, unknown>,
-  input: string
+  input: string,
 ): Promise<string> {
   const harness = createContext();
   const func = await wasmSplitCommand.loader();
@@ -95,7 +95,7 @@ describe("stdout contract", () => {
     const buildId = "a1b2c3d4-e5f6-4788-99aa-bbccddeeff00";
     const output = await run(
       { "build-id": buildId },
-      await writeModule(debugModule())
+      await writeModule(debugModule()),
     );
 
     expect(output).toBe("a1b2c3d4e5f6478899aabbccddeeff00\n");
@@ -111,7 +111,7 @@ describe("stdout contract", () => {
   test("--quiet cannot be used with --json", async () => {
     const path = await writeModule(debugModule());
     await expect(run({ quiet: true, json: true }, path)).rejects.toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -119,7 +119,7 @@ describe("stdout contract", () => {
     const path = await writeModule(debugModule());
     const output = await run(
       { json: true, "build-id": "a1b2c3d4-e5f6-4788-99aa-bbccddeeff00" },
-      path
+      path,
     );
 
     expect(JSON.parse(output)).toMatchObject({
@@ -138,21 +138,21 @@ describe("build id", () => {
     expect(output.trim()).toMatch(/^[0-9a-f]{32}$/);
     expect(
       formatBuildId(
-        buildIdFromSections(parseSections(await readFile(path))) as Uint8Array
-      )
+        buildIdFromSections(parseSections(await readFile(path))) as Uint8Array,
+      ),
     ).toBe(output.trim());
   });
 
   test("rejects a --build-id that is not a UUID", async () => {
     const path = await writeModule(debugModule());
     await expect(run({ "build-id": "not-a-uuid" }, path)).rejects.toThrow(
-      /Invalid --build-id/
+      /Invalid --build-id/,
     );
   });
 
   test("rejects a missing input file", async () => {
     await expect(
-      run({}, join(tmpdir(), "definitely-absent.wasm"))
+      run({}, join(tmpdir(), "definitely-absent.wasm")),
     ).rejects.toThrow(/does not exist/);
   });
 });
@@ -229,11 +229,11 @@ describe("external_debug_info", () => {
         "debug-out": join(path, "..", "app.debug.wasm"),
         "external-dwarf-url": "https://cdn.example/debug/app.debug.wasm",
       },
-      path
+      path,
     );
 
     expect(await readExternalDebugInfo(path)).toBe(
-      "https://cdn.example/debug/app.debug.wasm"
+      "https://cdn.example/debug/app.debug.wasm",
     );
   });
 });
@@ -241,7 +241,7 @@ describe("external_debug_info", () => {
 /** Read the `external_debug_info` value out of a file on disk. */
 async function readExternalDebugInfo(path: string): Promise<string | null> {
   const found = parseSections(await readFile(path)).find(
-    (entry) => entry.name === "external_debug_info"
+    (entry) => entry.name === "external_debug_info",
   );
   return found?.contents ? readByteVectorString(found.contents) : null;
 }

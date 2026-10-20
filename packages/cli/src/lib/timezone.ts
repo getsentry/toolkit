@@ -54,7 +54,7 @@ const ZONEINFO_MARKER = "/zoneinfo/";
  * disambiguates.
  */
 export function runtimeTimezone(): string {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || UTC_FALLBACK;
   } catch {
@@ -107,7 +107,7 @@ export function detectOsTimezone(): string | null {
 function detectUnixTimezone(): string | null {
   // /etc/timezone is the canonical, greppable source on Debian/Ubuntu and
   // many container images. It holds a single IANA name.
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const contents = readFileSync("/etc/timezone", "utf-8").trim();
     if (contents.length > 0 && contents !== UTC_FALLBACK) {
@@ -119,7 +119,7 @@ function detectUnixTimezone(): string | null {
 
   // /etc/localtime is a symlink into the zoneinfo database on macOS and most
   // Linux distros. Its target encodes the IANA name.
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const target = readlinkSync("/etc/localtime");
     return ianaFromZoneinfoPath(target);
@@ -133,7 +133,7 @@ function detectUnixTimezone(): string | null {
  * Windows zone name to IANA where possible.
  */
 function detectWindowsTimezone(): string | null {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const windowsName = execSync("tzutil /g", {
       encoding: "utf-8",

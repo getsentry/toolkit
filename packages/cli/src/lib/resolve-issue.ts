@@ -57,7 +57,7 @@ export type ResolvedIssue = {
 async function resolveAliasSuffix(
   alias: string,
   suffix: string,
-  cwd: string
+  cwd: string,
 ): Promise<ResolvedIssue | null> {
   // Detect DSNs to get fingerprint for validation
   const detection = await detectAllDsns(cwd);
@@ -82,7 +82,7 @@ async function resolveAliasSuffix(
  */
 async function resolveShortSuffix(
   suffix: string,
-  options: ResolveIssueOptions
+  options: ResolveIssueOptions,
 ): Promise<ResolvedIssue | null> {
   const { org, project, cwd } = options;
 
@@ -107,7 +107,7 @@ async function resolveShortSuffix(
 async function resolveWithOrgContext(
   issueId: string,
   options: ResolveIssueOptions,
-  commandHint: string
+  commandHint: string,
 ): Promise<ResolvedIssue> {
   const { org, cwd } = options;
 
@@ -157,7 +157,7 @@ async function resolveWithOrgContext(
 export async function resolveIssueId(
   input: string,
   options: ResolveIssueOptions,
-  commandHint: string
+  commandHint: string,
 ): Promise<ResolvedIssue> {
   const { cwd } = options;
 
@@ -167,7 +167,7 @@ export async function resolveIssueId(
     const resolved = await resolveAliasSuffix(
       aliasSuffix.alias,
       aliasSuffix.suffix,
-      cwd
+      cwd,
     );
     if (resolved) {
       return resolved;

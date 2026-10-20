@@ -30,7 +30,7 @@ export const ReplayGeoSchema = pipe(
     region: nullish(string()),
     subdivision: nullish(string()),
   }),
-  description("User geo metadata")
+  description("User geo metadata"),
 );
 
 /**
@@ -45,7 +45,7 @@ export const ReplayUserSchema = pipe(
     display_name: nullish(string()),
     geo: nullish(ReplayGeoSchema),
   }),
-  description("User metadata")
+  description("User metadata"),
 );
 
 /**
@@ -56,7 +56,7 @@ export const ReplayBrowserSchema = pipe(
     name: nullish(string()),
     version: nullish(string()),
   }),
-  description("Browser metadata")
+  description("Browser metadata"),
 );
 
 /**
@@ -67,7 +67,7 @@ export const ReplayOsSchema = pipe(
     name: nullish(string()),
     version: nullish(string()),
   }),
-  description("Operating system metadata")
+  description("Operating system metadata"),
 );
 
 /**
@@ -78,7 +78,7 @@ export const ReplaySdkSchema = pipe(
     name: nullish(string()),
     version: nullish(string()),
   }),
-  description("SDK metadata")
+  description("SDK metadata"),
 );
 
 /**
@@ -92,7 +92,7 @@ export const ReplayDeviceSchema = pipe(
     model_id: nullish(string()),
     name: nullish(string()),
   }),
-  description("Device metadata")
+  description("Device metadata"),
 );
 
 /**
@@ -104,7 +104,7 @@ export const ReplayOtaUpdatesSchema = pipe(
     runtime_version: nullish(string()),
     update_id: nullish(string()),
   }),
-  description("OTA update metadata")
+  description("OTA update metadata"),
 );
 
 /**
@@ -115,7 +115,7 @@ export const ReplayOtaUpdatesSchema = pipe(
  */
 export const ReplayTagsSchema = pipe(
   fallback(record(string(), array(string())), {}),
-  description("Replay tags")
+  description("Replay tags"),
 ) as GenericSchema<unknown, ReplayTags>;
 
 /**
@@ -172,7 +172,7 @@ function replayNullableBoolean(descriptionText: string) {
 
 function replayNullishObject<T extends GenericSchema>(
   schema: T,
-  descriptionText: string
+  descriptionText: string,
 ) {
   return pipe(nullish(schema), description(descriptionText));
 }
@@ -223,7 +223,7 @@ function buildReplayListItemShape<
     error_ids: pipe(fields.errorIds, description("Linked error IDs")),
     finished_at: replayNullableString("Replay finish timestamp"),
     has_viewed: replayNullableBoolean(
-      "Whether the current user has viewed the replay"
+      "Whether the current user has viewed the replay",
     ),
     id: pipe(string(), description("Replay ID")),
     info_ids: pipe(fields.infoIds, description("Linked info event IDs")),
@@ -241,7 +241,7 @@ function buildReplayListItemShape<
     user: replayNullishObject(ReplayUserSchema, "User metadata"),
     warning_ids: pipe(
       fields.warningIds,
-      description("Linked warning event IDs")
+      description("Linked warning event IDs"),
     ),
   };
 }
@@ -257,7 +257,7 @@ const ReplayListItemSchemaBase = looseObject(
     infoIds: replayStringArrayWithFallback(),
     otaUpdates: replayNullishObject(
       ReplayOtaUpdatesSchema,
-      "OTA update metadata"
+      "OTA update metadata",
     ),
     projectId: optional(nullable(union([string(), number()]))),
     releases: replayStringArrayWithFallback(),
@@ -265,11 +265,11 @@ const ReplayListItemSchemaBase = looseObject(
     traceIds: replayStringArrayWithFallback(),
     urls: replayStringArrayWithFallback(),
     warningIds: replayStringArrayWithFallback(),
-  })
+  }),
 );
 export const ReplayListItemSchema = pipe(
   ReplayListItemSchemaBase,
-  description("Replay list row")
+  description("Replay list row"),
 );
 
 /**
@@ -277,7 +277,7 @@ export const ReplayListItemSchema = pipe(
  */
 export const ReplayClickSchema = pipe(
   record(string(), unknown()),
-  description("Replay click selector summary")
+  description("Replay click selector summary"),
 );
 
 /**
@@ -288,11 +288,11 @@ export const ReplayDetailsSchema = pipe(
     ...ReplayListItemSchemaBase.entries,
     clicks: pipe(
       optional(array(ReplayClickSchema)),
-      description("Replay click summaries")
+      description("Replay click summaries"),
     ),
     replay_type: pipe(optional(nullable(string())), description("Replay type")),
   }),
-  description("Replay details")
+  description("Replay details"),
 );
 
 /** Envelope returned by the replay index endpoint. */
@@ -322,11 +322,11 @@ const ReplayListItemOutputSchemaBase = object(
     traceIds: replayStringArray(),
     urls: replayStringArray(),
     warningIds: replayStringArray(),
-  })
+  }),
 );
 export const ReplayListItemOutputSchema = pipe(
   ReplayListItemOutputSchemaBase,
-  description("Replay list row")
+  description("Replay list row"),
 );
 
 /** Documentation-oriented replay detail schema used for command metadata. */
@@ -335,11 +335,11 @@ export const ReplayDetailsOutputSchema = pipe(
     ...ReplayListItemOutputSchemaBase.entries,
     clicks: pipe(
       optional(array(ReplayClickSchema)),
-      description("Replay click summaries")
+      description("Replay click summaries"),
     ),
     replay_type: pipe(optional(nullable(string())), description("Replay type")),
   }),
-  description("Replay details")
+  description("Replay details"),
 );
 
 /** A summarized replay activity event extracted from recording segments. */
@@ -347,15 +347,15 @@ export const ReplayActivityEventSchema = pipe(
   object({
     timestampMs: pipe(
       nullable(number()),
-      description("Milliseconds since UNIX epoch for the activity event")
+      description("Milliseconds since UNIX epoch for the activity event"),
     ),
     label: pipe(string(), description("Activity label")),
     details: pipe(
       array(string()),
-      description("Supplemental activity details")
+      description("Supplemental activity details"),
     ),
   }),
-  description("Summarized replay activity event")
+  description("Summarized replay activity event"),
 );
 
 /** Related issue metadata extracted from replay-linked event IDs. */
@@ -364,18 +364,18 @@ export const ReplayRelatedIssueSchema = pipe(
     eventId: pipe(string(), description("Replay-linked event ID")),
     issueId: pipe(
       optional(nullable(string())),
-      description("Resolved issue ID")
+      description("Resolved issue ID"),
     ),
     shortId: pipe(
       optional(nullable(string())),
-      description("Resolved issue short ID")
+      description("Resolved issue short ID"),
     ),
     title: pipe(
       optional(nullable(string())),
-      description("Resolved issue title")
+      description("Resolved issue title"),
     ),
   }),
-  description("Replay-related issue")
+  description("Replay-related issue"),
 );
 
 /** Related trace metadata extracted from replay trace IDs. */
@@ -384,22 +384,22 @@ export const ReplayRelatedTraceSchema = pipe(
     traceId: pipe(string(), description("Replay-linked trace ID")),
     errorCount: pipe(
       optional(nullable(number())),
-      description("Trace error count")
+      description("Trace error count"),
     ),
     logCount: pipe(
       optional(nullable(number())),
-      description("Trace log count")
+      description("Trace log count"),
     ),
     performanceIssueCount: pipe(
       optional(nullable(number())),
-      description("Trace performance issue count")
+      description("Trace performance issue count"),
     ),
     spanCount: pipe(
       optional(nullable(number())),
-      description("Trace span count")
+      description("Trace span count"),
     ),
   }),
-  description("Replay-related trace")
+  description("Replay-related trace"),
 );
 
 /** Replay view output with related context and summarized activity. */
@@ -409,24 +409,24 @@ export const ReplayViewOutputSchema = pipe(
     org: pipe(string(), description("Organization slug")),
     activity: pipe(
       array(ReplayActivityEventSchema),
-      description("Summarized replay activity")
+      description("Summarized replay activity"),
     ),
     relatedIssues: pipe(
       array(ReplayRelatedIssueSchema),
-      description("Replay-related issues")
+      description("Replay-related issues"),
     ),
     relatedTraces: pipe(
       array(ReplayRelatedTraceSchema),
-      description("Replay-related traces")
+      description("Replay-related traces"),
     ),
   }),
-  description("Replay view output")
+  description("Replay view output"),
 );
 
 /** Replay IDs keyed by resource identifier (issue ID, trace ID, replay ID). */
 export const ReplayIdsByResourceSchema = pipe(
   record(string(), array(string())),
-  description("Replay IDs grouped by resource identifier")
+  description("Replay IDs grouped by resource identifier"),
 );
 
 export type ReplayGeo = InferOutput<typeof ReplayGeoSchema>;

@@ -98,7 +98,7 @@ export function mdRow(cells: readonly string[]): string {
   // Literal pipes are replaced with box-drawing │ to prevent breaking the
   // pipe-delimited table format.
   const out = cells.map((c) =>
-    renderInlineMarkdown(c).replace(/\|/g, "\u2502")
+    renderInlineMarkdown(c).replace(/\|/g, "\u2502"),
   );
   return `| ${out.join(" | ")} |\n`;
 }
@@ -110,7 +110,7 @@ export function mdRow(cells: readonly string[]): string {
  */
 export function mdKvTable(
   rows: ReadonlyArray<readonly [string, string]>,
-  heading?: string
+  heading?: string,
 ): string {
   const lines: string[] = [];
   if (heading) {
@@ -126,7 +126,7 @@ export function mdKvTable(
     // Only replace structural characters that break table syntax.
     // Content escaping (<>, \, _*`) is the caller's responsibility.
     lines.push(
-      `| **${label}** | ${value.replace(/\n/g, " ").replace(/\|/g, "\u2502")} |`
+      `| **${label}** | ${value.replace(/\n/g, " ").replace(/\|/g, "\u2502")} |`,
     );
   }
   return lines.join("\n");
@@ -166,7 +166,7 @@ const COLOR_TAGS: Record<string, (text: string) => string> = {
 /** Regex matching all supported color tag pairs — compiled once at module scope. */
 const COLOR_TAG_RE = new RegExp(
   `<(${Object.keys(COLOR_TAGS).join("|")})>([\\s\\S]*?)<\\/\\1>`,
-  "gi"
+  "gi",
 );
 
 /**
@@ -237,7 +237,7 @@ function renderHtmlToken(raw: string): string {
  * language is unknown or highlighting fails.
  */
 function highlightCode(code: string, language?: string): string {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return cliHighlight(code, { language, ignoreIllegals: true });
   } catch {
@@ -305,7 +305,7 @@ function renderOneInline(token: Token): string {
     }
     case "del":
       return chalk.dim.gray.strikethrough(
-        renderInline((token as Tokens.Del).tokens)
+        renderInline((token as Tokens.Del).tokens),
       );
     case "br":
       return "\n";
@@ -334,7 +334,7 @@ function renderOneInline(token: Token): string {
  *
  * Also handles: strong, em, codespan, link, text, br, del, escape.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: paired color tag buffering
+// paired color tag buffering
 function renderInline(tokens: Token[]): string {
   const parts: string[] = [];
   let i = 0;
@@ -403,8 +403,8 @@ function renderBlocks(tokens: Token[]): string {
           parts.push(chalk.hex(COLORS.cyan).bold(text));
           parts.push(
             chalk.hex(COLORS.cyan)(
-              "\u2501".repeat(Math.min(stringWidth(text), 30))
-            )
+              "\u2501".repeat(Math.min(stringWidth(text), 30)),
+            ),
           );
         } else {
           // h3+ → bold cyan (less prominent, no divider)
@@ -513,7 +513,7 @@ function renderList(list: Tokens.List, depth = 0): string {
 function renderTableToken(table: Tokens.Table): string {
   const headers = table.header.map((cell) => renderInline(cell.tokens));
   const rows = table.rows.map((row) =>
-    row.map((cell) => renderInline(cell.tokens))
+    row.map((cell) => renderInline(cell.tokens)),
   );
 
   const alignments: Alignment[] = table.align.map((a) => {

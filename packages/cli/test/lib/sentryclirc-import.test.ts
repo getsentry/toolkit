@@ -69,7 +69,7 @@ describe("classifyRcFileLocation", () => {
 
   test("arbitrary path returns 'project-local'", () => {
     expect(classifyRcFileLocation("/tmp/some/project/.sentryclirc")).toBe(
-      "project-local"
+      "project-local",
     );
   });
 });
@@ -131,7 +131,7 @@ describe("isSameFileOrigin", () => {
 
 describe("buildImportPlan", () => {
   function makeFile(
-    overrides: Partial<DiscoveredRcFile> = {}
+    overrides: Partial<DiscoveredRcFile> = {},
   ): DiscoveredRcFile {
     return {
       path: "/test/.sentryclirc",
@@ -403,7 +403,7 @@ describe("discoverRcFiles", () => {
     const rcPath = join(configDir, ".sentryclirc");
     writeFileSync(
       rcPath,
-      "[auth]\ntoken = test-token\n\n[defaults]\norg = my-org\n"
+      "[auth]\ntoken = test-token\n\n[defaults]\norg = my-org\n",
     );
 
     const files = await discoverRcFiles(configDir);
@@ -479,7 +479,7 @@ describe("maskToken", () => {
     expect(maskToken("123456789ab")).not.toContain("123456789ab");
     // Longer tokens show partial but not full
     expect(maskToken("my-secret-token-value")).not.toBe(
-      "my-secret-token-value"
+      "my-secret-token-value",
     );
   });
 });
@@ -556,7 +556,7 @@ describe("executeImport — token guard", () => {
 
 describe("buildImportPlan — URL handling", () => {
   function makeFile(
-    overrides: Partial<DiscoveredRcFile> = {}
+    overrides: Partial<DiscoveredRcFile> = {},
   ): DiscoveredRcFile {
     return {
       path: "/test/.sentryclirc",
@@ -787,7 +787,7 @@ describe("discoverRcFiles — additional", () => {
     const rcPath = join(configDir, ".sentryclirc");
     writeFileSync(
       rcPath,
-      "[auth]\ntoken = my-token\n\n[defaults]\nurl = https://sentry.example.com\norg = my-org\nproject = my-proj\n"
+      "[auth]\ntoken = my-token\n\n[defaults]\nurl = https://sentry.example.com\norg = my-org\nproject = my-proj\n",
     );
 
     const files = await discoverRcFiles(configDir);
@@ -823,12 +823,12 @@ describe("discoverRcFiles — additional", () => {
     // Project-local file has project
     writeFileSync(
       join(projectDir, ".sentryclirc"),
-      "[defaults]\nproject = local-proj\n"
+      "[defaults]\nproject = local-proj\n",
     );
     // Global file has token + org
     writeFileSync(
       join(configDir, ".sentryclirc"),
-      "[auth]\ntoken = global-token\n\n[defaults]\norg = global-org\n"
+      "[auth]\ntoken = global-token\n\n[defaults]\norg = global-org\n",
     );
 
     const files = await discoverRcFiles(projectDir);

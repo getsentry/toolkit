@@ -21,7 +21,6 @@
 
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
-import { UUID_DASH_RE } from "../hex-id.js";
 import { logger } from "../logger.js";
 import { isLikelyBinary } from "../scan/binary.js";
 import {
@@ -34,12 +33,54 @@ const log = logger.withTag("sourcemap.debug-id");
 /** Comment prefix used to identify an existing debug ID in a JS file. */
 const DEBUGID_COMMENT_PREFIX = "//# debugId=";
 
-/** Regex to extract an existing debug ID from a JS file. @internal */
-export const EXISTING_DEBUGID_RE = /\/\/# debugId=([0-9a-fA-F-]{36})/;
+/**
+ * A debug ID in hyphenated (`8-4-4-4-12`) or simple (32 hex chars) UUID form.
+ * Bun emits the simple uppercase form (`//# debugId=348C8373...`).
+ */
+const DEBUGID_PATTERN =
+  "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32}";
+
+/** Regex to extract an existing debug ID from a JS file. */
+const EXISTING_DEBUGID_RE = new RegExp(
+  `//# debugId=(${DEBUGID_PATTERN})(?![0-9a-fA-F-])`,
+);
+
+/** A complete debug ID string in either accepted UUID form. */
+const DEBUGID_RE = new RegExp(`^(?:${DEBUGID_PATTERN})$`);
 
 /** Indexed registry writes emitted by Sentry's bundler plugins and legacy CLI. */
-const DEBUGID_REGISTRATION_RE =
-  /(?:\.\s*_sentryDebugIds|\[\s*["']_sentryDebugIds["']\s*\])\s*\[\s*[$\w]+\s*\]\s*=\s*(["'])([0-9a-fA-F-]{36})\1/g;
+const DEBUGID_REGISTRATION_RE = new RegExp(
+  `(?:\\.\\s*_sentryDebugIds|\\[\\s*["']_sentryDebugIds["']\\s*\\])\\s*\\[\\s*[$\\w]+\\s*\\]\\s*=\\s*(["'])(${DEBUGID_PATTERN})\\1`,
+  "g",
+);
+
+/**
+ * Normalize a debug ID to the canonical lowercase hyphenated UUID form.
+ *
+ * Both forms denote the same UUID, so normalizing lets an ID written by Bun
+ * (simple, uppercase) be reused instead of minting a second, conflicting one.
+ *
+ * @param value - Candidate debug ID
+ * @returns The canonical ID, or `undefined` when `value` is not a UUID
+ */
+function normalizeDebugId(value: unknown): string | undefined {
+  if (typeof value !== "string" || !DEBUGID_RE.test(value)) {
+    return;
+  }
+  const hex = value.replaceAll("-", "").toLowerCase();
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * Read the debug ID from a JS file's `//# debugId=` comment.
+ *
+ * @param js - JavaScript file content
+ * @returns The canonical debug ID, or `undefined` when there is none
+ * @internal
+ */
+export function readJsDebugId(js: string): string | undefined {
+  return normalizeDebugId(js.match(EXISTING_DEBUGID_RE)?.[1]);
+}
 
 /**
  * Recognize a Sentry runtime snippet registering the selected debug ID.
@@ -49,8 +90,9 @@ const DEBUGID_REGISTRATION_RE =
  * @internal
  */
 export function hasDebugIdRegistration(js: string, debugId: string): boolean {
+  const expected = normalizeDebugId(debugId);
   for (const match of js.matchAll(DEBUGID_REGISTRATION_RE)) {
-    if (match[2]?.toLowerCase() === debugId.toLowerCase()) {
+    if (expected && normalizeDebugId(match[2]) === expected) {
       return true;
     }
   }
@@ -64,7 +106,7 @@ export function hasDebugIdRegistration(js: string, debugId: string): boolean {
  * well-formed UUID is treated as absent so the caller falls through to minting.
  *
  * @param map - A parsed sourcemap object (any shape; fields are probed)
- * @returns The debug ID, or `undefined` when the map carries none
+ * @returns The canonical debug ID, or `undefined` when the map carries none
  * @internal
  */
 export function readSourcemapDebugId(map: unknown): string | undefined {
@@ -72,12 +114,7 @@ export function readSourcemapDebugId(map: unknown): string | undefined {
     return;
   }
   const { debug_id: snake, debugId: camel } = map as SourcemapJson;
-  for (const candidate of [snake, camel]) {
-    if (typeof candidate === "string" && UUID_DASH_RE.test(candidate)) {
-      return candidate;
-    }
-  }
-  return;
+  return normalizeDebugId(snake) ?? normalizeDebugId(camel);
 }
 
 /**
@@ -119,12 +156,46 @@ export function getDebugIdSnippet(debugId: string): string {
   return `;!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof globalThis?globalThis:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="${debugId}",e._sentryDebugIdIdentifier="sentry-dbid-${debugId}")}catch(e){}}();`;
 }
 
+/** Bun's "already bundled" pragma, e.g. `// @bun` or `// @bun @bun-cjs`. */
+const BUN_PRAGMA = "// @bun";
+
+/**
+ * Length of the line starting at `start`, including its newline. A final line
+ * without a newline extends to the end of the content.
+ */
+function lineLength(content: string, start: number): number {
+  const newlineIdx = content.indexOf("\n", start);
+  return (newlineIdx === -1 ? content.length : newlineIdx + 1) - start;
+}
+
+/**
+ * Count the leading lines that must stay above the runtime snippet: a hashbang
+ * (`#!`), then Bun's `// @bun` pragma. Bun only honors the pragma at the very
+ * start of the file or right after a hashbang; moving it lower makes Bun
+ * re-transpile ESM bundles and stop calling the wrapper of CJS bundles.
+ *
+ * @param jsContent - Original JS file content
+ * @returns The number of header lines (0–2)
+ */
+function countHeaderLines(jsContent: string): number {
+  let offset = 0;
+  let lines = 0;
+  if (jsContent.startsWith("#!")) {
+    offset = lineLength(jsContent, 0);
+    lines += 1;
+  }
+  if (jsContent.startsWith(BUN_PRAGMA, offset)) {
+    lines += 1;
+  }
+  return lines;
+}
+
 /**
  * Prepend the runtime IIFE snippet to a JS file's content, preserving a
- * leading hashbang (`#!`) line if present.
+ * leading hashbang (`#!`) line and Bun `// @bun` pragma line if present.
  *
- * The snippet must run before any other code but after the hashbang, which
- * must remain the first line for the file to stay executable.
+ * The snippet must run before any other code but after those header lines,
+ * which must remain first for the file to stay executable.
  *
  * @param jsContent - Original JS file content
  * @param snippet - The IIFE snippet from {@link getDebugIdSnippet}
@@ -133,18 +204,16 @@ export function getDebugIdSnippet(debugId: string): string {
  */
 export function prependDebugIdSnippet(
   jsContent: string,
-  snippet: string
+  snippet: string,
 ): string {
-  if (jsContent.startsWith("#!")) {
-    const newlineIdx = jsContent.indexOf("\n");
-    // Handle hashbang without trailing newline (entire file is the #! line)
-    const splitAt = newlineIdx === -1 ? jsContent.length : newlineIdx + 1;
-    const hashbang = jsContent.slice(0, splitAt);
-    const rest = jsContent.slice(splitAt);
-    const sep = newlineIdx === -1 ? "\n" : "";
-    return `${hashbang}${sep}${snippet}\n${rest}`;
+  let splitAt = 0;
+  for (let i = countHeaderLines(jsContent); i > 0; i--) {
+    splitAt += lineLength(jsContent, splitAt);
   }
-  return `${snippet}\n${jsContent}`;
+  const header = jsContent.slice(0, splitAt);
+  // Handle a header without a trailing newline (the whole file is headers).
+  const sep = header && !header.endsWith("\n") ? "\n" : "";
+  return `${header}${sep}${snippet}\n${jsContent.slice(splitAt)}`;
 }
 
 /**
@@ -152,13 +221,14 @@ export function prependDebugIdSnippet(
  * sourcemap.
  *
  * By default performs four mutations:
- * 1. Prepends the runtime snippet to the JS file (after any hashbang)
+ * 1. Prepends the runtime snippet to the JS file (after any hashbang and
+ *    Bun `// @bun` pragma)
  * 2. Appends a `//# debugId=<uuid>` comment to the JS file
- * 3. Prepends a `;` to the sourcemap `mappings` (offsets by one line)
+ * 3. Inserts a `;` into the sourcemap `mappings` at the snippet line
  * 4. Adds `debug_id` and `debugId` fields to the sourcemap JSON
  *
  * When `options.skipSnippet` is `true`, step 1 is skipped and step 3
- * is adjusted (no extra `;` prefix since no snippet line is added).
+ * is adjusted (no extra `;` since no snippet line is added).
  * This is used by the CLI's own build pipeline where the debug ID is
  * registered in source code (`constants.ts`) instead of via the IIFE.
  *
@@ -178,7 +248,7 @@ export function prependDebugIdSnippet(
 export async function injectDebugId(
   jsPath: string,
   mapPath: string,
-  options?: { skipSnippet?: boolean }
+  options?: { skipSnippet?: boolean },
 ): Promise<{ debugId: string; wasInjected: boolean }> {
   const [jsBytes, mapContent] = await Promise.all([
     readFile(jsPath),
@@ -188,7 +258,7 @@ export async function injectDebugId(
 
   const skipSnippet = options?.skipSnippet ?? false;
   const skipRuntimeCheck = skipSnippet || isLikelyBinary(jsBytes);
-  const jsDebugId = jsContent.match(EXISTING_DEBUGID_RE)?.[1];
+  const jsDebugId = readJsDebugId(jsContent);
   if (
     jsDebugId &&
     (skipRuntimeCheck || hasDebugIdRegistration(jsContent, jsDebugId))
@@ -231,7 +301,9 @@ export async function injectDebugId(
   }
 
   // --- Mutate sourcemap ---
-  mutateSourcemap(map, debugId, { offsetMappings: !skipSnippet });
+  mutateSourcemap(map, debugId, {
+    snippetLine: skipSnippet ? undefined : countHeaderLines(jsContent),
+  });
 
   // Write both files concurrently
   await Promise.all([
@@ -256,24 +328,27 @@ type SourcemapJson = {
  * - Normalizes Windows backslashes in `sources` to forward slashes so
  *   uploaded paths are platform-consistent (esbuild/Bun on Windows emit
  *   `"src\\bin.ts"`). No-op on Linux/macOS.
- * - When `offsetMappings` is true, prepends one `;` to `mappings` to account
- *   for the injected IIFE snippet line (each `;` is a VLQ line boundary).
+ * - When `snippetLine` is set, inserts an empty line into `mappings` at that
+ *   index to account for the injected IIFE snippet line (each `;` is a VLQ
+ *   line boundary). Header lines kept above the snippet keep their mappings.
  * - Sets both `debug_id` and `debugId` fields.
  *
  * @param map - The parsed sourcemap object (mutated in place)
  * @param debugId - The debug ID to embed
- * @param options.offsetMappings - Prepend a `;` to `mappings` (snippet added a line)
+ * @param options.snippetLine - Generated line the snippet was inserted at
  */
 function mutateSourcemap(
   map: SourcemapJson,
   debugId: string,
-  options: { offsetMappings: boolean }
+  options: { snippetLine?: number },
 ): void {
   if (map.sources) {
     map.sources = map.sources.map((s) => (s ? s.replaceAll("\\", "/") : s));
   }
-  if (options.offsetMappings && typeof map.mappings === "string") {
-    map.mappings = `;${map.mappings}`;
+  if (options.snippetLine !== undefined && typeof map.mappings === "string") {
+    const lines = map.mappings.split(";");
+    lines.splice(options.snippetLine, 0, "");
+    map.mappings = lines.join(";");
   }
   map.debug_id = debugId;
   map.debugId = debugId;
@@ -318,7 +393,7 @@ const INLINE_DIRECTIVE_RE =
  */
 export async function injectInlineDebugId(
   jsPath: string,
-  decoded: DecodedInlineMap
+  decoded: DecodedInlineMap,
 ): Promise<{
   debugId: string;
   wasInjected: boolean;
@@ -329,7 +404,7 @@ export async function injectInlineDebugId(
   const jsBytes = await readFile(jsPath);
   const jsContent = jsBytes.toString("utf-8");
 
-  const jsDebugId = jsContent.match(EXISTING_DEBUGID_RE)?.[1];
+  const jsDebugId = readJsDebugId(jsContent);
   const existingId = jsDebugId ?? readSourcemapDebugId(decoded.map);
   if (
     existingId &&
@@ -359,14 +434,16 @@ export async function injectInlineDebugId(
   const last = matches.at(-1);
   if (last?.index === undefined) {
     log.debug(
-      `inline sourcemap directive not found for rewrite in ${jsPath}; leaving file unmodified`
+      `inline sourcemap directive not found for rewrite in ${jsPath}; leaving file unmodified`,
     );
     return { debugId: "", wasInjected: false };
   }
 
   // Mutate the decoded map (IIFE adds one top line — same offset as external).
   const map = decoded.map as SourcemapJson;
-  mutateSourcemap(map, debugId, { offsetMappings: true });
+  mutateSourcemap(map, debugId, {
+    snippetLine: countHeaderLines(jsContent),
+  });
   const newDataUrl = encodeInlineSourcemap(map, decoded.dataUrlPrefix);
 
   // Rewrite the directive in place, before prepending the snippet / appending

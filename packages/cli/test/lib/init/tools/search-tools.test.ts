@@ -49,17 +49,17 @@ beforeEach(() => {
 
   fs.writeFileSync(
     path.join(testDir, "app.ts"),
-    'import * as Sentry from "@sentry/node";\nSentry.init({ dsn: "..." });\n'
+    'import * as Sentry from "@sentry/node";\nSentry.init({ dsn: "..." });\n',
   );
   fs.writeFileSync(
     path.join(testDir, "utils.ts"),
-    "export function helper() { return 1; }\n"
+    "export function helper() { return 1; }\n",
   );
   fs.writeFileSync(path.join(testDir, "config.json"), "{}\n");
   fs.mkdirSync(path.join(testDir, "src"));
   fs.writeFileSync(
     path.join(testDir, "src", "index.ts"),
-    'import { helper } from "./utils";\nSentry.init({});\n'
+    'import { helper } from "./utils";\nSentry.init({});\n',
   );
 });
 
@@ -75,7 +75,7 @@ describe("search tools", () => {
         cwd: testDir,
         params: { searches: [{ pattern: "Sentry", include: "app.*" }] },
       }),
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const grepSubdir = await executeTool(
       makeToolPayload({
@@ -83,7 +83,7 @@ describe("search tools", () => {
         cwd: testDir,
         params: { searches: [{ pattern: "helper", path: "src" }] },
       }),
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(grepWithInclude.ok).toBe(true);
@@ -104,7 +104,7 @@ describe("search tools", () => {
         cwd: testDir,
         params: { patterns: ["*.ts", "*.json"] },
       }),
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const empty = await executeTool(
       makeToolPayload({
@@ -112,16 +112,16 @@ describe("search tools", () => {
         cwd: testDir,
         params: { patterns: ["*.xyz"] },
       }),
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(matches.ok).toBe(true);
     expect((matches.data as any).results).toHaveLength(2);
     expect(
-      (matches.data as any).results[0].files.length
+      (matches.data as any).results[0].files.length,
     ).toBeGreaterThanOrEqual(2);
     expect(
-      (matches.data as any).results[1].files.length
+      (matches.data as any).results[1].files.length,
     ).toBeGreaterThanOrEqual(1);
 
     expect(empty.ok).toBe(true);
@@ -135,7 +135,7 @@ describe("search tools", () => {
         cwd: testDir,
         params: { searches: [{ pattern: "test", path: "../../etc" }] },
       }),
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result.ok).toBe(false);
@@ -154,7 +154,7 @@ describe("search tools", () => {
         cwd: testDir,
         params: { searches: [{ pattern: "Sentry" }] },
       }),
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result.ok).toBe(true);
@@ -180,7 +180,7 @@ describe("search tools", () => {
         // Unclosed paren — `new RegExp("(unclosed")` throws.
         params: { searches: [{ pattern: "(unclosed" }] },
       }),
-      makeContext(testDir)
+      makeContext(testDir),
     );
     expect(result.ok).toBe(true);
     expect((result.data as any).results[0]).toEqual({
@@ -201,7 +201,7 @@ describe("search tools", () => {
         cwd: testDir,
         params: { searches: [{ pattern: "SENTRY" }] },
       }),
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const caseInsensitive = await executeTool(
       makeToolPayload({
@@ -211,14 +211,14 @@ describe("search tools", () => {
           searches: [{ pattern: "SENTRY", caseInsensitive: true }],
         },
       }),
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(caseSensitive.ok).toBe(true);
     expect((caseSensitive.data as any).results[0].matches).toHaveLength(0);
     expect(caseInsensitive.ok).toBe(true);
     expect(
-      (caseInsensitive.data as any).results[0].matches.length
+      (caseInsensitive.data as any).results[0].matches.length,
     ).toBeGreaterThan(0);
   });
 });

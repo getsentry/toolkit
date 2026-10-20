@@ -50,7 +50,7 @@ describe("property: parseBoolValue", () => {
       property(truthyArb, (input) => {
         expect(parseBoolValue(input)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -59,7 +59,7 @@ describe("property: parseBoolValue", () => {
       property(falsyArb, (input) => {
         expect(parseBoolValue(input)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -69,7 +69,7 @@ describe("property: parseBoolValue", () => {
         const cased = randomCase(input);
         expect(parseBoolValue(cased)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -79,7 +79,7 @@ describe("property: parseBoolValue", () => {
         const cased = randomCase(input);
         expect(parseBoolValue(cased)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -89,9 +89,9 @@ describe("property: parseBoolValue", () => {
         tuple(whitespaceArb, truthyArb, whitespaceArb),
         ([pre, val, post]) => {
           expect(parseBoolValue(`${pre}${val}${post}`)).toBe(true);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -101,9 +101,9 @@ describe("property: parseBoolValue", () => {
         tuple(whitespaceArb, falsyArb, whitespaceArb),
         ([pre, val, post]) => {
           expect(parseBoolValue(`${pre}${val}${post}`)).toBe(false);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -131,7 +131,7 @@ describe("property: parseBoolValue", () => {
           expect(recognized).toContain(normalized);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS * 2 }
+      { numRuns: DEFAULT_NUM_RUNS * 2 },
     );
   });
 
@@ -141,10 +141,10 @@ describe("property: parseBoolValue", () => {
         // Should never throw, always returns boolean | null
         const result = parseBoolValue(input);
         expect(result === true || result === false || result === null).toBe(
-          true
+          true,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

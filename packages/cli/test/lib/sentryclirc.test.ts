@@ -120,7 +120,7 @@ url = https://sentry.io/
 
 [auth]
 token = sntrys_test
-`
+`,
     );
 
     const result = await loadSentryCliRc(testDir);
@@ -161,7 +161,7 @@ token = sntrys_test
   test("closest file wins: token from child, org from parent", async () => {
     writeRcFile(
       testDir,
-      "[defaults]\norg = parent-org\n[auth]\ntoken = parent-token"
+      "[defaults]\norg = parent-org\n[auth]\ntoken = parent-token",
     );
 
     const childDir = join(testDir, "sub");
@@ -324,7 +324,7 @@ describe("applySentryCliRcEnvShim", () => {
     expect(readEnv("SENTRY_URL")).toBe("https://evil.example.com");
 
     await expect(assertRcUrlTrusted(testDir)).rejects.toThrow(
-      /does not match|sentry auth login --url/
+      /does not match|sentry auth login --url/,
     );
   });
 

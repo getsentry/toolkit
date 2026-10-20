@@ -30,7 +30,7 @@ describe("makeByteProgress", () => {
       (m) => msgs.push(m),
       {
         nowMs: () => now,
-      }
+      },
     );
     p.onProgress(500); // first call: now=0, lastEmit=0 → throttled (0-0 < 100)
     now = 200;
@@ -110,7 +110,7 @@ describe("makeByteProgress", () => {
       () => {
         throw new Error("boom");
       },
-      { nowMs: () => 1000 }
+      { nowMs: () => 1000 },
     );
     expect(() => {
       p.onProgress(100);
@@ -130,7 +130,7 @@ describe("makeByteProgress", () => {
       "Applying 3 patch(es)",
       930 * 1024 * 1024,
       (m) => msgs.push(m),
-      { format: "pct", nowMs: () => now }
+      { format: "pct", nowMs: () => now },
     );
     now = 200;
     p.onProgress(310 * 1024 * 1024); // 33%
@@ -174,7 +174,7 @@ describe("makeByteProgress", () => {
     // helper itself still defaults to "bytes".
     const src = readFileSync(
       join(__dirname, "../../src/lib/delta-upgrade.ts"),
-      "utf8"
+      "utf8",
     );
     // Find the makeByteProgress call inside the apply bar branch by scanning
     // for balanced parentheses, so nested calls like

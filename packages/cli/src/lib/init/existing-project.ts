@@ -1,6 +1,6 @@
 import { getProject, tryGetPrimaryDsn } from "../api-client.js";
 import { ApiError } from "../errors.js";
-import { buildProjectUrl } from "../sentry-urls.js";
+import { buildProjectUrl } from "../sentry-web-urls.js";
 import type { ExistingProjectData } from "./types.js";
 
 /**
@@ -12,7 +12,7 @@ import type { ExistingProjectData } from "./types.js";
  */
 export async function tryGetExistingProjectData(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<ExistingProjectData | null> {
   try {
     const project = await getProject(orgSlug, projectSlug);

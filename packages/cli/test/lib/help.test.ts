@@ -11,7 +11,7 @@ import { introspectAllCommands, printCustomHelp } from "../../src/lib/help.js";
 import { useTestConfigDir } from "../helpers.js";
 
 /** Strip ANSI escape sequences for content assertions */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape codes use control chars by definition
+// oxlint-disable-next-line no-control-regex -- ANSI escape codes use control chars by definition
 const ANSI_RE = /\u001B\[[0-9;]*m/g;
 function stripAnsi(str: string): string {
   return str.replace(ANSI_RE, "");
@@ -23,7 +23,7 @@ function maxLineWidth(banner: string): number {
     0,
     ...stripAnsi(banner)
       .split("\n")
-      .map((line) => [...line].length)
+      .map((line) => [...line].length),
   );
 }
 

@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-feedback
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Manage User Feedback
 requires:
   bins: ["sentry"]
@@ -11,7 +11,7 @@ requires:
 
 Manage User Feedback
 
-### `sentry feedback list <org/project>`
+### `sentry feedback list [<org/project>]`
 
 List and search User Feedback
 

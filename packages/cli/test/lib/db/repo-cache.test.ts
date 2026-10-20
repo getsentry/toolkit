@@ -53,7 +53,7 @@ describe("getCachedRepos", () => {
     const db = getDatabase();
     db.query("UPDATE repo_cache SET cached_at = ? WHERE org_slug = ?").run(
       Date.now() - (REPO_CACHE_TTL_MS + 1000),
-      "aged-org"
+      "aged-org",
     );
     expect(getCachedRepos("aged-org")).toBeNull();
   });
@@ -61,7 +61,7 @@ describe("getCachedRepos", () => {
   test("returns null when repos_json is corrupted (treats as miss)", () => {
     const db = getDatabase();
     db.query(
-      "INSERT INTO repo_cache (org_slug, repos_json, cached_at) VALUES (?, ?, ?)"
+      "INSERT INTO repo_cache (org_slug, repos_json, cached_at) VALUES (?, ?, ?)",
     ).run("broken-org", "{not-json", Date.now());
     expect(getCachedRepos("broken-org")).toBeNull();
   });
@@ -69,7 +69,7 @@ describe("getCachedRepos", () => {
   test("returns null when repos_json is valid JSON but not an array", () => {
     const db = getDatabase();
     db.query(
-      "INSERT INTO repo_cache (org_slug, repos_json, cached_at) VALUES (?, ?, ?)"
+      "INSERT INTO repo_cache (org_slug, repos_json, cached_at) VALUES (?, ?, ?)",
     ).run("wrong-shape-org", JSON.stringify({ not: "array" }), Date.now());
     expect(getCachedRepos("wrong-shape-org")).toBeNull();
   });

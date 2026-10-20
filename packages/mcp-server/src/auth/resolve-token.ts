@@ -1,5 +1,6 @@
+import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import type { PartiallyResolvedConfig, ResolvedConfig } from "../cli/types";
-import { isSentryIo, OAUTH_HOST } from "./constants";
+import { OAUTH_HOST } from "./constants";
 import { authenticate } from "./device-code-flow";
 import { readCachedToken, writeCachedToken } from "./token-cache";
 import { toCachedToken } from "./types";
@@ -26,7 +27,7 @@ export async function resolveAccessToken(
     return withToken(partial, partial.accessToken);
   }
 
-  if (!isSentryIo(partial.sentryHost)) {
+  if (!isSentryHost(partial.sentryHost)) {
     throw new Error(
       "Error: No access token was provided. Device code authentication is only supported for sentry.io.\n" +
         "Pass one with `--access-token` or via `SENTRY_ACCESS_TOKEN`.",

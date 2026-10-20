@@ -64,7 +64,7 @@ const PATTERNS: StalePattern[] = [
     // "requires Bun", "Yarn installed", "Bun runtime" (prerequisite prose)
     pattern: new RegExp(
       `\\b(?:requires\\s+(?:${escaped})|(?:${escaped})\\s+(?:installed|runtime))\\b`,
-      "i"
+      "i",
     ),
     reason: `Project uses ${currentPM}, not these runtimes`,
   },
@@ -163,7 +163,7 @@ for (const filePath of FILES_TO_SCAN) {
  */
 function findOriginalLineNumber(
   original: string,
-  strippedLine: string
+  strippedLine: string,
 ): number {
   const trimmed = strippedLine.trim();
   const lines = original.split("\n");
@@ -177,13 +177,13 @@ function findOriginalLineNumber(
 
 if (findings.length === 0) {
   console.log(
-    `✓ No stale package manager references found (current: ${currentPM}, checked: ${FILES_TO_SCAN.length} files)`
+    `✓ No stale package manager references found (current: ${currentPM}, checked: ${FILES_TO_SCAN.length} files)`,
   );
   process.exit(0);
 }
 
 console.error(
-  `✗ Found ${findings.length} stale package manager reference(s) (current PM: ${currentPM}):\n`
+  `✗ Found ${findings.length} stale package manager reference(s) (current PM: ${currentPM}):\n`,
 );
 for (const f of findings) {
   console.error(`  ${f.file}:${f.line}: ${f.text}`);

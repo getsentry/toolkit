@@ -72,7 +72,7 @@ function setByKey(key: string, info: Omit<CachedProject, "cachedAt">): void {
       cached_at: now,
       last_accessed: now,
     },
-    ["cache_key"]
+    ["cache_key"],
   );
 
   maybeCleanupCaches();
@@ -80,7 +80,7 @@ function setByKey(key: string, info: Omit<CachedProject, "cachedAt">): void {
 
 export function getCachedProject(
   orgId: string,
-  projectId: string
+  projectId: string,
 ): CachedProject | undefined {
   return getByKey(projectCacheKey(orgId, projectId));
 }
@@ -88,14 +88,14 @@ export function getCachedProject(
 export function setCachedProject(
   orgId: string,
   projectId: string,
-  info: Omit<CachedProject, "cachedAt">
+  info: Omit<CachedProject, "cachedAt">,
 ): void {
   setByKey(projectCacheKey(orgId, projectId), info);
 }
 
 /** Get cached project by DSN public key (for self-hosted or SaaS DSNs without org ID). */
 export function getCachedProjectByDsnKey(
-  publicKey: string
+  publicKey: string,
 ): CachedProject | undefined {
   return getByKey(dsnCacheKey(publicKey));
 }
@@ -103,7 +103,7 @@ export function getCachedProjectByDsnKey(
 /** Cache project by DSN public key (for self-hosted or SaaS DSNs without org ID). */
 export function setCachedProjectByDsnKey(
   publicKey: string,
-  info: Omit<CachedProject, "cachedAt">
+  info: Omit<CachedProject, "cachedAt">,
 ): void {
   setByKey(dsnCacheKey(publicKey), info);
 }
@@ -127,12 +127,12 @@ export function setCachedProjectByDsnKey(
  */
 export function getCachedProjectBySlug(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): CachedProject | undefined {
   const db = getDatabase();
   const row = db
     .query(
-      "SELECT cache_key, org_slug, org_name, project_slug, project_name, project_id, MAX(cached_at) AS cached_at, last_accessed FROM project_cache WHERE org_slug = ? AND project_slug = ?"
+      "SELECT cache_key, org_slug, org_name, project_slug, project_name, project_id, MAX(cached_at) AS cached_at, last_accessed FROM project_cache WHERE org_slug = ? AND project_slug = ?",
     )
     .get(orgSlug, projectSlug) as ProjectCacheRow | undefined;
 
@@ -155,12 +155,12 @@ export function getCachedProjectBySlug(
  */
 export function getCachedProjectById(
   orgSlug: string,
-  projectId: string
+  projectId: string,
 ): CachedProject | undefined {
   const db = getDatabase();
   const row = db
     .query(
-      "SELECT * FROM project_cache WHERE org_slug = ? AND project_id = ? ORDER BY cached_at DESC, cache_key LIMIT 1"
+      "SELECT * FROM project_cache WHERE org_slug = ? AND project_id = ? ORDER BY cached_at DESC, cache_key LIMIT 1",
     )
     .get(orgSlug, projectId) as ProjectCacheRow | undefined;
 
@@ -182,7 +182,7 @@ export function getCachedProjectById(
  * @param orgSlug - The organization slug to filter by
  */
 export function getCachedProjectsForOrg(
-  orgSlug: string
+  orgSlug: string,
 ): { projectSlug: string; projectName: string }[] {
   const db = getDatabase();
   // Use MAX(cached_at) to deterministically pick the most recently cached
@@ -192,7 +192,7 @@ export function getCachedProjectsForOrg(
   // produced the MAX/MIN aggregate value.
   const rows = db
     .query(
-      "SELECT project_slug, project_name, MAX(cached_at) FROM project_cache WHERE org_slug = ? GROUP BY project_slug"
+      "SELECT project_slug, project_name, MAX(cached_at) FROM project_cache WHERE org_slug = ? GROUP BY project_slug",
     )
     .all(orgSlug) as Pick<ProjectCacheRow, "project_slug" | "project_name">[];
 
@@ -216,7 +216,7 @@ export function getCachedProjectsForOrg(
 export function cacheProjectsForOrg(
   orgSlug: string,
   orgName: string,
-  projects: Array<{ id: string; slug: string; name: string }>
+  projects: Array<{ id: string; slug: string; name: string }>,
 ): void {
   if (projects.length === 0) {
     return;
@@ -240,7 +240,7 @@ export function cacheProjectsForOrg(
           cached_at: now,
           last_accessed: now,
         },
-        ["cache_key"]
+        ["cache_key"],
       );
     }
   })();

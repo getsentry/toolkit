@@ -5,7 +5,7 @@
  * Handlers are tested with fetch mocking for API isolation.
  */
 
-// biome-ignore-all lint/suspicious/noMisplacedAssertion: Property tests use expect() inside fast-check callbacks.
+// Property tests use expect() inside fast-check callbacks.
 
 import {
   array,
@@ -14,7 +14,7 @@ import {
   property,
   tuple,
 } from "fast-check";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   buildContextKey,
   displayProjectTable,
@@ -26,6 +26,7 @@ import {
   handleExplicit,
   handleOrgAll,
   handleProjectSearch,
+  listCommand,
   PAGINATION_KEY,
 } from "../../../src/commands/project/list.js";
 import type { ParsedOrgProject } from "../../../src/lib/arg-parsing.js";
@@ -39,6 +40,7 @@ import {
 } from "../../../src/lib/db/pagination.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import {
+  ApiError,
   AuthError,
   ResolutionError,
   ValidationError,
@@ -47,11 +49,13 @@ import type { SentryProject } from "../../../src/types/index.js";
 import { useTestConfigDir } from "../../helpers.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
-useTestConfigDir("test-project-list-", { isolateProjectRoot: true });
+const getConfigDir = useTestConfigDir("test-project-list-", {
+  isolateProjectRoot: true,
+});
 
 /** Create a minimal project for testing */
 function makeProject(
-  overrides: Partial<SentryProject> & { orgSlug?: string } = {}
+  overrides: Partial<SentryProject> & { orgSlug?: string } = {},
 ): SentryProject & { orgSlug?: string } {
   return {
     id: "1",
@@ -71,7 +75,7 @@ const slugArb = array(
   {
     minLength: 1,
     maxLength: 12,
-  }
+  },
 ).map((chars) => chars.join(""));
 
 const platformArb = constantFrom(
@@ -82,7 +86,7 @@ const platformArb = constantFrom(
   "ruby",
   "php",
   "javascript-react",
-  "python-django"
+  "python-django",
 );
 
 // Tests
@@ -97,7 +101,7 @@ describe("buildContextKey", () => {
         const key = buildContextKey(parsed, {}, host);
         expect(key).toBe(`host:${host}|type:org:${org}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -113,7 +117,7 @@ describe("buildContextKey", () => {
         const key = buildContextKey(parsed, {}, host);
         expect(key).toBe(`host:${host}|type:explicit:${org}/${project}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -127,7 +131,7 @@ describe("buildContextKey", () => {
         const key = buildContextKey(parsed, {}, host);
         expect(key).toBe(`host:${host}|type:search:${projectSlug}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -138,7 +142,7 @@ describe("buildContextKey", () => {
         const key = buildContextKey(parsed, { platform }, host);
         expect(key).toBe(`host:${host}|type:org:${org}|platform:${platform}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -150,13 +154,13 @@ describe("buildContextKey", () => {
         const selfHosted = buildContextKey(
           parsed,
           {},
-          "https://sentry.example.com"
+          "https://sentry.example.com",
         );
         expect(saas).not.toBe(selfHosted);
         expect(saas).toStartWith("host:https://sentry.io|");
         expect(selfHosted).toStartWith("host:https://sentry.example.com|");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -209,7 +213,7 @@ describe("filterByPlatform", () => {
         const twice = filterByPlatform(once, platform);
         expect(twice).toEqual(once);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -227,7 +231,7 @@ describe("filterByPlatform", () => {
           expect(projects).toContain(p);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -243,7 +247,7 @@ describe("resolveCursor", () => {
     const result = resolveCursor(
       "1735689600000:100:0",
       PAGINATION_KEY,
-      "org:sentry"
+      "org:sentry",
     );
     expect(result.cursor).toBe("1735689600000:100:0");
     expect(result.direction).toBe("next");
@@ -251,10 +255,10 @@ describe("resolveCursor", () => {
 
   test("'next' with no saved state throws ValidationError", () => {
     expect(() => resolveCursor("next", PAGINATION_KEY, "org:sentry")).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() => resolveCursor("next", PAGINATION_KEY, "org:sentry")).toThrow(
-      /No next page/
+      /No next page/,
     );
   });
 
@@ -276,10 +280,10 @@ describe("resolveCursor", () => {
     advancePaginationState(PAGINATION_KEY, contextKey, "next", "some-cursor");
 
     expect(() => resolveCursor("prev", PAGINATION_KEY, contextKey)).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() => resolveCursor("prev", PAGINATION_KEY, contextKey)).toThrow(
-      /first page/
+      /first page/,
     );
   });
 
@@ -297,7 +301,7 @@ let originalFetch: typeof globalThis.fetch;
 /** Create a mock fetch for project API calls */
 function mockProjectFetch(
   projects: SentryProject[],
-  options: { hasMore?: boolean; nextCursor?: string } = {}
+  options: { hasMore?: boolean; nextCursor?: string } = {},
 ): typeof globalThis.fetch {
   const { hasMore = false, nextCursor } = options;
   // @ts-expect-error - partial mock
@@ -307,8 +311,13 @@ function mockProjectFetch(
 
     // getProject (single project fetch via /projects/{org}/{slug}/)
     if (url.match(/\/projects\/[^/]+\/[^/]+\//)) {
-      if (projects.length > 0) {
-        return new Response(JSON.stringify(projects[0]), {
+      const projectSlug = new URL(url).pathname
+        .split("/")
+        .filter(Boolean)
+        .at(-1);
+      const project = projects.find(({ slug }) => slug === projectSlug);
+      if (project) {
+        return new Response(JSON.stringify(project), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -332,7 +341,7 @@ function mockProjectFetch(
       ];
       if (hasMore && nextCursor) {
         linkParts.push(
-          `<${url}>; rel="next"; results="true"; cursor="${nextCursor}"`
+          `<${url}>; rel="next"; results="true"; cursor="${nextCursor}"`,
         );
       } else {
         linkParts.push(`<${url}>; rel="next"; results="false"; cursor="0:0:0"`);
@@ -357,7 +366,7 @@ function mockProjectFetch(
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -456,6 +465,173 @@ describe("handleExplicit", () => {
   });
 });
 
+describe("project list: comma-separated project slugs", () => {
+  const flags = { limit: 30, json: false, fresh: false };
+  let func: Awaited<ReturnType<typeof listCommand.loader>>;
+
+  beforeEach(async () => {
+    originalFetch = globalThis.fetch;
+    func = await listCommand.loader();
+    await setAuthToken("test-token");
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function createCommandContext() {
+    const stdout = {
+      output: "",
+      write(value: string) {
+        stdout.output += value;
+        return true;
+      },
+    };
+    const stderr = { write: () => true };
+    const context = {
+      process,
+      env: process.env,
+      stdout,
+      stderr,
+      cwd: getConfigDir(),
+    };
+    return { context, stdout };
+  }
+
+  test("looks up each project directly and keeps input order", async () => {
+    const fetchSpy = vi.fn(mockProjectFetch(sampleProjects));
+    globalThis.fetch = fetchSpy;
+    const { context, stdout } = createCommandContext();
+
+    await func.call(
+      context,
+      { ...flags, json: true },
+      "test-org/backend,frontend",
+    );
+
+    const output = JSON.parse(stdout.output) as SentryProject[];
+    expect(output.map(({ slug }) => slug)).toEqual(["backend", "frontend"]);
+    const requestedUrls = fetchSpy.mock.calls.map(
+      ([input, init]) => new Request(input, init).url,
+    );
+    expect(
+      requestedUrls.some((url) =>
+        url.includes("/organizations/test-org/projects/"),
+      ),
+    ).toBe(false);
+    expect(
+      requestedUrls.filter(
+        (url) =>
+          url.includes("/projects/test-org/frontend/") ||
+          url.includes("/projects/test-org/backend/"),
+      ),
+    ).toHaveLength(2);
+  });
+
+  test.each([false, true])(
+    "respects --limit for selectors (json=%s)",
+    async (json) => {
+      globalThis.fetch = mockProjectFetch(sampleProjects);
+      const { context, stdout } = createCommandContext();
+
+      await func.call(
+        context,
+        { ...flags, limit: 1, json },
+        "test-org/backend,frontend",
+      );
+
+      if (json) {
+        const output = JSON.parse(stdout.output) as SentryProject[];
+        expect(output.map(({ slug }) => slug)).toEqual(["backend"]);
+      } else {
+        expect(stdout.output).toContain("backend");
+        expect(stdout.output).not.toContain("frontend");
+        expect(stdout.output).toContain(
+          "Showing 1 of 2 matches. Use --limit to show more.",
+        );
+      }
+    },
+  );
+
+  test("applies the selector limit after platform filtering", async () => {
+    globalThis.fetch = mockProjectFetch(sampleProjects);
+    const { context, stdout } = createCommandContext();
+
+    await func.call(
+      context,
+      { ...flags, limit: 1, platform: "javascript", json: true },
+      "test-org/backend,frontend",
+    );
+
+    const output = JSON.parse(stdout.output) as SentryProject[];
+    expect(output.map(({ slug }) => slug)).toEqual(["frontend"]);
+  });
+
+  test("propagates lookup errors other than not found", async () => {
+    const projectFetch = mockProjectFetch(sampleProjects);
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      if (
+        new Request(input, init).url.includes("/projects/test-org/backend/")
+      ) {
+        return new Response(JSON.stringify({ detail: "Forbidden" }), {
+          status: 403,
+        });
+      }
+      return projectFetch(input, init);
+    }) as typeof globalThis.fetch;
+    const { context } = createCommandContext();
+
+    const error = await func
+      .call(context, flags, "test-org/frontend,backend")
+      .catch((caught: Error) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(403);
+  });
+
+  test("returns matches and names missing projects", async () => {
+    globalThis.fetch = mockProjectFetch(sampleProjects.slice(0, 1));
+    const { context, stdout } = createCommandContext();
+
+    await func.call(context, flags, "test-org/frontend,backend");
+
+    expect(stdout.output).toContain("frontend");
+    expect(stdout.output).toContain("Missing: backend");
+  });
+
+  test("distinguishes platform-filtered projects from missing projects", async () => {
+    globalThis.fetch = mockProjectFetch(sampleProjects);
+    const { context, stdout } = createCommandContext();
+
+    await func.call(
+      context,
+      { ...flags, platform: "javascript" },
+      "test-org/frontend,backend",
+    );
+
+    expect(stdout.output).toContain("frontend");
+    expect(stdout.output).toContain(
+      "No match for platform 'javascript': backend",
+    );
+    expect(stdout.output).not.toContain("Missing: backend");
+  });
+
+  test("reports every requested project when none exist", async () => {
+    globalThis.fetch = mockProjectFetch([]);
+    const { context, stdout } = createCommandContext();
+
+    await func.call(context, flags, "test-org/frontend,backend");
+
+    expect(stdout.output).toContain(
+      "No projects found among: 'frontend', 'backend'.",
+    );
+  });
+});
+
 describe("handleOrgAll", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
@@ -543,7 +719,7 @@ describe("handleOrgAll", () => {
       PAGINATION_KEY,
       "type:org:test-org",
       "next",
-      "old-cursor"
+      "old-cursor",
     );
 
     globalThis.fetch = mockProjectFetch(sampleProjects);
@@ -657,7 +833,7 @@ describe("handleOrgAll", () => {
         id: String(i + 1),
         slug: `proj-${i}`,
         name: `Project ${i}`,
-      })
+      }),
     );
     const perPageValues: number[] = [];
 
@@ -749,7 +925,7 @@ describe("handleProjectSearch", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -765,7 +941,7 @@ describe("handleProjectSearch", () => {
         limit: 30,
         json: false,
         fresh: false,
-      })
+      }),
     ).rejects.toThrow(ResolutionError);
   });
 
@@ -781,7 +957,7 @@ describe("handleProjectSearch", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -849,7 +1025,7 @@ describe("handleProjectSearch", () => {
             dateCreated: "2024-01-01T00:00:00Z",
             status: "active",
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -864,7 +1040,7 @@ describe("handleProjectSearch", () => {
             { id: "10", slug: "org-a", name: "Org A" },
             { id: "20", slug: "org-b", name: "Org B" },
           ]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -876,7 +1052,7 @@ describe("handleProjectSearch", () => {
     const result = await handleProjectSearch(
       "frontend",
       { limit: 30, json: false, fresh: false },
-      { scopedOrg: "org-a" }
+      { scopedOrg: "org-a" },
     );
 
     expect(result.items.every((i) => i.orgSlug === "org-a")).toBe(true);
@@ -918,7 +1094,7 @@ describe("handleProjectSearch", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -972,7 +1148,7 @@ describe("handleProjectSearch", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -1150,7 +1326,7 @@ describe("fetchAllOrgProjects", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -1238,7 +1414,7 @@ describe("handleAutoDetect", () => {
 
   test("respects --limit flag and indicates truncation", async () => {
     const manyProjects = Array.from({ length: 5 }, (_, i) =>
-      makeProject({ id: String(i), slug: `proj-${i}`, name: `Project ${i}` })
+      makeProject({ id: String(i), slug: `proj-${i}`, name: `Project ${i}` }),
     );
     globalThis.fetch = mockProjectFetch(manyProjects);
 
@@ -1271,7 +1447,7 @@ describe("handleAutoDetect", () => {
 
   test("shows limit message when more projects exist", async () => {
     const manyProjects = Array.from({ length: 5 }, (_, i) =>
-      makeProject({ id: String(i), slug: `proj-${i}`, name: `Project ${i}` })
+      makeProject({ id: String(i), slug: `proj-${i}`, name: `Project ${i}` }),
     );
     globalThis.fetch = mockProjectFetch(manyProjects);
 
@@ -1378,7 +1554,7 @@ describe("handleAutoDetect", () => {
           limit: 30,
           json: true,
           fresh: false,
-        })
+        }),
       ).rejects.toThrow(AuthError);
     } finally {
       if (savedAuthToken !== undefined) {

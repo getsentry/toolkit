@@ -5,6 +5,7 @@
  * ID resolution from numeric IDs or title strings.
  */
 
+import { parseFunction } from "@sentry/toolkit-core/events-fields";
 import { MAX_PAGINATION_PAGES } from "../../lib/api/infrastructure.js";
 import {
   API_MAX_PER_PAGE,
@@ -35,6 +36,9 @@ import {
   WIDGET_TYPES,
 } from "../../types/dashboard.js";
 
+/** Recognize slug-shaped targets without treating arbitrary slash titles as paths. */
+const DASHBOARD_REF_PATH_RE = /^([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?)\/(.+)$/;
+
 /** Shared widget query flags used by `add` and `edit` commands */
 export type WidgetQueryFlags = {
   readonly display?: string;
@@ -61,7 +65,7 @@ export type WidgetQueryFlags = {
 export function resolveOrgFromTarget(
   parsed: ReturnType<typeof parseOrgProjectArg>,
   cwd: string,
-  usageHint: string
+  usageHint: string,
 ): Promise<string> {
   return resolveOrgOnlyTarget(parsed, cwd, "dashboard", usageHint);
 }
@@ -80,7 +84,7 @@ type DashboardArgResult = {
  */
 function tryExtractDashboardUrl(
   first: string,
-  args: string[]
+  args: string[],
 ): DashboardArgResult | null {
   const urlParsed = parseSentryUrl(first);
   if (!urlParsed) {
@@ -90,7 +94,7 @@ function tryExtractDashboardUrl(
   if (urlParsed.dashboardId) {
     log.warn(
       `Extracted dashboard ID ${urlParsed.dashboardId} from URL` +
-        (urlParsed.org ? ` (org: ${urlParsed.org})` : "")
+        (urlParsed.org ? ` (org: ${urlParsed.org})` : ""),
     );
     return {
       dashboardRef: urlParsed.dashboardId,
@@ -110,7 +114,7 @@ function tryExtractDashboardUrl(
       "Dashboard ID or title is required.\n\n" +
         "The URL provided contains an org but no dashboard ID.\n" +
         `Try: sentry dashboard <command> ${urlParsed.org}/ <id-or-title>`,
-      "dashboard"
+      "dashboard",
     );
   }
   return null;
@@ -121,6 +125,7 @@ function tryExtractDashboardUrl(
  *
  * Handles:
  * - `<id-or-title>` — single arg (auto-detect org)
+ * - `<org>/<id>` or `<org>/<project>/<id>` — qualified numeric ID
  * - `<target> <id-or-title>` — explicit target + dashboard ref
  * - Full Sentry dashboard URL — extracts org + dashboard ID
  *
@@ -132,12 +137,12 @@ function tryExtractDashboardUrl(
  * @returns Dashboard reference string and optional target arg
  */
 export function parseDashboardPositionalArgs(
-  args: string[]
+  args: string[],
 ): DashboardArgResult {
   if (args.length === 0) {
     throw new ValidationError(
       "Dashboard ID or title is required.",
-      "dashboard"
+      "dashboard",
     );
   }
 
@@ -150,6 +155,13 @@ export function parseDashboardPositionalArgs(
   }
 
   if (args.length === 1) {
+    const [, target, dashboardRef] = DASHBOARD_REF_PATH_RE.exec(first) ?? [];
+    if (target && dashboardRef && isAllDigits(dashboardRef)) {
+      return {
+        dashboardRef,
+        targetArg: target.includes("/") ? target : `${target}/`,
+      };
+    }
     return {
       dashboardRef: first,
       targetArg: undefined,
@@ -198,7 +210,7 @@ type ListArgResult = {
  */
 function tryExtractListUrl(
   first: string,
-  remaining: string[]
+  remaining: string[],
 ): ListArgResult | null {
   const urlParsed = parseSentryUrl(first);
   if (!urlParsed) {
@@ -214,7 +226,7 @@ function tryExtractListUrl(
         `  sentry dashboard view ${orgPrefix}${urlParsed.dashboardId}\n\n` +
         `To list dashboards${orgNote}:\n\n` +
         `  sentry dashboard list${orgSuffix}`,
-      "dashboard"
+      "dashboard",
     );
   }
   if (urlParsed.org) {
@@ -230,7 +242,7 @@ export function parseDashboardListArgs(args: string[]): ListArgResult {
   // when the first positional matches a subcommand name (e.g. "view", "create").
   // Filter those out so we don't crash on .includes("/").
   const filtered = args.filter(
-    (a): a is string => a !== null && a !== undefined && a !== ""
+    (a): a is string => a !== null && a !== undefined && a !== "",
   );
   if (filtered.length === 0) {
     return { targetArg: undefined, titleFilter: undefined };
@@ -307,7 +319,7 @@ function splitOrgProjectName(arg: string): {
  */
 export async function resolveDashboardId(
   orgSlug: string,
-  ref: string
+  ref: string,
 ): Promise<string> {
   if (isAllDigits(ref)) {
     return ref;
@@ -323,7 +335,7 @@ export async function resolveDashboardId(
       perPage: API_MAX_PER_PAGE,
       cursor,
     }).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "list" })
+      enrichDashboardError(error, { orgSlug, operation: "list" }),
     );
     // Match by ID/slug first (e.g. "default-overview"), then fall back to title
     const match =
@@ -359,7 +371,7 @@ export async function resolveDashboardId(
   }
 
   throw new ValidationError(
-    `No dashboard with title '${ref}' found in '${orgSlug}'.${hint}`
+    `No dashboard with title '${ref}' found in '${orgSlug}'.${hint}`,
   );
 }
 
@@ -374,25 +386,25 @@ export async function resolveDashboardId(
 export function resolveWidgetIndex(
   widgets: DashboardWidget[],
   index: number | undefined,
-  title: string | undefined
+  title: string | undefined,
 ): number {
   if (index !== undefined) {
     if (index < 0 || index >= widgets.length) {
       throw new ValidationError(
         `Widget index ${index} out of range (dashboard has ${widgets.length} widgets).`,
-        "index"
+        "index",
       );
     }
     return index;
   }
   const lowerTitle = (title ?? "").toLowerCase();
   const matchIndex = widgets.findIndex(
-    (w) => (w.title ?? "").toLowerCase() === lowerTitle
+    (w) => (w.title ?? "").toLowerCase() === lowerTitle,
   );
   if (matchIndex === -1) {
     throw new ValidationError(
       `No widget with title '${title}' found in dashboard.`,
-      "title"
+      "title",
     );
   }
   return matchIndex;
@@ -407,7 +419,7 @@ export function resolveWidgetIndex(
  */
 export function validateSortReferencesAggregate(
   orderby: string,
-  aggregates: string[]
+  aggregates: string[],
 ): void {
   // Strip leading "-" for descending sorts
   const sortAgg = orderby.startsWith("-") ? orderby.slice(1) : orderby;
@@ -417,7 +429,7 @@ export function validateSortReferencesAggregate(
         "The --sort field must be one of the aggregate expressions in --query.\n" +
         `Current aggregates: ${aggregates.join(", ")}\n\n` +
         `Either add "${sortAgg}" to --query or sort by an existing aggregate.`,
-      "sort"
+      "sort",
     );
   }
 }
@@ -447,7 +459,7 @@ export const DEFAULT_GROUP_BY_LIMIT = 5;
  */
 export function autoDefaultGroupLimit(
   columns: string[],
-  limit: number | null | undefined
+  limit: number | null | undefined,
 ): number | undefined {
   if (limit !== undefined && limit !== null) {
     return limit;
@@ -476,7 +488,7 @@ const log = logger.withTag("dashboard");
 export function applyGroupLimitAutoDefault(
   userGroupBy: string[] | undefined,
   columns: string[],
-  limit: number | null | undefined
+  limit: number | null | undefined,
 ): number | null | undefined {
   if (!userGroupBy || userGroupBy.length === 0) {
     return limit;
@@ -484,7 +496,7 @@ export function applyGroupLimitAutoDefault(
   const effective = autoDefaultGroupLimit(columns, limit);
   if (effective !== limit && effective !== undefined) {
     log.info(
-      `Auto-defaulting --limit to ${DEFAULT_GROUP_BY_LIMIT} for grouped widget. Pass --limit <n> to override.`
+      `Auto-defaulting --limit to ${DEFAULT_GROUP_BY_LIMIT} for grouped widget. Pass --limit <n> to override.`,
     );
     return effective;
   }
@@ -538,22 +550,19 @@ const NUMERIC_AGGREGATE_FUNCTIONS = new Set([
  */
 function warnUnknownAggregateFields(
   aggregates: string[],
-  dataset: string | undefined
+  dataset: string | undefined,
 ): void {
   if (dataset && dataset !== "spans") {
     return;
   }
   for (const agg of aggregates) {
-    const parenIdx = agg.indexOf("(");
-    if (parenIdx < 0) {
-      continue;
-    }
-    const fn = agg.slice(0, parenIdx);
+    const parsed = parseFunction(agg);
     // Only check numeric aggregate functions — count_unique, any, etc. accept any column
-    if (!NUMERIC_AGGREGATE_FUNCTIONS.has(fn)) {
+    if (!(parsed && NUMERIC_AGGREGATE_FUNCTIONS.has(parsed.name))) {
       continue;
     }
-    const inner = agg.slice(parenIdx + 1, -1);
+    // The aggregated field is the first argument; percentile() adds a level.
+    const inner = parsed.arguments[0];
     if (!inner) {
       continue;
     }
@@ -562,7 +571,7 @@ function warnUnknownAggregateFields(
         `Aggregate field "${inner}" in "${agg}" is not a known aggregatable span field. ` +
           "Span attributes (custom tags) cannot be used with numeric aggregates — " +
           "use them in --where or --group-by instead. " +
-          `Known numeric fields: ${[...KNOWN_SPAN_AGGREGATE_FIELDS].join(", ")}`
+          `Known numeric fields: ${[...KNOWN_SPAN_AGGREGATE_FIELDS].join(", ")}`,
       );
     }
   }
@@ -650,7 +659,7 @@ const MAX_404_SUGGESTIONS = 5;
  */
 async function build404Error(
   ctx: DashboardErrorContext,
-  org: string
+  org: string,
 ): Promise<never> {
   if (ctx.operation === "list") {
     throw new ResolutionError(
@@ -660,7 +669,7 @@ async function build404Error(
       [
         "Verify the organization slug with: sentry org list",
         "Check that you have access to the organization",
-      ]
+      ],
     );
   }
   const listHint = `sentry dashboard list ${ctx.orgSlug ?? "<org>"}/`;
@@ -677,7 +686,7 @@ async function build404Error(
         });
         if (data.length > 0) {
           const lines = data.map(
-            (d) => `    ${d.id}  ${d.title ?? "(untitled)"}`
+            (d) => `    ${d.id}  ${d.title ?? "(untitled)"}`,
           );
           alternatives.push(`Available dashboards:\n${lines.join("\n")}`);
         }
@@ -689,7 +698,7 @@ async function build404Error(
       `Dashboard ${ctx.dashboardId} in ${org}`,
       "not found",
       listHint,
-      alternatives
+      alternatives,
     );
   }
   // Generic 404 for create or other operations
@@ -697,7 +706,7 @@ async function build404Error(
     `Organization ${org}`,
     "not found",
     "sentry org list",
-    ["Verify the organization slug and your access"]
+    ["Verify the organization slug and your access"],
   );
 }
 
@@ -705,7 +714,7 @@ async function build404Error(
 function build403Error(
   ctx: DashboardErrorContext,
   org: string,
-  detail: string | undefined
+  detail: string | undefined,
 ): never {
   const message = detail ?? "You do not have permission.";
   if (ctx.dashboardId) {
@@ -713,14 +722,14 @@ function build403Error(
       `Dashboard ${ctx.dashboardId} in ${org}`,
       "access denied",
       `sentry dashboard list ${ctx.orgSlug ?? "<org>"}/`,
-      [message, "Check your organization membership and role"]
+      [message, "Check your organization membership and role"],
     );
   }
   throw new ResolutionError(
     `Dashboards in ${org}`,
     "access denied",
     "sentry org list",
-    [message, "Check your organization membership and role"]
+    [message, "Check your organization membership and role"],
   );
 }
 
@@ -736,7 +745,7 @@ function build403Error(
  */
 export async function enrichDashboardError(
   error: unknown,
-  ctx: DashboardErrorContext
+  ctx: DashboardErrorContext,
 ): Promise<never> {
   if (!(error instanceof ApiError)) {
     throw error;
@@ -772,7 +781,7 @@ export async function enrichDashboardError(
       error.status,
       error.detail ??
         "The API rejected the request. Check widget configuration.",
-      error.endpoint
+      error.endpoint,
     );
   }
 
@@ -839,7 +848,7 @@ export function validateWidgetEnums(display?: string, dataset?: string): void {
   ) {
     throw new ValidationError(
       `Invalid --display value "${display}".\nValid display types: ${DISPLAY_TYPES.join(", ")}`,
-      "display"
+      "display",
     );
   }
   if (
@@ -848,7 +857,7 @@ export function validateWidgetEnums(display?: string, dataset?: string): void {
   ) {
     throw new ValidationError(
       `Invalid --dataset value "${dataset}".\nValid datasets: ${WIDGET_TYPES.join(", ")}`,
-      "dataset"
+      "dataset",
     );
   }
   // The Sentry backend validates displayType and widgetType as independent enums —

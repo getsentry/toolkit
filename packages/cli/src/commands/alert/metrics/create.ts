@@ -55,13 +55,13 @@ function formatCreated(result: CreateResult): string {
 
 function resolveMetricCreateOrg(
   arg: string | undefined,
-  cwd: string
+  cwd: string,
 ): Promise<string> {
   return resolveOrgOnlyFromArg(
     arg,
     cwd,
     "alert metrics create",
-    "sentry alert metrics create <org>/"
+    "sentry alert metrics create <org>/",
   );
 }
 
@@ -185,7 +185,7 @@ export const createCommand = buildCommand({
     if (!projects || projects.length === 0) {
       throw new ValidationError(
         "A project is required to create a metric alert rule (pass --project).",
-        "project"
+        "project",
       );
     }
 

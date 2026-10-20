@@ -95,7 +95,7 @@ describe("extractInnerLiteral — quantifier handling", () => {
   test("longest run wins when multiple exist", () => {
     // `short.*longer_run.*short` — `longer_run` wins over `short`.
     expect(extractInnerLiteral("short.*longer_run.*short", "")).toBe(
-      "longer_run"
+      "longer_run",
     );
   });
 });
@@ -119,9 +119,12 @@ describe("extractInnerLiteral — character-class opaqueness (Cursor bug #1)", (
     ["[[]foo|bar", null], // [ inside class (nested-looking but flat)
     ["[|]foo|bar", null], // | inside class is literal; second | is top-level
     ["[(|)]foo|bar", null], // class containing (, |, )
-  ])("returns null for %p — alternation hidden by class corrupting paren depth", (pattern, expected) => {
-    expect(extractInnerLiteral(pattern, "")).toBe(expected);
-  });
+  ])(
+    "returns null for %p — alternation hidden by class corrupting paren depth",
+    (pattern, expected) => {
+      expect(extractInnerLiteral(pattern, "")).toBe(expected);
+    },
+  );
 
   test.each([
     ["foo[(]bar", "foo"], // ( inside class, no alternation → longest run "foo"
@@ -155,9 +158,12 @@ describe("extractInnerLiteral — class-in-group opaqueness (Cursor bug #1 follo
     ["(foo[(]bar)?baz", "baz"],
     ["(A[[]B)?CDE", "CDE"],
     ["(A[\\)]B)?CDE", "CDE"],
-  ])("extracts the post-group literal when group contains a class with ( or )", (pattern, expected) => {
-    expect(extractInnerLiteral(pattern, "")).toBe(expected);
-  });
+  ])(
+    "extracts the post-group literal when group contains a class with ( or )",
+    (pattern, expected) => {
+      expect(extractInnerLiteral(pattern, "")).toBe(expected);
+    },
+  );
 
   test.each([
     ["(foo)bar", "bar"], // regular group + literal

@@ -28,7 +28,7 @@ function failedPreparation(failure: FileChangeFailure): ToolResult {
  */
 export async function applyPatchset(
   input: unknown,
-  context: Pick<ToolContext, "dryRun" | "authToken">
+  context: Pick<ToolContext, "dryRun" | "authToken">,
 ): Promise<ToolResult> {
   const parsed = parseFileChangesRequest(input);
   if (!parsed.ok) {
@@ -37,7 +37,7 @@ export async function applyPatchset(
   const prepared = await prepareFileChanges(
     parsed.cwd,
     parsed.changes,
-    context.authToken
+    context.authToken,
   );
   if (!prepared.ok) {
     return failedPreparation(prepared.failure);

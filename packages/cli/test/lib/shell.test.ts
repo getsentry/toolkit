@@ -5,6 +5,7 @@
  * GitHub Actions). Pure function tests are in shell.property.test.ts.
  */
 
+import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -27,7 +28,7 @@ describe("shell utilities", () => {
       const candidates = getConfigCandidates(
         "unknown",
         "/home/user",
-        "/home/user/.config"
+        "/home/user/.config",
       );
       expect(candidates).toContain("/home/user/.bashrc");
       expect(candidates).toContain("/home/user/.bash_profile");
@@ -41,7 +42,7 @@ describe("shell utilities", () => {
     beforeEach(() => {
       testDir = join(
         "/tmp",
-        `shell-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        `shell-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       mkdirSync(testDir, { recursive: true });
     });
@@ -74,7 +75,7 @@ describe("shell utilities", () => {
     beforeEach(() => {
       testDir = join(
         "/tmp",
-        `shell-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        `shell-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       mkdirSync(testDir, { recursive: true });
     });
@@ -105,7 +106,7 @@ describe("shell utilities", () => {
     beforeEach(() => {
       testDir = join(
         "/tmp",
-        `shell-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        `shell-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       mkdirSync(testDir, { recursive: true });
     });
@@ -119,7 +120,7 @@ describe("shell utilities", () => {
       const result = await addToPath(
         configFile,
         "/home/user/.sentry/bin",
-        "bash"
+        "bash",
       );
 
       expect(result.modified).toBe(true);
@@ -136,7 +137,7 @@ describe("shell utilities", () => {
       const result = await addToPath(
         configFile,
         "/home/user/.sentry/bin",
-        "bash"
+        "bash",
       );
 
       expect(result.modified).toBe(true);
@@ -151,13 +152,13 @@ describe("shell utilities", () => {
       const configFile = join(testDir, ".bashrc");
       writeFileSync(
         configFile,
-        '# sentry\nexport PATH="/home/user/.sentry/bin:$PATH"\n'
+        '# sentry\nexport PATH="/home/user/.sentry/bin:$PATH"\n',
       );
 
       const result = await addToPath(
         configFile,
         "/home/user/.sentry/bin",
-        "bash"
+        "bash",
       );
 
       expect(result.modified).toBe(false);
@@ -171,14 +172,14 @@ describe("shell utilities", () => {
       const result = await addToPath(
         configFile,
         "/home/user/.sentry/bin",
-        "bash"
+        "bash",
       );
 
       expect(result.modified).toBe(true);
 
       const content = await readFile(configFile, "utf-8");
       expect(content).toContain(
-        "# existing content without newline\n\n# sentry\n"
+        "# existing content without newline\n\n# sentry\n",
       );
     });
 
@@ -187,12 +188,12 @@ describe("shell utilities", () => {
       const result = await addToPath(
         configFile,
         "/home/user/.sentry/bin",
-        "bash"
+        "bash",
       );
 
       expect(result.modified).toBe(false);
       expect(result.manualCommand).toBe(
-        'export PATH="/home/user/.sentry/bin:$PATH"'
+        'export PATH="/home/user/.sentry/bin:$PATH"',
       );
     });
   });
@@ -203,7 +204,7 @@ describe("shell utilities", () => {
     beforeEach(() => {
       testDir = join(
         "/tmp",
-        `shell-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        `shell-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       mkdirSync(testDir, { recursive: true });
     });
@@ -216,7 +217,7 @@ describe("shell utilities", () => {
       const configFile = join(testDir, ".zshrc");
       const result = await addToFpath(
         configFile,
-        "/home/user/.local/share/zsh/site-functions"
+        "/home/user/.local/share/zsh/site-functions",
       );
 
       expect(result.modified).toBe(true);
@@ -224,7 +225,7 @@ describe("shell utilities", () => {
 
       const content = await readFile(configFile, "utf-8");
       expect(content).toContain(
-        'fpath=("/home/user/.local/share/zsh/site-functions" $fpath)'
+        'fpath=("/home/user/.local/share/zsh/site-functions" $fpath)',
       );
     });
 
@@ -234,7 +235,7 @@ describe("shell utilities", () => {
 
       const result = await addToFpath(
         configFile,
-        "/home/user/.local/share/zsh/site-functions"
+        "/home/user/.local/share/zsh/site-functions",
       );
 
       expect(result.modified).toBe(true);
@@ -243,25 +244,79 @@ describe("shell utilities", () => {
       expect(content).toContain("# existing content");
       expect(content).toContain("# sentry");
       expect(content).toContain(
-        'fpath=("/home/user/.local/share/zsh/site-functions" $fpath)'
+        'fpath=("/home/user/.local/share/zsh/site-functions" $fpath)',
       );
     });
 
-    test("skips if already configured", async () => {
+    test("repairs legacy configuration once", async () => {
       const configFile = join(testDir, ".zshrc");
       writeFileSync(
         configFile,
-        '# sentry\nfpath=("/home/user/.local/share/zsh/site-functions" $fpath)\n'
+        '# sentry\nfpath=("/home/user/.local/share/zsh/site-functions" $fpath)\n',
       );
 
       const result = await addToFpath(
         configFile,
-        "/home/user/.local/share/zsh/site-functions"
+        "/home/user/.local/share/zsh/site-functions",
       );
 
-      expect(result.modified).toBe(false);
-      expect(result.message).toContain("already configured");
+      expect(result.modified).toBe(true);
+      const configured = await readFile(configFile, "utf-8");
+      expect(configured.match(/fpath=/g)).toHaveLength(1);
+      const again = await addToFpath(
+        configFile,
+        "/home/user/.local/share/zsh/site-functions",
+      );
+      expect(again.modified).toBe(false);
+      expect(await readFile(configFile, "utf-8")).toBe(configured);
     });
+
+    test("preserves custom configuration containing the completion directory", async () => {
+      const configFile = join(testDir, ".zshrc");
+      const original =
+        'typeset -U fpath\nfpath=("/home/user/.local/share/zsh/site-functions" $fpath)\n';
+      writeFileSync(configFile, original);
+      const result = await addToFpath(
+        configFile,
+        "/home/user/.local/share/zsh/site-functions",
+      );
+      expect(result.modified).toBe(true);
+      expect(await readFile(configFile, "utf-8")).toContain(original);
+      expect(
+        (
+          await addToFpath(
+            configFile,
+            "/home/user/.local/share/zsh/site-functions",
+          )
+        ).modified,
+      ).toBe(false);
+    });
+
+    test.skipIf(!whichSync("zsh"))(
+      "does not initialize completion in non-interactive shells",
+      async () => {
+        const configFile = join(testDir, ".zshenv");
+        await addToFpath(configFile, join(testDir, "completions"));
+        const result = spawnSync(
+          "zsh",
+          [
+            "-df",
+            "-c",
+            'source "$1"; print -r -- "${+functions[compdef]}"',
+            "--",
+            configFile,
+          ],
+          {
+            encoding: "utf-8",
+            env: { ...process.env, HOME: testDir, ZDOTDIR: testDir },
+            timeout: 10000,
+          },
+        );
+        expect(result.status).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(result.stdout.trim()).toBe("0");
+      },
+    );
 
     test("appends newline separator when file doesn't end with newline", async () => {
       const configFile = join(testDir, ".zshrc");
@@ -269,14 +324,14 @@ describe("shell utilities", () => {
 
       const result = await addToFpath(
         configFile,
-        "/home/user/.local/share/zsh/site-functions"
+        "/home/user/.local/share/zsh/site-functions",
       );
 
       expect(result.modified).toBe(true);
 
       const content = await readFile(configFile, "utf-8");
       expect(content).toContain(
-        "# existing content without newline\n\n# sentry\n"
+        "# existing content without newline\n\n# sentry\n",
       );
     });
 
@@ -284,13 +339,14 @@ describe("shell utilities", () => {
       const configFile = "/dev/null/impossible/path/.zshrc";
       const result = await addToFpath(
         configFile,
-        "/home/user/.local/share/zsh/site-functions"
+        "/home/user/.local/share/zsh/site-functions",
       );
 
       expect(result.modified).toBe(false);
-      expect(result.manualCommand).toBe(
-        'fpath=("/home/user/.local/share/zsh/site-functions" $fpath)'
+      expect(result.manualCommand).toContain(
+        'fpath=("/home/user/.local/share/zsh/site-functions" $fpath)',
       );
+      expect(result.manualCommand).toContain("compdef _sentry sentry");
     });
   });
 
@@ -300,7 +356,7 @@ describe("shell utilities", () => {
     beforeEach(() => {
       testDir = join(
         "/tmp",
-        `shell-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        `shell-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       mkdirSync(testDir, { recursive: true });
     });
@@ -365,7 +421,7 @@ describe("isInPath", () => {
 
   test("returns true for an exact match", () => {
     expect(isInPath("/usr/local/bin", `/usr/bin${sep}/usr/local/bin`)).toBe(
-      true
+      true,
     );
   });
 

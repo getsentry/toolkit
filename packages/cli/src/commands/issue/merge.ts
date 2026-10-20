@@ -23,6 +23,7 @@
 import type { SentryContext } from "../../context.js";
 import { type MergeIssuesResult, mergeIssues } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ApiError,
   CliError,
@@ -32,7 +33,7 @@ import {
 import { muted } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
-import { buildIssueUrl } from "../../lib/sentry-urls.js";
+import { buildIssueUrl } from "../../lib/sentry-web-urls.js";
 import type { SentryIssue } from "../../types/index.js";
 import { resolveIssue } from "./utils.js";
 
@@ -87,7 +88,7 @@ function jsonTransform(result: MergeCommandResult): unknown {
  */
 async function resolveAllIssues(
   args: readonly string[],
-  cwd: string
+  cwd: string,
 ): Promise<{ org: string; issues: SentryIssue[] }> {
   const resolved = await Promise.all(
     args.map((arg) =>
@@ -95,8 +96,8 @@ async function resolveAllIssues(
         issueArg: arg,
         cwd,
         command: COMMAND,
-      })
-    )
+      }),
+    ),
   );
 
   // Every resolved issue must have a concrete org slug — otherwise we
@@ -109,7 +110,7 @@ async function resolveAllIssues(
     throw new ValidationError(
       `Could not determine the organization for: ${badIds}.\n\n` +
         "Provide the org explicitly (e.g. <org>/<issue>) so the merge\n" +
-        "can verify all issues belong to the same organization."
+        "can verify all issues belong to the same organization.",
     );
   }
 
@@ -118,7 +119,7 @@ async function resolveAllIssues(
   if (orgs.size > 1) {
     throw new ValidationError(
       `Cannot merge issues across organizations (${Array.from(orgs).join(", ")}).\n\n` +
-        "All issues must belong to the same organization."
+        "All issues must belong to the same organization.",
     );
   }
 
@@ -152,7 +153,7 @@ async function resolveAllIssues(
     throw new ValidationError(
       `Merge needs at least 2 distinct issues (all inputs resolved to ${issues[0]?.shortId ?? "the same issue"}).\n\n` +
         "Check your argument list — you may have passed the same issue in\n" +
-        "multiple forms (short ID + org-qualified + numeric all count as one)."
+        "multiple forms (short ID + org-qualified + numeric all count as one).",
     );
   }
 
@@ -181,7 +182,7 @@ async function resolveAllIssues(
 async function orderForMerge(
   issues: SentryIssue[],
   into: string | undefined,
-  cwd: string
+  cwd: string,
 ): Promise<SentryIssue[]> {
   if (!into) {
     return issues;
@@ -201,7 +202,7 @@ async function orderForMerge(
       i.shortId === bareUpper ||
       i.id === bare ||
       i.shortId === normalizedUpper ||
-      i.id === normalized
+      i.id === normalized,
   );
   if (direct) {
     return [direct, ...issues.filter((i) => i !== direct)];
@@ -245,7 +246,7 @@ async function orderForMerge(
   throw new ValidationError(
     `--into '${into}' did not match any of the provided issues.\n\n` +
       `Provided: ${issues.map((i) => i.shortId).join(", ")}`,
-    "into"
+    "into",
   );
 }
 
@@ -277,7 +278,7 @@ export const mergeCommand = buildCommand({
       parameter: {
         placeholder: "issue",
         brief: "Issue IDs to merge (2 or more required)",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -310,7 +311,7 @@ export const mergeCommand = buildCommand({
           : "Example: sentry issue merge CLI-K9 CLI-15H CLI-15N";
       throw new ValidationError(
         `'sentry ${COMMAND_PATH}' needs at least 2 issue IDs (got ${args.length}).\n\n` +
-          hint
+          hint,
       );
     }
 
@@ -323,7 +324,7 @@ export const mergeCommand = buildCommand({
     const requestedParentId = flags.into ? groupIds[0] : undefined;
 
     log.debug(
-      `Merging ${groupIds.length} issues in ${org}: ${ordered.map((i) => i.shortId).join(", ")}`
+      `Merging ${groupIds.length} issues in ${org}: ${ordered.map((i) => i.shortId).join(", ")}`,
     );
 
     const raw = await mergeIssues(org, groupIds);
@@ -337,7 +338,7 @@ export const mergeCommand = buildCommand({
       const requestedShortId = idToShort.get(requestedParentId) ?? flags.into;
       log.warn(
         `--into '${requestedShortId}' was a preference, not a guarantee. ` +
-          `Sentry selected ${parentShortId} as the canonical parent based on event count.`
+          `Sentry selected ${parentShortId} as the canonical parent based on event count.`,
       );
     }
 

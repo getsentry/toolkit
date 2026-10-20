@@ -57,7 +57,7 @@ const tokenArb = array(
   {
     minLength: 5,
     maxLength: 20,
-  }
+  },
 ).map((chars) => `sntrys_${chars.join("")}`);
 
 /** Generate a partial config (each field may or may not be present) */
@@ -67,7 +67,7 @@ const partialConfigArb = record(
     project: slugArb,
     token: tokenArb,
   },
-  { requiredKeys: [] }
+  { requiredKeys: [] },
 );
 
 type PartialConfig = { org?: string; project?: string; token?: string };
@@ -117,7 +117,7 @@ describe("property: loadSentryCliRc", () => {
           writeFileSync(
             join(childDir, CONFIG_FILENAME),
             serializeConfig(childConfig),
-            "utf-8"
+            "utf-8",
           );
 
           // Load with child only
@@ -133,7 +133,7 @@ describe("property: loadSentryCliRc", () => {
           writeFileSync(
             join(parentDir, CONFIG_FILENAME),
             serializeConfig(parentConfig),
-            "utf-8"
+            "utf-8",
           );
 
           // Load again with parent also present
@@ -143,9 +143,9 @@ describe("property: loadSentryCliRc", () => {
           for (const field of fieldsChildOnly) {
             expect(resultBoth[field as keyof typeof resultBoth]).toBeDefined();
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -162,14 +162,14 @@ describe("property: loadSentryCliRc", () => {
           writeFileSync(
             join(parentDir, CONFIG_FILENAME),
             serializeConfig(parentConfig),
-            "utf-8"
+            "utf-8",
           );
 
           // Write child config
           writeFileSync(
             join(childDir, CONFIG_FILENAME),
             serializeConfig(childConfig),
-            "utf-8"
+            "utf-8",
           );
 
           const result = await loadSentryCliRc(childDir);
@@ -184,9 +184,9 @@ describe("property: loadSentryCliRc", () => {
           if (childConfig.token) {
             expect(result.token).toBe(childConfig.token);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -203,14 +203,14 @@ describe("property: loadSentryCliRc", () => {
           writeFileSync(
             join(parentDir, CONFIG_FILENAME),
             serializeConfig(parentConfig),
-            "utf-8"
+            "utf-8",
           );
 
           // Write child config
           writeFileSync(
             join(childDir, CONFIG_FILENAME),
             serializeConfig(childConfig),
-            "utf-8"
+            "utf-8",
           );
 
           const result = await loadSentryCliRc(childDir);
@@ -225,9 +225,9 @@ describe("property: loadSentryCliRc", () => {
           if (!childConfig.token && parentConfig.token) {
             expect(result.token).toBe(parentConfig.token);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { deleteCommand } from "../../../../src/commands/alert/issues/delete.js";
 import type { IssueAlertRule } from "../../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
 import type { ResolvedTarget } from "../../../../src/lib/resolve-target.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../../helpers.js";
 
@@ -80,7 +80,7 @@ describe("alert issues delete", () => {
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true },
-      "test-org/test-project/42"
+      "test-org/test-project/42",
     );
 
     expect(resolveSpy).toHaveBeenCalledWith(
@@ -93,12 +93,12 @@ describe("alert issues delete", () => {
         cwd: getConfigDir(),
         usageHint:
           "sentry alert issues delete <org>/<project>/<rule-id-or-name>",
-      })
+      }),
     );
     expect(getRuleSpy).toHaveBeenCalledWith("test-org", "test-project", "42");
     expect(deleteRuleSpy).not.toHaveBeenCalled();
     expect(stdoutWrite.mock.calls.map((c) => c[0]).join("")).toContain(
-      "Would delete issue alert rule"
+      "Would delete issue alert rule",
     );
   });
 
@@ -109,11 +109,11 @@ describe("alert issues delete", () => {
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true, json: true },
-      "test-org/test-project/42"
+      "test-org/test-project/42",
     );
 
     expect(
-      JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""))
+      JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join("")),
     ).toEqual({
       dryRun: true,
       org: "test-org",
@@ -131,45 +131,51 @@ describe("alert issues delete", () => {
     await func.call(
       context,
       { ...defaultFlags, yes: true },
-      "test-org/test-project/42"
+      "test-org/test-project/42",
     );
 
     expect(getRuleSpy).toHaveBeenCalledWith("test-org", "test-project", "42");
     expect(deleteRuleSpy).toHaveBeenCalledWith("test-org", "42");
     expect(stdoutWrite.mock.calls.map((c) => c[0]).join("")).toContain(
-      "Deleted issue alert rule"
+      "Deleted issue alert rule",
     );
   });
 
   test.each([
     ["--yes", { ...defaultFlags, yes: true }],
     ["--dry-run", { ...defaultFlags, "dry-run": true }],
-  ])("rejects bare rule id with %s before resolving target", async (_, flags) => {
-    const { context } = createContext();
-    const func = await deleteCommand.loader();
+  ])(
+    "rejects bare rule id with %s before resolving target",
+    async (_, flags) => {
+      const { context } = createContext();
+      const func = await deleteCommand.loader();
 
-    await expect(func.call(context, flags, "42")).rejects.toThrow(
-      "Auto-detection is disabled for destructive operations"
-    );
+      await expect(func.call(context, flags, "42")).rejects.toThrow(
+        "Auto-detection is disabled for destructive operations",
+      );
 
-    expect(resolveSpy).not.toHaveBeenCalled();
-    expect(getRuleSpy).not.toHaveBeenCalled();
-    expect(deleteRuleSpy).not.toHaveBeenCalled();
-  });
+      expect(resolveSpy).not.toHaveBeenCalled();
+      expect(getRuleSpy).not.toHaveBeenCalled();
+      expect(deleteRuleSpy).not.toHaveBeenCalled();
+    },
+  );
 
   test.each([
     ["--yes", { ...defaultFlags, yes: true }],
     ["--dry-run", { ...defaultFlags, "dry-run": true }],
-  ])("rejects org-all issue alert rule target with %s before resolving target", async (_, flags) => {
-    const { context } = createContext();
-    const func = await deleteCommand.loader();
+  ])(
+    "rejects org-all issue alert rule target with %s before resolving target",
+    async (_, flags) => {
+      const { context } = createContext();
+      const func = await deleteCommand.loader();
 
-    await expect(func.call(context, flags, "test-org//42")).rejects.toThrow(
-      "requires an explicit <org>/<project>/<rule-id-or-name>"
-    );
+      await expect(func.call(context, flags, "test-org//42")).rejects.toThrow(
+        "requires an explicit <org>/<project>/<rule-id-or-name>",
+      );
 
-    expect(resolveSpy).not.toHaveBeenCalled();
-    expect(getRuleSpy).not.toHaveBeenCalled();
-    expect(deleteRuleSpy).not.toHaveBeenCalled();
-  });
+      expect(resolveSpy).not.toHaveBeenCalled();
+      expect(getRuleSpy).not.toHaveBeenCalled();
+      expect(deleteRuleSpy).not.toHaveBeenCalled();
+    },
+  );
 });

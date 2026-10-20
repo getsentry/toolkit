@@ -31,7 +31,7 @@ describe("CVE: URL argument credential exfiltration", () => {
   test("parseIssueArg with attacker URL throws before env is poisoned (SaaS-scoped token)", () => {
     // preload sets SENTRY_AUTH_TOKEN; env-token defaults to SaaS.
     expect(() =>
-      parseIssueArg("https://evil.com/organizations/target-org/issues/12345/")
+      parseIssueArg("https://evil.com/organizations/target-org/issues/12345/"),
     ).toThrow(/does not match|sentry auth login --url/);
 
     // Env untouched — no routing poison.
@@ -42,8 +42,8 @@ describe("CVE: URL argument credential exfiltration", () => {
   test("parseOrgProjectArg with attacker URL throws before env is poisoned", () => {
     expect(() =>
       parseOrgProjectArg(
-        "https://evil.com/organizations/target-org/issues/12345/"
-      )
+        "https://evil.com/organizations/target-org/issues/12345/",
+      ),
     ).toThrow(/does not match|sentry auth login --url/);
 
     expect(process.env.SENTRY_HOST).toBeUndefined();
@@ -54,7 +54,7 @@ describe("CVE: URL argument credential exfiltration", () => {
     expect(() =>
       parsePositionalArgs([
         "https://evil.com/organizations/acme/issues/999/events/deadbeef/",
-      ])
+      ]),
     ).toThrow(/does not match|sentry auth login --url/);
 
     expect(process.env.SENTRY_HOST).toBeUndefined();
@@ -66,8 +66,8 @@ describe("CVE: URL argument credential exfiltration", () => {
     // applySentryUrlContext, which throws before getSharedIssue is invoked.
     expect(() =>
       parseIssueArg(
-        "https://evil.com/share/issue/deadbeef12345678deadbeef12345678/"
-      )
+        "https://evil.com/share/issue/deadbeef12345678deadbeef12345678/",
+      ),
     ).toThrow(/does not match|sentry auth login --url/);
 
     expect(process.env.SENTRY_HOST).toBeUndefined();
@@ -90,7 +90,7 @@ describe("CVE: URL argument credential exfiltration", () => {
     process.env.SENTRY_HOST = "https://sentry.example.com";
     resetEnvTokenHostForTesting();
     parseOrgProjectArg(
-      "https://sentry.example.com/organizations/acme/issues/1/"
+      "https://sentry.example.com/organizations/acme/issues/1/",
     );
     expect(process.env.SENTRY_HOST).toBe("https://sentry.example.com");
     expect(process.env.SENTRY_URL).toBe("https://sentry.example.com");

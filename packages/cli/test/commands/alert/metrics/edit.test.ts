@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { editCommand } from "../../../../src/commands/alert/metrics/edit.js";
 import type { MetricAlertRule } from "../../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
 import { ValidationError } from "../../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../../helpers.js";
 
@@ -70,11 +70,11 @@ describe("alert metrics edit", () => {
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
       flags: EditFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
-      func.call(context, { json: true }, "test-org/9")
+      func.call(context, { json: true }, "test-org/9"),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -105,7 +105,7 @@ describe("alert metrics edit", () => {
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
       flags: EditFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -119,7 +119,7 @@ describe("alert metrics edit", () => {
         trigger: ['{"alertThreshold":200,"actions":[{"id":"notify"}]}'],
         json: true,
       },
-      "test-org/9"
+      "test-org/9",
     );
 
     expect(putSpy).toHaveBeenCalledWith("test-org", "9", {
@@ -164,7 +164,7 @@ describe("alert metrics edit", () => {
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
       flags: EditFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -173,7 +173,7 @@ describe("alert metrics edit", () => {
         name: "Metric Rule Renamed",
         json: true,
       },
-      "test-org/9"
+      "test-org/9",
     );
 
     expect(putSpy).toHaveBeenCalledWith(
@@ -183,7 +183,7 @@ describe("alert metrics edit", () => {
         name: "Metric Rule Renamed",
         query: "",
         triggers: [{ alertThreshold: 100 }],
-      })
+      }),
     );
   });
 
@@ -214,7 +214,7 @@ describe("alert metrics edit", () => {
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
       flags: EditFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -223,13 +223,13 @@ describe("alert metrics edit", () => {
         query: "",
         json: true,
       },
-      "test-org/9"
+      "test-org/9",
     );
 
     expect(putSpy).toHaveBeenCalledWith(
       "test-org",
       "9",
-      expect.objectContaining({ query: "" })
+      expect.objectContaining({ query: "" }),
     );
   });
 
@@ -260,7 +260,7 @@ describe("alert metrics edit", () => {
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
       flags: EditFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -269,7 +269,7 @@ describe("alert metrics edit", () => {
         dataset: "transactions",
         json: true,
       },
-      "test-org/9"
+      "test-org/9",
     );
 
     expect(putSpy).toHaveBeenCalledWith(
@@ -278,10 +278,10 @@ describe("alert metrics edit", () => {
       expect.objectContaining({
         dataset: "spans",
         query: "environment:prod is_transaction:true",
-      })
+      }),
     );
     expect(context.stderr.write).toHaveBeenCalledWith(
-      expect.stringContaining("is_transaction:true")
+      expect.stringContaining("is_transaction:true"),
     );
   });
 });

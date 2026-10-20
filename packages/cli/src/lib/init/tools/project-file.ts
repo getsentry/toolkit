@@ -51,7 +51,7 @@ export function normalizeProjectFilePath(filePath: string): string | undefined {
         segment.includes(":") ||
         segment.endsWith(".") ||
         segment.endsWith(" ") ||
-        WINDOWS_RESERVED_SEGMENT_RE.test(segment)
+        WINDOWS_RESERVED_SEGMENT_RE.test(segment),
     )
   ) {
     return;
@@ -68,15 +68,15 @@ export function normalizeProjectFilePath(filePath: string): string | undefined {
  */
 export async function openProjectFile(
   cwd: string,
-  filePath: string
+  filePath: string,
 ): Promise<OpenedProjectFile | { error: ReadFileErrorCode }> {
   let handle: fs.promises.FileHandle | undefined;
   try {
     const absPath = safePath(cwd, filePath);
     handle = await fs.promises.open(
       absPath,
-      // biome-ignore lint/suspicious/noBitwiseOperators: fs open flags are a bitmask.
-      fs.constants.O_RDONLY | fs.constants.O_NONBLOCK
+      // oxlint-disable-next-line no-bitwise -- fs open flags are a bitmask.
+      fs.constants.O_RDONLY | fs.constants.O_NONBLOCK,
     );
     const stat = await handle.stat();
     if (!stat.isFile()) {
@@ -89,7 +89,7 @@ export async function openProjectFile(
     }
     return { handle, stat };
   } catch (error) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     await handle?.close().catch(() => {
       // Preserve the primary open error when cleanup fails.
     });
@@ -98,9 +98,9 @@ export async function openProjectFile(
 }
 
 export async function closeProjectFile(
-  handle: fs.promises.FileHandle
+  handle: fs.promises.FileHandle,
 ): Promise<void> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   await handle.close().catch(() => {
     // Descriptor cleanup must not replace the primary read classification.
   });
@@ -108,7 +108,7 @@ export async function closeProjectFile(
 
 export function projectFileChanged(
   initial: fs.Stats,
-  final: fs.Stats
+  final: fs.Stats,
 ): boolean {
   return (
     final.dev !== initial.dev ||
@@ -121,7 +121,7 @@ export function projectFileChanged(
 async function openedPathIsAllowed(
   cwd: string,
   absPath: string,
-  openedStat: fs.Stats
+  openedStat: fs.Stats,
 ): Promise<boolean> {
   const [realCwd, realPath] = await Promise.all([
     fs.promises.realpath(cwd),
@@ -149,7 +149,7 @@ async function openedPathIsAllowed(
 
 async function requestedPathContainsSymlink(
   cwd: string,
-  absPath: string
+  absPath: string,
 ): Promise<boolean> {
   let currentPath = path.resolve(cwd);
   const relativePath = path.relative(currentPath, absPath);
@@ -184,7 +184,7 @@ function isSensitiveReadPath(filePath: string): boolean {
       SENSITIVE_PATH_TOKENS.has(token) ||
       token === ".dev.vars" ||
       token === ".env" ||
-      token.startsWith(".env.")
+      token.startsWith(".env."),
   );
 }
 

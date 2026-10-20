@@ -45,7 +45,7 @@ export const sendEnvelopeCommand = buildCommand({
       },
     },
   },
-  // biome-ignore lint/correctness/useYield lint/suspicious/useAwait: deprecation shim — throws before yielding
+  // oxlint-disable-next-line require-yield -- deprecation shim — throws before yielding
   async *func(
     this: SentryContext,
     _flags: { dsn?: string; raw?: boolean },
@@ -55,7 +55,7 @@ export const sendEnvelopeCommand = buildCommand({
     throw new CliError(
       "`sentry send-envelope` has been removed.\n" +
         `Use: sentry event send --raw${fileArgs}`,
-      EXIT.GENERAL
+      EXIT.GENERAL,
     );
   },
 });

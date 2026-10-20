@@ -16,8 +16,8 @@ describe("extractRequiredScopes", () => {
   test("returns [] when the detail contains no recognizable scopes", () => {
     expect(
       extractRequiredScopes(
-        "You do not have permission to perform this action."
-      )
+        "You do not have permission to perform this action.",
+      ),
     ).toEqual([]);
   });
 
@@ -26,32 +26,32 @@ describe("extractRequiredScopes", () => {
       extractRequiredScopes(
         "Your organization has disabled this feature for members. " +
           "This is an org-level policy setting, not an auth issue. " +
-          "You need org:admin/manager/owner role, or team:admin role on the team."
-      )
+          "You need org:admin/manager/owner role, or team:admin role on the team.",
+      ),
     ).toEqual([]);
   });
 
   test("extracts a single scope from a detail string", () => {
     expect(
       extractRequiredScopes(
-        "You do not have the required scope to perform this action. Required scopes: event:read"
-      )
+        "You do not have the required scope to perform this action. Required scopes: event:read",
+      ),
     ).toEqual(["event:read"]);
   });
 
   test("extracts multiple scopes from a detail string preserving order", () => {
     expect(
       extractRequiredScopes(
-        "Required scopes: event:read, project:write. Got: none."
-      )
+        "Required scopes: event:read, project:write. Got: none.",
+      ),
     ).toEqual(["event:read", "project:write"]);
   });
 
   test("deduplicates repeated scopes", () => {
     expect(
       extractRequiredScopes(
-        "event:read is required. Try obtaining event:read scope."
-      )
+        "event:read is required. Try obtaining event:read scope.",
+      ),
     ).toEqual(["event:read"]);
   });
 
@@ -60,7 +60,7 @@ describe("extractRequiredScopes", () => {
     // response text mentioning things like `http:localhost` or
     // `timestamp:now` doesn't accidentally match.
     expect(
-      extractRequiredScopes("http:localhost timestamp:now category:billing")
+      extractRequiredScopes("http:localhost timestamp:now category:billing"),
     ).toEqual([]);
   });
 
@@ -75,7 +75,7 @@ describe("extractRequiredScopes", () => {
       extractRequiredScopes({
         detail: "You do not have permission to perform this action.",
         required: ["event:read"],
-      })
+      }),
     ).toEqual(["event:read"]);
   });
 
@@ -84,7 +84,7 @@ describe("extractRequiredScopes", () => {
       extractRequiredScopes({
         detail: "Missing scopes.",
         requiredScopes: ["project:admin", "team:write"],
-      })
+      }),
     ).toEqual(["project:admin", "team:write"]);
   });
 
@@ -93,7 +93,7 @@ describe("extractRequiredScopes", () => {
       extractRequiredScopes({
         detail: "Missing scopes.",
         scopes: [{ scope: "org:read" }, { scope: "org:write" }],
-      })
+      }),
     ).toEqual(["org:read", "org:write"]);
   });
 
@@ -104,7 +104,7 @@ describe("extractRequiredScopes", () => {
     expect(
       extractRequiredScopes({
         message: "Your token lacks project:read.",
-      })
+      }),
     ).toEqual(["project:read"]);
   });
 
@@ -112,7 +112,7 @@ describe("extractRequiredScopes", () => {
     expect(
       extractRequiredScopes({
         required: [42, null, "event:read", { unrelated: true }],
-      })
+      }),
     ).toEqual(["event:read"]);
   });
 
@@ -145,7 +145,7 @@ describe("extractRequiredScopes", () => {
       "alerts:write",
     ];
     expect(
-      extractRequiredScopes(`Required scopes: ${allScopes.join(", ")}`)
+      extractRequiredScopes(`Required scopes: ${allScopes.join(", ")}`),
     ).toEqual(allScopes);
   });
 
@@ -156,8 +156,8 @@ describe("extractRequiredScopes", () => {
     // `project:releases`) or `alerts:admin` (no admin tier).
     expect(
       extractRequiredScopes(
-        "Not real: release:read release:write alerts:admin team:superuser"
-      )
+        "Not real: release:read release:write alerts:admin team:superuser",
+      ),
     ).toEqual([]);
   });
 });

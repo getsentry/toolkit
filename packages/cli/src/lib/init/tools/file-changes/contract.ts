@@ -59,7 +59,7 @@ type FileChangesContractResult =
  * local implementation treats its payload as a batch of file changes.
  */
 export function parseFileChangesRequest(
-  input: unknown
+  input: unknown,
 ): FileChangesContractResult {
   const result = safeParse(legacyApplyPatchsetPayloadSchema, input);
   if (!result.success) {

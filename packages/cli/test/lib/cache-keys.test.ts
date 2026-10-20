@@ -16,7 +16,7 @@ function computeInvalidationPrefixes(fullUrl: string): string[] {
 describe("computeInvalidationPrefixes — hierarchy walk", () => {
   test("detail URL yields self + ancestors down to owner", () => {
     const prefixes = computeInvalidationPrefixes(
-      `${BASE}organizations/acme/issues/12345/`
+      `${BASE}organizations/acme/issues/12345/`,
     );
     expect(prefixes).toContain(`${BASE}organizations/acme/issues/12345/`);
     expect(prefixes).toContain(`${BASE}organizations/acme/issues/`);
@@ -28,10 +28,10 @@ describe("computeInvalidationPrefixes — hierarchy walk", () => {
 
   test("deeply nested path yields every ancestor down to owner", () => {
     const prefixes = computeInvalidationPrefixes(
-      `${BASE}organizations/acme/releases/1.0.0/deploys/`
+      `${BASE}organizations/acme/releases/1.0.0/deploys/`,
     );
     expect(prefixes).toContain(
-      `${BASE}organizations/acme/releases/1.0.0/deploys/`
+      `${BASE}organizations/acme/releases/1.0.0/deploys/`,
     );
     expect(prefixes).toContain(`${BASE}organizations/acme/releases/1.0.0/`);
     expect(prefixes).toContain(`${BASE}organizations/acme/releases/`);
@@ -54,17 +54,17 @@ describe("computeInvalidationPrefixes — hierarchy walk", () => {
 
   test("query string is stripped from the prefix set", () => {
     const prefixes = computeInvalidationPrefixes(
-      `${BASE}organizations/acme/issues/12345/?collapse=stats&collapse=lifetime`
+      `${BASE}organizations/acme/issues/12345/?collapse=stats&collapse=lifetime`,
     );
     expect(prefixes).toContain(`${BASE}organizations/acme/issues/12345/`);
     expect(
-      prefixes.every((p) => !(p.includes("collapse=") || p.includes("?")))
+      prefixes.every((p) => !(p.includes("collapse=") || p.includes("?"))),
     ).toBe(true);
   });
 
   test("trailing-slashless URL still works", () => {
     const prefixes = computeInvalidationPrefixes(
-      `${BASE}organizations/acme/issues`
+      `${BASE}organizations/acme/issues`,
     );
     expect(prefixes).toContain(`${BASE}organizations/acme/issues/`);
     expect(prefixes).toContain(`${BASE}organizations/acme/`);
@@ -74,7 +74,7 @@ describe("computeInvalidationPrefixes — hierarchy walk", () => {
 describe("computeInvalidationPrefixes — cross-endpoint rules", () => {
   test("POST /teams/{org}/{team}/projects/ invalidates org project list", () => {
     const prefixes = computeInvalidationPrefixes(
-      `${BASE}teams/acme/backend/projects/`
+      `${BASE}teams/acme/backend/projects/`,
     );
     expect(prefixes).toContain(`${BASE}organizations/acme/projects/`);
     expect(prefixes).toContain(`${BASE}teams/acme/backend/projects/`);
@@ -85,7 +85,7 @@ describe("computeInvalidationPrefixes — cross-endpoint rules", () => {
 
   test("DELETE /projects/{org}/{project}/ invalidates org project list", () => {
     const prefixes = computeInvalidationPrefixes(
-      `${BASE}projects/acme/frontend/`
+      `${BASE}projects/acme/frontend/`,
     );
     expect(prefixes).toContain(`${BASE}organizations/acme/projects/`);
     expect(prefixes).toContain(`${BASE}projects/acme/frontend/`);
@@ -99,7 +99,7 @@ describe("computeInvalidationPrefixes — cross-endpoint rules", () => {
     // URL at a DIFFERENT origin. Without a cross-origin rule, stale
     // legacy cache entries survive org-scoped mutations.
     const prefixes = computeInvalidationPrefixes(
-      `${BASE}organizations/acme/issues/12345/`
+      `${BASE}organizations/acme/issues/12345/`,
     );
     expect(prefixes).toContain(`${API_BASE_URL}/api/0/issues/12345/`);
     // Plus the hierarchy walk under the mutation's own origin:
@@ -109,7 +109,7 @@ describe("computeInvalidationPrefixes — cross-endpoint rules", () => {
 
   test("unrelated paths get no cross-endpoint sweep", () => {
     const prefixes = computeInvalidationPrefixes(
-      `${BASE}organizations/acme/teams/`
+      `${BASE}organizations/acme/teams/`,
     );
     expect(prefixes).not.toContain(`${BASE}organizations/acme/projects/`);
     expect(prefixes).toContain(`${BASE}organizations/acme/teams/`);
@@ -119,10 +119,10 @@ describe("computeInvalidationPrefixes — cross-endpoint rules", () => {
 describe("computeInvalidationPrefixes — edge cases", () => {
   test("returns [] for URLs not under /api/0/", () => {
     expect(
-      computeInvalidationPrefixes("https://example.com/some/path/")
+      computeInvalidationPrefixes("https://example.com/some/path/"),
     ).toEqual([]);
     expect(
-      computeInvalidationPrefixes("https://uploads.sentry.io/x/y")
+      computeInvalidationPrefixes("https://uploads.sentry.io/x/y"),
     ).toEqual([]);
   });
 
@@ -137,7 +137,7 @@ describe("computeInvalidationPrefixes — edge cases", () => {
 
   test("deduplicates prefixes across hierarchy + rule-table", () => {
     const prefixes = computeInvalidationPrefixes(
-      `${BASE}teams/acme/backend/projects/`
+      `${BASE}teams/acme/backend/projects/`,
     );
     expect(prefixes.length).toBe(new Set(prefixes).size);
   });
@@ -147,24 +147,24 @@ describe("computeInvalidationPrefixes — edge cases", () => {
     // cacheable state; without this skip, every chunk POST would
     // sweep the org's cache hierarchy.
     expect(
-      computeInvalidationPrefixes(`${BASE}organizations/acme/chunk-upload/`)
+      computeInvalidationPrefixes(`${BASE}organizations/acme/chunk-upload/`),
     ).toEqual([]);
     expect(
       computeInvalidationPrefixes(
-        `${BASE}organizations/acme/artifactbundle/assemble/`
-      )
+        `${BASE}organizations/acme/artifactbundle/assemble/`,
+      ),
     ).toEqual([]);
   });
 
   test("self-hosted base URLs are preserved", () => {
     const prefixes = computeInvalidationPrefixes(
-      "https://sentry.example.com/api/0/organizations/acme/issues/12345/"
+      "https://sentry.example.com/api/0/organizations/acme/issues/12345/",
     );
     expect(prefixes).toContain(
-      "https://sentry.example.com/api/0/organizations/acme/issues/12345/"
+      "https://sentry.example.com/api/0/organizations/acme/issues/12345/",
     );
     expect(prefixes).toContain(
-      "https://sentry.example.com/api/0/organizations/acme/"
+      "https://sentry.example.com/api/0/organizations/acme/",
     );
   });
 });

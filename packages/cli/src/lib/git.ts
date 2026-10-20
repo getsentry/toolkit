@@ -91,7 +91,7 @@ function git(args: string[], cwd?: string): string {
  * @returns true if inside a git work tree
  */
 export function isInsideGitWorkTree(cwd?: string): boolean {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     git(["rev-parse", "--is-inside-work-tree"], cwd);
     return true;
@@ -110,7 +110,7 @@ export function isInsideGitWorkTree(cwd?: string): boolean {
  * @returns Array of formatted status lines (e.g., `["- M src/index.ts", "- ?? new-file.ts"]`)
  */
 export function getUncommittedFiles(cwd?: string): string[] {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const raw = git(["status", "--porcelain=v1"], cwd);
     if (!raw) {
@@ -142,7 +142,7 @@ export function getHeadCommit(cwd?: string): string {
   } catch {
     throw new ValidationError(
       "Not a git repository. Run this command from within a git working tree.",
-      "git"
+      "git",
     );
   }
 }
@@ -154,7 +154,7 @@ export function getHeadCommit(cwd?: string): string {
  * @returns true if the repository is shallow
  */
 export function isShallowRepository(cwd?: string): boolean {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return git(["rev-parse", "--is-shallow-repository"], cwd) === "true";
   } catch {
@@ -186,7 +186,7 @@ const NUL = "\x00";
  */
 export function getCommitLog(
   cwd?: string,
-  options: { from?: string; depth?: number; paths?: string[] } = {}
+  options: { from?: string; depth?: number; paths?: string[] } = {},
 ): GitCommit[] {
   const { from, depth = 20, paths } = options;
 
@@ -199,7 +199,7 @@ export function getCommitLog(
       `--from must be a git ref, not a CLI flag (received '${from}').`,
       ["sentry release set-commits 1.0.0 --from v0.9.0"],
       "from",
-      "Git refs cannot start with '-'. Tokens like '--format=x' are CLI flags, not refs — use a tag or commit (e.g. v0.9.0)."
+      "Git refs cannot start with '-'. Tokens like '--format=x' are CLI flags, not refs — use a tag or commit (e.g. v0.9.0).",
     );
   }
 
@@ -225,7 +225,7 @@ export function getCommitLog(
   try {
     raw = git(
       ["log", `--format=${format}`, ...maxCount, range, ...pathspec],
-      cwd
+      cwd,
     );
   } catch (error) {
     if (from && isUnknownGitRefError(error)) {
@@ -236,7 +236,7 @@ export function getCommitLog(
           "sentry release set-commits <org>/<version> --from v0.9.0",
         ],
         "from",
-        "Range is always <ref>..HEAD — checkout the current release tag first."
+        "Range is always <ref>..HEAD — checkout the current release tag first.",
       );
     }
     throw error;
@@ -269,7 +269,7 @@ export function getCommitLog(
  * @returns `owner/repo` string, or undefined if no origin remote
  */
 export function getRepositoryName(cwd?: string): string | undefined {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const url = git(["remote", "get-url", "origin"], cwd);
     return parseRemoteUrl(url);
@@ -285,7 +285,7 @@ export function getRepositoryName(cwd?: string): string | undefined {
  * @returns The remote URL, or undefined when there is no origin remote
  */
 export function getRemoteUrl(cwd?: string): string | undefined {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return git(["remote", "get-url", "origin"], cwd);
   } catch {
@@ -300,7 +300,7 @@ export function getRemoteUrl(cwd?: string): string | undefined {
  * @returns The branch name, or undefined when detached (HEAD) or not a repo
  */
 export function getCurrentBranch(cwd?: string): string | undefined {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const ref = git(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
     return ref && ref !== "HEAD" ? ref : undefined;
@@ -322,7 +322,7 @@ export function getMergeBase(ref: string, cwd?: string): string | undefined {
   if (ref.startsWith("-")) {
     return;
   }
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return git(["merge-base", "HEAD", ref], cwd) || undefined;
   } catch {
@@ -340,7 +340,7 @@ export function getMergeBase(ref: string, cwd?: string): string | undefined {
  *   (not set, shallow clone, or not a repo).
  */
 export function getRemoteDefaultBranch(cwd?: string): string | undefined {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const ref = git(["symbolic-ref", "refs/remotes/origin/HEAD"], cwd);
     const prefix = "refs/remotes/origin/";
@@ -372,7 +372,7 @@ const DOT_GIT_SUFFIX_RE = /\.git$/;
 export function parseRemoteUrl(url: string): string | undefined {
   // Try URL parsing first — handles https://, ssh://, git:// protocols
   // (including ssh://git@host:port/path which would confuse the SCP regex)
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const parsed = new URL(url);
     const path = parsed.pathname
@@ -405,10 +405,10 @@ export function parseRemoteUrl(url: string): string | undefined {
  * @returns The repo name and which remote it came from, or undefined
  */
 export function inferRepositoryName(
-  cwd?: string
+  cwd?: string,
 ): { name: string; remote: string } | undefined {
   for (const remote of ["upstream", "origin"]) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       const url = git(["remote", "get-url", remote], cwd);
       const name = parseRemoteUrl(url);
@@ -430,7 +430,7 @@ export function inferRepositoryName(
  * @returns The branch name, or "main" as fallback
  */
 export function inferDefaultBranch(remote: string, cwd?: string): string {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const output = git(["symbolic-ref", `refs/remotes/${remote}/HEAD`], cwd);
     // refs/remotes/origin/main → main

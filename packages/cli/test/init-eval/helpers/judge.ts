@@ -31,12 +31,12 @@ export async function judgeFeature(
   result: WizardResult,
   platform: Platform,
   feature: FeatureDoc,
-  docsContent: string
+  docsContent: string,
 ): Promise<JudgeVerdict | null> {
   const provider = resolveEvalProvider();
   if (!provider) {
     console.log(
-      `  [judge:${feature.feature}] Skipping LLM judge (no OPENROUTER_API_KEY or ANTHROPIC_API_KEY set)`
+      `  [judge:${feature.feature}] Skipping LLM judge (no OPENROUTER_API_KEY or ANTHROPIC_API_KEY set)`,
     );
     return null;
   }
@@ -90,7 +90,7 @@ Return ONLY valid JSON with this structure:
   const text = await provider.chat(
     process.env.EVAL_JUDGE_MODEL ?? INIT_EVAL_JUDGE_MODEL,
     [{ role: "user", content: prompt }],
-    1024
+    1024,
   );
 
   // Extract JSON from response (handle markdown code blocks)
@@ -98,7 +98,7 @@ Return ONLY valid JSON with this structure:
   if (!jsonMatch) {
     console.log(
       `  [judge:${feature.feature}] Failed to parse judge response:`,
-      text.slice(0, 200)
+      text.slice(0, 200),
     );
     return null;
   }
@@ -109,7 +109,7 @@ Return ONLY valid JSON with this structure:
   } catch {
     console.log(
       `  [judge:${feature.feature}] Invalid JSON in response:`,
-      jsonMatch[0].slice(0, 200)
+      jsonMatch[0].slice(0, 200),
     );
     return null;
   }
@@ -128,7 +128,7 @@ Return ONLY valid JSON with this structure:
 
   // Log for visibility in test output
   console.log(
-    `  [judge:${feature.feature}] Score: ${passing}/${total} (${(score * 100).toFixed(0)}%)`
+    `  [judge:${feature.feature}] Score: ${passing}/${total} (${(score * 100).toFixed(0)}%)`,
   );
   for (const c of parsed.criteria) {
     let icon = "FAIL";

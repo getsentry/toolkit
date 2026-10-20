@@ -16,11 +16,11 @@ vi.mock("../../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
 import { ValidationError } from "../../../../src/lib/errors.js";
 
@@ -33,11 +33,11 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
 
@@ -144,7 +144,7 @@ describe("dashboard widget edit", () => {
             displayType: "line",
           }),
         ]),
-      })
+      }),
     );
   });
 
@@ -154,7 +154,7 @@ describe("dashboard widget edit", () => {
     await func.call(
       context,
       { json: false, title: "error count", display: "bar" },
-      "123"
+      "123",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -229,7 +229,7 @@ describe("dashboard widget edit", () => {
     await func.call(
       context,
       { json: false, index: 0, dataset: "issue" },
-      "123"
+      "123",
     );
     expect(updateDashboardSpy).toHaveBeenCalledTimes(1);
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -263,7 +263,7 @@ describe("dashboard widget edit", () => {
     await func.call(
       context,
       { json: false, index: 0, display: "table" },
-      "123"
+      "123",
     );
     expect(updateDashboardSpy).toHaveBeenCalledTimes(1);
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -325,7 +325,7 @@ describe("dashboard widget edit", () => {
     await func.call(
       context,
       { json: false, index: 1, col: 0, width: 6, height: 4 },
-      "123"
+      "123",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -422,7 +422,7 @@ describe("dashboard widget edit", () => {
         dataset: "error-events",
         query: ["last_seen"],
       },
-      "123"
+      "123",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -436,7 +436,7 @@ describe("dashboard widget edit", () => {
     await func.call(
       context,
       { json: false, index: 0, dataset: "errors" },
-      "123"
+      "123",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -459,7 +459,7 @@ describe("dashboard widget edit", () => {
         dataset: "errors",
         query: ["last_seen"],
       },
-      "123"
+      "123",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -489,7 +489,7 @@ describe("dashboard widget edit", () => {
         display: "line",
         "group-by": ["browser.name"],
       },
-      "123"
+      "123",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -512,7 +512,7 @@ describe("dashboard widget edit", () => {
         "group-by": ["browser.name"],
         limit: 25,
       },
-      "123"
+      "123",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -543,7 +543,7 @@ describe("dashboard widget edit", () => {
         display: "line",
         "group-by": ["browser.name"],
       },
-      "123"
+      "123",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -557,7 +557,7 @@ describe("dashboard widget edit", () => {
     await func.call(
       context,
       { json: false, index: 0, query: ["p95:span.duration"] },
-      "123"
+      "123",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];

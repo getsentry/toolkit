@@ -141,7 +141,7 @@ export class HostScopeError extends CliError {
   constructor(
     sourceOrMessage: string,
     destinationUrl?: string,
-    tokenHost?: string | undefined
+    tokenHost?: string | undefined,
   ) {
     if (destinationUrl === undefined) {
       super(sourceOrMessage, EXIT.AUTH_HOST_SCOPE);
@@ -150,7 +150,7 @@ export class HostScopeError extends CliError {
         `${sourceOrMessage}: ${destinationUrl}\n` +
           "Refusing to route requests to this host because no Sentry credentials are configured for it.\n" +
           `To use this host, run: sentry auth login --url ${destinationUrl}`,
-        EXIT.AUTH_HOST_SCOPE
+        EXIT.AUTH_HOST_SCOPE,
       );
     } else {
       super(
@@ -158,7 +158,7 @@ export class HostScopeError extends CliError {
           `Refusing to route requests here because it doesn't match the host your Sentry credentials are for (${tokenHost}).\n` +
           `To use this host, run: sentry auth login --url ${destinationUrl}\n` +
           "To keep using your current credentials, remove this URL override.",
-        EXIT.AUTH_HOST_SCOPE
+        EXIT.AUTH_HOST_SCOPE,
       );
     }
     this.name = "HostScopeError";
@@ -185,13 +185,12 @@ export class ApiError extends CliError {
    */
   readonly enriched403: boolean;
 
-  // biome-ignore lint/nursery/useMaxParams: established 4-param shape; enriched403 is a defaulted extension
   constructor(
     message: string,
     status: number,
     detail?: string,
     endpoint?: string,
-    enriched403 = false
+    enriched403 = false,
   ) {
     super(message, EXIT.API);
     this.name = "ApiError";
@@ -236,7 +235,7 @@ export class AuthError extends CliError {
   constructor(
     reason: AuthErrorReason,
     message?: string,
-    options?: AuthErrorOptions
+    options?: AuthErrorOptions,
   ) {
     const defaultMessages: Record<AuthErrorReason, string> = {
       not_authenticated: "Not authenticated. Run 'sentry auth login' first.",
@@ -262,7 +261,7 @@ export class MalformedAuthTokenError extends AuthError {
     super(
       "invalid",
       "Invalid authentication token. Copy it again as a single line without spaces or control characters, " +
-        "or run 'sentry auth login' to replace stored credentials."
+        "or run 'sentry auth login' to replace stored credentials.",
     );
     this.name = "MalformedAuthTokenError";
   }
@@ -337,7 +336,7 @@ function buildContextMessage(
   resource: string,
   command: string,
   alternatives: string[],
-  options?: { note?: string; isAutoDetect?: boolean }
+  options?: { note?: string; isAutoDetect?: boolean },
 ): string {
   const { note, isAutoDetect } = options ?? {};
   // Compound resources ("X and Y") need plural grammar
@@ -383,7 +382,7 @@ function buildResolutionMessage(
   resource: string,
   headline: string,
   hint: string,
-  suggestions: string[]
+  suggestions: string[],
 ): string {
   const lines = [`${resource} ${headline}.`, "", "Try:", `  ${hint}`];
   if (suggestions.length > 0) {
@@ -427,7 +426,7 @@ export class ContextError extends CliError {
     resource: string,
     command: string,
     alternatives?: string[],
-    note?: string
+    note?: string,
   ) {
     // When alternatives is omitted, auto-detection was tried and failed
     const isAutoDetect = alternatives === undefined;
@@ -441,7 +440,7 @@ export class ContextError extends CliError {
         note,
         isAutoDetect,
       }),
-      EXIT.CONTEXT_MISSING
+      EXIT.CONTEXT_MISSING,
     );
     this.name = "ContextError";
     this.resource = resource;
@@ -454,7 +453,7 @@ export class ContextError extends CliError {
     if (command.includes("\n")) {
       throw new Error(
         "ContextError command must be a single-line CLI usage hint. " +
-          `Use ResolutionError for resolution failures. Got: "${command.slice(0, 80)}..."`
+          `Use ResolutionError for resolution failures. Got: "${command.slice(0, 80)}..."`,
       );
     }
   }
@@ -498,11 +497,11 @@ export class ResolutionError extends CliError {
     resource: string,
     headline: string,
     hint: string,
-    suggestions: string[] = []
+    suggestions: string[] = [],
   ) {
     super(
       buildResolutionMessage(resource, headline, hint, suggestions),
-      EXIT.RESOLUTION
+      EXIT.RESOLUTION,
     );
     this.name = "ResolutionError";
     this.resource = resource;
@@ -531,7 +530,7 @@ export class ResolutionError extends CliError {
 export function buildValidationMessage(
   headline: string,
   examples: string[],
-  note?: string
+  note?: string,
 ): string {
   const lines = [headline];
   if (examples.length > 0) {
@@ -554,11 +553,11 @@ export function validationError(
   headline: string,
   examples: string[],
   field?: string,
-  note?: string
+  note?: string,
 ): ValidationError {
   return new ValidationError(
     buildValidationMessage(headline, examples, note),
-    field
+    field,
   );
 }
 
@@ -740,7 +739,7 @@ export class WizardError extends CliError {
 
   constructor(
     message: string,
-    options?: { rendered?: boolean; exitCode?: number }
+    options?: { rendered?: boolean; exitCode?: number },
   ) {
     super(message, options?.exitCode ?? EXIT.WIZARD);
     this.name = "WizardError";
@@ -785,7 +784,7 @@ export function stringifyUnknown(value: unknown): string {
   if (value && typeof value === "object") {
     // JSON.stringify can throw on circular references or BigInt values.
     // Fall back to String() which is always safe.
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       return JSON.stringify(value);
     } catch {
@@ -804,7 +803,7 @@ export function stringifyUnknown(value: unknown): string {
  */
 export function formatError(error: unknown): string {
   return redactCredentialText(
-    error instanceof CliError ? error.format() : stringifyUnknown(error)
+    error instanceof CliError ? error.format() : stringifyUnknown(error),
   );
 }
 
@@ -884,7 +883,7 @@ export const SEARCH_QUERY_HELP =
 export function toSearchQueryError(
   error: unknown,
   userQuery: string | undefined,
-  extraSuggestions: readonly string[] = []
+  extraSuggestions: readonly string[] = [],
 ): unknown {
   if (
     userQuery &&
@@ -1011,7 +1010,7 @@ export type AuthGuardResult<T> = AuthGuardSuccess<T> | AuthGuardFailure;
  * @throws {HostScopeError} Always re-thrown so host-scoping rejections surface to the user
  */
 export async function withAuthGuard<T>(
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
 ): Promise<AuthGuardResult<T>> {
   try {
     return { ok: true, value: await fn() };

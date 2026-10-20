@@ -1,4 +1,4 @@
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { InkUI } from "../../../../src/lib/init/ui/ink-ui.js";
@@ -204,10 +204,10 @@ describe("InkUI prompt telemetry", () => {
     });
     await expect(resultPromise).resolves.toBe("continue");
     expect(states).not.toContainEqual(
-      expect.objectContaining({ prompt: null, spinnerActive: false })
+      expect.objectContaining({ prompt: null, spinnerActive: false }),
     );
     expect(states).not.toContainEqual(
-      expect.objectContaining({ prompt: "select", spinnerActive: true })
+      expect.objectContaining({ prompt: "select", spinnerActive: true }),
     );
     expect(store.getSnapshot()).toMatchObject({
       prompt: null,
@@ -221,42 +221,42 @@ describe("InkUI prompt telemetry", () => {
     await ui[Symbol.asyncDispose]();
   });
 
-  test.each([
-    "select",
-    "multiselect",
-  ] as const)("clears a cancelled %s prompt after returning the cancellation", async (kind) => {
-    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    const { ui, store } = createUi();
-    const promptKinds: Array<string | null> = [];
-    const unsubscribe = store.subscribe(() => {
-      promptKinds.push(store.getSnapshot().prompt?.kind ?? null);
-    });
+  test.each(["select", "multiselect"] as const)(
+    "clears a cancelled %s prompt after returning the cancellation",
+    async (kind) => {
+      vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const { ui, store } = createUi();
+      const promptKinds: Array<string | null> = [];
+      const unsubscribe = store.subscribe(() => {
+        promptKinds.push(store.getSnapshot().prompt?.kind ?? null);
+      });
 
-    const resultPromise =
-      kind === "select"
-        ? ui.select({
-            message: "Review your Sentry setup",
-            options: [{ label: "Continue", value: "continue" }],
-          })
-        : ui.multiselect({
-            message: "Choose features",
-            options: [{ label: "Tracing", value: "performanceMonitoring" }],
-          });
-    const prompt = store.getSnapshot().prompt;
-    expect(prompt?.kind).toBe(kind);
-    if (prompt?.kind !== "select" && prompt?.kind !== "multiselect") {
-      throw new Error(`Expected a ${kind} prompt`);
-    }
+      const resultPromise =
+        kind === "select"
+          ? ui.select({
+              message: "Review your Sentry setup",
+              options: [{ label: "Continue", value: "continue" }],
+            })
+          : ui.multiselect({
+              message: "Choose features",
+              options: [{ label: "Tracing", value: "performanceMonitoring" }],
+            });
+      const prompt = store.getSnapshot().prompt;
+      expect(prompt?.kind).toBe(kind);
+      if (prompt?.kind !== "select" && prompt?.kind !== "multiselect") {
+        throw new Error(`Expected a ${kind} prompt`);
+      }
 
-    prompt.resolve(null);
-    await expect(resultPromise).resolves.toBe(CANCELLED);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(store.getSnapshot().prompt).toBeNull();
-    expect(promptKinds).toEqual([kind, null]);
+      prompt.resolve(null);
+      await expect(resultPromise).resolves.toBe(CANCELLED);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(store.getSnapshot().prompt).toBeNull();
+      expect(promptKinds).toEqual([kind, null]);
 
-    unsubscribe();
-    await ui[Symbol.asyncDispose]();
-  });
+      unsubscribe();
+      await ui[Symbol.asyncDispose]();
+    },
+  );
 
   test("attributes workflow prompts to the active step", async () => {
     const metricSpy = vi.spyOn(Sentry.metrics, "distribution");
@@ -285,7 +285,7 @@ describe("InkUI prompt telemetry", () => {
           prompt_kind: "multiselect",
           workflow_step: "select-features",
         },
-      }
+      },
     );
     expect(startSpanSpy).toHaveBeenCalledWith(
       {
@@ -298,7 +298,7 @@ describe("InkUI prompt telemetry", () => {
           "wizard.step.id": "select-features",
         },
       },
-      expect.any(Function)
+      expect.any(Function),
     );
 
     await ui[Symbol.asyncDispose]();
@@ -340,7 +340,7 @@ describe("InkUI prompt telemetry", () => {
           "wizard.prompt.phase": "preflight",
         },
       },
-      expect.any(Function)
+      expect.any(Function),
     );
     expect(startSpanSpy).toHaveBeenCalledTimes(1);
 

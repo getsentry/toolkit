@@ -3,11 +3,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as projectsApi from "../../../src/lib/api/projects.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as auth from "../../../src/lib/db/auth.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as dsnIndex from "../../../src/lib/dsn/index.js";
 import {
   EVENT_SEND_NO_DSN_MESSAGE,
@@ -25,11 +25,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for mocked access
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for mocked access
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 useTestConfigDir("event-send-dsn-");
@@ -147,7 +147,7 @@ describe("resolveEventSendDsn", () => {
   let keysSpy: ReturnType<typeof vi.spyOn>;
   let authSpy: ReturnType<typeof vi.spyOn>;
   const resolveProjectMock = vi.mocked(
-    resolveTarget.resolveProjectBoundFromArg
+    resolveTarget.resolveProjectBoundFromArg,
   );
 
   beforeEach(() => {
@@ -195,7 +195,7 @@ describe("resolveEventSendDsn", () => {
     expect(resolveProjectMock).toHaveBeenCalledWith(
       "acme/web",
       "/tmp",
-      "event send"
+      "event send",
     );
     expect(keysSpy).toHaveBeenCalledWith("acme", "web", {
       status: "active",
@@ -215,7 +215,7 @@ describe("resolveEventSendDsn", () => {
     expect(resolveProjectMock).toHaveBeenCalledWith(
       "web",
       "/tmp",
-      "event send"
+      "event send",
     );
     expect(keysSpy).toHaveBeenCalledWith("acme", "web", {
       status: "active",
@@ -228,7 +228,7 @@ describe("resolveEventSendDsn", () => {
       resolveEventSendDsn("/tmp", {
         kind: "project",
         target: "acme/web",
-      })
+      }),
     ).rejects.toBeInstanceOf(ConfigError);
     expect(resolveProjectMock).not.toHaveBeenCalled();
     expect(keysSpy).not.toHaveBeenCalled();
@@ -256,7 +256,7 @@ describe("resolveEventSendDsn", () => {
       resolveEventSendDsn("/tmp", {
         kind: "project",
         target: "acme/web",
-      })
+      }),
     ).rejects.toMatchObject({
       name: "ConfigError",
       message:
@@ -272,7 +272,7 @@ describe("resolveEventSendDsn", () => {
       resolveEventSendDsn("/tmp", {
         kind: "project",
         target: "acme/web",
-      })
+      }),
     ).rejects.toMatchObject({
       name: "ConfigError",
       message:
@@ -294,7 +294,7 @@ describe("resolveEventSendDsn", () => {
 
   test("throws ConfigError listing every source when nothing resolves", async () => {
     const err = await resolveEventSendDsn("/tmp", undefined).catch(
-      (error) => error
+      (error) => error,
     );
     expect(err).toBeInstanceOf(ConfigError);
     expect((err as ConfigError).message).toBe(EVENT_SEND_NO_DSN_MESSAGE);

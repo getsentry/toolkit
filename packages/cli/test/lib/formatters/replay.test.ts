@@ -44,7 +44,7 @@ describe("extractReplayActivityEvents", () => {
           },
         ],
       ],
-      10
+      10,
     );
 
     expect(events).toEqual([
@@ -88,7 +88,7 @@ describe("extractReplayActivityEvents", () => {
           },
         ],
       ],
-      10
+      10,
     );
 
     expect(events).toEqual([

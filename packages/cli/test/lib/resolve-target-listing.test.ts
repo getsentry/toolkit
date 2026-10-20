@@ -15,11 +15,11 @@ vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../src/lib/api-client.js";
 import { DEFAULT_SENTRY_URL } from "../../src/lib/constants.js";
 
@@ -30,11 +30,11 @@ vi.mock("../../src/lib/db/defaults.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as defaults from "../../src/lib/db/defaults.js";
 
 vi.mock("../../src/lib/db/auth.js", async (importOriginal) => {
@@ -44,11 +44,11 @@ vi.mock("../../src/lib/db/auth.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as auth from "../../src/lib/db/auth.js";
 import { setOrgRegion, setOrgRegions } from "../../src/lib/db/regions.js";
 import { ContextError, ResolutionError } from "../../src/lib/errors.js";
@@ -60,11 +60,11 @@ vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTargetModule from "../../src/lib/resolve-target.js";
 import {
   classifyProjectSearchTarget,
@@ -201,7 +201,7 @@ describe("projectSearchNotFoundSuggestions", () => {
         displaySlug: "missing",
         scopedOrg,
         suggestions,
-      })
+      }),
     ).toEqual(expected);
   });
 });
@@ -244,7 +244,7 @@ describe("resolveOrgsForListing", () => {
   // Skip: resolveOrgsForListing calls resolveAllTargets internally (same-file).
   // vi.spyOn on the export doesn't intercept same-file calls in vitest.
   // These tests are covered by the Bun test suite.
-  // biome-ignore lint/suspicious/noSkippedTests: vitest can't intercept same-file internal calls
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("returns unique orgs from DSN detection when no default", async () => {
     resolveAllTargetsSpy.mockResolvedValue({
       targets: [
@@ -266,7 +266,7 @@ describe("resolveOrgsForListing", () => {
     expect(result.orgs).toEqual([]);
   });
 
-  // biome-ignore lint/suspicious/noSkippedTests: vitest can't intercept same-file internal calls
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("propagates footer from DSN detection", async () => {
     resolveAllTargetsSpy.mockResolvedValue({
       targets: [
@@ -280,7 +280,7 @@ describe("resolveOrgsForListing", () => {
     expect(result.footer).toBe("Found 2 projects");
   });
 
-  // biome-ignore lint/suspicious/noSkippedTests: vitest can't intercept same-file internal calls
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("propagates skippedSelfHosted from DSN detection", async () => {
     resolveAllTargetsSpy.mockResolvedValue({
       targets: [{ org: "org-a", project: "proj-1" }],
@@ -291,7 +291,7 @@ describe("resolveOrgsForListing", () => {
     expect(result.skippedSelfHosted).toBe(2);
   });
 
-  // biome-ignore lint/suspicious/noSkippedTests: vitest can't intercept same-file internal calls
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("returns empty orgs and propagates skippedSelfHosted when targets empty but DSNs found", async () => {
     resolveAllTargetsSpy.mockResolvedValue({
       targets: [],
@@ -317,7 +317,7 @@ describe("resolveProjectBoundTarget", () => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
     resolveOrgAndProjectSpy = vi.spyOn(
       resolveTargetModule,
-      "resolveOrgAndProject"
+      "resolveOrgAndProject",
     );
     // No accessible orgs by default so the authenticated account fallback in
     // resolveOrgProjectOrGuide can't resolve and makes no real HTTP calls.
@@ -350,7 +350,7 @@ describe("resolveProjectBoundTarget", () => {
     const parsed = { type: "org-all" as const, org: "my-org" };
 
     await expect(
-      resolveProjectBoundTarget(parsed, CWD, "trace list")
+      resolveProjectBoundTarget(parsed, CWD, "trace list"),
     ).rejects.toThrow(ContextError);
   });
 
@@ -376,7 +376,7 @@ describe("resolveProjectBoundTarget", () => {
     };
 
     await expect(
-      resolveProjectBoundTarget(parsed, CWD, "trace list")
+      resolveProjectBoundTarget(parsed, CWD, "trace list"),
     ).rejects.toThrow(ResolutionError);
   });
 
@@ -392,12 +392,12 @@ describe("resolveProjectBoundTarget", () => {
     const parsed = { type: "project-search" as const, projectSlug: "my-proj" };
 
     await expect(
-      resolveProjectBoundTarget(parsed, CWD, "trace list")
+      resolveProjectBoundTarget(parsed, CWD, "trace list"),
     ).rejects.toThrow(ResolutionError);
   });
 
   // Skip: same-file internal call — resolveProjectBoundTarget → resolveAllTargets
-  // biome-ignore lint/suspicious/noSkippedTests: vitest can't intercept same-file internal calls
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("resolves auto-detect when DSN detection succeeds", async () => {
     resolveOrgAndProjectSpy.mockResolvedValue({
       org: "detected-org",
@@ -418,7 +418,7 @@ describe("resolveProjectBoundTarget", () => {
     const parsed = { type: "auto-detect" as const };
 
     await expect(
-      resolveProjectBoundTarget(parsed, CWD, "log list")
+      resolveProjectBoundTarget(parsed, CWD, "log list"),
     ).rejects.toThrow(ContextError);
   });
 
@@ -472,7 +472,7 @@ describe("resolveProjectBoundFromArg", () => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
     resolveOrgAndProjectSpy = vi.spyOn(
       resolveTargetModule,
-      "resolveOrgAndProject"
+      "resolveOrgAndProject",
     );
     setOrgRegion("my-org", DEFAULT_SENTRY_URL);
   });
@@ -486,7 +486,7 @@ describe("resolveProjectBoundFromArg", () => {
     const result = await resolveProjectBoundFromArg(
       "my-org/my-proj",
       CWD,
-      "trace list"
+      "trace list",
     );
     expect(result).toEqual({ org: "my-org", project: "my-proj" });
   });
@@ -504,12 +504,12 @@ describe("resolveProjectBoundFromArg", () => {
 
   test("throws ContextError for 'org/' (org-all) string", async () => {
     await expect(
-      resolveProjectBoundFromArg("sentry/", CWD, "trace list")
+      resolveProjectBoundFromArg("sentry/", CWD, "trace list"),
     ).rejects.toThrow(ContextError);
   });
 
   // Skip: same-file internal call — resolveProjectBoundFromArg → resolveAllTargets
-  // biome-ignore lint/suspicious/noSkippedTests: vitest can't intercept same-file internal calls
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("resolves undefined to auto-detect", async () => {
     resolveOrgAndProjectSpy.mockResolvedValue({
       org: "auto-org",
@@ -521,7 +521,7 @@ describe("resolveProjectBoundFromArg", () => {
     const result = await resolveProjectBoundFromArg(
       undefined,
       CWD,
-      "trace list"
+      "trace list",
     );
     expect(result).toEqual({ org: "auto-org", project: "auto-proj" });
   });
@@ -561,7 +561,7 @@ describe("resolveProjectBoundTargets", () => {
 
     const result = await resolveProjectBoundTargets(
       { type: "explicit", org: "o1081365", project: "my-proj" },
-      OPTS
+      OPTS,
     );
 
     expect(result.targets).toHaveLength(1);
@@ -582,7 +582,7 @@ describe("resolveProjectBoundTargets", () => {
 
     const result = await resolveProjectBoundTargets(
       { type: "org-all", org: "o1081365" },
-      OPTS
+      OPTS,
     );
 
     expect(listProjectsSpy).toHaveBeenCalledWith("real-org");
@@ -609,7 +609,7 @@ describe("resolveProjectBoundTargets", () => {
 
     const result = await resolveProjectBoundTargets(
       { type: "project-search", projectSlug: "my-proj", org: "my-org" },
-      OPTS
+      OPTS,
     );
 
     expect(result.targets).toHaveLength(1);
@@ -625,7 +625,7 @@ describe("resolveProjectBoundTargets", () => {
     try {
       await resolveProjectBoundTargets(
         { type: "project-search", projectSlug: "missing" },
-        OPTS
+        OPTS,
       );
       expect.unreachable("should have thrown");
     } catch (error) {
@@ -715,7 +715,7 @@ describe("resolveOrgProjectOrGuide", () => {
         cwd: CWD,
         usageHint: "sentry issue list <org>/<project>",
         interactive: false,
-      })
+      }),
     ).rejects.toBeInstanceOf(ContextError);
     // Unauthenticated path must not attempt to list orgs.
     expect(listOrganizationsSpy).not.toHaveBeenCalled();
@@ -742,7 +742,7 @@ describe("resolveOrgOptionalTarget bare org slug", () => {
     const result = await resolveOrgOptionalTarget(
       { type: "project-search", projectSlug: "acme-corp" },
       CWD,
-      "explore"
+      "explore",
     );
 
     expect(result).toEqual({ org: "acme-corp" });
@@ -759,7 +759,7 @@ describe("resolveOrgOptionalTarget bare org slug", () => {
         { type: "project-search", projectSlug: "missing" },
         CWD,
         "alert metrics create",
-        usageHint
+        usageHint,
       );
       expect.unreachable("should have thrown");
     } catch (error) {

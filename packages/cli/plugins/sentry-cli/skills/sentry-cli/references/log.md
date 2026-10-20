@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-log
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: View Sentry logs
 requires:
   bins: ["sentry"]
@@ -45,6 +45,9 @@ sentry log list -q 'severity:error'
 
 # Filter by message content
 sentry log list -q 'database'
+
+# Match a regular expression (key://pattern//)
+sentry log list -q 'message://^Timeout after \d+ms//'
 
 # Limit results
 sentry log list --limit 50

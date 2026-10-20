@@ -15,17 +15,23 @@
  *   with a warning. Slugs, `project_id:…`, and namespaced keys
  *   (`bolt.project_id`) are left alone.
  *
- * Parsing uses a pre-compiled PEG parser generated from
- * `script/search-query.pegjs` (a simplified version of Sentry's
- * canonical grammar). The parser classifies every term structurally —
- * comparison operators, in-list values, paren groups, etc. — so the
- * rewriting logic doesn't need regex-based reject-lists.
+ * Parsing uses the Sentry frontend's search grammar through
+ * `@sentry/toolkit-core/search-syntax`. Its token tree is flattened into
+ * the {@link SearchNode} list below, which classifies every term
+ * structurally — comparison operators, in-list values, paren groups,
+ * etc. — so the rewriting logic doesn't need regex-based reject-lists.
  *
  * @see {@link https://github.com/getsentry/sentry/blob/master/static/app/components/searchSyntax/grammar.pegjs | Canonical Sentry PEG grammar}
  */
 
-import type { SearchNode } from "../generated/search-parser.js";
-import { parse } from "../generated/search-parser.js";
+import {
+  type FilterToken,
+  FilterType,
+  type ParseResultToken,
+  parseSearch,
+  TermOperator,
+  Token,
+} from "@sentry/toolkit-core/search-syntax";
 import { ValidationError } from "./errors.js";
 import { logger } from "./logger.js";
 
@@ -38,6 +44,223 @@ const log = logger.withTag("search-query");
  * - `has`: Uses `search_value` not `text_in_list` in the PEG grammar
  */
 const INVALID_INLIST_KEYS = new Set(["is", "has"]);
+
+/**
+ * Filter keys whose values scope *which* issues match but which the Sentry
+ * issues-list endpoint does NOT apply to its per-group seen-stats
+ * (`count`, `userCount`, `firstSeen`, `lastSeen`).
+ *
+ * A query filtering on one of these returns the groups matching the filter,
+ * but the displayed counts remain period-wide totals across every value of the
+ * key — e.g. `release:"X"` restricts the result set yet the counts still cover
+ * all releases. Callers must be told so they don't attribute the numbers to the
+ * filter. See getsentry/cli#1518.
+ */
+const COUNT_UNSCOPED_FILTER_KEYS = new Set(["release"]);
+
+// ---------------------------------------------------------------------------
+// Search nodes
+// ---------------------------------------------------------------------------
+
+/** A text filter: key:value */
+type TextFilter = {
+  type: "text_filter";
+  negated: boolean;
+  key: string;
+  value: string;
+};
+
+/** An in-list filter: key:[val1,val2] */
+type TextInFilter = {
+  type: "text_in_filter";
+  negated: boolean;
+  key: string;
+  values: string[];
+};
+
+/** A regex filter: key://pattern// */
+type RegexFilter = {
+  type: "regex_filter";
+  negated: boolean;
+  key: string;
+  value: string;
+};
+
+/** A comparison filter: key:>value, key:<=value */
+type ComparisonFilter = {
+  type: "comparison_filter";
+  negated: boolean;
+  key: string;
+  op: string;
+  value: string;
+};
+
+/** Free text (no key: prefix) */
+type FreeText = {
+  type: "free_text";
+  value: string;
+  quoted: boolean;
+};
+
+/** A boolean operator (AND / OR) */
+type BooleanOp = {
+  type: "boolean_op";
+  op: "AND" | "OR";
+};
+
+/** A parenthesized group */
+type ParenGroup = {
+  type: "paren_group";
+  inner: SearchNode[];
+  raw: string;
+};
+
+/**
+ * A filter the rewriter must pass through untouched, such as an empty value
+ * or a list with an empty item.
+ */
+type OpaqueTerm = {
+  type: "opaque";
+  raw: string;
+};
+
+/** One term of a search query. */
+export type SearchNode =
+  | TextFilter
+  | TextInFilter
+  | RegexFilter
+  | ComparisonFilter
+  | FreeText
+  | BooleanOp
+  | ParenGroup
+  | OpaqueTerm;
+
+const COMPARISON_PREFIX_RE = /^(>=|<=|!=|>|<|=)/;
+
+/**
+ * Filter types whose key shape also has an in-list rule in Sentry's grammar
+ * (`text_in_filter` / `numeric_in_filter`). Aggregate (`count():10`),
+ * array-includes (`foo[*]:a`), `has:`/`is:`, boolean, date, duration and
+ * size filters have no in-list form, so merging them would build a query
+ * the API rejects.
+ */
+const LISTABLE_FILTER_TYPES: ReadonlySet<FilterType> = new Set([
+  FilterType.TEXT,
+  FilterType.NUMERIC,
+]);
+const FREE_TEXT_SEPARATOR_RE = /[ \t]+/;
+
+type Located = {
+  location: { start: { offset: number }; end: { offset: number } };
+};
+
+/** The exact query text a token was parsed from. */
+function sourceOf(query: string, token: Located): string {
+  return query.slice(token.location.start.offset, token.location.end.offset);
+}
+
+/** Flatten one filter token into a {@link SearchNode}. */
+function filterToNode(query: string, token: FilterToken): SearchNode {
+  const key = sourceOf(query, token.key);
+  // Everything after the `:` that follows the key, operator included.
+  const value = query.slice(
+    token.key.location.end.offset + 1,
+    token.location.end.offset,
+  );
+  const { negated } = token;
+
+  if (token.operator === TermOperator.MATCHES) {
+    return { type: "regex_filter", negated, key, value };
+  }
+
+  if (
+    token.value.type === Token.VALUE_TEXT_LIST ||
+    token.value.type === Token.VALUE_NUMBER_LIST
+  ) {
+    const values: string[] = [];
+    for (const item of token.value.items) {
+      if (!item.value || token.operator !== TermOperator.DEFAULT) {
+        return { type: "opaque", raw: sourceOf(query, token) };
+      }
+      values.push(sourceOf(query, item.value));
+    }
+    return { type: "text_in_filter", negated, key, values };
+  }
+
+  const comparison = COMPARISON_PREFIX_RE.exec(value)?.[1];
+  if (comparison) {
+    return {
+      type: "comparison_filter",
+      negated,
+      key,
+      op: comparison,
+      value: value.slice(comparison.length),
+    };
+  }
+
+  if (!value || !LISTABLE_FILTER_TYPES.has(token.filter)) {
+    return { type: "opaque", raw: sourceOf(query, token) };
+  }
+
+  return { type: "text_filter", negated, key, value };
+}
+
+/**
+ * Flatten the shared parser's token tree into {@link SearchNode}s. Returns
+ * `null` for unbalanced parentheses, which the rewriter can't reason about.
+ */
+function toSearchNodes(
+  query: string,
+  tokens: ParseResultToken[],
+): SearchNode[] | null {
+  const nodes: SearchNode[] = [];
+  for (const token of tokens) {
+    switch (token.type) {
+      case Token.SPACES:
+        break;
+      case Token.LOGIC_BOOLEAN:
+        nodes.push({ type: "boolean_op", op: token.value });
+        break;
+      case Token.LOGIC_GROUP: {
+        const inner = toSearchNodes(query, token.inner);
+        if (!inner) {
+          return null;
+        }
+        nodes.push({ type: "paren_group", inner, raw: sourceOf(query, token) });
+        break;
+      }
+      case Token.FREE_TEXT: {
+        const text = sourceOf(query, token).trim();
+        if (token.quoted) {
+          nodes.push({ type: "free_text", value: text, quoted: true });
+          break;
+        }
+        // The grammar folds consecutive words into one free-text token; the
+        // rewriter treats each word as its own term.
+        for (const word of text.split(FREE_TEXT_SEPARATOR_RE)) {
+          if (word) {
+            nodes.push({ type: "free_text", value: word, quoted: false });
+          }
+        }
+        break;
+      }
+      case Token.FILTER:
+        nodes.push(filterToNode(query, token));
+        break;
+      default:
+        return null;
+    }
+  }
+  return nodes;
+}
+
+/** Parse a query into {@link SearchNode}s, or `null` if it can't be. */
+function parseSearchNodes(query: string): SearchNode[] | null {
+  // Regex filters are parsed as such on every dataset so the rewriter never
+  // merges a `key://pattern//` value into an in-list.
+  const tokens = parseSearch(query, { config: { allowRegex: true } });
+  return tokens ? toSearchNodes(query, tokens) : null;
+}
 
 // ---------------------------------------------------------------------------
 // AST → string serialization
@@ -63,9 +286,16 @@ function serializeNode(node: SearchNode): string {
       const prefix = node.negated ? "!" : "";
       return `${prefix}${node.key}:[${node.values.join(",")}]`;
     }
+    case "regex_filter": {
+      const prefix = node.negated ? "!" : "";
+      return `${prefix}${node.key}:${node.value}`;
+    }
     case "comparison_filter": {
       const prefix = node.negated ? "!" : "";
       return `${prefix}${node.key}:${node.op}${node.value}`;
+    }
+    case "opaque": {
+      return node.raw;
     }
     default: {
       return "";
@@ -90,7 +320,7 @@ function serializeNodes(nodes: SearchNode[]): string {
  * Comparison filters, free text, paren groups, and boolean ops cannot.
  */
 function isMergeableFilter(
-  node: SearchNode
+  node: SearchNode,
 ): node is
   | (SearchNode & { type: "text_filter" })
   | (SearchNode & { type: "text_in_filter" }) {
@@ -118,7 +348,7 @@ function isMergeableFilter(
 
 /** Extract all values from a mergeable filter node. */
 function valuesFromNode(
-  node: SearchNode & { type: "text_filter" | "text_in_filter" }
+  node: SearchNode & { type: "text_filter" | "text_in_filter" },
 ): string[] {
   if (node.type === "text_in_filter") {
     return node.values;
@@ -232,7 +462,7 @@ function isOrNode(nodes: SearchNode[], j: number): boolean {
  */
 function collectOrChain(
   nodes: SearchNode[],
-  start: number
+  start: number,
 ): [SearchNode[], number] {
   const group = [nodes[start] as SearchNode];
   let j = start + 1;
@@ -353,14 +583,12 @@ export function sanitizeQuery(query: string | undefined): string | undefined {
   const withNumericProject = rewriteNumericProjectFilters(normalized);
   const notes = preParseRewriteNotes(query, normalized, withNumericProject);
 
-  let nodes: SearchNode[];
-  try {
-    nodes = parse(withNumericProject);
-  } catch (err) {
+  const nodes = parseSearchNodes(withNumericProject);
+  if (!nodes) {
     // PEG parse still failed after normalization — pass through to the
     // API which returns a proper 400 with actionable details. The text
     // rewrites already ran, so say so: the 400 will quote them.
-    log.debug("Search query did not parse; sending as-is", err);
+    log.debug("Search query did not parse; sending as-is");
     warnRunningQuery(notes, withNumericProject);
     return withNumericProject;
   }
@@ -375,7 +603,7 @@ export function sanitizeQuery(query: string | undefined): string | undefined {
         "Remove the parentheses and use in-list syntax instead:\n" +
         "  (level:error OR level:warning)  →  level:[error,warning]\n\n" +
         "Search syntax: https://docs.sentry.io/concepts/search/",
-      "query"
+      "query",
     );
   }
 
@@ -392,7 +620,7 @@ export function sanitizeQuery(query: string | undefined): string | undefined {
   if (hasAnd) {
     const sanitized = serializeNodes(stripAndNodes(nodes));
     notes.push(
-      "Sentry search implicitly ANDs terms — removed explicit AND operator."
+      "Sentry search implicitly ANDs terms — removed explicit AND operator.",
     );
     warnRunningQuery(notes, sanitized);
     return sanitized;
@@ -406,7 +634,7 @@ export function sanitizeQuery(query: string | undefined): string | undefined {
 function preParseRewriteNotes(
   query: string,
   normalized: string,
-  withNumericProject: string
+  withNumericProject: string,
 ): string[] {
   const notes: string[] = [];
   if (normalized !== query) {
@@ -414,7 +642,7 @@ function preParseRewriteNotes(
   }
   if (withNumericProject !== normalized) {
     notes.push(
-      "`project` is the slug; numeric ids use project_id. Rewrote numeric project: filters."
+      "`project` is the slug; numeric ids use project_id. Rewrote numeric project: filters.",
     );
   }
   return notes;
@@ -439,7 +667,7 @@ function warnRunningQuery(notes: string[], result: string): void {
 function handleOr(
   nodes: SearchNode[],
   hasAnd: boolean,
-  notes: string[]
+  notes: string[],
 ): string {
   const rewritten = tryRewriteOr(nodes);
   if (rewritten) {
@@ -460,13 +688,69 @@ function handleOr(
       "  - is: or has: qualifiers (not supported with in-list)\n" +
       "  - Negated qualifiers (!key:val1 OR !key:val2)\n" +
       "  - Comparison values (age:>24h OR age:>7d)\n" +
+      "  - Regex filters (use alternation instead: key://(a|b)//)\n" +
       "  - Parenthesized groups\n\n" +
       "Alternatives:\n" +
       '  - Write in-list syntax directly: --query "key:[val1,val2]"\n' +
       "  - Run separate queries for each term\n\n" +
       "Search syntax: https://docs.sentry.io/concepts/search/",
-    "query"
+    "query",
   );
+}
+
+/**
+ * Collect the count-unscoped filter keys (see {@link COUNT_UNSCOPED_FILTER_KEYS})
+ * present in a query, recursing into parenthesized groups.
+ */
+function collectUnscopedCountKeys(
+  nodes: SearchNode[],
+  found: Set<string>,
+): void {
+  for (const node of nodes) {
+    if (node.type === "paren_group") {
+      collectUnscopedCountKeys(node.inner, found);
+      continue;
+    }
+    if (
+      node.type === "text_filter" ||
+      node.type === "text_in_filter" ||
+      node.type === "comparison_filter" ||
+      node.type === "regex_filter"
+    ) {
+      const key = node.key.toLowerCase();
+      if (COUNT_UNSCOPED_FILTER_KEYS.has(key)) {
+        found.add(key);
+      }
+    }
+  }
+}
+
+/**
+ * Return the filter keys in `query` whose values restrict which issues match
+ * but are NOT reflected in the issues-list endpoint's seen-stats
+ * (`count`, `userCount`, `firstSeen`, `lastSeen`). See getsentry/cli#1518.
+ *
+ * Used to warn callers that a release-scoped `issue list` reports period-wide
+ * counts, not counts matching the filter. Returns an empty array when the
+ * query is absent, unparseable, or contains no such keys.
+ *
+ * @param query - Raw `--query` value, or `undefined`
+ * @returns Lower-cased matching keys (e.g. `["release"]`), deduplicated
+ */
+export function unscopedCountFilterKeys(query: string | undefined): string[] {
+  if (!query) {
+    return [];
+  }
+  const nodes = parseSearchNodes(normalizeQuery(query));
+  if (!nodes) {
+    // Unparseable query has no keys we can detect; the API will reject it with
+    // a proper 400. Nothing actionable here — just skip the count-scope check.
+    log.debug("Skipping count-scope check for unparseable query");
+    return [];
+  }
+  const found = new Set<string>();
+  collectUnscopedCountKeys(nodes, found);
+  return [...found];
 }
 
 // ---------------------------------------------------------------------------
@@ -497,6 +781,8 @@ export const SEARCH_SYNTAX_REFERENCE = {
     comparison: [">=", "<=", ">", "<", "=", "!="],
     wildcard: "* in values (e.g., message:*timeout*)",
     inList: "key:[val1,val2] — matches any value in the list",
+    regex:
+      "key://pattern// (logs only, string attributes) — RE2, unanchored, case-sensitive ((?i) to ignore case), max 64 chars, never quoted; ends at the first // followed by whitespace, ) or end of query; negate with !key://pattern//",
   },
   filterTypes: [
     "text (key:value)",
@@ -556,12 +842,18 @@ const PROJECT_NUMERIC_RE = /(^|\s)(!?)project:(\d+)(?=\s|$)/gi;
 const PROJECT_NUMERIC_LIST_RE = /(^|\s)(!?)project:\[(\d+(?:\s*,\s*\d+)*)\]/gi;
 
 /**
- * Pattern that splits a query into alternating unquoted / quoted segments.
+ * Pattern that splits a query into alternating unquoted / preserved segments.
  *
- * Matches double-quoted strings (including escaped quotes inside them).
- * Between matches is unquoted text that can be safely normalized.
+ * Matches double-quoted strings (including escaped quotes inside them) and
+ * `key://pattern//` regex values, which end at the first `//` followed by
+ * whitespace, `)`, or end of query. Between matches is unquoted text that
+ * can be safely normalized.
  */
-const QUOTED_SEGMENT_RE = /"(?:[^"\\]|\\.)*"/g;
+const REGEX_FILTER_KEY_SOURCE = String.raw`(?:(?:tags|flags)\[[\w.:-]+(?:\[\*\])?(?: *, *(?:string|number|boolean|array))?\]|"[\w.:-]+"|[\w.[\]-]+)(?:\[\*\])?`;
+const PRESERVED_SEGMENT_RE = new RegExp(
+  String.raw`"(?:[^"\\]|\\.)*"|(?<=(?:^|[\s()"\]])!?${REGEX_FILTER_KEY_SOURCE}:)\/\/(?:(?!\/\/(?:[\t\n )]|$))[^\n])+\/\/(?=[\t\n )]|$)`,
+  "g",
+);
 
 /**
  * Rewrite `project:<digits>` / `project:[digits,…]` to `project_id`.
@@ -587,8 +879,9 @@ function rewriteNumericProjectFilters(query: string): string {
  * transform that fixes a common agent/user mistake. The pipeline is ordered
  * from most common to least common pattern.
  *
- * Quoted regions (`"..."`) are preserved verbatim — only unquoted text is
- * normalized. This prevents `message:"error [500,] found"` from being
+ * Quoted regions (`"..."`) and regex values (`key://pattern//`) are
+ * preserved verbatim — only the remaining text is normalized. This prevents
+ * `message:"error [500,] found"` and `message://[a-z,]+//` from being
  * corrupted.
  *
  * Returns the original query unchanged if no repairs were applicable.
@@ -613,15 +906,15 @@ function normalizeQuery(query: string): string {
 /**
  * Apply a transform function only to the unquoted segments of a query.
  *
- * Splits the query at double-quoted boundaries, applies `fn` to each
- * unquoted segment, and re-assembles with the quoted segments untouched.
+ * Splits the query at double-quoted and regex-value boundaries, applies `fn`
+ * to each unquoted segment, and re-assembles with the preserved segments
+ * untouched.
  */
 function transformUnquoted(
   query: string,
-  fn: (unquoted: string) => string
+  fn: (unquoted: string) => string,
 ): string {
-  // Fast path: no quotes → transform the whole string
-  if (!query.includes('"')) {
+  if (!(query.includes('"') || query.includes("//"))) {
     return fn(query);
   }
 
@@ -629,21 +922,18 @@ function transformUnquoted(
   let lastIndex = 0;
 
   // Reset the regex state for each call (global regex)
-  QUOTED_SEGMENT_RE.lastIndex = 0;
-  let match = QUOTED_SEGMENT_RE.exec(query);
+  PRESERVED_SEGMENT_RE.lastIndex = 0;
+  let match = PRESERVED_SEGMENT_RE.exec(query);
 
   while (match !== null) {
-    // Unquoted segment before this quoted match
     if (match.index > lastIndex) {
       parts.push(fn(query.slice(lastIndex, match.index)));
     }
-    // Quoted segment — preserved as-is
     parts.push(match[0]);
     lastIndex = match.index + match[0].length;
-    match = QUOTED_SEGMENT_RE.exec(query);
+    match = PRESERVED_SEGMENT_RE.exec(query);
   }
 
-  // Trailing unquoted segment after last quote
   if (lastIndex < query.length) {
     parts.push(fn(query.slice(lastIndex)));
   }
@@ -660,7 +950,7 @@ function transformUnquoted(
 function fixMismatchedBrackets(query: string): string {
   return query.replace(
     MALFORMED_IN_LIST_RE,
-    (_match, inner: string) => `[${inner.replace(TRAILING_COMMA_RE, "")}]`
+    (_match, inner: string) => `[${inner.replace(TRAILING_COMMA_RE, "")}]`,
   );
 }
 
@@ -672,7 +962,7 @@ function fixMismatchedBrackets(query: string): string {
  */
 function stripTrailingListCommas(query: string): string {
   return query.replace(BALANCED_BRACKET_RE, (match) =>
-    match.replace(TRAILING_LIST_COMMA_RE, "]")
+    match.replace(TRAILING_LIST_COMMA_RE, "]"),
   );
 }
 
@@ -684,6 +974,7 @@ function stripTrailingListCommas(query: string): string {
  * @internal Exported for testing only. Not part of the public API.
  */
 export const __testing = {
+  parseSearchNodes,
   isMergeableFilter,
   tryMergeGroup,
   tryRewriteOr,

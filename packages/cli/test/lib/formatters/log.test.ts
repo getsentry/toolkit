@@ -11,7 +11,9 @@ import {
   formatLogsHeader,
   formatLogTable,
   getLogId,
+  type LogLike,
 } from "../../../src/lib/formatters/log.js";
+import { renderInlineMarkdown } from "../../../src/lib/formatters/markdown.js";
 import type {
   DetailedSentryLog,
   SentryLog,
@@ -64,7 +66,7 @@ function createTestLog(overrides: Partial<SentryLog> = {}): SentryLog {
 
 // Strip ANSI color codes for easier testing
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ANSI stripping
+  // oxlint-disable-next-line no-control-regex -- intentional ANSI stripping
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -226,13 +228,13 @@ describe("formatLogRow (plain mode)", () => {
     expect(result).toMatch(/^\|.+\|.+\|.+\|.+\|\n$/);
   });
 
-  test("contains log ID prefix, timestamp, severity, message", () => {
+  test("contains full log ID, timestamp, severity, message", () => {
     const log = createTestLog({
       severity: "error",
       message: "connection failed",
     });
     const result = formatLogRow(log);
-    expect(result).toContain("test-id-"); // first 8 chars of "test-id-123"
+    expect(result).toContain("test-id-123");
     expect(result).toContain("connection failed");
     expect(result).toContain("ERROR");
     expect(result).toMatch(/\d{4}-\d{2}-\d{2}/);
@@ -269,6 +271,47 @@ describe("formatLogRow (plain mode)", () => {
   });
 });
 
+describe.each(["plain", "rendered"])("copyable log IDs (%s mode)", (mode) => {
+  if (mode === "plain") {
+    usePlainMode();
+  } else {
+    useRenderedMode();
+  }
+
+  test.each(["sentry.item_id", "id"])(
+    "preserves distinct UUIDv7 IDs from %s that share a timestamp prefix",
+    (idField) => {
+      const ids = [
+        "019a0000123470008000000000000001",
+        "019a0000123470008000000000000002",
+      ];
+      const logs: LogLike[] = ids.map((id) => ({
+        [idField]: id,
+        timestamp: "2025-01-30T14:32:15Z",
+        severity: "info",
+        message:
+          "A log message long enough to require wrapping in a narrow terminal",
+      }));
+      const table = createLogStreamingTable({ maxWidth: 80 });
+      const outputs = [
+        logs.map((log) => formatLogRow(log)).join(""),
+        formatLogTable(logs),
+        logs
+          .map((log) =>
+            table.row(buildLogRowCells(log).map(renderInlineMarkdown)),
+          )
+          .join(""),
+      ];
+
+      for (const output of outputs) {
+        for (const id of ids) {
+          expect(stripAnsi(output)).toContain(id);
+        }
+      }
+    },
+  );
+});
+
 describe("formatLogsHeader (plain mode)", () => {
   usePlainMode();
 
@@ -286,13 +329,13 @@ describe("formatLogsHeader (plain mode)", () => {
   test("includes extra columns when provided", () => {
     const result = formatLogsHeader(["email", "user_id"]);
     expect(result).toContain(
-      "| ID | Timestamp | Level | Message | email | user_id |"
+      "| ID | Timestamp | Level | Message | email | user_id |",
     );
   });
 });
 
 function createDetailedTestLog(
-  overrides: Partial<DetailedSentryLog> = {}
+  overrides: Partial<DetailedSentryLog> = {},
 ): DetailedSentryLog {
   return {
     "sentry.item_id": "test-log-id-123456789012345678901234",
@@ -478,7 +521,7 @@ describe("formatLogDetails", () => {
       ];
       const log = createDetailedTestLog();
       const result = stripAnsi(
-        formatLogDetails(log, "test-org", attrsWithRedundant)
+        formatLogDetails(log, "test-org", attrsWithRedundant),
       );
 
       expect(result).toContain("user.id");
@@ -489,7 +532,7 @@ describe("formatLogDetails", () => {
     test("extraFields limits which custom attributes are shown", () => {
       const log = createDetailedTestLog();
       const result = stripAnsi(
-        formatLogDetails(log, "test-org", customAttrs, ["user.id"])
+        formatLogDetails(log, "test-org", customAttrs, ["user.id"]),
       );
 
       expect(result).toContain("Custom Attributes");
@@ -501,7 +544,7 @@ describe("formatLogDetails", () => {
     test("shows no Custom Attributes section when all are filtered by extraFields", () => {
       const log = createDetailedTestLog();
       const result = stripAnsi(
-        formatLogDetails(log, "test-org", customAttrs, ["nonexistent.field"])
+        formatLogDetails(log, "test-org", customAttrs, ["nonexistent.field"]),
       );
 
       expect(result).not.toContain("Custom Attributes");
@@ -512,7 +555,7 @@ describe("formatLogDetails", () => {
         "user.id": "u_99",
       } as DetailedSentryLog);
       const result = stripAnsi(
-        formatLogDetails(log, "test-org", undefined, ["user.id"])
+        formatLogDetails(log, "test-org", undefined, ["user.id"]),
       );
 
       expect(result).toContain("Custom Attributes");
@@ -527,7 +570,7 @@ describe("formatLogDetails", () => {
       ];
       const log = createDetailedTestLog();
       const result = stripAnsi(
-        formatLogDetails(log, "test-org", attrsWithArray)
+        formatLogDetails(log, "test-org", attrsWithArray),
       );
 
       expect(result).toContain('["prod","web"]');
@@ -547,13 +590,13 @@ describe("formatLogDetails", () => {
 describe("getLogId", () => {
   test("returns sentry.item_id when present", () => {
     expect(getLogId({ "sentry.item_id": "abc123", timestamp: "" })).toBe(
-      "abc123"
+      "abc123",
     );
   });
 
   test("falls back to id when sentry.item_id is absent", () => {
     expect(getLogId({ id: "trace-log-id", timestamp: "" })).toBe(
-      "trace-log-id"
+      "trace-log-id",
     );
   });
 
@@ -569,11 +612,10 @@ describe("buildLogRowCells", () => {
     expect(cells.length).toBe(4);
   });
 
-  test("first cell contains short log ID", () => {
+  test("first cell contains full log ID", () => {
     const log = createTestLog();
     const cells = buildLogRowCells(log);
-    // First 8 chars of "test-id-123"
-    expect(stripAnsi(cells[0])).toContain("test-id-");
+    expect(stripAnsi(cells[0])).toContain("test-id-123");
   });
 
   test("appends extra field cells when provided", () => {
@@ -599,8 +641,7 @@ describe("formatLogTable", () => {
 
   test("includes log ID in output", () => {
     const result = stripAnsi(formatLogTable([createTestLog()]));
-    // First 8 chars of "test-id-123"
-    expect(result).toContain("test-id-");
+    expect(result).toContain("test-id-123");
   });
 
   test("includes all log messages", () => {
@@ -615,14 +656,14 @@ describe("formatLogTable", () => {
 
   test("includes severity levels", () => {
     const result = stripAnsi(
-      formatLogTable([createTestLog({ severity: "error" })])
+      formatLogTable([createTestLog({ severity: "error" })]),
     );
     expect(result).toContain("ERROR");
   });
 
   test("includes trace IDs when present", () => {
     const result = stripAnsi(
-      formatLogTable([createTestLog({ trace: "abcdef1234567890" })])
+      formatLogTable([createTestLog({ trace: "abcdef1234567890" })]),
     );
     expect(result).toContain("abcdef12");
   });

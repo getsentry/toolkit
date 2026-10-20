@@ -6,12 +6,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolve from "../../../src/commands/dashboard/resolve.js";
 import { restoreCommand } from "../../../src/commands/dashboard/restore.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 import type { DashboardDetail } from "../../../src/types/dashboard.js";
 
@@ -77,7 +77,7 @@ describe("dashboard restore command", () => {
   beforeEach(() => {
     restoreDashboardRevisionSpy = vi.spyOn(
       apiClient,
-      "restoreDashboardRevision"
+      "restoreDashboardRevision",
     );
     resolveOrgFromTargetSpy = vi.spyOn(resolve, "resolveOrgFromTarget");
     resolveDashboardIdSpy = vi.spyOn(resolve, "resolveDashboardId");
@@ -87,7 +87,7 @@ describe("dashboard restore command", () => {
       .mockImplementation((_opts, fn) =>
         fn(() => {
           /* no-op setMessage */
-        })
+        }),
       );
 
     // Default mocks
@@ -113,13 +113,13 @@ describe("dashboard restore command", () => {
     await func.call(
       context,
       defaultFlags({ json: true, revision: "42" }),
-      "123"
+      "123",
     );
 
     expect(restoreDashboardRevisionSpy).toHaveBeenCalledWith(
       "test-org",
       "123",
-      "42"
+      "42",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -164,14 +164,14 @@ describe("dashboard restore command", () => {
     await func.call(
       context,
       defaultFlags({ json: true, revision: "5" }),
-      "456"
+      "456",
     );
 
     expect(resolveDashboardIdSpy).toHaveBeenCalledWith("test-org", "456");
     expect(restoreDashboardRevisionSpy).toHaveBeenCalledWith(
       "test-org",
       "123",
-      "5"
+      "5",
     );
   });
 
@@ -182,7 +182,7 @@ describe("dashboard restore command", () => {
       context,
       defaultFlags({ json: true, revision: "10" }),
       "my-org/",
-      "789"
+      "789",
     );
 
     expect(resolveDashboardIdSpy).toHaveBeenCalledWith("test-org", "789");
@@ -194,12 +194,12 @@ describe("dashboard restore command", () => {
     await func.call(
       context,
       defaultFlags({ json: true, revision: "3" }),
-      "My Dashboard Title"
+      "My Dashboard Title",
     );
 
     expect(resolveDashboardIdSpy).toHaveBeenCalledWith(
       "test-org",
-      "My Dashboard Title"
+      "My Dashboard Title",
     );
   });
 
@@ -221,7 +221,7 @@ describe("dashboard restore command", () => {
     expect(restoreDashboardRevisionSpy).toHaveBeenCalledWith(
       "test-org",
       "123",
-      "1"
+      "1",
     );
   });
 
@@ -233,7 +233,7 @@ describe("dashboard restore command", () => {
     const func = await restoreCommand.loader();
 
     await expect(
-      func.call(context, defaultFlags({ revision: "999" }), "123")
+      func.call(context, defaultFlags({ revision: "999" }), "123"),
     ).rejects.toThrow();
   });
 

@@ -65,7 +65,7 @@ function makeUI() {
 }
 
 function makeBailResult(
-  partial: Partial<WizardOutput> = {}
+  partial: Partial<WizardOutput> = {},
 ): WorkflowRunResult {
   return {
     status: "success",
@@ -88,24 +88,27 @@ describe("handleFinalResult", () => {
     test.each([
       { status: "success" } as WorkflowRunResult,
       { status: "success", result: {} } as WorkflowRunResult,
-    ])("rejects a successful workflow without an explicit zero exit", async (result) => {
-      const ui = makeUI();
-      const error = await handleFinalResult(
-        result,
-        makeSpinnerHandle(),
-        makeSpinState(),
-        ui
-      ).catch((caught) => caught);
+    ])(
+      "rejects a successful workflow without an explicit zero exit",
+      async (result) => {
+        const ui = makeUI();
+        const error = await handleFinalResult(
+          result,
+          makeSpinnerHandle(),
+          makeSpinState(),
+          ui,
+        ).catch((caught) => caught);
 
-      expect(error).toBeInstanceOf(WizardError);
-      expect((error as WizardError).exitCode).not.toBe(0);
-      expect((error as WizardError).message).toBe(
-        "Workflow reported success without an explicit exit code"
-      );
-      expect(ui.log.error).toHaveBeenCalledWith(
-        "Workflow reported success without an explicit exit code"
-      );
-    });
+        expect(error).toBeInstanceOf(WizardError);
+        expect((error as WizardError).exitCode).not.toBe(0);
+        expect((error as WizardError).message).toBe(
+          "Workflow reported success without an explicit exit code",
+        );
+        expect(ui.log.error).toHaveBeenCalledWith(
+          "Workflow reported success without an explicit exit code",
+        );
+      },
+    );
 
     test("accepts a successful workflow with exit code zero", async () => {
       await expect(
@@ -113,8 +116,8 @@ describe("handleFinalResult", () => {
           { status: "success", result: { exitCode: 0 } },
           makeSpinnerHandle(),
           makeSpinState(),
-          makeUI()
-        )
+          makeUI(),
+        ),
       ).resolves.toBeUndefined();
     });
   });
@@ -131,10 +134,10 @@ describe("handleFinalResult", () => {
           result,
           makeSpinnerHandle(),
           makeSpinState(),
-          makeUI()
-        )
+          makeUI(),
+        ),
       ).rejects.toThrow(
-        "Dependency installation failed after 5 attempts: pnpm exited with code 1"
+        "Dependency installation failed after 5 attempts: pnpm exited with code 1",
       );
     });
 
@@ -146,8 +149,8 @@ describe("handleFinalResult", () => {
           result,
           makeSpinnerHandle(),
           makeSpinState(),
-          makeUI()
-        )
+          makeUI(),
+        ),
       ).rejects.toThrow("Workflow returned an error");
     });
   });
@@ -161,8 +164,8 @@ describe("handleFinalResult", () => {
           result,
           makeSpinnerHandle(),
           makeSpinState(),
-          makeUI()
-        )
+          makeUI(),
+        ),
       ).rejects.toThrow(WizardError);
 
       expect(tags["wizard.exit_code"]).toBe(11);
@@ -179,8 +182,8 @@ describe("handleFinalResult", () => {
           result,
           makeSpinnerHandle(),
           makeSpinState(),
-          makeUI()
-        )
+          makeUI(),
+        ),
       ).rejects.toThrow(WizardError);
 
       expect(tags["wizard.exit_code"]).toBeUndefined();
@@ -199,8 +202,8 @@ describe("handleFinalResult", () => {
           result,
           makeSpinnerHandle(),
           makeSpinState(),
-          makeUI()
-        )
+          makeUI(),
+        ),
       ).rejects.toThrow("upstream network timeout");
     });
   });

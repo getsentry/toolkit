@@ -10,6 +10,7 @@ import { getDashboard, queryAllWidgets } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import type { DashboardViewData } from "../../lib/formatters/dashboard.js";
 import { createDashboardViewRenderer } from "../../lib/formatters/dashboard.js";
 import { ClearScreen, CommandOutput } from "../../lib/formatters/output.js";
@@ -21,7 +22,7 @@ import {
 import { logger } from "../../lib/logger.js";
 import { withProgress } from "../../lib/polling.js";
 import { resolveOrgRegion } from "../../lib/region.js";
-import { buildDashboardUrl } from "../../lib/sentry-urls.js";
+import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { GraphicsRendererPreference } from "../../lib/sixel.js";
 import {
   formatTimeRangeFlag,
@@ -70,7 +71,7 @@ function parseRefresh(value: string): number {
   const num = Number.parseInt(value, 10);
   if (Number.isNaN(num) || num < MIN_REFRESH_INTERVAL) {
     throw new Error(
-      `--refresh interval must be at least ${MIN_REFRESH_INTERVAL} seconds`
+      `--refresh interval must be at least ${MIN_REFRESH_INTERVAL} seconds`,
     );
   }
   return num;
@@ -115,7 +116,7 @@ function buildViewData(
     rendererPreference: GraphicsRendererPreference;
     graphicsCap: boolean;
     url: string;
-  }
+  },
 ): DashboardViewData {
   return {
     id: dashboard.id,
@@ -152,7 +153,7 @@ function buildViewData(
  */
 function resolveViewTimeRange(
   flagPeriod: TimeRange | undefined,
-  dashboardPeriod: string | null | undefined
+  dashboardPeriod: string | null | undefined,
 ): TimeRange {
   if (flagPeriod) {
     return flagPeriod;
@@ -191,7 +192,7 @@ export const viewCommand = buildCommand({
       parameter: {
         placeholder: "org/project/dashboard",
         brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -244,7 +245,7 @@ export const viewCommand = buildCommand({
     const orgSlug = await resolveOrgFromTarget(
       parsed,
       cwd,
-      "sentry dashboard view <org>/ <id>"
+      "sentry dashboard view <org>/ <id>",
     );
     const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
     const url = buildDashboardUrl(orgSlug, dashboardId);
@@ -257,13 +258,13 @@ export const viewCommand = buildCommand({
     // Fetch the dashboard definition (widget structure)
     const dashboard = await withProgress(
       { message: "Fetching dashboard...", json: flags.json },
-      () => getDashboard(orgSlug, dashboardId)
+      () => getDashboard(orgSlug, dashboardId),
     ).catch(async (error: unknown) =>
       enrichDashboardError(error, {
         orgSlug,
         dashboardId,
         operation: "view",
-      })
+      }),
     );
 
     const regionUrl = await resolveOrgRegion(orgSlug);
@@ -281,7 +282,7 @@ export const viewCommand = buildCommand({
       const interval = flags.refresh;
       if (!flags.json) {
         logger.info(
-          `Auto-refreshing dashboard every ${interval}s. Press Ctrl+C to stop.`
+          `Auto-refreshing dashboard every ${interval}s. Press Ctrl+C to stop.`,
         );
       }
 
@@ -304,7 +305,7 @@ export const viewCommand = buildCommand({
             regionUrl,
             orgSlug,
             dashboard,
-            { ...widgetTimeOpts, periodSeconds }
+            { ...widgetTimeOpts, periodSeconds },
           );
 
           // Build output data before clearing so clear→render is instantaneous
@@ -337,7 +338,7 @@ export const viewCommand = buildCommand({
         queryAllWidgets(regionUrl, orgSlug, dashboard, {
           ...widgetTimeOpts,
           periodSeconds,
-        })
+        }),
     );
 
     yield new CommandOutput(
@@ -346,7 +347,7 @@ export const viewCommand = buildCommand({
         rendererPreference: flags.renderer,
         graphicsCap: !flags["no-graphics-cap"],
         url,
-      })
+      }),
     );
     return { hint: `Dashboard: ${url}` };
   },

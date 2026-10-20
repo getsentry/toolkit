@@ -203,7 +203,7 @@ describe("formatSemanticSpanDisplay", () => {
       };
       const result = formatSemanticSpanDisplay(attrs, "fallback");
       expect(result.label).toBe(
-        "SELECT * FROM users WHERE id = ? AND name = ?"
+        "SELECT * FROM users WHERE id = ? AND name = ?",
       );
     });
   });
@@ -486,7 +486,7 @@ describe("inferSemanticOp", () => {
 
   test("returns process for process attributes", () => {
     expect(inferSemanticOp({ "process.executable.name": "git" })).toBe(
-      "process"
+      "process",
     );
   });
 
@@ -497,7 +497,7 @@ describe("inferSemanticOp", () => {
         "aws.s3.bucket": "my-bucket",
         "rpc.method": "PutObject",
         "rpc.service": "S3",
-      })
+      }),
     ).toBe("s3");
   });
 

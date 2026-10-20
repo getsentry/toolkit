@@ -117,7 +117,7 @@ describe("classifyByExtension", () => {
   test("no-extension files return null", () => {
     expect(classifyByExtension("/a/b/Makefile", TEXT_EXTENSIONS)).toBeNull();
     expect(
-      classifyByExtension("/a/b/.sentryclirc", TEXT_EXTENSIONS)
+      classifyByExtension("/a/b/.sentryclirc", TEXT_EXTENSIONS),
     ).toBeNull();
   });
 });

@@ -6,7 +6,7 @@
  */
 
 import { listOrganizationEvents } from "@sentry/api";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import { type GenericSchema, safeParse } from "valibot";
 
@@ -20,6 +20,7 @@ import {
   TraceLogsResponseSchema,
 } from "../../types/index.js";
 import { ApiError } from "../errors.js";
+import { decodeUuidV7Timestamp } from "../hex-id.js";
 import { resolveOrgRegion } from "../region.js";
 import { LOG_RETENTION_PERIOD } from "../retention.js";
 import { isAllDigits } from "../utils.js";
@@ -52,7 +53,7 @@ function toApiSort(sort: LogSortDirection | undefined): string {
  */
 function resolveNumericProjectId(
   projectSlug: string,
-  projectId: number | undefined
+  projectId: number | undefined,
 ): number | undefined {
   if (projectId !== undefined) {
     return projectId;
@@ -81,7 +82,7 @@ function assertObjectResponse(data: unknown, context: string): void {
       `${context}: unexpected response format`,
       0,
       `Expected an object but received ${data === null ? "null" : typeof data}. ` +
-        "This may indicate an incompatible self-hosted Sentry version or a proxy interfering with the response."
+        "This may indicate an incompatible self-hosted Sentry version or a proxy interfering with the response.",
     );
   }
 }
@@ -93,7 +94,7 @@ function assertObjectResponse(data: unknown, context: string): void {
 function safeParseResponse<T>(
   schema: GenericSchema<unknown, T>,
   data: unknown,
-  context: string
+  context: string,
 ): T {
   assertObjectResponse(data, context);
   const result = safeParse(schema, data);
@@ -112,7 +113,7 @@ function safeParseResponse<T>(
     throw new ApiError(
       `${context}: unexpected response format`,
       0,
-      result.issues.map((issue) => issue.message).join(", ")
+      result.issues.map((issue) => issue.message).join(", "),
     );
   }
   return result.output;
@@ -168,11 +169,11 @@ type ListLogsOptions = {
 export async function listLogs(
   orgSlug: string,
   projectSlug: string,
-  options: ListLogsOptions = {}
+  options: ListLogsOptions = {},
 ): Promise<SentryLog[]> {
   const numericProjectId = resolveNumericProjectId(
     projectSlug,
-    options.projectId
+    options.projectId,
   );
 
   // Only fall back to `project:<slug>` search scoping when we have no numeric
@@ -224,16 +225,16 @@ export async function listLogs(
 
       const { data: raw, nextCursor } = unwrapPaginatedResult<unknown>(
         result,
-        "Failed to list logs"
+        "Failed to list logs",
       );
       const logsResponse = safeParseResponse(
         LogsResponseSchema,
         raw,
-        "Failed to list logs"
+        "Failed to list logs",
       );
       return { data: logsResponse.data, nextCursor };
     },
-    API_MAX_PER_PAGE
+    API_MAX_PER_PAGE,
   );
 
   return data;
@@ -261,6 +262,43 @@ const DETAILED_LOG_FIELDS = [
   "sentry.otel.instrumentation_scope.name",
 ];
 
+/** Matches the Sentry UI's window around a pinned log's UUIDv7 timestamp. */
+const LOG_LOOKUP_MARGIN_MS = 5 * 60 * 1000;
+
+// Match the UI's plausibility limits before trusting an ID as a time hint.
+const MIN_LOG_LOOKUP_TIMESTAMP_MS = Date.UTC(2020, 0, 1);
+const LOG_LOOKUP_FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
+
+/** Use the whole retention window if any ID has no plausible timestamp. */
+function getLogLookupWindow(
+  logIds: string[],
+): { start: string; end: string } | { statsPeriod: string } {
+  let earliest = Number.POSITIVE_INFINITY;
+  let latest = Number.NEGATIVE_INFINITY;
+  for (const id of logIds) {
+    const timestamp = decodeUuidV7Timestamp(id);
+    if (!timestamp) {
+      return { statsPeriod: LOG_RETENTION_PERIOD };
+    }
+    const time = timestamp.createdAt.getTime();
+    if (
+      time < MIN_LOG_LOOKUP_TIMESTAMP_MS ||
+      time > Date.now() + LOG_LOOKUP_FUTURE_TOLERANCE_MS
+    ) {
+      return { statsPeriod: LOG_RETENTION_PERIOD };
+    }
+    earliest = Math.min(earliest, time);
+    latest = Math.max(latest, time);
+  }
+  if (logIds.length === 0) {
+    return { statsPeriod: LOG_RETENTION_PERIOD };
+  }
+  return {
+    start: new Date(earliest - LOG_LOOKUP_MARGIN_MS).toISOString(),
+    end: new Date(latest + LOG_LOOKUP_MARGIN_MS).toISOString(),
+  };
+}
+
 /**
  * Fetch a single batch of log entries by their item IDs.
  * Batch size must not exceed {@link API_MAX_PER_PAGE}.
@@ -276,7 +314,7 @@ async function getLogsBatch(
   orgSlug: string,
   projectSlug: string,
   batchIds: string[],
-  { config, extraFields, projectId }: GetLogsBatchOptions
+  { config, extraFields, projectId }: GetLogsBatchOptions,
 ): Promise<DetailedSentryLog[]> {
   const numericProjectId = resolveNumericProjectId(projectSlug, projectId);
 
@@ -284,7 +322,6 @@ async function getLogsBatch(
   // `project:<slug>` filter (which only matches actively-selected projects).
   const projectFilter =
     numericProjectId === undefined ? `project:${projectSlug} ` : "";
-  const query = `${projectFilter}sentry.item_id:[${batchIds.join(",")}]`;
 
   const fields = extraFields?.length
     ? [
@@ -293,26 +330,53 @@ async function getLogsBatch(
       ]
     : DETAILED_LOG_FIELDS;
 
-  const result = await listOrganizationEvents({
-    ...config,
-    path: { organization_id_or_slug: orgSlug },
-    query: {
-      dataset: "logs",
+  async function fetchBatch(
+    ids: string[],
+    sampling: "NORMAL" | "HIGHEST_ACCURACY",
+  ) {
+    // `sampling` is supported by the backend but absent from the SDK's query type.
+    const queryParams = {
+      dataset: "logs" as const,
       field: fields,
       project: numericProjectId === undefined ? undefined : [numericProjectId],
-      query,
-      per_page: batchIds.length,
-      statsPeriod: LOG_RETENTION_PERIOD,
-    },
-  });
+      query: `${projectFilter}sentry.item_id:[${ids.join(",")}]`,
+      per_page: ids.length,
+      sampling,
+      ...getLogLookupWindow(ids),
+    };
+    const result = await listOrganizationEvents({
+      ...config,
+      path: { organization_id_or_slug: orgSlug },
+      query: queryParams,
+    });
 
-  const data = unwrapResult(result, "Failed to get log");
-  const logsResponse = safeParseResponse(
-    DetailedLogsResponseSchema,
-    data,
-    "Failed to get log"
+    return safeParseResponse(
+      DetailedLogsResponseSchema,
+      unwrapResult(result, "Failed to get log"),
+      "Failed to get log",
+    );
+  }
+
+  const response = await fetchBatch(batchIds, "NORMAL");
+  if (response.meta?.dataScanned !== "partial") {
+    return response.data;
+  }
+
+  const logsById = new Map(
+    response.data.map((log) => [log["sentry.item_id"], log]),
   );
-  return logsResponse.data;
+  const missingIds = [...new Set(batchIds)].filter((id) => !logsById.has(id));
+  if (missingIds.length === 0) {
+    return response.data;
+  }
+
+  // Like Explore's empty partial-scan fallback, escalate only unresolved IDs.
+  // Do not escalate again: even HIGHEST_ACCURACY can return a partial scan.
+  const retry = await fetchBatch(missingIds, "HIGHEST_ACCURACY");
+  for (const log of retry.data) {
+    logsById.set(log["sentry.item_id"], log);
+  }
+  return [...logsById.values()];
 }
 
 /** Options for {@link getLogs}. */
@@ -333,6 +397,10 @@ type GetLogsOptions = {
  *
  * When more than {@link API_MAX_PER_PAGE} IDs are requested, the fetch is
  * split into batches to avoid silent API truncation.
+ * UUIDv7 IDs with plausible timestamps bound each batch's search window to five
+ * minutes before/after its earliest/latest timestamp; other batches search the
+ * full log retention window. A partial scan with missing IDs gets one
+ * higher-accuracy retry for just those IDs.
  *
  * @param orgSlug - Organization slug
  * @param projectSlug - Project slug for filtering
@@ -344,7 +412,7 @@ export async function getLogs(
   orgSlug: string,
   projectSlug: string,
   logIds: string[],
-  options: GetLogsOptions = {}
+  options: GetLogsOptions = {},
 ): Promise<DetailedSentryLog[]> {
   const { extraFields, projectId } = options;
   const config = await getOrgSdkConfig(orgSlug);
@@ -363,8 +431,8 @@ export async function getLogs(
 
   const results = await Promise.all(
     batches.map((batch) =>
-      getLogsBatch(orgSlug, projectSlug, batch, batchOptions)
-    )
+      getLogsBatch(orgSlug, projectSlug, batch, batchOptions),
+    ),
   );
 
   return results.flat();
@@ -408,7 +476,7 @@ type ListTraceLogsOptions = {
 export async function listTraceLogs(
   orgSlug: string,
   traceId: string,
-  options: ListTraceLogsOptions = {}
+  options: ListTraceLogsOptions = {},
 ): Promise<TraceLog[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
 
@@ -437,7 +505,7 @@ export async function listTraceLogs(
       const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
       return { data: response.data, nextCursor };
     },
-    API_MAX_PER_PAGE
+    API_MAX_PER_PAGE,
   );
 
   return data;
@@ -466,7 +534,7 @@ export function getLogItemDetail(
   orgSlug: string,
   projectSlug: string,
   logId: string,
-  traceId: string
+  traceId: string,
 ): Promise<TraceItemDetail> {
   return getTraceItemDetail(orgSlug, projectSlug, logId, {
     traceId,

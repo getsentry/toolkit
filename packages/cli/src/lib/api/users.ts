@@ -21,7 +21,7 @@ export async function getCurrentUser(): Promise<SentryUser> {
   const { data } = await apiRequestToRegion<SentryUser>(
     getControlSiloUrl(),
     "/auth/",
-    { schema: SentryUserSchema }
+    { schema: SentryUserSchema },
   );
   return data;
 }

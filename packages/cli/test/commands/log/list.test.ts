@@ -29,11 +29,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
@@ -43,11 +43,11 @@ vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
 import {
   ApiError,
@@ -65,11 +65,11 @@ vi.mock("../../../src/lib/formatters/index.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as formatters from "../../../src/lib/formatters/index.js";
 
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
@@ -79,11 +79,11 @@ vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -93,11 +93,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 
@@ -108,11 +108,11 @@ vi.mock("../../../src/lib/trace-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as traceTarget from "../../../src/lib/trace-target.js";
 
 vi.mock("../../../src/lib/version-check.js", async (importOriginal) => {
@@ -122,11 +122,11 @@ vi.mock("../../../src/lib/version-check.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as versionCheck from "../../../src/lib/version-check.js";
 import type { SentryLog, TraceLog } from "../../../src/types/sentry.js";
 
@@ -151,7 +151,7 @@ function interceptSigint() {
   const originalOnce = process.once.bind(process);
   const spy = vi.spyOn(process, "once").mockImplementation(((
     event: string,
-    fn: (...args: unknown[]) => void
+    fn: (...args: unknown[]) => void,
   ) => {
     if (event === "SIGINT") {
       handler = fn;
@@ -164,7 +164,7 @@ function interceptSigint() {
   const originalRemoveListener = process.removeListener.bind(process);
   const removeSpy = vi.spyOn(process, "removeListener").mockImplementation(((
     event: string,
-    fn: (...args: unknown[]) => void
+    fn: (...args: unknown[]) => void,
   ) => {
     if (event === "SIGINT" && fn === handler) {
       handler = null;
@@ -213,7 +213,7 @@ function noop() {
 /** Passthrough mock for `withProgress` — bypasses spinner, calls fn directly */
 function mockWithProgress(
   _opts: unknown,
-  fn: (setMessage: () => void) => unknown
+  fn: (setMessage: () => void) => unknown,
 ) {
   return fn(noop);
 }
@@ -350,7 +350,7 @@ describe("listCommand.func — standard mode", () => {
     listLogsSpy = vi.spyOn(apiClient, "listLogs");
     resolveOrgProjectSpy = vi.spyOn(
       resolveTarget,
-      "resolveProjectBoundFromArg"
+      "resolveProjectBoundFromArg",
     );
     vi.spyOn(resolveTarget, "resolveLogProjectId").mockResolvedValue(undefined);
     withProgressSpy = vi
@@ -406,14 +406,14 @@ describe("listCommand.func — standard mode", () => {
     await func.call(
       context,
       { ...BATCH_FLAGS, sort: "oldest" },
-      `${ORG}/${PROJECT}`
+      `${ORG}/${PROJECT}`,
     );
 
     // sort=oldest is passed to API for server-side sorting
     expect(listLogsSpy).toHaveBeenCalledWith(
       ORG,
       PROJECT,
-      expect.objectContaining({ sort: "oldest" })
+      expect.objectContaining({ sort: "oldest" }),
     );
   });
 
@@ -489,7 +489,7 @@ describe("listCommand.func — standard mode", () => {
     await func.call(
       context,
       { json: false, limit: 50, query: "severity:error", sort: "newest" },
-      `${ORG}/${PROJECT}`
+      `${ORG}/${PROJECT}`,
     );
 
     expect(listLogsSpy).toHaveBeenCalledWith(ORG, PROJECT, {
@@ -502,7 +502,7 @@ describe("listCommand.func — standard mode", () => {
 
   test("converts a search-query parse 400 to a ValidationError when --query is set (project single-fetch)", async () => {
     listLogsSpy.mockRejectedValue(
-      new ApiError("bad", 400, "Error parsing search query: bad field")
+      new ApiError("bad", 400, "Error parsing search query: bad field"),
     );
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
@@ -512,14 +512,14 @@ describe("listCommand.func — standard mode", () => {
       func.call(
         context,
         { json: false, limit: 50, query: "bad:::query", sort: "newest" },
-        `${ORG}/${PROJECT}`
-      )
+        `${ORG}/${PROJECT}`,
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
   test("keeps a search-query parse 400 as a reported ApiError with no --query (project single-fetch)", async () => {
     listLogsSpy.mockRejectedValue(
-      new ApiError("bad", 400, "Error parsing search query: bad field")
+      new ApiError("bad", 400, "Error parsing search query: bad field"),
     );
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
@@ -529,8 +529,8 @@ describe("listCommand.func — standard mode", () => {
       func.call(
         context,
         { json: false, limit: 50, sort: "newest" },
-        `${ORG}/${PROJECT}`
-      )
+        `${ORG}/${PROJECT}`,
+      ),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -609,27 +609,27 @@ describe("listCommand.func — trace mode", () => {
     // executeTraceSingleFetch must wrap listTraceLogs with toSearchQueryError
     // just like executeSingleFetch does for the project path.
     listTraceLogsSpy.mockRejectedValue(
-      new ApiError("bad", 400, "Error parsing search query: bad field")
+      new ApiError("bad", 400, "Error parsing search query: bad field"),
     );
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context } = createMockContext();
     const func = await listCommand.loader();
     await expect(
-      func.call(context, { ...BATCH_FLAGS, query: "bad:::query" }, TRACE_ID)
+      func.call(context, { ...BATCH_FLAGS, query: "bad:::query" }, TRACE_ID),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
   test("keeps a search-query parse 400 as a reported ApiError with no --query (trace single-fetch)", async () => {
     listTraceLogsSpy.mockRejectedValue(
-      new ApiError("bad", 400, "Error parsing search query: bad field")
+      new ApiError("bad", 400, "Error parsing search query: bad field"),
     );
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context } = createMockContext();
     const func = await listCommand.loader();
     await expect(
-      func.call(context, BATCH_FLAGS, TRACE_ID)
+      func.call(context, BATCH_FLAGS, TRACE_ID),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -710,7 +710,7 @@ describe("listCommand.func — trace mode", () => {
     await func.call(
       context,
       { json: false, limit: 50, query: "severity:error", sort: "newest" },
-      TRACE_ID
+      TRACE_ID,
     );
 
     expect(listTraceLogsSpy).toHaveBeenCalledWith(ORG, TRACE_ID, {
@@ -737,7 +737,7 @@ describe("listCommand.func — trace mode", () => {
         traceId: TRACE_ID,
       }),
       "/tmp",
-      expect.any(String)
+      expect.any(String),
     );
   });
 });
@@ -863,7 +863,7 @@ describe("listCommand.func — period flag", () => {
     await func.call(
       context,
       { json: true, limit: 100, sort: "newest" },
-      TRACE_ID
+      TRACE_ID,
     );
 
     expect(listTraceLogsSpy).toHaveBeenCalledWith(ORG, TRACE_ID, {
@@ -880,7 +880,7 @@ describe("listCommand.func — period flag", () => {
     await func.call(
       context,
       { json: true, limit: 100, period: parsePeriod("30d"), sort: "newest" },
-      TRACE_ID
+      TRACE_ID,
     );
 
     expect(listTraceLogsSpy).toHaveBeenCalledWith(ORG, TRACE_ID, {
@@ -919,20 +919,20 @@ describe("listCommand.func — trace mode org resolution failure", () => {
 
   test("throws ContextError when org cannot be resolved", async () => {
     resolveTraceOrgSpy.mockRejectedValue(
-      new ContextError("Organization", "sentry log list [<org>/]<trace-id>")
+      new ContextError("Organization", "sentry log list [<org>/]<trace-id>"),
     );
 
     const { context } = createMockContext();
     const func = await listCommand.loader();
 
     await expect(func.call(context, HUMAN_FLAGS, TRACE_ID)).rejects.toThrow(
-      ContextError
+      ContextError,
     );
   });
 
   test("ContextError mentions Organization", async () => {
     resolveTraceOrgSpy.mockRejectedValue(
-      new ContextError("Organization", "sentry log list [<org>/]<trace-id>")
+      new ContextError("Organization", "sentry log list [<org>/]<trace-id>"),
     );
 
     const { context } = createMockContext();
@@ -965,7 +965,7 @@ describe("listCommand.func — trace mode org resolution failure", () => {
  * Handles both string and Buffer arguments from consola/logger.
  */
 function collectProcessStderr(
-  spy: ReturnType<typeof spyOn<typeof process.stderr, "write">>
+  spy: ReturnType<typeof spyOn<typeof process.stderr, "write">>,
 ): string {
   return spy.mock.calls
     .map((c) => {
@@ -993,8 +993,8 @@ describe("listCommand.func — flag validation", () => {
       func.call(
         context,
         { json: false, limit: 100, follow: 2, sort: "oldest" },
-        "my-org/my-project"
-      )
+        "my-org/my-project",
+      ),
     ).rejects.toThrow(ValidationError);
   });
 
@@ -1005,7 +1005,7 @@ describe("listCommand.func — flag validation", () => {
     const resolveOrgProjectSpy = vi
       .spyOn(resolveTarget, "resolveProjectBoundFromArg")
       .mockRejectedValueOnce(
-        new ContextError("Organization", "sentry log list")
+        new ContextError("Organization", "sentry log list"),
       );
     const { context } = createMockContext();
     const func = await listCommand.loader();
@@ -1013,8 +1013,8 @@ describe("listCommand.func — flag validation", () => {
       func.call(
         context,
         { json: false, limit: 100, follow: 2, sort: "newest" },
-        "my-org/my-project"
-      )
+        "my-org/my-project",
+      ),
     ).rejects.not.toThrow(ValidationError);
     resolveOrgProjectSpy.mockRestore();
   });
@@ -1037,7 +1037,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     listLogsSpy = vi.spyOn(apiClient, "listLogs");
     resolveOrgProjectSpy = vi.spyOn(
       resolveTarget,
-      "resolveProjectBoundFromArg"
+      "resolveProjectBoundFromArg",
     );
     vi.spyOn(resolveTarget, "resolveLogProjectId").mockResolvedValue(undefined);
     isPlainSpy = vi.spyOn(formatters, "isPlainOutput").mockReturnValue(true);
@@ -1087,7 +1087,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     // a bad user --query surfaces as a ValidationError on the initial fetch and
     // terminates the stream instead of being reported as a CLI bug.
     listLogsSpy.mockRejectedValueOnce(
-      new ApiError("bad", 400, "Error parsing search query: bad field")
+      new ApiError("bad", 400, "Error parsing search query: bad field"),
     );
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
@@ -1098,8 +1098,8 @@ describe("listCommand.func — follow mode (standard)", () => {
       func.call(
         context,
         { ...followFlags, query: "bad:::query" },
-        `${ORG}/${PROJECT}`
-      )
+        `${ORG}/${PROJECT}`,
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -1109,7 +1109,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     listLogsSpy.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveFetch = resolve;
-      })
+      }),
     );
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
@@ -1162,7 +1162,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     const promise = func.call(
       context,
       { ...followFlags, json: true },
-      `${ORG}/${PROJECT}`
+      `${ORG}/${PROJECT}`,
     );
     await sleep(50);
     sigint.trigger();
@@ -1205,7 +1205,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     const promise = func.call(
       context,
       { ...followFlags, json: true },
-      `${ORG}/${PROJECT}`
+      `${ORG}/${PROJECT}`,
     );
     await sleep(50);
     sigint.trigger();
@@ -1232,7 +1232,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     const func = await listCommand.loader();
 
     await expect(
-      func.call(context, followFlags, `${ORG}/${PROJECT}`)
+      func.call(context, followFlags, `${ORG}/${PROJECT}`),
     ).rejects.toThrow(AuthError);
   });
 
@@ -1246,7 +1246,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     const func = await listCommand.loader();
 
     await expect(
-      func.call(context, followFlags, `${ORG}/${PROJECT}`)
+      func.call(context, followFlags, `${ORG}/${PROJECT}`),
     ).rejects.toThrow(AuthError);
   });
 
@@ -1453,7 +1453,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     const promise = func.call(
       context,
       { ...traceFollowFlags, json: true },
-      TRACE_ID
+      TRACE_ID,
     );
     // Wait for initial fetch + poll timer (1s) + poll execution
     await sleep(1200);
@@ -1492,7 +1492,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     const func = await listCommand.loader();
 
     await expect(
-      func.call(context, traceFollowFlags, TRACE_ID)
+      func.call(context, traceFollowFlags, TRACE_ID),
     ).rejects.toThrow(AuthError);
   });
 

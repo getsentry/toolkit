@@ -41,7 +41,7 @@ export type SntrysClaim = {
  * Read the file-level JSDoc before adding new callers.
  */
 export function parseSntrysClaim(
-  token: string | undefined
+  token: string | undefined,
 ): SntrysClaim | undefined {
   if (!token || token.length > MAX_TOKEN_LENGTH) {
     return;
@@ -56,14 +56,14 @@ export function parseSntrysClaim(
   }
   const payloadEncoded = token.slice(
     SNTRYS_PREFIX.length,
-    token.lastIndexOf("_")
+    token.lastIndexOf("_"),
   );
   if (!payloadEncoded) {
     return;
   }
 
   let parsed: unknown;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     parsed = JSON.parse(Buffer.from(payloadEncoded, "base64").toString("utf8"));
   } catch {

@@ -41,8 +41,8 @@ export const helpCommand = buildCommand({
       },
     },
   },
-  // biome-ignore lint/complexity/noBannedTypes: Stricli requires empty object for commands with no flags
-  // biome-ignore lint/suspicious/useAwait: async generator required by Stricli buildCommand pattern
+  // Stricli requires empty object for commands with no flags
+  // async generator required by Stricli buildCommand pattern
   async *func(this: SentryContext, _flags: {}, ...commandPath: string[]) {
     if (commandPath.length === 0) {
       // Yield the full command tree. The branded banner + help is rendered by

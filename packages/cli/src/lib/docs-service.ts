@@ -19,7 +19,7 @@ export type DocsListResponse = {
 
 async function postDocs<T>(
   path: "/api/docs/query" | "/api/docs/list",
-  body: unknown
+  body: unknown,
 ): Promise<T> {
   assertHostedInitServiceAcceptsTokenHost();
   const { token } = await refreshToken();
@@ -36,7 +36,7 @@ async function postDocs<T>(
   if (!response.ok) {
     let detail = text;
     let parsed: { code?: unknown; error?: unknown } | undefined;
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       parsed = JSON.parse(text) as { code?: unknown; error?: unknown };
     } catch {
@@ -46,13 +46,13 @@ async function postDocs<T>(
       throw new CliError(
         "Could not produce a verified documentation answer.\n" +
           "  Try rephrasing the question so it can be answered from current Sentry documentation.",
-        EXIT.API
+        EXIT.API,
       );
     }
     if (parsed?.code === "DOCS_MODEL_UNAVAILABLE") {
       throw new CliError(
         "Sentry Docs AI is temporarily unavailable in this region. Please try again later.",
-        EXIT.API
+        EXIT.API,
       );
     }
     if (typeof parsed?.error === "string") {
@@ -62,7 +62,7 @@ async function postDocs<T>(
       "Docs service request failed",
       response.status,
       detail,
-      path
+      path,
     );
   }
   try {
@@ -72,21 +72,21 @@ async function postDocs<T>(
       "Docs service returned invalid JSON",
       response.status,
       undefined,
-      path
+      path,
     );
   }
 }
 
 export function queryDocs(
   query: string,
-  context: DocsProjectContext
+  context: DocsProjectContext,
 ): Promise<DocsQueryResponse> {
   return postDocs("/api/docs/query", { context, query });
 }
 
 export function listDocs(
   query: string,
-  limit: number
+  limit: number,
 ): Promise<DocsListResponse> {
   return postDocs("/api/docs/list", { limit, query });
 }

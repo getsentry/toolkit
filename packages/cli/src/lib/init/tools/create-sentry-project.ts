@@ -78,7 +78,7 @@ async function resolveProjectCreation(opts: {
   const platform = opts.platform ?? undefined;
 
   const withPlatformFallback = async (
-    fn: (p: string | undefined) => Promise<ProjectData>
+    fn: (p: string | undefined) => Promise<ProjectData>,
   ): Promise<ProjectData> => {
     try {
       return await fn(platform);
@@ -164,7 +164,7 @@ async function resolveProjectCreation(opts: {
 async function validateTeamForDryRun(
   org: string,
   team: string | undefined,
-  autoCreateSlug: string
+  autoCreateSlug: string,
 ): Promise<void> {
   if (!team) {
     return;
@@ -208,7 +208,7 @@ export async function createSentryProject(
     | "team"
     | "project"
     | "yes"
-  >
+  >,
 ): Promise<ToolResult> {
   const name = context.project ?? payload.params.name;
   const slug = slugify(name);
@@ -314,7 +314,7 @@ export async function createSentryProject(
  * Tool definition for creating or ensuring a Sentry project exists for init.
  */
 const describeCreateSentryProject = (
-  payload: CreateSentryProjectPayload | EnsureSentryProjectPayload
+  payload: CreateSentryProjectPayload | EnsureSentryProjectPayload,
 ): string =>
   payload.detail ??
   `Ensuring project \`${payload.params.name}\` (${payload.params.platform})...`;

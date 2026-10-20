@@ -74,9 +74,9 @@ describe("property: walkFiles — invariants", () => {
           } finally {
             rmSync(cwd, { recursive: true, force: true });
           }
-        }
+        },
       ),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) },
     );
   });
 
@@ -123,10 +123,10 @@ describe("property: walkFiles — invariants", () => {
             } finally {
               rmSync(cwd, { recursive: true, force: true });
             }
-          }
+          },
         ),
-        { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) }
+        { numRuns: Math.min(DEFAULT_NUM_RUNS, 20) },
       );
-    }
+    },
   );
 });

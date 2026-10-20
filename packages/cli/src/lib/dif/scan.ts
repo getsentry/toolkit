@@ -138,7 +138,7 @@ function hasValidDebugId(obj: DifObjectInfo): boolean {
 /** Whether the object's format is one of the requested types (or no filter). */
 function formatMatches(
   objFormat: string,
-  formats: Set<string> | undefined
+  formats: Set<string> | undefined,
 ): boolean {
   return !formats || formats.size === 0 || formats.has(objFormat);
 }
@@ -200,7 +200,7 @@ export function buildDifFilters(options: DifFilterOptions): DifFilters {
       if (!format) {
         throw new ValidationError(
           `Unknown debug file type '${raw}'. Valid types: ${VALID_DIF_TYPES.join(", ")}`,
-          "type"
+          "type",
         );
       }
       formats.add(format);
@@ -234,7 +234,7 @@ export function buildDifFilters(options: DifFilterOptions): DifFilters {
  */
 export function objectPassesFilters(
   obj: DifObjectInfo,
-  filters: DifFilters
+  filters: DifFilters,
 ): boolean {
   return (
     hasValidDebugId(obj) &&
@@ -313,7 +313,7 @@ export async function scanPaths(paths: string[]): Promise<string[]> {
  * @throws {ValidationError} If the path does not exist or cannot be accessed.
  */
 async function statExplicitPath(
-  path: string
+  path: string,
 ): Promise<Awaited<ReturnType<typeof stat>>> {
   try {
     return await stat(path);
@@ -325,12 +325,12 @@ async function statExplicitPath(
     if (code === "EACCES" || code === "EPERM") {
       throw new ValidationError(
         `Path '${path}' is not readable: ${code}.`,
-        "path"
+        "path",
       );
     }
     throw new ValidationError(
       `Cannot access path '${path}': ${code ?? "unknown error"}.`,
-      "path"
+      "path",
     );
   }
 }
@@ -468,7 +468,7 @@ export type PrepareDifsResult = {
 export async function prepareDifs(
   paths: string[],
   filters: DifFilters,
-  options: PrepareDifsOptions = {}
+  options: PrepareDifsOptions = {},
 ): Promise<PrepareDifsResult> {
   const prepared: PreparedDif[] = [];
   const maxFileSize = options.maxFileSize ?? 0;
@@ -486,7 +486,7 @@ export async function prepareDifs(
         path,
         filters,
         maxFileSize,
-        maxZipTotalSize
+        maxZipTotalSize,
       );
       // Oversized zip entries are advisory only — they warn per entry and
       // intentionally do NOT feed `oversizedCount`. That counter gates the
@@ -504,7 +504,7 @@ export async function prepareDifs(
     const { difs, oversized } = await prepareFileDif(
       path,
       filters,
-      maxFileSize
+      maxFileSize,
     );
     if (oversized) {
       oversizedCount += 1;
@@ -534,7 +534,7 @@ export async function prepareDifs(
 async function prepareFileDif(
   path: string,
   filters: DifFilters,
-  maxFileSize: number
+  maxFileSize: number,
 ): Promise<{ difs: PreparedDif[]; oversized: boolean }> {
   const peeked = await peekHeader(path);
   if (!peeked) {
@@ -557,12 +557,12 @@ async function prepareFileDif(
     // match, so it must not inflate the oversized count.
     if (formatOk) {
       log.warn(
-        `Skipping ${path}: size ${peeked.size} exceeds maximum file size ${maxFileSize}`
+        `Skipping ${path}: size ${peeked.size} exceeds maximum file size ${maxFileSize}`,
       );
       return { difs: [], oversized: true };
     }
     log.debug(
-      `Skipping ${path} for embedded PPDB extraction: size ${peeked.size} exceeds maximum file size ${maxFileSize}`
+      `Skipping ${path} for embedded PPDB extraction: size ${peeked.size} exceeds maximum file size ${maxFileSize}`,
     );
     return { difs: [], oversized: false };
   }
@@ -585,7 +585,7 @@ async function prepareFileDif(
 function matchedDif(
   displayPath: string,
   content: Buffer,
-  filters: DifFilters
+  filters: DifFilters,
 ): PreparedDif | null {
   if (content.length === 0) {
     return null;
@@ -600,7 +600,7 @@ function matchedDif(
   }
 
   const matched = archive.objects.filter((obj) =>
-    objectPassesFilters(obj, filters)
+    objectPassesFilters(obj, filters),
   );
   if (matched.length === 0) {
     return null;
@@ -640,7 +640,7 @@ function embeddedPpdbDif(
   displayPath: string,
   content: Buffer,
   filters: DifFilters,
-  maxFileSize: number
+  maxFileSize: number,
 ): { dif: PreparedDif | null; oversized: boolean } {
   // Only PE images can embed a Portable PDB. Cheap-gate on the header so the
   // vast majority of scanned files (ELF/Mach-O/Breakpad/...) skip the full
@@ -658,7 +658,7 @@ function embeddedPpdbDif(
   } catch (err) {
     log.debug(
       `Could not extract embedded Portable PDB from ${displayPath}`,
-      err
+      err,
     );
     return { dif: null, oversized: false };
   }
@@ -667,7 +667,7 @@ function embeddedPpdbDif(
   }
   if (maxFileSize > 0 && extracted.ppdb.byteLength > maxFileSize) {
     log.warn(
-      `Skipping embedded Portable PDB from ${displayPath}: size ${extracted.ppdb.byteLength} exceeds maximum file size ${maxFileSize}`
+      `Skipping embedded Portable PDB from ${displayPath}: size ${extracted.ppdb.byteLength} exceeds maximum file size ${maxFileSize}`,
     );
     // Only count toward the oversized total when a Portable PDB is actually a
     // requested type; otherwise it would never have been uploaded anyway, so it
@@ -703,7 +703,7 @@ function difFromBuffer(
   displayPath: string,
   content: Buffer,
   filters: DifFilters,
-  maxFileSize: number
+  maxFileSize: number,
 ): { difs: PreparedDif[]; oversized: boolean } {
   const difs: PreparedDif[] = [];
   const main = matchedDif(displayPath, content, filters);
@@ -732,7 +732,7 @@ function difFromBuffer(
 async function readMatchedDif(
   path: string,
   filters: DifFilters,
-  maxFileSize: number
+  maxFileSize: number,
 ): Promise<{ difs: PreparedDif[]; oversized: boolean }> {
   let content: Buffer;
   try {
@@ -763,7 +763,7 @@ function difFromCandidateBuffer(
   displayPath: string,
   content: Buffer,
   filters: DifFilters,
-  maxFileSize: number
+  maxFileSize: number,
 ): PreparedDif[] {
   if (content.length === 0) {
     return [];
@@ -810,7 +810,7 @@ async function prepareZipDifs(
   path: string,
   filters: DifFilters,
   maxFileSize: number,
-  maxTotalSize: number
+  maxTotalSize: number,
 ): Promise<PreparedDif[] | null> {
   const zip = await readZipDifEntries(path, { maxFileSize, maxTotalSize });
   if (!zip) {
@@ -819,7 +819,12 @@ async function prepareZipDifs(
   const prepared: PreparedDif[] = [];
   for (const entry of zip.entries) {
     prepared.push(
-      ...difFromCandidateBuffer(entry.path, entry.content, filters, maxFileSize)
+      ...difFromCandidateBuffer(
+        entry.path,
+        entry.content,
+        filters,
+        maxFileSize,
+      ),
     );
   }
   return prepared;

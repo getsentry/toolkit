@@ -44,9 +44,9 @@ export function sanitize(text: string): string {
   const stripped = stripAnsi(text).replace(/[\r\n\x85]+/g, " ");
   // Strip C0 (0x00-0x1F, 0x7F) and C1 (0x80-0x9F) control characters.
   const noCtrl = stripped.replace(
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control chars from untrusted envelope data
+    // oxlint-disable-next-line no-control-regex -- stripping control chars from untrusted envelope data
     /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\x80-\x9f]/g,
-    ""
+    "",
   );
   // Strip Unicode bidirectional override/isolate characters that can reorder terminal output.
   return noCtrl.replace(BIDI_RE, "");
@@ -100,7 +100,7 @@ const TRACE_ID_SHORT_LEN = 8;
  * rather than render garbage.
  */
 export function extractTraceId(
-  event: Record<string, unknown>
+  event: Record<string, unknown>,
 ): string | undefined {
   const trace = (event.contexts as Record<string, unknown> | undefined)
     ?.trace as { trace_id?: unknown } | undefined;
@@ -212,7 +212,7 @@ export function formatFrameHint(frames: StackFrame[]): string {
     const loc = sanitize(
       frame.colno
         ? `${frame.filename}:${frame.lineno}:${frame.colno}`
-        : `${frame.filename}:${frame.lineno}`
+        : `${frame.filename}:${frame.lineno}`,
     );
     hint += ` ${muted(`[${loc}]`)}`;
   }
@@ -229,7 +229,7 @@ export function formatFrameHint(frames: StackFrame[]): string {
  */
 export function formatErrorItem(
   event: Record<string, unknown>,
-  header: Record<string, unknown>
+  header: Record<string, unknown>,
 ): string {
   const exception = event.exception as
     | {
@@ -244,7 +244,7 @@ export function formatErrorItem(
   const first = exception?.values?.at(-1);
   const errorType = sanitize(String(first?.type ?? "Error"));
   const errorValue = sanitize(
-    String(first?.value ?? event.message ?? "Unknown error")
+    String(first?.value ?? event.message ?? "Unknown error"),
   );
 
   let msg = `${errorType}: ${errorValue}`;
@@ -273,7 +273,7 @@ export function formatErrorItem(
  */
 export function formatTransactionItem(
   event: Record<string, unknown>,
-  header: Record<string, unknown>
+  header: Record<string, unknown>,
 ): string {
   const trace = (event.contexts as Record<string, unknown> | undefined)
     ?.trace as
@@ -401,7 +401,7 @@ function formatAttrValue(value: unknown): string {
  * lower-signal for a top-level scan.
  */
 function collectAllAttributes(
-  event: Record<string, unknown>
+  event: Record<string, unknown>,
 ): Map<string, unknown> {
   const merged = new Map<string, unknown>();
   const sources: AttributeSource[] = [
@@ -425,7 +425,7 @@ function collectAllAttributes(
  */
 function formatAttrGroup(
   title: string,
-  entries: [string, unknown][]
+  entries: [string, unknown][],
 ): string[] {
   if (entries.length === 0) {
     return [];
@@ -437,7 +437,7 @@ function formatAttrGroup(
     const safeKey = sanitize(key);
     const padded = safeKey.padEnd(keyWidth);
     lines.push(
-      `${ATTR_INDENT}${ATTR_INDENT}${cyan(padded)}  ${formatAttrValue(value)}`
+      `${ATTR_INDENT}${ATTR_INDENT}${cyan(padded)}  ${formatAttrValue(value)}`,
     );
   }
   return lines;
@@ -520,7 +520,7 @@ export function formatSingleLog(logEntry: LogEntry, source: string): string {
           v !== null &&
           v !== undefined &&
           v.value !== null &&
-          v.value !== undefined
+          v.value !== undefined,
       )
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v.value))}]`));
@@ -546,7 +546,7 @@ export function formatSingleLog(logEntry: LogEntry, source: string): string {
  */
 export function formatLogItem(
   event: Record<string, unknown>,
-  header: Record<string, unknown>
+  header: Record<string, unknown>,
 ): string[] {
   const items = event.items as LogEntry[] | undefined;
   if (!items?.length) {
@@ -573,7 +573,7 @@ export type StreamedSpan = {
  * `Record<string, unknown>` compatible with the semantic display pipeline.
  */
 function flattenSpanAttributes(
-  attrs: Record<string, { type?: string; value?: unknown }> | undefined
+  attrs: Record<string, { type?: string; value?: unknown }> | undefined,
 ): Record<string, unknown> {
   if (!attrs) {
     return {};
@@ -593,7 +593,7 @@ function flattenSpanAttributes(
  */
 export function formatSingleSpan(
   span: StreamedSpan,
-  header: Record<string, unknown>
+  header: Record<string, unknown>,
 ): string {
   const spanName = sanitize(span.name ?? "unnamed span");
   const flat = flattenSpanAttributes(span.attributes);
@@ -616,7 +616,7 @@ export function formatSingleSpan(
 
   if (span.start_timestamp !== undefined && span.end_timestamp !== undefined) {
     const durationMs = Math.round(
-      (span.end_timestamp - span.start_timestamp) * 1000
+      (span.end_timestamp - span.start_timestamp) * 1000,
     );
     msg += ` ${muted(`[${durationMs}ms]`)}`;
   }
@@ -640,7 +640,7 @@ export function formatSingleSpan(
 export function formatSpanItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
-  showAttributes = false
+  showAttributes = false,
 ): string[] {
   const items = event.items as StreamedSpan[] | undefined;
   if (!items?.length) {
@@ -687,7 +687,7 @@ export const ERROR_TYPES = new Set(["event", "error"]);
  * Returns undefined for item types that don't map to a filter category.
  */
 export function itemTypeToFilterCategory(
-  itemType: string | undefined
+  itemType: string | undefined,
 ): FilterValue | undefined {
   if (!itemType) {
     return;
@@ -762,7 +762,7 @@ function sanitizeJsonValue(value: unknown): unknown {
       Object.entries(value).map(([key, nestedValue]) => [
         stripBidi(key),
         sanitizeJsonValue(nestedValue),
-      ])
+      ]),
     );
   }
   return value;
@@ -772,7 +772,7 @@ function sanitizeJsonValue(value: unknown): unknown {
 function formatJsonObservation(
   observation: Record<string, unknown>,
   payload: Record<string, unknown>,
-  header: Record<string, unknown>
+  header: Record<string, unknown>,
 ): string {
   return JSON.stringify(
     sanitizeJsonValue({
@@ -780,14 +780,14 @@ function formatJsonObservation(
       envelope_id: jsonSafeIdentifier(header.__spotlight_envelope_id),
       event_id: jsonSafe(payload.event_id) ?? jsonSafe(header.event_id),
       ...observation,
-    })
+    }),
   );
 }
 
 /** Format an error item as a JSON object, including the best stack frame. */
 function formatErrorJson(
   payload: Record<string, unknown>,
-  header: Record<string, unknown>
+  header: Record<string, unknown>,
 ): string {
   const exception = payload.exception as
     | {
@@ -817,7 +817,7 @@ function formatErrorJson(
       source: inferSourceName(header),
     },
     payload,
-    header
+    header,
   );
 }
 
@@ -834,7 +834,7 @@ function buildJsonAttributes(payload: Record<string, unknown>): {
   const user: Record<string, string> = {};
   const sdk: Record<string, string> = {};
   for (const [key, value] of [...merged].sort(([a], [b]) =>
-    a.localeCompare(b)
+    a.localeCompare(b),
   )) {
     const target = isSdkAttribute(key) ? sdk : user;
     target[stripBidi(key)] = stripBidi(formatAttrValue(value));
@@ -854,14 +854,14 @@ function buildJsonAttributes(payload: Record<string, unknown>): {
 function formatTransactionJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
-  includeAttributes = false
+  includeAttributes = false,
 ): string {
   const trace = (payload.contexts as Record<string, unknown> | undefined)
     ?.trace as Record<string, unknown> | undefined;
   const attrs = mergeTransactionAttributes(payload);
   const semantic = formatSemanticSpanDisplay(
     attrs,
-    String(payload.transaction ?? trace?.description ?? "Transaction")
+    String(payload.transaction ?? trace?.description ?? "Transaction"),
   );
   const start = payload.start_timestamp as number | undefined;
   const end = payload.timestamp as number | undefined;
@@ -887,14 +887,14 @@ function formatTransactionJson(
       source: inferSourceName(header),
     },
     payload,
-    header
+    header,
   );
 }
 
 /** Format a log item as JSON objects (one per entry). */
 function formatLogJson(
   payload: Record<string, unknown>,
-  header: Record<string, unknown>
+  header: Record<string, unknown>,
 ): string[] {
   const items = payload.items as LogEntry[] | undefined;
   if (!items?.length) {
@@ -916,19 +916,19 @@ function formatLogJson(
                   ([k, v]) =>
                     isUserLogAttribute(k) &&
                     v?.value !== null &&
-                    v?.value !== undefined
+                    v?.value !== undefined,
                 )
                 .map(([k, v]) => [
                   stripBidi(k),
                   typeof v.value === "string" ? stripBidi(v.value) : v.value,
-                ])
+                ]),
             )
           : undefined,
         source,
       },
       payload,
-      header
-    )
+      header,
+    ),
   );
 }
 
@@ -936,7 +936,7 @@ function formatLogJson(
 function formatSpanJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
-  includeAttributes = false
+  includeAttributes = false,
 ): string[] {
   const items = payload.items as StreamedSpan[] | undefined;
   if (!items?.length) {
@@ -947,7 +947,7 @@ function formatSpanJson(
     const flat = flattenSpanAttributes(span.attributes);
     const semantic = formatSemanticSpanDisplay(
       flat,
-      span.name ?? "unnamed span"
+      span.name ?? "unnamed span",
     );
     const durationMs =
       span.start_timestamp !== undefined && span.end_timestamp !== undefined
@@ -973,7 +973,7 @@ function formatSpanJson(
         source,
       },
       payload,
-      header
+      header,
     );
   });
 }
@@ -996,7 +996,7 @@ export function formatItemJson(
   itemType: string | undefined,
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
-  showAttributes = false
+  showAttributes = false,
 ): string[] {
   if (itemType && ERROR_TYPES.has(itemType)) {
     return [formatErrorJson(payload, header)];
@@ -1017,7 +1017,7 @@ export function formatItemJson(
         timestamp: payload.timestamp,
       },
       payload,
-      header
+      header,
     ),
   ];
 }
@@ -1044,13 +1044,12 @@ function inferSourceName(header: Record<string, unknown>): string {
  * When `showAttributes` is true, transaction items are followed by an indented
  * attribute table (see {@link formatAttributeTable}).
  */
-// biome-ignore lint/nursery/useMaxParams: established 4-param shape; showAttributes is a defaulted display toggle
 export function formatItem(
   itemType: string | undefined,
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
   fallbackLabel: string,
-  showAttributes = false
+  showAttributes = false,
 ): string[] {
   if (itemType && ERROR_TYPES.has(itemType)) {
     return [formatErrorItem(payload, header)];
@@ -1080,7 +1079,7 @@ export function formatItem(
 export function isItemIncluded(
   itemType: string | undefined,
   activeFilters: ReadonlySet<FilterValue>,
-  payload?: Record<string, unknown>
+  payload?: Record<string, unknown>,
 ): boolean {
   if (activeFilters.size === 0) {
     return true;
@@ -1141,7 +1140,7 @@ export function formatEnvelopeLinesJson(
     getEventTypes: () => string[] | null;
   },
   activeFilters: ReadonlySet<FilterValue>,
-  showAttributes = false
+  showAttributes = false,
 ): string[] {
   const parsed = container.getParsedEnvelope();
   if (!parsed) {
@@ -1156,7 +1155,7 @@ export function formatEnvelopeLinesJson(
       continue;
     }
     lines.push(
-      ...formatItemJson(itemHeader.type, payload, header, showAttributes)
+      ...formatItemJson(itemHeader.type, payload, header, showAttributes),
     );
   }
   return lines;
@@ -1178,7 +1177,7 @@ export function formatEnvelopeLines(
     getEventTypes: () => string[] | null;
   },
   activeFilters: ReadonlySet<FilterValue>,
-  showAttributes = false
+  showAttributes = false,
 ): string[] {
   const parsed = container.getParsedEnvelope();
   if (!parsed) {
@@ -1201,8 +1200,8 @@ export function formatEnvelopeLines(
         payload,
         header,
         itemHeader.type ?? container.getContentType(),
-        showAttributes
-      )
+        showAttributes,
+      ),
     );
   }
 

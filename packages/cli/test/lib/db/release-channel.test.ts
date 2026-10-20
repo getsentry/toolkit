@@ -72,7 +72,7 @@ describe("parseReleaseChannel", () => {
 
   test("throws on unrecognized value", () => {
     expect(() => parseReleaseChannel("beta")).toThrow(
-      "Invalid channel: beta. Must be one of: stable, nightly"
+      "Invalid channel: beta. Must be one of: stable, nightly",
     );
   });
 

@@ -1,3 +1,16 @@
+import {
+  getColumnsAndAggregates,
+  isAggregateFieldOrEquation,
+} from "@sentry/toolkit-core/events-fields";
+import {
+  createSentryClient,
+  listOrganizationProjects,
+  listOrganizationTeams,
+  listOrganizations,
+  parseSentryLinkHeader,
+} from "@sentry/api";
+import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
+import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
@@ -57,10 +70,11 @@ import {
   DashboardSchema,
   DeployListSchema,
   DetectorSchema,
+  DroppedEventsResponseSchema,
   ErrorsSearchResponseSchema,
   EventAttachmentListSchema,
   EventSchema,
-  EventsStatsResponseSchema,
+  EventsTimeSeriesResponseSchema,
   ExternalIssueListSchema,
   ExternalIssueSchema,
   FlamegraphSchema,
@@ -126,8 +140,6 @@ import type {
   AlertRuleUpdate,
   AutofixRun,
   AutofixRunState,
-  SearchAgentStart,
-  SearchAgentState,
   ClientKey,
   ClientKeyList,
   CommitList,
@@ -170,6 +182,8 @@ import type {
   ReplayDetails,
   ReplayList,
   ReplayRecordingSegments,
+  SearchAgentStart,
+  SearchAgentState,
   SentryAppComponentList,
   SentryAppExternalRequestOptions,
   SentryAppInstallationList,
@@ -258,22 +272,7 @@ function parseStatsPeriod(statsPeriod: string): {
 }
 
 function getNextCursor(linkHeader: string | null): string | null {
-  if (!linkHeader) {
-    return null;
-  }
-
-  for (const link of linkHeader.split(",")) {
-    if (!link.includes('rel="next"') || !link.includes('results="true"')) {
-      continue;
-    }
-
-    const cursorMatch = link.match(/cursor="([^"]+)"/);
-    if (cursorMatch?.[1]) {
-      return cursorMatch[1];
-    }
-  }
-
-  return null;
+  return parseSentryLinkHeader(linkHeader).nextCursor ?? null;
 }
 
 /**
@@ -310,6 +309,8 @@ type RequestOptions = {
  */
 const RETRYABLE_REQUEST_MAX_RETRIES = 2;
 const RETRYABLE_REQUEST_INITIAL_DELAY_MS = 250;
+const API_MAX_PER_PAGE = 100;
+const MAX_LIST_PAGES = 50;
 
 /**
  * Default cap for returning attachment bytes inline over the MCP transport.
@@ -353,12 +354,21 @@ type UpdateClientKeyRequest = {
   browserSdkVersion?: string;
   dynamicSdkLoaderOptions?: ClientKeyDynamicSdkLoaderOptions;
 };
-export type TraceItemAttributeType = "string" | "number" | "boolean";
+export type TraceItemAttributeType = "string" | "number" | "boolean" | "array";
 export type TraceItemAttributeSourceType = "sentry" | "user";
 
 export type TraceItemAttributeSource = {
   source_type: TraceItemAttributeSourceType;
   is_transformed_alias?: boolean;
+};
+
+export type TraceItemAttributeContext = {
+  isConvention?: boolean;
+  brief?: string;
+  isDeprecated?: boolean;
+  details?: string[];
+  examples?: Array<string | boolean | number>;
+  replacementAttribute?: string;
 };
 
 export type TraceItemAttribute = {
@@ -367,6 +377,7 @@ export type TraceItemAttribute = {
   type: TraceItemAttributeType;
   attributeSource: TraceItemAttributeSource;
   secondaryAliases?: string[];
+  context?: TraceItemAttributeContext;
 };
 
 export type TraceItemAttributeValidationResult = {
@@ -409,7 +420,12 @@ export type EventsValidationResult = {
   orderby: EventsAttributeValidationResult[];
 };
 
-const TraceItemAttributeTypeSchema = z.enum(["string", "number", "boolean"]);
+const TraceItemAttributeTypeSchema = z.enum([
+  "string",
+  "number",
+  "boolean",
+  "array",
+]);
 const TraceItemAttributeSourceSchema = z.object({
   source_type: z.enum(["sentry", "user"]),
   is_transformed_alias: z.boolean().optional(),
@@ -422,12 +438,10 @@ const EventsValidationIssueSchema = z
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(
-    ({ valid, error }): EventsValidationIssue => ({
-      valid,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ valid, error }): EventsValidationIssue => ({
+    valid,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsNamedValidationIssueSchema = z
   .object({
@@ -435,13 +449,11 @@ const EventsNamedValidationIssueSchema = z
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(
-    ({ name, valid, error }): EventsNamedValidationIssue => ({
-      name,
-      valid,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ name, valid, error }): EventsNamedValidationIssue => ({
+    name,
+    valid,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsAttributeValidationSchema = z
   .object({
@@ -472,13 +484,11 @@ const EventsQueryValidationSchema = z
     error: ValidationErrorSchema,
     fields: EventsAttributeValidationListSchema,
   })
-  .transform(
-    ({ valid, error, fields }): EventsQueryValidation => ({
-      valid,
-      fields,
-      ...(error ? { error } : {}),
-    }),
-  );
+  .transform(({ valid, error, fields }): EventsQueryValidation => ({
+    valid,
+    fields,
+    ...(error ? { error } : {}),
+  }));
 
 const EventsValidationResponseSchema = z
   .object({
@@ -492,6 +502,15 @@ const EventsValidationResponseSchema = z
   })
   .transform((result): EventsValidationResult => result);
 
+const TraceItemAttributeContextSchema = z.object({
+  isConvention: z.boolean().optional(),
+  brief: z.string().optional(),
+  isDeprecated: z.boolean().optional(),
+  examples: z.array(z.union([z.string(), z.boolean(), z.number()])).optional(),
+  replacementAttribute: z.string().optional(),
+  details: z.array(z.string()).optional(),
+});
+
 const TraceItemAttributeSchema = z
   .object({
     key: z.string(),
@@ -499,14 +518,23 @@ const TraceItemAttributeSchema = z
     attributeType: TraceItemAttributeTypeSchema,
     attributeSource: TraceItemAttributeSourceSchema,
     secondaryAliases: z.array(z.string()).optional(),
+    context: TraceItemAttributeContextSchema.optional(),
   })
   .transform(
-    ({ key, name, attributeType, attributeSource, secondaryAliases }) => ({
+    ({
+      key,
+      name,
+      attributeType,
+      attributeSource,
+      secondaryAliases,
+      context,
+    }) => ({
       key,
       name,
       type: attributeType,
       attributeSource,
-      ...(secondaryAliases ? { secondaryAliases } : {}),
+      ...(secondaryAliases && { secondaryAliases }),
+      context,
     }),
   );
 
@@ -786,16 +814,21 @@ export class SentryApiService {
     options: RequestInit = {},
     { host, allowStatuses }: { host?: string; allowStatuses?: number[] } = {},
   ): Promise<Response> {
-    const url = host
-      ? `${this.protocol}://${host}/api/0${path}`
-      : `${this.apiPrefix}${path}`;
+    const url = buildSentryApiUrl(
+      `${this.protocol}://${host ?? this.host}`,
+      path,
+    );
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "User-Agent": USER_AGENT,
     };
-    if (this.accessToken) {
-      headers.Authorization = `Bearer ${this.accessToken}`;
+    if (this.accessToken !== null) {
+      const authorization = sentryBearerHeader(this.accessToken);
+      if (authorization === null) {
+        throw new ConfigurationError("Malformed authentication token");
+      }
+      headers.Authorization = authorization;
     }
     if (this.clientId) {
       headers["X-Sentry-MCP-Client-Id"] = this.clientId;
@@ -1020,6 +1053,82 @@ export class SentryApiService {
   ): Promise<unknown> {
     const response = await this.request(path, options, requestOptions);
     return this.parseJsonResponse(response);
+  }
+
+  /** Let SDK operations build paths and queries while MCP owns transport and errors. */
+  private sdkClient(expectedPath: string, host: string = this.host) {
+    const origin = new URL(`${this.protocol}://${host}`).origin;
+    return createSentryClient({
+      baseUrl: origin,
+      fetch: async (sdkRequest) => {
+        if (!(sdkRequest instanceof Request)) {
+          throw new ConfigurationError("Unexpected SDK request input");
+        }
+        const url = new URL(sdkRequest.url);
+        if (
+          url.origin !== origin ||
+          url.pathname !== "/api/0".concat(expectedPath) ||
+          sdkRequest.method !== "GET"
+        ) {
+          throw new ConfigurationError(
+            "Unexpected SDK request target or method",
+          );
+        }
+        const path = `${url.pathname.slice("/api/0".length)}${url.search}`;
+        const response = await this.request(
+          path,
+          { method: "GET", signal: sdkRequest.signal },
+          { host },
+        );
+        const contentType = response.headers.get("content-type");
+        if (!contentType?.includes("application/json")) {
+          await this.parseJsonResponse(response);
+        }
+        return response;
+      },
+    }).client;
+  }
+
+  private async sdkListPage<T>(
+    fetchPage: (
+      perPage: number,
+      cursor: string | undefined,
+    ) => Promise<{ data: unknown; response: Response }>,
+    schema: z.ZodType<T[]>,
+    limit: number,
+    initialCursor?: string | null,
+  ): Promise<{ items: T[]; nextCursor: string | null }> {
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > API_MAX_PER_PAGE * MAX_LIST_PAGES
+    ) {
+      throw new ApiValidationError(
+        `limit must be an integer between 1 and ${API_MAX_PER_PAGE * MAX_LIST_PAGES}`,
+      );
+    }
+    const items: T[] = [];
+    const seenCursors = new Set<string>();
+    let cursor = initialCursor ?? undefined;
+    for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+      const perPage = Math.min(API_MAX_PER_PAGE, limit - items.length);
+      const { data, response } = await fetchPage(perPage, cursor);
+      const rows = schema.parse(data);
+      if (rows.length > perPage) {
+        throw new Error("API returned more items than requested");
+      }
+      items.push(...rows);
+      const nextCursor = getNextCursor(response.headers.get("link"));
+      if (items.length >= limit || !nextCursor) {
+        return { items, nextCursor };
+      }
+      if (seenCursors.has(nextCursor) || nextCursor === cursor) {
+        throw new Error("API returned a repeated pagination cursor");
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
+    throw new Error("API pagination exceeded its page limit");
   }
 
   /**
@@ -1325,9 +1434,7 @@ export class SentryApiService {
   private isAggregateExplorerQuery(params: ExplorerAggregateParams): boolean {
     return Boolean(
       params.aggregateFunctions?.length ||
-        params.fields?.some(
-          (field) => field.includes("(") && field.includes(")"),
-        ),
+      params.fields?.some(isAggregateFieldOrEquation),
     );
   }
 
@@ -1361,12 +1468,10 @@ export class SentryApiService {
     }
 
     // Fall back to deriving aggregate metadata from the selected fields.
-    const parsedGroupByFields =
-      fields?.filter((field) => !field.includes("(") && !field.includes(")")) ??
-      [];
-    const parsedAggregateFunctions =
-      fields?.filter((field) => field.includes("(") && field.includes(")")) ??
-      [];
+    const {
+      columns: parsedGroupByFields,
+      aggregates: parsedAggregateFunctions,
+    } = getColumnsAndAggregates(fields ?? []);
 
     for (const field of parsedGroupByFields) {
       urlParams.append("aggregateField", JSON.stringify({ groupBy: field }));
@@ -1652,33 +1757,26 @@ export class SentryApiService {
     limit?: number;
     cursor?: string | null;
   }): Promise<{ organizations: OrganizationList; nextCursor: string | null }> {
-    const limit = params?.limit ?? 25;
-
-    // Build query parameters
-    const queryParams = new URLSearchParams();
-    queryParams.set("per_page", String(limit));
-    if (params?.query) {
-      queryParams.set("query", params.query);
-    }
-    if (params?.cursor) {
-      queryParams.set("cursor", params.cursor);
-    }
-    const queryString = queryParams.toString();
-    const path = `/organizations/?${queryString}`;
-
-    let host = undefined;
     // Public SaaS lists across regions on sentry.io; single-tenant instances
-    // must keep organization discovery on their configured host.
-    if (this.isPublicSaas()) {
-      host = "sentry.io";
-    }
-
-    const response = await this.request(path, undefined, { host });
-    const body = await this.parseJsonResponse(response);
-
+    // keep organization discovery on their configured host.
+    const client = this.sdkClient(
+      "/organizations/",
+      this.isPublicSaas() ? "sentry.io" : this.host,
+    );
+    const { items, nextCursor } = await this.sdkListPage(
+      (perPage, cursor) =>
+        listOrganizations({
+          client,
+          query: { per_page: perPage, query: params?.query, cursor },
+          throwOnError: true,
+        }),
+      OrganizationListSchema,
+      params?.limit ?? 25,
+      params?.cursor,
+    );
     return {
-      organizations: OrganizationListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      organizations: items,
+      nextCursor,
     };
   }
 
@@ -1730,24 +1828,23 @@ export class SentryApiService {
     params?: { query?: string; limit?: number; cursor?: string | null },
     opts?: RequestOptions,
   ): Promise<{ teams: TeamList; nextCursor: string | null }> {
-    const queryParams = new URLSearchParams();
-    queryParams.set("per_page", String(params?.limit ?? 25));
-    if (params?.query) {
-      queryParams.set("query", params.query);
-    }
-    if (params?.cursor) {
-      queryParams.set("cursor", params.cursor);
-    }
-    const queryString = queryParams.toString();
     const teamsPath = apiPath`/organizations/${organizationSlug}/teams/`;
-    const path = `${teamsPath}?${queryString}`;
-
-    const response = await this.request(path, undefined, opts);
-    const body = await this.parseJsonResponse(response);
-
+    const client = this.sdkClient(teamsPath, opts?.host);
+    const { items, nextCursor } = await this.sdkListPage(
+      (perPage, cursor) =>
+        listOrganizationTeams({
+          client,
+          path: { organization_id_or_slug: organizationSlug },
+          query: { per_page: perPage, query: params?.query, cursor },
+          throwOnError: true,
+        }),
+      TeamListSchema,
+      params?.limit ?? 25,
+      params?.cursor,
+    );
     return {
-      teams: TeamListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      teams: items,
+      nextCursor,
     };
   }
 
@@ -1798,24 +1895,23 @@ export class SentryApiService {
     params?: { query?: string; limit?: number; cursor?: string | null },
     opts?: RequestOptions,
   ): Promise<{ projects: ProjectList; nextCursor: string | null }> {
-    const queryParams = new URLSearchParams();
-    queryParams.set("per_page", String(params?.limit ?? 25));
-    if (params?.query) {
-      queryParams.set("query", params.query);
-    }
-    if (params?.cursor) {
-      queryParams.set("cursor", params.cursor);
-    }
-    const queryString = queryParams.toString();
     const projectsPath = apiPath`/organizations/${organizationSlug}/projects/`;
-    const path = `${projectsPath}?${queryString}`;
-
-    const response = await this.request(path, undefined, opts);
-    const body = await this.parseJsonResponse(response);
-
+    const client = this.sdkClient(projectsPath, opts?.host);
+    const { items, nextCursor } = await this.sdkListPage(
+      (perPage, cursor) =>
+        listOrganizationProjects({
+          client,
+          path: { organization_id_or_slug: organizationSlug },
+          query: { per_page: perPage, query: params?.query, cursor },
+          throwOnError: true,
+        }),
+      ProjectListSchema,
+      params?.limit ?? 25,
+      params?.cursor,
+    );
     return {
-      projects: ProjectListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      projects: items,
+      nextCursor,
     };
   }
 
@@ -3109,6 +3205,31 @@ export class SentryApiService {
     return MonitorSchema.parse(body);
   }
 
+  /**
+   * Schedule deletion of a cron monitor environment. Returns 202 with no body.
+   * Source: src/sentry/monitors/endpoints/project_monitor_environment_details.py
+   */
+  async deleteMonitorEnvironment(
+    {
+      organizationSlug,
+      projectSlug,
+      monitorSlug,
+      environment,
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+      monitorSlug: string;
+      environment: string;
+    },
+    opts?: RequestOptions,
+  ): Promise<void> {
+    await this.request(
+      apiPath`/projects/${organizationSlug}/${projectSlug}/monitors/${monitorSlug}/environments/${environment}/`,
+      { method: "DELETE" },
+      { ...opts, allowStatuses: [404] },
+    );
+  }
+
   async listMonitorCheckIns(
     {
       organizationSlug,
@@ -3791,6 +3912,18 @@ export class SentryApiService {
       { ...opts, allowStatuses: [400] },
     );
     const body = await this.parseJsonResponse(response);
+    // ParseError responses use a detail envelope instead of validation results.
+    // Keep malformed validation results reportable, even when their status is 400.
+    if (
+      response.status === 400 &&
+      body &&
+      typeof body === "object" &&
+      !("valid" in body) &&
+      "detail" in body &&
+      typeof body.detail === "string"
+    ) {
+      throw createApiError(body.detail, 400, body.detail, body);
+    }
     return EventsValidationResponseSchema.parse(body);
   }
 
@@ -4282,8 +4415,7 @@ export class SentryApiService {
     opts?: RequestOptions,
   ): Promise<Event> {
     const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/${eventId}/` +
-        `?llmFormat=json`,
+      apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/${eventId}/`,
       undefined,
       opts,
     );
@@ -5154,7 +5286,9 @@ export class SentryApiService {
   }
 
   /**
-   * Fetch a timeseries (events-stats) for a single yAxis, bucketed over time.
+   * Fetch a timeseries (events-timeseries) for a single yAxis, bucketed over
+   * time. Buckets that may still receive data are flagged `incomplete`, and
+   * `meta.ingestion` reports the measured ingestion delay when available.
    *
    * `interval` is optional: omit it to let Sentry pick a sensible bucket size
    * for the range (mirrors get_interval_from_range in the Sentry source).
@@ -5196,15 +5330,61 @@ export class SentryApiService {
     if (projectId) {
       queryParams.set("project", projectId);
     }
-    // partial=1 keeps the current (in-progress) bucket, matching Sentry's charts.
-    queryParams.set("partial", "1");
     queryParams.set("referrer", SENTRY_MCP_SEARCH_EVENTS_REFERRER);
 
     const apiUrl =
-      apiPath`/organizations/${organizationSlug}/events-stats/` +
+      apiPath`/organizations/${organizationSlug}/events-timeseries/` +
       `?${queryParams.toString()}`;
     const body = await this.requestJSON(apiUrl, undefined, opts);
-    return EventsStatsResponseSchema.parse(body);
+    return EventsTimeSeriesResponseSchema.parse(body);
+  }
+
+  async getDroppedEvents(
+    {
+      organizationSlug,
+      interval,
+      projectId,
+      dataset = "spans",
+      statsPeriod,
+      start,
+      end,
+      outcome,
+      reason,
+    }: {
+      organizationSlug: string;
+      interval?: string;
+      projectId?: string;
+      dataset?: EventsDataset;
+      statsPeriod?: string;
+      start?: string;
+      end?: string;
+      outcome?: string;
+      reason?: string;
+    },
+    opts?: RequestOptions,
+  ) {
+    const queryParams = new URLSearchParams();
+    queryParams.set("dataset", normalizeEventsDataset(dataset));
+    if (interval) {
+      queryParams.set("interval", interval);
+    }
+    this.applyTimeParams(queryParams, statsPeriod, start, end);
+    if (projectId) {
+      queryParams.set("project", projectId);
+    }
+    if (outcome) {
+      queryParams.set("outcome", outcome);
+    }
+    if (reason) {
+      queryParams.set("reason", reason);
+    }
+    queryParams.set("referrer", SENTRY_MCP_SEARCH_EVENTS_REFERRER);
+
+    const apiUrl =
+      apiPath`/organizations/${organizationSlug}/events-dropped/` +
+      `?${queryParams.toString()}`;
+    const body = await this.requestJSON(apiUrl, undefined, opts);
+    return DroppedEventsResponseSchema.parse(body);
   }
 
   // POST https://us.sentry.io/api/0/issues/5485083130/autofix/
@@ -5248,8 +5428,7 @@ export class SentryApiService {
     opts?: RequestOptions,
   ): Promise<AutofixRunState> {
     const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/autofix/` +
-        `?llmFormat=markdown`,
+      apiPath`/organizations/${organizationSlug}/issues/${issueId}/autofix/`,
       undefined,
       opts,
     );

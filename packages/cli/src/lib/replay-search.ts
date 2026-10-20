@@ -45,7 +45,7 @@ export const DEFAULT_REPLAY_EXPLORE_FIELDS = [
 
 /** Parse repeatable and comma-separated replay environment filters. */
 export function parseReplayEnvironmentFilter(
-  values: readonly string[] | undefined
+  values: readonly string[] | undefined,
 ): string[] | undefined {
   const parsed = values
     ? [...values]
@@ -219,7 +219,7 @@ export function getReplayRequestFields(fields: string[]): string[] {
 /** Extract a replay field value for CLI search/display output. */
 export function getReplayFieldValue(
   replay: ReplayLike,
-  field: string
+  field: string,
 ): unknown {
   const resolver = REPLAY_FIELD_RESOLVERS[field];
   if (!resolver) {
@@ -236,7 +236,7 @@ export function getReplayFieldValue(
  * Extract the replay ID from the event's `contexts.replay` object.
  */
 function getReplayIdFromReplayContext(
-  event: Pick<SentryEvent, "contexts">
+  event: Pick<SentryEvent, "contexts">,
 ): string | undefined {
   const replayContext = event.contexts?.replay;
   return typeof replayContext?.replay_id === "string"
@@ -251,10 +251,10 @@ function getReplayIdFromReplayContext(
  * Returns the first valid, normalized replay ID found.
  */
 export function getReplayIdFromEvent(
-  event: Pick<SentryEvent, "contexts" | "tags">
+  event: Pick<SentryEvent, "contexts" | "tags">,
 ): string | undefined {
   const tagReplayId = event.tags?.find(
-    (tag) => tag.key === "replayId" || tag.key === "replay.id"
+    (tag) => tag.key === "replayId" || tag.key === "replay.id",
   )?.value;
 
   return collectReplayIds([
@@ -270,7 +270,7 @@ export function getReplayIdFromEvent(
  * duplicate IDs are silently dropped.
  */
 export function collectReplayIds(
-  values: Iterable<string | null | undefined>
+  values: Iterable<string | null | undefined>,
 ): string[] {
   const seen = new Set<string>();
   const replayIds: string[] = [];

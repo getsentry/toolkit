@@ -28,7 +28,7 @@ Guidelines for AI agents working in this codebase.
 
 Before working on this codebase, read the Cursor rules:
 
-- **`.cursor/rules/ultracite.mdc`** - Code style, formatting, linting rules
+- **`.cursor/rules/oxc.mdc`** - Code style, formatting, linting rules
 
 ## Quick Reference: Commands
 
@@ -49,7 +49,7 @@ pnpm run build:all                       # Build for all platforms
 pnpm run typecheck                       # Check types (tsc)
 
 # Linting & Formatting
-pnpm run lint                            # Check for issues (Biome)
+pnpm run lint                            # Check Oxlint and Oxfmt
 pnpm run lint:fix                        # Auto-fix issues (run before committing)
 
 # Testing (Vitest)
@@ -104,7 +104,7 @@ const result = execFileSync("id", ["-u", "username"], { encoding: "utf-8", stdio
 
 The full project-structure tree — including the live command/subcommand list and the
 domain API modules — is generated from the route tree and lives in
-[`apps/cli-docs/src/content/docs/contributing.md`](apps/cli-docs/src/content/docs/contributing.md)
+[`apps/cli-docs/src/content/docs/contributing.md`](../../apps/cli-docs/src/content/docs/contributing.md)
 (the `project-structure` block produced by `script/generate-docs-sections.ts`). It is
 kept in sync automatically, so it is **not** duplicated here to avoid drift. For the
 current command list run `ls src/commands/` or `sentry --help`.
@@ -115,12 +115,13 @@ Top-level layout:
   **`src/context.ts`** — dependency-injection context.
 - **`src/commands/`** — one directory per command group (`agent-conversation`,
   `alert`, `auth`, `build`, `cli`, `code-mappings`, `dart-symbol-map`,
-  `dashboard`, `debug-files`, `docs`, `event`, `feedback`, `issue`, `local`,
+  `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,
   `log`, `monitor`, `org`, `platform`, `proguard`, `project`, `react-native`,
   `release`, `replay`, `repo`, `snapshots`, `sourcemap`, `span`, `status`,
   `team`, `trace`, `trial`) plus standalone command files (`api.ts`,
-  `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `schema.ts`,
-  `wasm-split.ts`).
+  `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `mcp.ts`, `schema.ts`,
+  `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
+  `send-envelope.ts`).
 - **`src/lib/`** — shared utilities. Key subtrees: `api/` (domain API modules),
   `db/` (SQLite layer), `dsn/` (DSN detection, with per-language extractors under
   `dsn/languages/`), and `formatters/` (output formatting). See the file-locations
@@ -130,7 +131,7 @@ Top-level layout:
   `*.model-based.test.ts`, `e2e/`, `fixtures/`, `mocks/`).
 - **`../../apps/cli-docs/`** — documentation site (Astro + Starlight);
   **`script/`** — build/utility scripts; **`.cursor/rules/`** — Cursor AI rules;
-  **`biome.jsonc`** — lint config.
+  **`lint-rules/cli-oxlint-plugin.js`** — CLI-specific lint rules.
 
 ## Key Patterns
 
@@ -238,6 +239,16 @@ const parsed = parseOrgProjectArg(targetArg);
 
 Reference: `span/list.ts`, `trace/view.ts`, `event/view.ts`
 
+**Shell completion:** Target positionals that take an org or project use a
+completion-aware parser from `src/lib/completion-target.ts` instead of
+`String`: `parseOrgProjectTarget` completes `org/`, `org/project`, and project
+aliases; `parseOrgTarget` completes org slugs only. `LIST_TARGET_POSITIONAL`
+and `LIST_ORG_TARGET_POSITIONAL` already use them.
+`pnpm run generate:completions` collects these into the gitignored
+`src/generated/completion-targets.json` that the `__complete` fast path reads.
+`project create` keeps its dedicated `name:platform` completer in
+`src/lib/complete.ts`.
+
 ### Multiple Values in Arguments
 
 Split by argument type — do not mix the conventions:
@@ -248,6 +259,12 @@ Split by argument type — do not mix the conventions:
   values on commas; commas may be part of the value. Every project passed to
   `project create` requires a `name:platform` pair — there is no space-separated
   form, with or without an explicit org. Project names cannot contain whitespace.
+- **Exception: opted-in `org/project` list selectors.** Commands whose API can
+  query several projects together may parse their single optional target token
+  as a list because Sentry slugs cannot contain commas. For example,
+  `issue list acme/web,api` selects two projects. Pass
+  `{ multi: true }` to `parseOrgProjectArg`; never enable it for
+  mutation or single-project commands.
 - **Optional flags → comma-separated (sometimes also repeatable).** Split the
   flag value on `,`: `--features errors,tracing`, set-commits `--path a,b`,
   `auth login --scope a,b`. Use `value.split(",")` (repeatable array flags:
@@ -428,11 +445,12 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 ### Generated Docs & Skills
 
-All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:command-docs` then `generate:skill`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
+All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:banner`, `generate:completions`, `generate:command-docs`, `generate:skill`, then `generate:docs-sections`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
 
-- **Command docs** (`docs/src/content/docs/commands/*.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `docs/src/fragments/commands/`.
+- **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
-- Edit fragments in `docs/src/fragments/commands/` for custom examples and guides.
+- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write an `Examples:` block in `fullDescription` or a `## Examples` section in a fragment for new commands.
+- Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.
 
@@ -530,7 +548,7 @@ CliError (base, exitCode=1)
 - Pass `alternatives: []` when defaults are irrelevant (e.g., for missing Trace ID, Event ID)
 - Use `" and "` in `resource` for plural grammar: `"Trace ID and span ID"` → "are required"
 
-**CI enforcement:** `pnpm run check:errors` scans for `ContextError` with multiline commands and `CliError` with ad-hoc "Try:" strings. Silent `catch` blocks are enforced separately by the `no-silent-catch` Biome plugin (see below).
+**CI enforcement:** `pnpm run check:errors` scans for `ContextError` with multiline commands and `CliError` with ad-hoc "Try:" strings. Silent `catch` blocks are enforced separately by the `no-silent-catch` CLI Oxlint rule (see below).
 
 ```typescript
 // Usage examples
@@ -552,7 +570,7 @@ Reference: `resolveDashboardId()` in `src/commands/dashboard/resolve.ts`.
 
 ### Catch Block Logging
 
-Silent `catch` blocks are prohibited in `src/` production code. Biome's `noEmptyBlockStatements` catches syntactically empty `catch {}` blocks, but blocks with only a `return` statement and no logging are equally problematic — errors vanish silently, making debugging impossible.
+Silent `catch` blocks are prohibited in `src/` production code. Both empty `catch {}` blocks and blocks that only return without logging discard errors and make debugging impossible.
 
 Every `catch` block must either:
 1. Re-throw the error
@@ -574,17 +592,17 @@ catch (error) {
 
 Use `logger.withTag("command-name")` for tagged logging in command files.
 
-**CI enforcement:** the `no-silent-catch` Biome plugin
-(`lint-rules/no-silent-catch.grit`, registered in `biome.jsonc`) flags `catch`
+**CI enforcement:** the `no-silent-catch` CLI Oxlint rule
+(`lint-rules/cli-oxlint-plugin.js`, registered in the root `.oxlintrc.json`) flags `catch`
 blocks — statement and `.catch()` form — that are empty, comment-only, or
 return-only without surfacing the error. The pre-existing backlog is
 grandfathered in place with inline
-`// biome-ignore lint/plugin: <reason>` comments. Because `pnpm run lint` runs
-with `--error-on-warnings`, an *orphaned* suppression (left behind when a
-grandfathered catch is fixed) fails as `suppressions/unused` — so the backlog
+`// oxlint-disable-next-line sentry-cli/no-silent-catch -- <reason>` comments.
+Because `pnpm run lint` reports unused suppressions as errors, an *orphaned*
+suppression (left behind when a grandfathered catch is fixed) fails — so the backlog
 can only shrink, the same ratchet the old JSON baseline provided, with no
 separate script or baseline file to maintain. Fix a grandfathered catch by
-adding logging/re-throwing and deleting its `biome-ignore` line; only add a new
+adding logging/re-throwing and deleting its suppression line; only add a new
 suppression for a genuinely intentional silent catch, with a real reason.
 
 ### Auto-Recovery for Wrong Entity Types
@@ -672,13 +690,17 @@ Commands select a capability wrapper instead of performing API lookups:
   organization or a project.
 - `resolveOrgOnlyTarget()` / `resolveOrgOnlyFromArg()` return the effective
   organization while preserving project-first precedence for bare targets.
+- `resolveProjectIdsInOrg()` / `findProjectsInOrg()` resolve a
+  comma-separated `org/a,b` selector: numeric IDs for a single request
+  (unknown slugs are an error), or the projects themselves plus the slugs
+  that returned 404.
 
 Do not call `findProjectsBySlug()` or implement org fallback directly in a
 command. `sentry init` is the intentional not-found exception: it calls the
 classifier with fuzzy recovery disabled, then treats `not-found` as a new
 project name. Issue-short-ID recovery in `commands/issue/utils.ts` is not CLI
 target resolution and may perform its own project lookup. The
-`no-direct-target-resolution` Biome plugin enforces this command-layer
+`no-direct-target-resolution` CLI Oxlint rule enforces this command-layer
 boundary.
 
 ### List Command Infrastructure
@@ -1019,8 +1041,9 @@ vi.mock("./some-module", () => ({
 | Add unit tests | `test/` (mirror `src/` structure) |
 | Add E2E tests | `test/e2e/` |
 | Test helpers | `test/model-based/helpers.ts` |
-| Add documentation | `docs/src/content/docs/` |
-| Hand-written command doc content | `docs/src/fragments/commands/` |
+| Add documentation | `apps/cli-docs/src/content/docs/` |
+| Command examples | `docs.examples` on the command |
+| Hand-written command doc content (guides, caveats) | `apps/cli-docs/src/fragments/commands/` |
 
 ## Automated Fix PRs (BugBot / agents)
 

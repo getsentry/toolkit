@@ -61,7 +61,7 @@ export function concat(parts: Uint8Array[]): Uint8Array {
  * Padding produces a non-canonical but legal encoding, which some toolchains
  * emit and which a faithful round-trip must preserve.
  */
-// biome-ignore-start lint/suspicious/noBitwiseOperators: LEB128 is defined in terms of bit groups
+// oxlint-disable no-bitwise -- LEB128 is defined in terms of bit groups
 export function leb128(value: number, padTo = 0): Uint8Array {
   const bytes: number[] = [];
   let remaining = value;
@@ -78,13 +78,13 @@ export function leb128(value: number, padTo = 0): Uint8Array {
   }
   return Uint8Array.from(bytes);
 }
-// biome-ignore-end lint/suspicious/noBitwiseOperators: LEB128 is defined in terms of bit groups
+// oxlint-enable no-bitwise
 
 /** Encode one section: id, length prefix, payload. */
 export function section(
   id: number,
   payload: Uint8Array,
-  padLengthTo = 0
+  padLengthTo = 0,
 ): Uint8Array {
   return concat([
     Uint8Array.from([id]),
@@ -97,13 +97,13 @@ export function section(
 export function customSection(
   name: string,
   contents: Uint8Array,
-  padLengthTo = 0
+  padLengthTo = 0,
 ): Uint8Array {
   const nameBytes = new TextEncoder().encode(name);
   return section(
     0,
     concat([leb128(nameBytes.length), nameBytes, contents]),
-    padLengthTo
+    padLengthTo,
   );
 }
 
@@ -127,7 +127,7 @@ export function byteVector(bytes: Uint8Array): Uint8Array {
  * @returns The string, or `null` when the prefix disagrees with the body or the
  *   bytes are not valid UTF-8
  */
-// biome-ignore-start lint/suspicious/noBitwiseOperators: LEB128 is defined in terms of bit groups
+// oxlint-disable no-bitwise -- LEB128 is defined in terms of bit groups
 export function readByteVectorString(contents: Uint8Array): string | null {
   let length = 0;
   let scale = 1;
@@ -149,11 +149,11 @@ export function readByteVectorString(contents: Uint8Array): string | null {
   }
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(
-      contents.subarray(offset, offset + length)
+      contents.subarray(offset, offset + length),
     );
   } catch {
     // Invalid UTF-8 is an expected fixture, not a failure worth reporting.
     return null;
   }
 }
-// biome-ignore-end lint/suspicious/noBitwiseOperators: LEB128 is defined in terms of bit groups
+// oxlint-enable no-bitwise

@@ -11,12 +11,14 @@ import {
   type AuthConfig,
   type AuthSource,
   ENV_SOURCE_PREFIX,
+  getActiveAuthHost,
   getActiveEnvVarName,
   getAuthConfig,
   getAuthToken,
   getRawEnvToken,
   isAuthenticated,
 } from "../../lib/db/auth.js";
+import { listAccounts } from "../../lib/db/accounts.js";
 import {
   getDefaultOrganization,
   getDefaultProject,
@@ -58,6 +60,10 @@ export type AuthStatusData = {
   configPath?: string;
   /** User identity from cached user info */
   user?: { name?: string; email?: string; username?: string };
+  /** Server the active stored account belongs to (only for non-env tokens) */
+  host?: string;
+  /** Number of stored accounts (only for non-env tokens) */
+  accounts?: number;
   /** Token display and metadata */
   token?: {
     /** Masked or full token string depending on --show-token */
@@ -95,7 +101,7 @@ export type AuthStatusData = {
  */
 function collectTokenInfo(
   auth: AuthConfig | undefined,
-  showToken: boolean
+  showToken: boolean,
 ): AuthStatusData["token"] | undefined {
   if (!auth?.token) {
     return;
@@ -209,6 +215,8 @@ export const statusCommand = buildCommand({
       source: auth?.source ?? "oauth",
       configPath: fromEnv ? undefined : getDbPath(),
       user,
+      host: fromEnv ? undefined : getActiveAuthHost(),
+      accounts: fromEnv ? undefined : listAccounts().length,
       token: collectTokenInfo(auth, flags["show-token"]),
       defaults: collectDefaults(),
       verification: await verifyCredentials(),

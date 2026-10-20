@@ -85,7 +85,7 @@ describe("sentry schema path lookup", () => {
     await func.call(
       context,
       { json: true, all: false, search: "GET" },
-      ORG_ISSUES
+      ORG_ISSUES,
     );
 
     const parsed = JSON.parse(stdoutOf(stdoutWrite));
@@ -121,7 +121,7 @@ describe("sentry schema path lookup", () => {
     expect(err).toBeInstanceOf(ResolutionError);
     const message = (err as ResolutionError).message;
     expect(message).toContain(
-      "Available methods at this path: DELETE, GET, PUT"
+      "Available methods at this path: DELETE, GET, PUT",
     );
     expect(message).toContain(`sentry schema "GET ${ORG_ISSUES}"`);
   });
@@ -135,7 +135,7 @@ describe("sentry schema path lookup", () => {
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed.length).toBeGreaterThan(3);
     expect(
-      parsed.every((e: { resource: string }) => e.resource === "issues")
+      parsed.every((e: { resource: string }) => e.resource === "issues"),
     ).toBe(true);
   });
 });

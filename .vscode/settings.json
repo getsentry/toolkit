@@ -1,21 +1,18 @@
 {
+  "editor.defaultFormatter": "oxc.oxc-vscode",
   "editor.formatOnSave": true,
+  "editor.formatOnSaveMode": "file",
   "editor.codeActionsOnSave": {
-    "source.fixAll.biome": "explicit"
+    "source.fixAll.oxc": "explicit"
   },
   "files.trimTrailingWhitespace": false,
   "files.trimFinalNewlines": false,
   "files.insertFinalNewline": true,
   "cursor.general.enableShadowWorkspace": true,
   "[json]": {
-    "editor.tabSize": 2,
-    "editor.defaultFormatter": "biomejs.biome"
+    "editor.tabSize": 2
   },
   "[typescript]": {
-    "editor.tabSize": 2,
-    "editor.defaultFormatter": "biomejs.biome"
-  },
-  "[typescriptreact]": {
-    "editor.defaultFormatter": "biomejs.biome"
+    "editor.tabSize": 2
   }
 }

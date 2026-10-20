@@ -26,7 +26,7 @@ export function createIsolatedDbContext(): () => void {
   // Create unique subdirectory for this test run
   const testDir = join(
     testBaseDir,
-    `model-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `model-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
   mkdirSync(testDir, { recursive: true });
   process.env[CONFIG_DIR_ENV_VAR] = testDir;

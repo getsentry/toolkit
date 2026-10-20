@@ -19,6 +19,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -49,7 +50,7 @@ import {
   resolveProjectBoundSlug,
 } from "../../lib/resolve-target.js";
 import { RETENTION_DAYS } from "../../lib/retention.js";
-import { buildLogsUrl } from "../../lib/sentry-urls.js";
+import { buildLogsUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits } from "../../lib/utils.js";
 import type { DetailedSentryLog, TraceItemDetail } from "../../types/index.js";
@@ -80,7 +81,7 @@ const USAGE_HINT = "sentry log view <org>/<project> <log-id> [<log-id>...]";
  */
 function parseSingleSlashLogArg(
   beforeSlash: string,
-  afterSlash: string
+  afterSlash: string,
 ): { rawLogIds: string[]; targetArg: string | undefined } | null {
   // "org/LOG-ID" or "project/LOG-ID" → treat beforeSlash as target, afterSlash as log ID.
   if (afterSlash && HEX_ID_RE.test(normalizeHexId(afterSlash))) {
@@ -90,6 +91,69 @@ function parseSingleSlashLogArg(
     };
   }
   return null;
+}
+
+/**
+ * Split a fully-qualified `<org>/<project>/<log-id>` arg into its target and
+ * log ID, or return `null` when the arg isn't in that shape (fewer than two
+ * slashes, or the trailing segment isn't a 32-char hex ID).
+ *
+ * Agents often pass several fully-qualified paths to one `log view` call
+ * (CLI-1XC). Without this, the first path was used verbatim as the target
+ * (yielding project `"<project>/<log-id>"`) and the rest failed hex validation.
+ */
+function splitFullLogPath(
+  arg: string,
+): { target: string; logId: string } | null {
+  const trimmed = arg.trim();
+  const firstSlash = trimmed.indexOf("/");
+  const lastSlash = trimmed.lastIndexOf("/");
+  if (firstSlash === -1 || firstSlash === lastSlash) {
+    return null;
+  }
+  const logId = normalizeHexId(trimmed.slice(lastSlash + 1));
+  if (!HEX_ID_RE.test(logId)) {
+    return null;
+  }
+  return { target: trimmed.slice(0, lastSlash), logId };
+}
+
+/**
+ * Parse multiple args where the first is a fully-qualified log path.
+ * Every later arg may be a fully-qualified path or a bare log ID; all paths
+ * must share the same org/project target.
+ *
+ * @throws {ValidationError} If the paths reference different targets
+ */
+function parseMultipleFullPaths(
+  args: string[],
+  target: string,
+): { rawLogIds: string[]; targetArg: string } {
+  const rawLogIds: string[] = [];
+  for (const arg of args) {
+    const full = splitFullLogPath(arg);
+    if (full) {
+      if (full.target !== target) {
+        throw new ValidationError(
+          `Log IDs reference different projects ('${target}' and '${full.target}'). ` +
+            `View logs from one project per call: ${USAGE_HINT}`,
+        );
+      }
+      rawLogIds.push(full.logId);
+    } else {
+      rawLogIds.push(...splitNewlineArg(arg));
+    }
+  }
+  return { rawLogIds, targetArg: target };
+}
+
+/**
+ * Strip a redundant `<target>/` prefix from a log ID arg, so
+ * `sentry log view org/proj org/proj/<id>` resolves `<id>` (CLI-1XC).
+ */
+function stripTargetPrefix(rawId: string, target: string): string {
+  const prefix = `${target.trim()}/`;
+  return rawId.startsWith(prefix) ? rawId.slice(prefix.length) : rawId;
 }
 
 /**
@@ -112,7 +176,7 @@ function parseSingleSlashLogArg(
  * @returns Parsed raw log IDs and optional target arg
  * @throws {ContextError} If no arguments provided
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: positional arg parsing has many format branches by design
+// positional arg parsing has many format branches by design
 export function parsePositionalArgs(args: string[]): {
   rawLogIds: string[];
   targetArg: string | undefined;
@@ -138,7 +202,7 @@ export function parsePositionalArgs(args: string[]): {
     if (slashIdx !== -1 && trimmedFirst.indexOf("/", slashIdx + 1) === -1) {
       const singleSlash = parseSingleSlashLogArg(
         trimmedFirst.slice(0, slashIdx),
-        trimmedFirst.slice(slashIdx + 1)
+        trimmedFirst.slice(slashIdx + 1),
       );
       if (singleSlash) {
         if (singleSlash.rawLogIds.length === 0) {
@@ -151,7 +215,7 @@ export function parsePositionalArgs(args: string[]): {
     const { id, targetArg } = parseSlashSeparatedArg(
       first,
       "Log ID",
-      USAGE_HINT
+      USAGE_HINT,
     );
     const rawLogIds = splitNewlineArg(id);
     if (rawLogIds.length === 0) {
@@ -179,7 +243,7 @@ export function parsePositionalArgs(args: string[]): {
     };
   }
 
-  // biome-ignore lint/style/noNonNullAssertion: length >= 2 guarantees index 1 exists
+  // oxlint-disable-next-line typescript/no-non-null-assertion -- length >= 2 guarantees index 1 exists
   const second = args[1]!;
 
   // Detect swapped args: exactly two args where first has no "/" and second
@@ -196,7 +260,16 @@ export function parsePositionalArgs(args: string[]): {
     }
   }
 
-  const rawLogIds = args.slice(1).flatMap(splitNewlineArg);
+  // Every arg is (or starts with) a fully-qualified `org/project/log-id`.
+  const firstFull = splitFullLogPath(first);
+  if (firstFull) {
+    return parseMultipleFullPaths(args, firstFull.target);
+  }
+
+  const rawLogIds = args
+    .slice(1)
+    .flatMap(splitNewlineArg)
+    .map((id) => stripTargetPrefix(id, first));
   if (rawLogIds.length === 0) {
     throw new ContextError("Log ID", USAGE_HINT, []);
   }
@@ -213,7 +286,7 @@ export function parsePositionalArgs(args: string[]): {
  */
 async function validateAndRecoverLogId(
   rawId: string,
-  target: ResolvedLogTarget
+  target: ResolvedLogTarget,
 ): Promise<string> {
   try {
     return validateHexId(rawId, "log ID");
@@ -255,7 +328,7 @@ export type ResolvedLogTarget = {
 async function resolveTarget(
   parsed: ReturnType<typeof parseOrgProjectArg>,
   rawLogIds: string[],
-  cwd: string
+  cwd: string,
 ): Promise<ResolvedLogTarget | null> {
   switch (parsed.type) {
     case "explicit":
@@ -267,7 +340,7 @@ async function resolveTarget(
         parsed.projectSlug,
         USAGE_HINT,
         `sentry log view <org>/${parsed.projectSlug} ${rawLogIds.join(" ")}`,
-        parsed.originalSlug
+        parsed.originalSlug,
       );
       if (
         isAllDigits(parsed.projectSlug) &&
@@ -275,7 +348,7 @@ async function resolveTarget(
       ) {
         log.info(
           `Tip: Resolved project ID ${parsed.projectSlug} to ${result.org}/${result.project}. ` +
-            "Use the slug form for faster lookups."
+            "Use the slug form for faster lookups.",
         );
       }
       return result;
@@ -290,7 +363,7 @@ async function resolveTarget(
     default: {
       const _exhaustiveCheck: never = parsed;
       throw new ValidationError(
-        `Invalid target specification: ${_exhaustiveCheck}`
+        `Invalid target specification: ${_exhaustiveCheck}`,
       );
     }
   }
@@ -321,7 +394,7 @@ function warnMissingIds(logIds: string[], logs: DetailedSentryLog[]): void {
   const missing = logIds.filter((id) => !foundIds.has(id));
   if (missing.length > 0) {
     log.warn(
-      `${missing.length} of ${logIds.length} log(s) not found:\n${formatIdList(missing)}`
+      `${missing.length} of ${logIds.length} log(s) not found:\n${formatIdList(missing)}`,
     );
   }
 }
@@ -339,7 +412,7 @@ async function handleWebOpen(orgSlug: string, logIds: string[]): Promise<void> {
     if (!isatty(0)) {
       log.warn(
         `Refusing to open ${logIds.length} browser tabs in non-interactive mode. ` +
-          "Pass a single log ID or run interactively."
+          "Pass a single log ID or run interactively.",
       );
       return;
     }
@@ -392,7 +465,7 @@ function retentionSuffix(logId: string): string {
 function throwNotFoundError(
   logIds: string[],
   org: string,
-  project: string
+  project: string,
 ): never {
   // Generic fallback wording references `RETENTION_DAYS.log` so a single
   // edit in `retention.ts` keeps this message in sync with the
@@ -416,7 +489,7 @@ function throwNotFoundError(
       `Log '${id}'`,
       `not found in ${org}/${project}`,
       `sentry log view ${org}/${project}/${id}`,
-      suggestions
+      suggestions,
     );
   }
 
@@ -438,7 +511,7 @@ function throwNotFoundError(
     `${idList.length} log(s)`,
     `not found in ${org}/${project}`,
     hint,
-    idList.map((id) => `ID: ${id}`)
+    idList.map((id) => `ID: ${id}`),
   );
 }
 
@@ -474,12 +547,12 @@ function formatLogViewHuman(data: LogViewData): string {
     }
     parts.push(
       formatLogDetails(
-        // biome-ignore lint/style/noNonNullAssertion: index is bounded by data.logs.length
+        // oxlint-disable-next-line typescript/no-non-null-assertion -- index is bounded by data.logs.length
         data.logs[i]!,
         data.orgSlug,
         data.details?.[i]?.attributes,
-        data.extraFields
-      )
+        data.extraFields,
+      ),
     );
   }
   return parts.join("\n");
@@ -514,7 +587,7 @@ export const viewCommand = buildCommand({
         placeholder: "org/project/log-id",
         brief:
           "[<org>/<project>] <log-id> [<log-id>...] - Target (optional) and one or more log IDs",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -551,7 +624,7 @@ export const viewCommand = buildCommand({
     // (multi-match ResolutionError) exits via `Promise.all` with the
     // first-thrown error — same UX as the old sequential loop.
     const logIds = await Promise.all(
-      rawLogIds.map((raw) => validateAndRecoverLogId(raw, target))
+      rawLogIds.map((raw) => validateAndRecoverLogId(raw, target)),
     );
 
     if (flags.web) {
@@ -591,7 +664,7 @@ export const viewCommand = buildCommand({
               target.org,
               target.project,
               entry["sentry.item_id"],
-              entry.trace
+              entry.trace,
             );
           } catch (error) {
             cmdLog.debug("Failed to fetch log item detail", error);

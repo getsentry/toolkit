@@ -1,4 +1,6 @@
+import { getColumnsAndAggregates } from "@sentry/toolkit-core/events-fields";
 import { getActiveSpan } from "@sentry/core";
+import { ensureSortInFields } from "@sentry/toolkit-core/events-sort";
 import { z } from "zod";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import { UserInputError } from "../../../errors";
@@ -52,6 +54,7 @@ import {
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
   validateEventsSearch,
 } from "./utils";
@@ -112,19 +115,6 @@ function parseAgentTimeRange(
   }
 
   return undefined;
-}
-
-function augmentFieldsWithSort(fields: string[], sort: string): string[] {
-  const sortField = sort.startsWith("-") ? sort.slice(1) : sort;
-  const sortIsAggregate = sortField.includes("(") && sortField.includes(")");
-  if (
-    sortField &&
-    !fields.includes(sortField) &&
-    (sortIsAggregate || !isAggregateQuery(fields))
-  ) {
-    return [...fields, sortField];
-  }
-  return fields;
 }
 
 function buildRequestFields(
@@ -262,7 +252,8 @@ function tokenizeSearchQuery(query: string): string[] {
   let quote: '"' | "'" | null = null;
   let escaped = false;
 
-  for (const char of query) {
+  for (let i = 0; i < query.length; i += 1) {
+    const char = query[i];
     if (escaped) {
       currentToken += char;
       escaped = false;
@@ -280,6 +271,13 @@ function tokenizeSearchQuery(query: string): string[] {
       if (char === quote) {
         quote = null;
       }
+      continue;
+    }
+
+    const regexValue = readRegexFilterValue(query, i);
+    if (regexValue) {
+      currentToken += regexValue;
+      i += regexValue.length - 1;
       continue;
     }
 
@@ -322,6 +320,7 @@ function choosePreservingRepairedQuery(params: {
   originalQuery: string;
   repairedQuery?: string | null;
   filter?: string;
+  dataset: PublicEventsDataset | "replays";
 }): string {
   const originalQuery = params.originalQuery.trim();
   const repairedQuery = params.repairedQuery?.trim();
@@ -329,7 +328,7 @@ function choosePreservingRepairedQuery(params: {
     return appendSearchFilter(originalQuery, params.filter);
   }
 
-  if (isSemanticFilterDowngrade(originalQuery, repairedQuery)) {
+  if (isSemanticFilterDowngrade(originalQuery, repairedQuery, params.dataset)) {
     return appendSearchFilter(originalQuery, params.filter);
   }
 
@@ -611,7 +610,10 @@ export async function runSearchEvents(
   setTargetTagsAndAttributes(params);
 
   const inputDataset = params.dataset ?? "errors";
-  const hasStructuredQuery = looksLikeSentrySearchSyntax(params.query);
+  const hasStructuredQuery = looksLikeSentrySearchSyntax(
+    params.query,
+    inputDataset,
+  );
   const canApplyEnvironmentFilter =
     inputDataset !== "replays" &&
     isTraceItemDataset(inputDataset) &&
@@ -661,7 +663,6 @@ export async function runSearchEvents(
   // preserves. Like the UI, an explicit environment is added to Seer's query
   // afterwards.
   const seerTranslation =
-    context.experimentalMode &&
     params.query &&
     isSeerSearchDataset(params.dataset) &&
     !hasStructuredQuery &&
@@ -781,9 +782,14 @@ export async function runSearchEvents(
           originalQuery: params.query ?? "",
           repairedQuery: parsed.query,
           filter: environmentFilter,
+          dataset,
         })
-      : looksLikeSentrySearchSyntax(params.query) &&
-          isSemanticFilterDowngrade(params.query ?? "", parsed.query || "")
+      : looksLikeSentrySearchSyntax(params.query, dataset) &&
+          isSemanticFilterDowngrade(
+            params.query ?? "",
+            parsed.query || "",
+            dataset,
+          )
         ? (params.query ?? "")
         : parsed.query || "";
     sortParam =
@@ -931,8 +937,8 @@ export async function runSearchEvents(
     );
     // No validateEventsSearch here: it validates the /events/ (discover)
     // request shape — fields + orderby — which is not what a timeseries
-    // sends (yAxis + interval, no fields/sort). events-stats validates the
-    // query server-side, so a bad query still surfaces as an API error.
+    // sends (yAxis + interval, no fields/sort). events-timeseries validates
+    // the query server-side, so a bad query still surfaces as an API error.
     const series = await apiService.getEventsTimeSeries({
       organizationSlug,
       query: timeSeriesQuery,
@@ -972,15 +978,10 @@ export async function runSearchEvents(
   // Sentry rejects the request if the sort column isn't in the selected
   // fields. The embedded agent's schema enforces this, but the handler can
   // recombine the caller's explicit fields with a default or explicit sort
-  // that the agent never saw — so re-check here.
-  //
-  // Skip the augment when the sort is non-aggregate but the existing fields
-  // are aggregate: adding a non-aggregate column to an aggregate query
-  // changes the GROUP BY and silently corrupts the result. Better to let
-  // Sentry's 400 propagate so the caller can fix the request explicitly.
+  // that the agent never saw — so re-check here with the rule the CLI shares.
   //
   // Note: fields and sortParam use the same function syntax sent to the API.
-  fields = augmentFieldsWithSort(fields, sortParam);
+  fields = ensureSortInFields(fields, sortParam);
 
   const requestFields = buildRequestFields(dataset, fields);
 
@@ -1034,12 +1035,8 @@ export async function runSearchEvents(
     ...timeParams,
   });
 
-  const aggregateFunctions = fields.filter(
-    (field) => field.includes("(") && field.includes(")"),
-  );
-  const groupByFields = fields.filter(
-    (field) => !field.includes("(") && !field.includes(")"),
-  );
+  const { columns: groupByFields, aggregates: aggregateFunctions } =
+    getColumnsAndAggregates(fields);
 
   function isValidResponse(
     response: unknown,

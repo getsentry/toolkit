@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-dashboard
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Manage Sentry dashboards
 requires:
   bins: ["sentry"]
@@ -55,6 +55,12 @@ sentry dashboard view 'Frontend Performance'
 # View by ID
 sentry dashboard view 12345
 
+# View by ID in an explicit organization
+sentry dashboard view my-org/12345
+
+# Include project context in the same argument
+sentry dashboard view my-org/my-project/12345
+
 # Auto-refresh every 30 seconds
 sentry dashboard view "Backend Performance" --refresh 30
 
@@ -95,6 +101,10 @@ Add a widget to a dashboard
 ```bash
 # Simple counter widget
 sentry dashboard widget add 'My Dashboard' "Error Count" \
+  --display big_number --query count
+
+# Use an ID in an explicit organization
+sentry dashboard widget add my-org/12345 "Error Count" \
   --display big_number --query count
 
 # Line chart with group-by

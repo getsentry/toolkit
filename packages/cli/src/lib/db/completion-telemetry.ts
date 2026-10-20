@@ -34,7 +34,7 @@ export function queueCompletionTelemetry(entry: {
   try {
     const db = getDatabase();
     db.query(
-      "INSERT INTO completion_telemetry_queue (command_path, duration_ms, result_count) VALUES (?, ?, ?)"
+      "INSERT INTO completion_telemetry_queue (command_path, duration_ms, result_count) VALUES (?, ?, ?)",
     ).run(entry.commandPath, Math.round(entry.durationMs), entry.resultCount);
   } catch (error) {
     log.debug("Failed to queue completion telemetry", error);
@@ -55,7 +55,7 @@ export function drainCompletionTelemetry(): CompletionTelemetryEntry[] {
     // Atomic read + delete — no race with concurrent __complete processes
     const rows = db
       .query(
-        "DELETE FROM completion_telemetry_queue RETURNING id, command_path, duration_ms, result_count"
+        "DELETE FROM completion_telemetry_queue RETURNING id, command_path, duration_ms, result_count",
       )
       .all() as {
       id: number;

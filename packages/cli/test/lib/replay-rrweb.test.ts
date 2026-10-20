@@ -110,7 +110,7 @@ describe("hasFullSnapshot", () => {
 describe("rrwebDurationMs", () => {
   test("spans first to last event", () => {
     expect(rrwebDurationMs([fullSnapshot(T0), mouseMove(T0 + 2500, 1)])).toBe(
-      2500
+      2500,
     );
     expect(rrwebDurationMs([])).toBe(0);
   });

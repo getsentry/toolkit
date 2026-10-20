@@ -99,9 +99,8 @@ describe("clearAllIssueOrgCache", () => {
     // Seed an unrelated metadata entry + an unrelated table row so we can
     // confirm clearAllIssueOrgCache only drops its own table.
     const { getDatabase } = await import("../../../src/lib/db/index.js");
-    const { getMetadata, setMetadata } = await import(
-      "../../../src/lib/db/utils.js"
-    );
+    const { getMetadata, setMetadata } =
+      await import("../../../src/lib/db/utils.js");
     setMetadata(getDatabase(), { "unrelated.key": "keep-me" });
     setCachedIssueOrg("1", "a");
 
@@ -109,7 +108,7 @@ describe("clearAllIssueOrgCache", () => {
 
     expect(getCachedIssueOrg("1")).toBeUndefined();
     expect(
-      getMetadata(getDatabase(), ["unrelated.key"]).get("unrelated.key")
+      getMetadata(getDatabase(), ["unrelated.key"]).get("unrelated.key"),
     ).toBe("keep-me");
   });
 });

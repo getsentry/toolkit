@@ -7,8 +7,10 @@
  * via a spy on process.stderr.write and assert on the collected output.
  */
 
+import { spawnSync } from "node:child_process";
 import {
   accessSync,
+  chmodSync,
   constants,
   existsSync,
   mkdirSync,
@@ -41,12 +43,19 @@ vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => ({
   ensureCurrentOAuthScopes: vi.fn(),
 }));
 
+vi.mock("../../../src/lib/windows-path.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../src/lib/windows-path.js")
+  >()),
+  addToWindowsUserPath: vi.fn(),
+}));
+
 import { app } from "../../../src/app.js";
 import type { SentryContext } from "../../../src/context.js";
 import { getAuthConfig, setAuthToken } from "../../../src/lib/db/auth.js";
 import {
-  getAgentSkillsPreference,
-  setAgentSkillsPreference,
+  getOnOffPreference,
+  setOnOffPreference,
 } from "../../../src/lib/db/defaults.js";
 import {
   clearInstallInfo,
@@ -58,18 +67,20 @@ import {
   setProcessInfoProvider,
 } from "../../../src/lib/detect-agent.js";
 import { setEnv } from "../../../src/lib/env.js";
-// biome-ignore lint/performance/noNamespaceImport: dynamic setup imports are mocked at the module boundary
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- dynamic setup imports are mocked at the module boundary
 import * as interactiveLogin from "../../../src/lib/interactive-login.js";
-// biome-ignore lint/performance/noNamespaceImport: dynamic setup imports are mocked at the module boundary
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- dynamic setup imports are mocked at the module boundary
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
+import { whichSync } from "../../../src/lib/which.js";
+import { addToWindowsUserPath } from "../../../src/lib/windows-path.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 /** Store original fetch for restoration */
 let originalFetch: typeof globalThis.fetch;
 
-/** Helper to mock fetch without TypeScript errors about missing Bun-specific properties */
+/** Replace fetch with a typed test implementation. */
 function mockFetch(
-  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>
+  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
   globalThis.fetch = fn as typeof globalThis.fetch;
 }
@@ -86,7 +97,7 @@ function createMockContext(
     homeDir: string;
     env: Record<string, string | undefined>;
     execPath: string;
-  }> = {}
+  }> = {},
 ): {
   context: SentryContext;
   getOutput: () => string;
@@ -166,7 +177,7 @@ describe("sentry cli setup", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `setup-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `setup-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
     vi.mocked(scopeRecovery.ensureCurrentOAuthScopes).mockResolvedValue(false);
@@ -195,7 +206,7 @@ describe("sentry cli setup", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     // With --quiet, no output should be produced
@@ -217,12 +228,12 @@ describe("sentry cli setup", () => {
         "--no-agent-skills",
         "--ensure-auth-scopes",
       ],
-      context
+      context,
     );
 
     expect(scopeRecovery.ensureCurrentOAuthScopes).toHaveBeenCalledOnce();
     expect(scopeRecovery.ensureCurrentOAuthScopes).toHaveBeenCalledWith(
-      interactiveLogin.runInteractiveLogin
+      interactiveLogin.runInteractiveLogin,
     );
   });
 
@@ -243,7 +254,7 @@ describe("sentry cli setup", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getOutput()).toBe("");
@@ -266,7 +277,7 @@ describe("sentry cli setup", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("Recorded installation method: curl");
@@ -290,7 +301,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-completions", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("PATH:");
@@ -313,7 +324,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-completions", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("already in PATH");
@@ -332,7 +343,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-completions", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("No shell config file found");
@@ -356,7 +367,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("Completions:");
@@ -379,7 +390,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("fpath");
@@ -391,38 +402,90 @@ describe("sentry cli setup", () => {
     expect(content).toContain("site-functions");
   });
 
-  test("skips fpath modification when already configured in .zshrc", async () => {
-    const zshrc = join(testDir, ".zshrc");
-    const completionDir = join(
-      testDir,
-      ".local",
-      "share",
-      "zsh",
-      "site-functions"
-    );
-    writeFileSync(zshrc, `# existing\nfpath=("${completionDir}" $fpath)\n`);
+  test.skipIf(!whichSync("zsh")).each([
+    { name: "fresh shell", initializeFirst: false, legacy: false },
+    {
+      name: "completion already initialized",
+      initializeFirst: true,
+      legacy: false,
+    },
+    { name: "existing install", initializeFirst: true, legacy: true },
+  ])(
+    "registers zsh completion for $name and keeps setup idempotent",
+    async ({ initializeFirst, legacy }) => {
+      const zshrc = join(testDir, ".zshrc");
+      const unrelatedCompletions = join(testDir, "unrelated-completions");
+      mkdirSync(unrelatedCompletions);
+      chmodSync(unrelatedCompletions, 0o777);
+      const completionDir = join(
+        testDir,
+        ".local",
+        "share",
+        "zsh",
+        "site-functions",
+      );
+      const original = initializeFirst
+        ? "autoload -Uz compinit; compinit -D\n"
+        : "# user configuration\n";
+      writeFileSync(
+        zshrc,
+        original +
+          (legacy ? `# sentry\nfpath=("${completionDir}" $fpath)\n` : ""),
+      );
+      if (legacy) {
+        mkdirSync(completionDir, { recursive: true });
+        writeFileSync(join(completionDir, "_sentry"), "#compdef sentry\n");
+      }
+      const { context, getOutput, clearOutput, restore } = createMockContext({
+        homeDir: testDir,
+        execPath: join(testDir, "bin", "sentry"),
+        env: {
+          PATH: `/usr/bin:${join(testDir, "bin")}:/bin`,
+          SHELL: "/bin/zsh",
+        },
+      });
+      restoreStderr = restore;
+      const args = ["cli", "setup", "--no-modify-path", "--no-agent-skills"];
+      await run(app, args, context);
+      const configured = await readFile(zshrc, "utf-8");
+      expect(configured).toContain(original);
+      expect(getOutput()).toContain("Restart your shell");
 
-    const { context, getOutput, restore } = createMockContext({
-      homeDir: testDir,
-      execPath: join(testDir, "bin", "sentry"),
-      env: {
-        PATH: `/usr/bin:${join(testDir, "bin")}:/bin`,
-        SHELL: "/bin/zsh",
-      },
-    });
-    restoreStderr = restore;
-
-    await run(
-      app,
-      ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
-    );
-
-    // Should still show "Installed to" but not "Added ... to fpath"
-    const output = getOutput();
-    expect(output).toContain("Completions: Installed to");
-    expect(output).not.toContain("Added sentry fpath in");
-  });
+      const result = spawnSync(
+        "zsh",
+        [
+          "-dfi",
+          "-c",
+          `
+      fpath=("$2" $fpath)
+      # Exclude unrelated user/runner completion directories without bypassing compaudit.
+      fpath=( \${^fpath}/compinit(N:h) )
+      fpath=( $fpath $^fpath/*(N/) )
+      source "$1"
+      print -r -- "\${_comps[sentry]-MISSING}"
+      source "$1"
+      print -r -- "\${_comps[sentry]-MISSING}"
+      autoload +X _sentry
+    `,
+          "--",
+          zshrc,
+          unrelatedCompletions,
+        ],
+        {
+          encoding: "utf-8",
+          env: { ...process.env, HOME: testDir, ZDOTDIR: testDir },
+          timeout: 10000,
+        },
+      );
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe("_sentry\n_sentry");
+      clearOutput();
+      await run(app, args, context);
+      expect(await readFile(zshrc, "utf-8")).toBe(configured);
+      expect(getOutput()).not.toContain("Completions:");
+    },
+  );
 
   test("handles GitHub Actions PATH when GITHUB_ACTIONS is set", async () => {
     const ghPathFile = join(testDir, "github_path");
@@ -443,10 +506,129 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-completions", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("GITHUB_PATH");
+  });
+
+  describe("on Windows", () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "win32" });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(process, "platform", platform);
+      vi.mocked(addToWindowsUserPath).mockReset();
+    });
+
+    async function runSetup(env: Record<string, string | undefined> = {}) {
+      const binDir = join(testDir, "bin");
+      // A .bashrc must be ignored on Windows: the user PATH lives in the registry.
+      writeFileSync(join(testDir, ".bashrc"), "# existing config\n");
+      const { context, getOutput, restore } = createMockContext({
+        homeDir: testDir,
+        execPath: join(binDir, "sentry.exe"),
+        env: { PATH: "/usr/bin:/bin", SHELL: "/bin/bash", ...env },
+      });
+      restoreStderr = restore;
+      await run(
+        app,
+        ["cli", "setup", "--no-completions", "--no-agent-skills"],
+        context,
+      );
+      return { binDir, output: getOutput() };
+    }
+
+    test("adds the binary directory to the user PATH", async () => {
+      vi.mocked(addToWindowsUserPath).mockResolvedValue({
+        modified: true,
+        message: "Added C:\\bin to your user PATH",
+        manualCommand: null,
+      });
+
+      const { binDir, output } = await runSetup();
+
+      expect(addToWindowsUserPath).toHaveBeenCalledWith(binDir);
+      expect(output).toContain("PATH: Added C:\\bin to your user PATH");
+      expect(output).toContain("Open a new terminal");
+      expect(readFileSync(join(testDir, ".bashrc"), "utf-8")).toBe(
+        "# existing config\n",
+      );
+    });
+
+    test("shows a manual step when the user PATH cannot be updated", async () => {
+      vi.mocked(addToWindowsUserPath).mockResolvedValue({
+        modified: false,
+        message: "Could not update your user PATH: access denied",
+        manualCommand: "Add C:\\bin to your user PATH by hand",
+      });
+
+      const { output } = await runSetup();
+
+      expect(output).toContain("Could not update your user PATH");
+      expect(output).toContain("Add C:\\bin to your user PATH by hand");
+    });
+
+    test("still writes GITHUB_PATH in GitHub Actions", async () => {
+      vi.mocked(addToWindowsUserPath).mockResolvedValue({
+        modified: true,
+        message: "Added",
+        manualCommand: null,
+      });
+      const ghPathFile = join(testDir, "github_path");
+      writeFileSync(ghPathFile, "");
+
+      const { binDir, output } = await runSetup({
+        GITHUB_ACTIONS: "true",
+        GITHUB_PATH: ghPathFile,
+      });
+
+      expect(output).toContain("PATH: Added to $GITHUB_PATH");
+      expect(readFileSync(ghPathFile, "utf-8").trim()).toBe(binDir);
+    });
+
+    test("persists the user PATH even when the session PATH has the directory", async () => {
+      vi.mocked(addToWindowsUserPath).mockResolvedValue({
+        modified: true,
+        message: "Added",
+        manualCommand: null,
+      });
+      const ghPathFile = join(testDir, "github_path");
+      writeFileSync(ghPathFile, "");
+      const binDir = join(testDir, "bin");
+
+      const { output } = await runSetup({
+        PATH: `${binDir}:/usr/bin`,
+        GITHUB_ACTIONS: "true",
+        GITHUB_PATH: ghPathFile,
+      });
+
+      expect(addToWindowsUserPath).toHaveBeenCalledWith(binDir);
+      expect(output).not.toContain("is already in PATH");
+      expect(readFileSync(ghPathFile, "utf-8").trim()).toBe(binDir);
+    });
+
+    test("skips the user PATH with --no-modify-path", async () => {
+      const { context, restore } = createMockContext({ homeDir: testDir });
+      restoreStderr = restore;
+
+      await run(
+        app,
+        [
+          "cli",
+          "setup",
+          "--no-modify-path",
+          "--no-completions",
+          "--no-agent-skills",
+        ],
+        context,
+      );
+
+      expect(addToWindowsUserPath).not.toHaveBeenCalled();
+    });
   });
 
   test("falls back to bash completions for unsupported shell when bash is available", async () => {
@@ -472,11 +654,11 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain(
-      "Your shell (xonsh) is not directly supported"
+      "Your shell (xonsh) is not directly supported",
     );
     expect(getOutput()).toContain("bash completions as a fallback");
     expect(getOutput()).toContain("bash-completion");
@@ -497,7 +679,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     // Nothing actionable — no message produced
@@ -520,7 +702,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("Completions: Installed to");
@@ -530,7 +712,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     expect(getOutput()).not.toContain("Completions:");
@@ -550,7 +732,7 @@ describe("sentry cli setup", () => {
     await run(
       app,
       ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-      context
+      context,
     );
 
     // sh/ash shells silently skip completions — no message at all
@@ -574,7 +756,7 @@ describe("sentry cli setup", () => {
         "--no-agent-skills",
         "--quiet",
       ],
-      context
+      context,
     );
 
     // Should not error
@@ -614,7 +796,7 @@ describe("sentry cli setup", () => {
           "--no-completions",
           "--no-agent-skills",
         ],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -663,7 +845,7 @@ describe("sentry cli setup", () => {
           "--no-completions",
           "--no-agent-skills",
         ],
-        context
+        context,
       );
 
       // With --install, the "Recorded installation method" log is suppressed
@@ -706,7 +888,7 @@ describe("sentry cli setup", () => {
           "--no-completions",
           "--no-agent-skills",
         ],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -750,7 +932,7 @@ describe("sentry cli setup", () => {
           "--no-agent-skills",
           "--quiet",
         ],
-        context
+        context,
       );
 
       expect(getOutput()).toBe("");
@@ -781,7 +963,7 @@ describe("sentry cli setup", () => {
         existingBinary?: boolean;
         install?: boolean;
         method?: string;
-      } = {}
+      } = {},
     ) {
       const sourcePath = join(testDir, "sentry-download");
       const installDir = join(testDir, "install-dir");
@@ -822,7 +1004,7 @@ describe("sentry cli setup", () => {
               "--no-agent-skills",
               ...(options.flags ?? []),
             ],
-            mock.context
+            mock.context,
           ),
       };
     }
@@ -832,11 +1014,11 @@ describe("sentry cli setup", () => {
       vi.mocked(interactiveLogin.runInteractiveLogin).mockImplementation(
         async () => {
           expect(readFileSync(fixture.binaryPath, "utf8")).toBe(
-            "fixture-binary"
+            "fixture-binary",
           );
           expect(fixture.getOutput()).toContain("Installed sentry v");
           return { method: "oauth", configPath: getConfigDir() };
-        }
+        },
       );
 
       await fixture.run();
@@ -912,43 +1094,43 @@ describe("sentry cli setup", () => {
       expect(readFileSync(fixture.binaryPath, "utf8")).toBe("fixture-binary");
     });
 
-    test.each([
-      false,
-      true,
-    ])("keeps installation successful when OAuth fails (throws: %s)", async (throws) => {
-      if (throws) {
-        vi.mocked(interactiveLogin.runInteractiveLogin).mockRejectedValue(
-          new Error("OAuth unavailable")
+    test.each([false, true])(
+      "keeps installation successful when OAuth fails (throws: %s)",
+      async (throws) => {
+        if (throws) {
+          vi.mocked(interactiveLogin.runInteractiveLogin).mockRejectedValue(
+            new Error("OAuth unavailable"),
+          );
+        }
+        const fixture = createInstall();
+        await fixture.run();
+        expect(interactiveLogin.runInteractiveLogin).toHaveBeenCalledOnce();
+        expect(fixture.context.process.exitCode).toBe(0);
+        expect(readFileSync(fixture.binaryPath, "utf8")).toBe("fixture-binary");
+        expect(fixture.getOutput()).toContain(
+          throws
+            ? "Authentication failed: OAuth unavailable"
+            : "Run 'sentry auth login' to authenticate later.",
         );
-      }
-      const fixture = createInstall();
-      await fixture.run();
-      expect(interactiveLogin.runInteractiveLogin).toHaveBeenCalledOnce();
-      expect(fixture.context.process.exitCode).toBe(0);
-      expect(readFileSync(fixture.binaryPath, "utf8")).toBe("fixture-binary");
-      expect(fixture.getOutput()).toContain(
-        throws
-          ? "Authentication failed: OAuth unavailable"
-          : "Run 'sentry auth login' to authenticate later."
-      );
-    });
+      },
+    );
   });
 
   describe("agent skills", () => {
     beforeEach(() => {
       // Reset the persisted preference — the config DB is shared across tests
       // in this file, so a prior --no-agent-skills run would otherwise leak.
-      setAgentSkillsPreference(null);
+      setOnOffPreference("agent-skills", null);
       originalFetch = globalThis.fetch;
       mockFetch(
         async () =>
-          new Response("# Sentry CLI Skill\nTest content", { status: 200 })
+          new Response("# Sentry CLI Skill\nTest content", { status: 200 }),
       );
     });
 
     afterEach(() => {
       globalThis.fetch = originalFetch;
-      setAgentSkillsPreference(null);
+      setOnOffPreference("agent-skills", null);
     });
 
     test("installs agent skills when Claude Code is detected", async () => {
@@ -968,7 +1150,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).toContain("Agent skills:");
@@ -980,7 +1162,7 @@ describe("sentry cli setup", () => {
         ".claude",
         "skills",
         "sentry-cli",
-        "SKILL.md"
+        "SKILL.md",
       );
       expect(existsSync(skillPath)).toBe(true);
     });
@@ -999,7 +1181,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).not.toContain("Agent skills:");
@@ -1021,15 +1203,19 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).toContain("Agent skills: Installed to");
       expect(
-        existsSync(join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".agents", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(true);
       expect(
-        existsSync(join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(false);
     });
 
@@ -1050,7 +1236,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).toContain("Agent skills: Installed to");
@@ -1060,7 +1246,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).not.toContain("Agent skills:");
@@ -1088,7 +1274,7 @@ describe("sentry cli setup", () => {
           "--no-completions",
           "--no-agent-skills",
         ],
-        context
+        context,
       );
 
       expect(getOutput()).not.toContain("Agent skills:");
@@ -1116,15 +1302,15 @@ describe("sentry cli setup", () => {
           "--no-completions",
           "--no-agent-skills",
         ],
-        context
+        context,
       );
 
-      expect(getAgentSkillsPreference()).toBe(false);
+      expect(getOnOffPreference("agent-skills")).toBe(false);
     });
 
     test("honors a persisted opt-out without the flag (upgrade scenario)", async () => {
       // Simulate a prior `--no-agent-skills` run having stored the preference.
-      setAgentSkillsPreference(false);
+      setOnOffPreference("agent-skills", false);
       mkdirSync(join(testDir, ".claude"), { recursive: true });
 
       const { context, getOutput, restore } = createMockContext({
@@ -1141,12 +1327,14 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       expect(getOutput()).not.toContain("Agent skills:");
       expect(
-        existsSync(join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"))
+        existsSync(
+          join(testDir, ".claude", "skills", "sentry-cli", "SKILL.md"),
+        ),
       ).toBe(false);
     });
 
@@ -1166,7 +1354,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-completions"],
-        context
+        context,
       );
 
       // Skill files are embedded at build time, so installation should succeed
@@ -1181,7 +1369,7 @@ describe("sentry cli setup", () => {
       const homeDir = join(testDir, "home");
       const xdgData = join(homeDir, ".local", "share");
       mkdirSync(xdgData, { recursive: true });
-      // Create the zsh site-functions dir as unwritable so Bun.write() fails
+      // Make the zsh completion directory unwritable so writeFile() fails.
       const zshDir = join(xdgData, "zsh", "site-functions");
       mkdirSync(zshDir, { recursive: true });
       chmod(zshDir, 0o444); // read-only → completion write will throw
@@ -1199,7 +1387,7 @@ describe("sentry cli setup", () => {
       await run(
         app,
         ["cli", "setup", "--no-modify-path", "--no-agent-skills"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -1223,7 +1411,7 @@ describe("sentry cli setup — legacy migration", () => {
   beforeEach(() => {
     testHome = join(
       "/tmp",
-      `setup-mig-home-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `setup-mig-home-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testHome, { recursive: true });
   });
@@ -1305,7 +1493,7 @@ describe("sentry cli setup — legacy migration", () => {
     await run(app, setupArgs, context);
 
     expect(await readFile(join(installDir, "sentry"), "utf8")).toBe(
-      "current-binary"
+      "current-binary",
     );
   });
 
@@ -1328,7 +1516,7 @@ describe("sentry cli setup — legacy migration", () => {
     // The ~/.local/bin binary stays put; nothing is copied to the target.
     expect(existsSync(join(localBin, "sentry"))).toBe(true);
     expect(await readFile(join(localBin, "sentry"), "utf8")).toBe(
-      "local-binary"
+      "local-binary",
     );
     expect(existsSync(join(installDir, "sentry"))).toBe(false);
   });
@@ -1362,7 +1550,7 @@ describe("sentry cli setup — legacy migration records new path", () => {
   beforeEach(() => {
     testHome = join(
       "/tmp",
-      `setup-mig-info-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `setup-mig-info-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testHome, { recursive: true });
   });
@@ -1401,7 +1589,7 @@ describe("sentry cli setup — legacy migration records new path", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     const recorded = getInstallInfo();
@@ -1418,7 +1606,7 @@ describe("sentry cli setup — --channel flag", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `setup-channel-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `setup-channel-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
   });
@@ -1446,7 +1634,7 @@ describe("sentry cli setup — --channel flag", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getReleaseChannel()).toBe("nightly");
@@ -1467,7 +1655,7 @@ describe("sentry cli setup — --channel flag", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getReleaseChannel()).toBe("stable");
@@ -1490,7 +1678,7 @@ describe("sentry cli setup — --channel flag", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("Recorded release channel: nightly");
@@ -1517,7 +1705,7 @@ describe("sentry cli setup — --channel flag", () => {
         "--no-completions",
         "--no-agent-skills",
       ],
-      context
+      context,
     );
 
     expect(getOutput()).not.toContain("Recorded release channel: nightly");

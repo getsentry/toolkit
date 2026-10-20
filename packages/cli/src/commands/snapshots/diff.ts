@@ -96,7 +96,7 @@ function errorMessage(err: unknown): string {
 
 /** Assert a path is an existing directory. */
 function assertDirectory(path: string, label: string): void {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     if (statSync(path).isDirectory()) {
       return;
@@ -106,7 +106,7 @@ function assertDirectory(path: string, label: string): void {
   }
   throw new ValidationError(
     `${label} directory does not exist: ${path}`,
-    "dir"
+    "dir",
   );
 }
 
@@ -126,7 +126,7 @@ type DiffDirs = { baseDir: string; headDir: string; outputDir: string };
 function compareMatched(
   dirs: DiffDirs,
   rel: string,
-  opts: DiffOptions
+  opts: DiffOptions,
 ): ImageResult {
   let baseBuf: Buffer;
   let headBuf: Buffer;
@@ -295,7 +295,7 @@ export const diffCommand = buildCommand({
     this: SentryContext,
     flags: DiffFlags,
     baseDirArg: string,
-    headDirArg: string
+    headDirArg: string,
   ) {
     const baseDir = resolve(this.cwd, baseDirArg);
     const headDir = resolve(this.cwd, headDirArg);
@@ -315,7 +315,7 @@ export const diffCommand = buildCommand({
     const categorized = categorizeImages(
       baseFiles,
       headFiles,
-      Boolean(flags.selective)
+      Boolean(flags.selective),
     );
 
     const dirs: DiffDirs = { baseDir, headDir, outputDir };

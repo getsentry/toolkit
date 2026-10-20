@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { proposeVersionCommand } from "../../../src/commands/release/propose-version.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as git from "../../../src/lib/git.js";
 import { useTestConfigDir } from "../../helpers.js";
 
@@ -38,7 +38,7 @@ describe("release propose-version", () => {
 
   test("outputs HEAD SHA in JSON mode when no env vars set", async () => {
     getHeadCommitSpy.mockResolvedValue(
-      "abc123def456789012345678901234567890abcd"
+      "abc123def456789012345678901234567890abcd",
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -52,7 +52,7 @@ describe("release propose-version", () => {
 
   test("outputs bare SHA in human mode", async () => {
     getHeadCommitSpy.mockResolvedValue(
-      "abc123def456789012345678901234567890abcd"
+      "abc123def456789012345678901234567890abcd",
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -80,7 +80,7 @@ describe("release propose-version", () => {
     const func = await proposeVersionCommand.loader();
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
-      "Not a git repository"
+      "Not a git repository",
     );
   });
 

@@ -142,7 +142,7 @@ export const wasmSplitCommand = buildCommand({
     if (!input?.trim()) {
       throw new ValidationError(
         "Wasm file path is required: sentry wasm-split <input>",
-        "input"
+        "input",
       );
     }
 
@@ -195,7 +195,7 @@ function parseExplicitBuildId(value: string | undefined): Uint8Array | null {
   if (!bytes) {
     throw new ValidationError(
       `Invalid --build-id '${value}': expected a UUID.`,
-      "build-id"
+      "build-id",
     );
   }
   return bytes;
@@ -210,7 +210,7 @@ function parseExplicitBuildId(value: string | undefined): Uint8Array | null {
  */
 function resolveExternalDebugInfo(
   url: string | undefined,
-  debugOut: string | undefined
+  debugOut: string | undefined,
 ): { externalDebugInfo?: string } {
   const resolved = url ?? (debugOut ? basename(debugOut) : undefined);
   return resolved ? { externalDebugInfo: resolved } : {};
@@ -228,13 +228,13 @@ async function readWasmModule(path: string): Promise<Uint8Array> {
     if (code === "EISDIR") {
       throw new ValidationError(
         `Path '${path}' is a directory, not a wasm file.`,
-        "input"
+        "input",
       );
     }
     const msg = err instanceof Error ? err.message : String(err);
     throw new ValidationError(
       `Cannot read wasm file '${path}': ${msg}`,
-      "input"
+      "input",
     );
   }
 }

@@ -8,7 +8,7 @@ describe("arrangeShortcutHints", () => {
         { key: "enter", action: "confirm", priority: 40 },
         { key: "\u2190\u2192", action: "switch tab", priority: 10 },
         { key: "esc", action: "cancel", priority: 40 },
-      ])
+      ]),
     ).toEqual([
       { key: "\u2190\u2192", action: "switch tab", priority: 10 },
       { key: "enter", action: "confirm", priority: 40 },
@@ -22,7 +22,7 @@ describe("arrangeShortcutHints", () => {
         { key: "s", action: "toggle status", priority: 20 },
         { key: "s", action: "toggle status", priority: 20 },
         { key: "s", action: "save", priority: 30 },
-      ])
+      ]),
     ).toEqual([
       { key: "s", action: "toggle status", priority: 20 },
       { key: "s", action: "save", priority: 30 },

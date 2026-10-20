@@ -139,13 +139,13 @@ the same selection with an explicit `eventId`.
 - Selection is optional: omitting it preserves the ordinary response.
 - Accept 1–10 exact, case-sensitive names, each up to 256 characters. Duplicate
   names produce one entry; package names are not normalized across ecosystems.
-- Use the existing response's `packages` map without extra API calls. With Sentry's
-  JSON formatter, include `event.packageVersions` in `structuredContent`: a
+- Use the existing response's `packages` map without extra API calls. In experimental
+  mode, include `event.packageVersions` in `structuredContent`: a
   `metadataAvailable` flag and selected `packages` entries with `name`, `status`,
   `version`, and `truncated`. Status is `recorded`, `not_listed`, or
   `version_not_recorded`; unavailable metadata has an empty selection. The server
   generates equivalent JSON text. When returning Markdown, append the same
-  selection after Sentry-supplied or local event formatting.
+  selection after local event formatting.
 - Missing, null, and empty maps mean metadata is unavailable. In a populated map,
   distinguish a name not listed from a null or blank version. Neither proves a
   dependency was absent from the application.
@@ -289,3 +289,11 @@ For output-format changes:
 If the raw tool result is clean but the agent final answer adds unrelated
 content, treat that as a client/agent prompt issue rather than a tool response
 formatting issue.
+
+### Cron Monitor Environment Deletion
+
+`delete_monitor_environment` schedules irreversible deletion of one exact
+environment from a project-scoped cron monitor. The structured response
+identifies the project, monitor, and environment; `success` means the deletion
+was accepted or the target was already absent. Deletion completes in the
+background, preserving the monitor and its other environments.

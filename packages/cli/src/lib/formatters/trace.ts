@@ -72,7 +72,7 @@ const TRACE_TABLE_COLS = ["Trace ID", "Transaction", "Duration:", "When"];
  * @returns `[traceId, transaction, duration, when]` markdown-safe strings
  */
 export function buildTraceRowCells(
-  item: TransactionListItem
+  item: TransactionListItem,
 ): [string, string, string, string] {
   return [
     `\`${item.trace}\``,
@@ -121,13 +121,13 @@ export function formatTracesHeader(): string {
  */
 export function formatTraceTable(items: TransactionListItem[]): string {
   const headers = TRACE_TABLE_COLS.map((c) =>
-    c.endsWith(":") ? c.slice(0, -1) : c
+    c.endsWith(":") ? c.slice(0, -1) : c,
   );
   const alignments = TRACE_TABLE_COLS.map((c) =>
-    c.endsWith(":") ? ("right" as const) : ("left" as const)
+    c.endsWith(":") ? ("right" as const) : ("left" as const),
   );
   const rows = items.map((item) =>
-    buildTraceRowCells(item).map((c) => renderInlineMarkdown(c))
+    buildTraceRowCells(item).map((c) => renderInlineMarkdown(c)),
   );
   return renderTextTable(headers, rows, { alignments });
 }
@@ -172,7 +172,7 @@ function walkSpanTree(
     projects: Set<string>;
     rootTransaction?: string;
     rootOp?: string;
-  }
+  },
 ): void {
   state.spanCount += 1;
 
@@ -216,7 +216,7 @@ function walkSpanTree(
  */
 export function computeTraceSummary(
   traceId: string,
-  spans: TraceSpan[]
+  spans: TraceSpan[],
 ): TraceSummary {
   const state = {
     spanCount: 0,
@@ -317,12 +317,12 @@ export type FoundSpan = {
  */
 export function findSpanById(
   spans: TraceSpan[],
-  spanId: string
+  spanId: string,
 ): FoundSpan | null {
   function search(
     span: TraceSpan,
     depth: number,
-    ancestors: TraceSpan[]
+    ancestors: TraceSpan[],
   ): FoundSpan | null {
     if (span.span_id?.toLowerCase() === spanId) {
       return { span, depth, ancestors };
@@ -392,7 +392,7 @@ export function translateSpanQuery(query: string): string {
  */
 export function spanListItemToFlatSpan(
   item: SpanListItem,
-  extraFieldNames?: string[]
+  extraFieldNames?: string[],
 ): FlatSpan {
   const flat: FlatSpan = {
     span_id: item.id,
@@ -493,7 +493,7 @@ function buildExtraColumns(extraColumns: string[]): Column<FlatSpan>[] {
  */
 export function formatSpanTable(
   spans: FlatSpan[],
-  extraColumns?: string[]
+  extraColumns?: string[],
 ): string {
   // Auto-add Project column when spans come from multiple projects
   const projects = new Set(spans.map((s) => s.project_slug).filter(Boolean));
@@ -567,7 +567,7 @@ function formatAncestorChain(ancestors: TraceSpan[]): string {
     const aDesc = a.description || a.transaction || "(no description)";
     const colorizedDesc = isDbSpanOp(aOp) ? colorizeSql(aDesc) : aDesc;
     lines.push(
-      `${indent}${colorTag("muted", aOp)} — ${escapeMarkdownInline(colorizedDesc)} ${colorTag("muted", `(${a.span_id})`)}`
+      `${indent}${colorTag("muted", aOp)} — ${escapeMarkdownInline(colorizedDesc)} ${colorTag("muted", `(${a.span_id})`)}`,
     );
   }
   return `${renderMarkdown(lines.join("\n"))}\n`;
@@ -585,7 +585,7 @@ export function formatSpanDetails(
   span: TraceSpan,
   ancestors: TraceSpan[],
   traceId: string,
-  detail?: TraceItemDetail
+  detail?: TraceItemDetail,
 ): string {
   const kvRows = buildSpanKvRows(span, traceId);
 
@@ -619,10 +619,10 @@ const MAX_DISPLAY_ATTRS = 10;
  */
 function appendAttributeRows(
   kvRows: [string, string][],
-  detail: TraceItemDetail
+  detail: TraceItemDetail,
 ): void {
   const attrs = detail.attributes.filter(
-    (a) => !(REDUNDANT_DETAIL_ATTRS.has(a.name) || a.name.startsWith("tags["))
+    (a) => !(REDUNDANT_DETAIL_ATTRS.has(a.name) || a.name.startsWith("tags[")),
   );
   if (attrs.length === 0) {
     return;

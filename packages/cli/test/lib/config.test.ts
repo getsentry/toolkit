@@ -213,7 +213,7 @@ describe("refreshToken error handling", () => {
           error: "invalid_grant",
           error_description: "Token revoked",
         }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
 
     try {
@@ -340,7 +340,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      "123:456,123:789"
+      "123:456,123:789",
     );
 
     // Same fingerprint
@@ -356,7 +356,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      "123:456,123:789"
+      "123:456,123:789",
     );
 
     // Different fingerprint (different DSN context)
@@ -383,7 +383,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      "123:456,123:789"
+      "123:456,123:789",
     );
 
     // No current fingerprint provided - skip validation
@@ -399,7 +399,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      "123:456"
+      "123:456",
     );
 
     // Uppercase alias with matching fingerprint
@@ -416,7 +416,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      "123:456"
+      "123:456",
     );
 
     // Current context has no SaaS DSNs (empty fingerprint)
@@ -431,7 +431,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      ""
+      "",
     );
 
     // Current context has SaaS DSNs
@@ -446,7 +446,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      ""
+      "",
     );
 
     // Current context also has only self-hosted DSNs
@@ -583,8 +583,8 @@ describe("resolveConfigDir", () => {
           [CONFIG_DIR_ENV_VAR]: override,
           XDG_CONFIG_HOME: join(home, "xdg"),
         },
-        home
-      )
+        home,
+      ),
     ).toBe(override);
   });
 
@@ -604,7 +604,7 @@ describe("resolveConfigDir", () => {
   test("uses XDG_CONFIG_HOME/sentry when set to an absolute path", () => {
     const xdg = join(home, "xdg-config");
     expect(resolveConfigDir({ XDG_CONFIG_HOME: xdg }, home)).toBe(
-      join(xdg, "sentry")
+      join(xdg, "sentry"),
     );
   });
 
@@ -614,7 +614,7 @@ describe("resolveConfigDir", () => {
 
   test("ignores a non-absolute XDG_CONFIG_HOME per the XDG spec", () => {
     expect(resolveConfigDir({ XDG_CONFIG_HOME: "relative/path" }, home)).toBe(
-      join(home, ".config", "sentry")
+      join(home, ".config", "sentry"),
     );
   });
 });
@@ -644,7 +644,7 @@ describe("JSON to SQLite migration", () => {
           organization: "migrated-org",
           project: "migrated-project",
         },
-      })
+      }),
     );
 
     // Access the database (triggers migration)
@@ -663,7 +663,7 @@ describe("JSON to SQLite migration", () => {
     // config.json should be deleted after migration
     const configExists = await access(configPath).then(
       () => true,
-      () => false
+      () => false,
     );
     expect(configExists).toBe(false);
   });

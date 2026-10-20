@@ -29,7 +29,7 @@ describe("normalizeUrl", () => {
 
   test("prepends https:// to bare hostname", () => {
     expect(normalizeUrl("sentry.example.com")).toBe(
-      "https://sentry.example.com"
+      "https://sentry.example.com",
     );
   });
 
@@ -39,46 +39,46 @@ describe("normalizeUrl", () => {
 
   test("prepends https:// to hostname with port", () => {
     expect(normalizeUrl("sentry.example.com:9000")).toBe(
-      "https://sentry.example.com:9000"
+      "https://sentry.example.com:9000",
     );
   });
 
   test("preserves https:// URLs", () => {
     expect(normalizeUrl("https://sentry.example.com")).toBe(
-      "https://sentry.example.com"
+      "https://sentry.example.com",
     );
   });
 
   test("preserves http:// URLs", () => {
     expect(normalizeUrl("http://sentry.example.com")).toBe(
-      "http://sentry.example.com"
+      "http://sentry.example.com",
     );
   });
 
   test("handles case-insensitive protocol", () => {
     expect(normalizeUrl("HTTPS://sentry.example.com")).toBe(
-      "HTTPS://sentry.example.com"
+      "HTTPS://sentry.example.com",
     );
     expect(normalizeUrl("HTTP://sentry.example.com")).toBe(
-      "HTTP://sentry.example.com"
+      "HTTP://sentry.example.com",
     );
   });
 
   test("trims whitespace", () => {
     expect(normalizeUrl("  sentry.example.com  ")).toBe(
-      "https://sentry.example.com"
+      "https://sentry.example.com",
     );
     expect(normalizeUrl("  https://sentry.example.com  ")).toBe(
-      "https://sentry.example.com"
+      "https://sentry.example.com",
     );
   });
 
   test("preserves path and trailing slash", () => {
     expect(normalizeUrl("sentry.example.com/")).toBe(
-      "https://sentry.example.com/"
+      "https://sentry.example.com/",
     );
     expect(normalizeUrl("https://sentry.example.com/")).toBe(
-      "https://sentry.example.com/"
+      "https://sentry.example.com/",
     );
   });
 });

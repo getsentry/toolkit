@@ -32,7 +32,7 @@ import type {
  */
 export async function resolveProject(
   cwd: string,
-  dsn: DetectedDsn
+  dsn: DetectedDsn,
 ): Promise<ResolvedProject> {
   // Check if we have cached resolution
   if (dsn.resolved) {
@@ -60,7 +60,7 @@ export async function resolveProject(
     if (!project?.organization) {
       throw new Error(
         "Cannot resolve project: DSN could not be matched to any accessible project. " +
-          "You may not have access, or specify the target explicitly: sentry <command> <org>/<project>"
+          "You may not have access, or specify the target explicitly: sentry <command> <org>/<project>",
       );
     }
 
@@ -68,7 +68,7 @@ export async function resolveProject(
       orgSlug: project.organization.slug,
       orgName: resolveOrgDisplayName(
         project.organization.slug,
-        project.organization.name
+        project.organization.name,
       ),
       projectSlug: project.slug,
       projectName: project.name,
@@ -103,7 +103,7 @@ export async function resolveProject(
  */
 async function fetchProjectInfo(
   orgId: string,
-  projectId: string
+  projectId: string,
 ): Promise<ResolvedProjectInfo> {
   // Fetch all orgs to find the one matching our orgId
   const orgs = await listOrganizations();
@@ -114,7 +114,7 @@ async function fetchProjectInfo(
   if (!org) {
     throw new Error(
       `Could not find organization with ID ${orgId}. ` +
-        "You may not have access to this organization."
+        "You may not have access to this organization.",
     );
   }
 
@@ -127,7 +127,7 @@ async function fetchProjectInfo(
   if (!project) {
     throw new Error(
       `Could not find project with ID ${projectId} in organization ${org.slug}. ` +
-        "You may not have access to this project."
+        "You may not have access to this project.",
     );
   }
 
@@ -158,12 +158,12 @@ type AccessibleProject = {
 export async function getAccessibleProjects(): Promise<AccessibleProject[]> {
   const results: AccessibleProject[] = [];
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const orgs = await listOrganizations();
 
     for (const org of orgs) {
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         const projects = await listProjects(org.slug);
 

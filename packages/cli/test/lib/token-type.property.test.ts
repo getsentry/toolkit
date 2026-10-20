@@ -16,10 +16,10 @@ describe("classifySentryToken", () => {
       fcAssert(
         property(string(), (suffix) => {
           expect(classifySentryToken(`sntrys_${suffix}`)).toBe(
-            "org-auth-token"
+            "org-auth-token",
           );
         }),
-        { numRuns: DEFAULT_NUM_RUNS }
+        { numRuns: DEFAULT_NUM_RUNS },
       );
     });
 
@@ -33,10 +33,10 @@ describe("classifySentryToken", () => {
       fcAssert(
         property(string(), (suffix) => {
           expect(classifySentryToken(`sntryu_${suffix}`)).toBe(
-            "user-auth-token"
+            "user-auth-token",
           );
         }),
-        { numRuns: DEFAULT_NUM_RUNS }
+        { numRuns: DEFAULT_NUM_RUNS },
       );
     });
 
@@ -56,7 +56,7 @@ describe("classifySentryToken", () => {
           }
           expect(classifySentryToken(value)).toBe("oauth-or-legacy");
         }),
-        { numRuns: DEFAULT_NUM_RUNS }
+        { numRuns: DEFAULT_NUM_RUNS },
       );
     });
 
@@ -69,8 +69,8 @@ describe("classifySentryToken", () => {
       // the sntrys_/sntryu_ prefix.
       expect(
         classifySentryToken(
-          "17faa5dfa5e64d5a9b3e8bf7c4d5e6f7a8b9c0d1e2f3a4b567ee"
-        )
+          "17faa5dfa5e64d5a9b3e8bf7c4d5e6f7a8b9c0d1e2f3a4b567ee",
+        ),
       ).toBe("oauth-or-legacy");
     });
   });

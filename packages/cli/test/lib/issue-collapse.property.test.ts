@@ -26,9 +26,9 @@ describe("property: buildIssueListCollapse", () => {
           });
           expect(result).toContain("filtered");
           expect(result).toContain("unhandled");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -42,9 +42,9 @@ describe("property: buildIssueListCollapse", () => {
             shouldCollapseLifetime: collapseLifetime,
           });
           expect(result.includes("stats")).toBe(collapseStats);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -58,9 +58,9 @@ describe("property: buildIssueListCollapse", () => {
             shouldCollapseLifetime: collapseLifetime,
           });
           expect(result.includes("lifetime")).toBe(collapseLifetime);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -72,7 +72,7 @@ describe("property: buildIssueListCollapse", () => {
         });
         expect(result).not.toContain("lifetime");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -86,9 +86,9 @@ describe("property: buildIssueListCollapse", () => {
             shouldCollapseLifetime: collapseLifetime,
           });
           expect(result).not.toContain("base");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -102,9 +102,9 @@ describe("property: buildIssueListCollapse", () => {
             shouldCollapseLifetime: collapseLifetime,
           });
           expect(new Set(result).size).toBe(result.length);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -120,9 +120,9 @@ describe("property: buildIssueListCollapse", () => {
           const expected =
             2 + (collapseStats ? 1 : 0) + (collapseLifetime ? 1 : 0);
           expect(result.length).toBe(expected);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

@@ -48,7 +48,7 @@ const LOGIN_ONLY_FLAGS = [
  */
 export function resolveAuthDefaultTarget(
   flags: Readonly<Partial<AuthDefaultFlags>>,
-  authenticated = isAuthenticated()
+  authenticated = isAuthenticated(),
 ): "login" | "status" {
   for (const name of LOGIN_ONLY_FLAGS) {
     const value = flags[name];
@@ -74,7 +74,7 @@ function getRawFunc(command: Command<SentryContext>): RawCommandFunc {
   const raw = (command as unknown as { __rawFunc?: RawCommandFunc }).__rawFunc;
   if (!raw) {
     throw new Error(
-      "Command is missing __rawFunc; expected buildCommand output"
+      "Command is missing __rawFunc; expected buildCommand output",
     );
   }
   return raw;
@@ -175,7 +175,7 @@ export const authDefaultCommand = buildCommand({
     const raw = getRawFunc(command as Command<SentryContext>);
     const generator = raw.call(
       this,
-      flags as unknown as Record<string, unknown>
+      flags as unknown as Record<string, unknown>,
     );
 
     // Re-yield CommandOutput values so this command's wrapper renders once.

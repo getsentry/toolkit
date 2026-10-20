@@ -155,7 +155,7 @@ export function parseInstallationMethod(value: string): InstallationMethod {
 
   if (!VALID_METHODS.includes(normalized)) {
     throw new Error(
-      `Invalid method: ${value}. Must be one of: ${VALID_METHODS.join(", ")}`
+      `Invalid method: ${value}. Must be one of: ${VALID_METHODS.join(", ")}`,
     );
   }
 
@@ -237,7 +237,7 @@ export function getPlatformBinaryName(): string {
  */
 export function getBinaryDownloadUrl(
   version: string,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): string {
   const tag = `${source.tagPrefix}${version}`;
   return `https://github.com/${source.githubRepo}/releases/download/${tag}/${getPlatformBinaryName()}`;
@@ -245,7 +245,7 @@ export function getBinaryDownloadUrl(
 
 /** Build the GitHub API base URL for a release source. */
 export function getGitHubReleasesUrl(
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): string {
   return `https://api.github.com/repos/${source.githubRepo}/releases`;
 }
@@ -253,7 +253,7 @@ export function getGitHubReleasesUrl(
 /** Build the GitHub API URL for one source-specific release tag. */
 export function getGitHubReleaseByTagUrl(
   version: string,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): string {
   const tag = `${source.tagPrefix}${version}`;
   return `${getGitHubReleasesUrl(source)}/tags/${encodeURIComponent(tag)}`;
@@ -261,7 +261,7 @@ export function getGitHubReleaseByTagUrl(
 
 /** Build the GitHub API URL used to discover a source's latest CLI release. */
 export function getGitHubLatestReleaseUrl(
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): string {
   return source.tagPrefix
     ? `${getGitHubReleasesUrl(source)}?per_page=100`
@@ -270,7 +270,7 @@ export function getGitHubLatestReleaseUrl(
 
 /** Build the GitHub API URL used to verify that a source repository exists. */
 export function getGitHubRepositoryUrl(
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): string {
   return `https://api.github.com/repos/${source.githubRepo}`;
 }
@@ -291,7 +291,7 @@ export class UpgradeSourceNotFoundError extends UpgradeError {
   constructor() {
     super(
       "network_error",
-      "No CLI upgrade source was found: every source returned HTTP 404"
+      "No CLI upgrade source was found: every source returned HTTP 404",
     );
     this.name = "UpgradeSourceNotFoundError";
   }
@@ -311,7 +311,7 @@ export type ResolveUpgradeSourceOptions = {
 
 async function fetchUpgradeProbe(
   source: UpgradeSource,
-  options: ResolveUpgradeSourceOptions
+  options: ResolveUpgradeSourceOptions,
 ): Promise<Response> {
   try {
     return await (options.fetch ?? customFetch)(options.getProbeUrl(source), {
@@ -329,7 +329,7 @@ async function fetchUpgradeProbe(
       throw new UpgradeTransportError(buildTlsErrorDetail(error));
     }
     throw new UpgradeTransportError(
-      `Failed to connect to GitHub: ${stringifyUnknown(error)}`
+      `Failed to connect to GitHub: ${stringifyUnknown(error)}`,
     );
   }
 }
@@ -342,7 +342,7 @@ async function fetchUpgradeProbe(
  * network failure aborts immediately.
  */
 export async function resolveUpgradeSource(
-  options: ResolveUpgradeSourceOptions
+  options: ResolveUpgradeSourceOptions,
 ): Promise<ResolvedUpgradeSource> {
   for (const source of options.sources ?? UPGRADE_SOURCES) {
     const response = await fetchUpgradeProbe(source, options);
@@ -352,7 +352,7 @@ export async function resolveUpgradeSource(
     if (response.status !== 404) {
       throw new UpgradeError(
         "network_error",
-        `Failed to fetch from GitHub: HTTP ${response.status}`
+        `Failed to fetch from GitHub: HTTP ${response.status}`,
       );
     }
   }
@@ -442,7 +442,7 @@ export function getBinaryPaths(installPath: string): {
  */
 export function determineInstallDir(
   homeDir: string,
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
 ): string {
   const pathDirs = (env.PATH ?? "").split(delimiter);
 
@@ -496,7 +496,7 @@ export function getGitHubHeaders(): Record<string, string> {
 export async function fetchWithUpgradeError(
   url: string,
   init: RequestInit,
-  serviceName: string
+  serviceName: string,
 ): Promise<Response> {
   try {
     return await customFetch(url, init);
@@ -513,7 +513,7 @@ export async function fetchWithUpgradeError(
     }
     const msg = stringifyUnknown(error);
     throw new UpgradeTransportError(
-      `Failed to connect to ${serviceName}: ${msg}`
+      `Failed to connect to ${serviceName}: ${msg}`,
     );
   }
 }
@@ -522,7 +522,7 @@ export async function fetchWithUpgradeError(
 export async function parseUpgradeJson(
   response: Response,
   signal: AbortSignal | undefined,
-  invalidMessage: string
+  invalidMessage: string,
 ): Promise<unknown> {
   try {
     return await response.json();
@@ -534,7 +534,7 @@ export async function parseUpgradeJson(
       throw new UpgradeError("network_error", invalidMessage);
     }
     throw new UpgradeTransportError(
-      `${invalidMessage}: ${stringifyUnknown(error)}`
+      `${invalidMessage}: ${stringifyUnknown(error)}`,
     );
   }
 }
@@ -562,7 +562,7 @@ export function replaceBinarySync(tempPath: string, installPath: string): void {
       renameSync(installPath, oldPath);
     } catch {
       // Current binary might not exist (fresh install) or .old already exists
-      // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
       try {
         unlinkSync(oldPath);
         renameSync(installPath, oldPath);
@@ -590,7 +590,7 @@ export function replaceBinarySync(tempPath: string, installPath: string): void {
  */
 export function cleanupOldBinary(oldPath: string): void {
   // Fire-and-forget: don't await, just let cleanup run in background
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   unlink(oldPath).catch(() => {
     // Intentionally ignore errors — file may not exist
   });
@@ -666,7 +666,7 @@ function handleExistingLock(lockPath: string): void {
     }
     throw new UpgradeError(
       "execution_failed",
-      "Another upgrade is already in progress"
+      "Another upgrade is already in progress",
     );
   }
 
@@ -690,7 +690,7 @@ function handleExistingLock(lockPath: string): void {
  * @param lockPath - Path to the lock file
  */
 export function releaseLock(lockPath: string): void {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     unlinkSync(lockPath);
   } catch {
@@ -711,7 +711,7 @@ export function releaseLock(lockPath: string): void {
  */
 export async function installBinary(
   sourcePath: string,
-  installDir: string
+  installDir: string,
 ): Promise<string> {
   await mkdir(installDir, { recursive: true, mode: 0o755 });
 

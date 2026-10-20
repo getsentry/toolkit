@@ -110,62 +110,62 @@ describe("ZipWriter", () => {
   });
 });
 
-describe.each([
-  "deflate",
-  "stored",
-] as const)("property: ZipWriter round-trip (%s)", (compression) => {
-  test("arbitrary string content survives write → extract", async () => {
-    await fcAssert(
-      asyncProperty(
-        string({ minLength: 0, maxLength: 10_000 }),
-        async (input) => {
-          const zipPath = join(
-            tmpDir,
-            `prop-${compression}-${Date.now()}-${Math.random()}.zip`
-          );
-          const zip = await ZipWriter.create(zipPath, { compression });
-          await zip.addEntry("data.txt", Buffer.from(input, "utf-8"));
-          await zip.finalize();
+describe.each(["deflate", "stored"] as const)(
+  "property: ZipWriter round-trip (%s)",
+  (compression) => {
+    test("arbitrary string content survives write → extract", async () => {
+      await fcAssert(
+        asyncProperty(
+          string({ minLength: 0, maxLength: 10_000 }),
+          async (input) => {
+            const zipPath = join(
+              tmpDir,
+              `prop-${compression}-${Date.now()}-${Math.random()}.zip`,
+            );
+            const zip = await ZipWriter.create(zipPath, { compression });
+            await zip.addEntry("data.txt", Buffer.from(input, "utf-8"));
+            await zip.finalize();
 
-          const proc = spawnSync("unzip", ["-p", zipPath, "data.txt"], {
-            stdio: ["pipe", "pipe", "pipe"],
-            maxBuffer: 50_000,
-          });
-          expect(proc.status).toBe(0);
-          expect(proc.stdout.toString()).toBe(input);
-        }
-      ),
-      { numRuns: DEFAULT_NUM_RUNS }
-    );
-  });
+            const proc = spawnSync("unzip", ["-p", zipPath, "data.txt"], {
+              stdio: ["pipe", "pipe", "pipe"],
+              maxBuffer: 50_000,
+            });
+            expect(proc.status).toBe(0);
+            expect(proc.stdout.toString()).toBe(input);
+          },
+        ),
+        { numRuns: DEFAULT_NUM_RUNS },
+      );
+    });
 
-  test("arbitrary binary content survives write → extract", async () => {
-    await fcAssert(
-      asyncProperty(
-        // minLength: 1 — empty files have a separate unit test;
-        // unzip -p returns exit code 9 for empty entries on some systems
-        uint8Array({ minLength: 1, maxLength: 10_000 }),
-        async (input) => {
-          const zipPath = join(
-            tmpDir,
-            `prop-bin-${compression}-${Date.now()}-${Math.random()}.zip`
-          );
-          const zip = await ZipWriter.create(zipPath, { compression });
-          await zip.addEntry("data.bin", Buffer.from(input));
-          await zip.finalize();
+    test("arbitrary binary content survives write → extract", async () => {
+      await fcAssert(
+        asyncProperty(
+          // minLength: 1 — empty files have a separate unit test;
+          // unzip -p returns exit code 9 for empty entries on some systems
+          uint8Array({ minLength: 1, maxLength: 10_000 }),
+          async (input) => {
+            const zipPath = join(
+              tmpDir,
+              `prop-bin-${compression}-${Date.now()}-${Math.random()}.zip`,
+            );
+            const zip = await ZipWriter.create(zipPath, { compression });
+            await zip.addEntry("data.bin", Buffer.from(input));
+            await zip.finalize();
 
-          const proc = spawnSync("unzip", ["-p", zipPath, "data.bin"], {
-            stdio: ["pipe", "pipe", "pipe"],
-            maxBuffer: 50_000,
-          });
-          expect(proc.status).toBe(0);
-          expect(Buffer.from(proc.stdout)).toEqual(Buffer.from(input));
-        }
-      ),
-      { numRuns: DEFAULT_NUM_RUNS }
-    );
-  });
-});
+            const proc = spawnSync("unzip", ["-p", zipPath, "data.bin"], {
+              stdio: ["pipe", "pipe", "pipe"],
+              maxBuffer: 50_000,
+            });
+            expect(proc.status).toBe(0);
+            expect(Buffer.from(proc.stdout)).toEqual(Buffer.from(input));
+          },
+        ),
+        { numRuns: DEFAULT_NUM_RUNS },
+      );
+    });
+  },
+);
 
 describe("ZipWriter compression mode", () => {
   // The local file header records the entry's compression method at
@@ -273,4 +273,32 @@ describe("ZipWriter binary format", () => {
     expect(entriesOnDisk).toBe(3);
     expect(totalEntries).toBe(3);
   });
+
+  test("writes a ZIP64 end record when entries exceed the 16-bit limit", async () => {
+    const zipPath = join(tmpDir, "many.zip");
+    const entryCount = 0xff_ff + 1;
+    const zip = await ZipWriter.create(zipPath, { compression: "stored" });
+    for (let i = 0; i < entryCount; i++) {
+      await zip.addEntry(`f${i}.js`, Buffer.alloc(0));
+    }
+    await zip.finalize();
+
+    const data = await readFile(zipPath);
+    const eocdStart = data.length - 22;
+    expect(data.readUInt16LE(eocdStart + 8)).toBe(0xff_ff);
+    expect(data.readUInt16LE(eocdStart + 10)).toBe(0xff_ff);
+
+    const locatorStart = eocdStart - 20;
+    expect(data.readUInt32LE(locatorStart)).toBe(0x07_06_4b_50);
+    const zip64Start = Number(data.readBigUInt64LE(locatorStart + 8));
+    expect(data.readUInt32LE(zip64Start)).toBe(0x06_06_4b_50);
+    expect(data.readBigUInt64LE(zip64Start + 24)).toBe(BigInt(entryCount));
+    expect(data.readBigUInt64LE(zip64Start + 32)).toBe(BigInt(entryCount));
+
+    // -q keeps 65k per-entry lines out of spawnSync's output buffer
+    const proc = spawnSync("unzip", ["-tq", zipPath], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    expect(proc.status).toBe(0);
+  }, 60_000);
 });

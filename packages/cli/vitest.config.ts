@@ -29,7 +29,7 @@ function requireJsToTsPlugin(): Plugin {
             return `require(${JSON.stringify(tsPath)})`;
           }
           return match;
-        }
+        },
       );
       if (changed) {
         return { code: transformed, map: null };

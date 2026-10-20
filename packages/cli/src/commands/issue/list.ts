@@ -8,6 +8,10 @@
 import type { SentryContext } from "../../context.js";
 import { buildProjectAliasMap } from "../../lib/alias.js";
 import {
+  fetchScopedCounts,
+  type ScopedCount,
+} from "../../lib/api/issue-scoped-counts.js";
+import {
   API_MAX_PER_PAGE,
   buildIssueListCollapse,
   type IssueCollapseField,
@@ -17,6 +21,7 @@ import {
 } from "../../lib/api-client.js";
 import { extractRequiredScopes } from "../../lib/api-scope.js";
 import {
+  formatProjectTarget,
   looksLikeIssueShortId,
   parseOrgProjectArg,
   rejectIssueCommandTokenListTarget,
@@ -56,6 +61,7 @@ import {
   type OutputConfig,
 } from "../../lib/formatters/output.js";
 import {
+  appendQueryHint,
   buildListCommand,
   buildListLimitFlag,
   LIST_BASE_ALIASES,
@@ -81,12 +87,14 @@ import {
   type ProjectSearchTargetResolution,
   type ResolvedTarget,
   resolveProjectBoundTargets,
+  resolveProjectIdsInOrg,
 } from "../../lib/resolve-target.js";
 import {
   SEARCH_SYNTAX_REFERENCE,
   sanitizeQuery,
+  unscopedCountFilterKeys,
 } from "../../lib/search-query.js";
-import { isSaaS } from "../../lib/sentry-urls.js";
+import { isSaaS } from "../../lib/sentry-web-urls.js";
 import {
   appendPeriodHint,
   formatTimeRangeFlag,
@@ -96,6 +104,7 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
+import { tipsSuppressed } from "../../lib/tips.js";
 import {
   type SentryIssue,
   SentryIssueSchema,
@@ -216,7 +225,7 @@ const SEEN_STATS_FIELDS = new Set([...LIFETIME_FIELDS, "stats"]);
  */
 function shouldCollapseForFields(
   fields: string[] | undefined,
-  dependentFields: ReadonlySet<string>
+  dependentFields: ReadonlySet<string>,
 ): boolean {
   return (
     fields !== undefined &&
@@ -260,6 +269,166 @@ function buildListApiOptions(json: boolean, fields?: string[]): ListApiOptions {
 }
 
 /**
+ * Whether the seen-stats counts (`count`/`userCount`) are displayed for the
+ * given flags. Human output always shows them; JSON only omits them when
+ * `--fields` collapses lifetime fields away. Used to skip the scoped-count
+ * refetch when the counts aren't shown anyway. See #1518.
+ */
+function countsShown(json: boolean, fields?: string[]): boolean {
+  return !(json && shouldCollapseForFields(fields, LIFETIME_FIELDS));
+}
+
+/** Whether the issue ordering depends on `count`/`userCount`. */
+function sortUsesCounts(sort: ListFlags["sort"]): boolean {
+  return sort === "freq" || sort === "user";
+}
+
+/**
+ * Whether a scoped-count refetch applies to the current flags: the query must
+ * filter on a count-unscoped key, and the counts must either be displayed or
+ * drive the `freq`/`user` ordering.
+ */
+function shouldScopeCounts(
+  flags: Pick<ListFlags, "query" | "json" | "fields" | "sort">,
+): boolean {
+  return Boolean(
+    flags.query &&
+    (countsShown(flags.json, flags.fields) || sortUsesCounts(flags.sort)) &&
+    unscopedCountFilterKeys(flags.query).length > 0,
+  );
+}
+
+/**
+ * Group display rows by org slug so each events query runs against the right
+ * organization (org-all / multi-project modes mix orgs). Rows without a short
+ * ID are skipped — they can't be scoped via `issue:`.
+ */
+function groupRowsByOrg(rows: IssueTableRow[]): Map<string, IssueTableRow[]> {
+  const byOrg = new Map<string, IssueTableRow[]>();
+  for (const row of rows) {
+    if (!row.issue.shortId) {
+      continue;
+    }
+    const group = byOrg.get(row.orgSlug);
+    if (group) {
+      group.push(row);
+    } else {
+      byOrg.set(row.orgSlug, [row]);
+    }
+  }
+  return byOrg;
+}
+
+/**
+ * Overwrite each row's issue counts from the per-org scoped-count maps.
+ * Returns true when at least one count changed.
+ */
+function overwriteScopedCounts(
+  groups: { orgRows: IssueTableRow[]; scoped: Map<string, ScopedCount> }[],
+): boolean {
+  let changed = false;
+  for (const { orgRows, scoped } of groups) {
+    for (const row of orgRows) {
+      const s = scoped.get(row.issue.shortId);
+      if (s) {
+        row.issue.count = String(s.count);
+        row.issue.userCount = s.userCount;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+/**
+ * Replace each issue's unscoped list-endpoint counts (`count`/`userCount`) with
+ * filter-scoped counts from the events endpoint when the query filters on a key
+ * the issues-list seen-stats ignore (e.g. `release:`). The list endpoint reports
+ * period-wide totals across every value of that key, so a release-scoped triage
+ * silently over-reports; the events endpoint returns counts that match the
+ * filter. See getsentry/cli#1518.
+ *
+ * Best-effort: any failure leaves the original counts untouched. When the sort
+ * depends on counts (`freq`/`user`), the display is re-ranked to follow the
+ * corrected numbers. Mutates `result` in place.
+ */
+async function applyScopedCounts(
+  result: IssueListResult,
+  flags: Pick<ListFlags, "query" | "json" | "fields" | "sort">,
+  timeRange: TimeRange,
+): Promise<void> {
+  try {
+    const rows = result.displayRows;
+    if (!(shouldScopeCounts(flags) && rows && rows.length > 0)) {
+      return;
+    }
+    const byOrg = groupRowsByOrg(rows);
+    if (byOrg.size === 0) {
+      return;
+    }
+
+    const timeParams = timeRangeToApiParams(timeRange);
+    const groups = await Promise.all(
+      [...byOrg.entries()].map(async ([orgSlug, orgRows]) => {
+        const scoped = await fetchScopedCounts(
+          orgSlug,
+          orgRows.map((row) => ({
+            shortId: row.issue.shortId,
+            projectId: parseProjectId(row.issue.project?.id),
+          })),
+          {
+            query: flags.query ?? "",
+            statsPeriod: timeParams.statsPeriod,
+            start: timeParams.start,
+            end: timeParams.end,
+          },
+        );
+        return { orgRows, scoped };
+      }),
+    );
+
+    // Re-rank when the ordering follows the counts we just corrected.
+    if (overwriteScopedCounts(groups) && sortUsesCounts(flags.sort)) {
+      const cmp = getComparator(flags.sort);
+      result.items.sort(cmp);
+      rows.sort((a, b) => cmp(a.issue, b.issue));
+    }
+  } catch (error) {
+    logger
+      .withTag("issue.list")
+      .debug(`Scoped-count refetch skipped: ${String(error)}`);
+  }
+}
+
+/** Coerce an optional project ID (string from the API) to a number. */
+function parseProjectId(id: string | undefined): number | undefined {
+  if (id === undefined) {
+    return;
+  }
+  const n = Number(id);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * Combine the framework footer hint from a result's more/footer parts. Only
+ * forwards a hint when items exist — empty results render their hint text
+ * inside {@link formatIssueListHuman}.
+ */
+function buildCombinedHint(result: IssueListResult): string | undefined {
+  if (result.items.length === 0) {
+    return;
+  }
+  const hintParts: string[] = [];
+  if (result.moreHint) {
+    hintParts.push(result.moreHint);
+  }
+  if (result.footer) {
+    hintParts.push(result.footer);
+  }
+  return hintParts.length > 0 ? hintParts.join("\n") : result.hint;
+}
+
+/**
  * Resolve the effective compact mode from the flag tri-state and issue count.
  *
  * - `true` / `false` — explicit user override, returned as-is
@@ -275,7 +444,7 @@ function resolveCompact(flag: boolean | undefined, rowCount: number): boolean {
 function parseSort(value: string): SortValue {
   if (!VALID_SORT_VALUES.includes(value as SortValue)) {
     throw new Error(
-      `Invalid sort value. Must be one of: ${VALID_SORT_VALUES.join(", ")}`
+      `Invalid sort value. Must be one of: ${VALID_SORT_VALUES.join(", ")}`,
     );
   }
   return value as SortValue;
@@ -328,7 +497,7 @@ function formatListFooter(mode: "single" | "multi" | "none"): string {
 function attachFormatOptions(
   results: IssueListFetchResult[],
   aliasMap: Map<string, string>,
-  isMultiProject: boolean
+  isMultiProject: boolean,
 ): IssueTableRow[] {
   return results.flatMap((result) =>
     result.issues.map((issue) => {
@@ -343,7 +512,7 @@ function attachFormatOptions(
           isMultiProject,
         },
       };
-    })
+    }),
   );
 }
 
@@ -363,7 +532,7 @@ function compareDates(a: string | undefined, b: string | undefined): number {
  * @returns Comparator function for Array.sort()
  */
 function getComparator(
-  sort: SortValue
+  sort: SortValue,
 ): (a: SentryIssue, b: SentryIssue) => number {
   switch (sort) {
     case "date":
@@ -419,7 +588,7 @@ async function fetchIssuesForTarget(
     collapse?: IssueCollapseField[];
     /** Stats period resolution — undefined when stats are collapsed. */
     groupStatsPeriod?: "" | "14d" | "24h" | "auto";
-  }
+  },
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
     const { issues, nextCursor } = await listIssuesAllPages(
@@ -427,11 +596,12 @@ async function fetchIssuesForTarget(
       target.project,
       {
         ...options,
-        projectId: target.projectId,
+        projects:
+          target.projectId === undefined ? undefined : [target.projectId],
         groupStatsPeriod: options.groupStatsPeriod,
         start: options.start,
         end: options.end,
-      }
+      },
     );
     return { target, issues, hasMore: !!nextCursor, nextCursor };
   });
@@ -457,7 +627,7 @@ async function runPhase2(
   context: {
     surplus: number;
     options: Omit<BudgetFetchOptions, "limit" | "startCursors">;
-  }
+  },
 ): Promise<void> {
   const { surplus, options } = context;
   const extraQuotas = distributeFetchBudget(surplus, expandableIndices.length);
@@ -475,24 +645,24 @@ async function runPhase2(
   const phase2 = await Promise.all(
     requests.map(({ targetIndex, limit }) => {
       // expandableIndices only contains indices where r.success && r.data.nextCursor
-      // biome-ignore lint/style/noNonNullAssertion: guaranteed by expandableIndices filter
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- guaranteed by expandableIndices filter
       const target = targets[targetIndex]!;
       const r = phase1[targetIndex] as {
         success: true;
         data: IssueListFetchResult;
       };
-      // biome-ignore lint/style/noNonNullAssertion: same guarantee
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- same guarantee
       const cursor = r.data.nextCursor!;
       return fetchIssuesForTarget(target, {
         ...options,
         limit,
         startCursor: cursor,
       });
-    })
+    }),
   );
 
   for (let j = 0; j < requests.length; j++) {
-    // biome-ignore lint/style/noNonNullAssertion: j is within requests bounds
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- j is within requests bounds
     const i = requests[j]!.targetIndex;
     const p2 = phase2[j];
     const p1 = phase1[i];
@@ -543,7 +713,7 @@ type BudgetFetchOptions = {
 async function fetchWithBudget(
   targets: ResolvedTarget[],
   options: BudgetFetchOptions,
-  onProgress: (fetched: number) => void
+  onProgress: (fetched: number) => void,
 ): Promise<{ results: FetchResult[]; hasMore: boolean }> {
   const { limit, startCursors } = options;
   const quotas = distributeFetchBudget(limit, targets.length, {
@@ -557,8 +727,8 @@ async function fetchWithBudget(
         ...options,
         limit: quotas[i] ?? 1,
         startCursor: startCursors?.get(`${t.org}/${t.project}`),
-      })
-    )
+      }),
+    ),
   );
 
   let totalFetched = 0;
@@ -619,12 +789,12 @@ async function fetchWithBudget(
  */
 function trimWithProjectGuarantee(
   issues: IssueTableRow[],
-  limit: number
+  limit: number,
 ): IssueTableRow[] {
   return trimWithGroupGuarantee(
     issues,
     limit,
-    (r) => `${r.orgSlug}/${r.formatOptions.projectSlug ?? ""}`
+    (r) => `${r.orgSlug}/${r.formatOptions.projectSlug ?? ""}`,
   );
 }
 
@@ -635,39 +805,40 @@ function appendIssueFlags(base: string, flags: ListFlags): string {
   if (flags.sort !== defaultIssueSort()) {
     parts.push(`--sort ${flags.sort}`);
   }
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   appendPeriodHint(parts, flags.period, DEFAULT_PERIOD, "-t");
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }
 
-function nextPageHint(org: string, flags: ListFlags): string {
-  return appendIssueFlags(`sentry issue list ${org}/ -c next`, flags);
-}
-
-function prevPageHint(org: string, flags: ListFlags): string {
-  return appendIssueFlags(`sentry issue list ${org}/ -c prev`, flags);
+/** Build the `-c next` / `-c prev` resume command for an org-scoped listing. */
+function pageHint(
+  direction: "next" | "prev",
+  target: string,
+  flags: ListFlags,
+): string {
+  return appendIssueFlags(`sentry issue list ${target} -c ${direction}`, flags);
 }
 
 /**
- * Fetch org-wide issues, auto-paginating from the start or resuming from a cursor.
+ * Fetch issues for an organization, optionally restricted to a project set.
  *
  * When `cursor` is provided (--cursor resume), fetches a single page to keep the
  * cursor chain intact. Otherwise auto-paginates up to the requested limit.
  */
-async function fetchOrgAllIssues(
+async function fetchOrganizationIssues(
   org: string,
   flags: Pick<ListFlags, "query" | "limit" | "sort" | "json" | "fields">,
   timeRange: TimeRange,
   options: {
     cursor?: string;
+    /** Resolved numeric project IDs; omit for an org-wide listing. */
+    projects?: readonly number[];
     onPage?: (fetched: number, limit: number) => void;
-  }
+  },
 ): Promise<IssuesPage> {
   const apiOpts = buildListApiOptions(flags.json, flags.fields);
   const timeParams = timeRangeToApiParams(timeRange);
-  const { cursor, onPage } = options;
+  const { cursor, onPage, projects } = options;
 
   // When resuming with --cursor, fetch a single page so the cursor chain stays intact.
   if (cursor) {
@@ -678,6 +849,7 @@ async function fetchOrgAllIssues(
       perPage,
       sort: flags.sort,
       ...timeParams,
+      projects,
       groupStatsPeriod: apiOpts.groupStatsPeriod,
       collapse: apiOpts.collapse,
     });
@@ -690,6 +862,7 @@ async function fetchOrgAllIssues(
     limit: flags.limit,
     sort: flags.sort,
     ...timeParams,
+    projects,
     groupStatsPeriod: apiOpts.groupStatsPeriod,
     collapse: apiOpts.collapse,
     onPage,
@@ -697,34 +870,106 @@ async function fetchOrgAllIssues(
   return { issues, nextCursor };
 }
 
-/** Options for {@link handleOrgAllIssues}. */
-type OrgAllIssuesOptions = {
+/** Options for {@link handleOrganizationIssues}. */
+type OrganizationIssuesOptions = {
+  /** Organization slug; the dispatcher has already resolved DSN-style identifiers. */
   org: string;
+  /** Project slugs from `org/a,b`; omit for an org-wide listing. */
+  projects?: readonly string[];
+  /** Parsed `issue list` flags (query, sort, limit, cursor, output options). */
   flags: ListFlags;
+  /** Time window from `--period`, sent as `statsPeriod` or `start`/`end`. */
   timeRange: TimeRange;
 };
 
 /**
- * Handle org-all mode for issues: cursor-paginated listing of all issues in an org.
+ * Compute and persist project aliases for a comma-separated selector so the
+ * ALIAS column and `sentry issue view <ALIAS>` work exactly as they do for
+ * multi-target listings.
+ *
+ * An explicit selector does not depend on the working directory, so the
+ * aliases are stored without a DSN fingerprint and resolve from any
+ * directory, including one whose DSNs point at other projects.
+ *
+ * @returns Map from `org/project` to its alias
+ */
+function registerSelectorAliases(
+  org: string,
+  projects: readonly string[],
+): Map<string, string> {
+  const { aliasMap, entries } = buildProjectAliasMap(
+    projects.map((project) => ({ target: { org, project } })),
+  );
+  setProjectAliases(entries);
+  return aliasMap;
+}
+
+/** Resolved request scope for {@link handleOrganizationIssues}. */
+type OrganizationIssuesScope = {
+  /** Org slug; the dispatcher has already resolved DSN-style identifiers. */
+  org: string;
+  /** Numeric project IDs for the SDK `project` param; absent for org-all. */
+  projectFilter?: number[];
+  /** Positional form used in titles and pagination hints. */
+  target: string;
+  /** Cursor-stack context key. */
+  contextKey: string;
+};
+
+/**
+ * Resolve the project filter and cursor context for an org-scoped listing.
+ *
+ * Org-all keeps its historical `org:<slug>` context key so stored cursors
+ * survive upgrades. Selectors get a `projects:<org>/<a,b>` key built from the
+ * sorted slugs: the server returns the same results in any order, so
+ * `-c next` keeps working when the slugs are retyped in a different order.
+ */
+async function resolveOrganizationIssuesScope(
+  options: OrganizationIssuesOptions,
+): Promise<OrganizationIssuesScope> {
+  const { org, projects, flags, timeRange } = options;
+  const searchParams = {
+    sort: flags.sort,
+    period: serializeTimeRange(timeRange),
+    q: flags.query,
+  };
+  if (!projects) {
+    return {
+      org,
+      target: formatProjectTarget(org),
+      contextKey: buildPaginationContextKey("org", org, searchParams),
+    };
+  }
+  return {
+    org,
+    projectFilter: await resolveProjectIdsInOrg(org, projects),
+    target: formatProjectTarget(org, projects),
+    contextKey: buildPaginationContextKey(
+      "projects",
+      formatProjectTarget(org, projects.toSorted()),
+      searchParams,
+    ),
+  };
+}
+
+/**
+ * List issues for one organization, either org-wide (`org/`) or filtered to
+ * an explicit project set (`org/web,api`) in a single server-side request.
  *
  * Uses a sort+query-aware context key so cursors from different searches are
  * never accidentally reused. Returns an {@link IssueListResult} — the caller
  * is responsible for rendering (JSON or human output).
  */
-async function handleOrgAllIssues(
-  options: OrgAllIssuesOptions
+async function handleOrganizationIssues(
+  options: OrganizationIssuesOptions,
 ): Promise<IssueListResult> {
-  const { org, flags, timeRange } = options;
-  // Encode sort + query in context key so cursors from different searches don't collide.
-  const contextKey = buildPaginationContextKey("org", org, {
-    sort: flags.sort,
-    period: serializeTimeRange(timeRange),
-    q: flags.query,
-  });
+  const { projects, flags, timeRange } = options;
+  const { org, projectFilter, target, contextKey } =
+    await resolveOrganizationIssuesScope(options);
   const { cursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
 
   let issuesResult: IssuesPage;
@@ -735,13 +980,14 @@ async function handleOrgAllIssues(
         json: flags.json,
       },
       (setMessage) =>
-        fetchOrgAllIssues(org, flags, timeRange, {
+        fetchOrganizationIssues(org, flags, timeRange, {
           cursor,
+          projects: projectFilter,
           onPage: (fetched, limit) =>
             setMessage(
-              `Fetching issues, ${fetched} and counting (up to ${limit})...`
+              `Fetching issues, ${fetched} and counting (up to ${limit})...`,
             ),
-        })
+        }),
     );
   } catch (error) {
     throw enrichIssueListError(error, flags);
@@ -753,37 +999,47 @@ async function handleOrgAllIssues(
   const hasMore = !!nextCursor;
   const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 
+  const navHints = {
+    prevHint: pageHint("prev", target, flags),
+    nextHint: pageHint("next", target, flags),
+  };
+
+  // Register aliases before the empty-page return so `issue view <ALIAS>`
+  // always reflects the selector that was just queried, never a previous one.
+  const aliasMap = projects
+    ? registerSelectorAliases(org, projects)
+    : undefined;
+
   if (issues.length === 0) {
-    const nav = paginationHint({
-      hasPrev,
-      hasMore,
-      prevHint: prevPageHint(org, flags),
-      nextHint: nextPageHint(org, flags),
-    });
-    const hint = nav
-      ? `No issues on this page. ${nav}`
-      : `No issues found in organization '${org}'.`;
+    const nav = paginationHint({ hasPrev, hasMore, ...navHints });
+    let hint: string;
+    if (nav) {
+      hint = `No issues on this page. ${nav}`;
+    } else if (projects) {
+      hint = `No issues found in ${target}.`;
+    } else {
+      hint = `No issues found in organization '${org}'.`;
+    }
     return { items: [], hasMore, hasPrev, nextCursor, hint };
   }
 
-  // isMultiProject=true: org-all shows issues from every project, so the ALIAS
-  // column is needed to identify which project each issue belongs to.
-  const displayRows: IssueTableRow[] = issues.map((issue) => ({
-    issue,
-    // org-all: org context comes from the `org` param; issue.organization may be absent
-    orgSlug: org,
-    formatOptions: {
-      projectSlug: issue.project?.slug ?? "",
-      isMultiProject: true,
-    },
-  }));
-
-  const nav = paginationHint({
-    hasPrev,
-    hasMore,
-    prevHint: prevPageHint(org, flags),
-    nextHint: nextPageHint(org, flags),
+  // Org-wide and explicit project-list queries can contain several projects,
+  // so the ALIAS column identifies which project each issue belongs to.
+  const displayRows: IssueTableRow[] = issues.map((issue) => {
+    const projectSlug = issue.project?.slug ?? "";
+    return {
+      issue,
+      // Org context comes from the request's `org`; issue.organization may be absent
+      orgSlug: org,
+      formatOptions: {
+        projectSlug,
+        projectAlias: aliasMap?.get(`${org}/${projectSlug}`),
+        isMultiProject: true,
+      },
+    };
   });
+
+  const nav = paginationHint({ hasPrev, hasMore, ...navHints });
   const hintParts: string[] = [];
   if (hasMore) {
     hintParts.push(`Showing ${issues.length} issues (more available)`);
@@ -801,7 +1057,10 @@ async function handleOrgAllIssues(
     nextCursor,
     hint: hintParts.join("\n"),
     displayRows,
-    title: `Issues in ${org}`,
+    title: projects ? `Issues in ${target}` : `Issues in ${org}`,
+    // Org-all never showed a footer tip; a project selector spans several
+    // projects, so point at the ALIAS-based `issue view` form.
+    ...(projects && { footerMode: "multi" as const }),
     compact: resolveCompact(flags.compact, displayRows.length),
   };
 }
@@ -839,7 +1098,7 @@ const UNSUPPORTED_SORT_RE = /sort key/i;
  */
 function build400Detail(
   originalDetail: string | undefined,
-  flags: Pick<ListFlags, "query" | "period" | "sort">
+  flags: Pick<ListFlags, "query" | "period" | "sort">,
 ): string {
   const lines: string[] = [];
 
@@ -856,14 +1115,14 @@ function build400Detail(
   // query/time-range/access suggestions, so short-circuit on it.
   if (originalDetail && UNSUPPORTED_SORT_RE.test(originalDetail)) {
     suggestions.push(
-      `This Sentry instance does not support the '${flags.sort}' sort. Use a widely-supported sort such as --sort date (the 'recommended' sort requires a recent Sentry version).`
+      `This Sentry instance does not support the '${flags.sort}' sort. Use a widely-supported sort such as --sort date (the 'recommended' sort requires a recent Sentry version).`,
     );
     return formatDetailWithSuggestions(lines, suggestions);
   }
 
   if (flags.query) {
     suggestions.push(
-      "Check your --query syntax (Sentry search reference: https://docs.sentry.io/concepts/search/)"
+      "Check your --query syntax (Sentry search reference: https://docs.sentry.io/concepts/search/)",
     );
   }
 
@@ -872,7 +1131,7 @@ function build400Detail(
   }
 
   suggestions.push(
-    "Verify you have access to the target project: sentry project list <org>/"
+    "Verify you have access to the target project: sentry project list <org>/",
   );
 
   return formatDetailWithSuggestions(lines, suggestions);
@@ -888,7 +1147,7 @@ function build400Detail(
  */
 function formatDetailWithSuggestions(
   detailLines: string[],
-  suggestions: string[]
+  suggestions: string[],
 ): string {
   const lines = [...detailLines];
   if (lines.length > 0) {
@@ -909,7 +1168,7 @@ function formatDetailWithSuggestions(
  */
 function enrichIssueListError(
   error: unknown,
-  flags: Pick<ListFlags, "query" | "period" | "sort">
+  flags: Pick<ListFlags, "query" | "period" | "sort">,
 ): never {
   // A user-supplied --query the server cannot parse is a user input mistake,
   // not a CLI bug: surface it as a ValidationError. A 400 with no user --query
@@ -924,7 +1183,7 @@ function enrichIssueListError(
         error.message,
         error.status,
         build400Detail(error.detail, flags),
-        error.endpoint
+        error.endpoint,
       );
     }
     if (error.status === 403) {
@@ -938,7 +1197,7 @@ function enrichIssueListError(
         error.status,
         detail,
         error.endpoint,
-        true
+        true,
       );
     }
   }
@@ -992,7 +1251,7 @@ function build403Detail(originalDetail: unknown): string {
         : `Your ${getActiveEnvVarName()} token may lack the required scopes`;
     lines.push(
       `  • ${leader} (${scopeList})`,
-      "  • Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/"
+      "  • Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/",
     );
   } else {
     lines.push("  • Re-authenticate with: sentry auth login");
@@ -1022,9 +1281,9 @@ function appendProjectMembershipHint(detail: string | undefined): string {
  * Cursor pagination uses a compound cursor (one cursor per project, encoded
  * as a pipe-separated string) so `-c next` / `-c prev` works across multi-target results.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: inherent multi-target resolution, compound cursor, error handling, and display logic
+// inherent multi-target resolution, compound cursor, error handling, and display logic
 async function handleResolvedTargets(
-  options: ResolvedTargetsOptions
+  options: ResolvedTargetsOptions,
 ): Promise<IssueListResult> {
   const { parsed, flags, cwd, timeRange, projectSearchResolution } = options;
 
@@ -1043,7 +1302,7 @@ async function handleResolvedTargets(
         "Organization and project",
         USAGE_HINT,
         undefined,
-        `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`
+        `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`,
       );
     }
     throw new ContextError("Organization and project", USAGE_HINT);
@@ -1063,11 +1322,11 @@ async function handleResolvedTargets(
   const { cursor: rawCursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
   const { startCursors, exhausted: exhaustedTargets } = decodeTargetCursors(
     rawCursor,
-    sortedTargetKeys
+    sortedTargetKeys,
   );
 
   const activeTargets =
@@ -1099,28 +1358,28 @@ async function handleResolvedTargets(
         },
         (fetched) => {
           setMessage(
-            `${baseMessage}, ${fetched} and counting (up to ${flags.limit})...`
+            `${baseMessage}, ${fetched} and counting (up to ${flags.limit})...`,
           );
-        }
-      )
+        },
+      ),
   );
 
   const validResults: IssueListFetchResult[] = [];
   const failures: { target: ResolvedTarget; error: Error }[] = [];
 
   for (let i = 0; i < results.length; i++) {
-    // biome-ignore lint/style/noNonNullAssertion: index within bounds
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- index within bounds
     const result = results[i]!;
     if (result.success) {
       validResults.push(result.data);
     } else {
-      // biome-ignore lint/style/noNonNullAssertion: index within bounds
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- index within bounds
       failures.push({ target: activeTargets[i]!, error: result.error });
     }
   }
 
   if (validResults.length === 0 && failures.length > 0) {
-    // biome-ignore lint/style/noNonNullAssertion: guarded by failures.length > 0
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- guarded by failures.length > 0
     const { error: first } = failures[0]!;
     const prefix = `Failed to fetch issues from ${targets.length} project(s)`;
 
@@ -1150,7 +1409,7 @@ async function handleResolvedTargets(
         first.status,
         detail,
         first.endpoint,
-        first.enriched403 || first.status === 403
+        first.enriched403 || first.status === 403,
       );
     }
 
@@ -1175,7 +1434,7 @@ async function handleResolvedTargets(
   const allIssuesWithOptions = attachFormatOptions(
     validResults,
     aliasMap,
-    isMultiProject
+    isMultiProject,
   );
 
   // Only re-sort when merging results from multiple separately-fetched
@@ -1187,14 +1446,14 @@ async function handleResolvedTargets(
   // silently replace the server's ranking with a `lastSeen` fallback.
   if (isMultiProject) {
     allIssuesWithOptions.sort((a, b) =>
-      getComparator(flags.sort)(a.issue, b.issue)
+      getComparator(flags.sort)(a.issue, b.issue),
     );
   }
 
   // Trim to the global limit with project representation guarantee
   const issuesWithOptions = trimWithProjectGuarantee(
     allIssuesWithOptions,
-    flags.limit
+    flags.limit,
   );
   const trimmed = issuesWithOptions.length < allIssuesWithOptions.length;
   // Store compound cursor only after display trimming is known. If rows were
@@ -1230,7 +1489,7 @@ async function handleResolvedTargets(
     PAGINATION_KEY,
     contextKey,
     direction,
-    compoundNextCursor
+    compoundNextCursor,
   );
   const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 
@@ -1245,7 +1504,7 @@ async function handleResolvedTargets(
                 status: e.status,
                 message: e.message,
               }
-            : { project: `${t.org}/${t.project}`, message: e.message }
+            : { project: `${t.org}/${t.project}`, message: e.message },
         )
       : undefined;
 
@@ -1255,7 +1514,7 @@ async function handleResolvedTargets(
       .map(({ target: t }) => `${t.org}/${t.project}`)
       .join(", ");
     logger.warn(
-      `Failed to fetch issues from ${failedNames}. Showing results from ${validResults.length} project(s).`
+      `Failed to fetch issues from ${failedNames}. Showing results from ${validResults.length} project(s).`,
     );
   }
 
@@ -1388,7 +1647,7 @@ function formatIssueListHuman(result: IssueListResult): string {
   }
 
   // Footer tip (e.g. "Tip: Use 'sentry issue view <ID>' ...")
-  if (result.footerMode) {
+  if (result.footerMode && !tipsSuppressed()) {
     parts.push(formatListFooter(result.footerMode));
   }
 
@@ -1407,7 +1666,7 @@ function formatIssueListHuman(result: IssueListResult): string {
  */
 function jsonTransformIssueList(
   result: IssueListResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const transformed = jsonTransformListResult(result, fields);
   // Only inject into empty paginated envelopes — helps agents discover
@@ -1445,6 +1704,7 @@ export const listCommand = buildListCommand("issue", {
       "Target patterns:\n" +
       "  sentry issue list               # auto-detect from DSN or config\n" +
       "  sentry issue list <org>/<proj>  # explicit org and project\n" +
+      "  sentry issue list <org>/a,b     # several projects in the same org\n" +
       "  sentry issue list <org>/        # all projects in org (trailing / required)\n" +
       "  sentry issue list <project>     # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
@@ -1527,7 +1787,7 @@ export const listCommand = buildListCommand("issue", {
       rejectIssueCommandTokenListTarget(target);
     }
 
-    const parsed = parseOrgProjectArg(target);
+    const parsed = parseOrgProjectArg(target, { multi: true });
 
     // Auto-recover: user passed an issue short ID (e.g., "ARMAX-3E" or a
     // lowercase/multi-segment variant like "javascript-react-mr-1b") instead
@@ -1540,7 +1800,7 @@ export const listCommand = buildListCommand("issue", {
     ) {
       const shortId = parsed.projectSlug;
       log.warn(
-        `'${shortId}' is an issue short ID, not a project slug. Showing the issue.`
+        `'${shortId}' is an issue short ID, not a project slug. Showing the issue.`,
       );
       const { org, issue } = await resolveIssue({
         issueArg: shortId,
@@ -1579,13 +1839,13 @@ export const listCommand = buildListCommand("issue", {
       throw new ValidationError(
         `--limit cannot exceed ${LIST_MAX_LIMIT}. ` +
           "Use --cursor to paginate through larger result sets.",
-        "limit"
+        "limit",
       );
     }
 
     const timeRange = flags.period;
 
-    // biome-ignore lint/suspicious/noExplicitAny: shared handler accepts any mode variant
+    // oxlint-disable-next-line typescript/no-explicit-any -- shared handler accepts any mode variant
     const resolveAndHandle: ModeHandler<any> = (ctx) =>
       handleResolvedTargets({
         ...ctx,
@@ -1601,14 +1861,24 @@ export const listCommand = buildListCommand("issue", {
       // Bare slug: the project wins when one exists. If none does and the
       // slug is an organization, list that org. `<org>/` is the explicit form.
       // Multi-target modes (auto-detect, explicit, project-search) handle
-      // compound cursor pagination themselves via handleResolvedTargets.
+      // compound cursor pagination themselves via handleResolvedTargets. A
+      // comma-separated `<org>/a,b` selector is one org-scoped request
+      // instead, so it shares the org-all handler and its server-side cursor.
       allowCursorInModes: ["auto-detect", "explicit", "project-search"],
       overrides: {
         "auto-detect": resolveAndHandle,
-        explicit: resolveAndHandle,
+        explicit: (ctx) =>
+          ctx.parsed.projects
+            ? handleOrganizationIssues({
+                org: ctx.parsed.org,
+                projects: ctx.parsed.projects,
+                flags,
+                timeRange,
+              })
+            : resolveAndHandle(ctx),
         "project-search": resolveAndHandle,
         "org-all": (ctx) =>
-          handleOrgAllIssues({
+          handleOrganizationIssues({
             org: ctx.parsed.org,
             flags,
             timeRange,
@@ -1616,19 +1886,13 @@ export const listCommand = buildListCommand("issue", {
       },
     })) as IssueListResult;
 
-    // Only forward hints to the framework footer when items exist — empty
-    // results already render hint text inside formatIssueListHuman.
-    let combinedHint: string | undefined;
-    if (result.items.length > 0) {
-      const hintParts: string[] = [];
-      if (result.moreHint) {
-        hintParts.push(result.moreHint);
-      }
-      if (result.footer) {
-        hintParts.push(result.footer);
-      }
-      combinedHint = hintParts.length > 0 ? hintParts.join("\n") : result.hint;
-    }
+    // The issues-list endpoint's seen-stats (count/userCount) are period-wide
+    // totals that ignore query filters like release:. When such a filter is
+    // active, re-fetch filter-scoped counts from the events endpoint so the
+    // displayed numbers (and freq/user ordering) match the query. See #1518.
+    await applyScopedCounts(result, flags, timeRange);
+
+    const combinedHint = buildCombinedHint(result);
 
     yield new CommandOutput(result);
     return { hint: combinedHint };

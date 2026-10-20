@@ -7,7 +7,7 @@
  */
 
 import { setTimeout as sleep } from "node:timers/promises";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import {
   buildApplication,
@@ -26,6 +26,7 @@ import {
   numberParser,
   VERBOSE_FLAG,
 } from "../../src/lib/command.js";
+import { setEnv } from "../../src/lib/env.js";
 import { EXIT, OutputError } from "../../src/lib/errors.js";
 import { CommandOutput } from "../../src/lib/formatters/output.js";
 import {
@@ -92,7 +93,7 @@ test("derives prompt availability from parsed flags instead of ambiguous aliases
       flags: { yes: YES_FLAG, "dry-run": DRY_RUN_FLAG },
       aliases: { y: "yes", n: "dry-run" },
     },
-    // biome-ignore lint/correctness/useYield: test command only observes wrapper state
+    // oxlint-disable-next-line require-yield -- test command only observes wrapper state
     async *func() {
       promptStates.push(interactivePromptsAllowed());
     },
@@ -117,7 +118,7 @@ test("derives prompt availability from parsed flags instead of ambiguous aliases
       },
       aliases: { n: "limit", y: "row" },
     },
-    // biome-ignore lint/correctness/useYield: test command only observes wrapper state
+    // oxlint-disable-next-line require-yield -- test command only observes wrapper state
     async *func() {
       promptStates.push(interactivePromptsAllowed());
     },
@@ -197,7 +198,7 @@ describe("buildCommand", () => {
     });
 
     expect(
-      (command as unknown as { __primaryUsage?: string }).__primaryUsage
+      (command as unknown as { __primaryUsage?: string }).__primaryUsage,
     ).toBe("<name>:<kind>...");
   });
 
@@ -242,10 +243,10 @@ describe("buildCommand telemetry integration", () => {
           },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(
         this: TestContext,
-        flags: { verbose: boolean; limit: number }
+        flags: { verbose: boolean; limit: number },
       ) {
         calledWith = flags;
       },
@@ -284,7 +285,7 @@ describe("buildCommand telemetry integration", () => {
           },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(this: TestContext, flags: { limit: number }) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -331,7 +332,7 @@ describe("buildCommand telemetry integration", () => {
 
     // Should not set tag for default false boolean
     const flagCalls = setTagSpy.mock.calls.filter(
-      (call) => typeof call[0] === "string" && call[0].startsWith("flag.")
+      (call) => typeof call[0] === "string" && call[0].startsWith("flag."),
     );
     expect(flagCalls).toHaveLength(0);
   });
@@ -348,11 +349,11 @@ describe("buildCommand telemetry integration", () => {
           parameters: [{ brief: "Issue ID", parse: String }],
         },
       },
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(
         this: TestContext,
         _flags: Record<string, never>,
-        issueId: string
+        issueId: string,
       ) {
         calledArgs = issueId;
       },
@@ -381,7 +382,7 @@ describe("buildCommand telemetry integration", () => {
       auth: false,
       docs: { brief: "Test" },
       parameters: {},
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(this: TestContext) {
         // Verify 'this' is correctly bound to context
         capturedStdout = typeof this.process.stdout.write === "function";
@@ -416,7 +417,7 @@ describe("buildCommand telemetry integration", () => {
           },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(_flags: { delay: number }) {
         await sleep(1);
         executed = true;
@@ -550,7 +551,7 @@ describe("buildCommand", () => {
           json: { kind: "boolean", brief: "JSON output", default: false },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(this: TestContext, flags: { json: boolean }) {
         calledFlags = flags as unknown as Record<string, unknown>;
       },
@@ -655,7 +656,7 @@ describe("buildCommand", () => {
           },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(this: TestContext, flags: { limit: number }) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -671,7 +672,7 @@ describe("buildCommand", () => {
     await run(
       app,
       ["test", "--verbose", "--log-level", "debug", "--limit", "50"],
-      ctx as TestContext
+      ctx as TestContext,
     );
 
     expect(receivedFlags).toBeDefined();
@@ -706,10 +707,10 @@ describe("buildCommand", () => {
           },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(
         this: TestContext,
-        flags: { verbose: boolean; silent: boolean }
+        flags: { verbose: boolean; silent: boolean },
       ) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -725,7 +726,7 @@ describe("buildCommand", () => {
     await run(
       app,
       ["test", "--verbose", "--log-level", "trace"],
-      ctx as TestContext
+      ctx as TestContext,
     );
 
     // Command's own --verbose is passed through (not stripped)
@@ -833,10 +834,10 @@ describe("buildCommand output config", () => {
           },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(
         this: TestContext,
-        flags: { json: boolean; fields?: string[] }
+        flags: { json: boolean; fields?: string[] },
       ) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -868,10 +869,10 @@ describe("buildCommand output config", () => {
       docs: { brief: "Test" },
       output: { human: () => "unused" },
       parameters: {},
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(
         this: TestContext,
-        flags: { json: boolean; fields?: string[] }
+        flags: { json: boolean; fields?: string[] },
       ) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -887,7 +888,7 @@ describe("buildCommand output config", () => {
     await run(
       app,
       ["test", "--json", "--fields", "id,title,status"],
-      ctx as TestContext
+      ctx as TestContext,
     );
 
     expect(receivedFlags).toBeDefined();
@@ -908,10 +909,10 @@ describe("buildCommand output config", () => {
       docs: { brief: "Test" },
       output: { human: () => "unused" },
       parameters: {},
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(
         this: TestContext,
-        flags: { json: boolean; fields?: string[] }
+        flags: { json: boolean; fields?: string[] },
       ) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -927,7 +928,7 @@ describe("buildCommand output config", () => {
     await run(
       app,
       ["test", "--fields", " id , title , id "],
-      ctx as TestContext
+      ctx as TestContext,
     );
 
     expect(receivedFlags).toBeDefined();
@@ -947,10 +948,10 @@ describe("buildCommand output config", () => {
       docs: { brief: "Test" },
       output: { human: () => "unused" },
       parameters: {},
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(
         this: TestContext,
-        flags: { json: boolean; fields?: string[] }
+        flags: { json: boolean; fields?: string[] },
       ) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -978,7 +979,7 @@ describe("buildCommand output config", () => {
       auth: false,
       docs: { brief: "Test" },
       parameters: {},
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func() {
         funcCalled = true;
       },
@@ -996,7 +997,7 @@ describe("buildCommand output config", () => {
 
     expect(funcCalled).toBe(false);
     expect(
-      ctx.errors.some((s) => s.includes("No flag registered for --json"))
+      ctx.errors.some((s) => s.includes("No flag registered for --json")),
     ).toBe(true);
   });
 
@@ -1021,10 +1022,10 @@ describe("buildCommand output config", () => {
           },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(
         this: TestContext,
-        flags: { json: boolean; fields?: string[] }
+        flags: { json: boolean; fields?: string[] },
       ) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -1057,10 +1058,10 @@ describe("buildCommand output config", () => {
       docs: { brief: "Test" },
       output: { human: () => "unused" },
       parameters: {},
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(
         this: TestContext,
-        flags: { json: boolean; fields?: string[] }
+        flags: { json: boolean; fields?: string[] },
       ) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -1076,7 +1077,7 @@ describe("buildCommand output config", () => {
     await run(
       app,
       ["test", "--fields", "id,metadata.value,contexts.trace.traceId"],
-      ctx as TestContext
+      ctx as TestContext,
     );
 
     expect(receivedFlags).toBeDefined();
@@ -1108,10 +1109,10 @@ describe("buildCommand output config", () => {
           },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(
         this: TestContext,
-        flags: { json: boolean; fields?: string[]; limit: number }
+        flags: { json: boolean; fields?: string[]; limit: number },
       ) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -1127,7 +1128,7 @@ describe("buildCommand output config", () => {
     await run(
       app,
       ["test", "--json", "--fields", "id", "--limit", "50", "--verbose"],
-      ctx as TestContext
+      ctx as TestContext,
     );
 
     expect(receivedFlags).toBeDefined();
@@ -1230,7 +1231,7 @@ describe("buildCommand return-based output", () => {
     await run(
       app,
       ["test", "--json", "--fields", "id,name"],
-      ctx as TestContext
+      ctx as TestContext,
     );
 
     const jsonOutput = JSON.parse(ctx.output.join(""));
@@ -1281,6 +1282,45 @@ describe("buildCommand return-based output", () => {
     expect(jsonOutput).toEqual({ value: 42 });
   });
 
+  test("strips only Tip: lines from the hint when tips are disabled", async () => {
+    const command = buildCommand<
+      { json: boolean; fields?: string[] },
+      [],
+      TestContext
+    >({
+      auth: false,
+      docs: { brief: "Test" },
+      output: {
+        human: (d: { value: number }) => `Value: ${d.value}`,
+      },
+      parameters: {},
+      async *func(this: TestContext) {
+        yield new CommandOutput({ value: 42 });
+        return {
+          hint: "Showing 10 of 25 items\nTip: Use 'sentry thing view <id>' for details",
+        };
+      },
+    });
+    const routeMap = buildRouteMap({
+      routes: { test: command },
+      docs: { brief: "Test app" },
+    });
+    const app = buildApplication(routeMap, { name: "test" });
+    const ctx = createTestContext();
+
+    setEnv({ ...process.env, SENTRY_DISABLE_TIPS: "1" });
+    try {
+      await run(app, ["test"], ctx as TestContext);
+    } finally {
+      setEnv(process.env);
+    }
+
+    const output = ctx.output.join("");
+    expect(output).toContain("Value: 42");
+    expect(output).toContain("Showing 10 of 25 items");
+    expect(output).not.toContain("Tip:");
+  });
+
   test("void return does nothing (no crash)", async () => {
     let executed = false;
 
@@ -1295,7 +1335,7 @@ describe("buildCommand return-based output", () => {
         human: () => "unused",
       },
       parameters: {},
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(this: TestContext) {
         executed = true;
         // Void return — simulates --web early exit
@@ -1454,7 +1494,7 @@ describe("buildCommand return-based output", () => {
         human: (d: { error: string }) => `Error: ${d.error}`,
       },
       parameters: {},
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(this: TestContext) {
         throw new OutputError({ error: "not found" });
       },
@@ -1503,7 +1543,7 @@ describe("buildCommand return-based output", () => {
         human: (d: { error: string }) => `Error: ${d.error}`,
       },
       parameters: {},
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(this: TestContext) {
         throw new OutputError({ error: "not found" });
       },
@@ -1738,7 +1778,7 @@ describe("buildCommand --org/--project compat flags", () => {
           },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command
+      // oxlint-disable-next-line require-yield -- test command
       async *func(this: TestContext, flags: { limit: number }) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -1754,7 +1794,7 @@ describe("buildCommand --org/--project compat flags", () => {
     await run(
       app,
       ["test", "--org", "sentry", "--project", "cli", "--limit", "50"],
-      ctx as TestContext
+      ctx as TestContext,
     );
 
     expect(receivedFlags).toBeDefined();
@@ -1783,7 +1823,7 @@ describe("buildCommand --org/--project compat flags", () => {
           },
         },
       },
-      // biome-ignore lint/correctness/useYield: test command
+      // oxlint-disable-next-line require-yield -- test command
       async *func(this: TestContext, flags: { project?: string }) {
         receivedFlags = flags as unknown as Record<string, unknown>;
       },
@@ -1863,7 +1903,7 @@ describe("buildCommand --org/--project compat flags", () => {
       auth: false,
       docs: { brief: "Test" },
       parameters: {},
-      // biome-ignore lint/correctness/useYield: test command — no output to yield
+      // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(this: TestContext) {
         resolved = await resolveOrgAndProject({ cwd: "/tmp" });
       },
@@ -1879,7 +1919,7 @@ describe("buildCommand --org/--project compat flags", () => {
     await run(
       app,
       ["test", "--org", "flag-org", "--project", "flag-proj"],
-      ctx as TestContext
+      ctx as TestContext,
     );
 
     expect(resolved).not.toBeNull();

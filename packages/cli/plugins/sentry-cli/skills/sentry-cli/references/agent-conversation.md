@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-agent-conversation
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: List and view agent conversations
 requires:
   bins: ["sentry"]
@@ -11,13 +11,14 @@ requires:
 
 List and view agent conversations
 
-### `sentry agent-conversation list <org>`
+### `sentry agent-conversation list [<org/project>]`
 
 List recent agent conversations
 
 **Flags:**
 - `-n, --limit <value> - Number of conversations (1-1000) - (default: "25")`
-- `-q, --query <value> - Search query`
+- `-q, --query <value> - Any matching span selects its conversation; totals include all spans in selected projects and time range`
+- `-s, --sort <value> - One conversation field; prefix - for descending (default: -conversation.age; ID breaks ties)`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
@@ -51,20 +52,41 @@ List recent agent conversations
 # List recent agent conversations
 sentry agent-conversation list
 
-# Explicit organization
-sentry agent-conversation list my-org
+# Explicit organization (all projects)
+sentry agent-conversation list my-org/
+
+# One project
+sentry agent-conversation list my-org/my-project
+
+# Find a project across organizations
+sentry agent-conversation list my-project
 
 # Show more, last 24 hours
 sentry agent-conversation list --limit 50 --period 24h
 
-# Filter conversations
-sentry agent-conversation list -q "has:errors"
+# Sort by highest error count
+sentry agent-conversation list --sort -conversation.errors
 
-# Paginate through results
-sentry agent-conversation list my-org -c next
+# Sort by lowest total cost
+sentry agent-conversation list --sort conversation.totalCost
+
+# Find conversations with errors
+sentry agent-conversation list -q "conversation.errors:>0"
+
+# Find conversations for an agent
+sentry agent-conversation list -q "gen_ai.agent.name:my-agent"
+
+# Find conversations with more than two tool calls
+sentry agent-conversation list -q "conversation.toolCalls:>2"
+
+# Find conversations that used a tool
+sentry agent-conversation list -q "gen_ai.tool.name:search_issues"
+
+# Paginate through project results
+sentry agent-conversation list my-org/my-project -c next
 ```
 
-### `sentry agent-conversation view <org/conversation-id>`
+### `sentry agent-conversation view [<org>/]<conversation-id>`
 
 View an agent conversation transcript
 
@@ -74,10 +96,10 @@ View an agent conversation transcript
 **Examples:**
 
 ```bash
-# View full transcript (org auto-detected)
+# View full transcript (organization auto-detected)
 sentry agent-conversation view conv-123
 
-# Explicit org (slash-separated)
+# Explicit organization
 sentry agent-conversation view my-org/conv-123
 
 # JSON output

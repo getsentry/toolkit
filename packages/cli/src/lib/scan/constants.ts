@@ -234,7 +234,7 @@ export const MAX_FILE_SIZE = 256 * 1024;
  */
 export const CONCURRENCY_LIMIT = Math.min(
   16,
-  Math.max(2, availableParallelism())
+  Math.max(2, availableParallelism()),
 );
 
 /**

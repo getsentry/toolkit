@@ -16,11 +16,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
@@ -30,11 +30,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 import { AuthError, ContextError } from "../../../src/lib/errors.js";
 
@@ -45,11 +45,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { ProjectKey, SentryProject } from "../../../src/types/sentry.js";
 
@@ -91,7 +91,7 @@ describe("viewCommand.func", () => {
   const tryGetPrimaryDsnSpy = vi.mocked(apiClient.tryGetPrimaryDsn);
   const resolveAllTargetsSpy = vi.mocked(resolveTarget.resolveAllTargets);
   const resolveProjectBoundSlugSpy = vi.mocked(
-    resolveTarget.resolveProjectBoundSlug
+    resolveTarget.resolveProjectBoundSlug,
   );
   const openInBrowserSpy = vi.mocked(browser.openInBrowser);
 
@@ -106,7 +106,7 @@ describe("viewCommand.func", () => {
   test("explicit org/project outputs JSON with DSN", async () => {
     getProjectSpy.mockResolvedValue(sampleProject);
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -124,7 +124,7 @@ describe("viewCommand.func", () => {
   test("explicit org/project outputs human-readable details", async () => {
     getProjectSpy.mockResolvedValue(sampleProject);
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -132,7 +132,7 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: false, web: false },
-      "my-org/test-project"
+      "my-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -190,7 +190,7 @@ describe("viewCommand.func", () => {
     });
     getProjectSpy.mockResolvedValue({ ...sampleProject, slug: "frontend" });
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -201,7 +201,7 @@ describe("viewCommand.func", () => {
       "frontend",
       "sentry project view <org>/<project>",
       "sentry project view <org>/frontend",
-      undefined
+      undefined,
     );
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
@@ -220,7 +220,7 @@ describe("viewCommand.func", () => {
       expect(error).toBeInstanceOf(ContextError);
       expect((error as ContextError).message).toContain("Specific project");
       expect((error as ContextError).message).toContain(
-        "not just the organization"
+        "not just the organization",
       );
     }
   });
@@ -240,7 +240,7 @@ describe("viewCommand.func", () => {
     });
     getProjectSpy.mockResolvedValue({ ...sampleProject, slug: "backend" });
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -261,7 +261,7 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false })
+      func.call(context, { json: false, web: false }),
     ).rejects.toThrow(ContextError);
   });
 
@@ -294,14 +294,14 @@ describe("viewCommand.func", () => {
     const apiErr = new Error("404 Not Found");
     getProjectSpy.mockRejectedValue(apiErr);
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context } = createMockContext();
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false }, "my-org/bad-project")
+      func.call(context, { json: false, web: false }, "my-org/bad-project"),
     ).rejects.toThrow("404 Not Found");
 
     expect(getProjectSpy).toHaveBeenCalledWith("my-org", "bad-project");
@@ -315,14 +315,14 @@ describe("viewCommand.func", () => {
     const apiErr = new Error("403 Forbidden");
     getProjectSpy.mockRejectedValue(apiErr);
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context } = createMockContext();
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false }, "frontend")
+      func.call(context, { json: false, web: false }, "frontend"),
     ).rejects.toThrow("403 Forbidden");
   });
 
@@ -344,28 +344,28 @@ describe("viewCommand.func", () => {
     });
     getProjectSpy.mockRejectedValue(new Error("403 Forbidden"));
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context } = createMockContext();
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false })
+      func.call(context, { json: false, web: false }),
     ).rejects.toThrow(ContextError);
   });
 
   test("auth error from API is rethrown", async () => {
     getProjectSpy.mockRejectedValue(new AuthError("not_authenticated"));
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context } = createMockContext();
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false }, "my-org/test-project")
+      func.call(context, { json: false, web: false }, "my-org/test-project"),
     ).rejects.toThrow(AuthError);
   });
 
@@ -378,7 +378,7 @@ describe("viewCommand.func", () => {
       organization: { id: "1", slug: "my-org" },
     });
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -400,7 +400,7 @@ describe("viewCommand.func", () => {
       organization: { id: "1", slug: "my-org", name: "My Organization" },
     });
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -415,7 +415,7 @@ describe("viewCommand.func", () => {
   test("JSON output still strips detectedFrom (human-only field)", async () => {
     getProjectSpy.mockResolvedValue(sampleProject);
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -433,7 +433,7 @@ describe("viewCommand.func", () => {
       organization: { id: "1", slug: "my-org" },
     });
     tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42"
+      "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -447,7 +447,7 @@ describe("viewCommand.func", () => {
         web: false,
         fields: ["slug", "organization.slug"],
       },
-      "my-org/test-project"
+      "my-org/test-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

@@ -46,7 +46,7 @@ afterEach(async () => {
 /** Write a ZIP built from `entries` to `name` under the temp dir, return path. */
 async function writeZip(
   name: string,
-  entries: Record<string, Uint8Array>
+  entries: Record<string, Uint8Array>,
 ): Promise<string> {
   const path = join(tempDir, name);
   await writeFile(path, zipSync(entries));
@@ -63,7 +63,7 @@ async function writeZip(
 function corruptCompressionMethod(
   zip: Uint8Array,
   targetName: string,
-  method: number
+  method: number,
 ): Uint8Array {
   const out = new Uint8Array(zip);
   const target = new TextEncoder().encode(targetName);
@@ -78,7 +78,7 @@ function corruptCompressionMethod(
     }
     return true;
   };
-  // Little-endian 16-bit read/write via arithmetic (Biome bans bitwise ops).
+  // Little-endian 16-bit read/write via arithmetic.
   const readU16 = (offset: number): number =>
     (out[offset] ?? 0) + (out[offset + 1] ?? 0) * 256;
   const setMethod = (offset: number) => {
@@ -128,7 +128,7 @@ describe("readZipDifEntries", () => {
     const inner = zipSync({ "example.sym": BREAKPAD_BYTES });
     await writeFile(
       path,
-      Buffer.concat([Buffer.from(header), Buffer.from(inner)])
+      Buffer.concat([Buffer.from(header), Buffer.from(inner)]),
     );
     expect(await readZipDifEntries(path)).toBeNull();
   });
@@ -167,7 +167,7 @@ describe("readZipDifEntries", () => {
     // unsupported entry must be dropped while its sibling DIF still extracts.
     const raw = zipSync(
       { "good.sym": BREAKPAD_BYTES, "bad.bin": new Uint8Array([1, 2, 3, 4]) },
-      { level: 0 }
+      { level: 0 },
     );
     const path = join(tempDir, "mixed.zip");
     await writeFile(path, corruptCompressionMethod(raw, "bad.bin", 99));
@@ -203,7 +203,7 @@ describe("prepareDifs ZIP scanning", () => {
     const files = await scanPaths([path]);
     const { prepared, oversizedCount } = await prepareDifs(
       files,
-      buildDifFilters({})
+      buildDifFilters({}),
     );
     expect(prepared).toHaveLength(1);
     expect(prepared[0]?.path).toBe(`${path}/example.sym`);
@@ -254,7 +254,7 @@ describe("prepareDifs ZIP scanning", () => {
     const { prepared, oversizedCount } = await prepareDifs(
       files,
       buildDifFilters({}),
-      { maxFileSize: 1 }
+      { maxFileSize: 1 },
     );
     expect(prepared).toHaveLength(0);
     expect(oversizedCount).toBe(0);
@@ -281,7 +281,7 @@ describe("prepareDifs ZIP scanning", () => {
     // ...and kept by --type breakpad.
     const bp = await prepareDifs(
       files,
-      buildDifFilters({ types: ["breakpad"] })
+      buildDifFilters({ types: ["breakpad"] }),
     );
     expect(bp.prepared).toHaveLength(1);
   });

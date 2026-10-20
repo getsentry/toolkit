@@ -1,13 +1,37 @@
+import { resolveCachedRegion } from "@sentry/toolkit-core/region-cache";
 import { apiServiceFromContext } from "./api";
 import type { ServerContext } from "../../types";
 
-const regionUrlCache = new WeakMap<ServerContext, Map<string, string | null>>();
+type ContextRegionCache = {
+  accessToken: string;
+  sentryHost: ServerContext["sentryHost"];
+  sentryProtocol: ServerContext["sentryProtocol"];
+  lookups: Map<string, Promise<string | null>>;
+};
 
-function getRegionUrlCache(context: ServerContext): Map<string, string | null> {
+const regionUrlCache = new WeakMap<ServerContext, ContextRegionCache>();
+
+function matchesContext(
+  cache: ContextRegionCache,
+  context: ServerContext,
+): boolean {
+  return (
+    cache.accessToken === context.accessToken &&
+    cache.sentryHost === context.sentryHost &&
+    cache.sentryProtocol === context.sentryProtocol
+  );
+}
+
+function getRegionUrlCache(context: ServerContext): ContextRegionCache {
   let cache = regionUrlCache.get(context);
 
-  if (!cache) {
-    cache = new Map<string, string | null>();
+  if (!cache || !matchesContext(cache, context)) {
+    cache = {
+      accessToken: context.accessToken,
+      sentryHost: context.sentryHost,
+      sentryProtocol: context.sentryProtocol,
+      lookups: new Map<string, Promise<string | null>>(),
+    };
     regionUrlCache.set(context, cache);
   }
 
@@ -43,17 +67,21 @@ export async function resolveRegionUrlForOrganization({
 
   const normalizedOrganizationSlug = organizationSlug.trim();
   const cache = getRegionUrlCache(context);
-  if (cache.has(normalizedOrganizationSlug)) {
-    return cache.get(normalizedOrganizationSlug) ?? null;
-  }
 
   try {
-    const organization = await apiServiceFromContext(context).getOrganization(
+    const resolved = await resolveCachedRegion(
+      cache.lookups,
       normalizedOrganizationSlug,
+      async () => {
+        const organization = await apiServiceFromContext(
+          context,
+        ).getOrganization(normalizedOrganizationSlug);
+        return organization.links?.regionUrl?.trim() || null;
+      },
     );
-    const resolvedRegionUrl = organization.links?.regionUrl?.trim() || null;
-    cache.set(normalizedOrganizationSlug, resolvedRegionUrl);
-    return resolvedRegionUrl;
+    // A credential or source-host change while the lookup was pending must
+    // never route the new credential using the previous lookup's region.
+    return matchesContext(cache, context) ? resolved : null;
   } catch {
     return null;
   }

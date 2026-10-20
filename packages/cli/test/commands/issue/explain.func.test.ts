@@ -13,12 +13,12 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
 import { explainCommand } from "../../../src/commands/issue/explain.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 import { ContextError } from "../../../src/lib/errors.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
@@ -93,7 +93,7 @@ describe("issue explain multiple IDs", () => {
       issueId: options.issueArg === "IOS-1" ? "1" : "2",
     }));
     analyzeSpy.mockImplementation(async (options: { issueId: string }) =>
-      sampleState(sampleCause(`Cause ${options.issueId}`))
+      sampleState(sampleCause(`Cause ${options.issueId}`)),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -128,7 +128,7 @@ describe("issue explain multiple IDs", () => {
       createMockContext().context,
       { json: false, force: false, fresh: false },
       "IOS-1",
-      "IOS-2"
+      "IOS-2",
     );
 
     expect(analyzeSpy).toHaveBeenCalledTimes(2);
@@ -161,14 +161,14 @@ describe("issue explain multiple IDs", () => {
 
     const func = await explainCommand.loader();
     await expect(
-      func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1", "IOS-2")
+      func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1", "IOS-2"),
     ).rejects.toBe(error);
   });
 
   test("throws ContextError when no issue ID is provided", async () => {
     const func = await explainCommand.loader();
     await expect(
-      func.call(createMockContext().context, EXPLAIN_FLAGS)
+      func.call(createMockContext().context, EXPLAIN_FLAGS),
     ).rejects.toThrow(ContextError);
   });
 });

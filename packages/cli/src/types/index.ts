@@ -1,4 +1,4 @@
-// biome-ignore-all lint/performance/noBarrelFile: intentional public API
+// Intentional public API barrel.
 /**
  * Type definitions for the Sentry CLI
  *
@@ -24,11 +24,13 @@ export type {
   AgentConversationDetails,
   AgentConversationSpan,
   ConversationListItem,
+  ConversationStats,
 } from "./conversation.js";
 export {
   AgentConversationDetailsSchema,
   AgentConversationSpanSchema,
   ConversationListItemSchema,
+  ConversationStatsSchema,
 } from "./conversation.js";
 // Dashboard types
 export type {
@@ -147,6 +149,7 @@ export type {
   RequestEntry,
   SentryDeploy,
   SentryEvent,
+  SentryIntegration,
   SentryIssue,
   SentryLog,
   SentryMonitor,
@@ -185,6 +188,7 @@ export {
   ProductTrialSchema,
   RegionSchema,
   RepositoryProviderSchema,
+  SentryIntegrationSchema,
   SentryIssueSchema,
   SentryLogSchema,
   SentryMonitorSchema,

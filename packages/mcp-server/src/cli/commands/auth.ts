@@ -1,10 +1,7 @@
+import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import { parseEnv } from "../parse";
 import { resolveHost } from "../resolve";
-import {
-  DEFAULT_SENTRY_CLIENT_ID,
-  isSentryIo,
-  OAUTH_HOST,
-} from "../../auth/constants";
+import { DEFAULT_SENTRY_CLIENT_ID, OAUTH_HOST } from "../../auth/constants";
 import { authenticate } from "../../auth/device-code-flow";
 import {
   readCachedToken,
@@ -46,7 +43,7 @@ function resolveAuthContext(argv: string[]): AuthContext {
 async function login(argv: string[]): Promise<void> {
   const { sentryHost, clientId } = resolveAuthContext(argv);
 
-  if (!isSentryIo(sentryHost)) {
+  if (!isSentryHost(sentryHost)) {
     console.error(
       "Error: Device code authentication is only supported for sentry.io.",
     );

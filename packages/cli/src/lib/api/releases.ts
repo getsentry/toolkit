@@ -15,6 +15,7 @@ import {
   listProjectEnvironments as sdkListProjectEnvironments,
   updateOrganizationRelease,
 } from "@sentry/api";
+import { encodeApiPathSegment } from "@sentry/toolkit-core/api-path-segment";
 import type { SentryDeploy, SentryRelease } from "../../types/index.js";
 import { ApiError, ValidationError, validationError } from "../errors.js";
 import { getHeadCommit, getRepositoryName } from "../git.js";
@@ -60,9 +61,20 @@ export type ListReleasesOptions = {
   status?: string;
 };
 
+/**
+ * Sorts the releases endpoint only accepts with `flatten=1`; otherwise it
+ * responds 400 "sorting by crash statistics requires flattening".
+ */
+const SESSION_SORTS = new Set([
+  "sessions",
+  "users",
+  "crash_free_sessions",
+  "crash_free_users",
+]);
+
 export async function listReleasesPaginated(
   orgSlug: string,
-  options: ListReleasesOptions = {}
+  options: ListReleasesOptions = {},
 ): Promise<PaginatedResponse<SentryRelease[]>> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -75,6 +87,7 @@ export async function listReleasesPaginated(
       per_page: options.perPage ?? 25,
       query: options.query,
       sort: options.sort,
+      flatten: options.sort && SESSION_SORTS.has(options.sort) ? 1 : undefined,
       health: options.health ? 1 : undefined,
       project: options.project,
       environment: options.environment,
@@ -85,6 +98,7 @@ export async function listReleasesPaginated(
       per_page?: number;
       query?: string;
       sort?: string;
+      flatten?: number;
       health?: number;
       project?: number[];
       environment?: string[];
@@ -95,7 +109,7 @@ export async function listReleasesPaginated(
 
   return unwrapPaginatedResult<SentryRelease[]>(
     result,
-    "Failed to list releases"
+    "Failed to list releases",
   );
 }
 
@@ -108,14 +122,14 @@ export async function listReleasesPaginated(
 export async function listReleasesForProject(
   orgSlug: string,
   projectSlug: string,
-  options: Omit<ListReleasesOptions, "project"> = {}
+  options: Omit<ListReleasesOptions, "project"> = {},
 ): Promise<SentryRelease[]> {
   // Resolve slug → numeric ID (the API requires numeric project IDs)
   const info = await getProject(orgSlug, projectSlug);
   const n = Number(info.id);
   if (!Number.isInteger(n) || n <= 0) {
     throw new ValidationError(
-      `Project "${projectSlug}" has an invalid numeric ID: ${info.id}`
+      `Project "${projectSlug}" has an invalid numeric ID: ${info.id}`,
     );
   }
   const { data } = await listReleasesPaginated(orgSlug, {
@@ -157,7 +171,7 @@ export async function getRelease(
     adoptionStages?: boolean;
     /** Period for health stats: "24h", "7d", "14d", etc. Defaults to "24h". */
     healthStatsPeriod?: string;
-  }
+  },
 ): Promise<SentryRelease> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -186,7 +200,7 @@ export async function getRelease(
 
   return unwrapResult<SentryRelease>(
     result,
-    `Failed to get release '${version}'`
+    `Failed to get release '${version}'`,
   );
 }
 
@@ -213,7 +227,7 @@ export async function createRelease(
       author_email?: string;
       timestamp?: string;
     }>;
-  }
+  },
 ): Promise<SentryRelease> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -259,7 +273,7 @@ export async function updateRelease(
       author_email?: string;
       timestamp?: string;
     }>;
-  }
+  },
 ): Promise<SentryRelease> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -276,7 +290,7 @@ export async function updateRelease(
 
   return unwrapResult<SentryRelease>(
     result,
-    `Failed to update release '${version}'`
+    `Failed to update release '${version}'`,
   );
 }
 
@@ -288,7 +302,7 @@ export async function updateRelease(
  */
 export async function deleteRelease(
   orgSlug: string,
-  version: string
+  version: string,
 ): Promise<void> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -312,7 +326,7 @@ export async function deleteRelease(
  */
 export async function listReleaseDeploys(
   orgSlug: string,
-  version: string
+  version: string,
 ): Promise<SentryDeploy[]> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -326,7 +340,7 @@ export async function listReleaseDeploys(
 
   return unwrapResult<SentryDeploy[]>(
     result,
-    `Failed to list deploys for release '${version}'`
+    `Failed to list deploys for release '${version}'`,
   );
 }
 
@@ -347,7 +361,7 @@ export async function createReleaseDeploy(
     url?: string;
     dateStarted?: string;
     dateFinished?: string;
-  }
+  },
 ): Promise<SentryDeploy> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -379,9 +393,9 @@ export async function createReleaseDeploy(
  */
 async function getPreviousReleaseCommit(
   orgSlug: string,
-  version: string
+  version: string,
 ): Promise<string | undefined> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const regionUrl = await resolveOrgRegion(orgSlug);
     const encodedVersion = encodeURIComponent(version);
@@ -390,7 +404,7 @@ async function getPreviousReleaseCommit(
     }>(
       regionUrl,
       `organizations/${orgSlug}/releases/${encodedVersion}/previous-with-commits/`,
-      { method: "GET" }
+      { method: "GET" },
     );
     return data?.lastCommit?.id;
   } catch {
@@ -402,13 +416,9 @@ async function getPreviousReleaseCommit(
 }
 
 /**
- * Set commits on a release using auto-discovery mode.
- *
- * Lists the org's repositories from the Sentry API, matches against the
-/**
  * Message of the client-side {@link ApiError} thrown by {@link setCommitsAuto}
  * when the org has no repository integrations. Exported so callers can
- * distinguish this specific no-repo-integration case from unrelated 400s
+ * distinguish this specific no-repo-integration case from unrelated API errors
  * returned by the server (e.g. invalid commit refs), which must not be masked
  * as "no integration". Matched on `message` (not `detail`) because this error is
  * constructed client-side with `detail: undefined`.
@@ -417,9 +427,16 @@ export const NO_REPO_INTEGRATIONS_MESSAGE =
   "No repository integrations configured for this organization.";
 
 /**
- * local git remote URL to find the corresponding Sentry repo, then sends
- * a refs payload with the HEAD commit SHA. This is the equivalent of the
- * reference sentry-cli's `--auto` mode.
+ * Set commits on a release using auto-discovery mode.
+ *
+ * Looks up the org's repositories by the name from the local git remote URL to
+ * find the corresponding Sentry repo, then sends a refs payload with the HEAD
+ * commit SHA. This is the equivalent of the reference sentry-cli's `--auto`
+ * mode.
+ *
+ * The lookup asks the server to filter by name instead of walking every page,
+ * since orgs can have tens of thousands of repositories. Servers that ignore
+ * the filter return every repository, which the exact name match still handles.
  *
  * Requires a GitHub/GitLab/Bitbucket integration configured in Sentry
  * AND a local git repository whose origin remote matches a Sentry repo.
@@ -428,13 +445,13 @@ export const NO_REPO_INTEGRATIONS_MESSAGE =
  * @param version - Release version
  * @param cwd - Working directory to discover git remote and HEAD from
  * @returns Updated release detail with commit count
- * @throws {ApiError} When the org has no repository integrations (400)
+ * @throws {ApiError} When the org has no repository integrations (404)
  * @throws {ValidationError} When local git remote is missing or doesn't match any Sentry repo
  */
 export async function setCommitsAuto(
   orgSlug: string,
   version: string,
-  cwd?: string
+  cwd?: string,
 ): Promise<SentryRelease> {
   const localRepo = getRepositoryName(cwd);
   if (!localRepo) {
@@ -445,12 +462,10 @@ export async function setCommitsAuto(
         "sentry release set-commits <version> --local",
         "sentry release set-commits <version> --commit owner/repo@abc123",
       ],
-      "repository"
+      "repository",
     );
   }
 
-  // Paginate through org repos to find one matching the local git remote.
-  // Stops as soon as a match is found to avoid unnecessary API calls.
   const localRepoLower = localRepo.toLowerCase();
   let cursor: string | undefined;
   let foundAnyRepos = false;
@@ -459,6 +474,7 @@ export async function setCommitsAuto(
     const result = await listRepositoriesPaginated(orgSlug, {
       cursor,
       perPage: API_MAX_PER_PAGE,
+      query: localRepo,
     });
 
     if (result.data.length > 0) {
@@ -466,7 +482,7 @@ export async function setCommitsAuto(
     }
 
     const match = result.data.find(
-      (r) => r.name.toLowerCase() === localRepoLower
+      (r) => r.name.toLowerCase() === localRepoLower,
     );
     if (match) {
       const headCommit = getHeadCommit(cwd);
@@ -488,14 +504,24 @@ export async function setCommitsAuto(
     cursor = result.nextCursor;
   }
 
+  // The name filter returns nothing for an org whose repositories all have
+  // other names, so only report a missing integration when the org has none.
   if (!foundAnyRepos) {
-    const endpoint = `organizations/${orgSlug}/releases/${encodeURIComponent(version)}/`;
-    throw new ApiError(NO_REPO_INTEGRATIONS_MESSAGE, 400, undefined, endpoint);
+    const anyRepo = await listRepositoriesPaginated(orgSlug, { perPage: 1 });
+    if (anyRepo.data.length === 0) {
+      const endpoint = `organizations/${orgSlug}/releases/${encodeURIComponent(version)}/`;
+      throw new ApiError(
+        NO_REPO_INTEGRATIONS_MESSAGE,
+        404,
+        undefined,
+        endpoint,
+      );
+    }
   }
 
   throw new ValidationError(
     `No Sentry repository matching '${localRepo}'.`,
-    "repository"
+    "repository",
   );
 }
 
@@ -517,17 +543,24 @@ export async function setCommitsWithRefs(
     repository: string;
     commit: string;
     previousCommit?: string;
-  }>
+  }>,
 ): Promise<SentryRelease> {
+  const encodedOrg = encodeApiPathSegment(orgSlug);
+  if (encodedOrg === null) {
+    throw new ValidationError("Invalid organization slug", "organization");
+  }
+  const encodedVersion = encodeApiPathSegment(version);
+  if (encodedVersion === null) {
+    throw new ValidationError("Invalid release version", "version");
+  }
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const encodedVersion = encodeURIComponent(version);
   const { data } = await apiRequestToRegion<SentryRelease>(
     regionUrl,
-    `organizations/${orgSlug}/releases/${encodedVersion}/`,
+    `organizations/${encodedOrg}/releases/${encodedVersion}/`,
     {
       method: "PUT",
       body: { refs },
-    }
+    },
   );
   return data;
 }
@@ -550,7 +583,7 @@ export function setCommitsLocal(
     author_name?: string;
     author_email?: string;
     timestamp?: string;
-  }>
+  }>,
 ): Promise<SentryRelease> {
   return updateRelease(orgSlug, version, { commits });
 }
@@ -574,7 +607,7 @@ export type ProjectEnvironment = {
  */
 export async function listProjectEnvironments(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<ProjectEnvironment[]> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await sdkListProjectEnvironments({
@@ -587,6 +620,6 @@ export async function listProjectEnvironments(
   });
   return unwrapResult<ProjectEnvironment[]>(
     result,
-    "Failed to list environments"
+    "Failed to list environments",
   );
 }

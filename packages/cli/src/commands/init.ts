@@ -104,7 +104,7 @@ type InitFlags = {
  */
 function classifyArgs(
   first?: string,
-  second?: string
+  second?: string,
 ): { target: string | undefined; directory: string | undefined } {
   // No args — auto-detect everything
   if (!first) {
@@ -130,7 +130,7 @@ function classifyArgs(
         "",
         "Provide a single directory:",
         `  sentry init [<org>/<project>] ${first}`,
-      ].join("\n")
+      ].join("\n"),
     );
   }
 
@@ -142,7 +142,7 @@ function classifyArgs(
         "",
         "Pair a target with a directory path:",
         `  sentry init ${first} ./my-project`,
-      ].join("\n")
+      ].join("\n"),
     );
   }
 
@@ -157,7 +157,7 @@ function classifyArgs(
 }
 
 function parseFeatures(
-  features: readonly string[] | undefined
+  features: readonly string[] | undefined,
 ): string[] | undefined {
   const requested = features
     ?.flatMap((feature) => feature.split(FEATURE_DELIMITER))
@@ -176,7 +176,7 @@ function normalizeFeature(feature: string): string {
   if (!normalized) {
     throw new ValidationError(
       `Unknown init feature "${feature}". Supported features: ${SUPPORTED_FEATURE_TEXT}`,
-      "features"
+      "features",
     );
   }
   return normalized;
@@ -193,7 +193,7 @@ function isNonInteractiveContext(context: unknown): boolean {
 function validateNonInteractiveInit(
   context: unknown,
   flags: InitFlags,
-  features: readonly string[] | undefined
+  features: readonly string[] | undefined,
 ): void {
   if (!isNonInteractiveContext(context)) {
     return;
@@ -255,7 +255,7 @@ async function resolveTarget(targetArg: string | undefined): Promise<{
         throw new ValidationError(
           `Project "${parsed.projectSlug}" exists in multiple organizations.\n\n` +
             `Specify the organization:\n${orgList}\n\n` +
-            `Example: sentry init ${first.orgSlug}/${parsed.projectSlug}`
+            `Example: sentry init ${first.orgSlug}/${parsed.projectSlug}`,
         );
       }
 
@@ -273,7 +273,7 @@ async function resolveTarget(targetArg: string | undefined): Promise<{
       // Truly not found — treat as the name for a new project to create.
       // Org will be resolved later by init preflight before the workflow starts.
       log.info(
-        `No existing project "${parsed.projectSlug}" found — will create a new project with this name.`
+        `No existing project "${parsed.projectSlug}" found — will create a new project with this name.`,
       );
       return { org: undefined, project: parsed.projectSlug };
     }
@@ -367,17 +367,17 @@ export const initCommand = buildCommand<
       t: "team",
     },
   },
-  // biome-ignore lint/correctness/useYield: init renders through WizardUI instead of command output
+  // oxlint-disable-next-line require-yield -- init renders through WizardUI instead of command output
   async *func(
     this: SentryContext,
     flags: InitFlags,
     first?: string,
-    second?: string
+    second?: string,
   ) {
     // 1. Classify positionals into target vs directory
     const { target: targetArg, directory: dirArg } = classifyArgs(
       first,
-      second
+      second,
     );
 
     // 2. Resolve directory

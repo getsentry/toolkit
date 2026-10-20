@@ -37,7 +37,7 @@ const KNOWN_DEBUG_ID = "0f13a5da-412a-fbf7-c866-2048f3294f3d";
 
 /** Run `debug-files check` and capture stdout + exit code. */
 async function runCheck(
-  args: string[]
+  args: string[],
 ): Promise<{ output: string; exitCode: number | undefined }> {
   let output = "";
   const mockContext: SentryContext = {
@@ -83,7 +83,7 @@ describe("sentry debug-files check", () => {
     expect(parsed.objects[0]).toHaveProperty("debugId", KNOWN_DEBUG_ID);
     expect(parsed.objects[0]).toHaveProperty(
       "codeId",
-      "daa5130f2a41f7fbc8662048f3294f3d439ca7ff"
+      "daa5130f2a41f7fbc8662048f3294f3d439ca7ff",
     );
   });
 
@@ -111,7 +111,7 @@ describe("sentry debug-files check", () => {
     const path = join(tempDir, "unusable.sym");
     await writeFile(
       path,
-      "MODULE Linux x86_64 000000000000000000000000000000000 x\nPUBLIC 1000 0 sym"
+      "MODULE Linux x86_64 000000000000000000000000000000000 x\nPUBLIC 1000 0 sym",
     );
 
     const { output, exitCode } = await runCheck([path, "--json"]);

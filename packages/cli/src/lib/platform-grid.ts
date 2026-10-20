@@ -31,7 +31,7 @@ export function renderPlatformGrid(items: readonly string[]): string {
       (_, ci) => ({
         header: " ",
         value: (row: string[]) => row[ci] ?? "",
-      })
+      }),
     );
     return buildMarkdownTable(rows, columns);
   }

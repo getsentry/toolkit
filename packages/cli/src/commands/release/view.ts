@@ -8,6 +8,7 @@
 import type { SentryContext } from "../../context.js";
 import { getRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownCell,
@@ -75,7 +76,7 @@ function formatProjectHealthTable(release: SentryRelease): string {
       "CRASH-FREE SESSIONS:",
       "USERS (24h):",
       "SESSIONS (24h):",
-    ])
+    ]),
   );
 
   for (const project of projects) {
@@ -98,7 +99,7 @@ function formatReleaseDetails(release: SentryRelease): string {
   const lines: string[] = [];
 
   lines.push(
-    `## Release ${escapeMarkdownInline(release.shortVersion || release.version)}`
+    `## Release ${escapeMarkdownInline(release.shortVersion || release.version)}`,
   );
   lines.push("");
 
@@ -178,7 +179,7 @@ export const viewCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to view",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },
@@ -194,7 +195,7 @@ export const viewCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string
+    target: string,
   ) {
     applyFreshFlag(flags);
     const { cwd } = this;
@@ -202,7 +203,7 @@ export const viewCommand = buildCommand({
     const { version, org, detectedFrom } = await resolveReleaseTarget(
       target,
       USAGE_HINT,
-      cwd
+      cwd,
     );
 
     const release = await getRelease(org, version, {

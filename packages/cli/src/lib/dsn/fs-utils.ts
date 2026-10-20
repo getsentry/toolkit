@@ -5,7 +5,7 @@
  */
 
 import { stat } from "node:fs/promises";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 
 /**
@@ -20,6 +20,7 @@ import * as Sentry from "@sentry/node-core/light";
  * - EINVAL: Invalid argument (e.g., scandir on a special/virtual filesystem entry like /proc paths)
  * - ELOOP: Too many symbolic links (e.g., cyclic symlink encountered during scan)
  * - ETIMEDOUT: Connection timed out (e.g., transient read on a network or cloud-mounted filesystem)
+ * - ENOTCONN: Transport endpoint is not connected (e.g., a stale or disconnected FUSE/network mount)
  * - Unknown system error: Non-POSIX kernel errors on macOS (e.g., errno -11 / EAGAIN on .trace bundles)
  *   that Node.js cannot map to a standard code string
  *
@@ -42,6 +43,7 @@ function isIgnorableFileError(error: unknown): boolean {
     code === "EINVAL" ||
     code === "ELOOP" ||
     code === "ETIMEDOUT" ||
+    code === "ENOTCONN" ||
     // macOS surfaces non-POSIX kernel errors (e.g. errno -11 on .trace bundles)
     // as "Unknown system error -N" without a standard POSIX code string.
     code === "UNKNOWN"
@@ -62,7 +64,7 @@ function isIgnorableFileError(error: unknown): boolean {
  */
 export function handleFileError(
   error: unknown,
-  context: { operation: string; path?: string }
+  context: { operation: string; path?: string },
 ): void {
   if (!isIgnorableFileError(error)) {
     Sentry.captureException(error, {
@@ -91,7 +93,7 @@ export function handleFileError(
  */
 export async function isRegularFile(
   filePath: string,
-  operation = "isRegularFile"
+  operation = "isRegularFile",
 ): Promise<boolean> {
   try {
     const stats = await stat(filePath);

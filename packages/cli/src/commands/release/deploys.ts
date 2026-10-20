@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { listReleaseDeploys } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
@@ -51,7 +52,7 @@ export const deploysCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },
@@ -59,14 +60,14 @@ export const deploysCommand = buildCommand({
   async *func(
     this: SentryContext,
     _flags: { readonly json: boolean; readonly fields?: string[] },
-    target: string
+    target: string,
   ) {
     const { cwd } = this;
 
     const { version, org } = await resolveReleaseTarget(
       target,
       USAGE_HINT,
-      cwd
+      cwd,
     );
 
     const deploys = await listReleaseDeploys(org, version);

@@ -19,7 +19,7 @@ const { apiRequestToRegionMock, uploadMissingBufferChunksMock } = vi.hoisted(
   () => ({
     apiRequestToRegionMock: vi.fn(),
     uploadMissingBufferChunksMock: vi.fn(() => Promise.resolve()),
-  })
+  }),
 );
 
 vi.mock("../../../src/lib/region.js", () => ({
@@ -54,7 +54,7 @@ vi.mock("../../../src/lib/api/chunk-upload.js", async (importOriginal) => {
 function makeDif(
   name: string,
   content: string,
-  debugId?: string
+  debugId?: string,
 ): DebugFileUpload {
   return { name, debugId, content: Buffer.from(content) };
 }
@@ -97,7 +97,7 @@ beforeEach(() => {
   apiRequestToRegionMock.mockReset();
   uploadMissingBufferChunksMock.mockClear();
   vi.mocked(getChunkUploadOptions).mockResolvedValue(
-    BASE_SERVER_OPTIONS as Awaited<ReturnType<typeof getChunkUploadOptions>>
+    BASE_SERVER_OPTIONS as Awaited<ReturnType<typeof getChunkUploadOptions>>,
   );
 });
 
@@ -130,7 +130,7 @@ describe("uploadDebugFiles", () => {
           data[key] = { state: "ok" };
         }
         return { data };
-      }
+      },
     );
 
     const results = await uploadDebugFiles({
@@ -164,7 +164,7 @@ describe("uploadDebugFiles", () => {
           data[key] = { state: "ok" };
         }
         return { data };
-      }
+      },
     );
 
     await uploadDebugFiles({
@@ -193,13 +193,13 @@ describe("uploadDebugFiles", () => {
             [key]: { state: "not_found", missingChunks: body[key]?.chunks },
           },
         };
-      }
+      },
     );
     apiRequestToRegionMock.mockImplementationOnce(
       async (_url: string, _endpoint: string, init: { body: object }) => {
         const key = Object.keys(init.body as object)[0] as string;
         return { data: { [key]: { state: "created" } } };
-      }
+      },
     );
 
     const promise = uploadDebugFiles({
@@ -224,13 +224,13 @@ describe("uploadDebugFiles", () => {
       async (_url: string, _endpoint: string, init: { body: object }) => {
         const key = Object.keys(init.body as object)[0] as string;
         return { data: { [key]: { state: "assembling" } } };
-      }
+      },
     );
     apiRequestToRegionMock.mockImplementationOnce(
       async (_url: string, _endpoint: string, init: { body: object }) => {
         const key = Object.keys(init.body as object)[0] as string;
         return { data: { [key]: { state: "ok" } } };
-      }
+      },
     );
 
     const promise = uploadDebugFiles({
@@ -254,7 +254,7 @@ describe("uploadDebugFiles", () => {
         return {
           data: { [key]: { state: "error", detail: "corrupt object" } },
         };
-      }
+      },
     );
 
     const results = await uploadDebugFiles({
@@ -275,7 +275,7 @@ describe("uploadDebugFiles", () => {
       async (_url: string, _endpoint: string, init: { body: object }) => {
         const key = Object.keys(init.body as object)[0] as string;
         return { data: { [key]: { state: "assembling" } } };
-      }
+      },
     );
 
     await expect(
@@ -284,7 +284,7 @@ describe("uploadDebugFiles", () => {
         difs: [dif],
         wait: true,
         maxWaitMs: 0,
-      })
+      }),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -297,7 +297,7 @@ describe("uploadDebugFiles", () => {
           data[key] = { state: "ok" };
         }
         return { data };
-      }
+      },
     );
 
     const results = await uploadDebugFiles({
@@ -325,7 +325,7 @@ describe("uploadDebugFiles", () => {
           data[key] = { state: "ok" };
         }
         return { data };
-      }
+      },
     );
 
     await uploadDebugFiles({
@@ -351,13 +351,13 @@ describe("uploadDebugFiles", () => {
       async (_url: string, _endpoint: string, init: { body: object }) => {
         const key = Object.keys(init.body as object)[0] as string;
         return { data: { [key]: { state: "not_found" } } };
-      }
+      },
     );
     apiRequestToRegionMock.mockImplementationOnce(
       async (_url: string, _endpoint: string, init: { body: object }) => {
         const key = Object.keys(init.body as object)[0] as string;
         return { data: { [key]: { state: "ok" } } };
-      }
+      },
     );
 
     await uploadDebugFiles({
@@ -383,7 +383,7 @@ describe("uploadDebugFiles", () => {
           data[key] = { state: "ok" };
         }
         return { data };
-      }
+      },
     );
 
     const results = await uploadDebugFiles({
@@ -421,7 +421,7 @@ describe("uploadDebugFiles", () => {
         difs: [makeDif("big.so", "way too large", "id-big")],
         wait: false,
         maxWaitMs: 1000,
-      })
+      }),
     ).rejects.toThrow(/exceed the maximum file size/);
     expect(apiRequestToRegionMock).not.toHaveBeenCalled();
   });
@@ -435,7 +435,7 @@ describe("uploadDebugFiles", () => {
       async (_url: string, _endpoint: string, init: { body: object }) => {
         const key = Object.keys(init.body as object)[0] as string;
         return { data: { [key]: { state: "assembling" } } };
-      }
+      },
     );
 
     const promise = uploadDebugFiles({
@@ -458,7 +458,7 @@ describe("uploadDebugFiles", () => {
       async (_url: string, _endpoint: string, init: { body: object }) => {
         const key = Object.keys(init.body as object)[0] as string;
         return { data: { [key]: { state: "ok" } } };
-      }
+      },
     );
 
     const results = await uploadDebugFiles({

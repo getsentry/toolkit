@@ -24,6 +24,7 @@ export const TOP_LEVEL_TOOL_NAMES = [
   "search_metrics",
   "search_profiles",
   "search_replays",
+  "find_dropped_events",
   "analyze_issue_with_seer",
   "search_issues",
   "get_sentry_resource",

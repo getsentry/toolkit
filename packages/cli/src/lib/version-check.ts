@@ -7,7 +7,7 @@
  * subsequent runs.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import { compare as semverCompare } from "semver";
 import type { UpgradeSource } from "./binary.js";
@@ -71,7 +71,7 @@ const SUPPRESSED_CLI_SUBCOMMANDS = new Set(["setup", "fix"]);
 
 /** Global value-flag names that consume the following token as their value. */
 const GLOBAL_VALUE_FLAG_NAMES = new Set(
-  GLOBAL_FLAGS.filter((f) => f.kind === "value").map((f) => f.name)
+  GLOBAL_FLAGS.filter((f) => f.kind === "value").map((f) => f.name),
 );
 
 /**
@@ -145,7 +145,7 @@ function cliGroupIndex(args: readonly string[]): number | undefined {
  */
 function cliSubcommandAfterGroup(
   args: readonly string[],
-  start: number
+  start: number,
 ): string | undefined {
   for (let i = start + 1; i < args.length; i += 1) {
     const token = args[i] ?? "";
@@ -232,7 +232,7 @@ async function maybePrefetchPatches(
   channel: "stable" | "nightly",
   latestVersion: string,
   signal: AbortSignal,
-  source: UpgradeSource
+  source: UpgradeSource,
 ): Promise<void> {
   if (semverCompare(latestVersion, CLI_VERSION) !== 1) {
     return;
@@ -311,7 +311,7 @@ function checkForUpdateInBackgroundImpl(): void {
         pendingAbortController = null;
         span.end();
       }
-    }
+    },
   );
 }
 
@@ -360,7 +360,7 @@ function canNotifyAgain(lastNotified: number | null): boolean {
  * subsequent invocations within the rate-limit window return null.
  */
 function getUpdateNotificationWithCopy(
-  formatNotification: (latestVersion: string) => string
+  formatNotification: (latestVersion: string) => string,
 ): string | null {
   // Gate 1: non-TTY stderr (scripts, CI, pipes).
   if (!isStderrTTY()) {
@@ -484,7 +484,7 @@ export function getUpdateNotification(): string | null {
  */
 export function getErrorUpdateNotification(
   error: unknown,
-  args: string[]
+  args: string[],
 ): string | null {
   if (shouldSuppressNotification(args)) {
     return null;

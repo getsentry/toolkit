@@ -52,8 +52,8 @@ function formatBundleResult(data: BundleSourcesResult): string {
     return renderMarkdown(
       colorTag(
         "warning",
-        "No source files referenced by this debug file were found on disk; nothing was bundled."
-      )
+        "No source files referenced by this debug file were found on disk; nothing was bundled.",
+      ),
     );
   }
   const rows: [string, string][] = [
@@ -125,17 +125,17 @@ export const bundleSourcesCommand = buildCommand({
           } catch (err) {
             log.debug(
               `Source file not available, skipping: ${sourcePath}`,
-              err
+              err,
             );
             return null;
           }
-        }
+        },
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new ValidationError(
         `'${path}' is not a recognized debug information file: ${msg}`,
-        "path"
+        "path",
       );
     }
 
@@ -156,7 +156,7 @@ export const bundleSourcesCommand = buildCommand({
 
     if (result.objectCount > 1) {
       log.warn(
-        `'${path}' contains ${result.objectCount} objects; bundled sources for ${result.debugId} only. Other slices are not included.`
+        `'${path}' contains ${result.objectCount} objects; bundled sources for ${result.debugId} only. Other slices are not included.`,
       );
     }
 

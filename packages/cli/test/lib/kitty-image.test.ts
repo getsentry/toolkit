@@ -21,7 +21,7 @@ const ESC = "\x1b";
 function solidImage(
   width: number,
   height: number,
-  rgba: [number, number, number, number]
+  rgba: [number, number, number, number],
 ): DecodedImage {
   const data = new Uint8Array(width * height * 4);
   for (let i = 0; i < width * height; i++) {
@@ -64,7 +64,7 @@ describe("encodeImageToKitty", () => {
   test("chunks large payloads with m=1 on all but the last chunk", () => {
     // 64×64 RGBA ≈ 16 KiB → ~21 KiB base64, well over the 4096-byte chunk cap.
     const out = encodeImageToKitty(
-      solidImage(64, 64, [10, 20, 30, 255])
+      solidImage(64, 64, [10, 20, 30, 255]),
     ) as string;
     // Each chunk is an APC sequence terminated by ESC \; split on the introducer.
     const chunks = out
@@ -84,7 +84,7 @@ describe("encodeImageToKitty", () => {
 
   test("downscales wide images to the max width", () => {
     const out = encodeImageToKitty(
-      solidImage(2000, 10, [0, 0, 0, 255])
+      solidImage(2000, 10, [0, 0, 0, 255]),
     ) as string;
     expect(out).toContain("s=800");
   });
@@ -100,7 +100,7 @@ describe("imageBytesToKitty", () => {
 
   test("returns undefined for an unsupported format", () => {
     expect(
-      imageBytesToKitty(new Uint8Array([1, 2, 3]), "text/plain")
+      imageBytesToKitty(new Uint8Array([1, 2, 3]), "text/plain"),
     ).toBeUndefined();
   });
 

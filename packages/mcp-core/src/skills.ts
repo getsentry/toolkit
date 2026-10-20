@@ -61,7 +61,7 @@ export const SKILLS: Record<Skill, SkillDefinition> = {
     id: "project-management",
     name: "Manage Projects & Teams",
     description:
-      "Create and modify projects, teams, DSNs, uptime monitors, metric monitors, and alert rules",
+      "Create and modify projects, teams, DSNs, cron monitor environments, uptime monitors, metric monitors, and alert rules",
     defaultEnabled: false,
     order: 5,
   },

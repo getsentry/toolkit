@@ -54,12 +54,12 @@ describe("DSN detection from $HOME fallback", () => {
     });
     writeFileSync(
       join(home, "Library", "Group Containers", "x.1password", "config.json"),
-      `{ "dsn": "${sensitiveDsn}" }`
+      `{ "dsn": "${sensitiveDsn}" }`,
     );
     mkdirSync(join(home, ".aws"), { recursive: true });
     writeFileSync(
       join(home, ".aws", "credentials"),
-      `sentry_dsn=${sensitiveDsn}`
+      `sentry_dsn=${sensitiveDsn}`,
     );
 
     const result = await detectDsn(home);
@@ -82,7 +82,7 @@ describe("DSN detection from $HOME fallback", () => {
     const scannedDsn = "https://leaked@o999.ingest.sentry.io/999";
     writeFileSync(
       join(home, "config.ts"),
-      `Sentry.init({ dsn: "${scannedDsn}" });`
+      `Sentry.init({ dsn: "${scannedDsn}" });`,
     );
 
     const result = await detectDsn(home);
@@ -109,7 +109,7 @@ describe("DSN detection from $HOME fallback", () => {
     mkdirSync(join(project, "src"), { recursive: true });
     writeFileSync(
       join(project, "src", "config.ts"),
-      `Sentry.init({ dsn: "${projectDsn}" })`
+      `Sentry.init({ dsn: "${projectDsn}" })`,
     );
 
     const result = await detectDsn(project);
@@ -139,14 +139,14 @@ describe("DSN detection from $HOME fallback", () => {
       // downward scan only if the home-fallback skip fails to trigger.
       writeFileSync(
         join(ancestor, "config.ts"),
-        `Sentry.init({ dsn: "${scannedDsn}" });`
+        `Sentry.init({ dsn: "${scannedDsn}" });`,
       );
       // And one inside a would-be sibling home, to mirror the real risk.
       const sibling = join(ancestor, "bob");
       mkdirSync(sibling, { recursive: true });
       writeFileSync(
         join(sibling, "config.ts"),
-        `Sentry.init({ dsn: "${scannedDsn}" });`
+        `Sentry.init({ dsn: "${scannedDsn}" });`,
       );
 
       const result = await detectDsn(ancestor);

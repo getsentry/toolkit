@@ -8,6 +8,7 @@ import type { SentryContext } from "../../context.js";
 import { getOrganization } from "../../lib/api-client.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { formatOrgDetails } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -17,7 +18,7 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { resolveOrg } from "../../lib/resolve-target.js";
-import { buildOrgUrl } from "../../lib/sentry-urls.js";
+import { buildOrgUrl } from "../../lib/sentry-web-urls.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -44,7 +45,7 @@ export const viewCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (optional if auto-detected)",
-          parse: String,
+          parse: parseOrgTarget,
           optional: true,
         },
       ],

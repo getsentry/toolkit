@@ -53,7 +53,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false;
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const proc = spawn(command, args, {
       stdio: ["pipe", "ignore", "ignore"],
@@ -88,7 +88,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  */
 export function setupCopyKeyListener(
   stdin: NodeJS.ReadStream,
-  getText: () => string
+  getText: () => string,
 ): () => void {
   if (!stdin.isTTY) {
     return () => {

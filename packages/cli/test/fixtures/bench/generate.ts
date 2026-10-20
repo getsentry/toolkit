@@ -73,12 +73,12 @@ export type FixtureMeta = {
  * plenty for fixture generation. The `next()` method returns a float
  * in [0, 1) matching Math.random()'s contract.
  *
- * Note: the biome rule against bitwise operators is intentionally
+ * The lint rule against bitwise operators is intentionally
  * suppressed for this class. Xorshift's defining property is the
  * bitwise xor/shift sequence; rewriting with arithmetic would change
  * the output (and the "reproducible trees" property).
  */
-// biome-ignore-start lint/suspicious/noBitwiseOperators: xorshift32 requires bitwise ops
+// oxlint-disable no-bitwise -- xorshift32 requires bitwise ops
 class XorShift32 {
   private state: number;
 
@@ -113,7 +113,7 @@ class XorShift32 {
     return this.next() < p;
   }
 }
-// biome-ignore-end lint/suspicious/noBitwiseOperators: xorshift32 requires bitwise ops
+// oxlint-enable no-bitwise
 
 /** Synthetic DSN templates scattered throughout text files. */
 const DSN_TEMPLATES = [
@@ -168,7 +168,7 @@ out/
  */
 export function generateFixture(
   spec: FixtureSpec,
-  options: { force?: boolean } = {}
+  options: { force?: boolean } = {},
 ): FixtureMeta {
   const existing = readMeta(spec.rootDir);
   if (!options.force && existing && specMatches(existing.spec, spec)) {
@@ -197,7 +197,7 @@ export function generateFixture(
   writeFileSync(
     join(spec.rootDir, "node_modules", "some-pkg", "index.js"),
     "// should never be scanned\n",
-    "utf8"
+    "utf8",
   );
 
   if (spec.packages === 0) {
@@ -216,7 +216,7 @@ export function generateFixture(
       const pkgDir = join(
         spec.rootDir,
         monorepoRoot,
-        `pkg-${i.toString().padStart(3, "0")}`
+        `pkg-${i.toString().padStart(3, "0")}`,
       );
       mkdirSync(pkgDir, { recursive: true });
       if (spec.gitignoreDepth === "nested") {
@@ -240,7 +240,7 @@ export function generateFixture(
   writeFileSync(
     join(spec.rootDir, ".meta.json"),
     JSON.stringify(meta, null, 2),
-    "utf8"
+    "utf8",
   );
   return meta;
 }
@@ -250,12 +250,12 @@ function populatePackage(
   baseDir: string,
   spec: FixtureSpec,
   rng: XorShift32,
-  _opts: { includeNested: boolean }
+  _opts: { includeNested: boolean },
 ): { fileCount: number; dsnCount: number } {
   const targetFiles = spec.filesPerPackage;
   const textCount = Math.max(
     1,
-    Math.round(targetFiles * (1 - spec.binaryRatio))
+    Math.round(targetFiles * (1 - spec.binaryRatio)),
   );
   const binaryCount = Math.max(0, targetFiles - textCount);
 
@@ -320,7 +320,7 @@ function pickSubdir(base: string, depth: number, rng: XorShift32): string {
 function buildTextFileContent(
   avgKB: number,
   includeDsn: boolean,
-  rng: XorShift32
+  rng: XorShift32,
 ): string {
   // Target size varies between 0.5x–2x avgKB to simulate a lognormal-ish spread.
   const sizeKB = avgKB * (0.5 + rng.next() * 1.5);

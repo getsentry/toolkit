@@ -30,7 +30,7 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
  */
 export function parseReleaseArg(
   arg: string,
-  usageHint: string
+  usageHint: string,
 ): { version: string; orgSlug?: string } {
   const firstSlash = arg.indexOf("/");
 
@@ -48,7 +48,7 @@ export function parseReleaseArg(
   if (!arg) {
     throw new ValidationError(
       `Release version is required.\n\n  Usage: ${usageHint}`,
-      "version"
+      "version",
     );
   }
 
@@ -86,7 +86,7 @@ export type ResolvedReleaseTarget = {
 export async function resolveReleaseTarget(
   target: string | undefined,
   usageHint: string,
-  cwd: string
+  cwd: string,
 ): Promise<ResolvedReleaseTarget> {
   const trimmed = target?.trim();
   if (!trimmed) {

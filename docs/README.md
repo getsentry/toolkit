@@ -1,78 +1,39 @@
-# Contributor Docs
+# Toolkit Documentation
 
-This directory contains contributor documentation used by humans and LLMs. The
-canonical workflow and required docs live in [../AGENTS.md](../AGENTS.md)
-(`CLAUDE.md` is a symlink to the same file).
+This directory is the documentation home for the Toolkit repository. It covers
+the Sentry CLI, the MCP server, and the code they share. Start with the product
+you are working on:
 
-## Start Here
+- [Sentry CLI](cli/README.md) — commands, contributor guides, generated docs,
+  and the published CLI documentation site.
+- [Sentry MCP](mcp/README.md) — tools, transports, Cloudflare, operations, and
+  MCP-specific tests and specs.
 
-- Tool implementation: [contributing/adding-tools.md](contributing/adding-tools.md)
-- Tool output policy: [contributing/tool-responses.md](contributing/tool-responses.md)
-- Testing: [testing/overview.md](testing/overview.md)
-- Shared implementation patterns: [contributing/common-patterns.md](contributing/common-patterns.md)
+The published CLI site lives in `apps/cli-docs/` because CLI releases build
+and package it from that workspace. The contributor index here links to its
+source and to <https://cli.sentry.dev/>. MCP documentation lives in the topic
+directories below; the MCP index explains which guides apply to that product.
 
-## Topic Map
+## Shared Contributor Guides
 
-### Contributing
+- [Coding guidelines](contributing/coding-guidelines.md) — repository-wide style
+  and the separate CLI and MCP patterns.
+- [Documentation style](contributing/documentation-style-guide.md) — how to
+  write and link Toolkit docs.
+- [Pull requests](contributing/pr-management.md) — contribution and review
+  workflow.
+- [Quality checks](contributing/quality-checks.md) — repository checks before
+  a change is proposed.
 
-- [contributing/adding-tools.md](contributing/adding-tools.md) - Tool structure, visibility, implementation, and registration
-- [contributing/api-patterns.md](contributing/api-patterns.md) - Sentry API client and MSW patterns
-- [contributing/coding-guidelines.md](contributing/coding-guidelines.md) - TypeScript and code style guidance
-- [contributing/common-patterns.md](contributing/common-patterns.md) - Shared Zod, validation, and formatting patterns
-- [contributing/documentation-style-guide.md](contributing/documentation-style-guide.md) - Documentation style guide
-- [contributing/error-handling.md](contributing/error-handling.md) - Error hierarchy and propagation
-- [contributing/pr-management.md](contributing/pr-management.md) - Commit and PR guidelines
-- [contributing/quality-checks.md](contributing/quality-checks.md) - Quality gates and pre-commit checks
-- [contributing/search-events-api-patterns.md](contributing/search-events-api-patterns.md) - Search Events API guidance
-- [contributing/tool-responses.md](contributing/tool-responses.md) - User-facing tool output policy, snapshot review, and QA expectations
+For package-specific rules, see the root [AGENTS.md](../AGENTS.md) and the
+[CLI AGENTS.md](../packages/cli/AGENTS.md). `packages/toolkit-core/` contains
+shared primitives used by both products.
 
-### Testing
+## Ownership
 
-- [testing/overview.md](testing/overview.md) - Unit, snapshot, eval, and agent CLI testing
-- [testing/stdio.md](testing/stdio.md) - Stdio transport testing
-- [testing/remote.md](testing/remote.md) - Remote server and OAuth testing
-
-### Architecture And Operations
-
-- [architecture/overview.md](architecture/overview.md) - System design
-- [operations/embedded-agents.md](operations/embedded-agents.md) - Embedded LLM provider configuration
-- [operations/github-actions.md](operations/github-actions.md) - GitHub Actions guidance
-- [operations/logging.md](operations/logging.md) - Logging guidance
-- [operations/monitoring.md](operations/monitoring.md) - Monitoring guidance
-- [operations/oauth-signout-playbook.md](operations/oauth-signout-playbook.md) - Remote OAuth diagnostic runbook
-- [operations/security.md](operations/security.md) - Authentication and security patterns
-- [operations/stdio-auth.md](operations/stdio-auth.md) - Device code auth and token caching
-- [operations/token-cost-tracking.md](operations/token-cost-tracking.md) - Tool definition token cost tracking
-
-### Cloudflare
-
-- [cloudflare/overview.md](cloudflare/overview.md) - Cloudflare package overview
-- [cloudflare/architecture.md](cloudflare/architecture.md) - Cloudflare architecture
-- [cloudflare/oauth-architecture.md](cloudflare/oauth-architecture.md) - Cloudflare OAuth architecture
-
-### Integrations
-
-- [integrations/claude-code-plugin.md](integrations/claude-code-plugin.md) - Plugin structure and agent prompts
-- [integrations/ide-instructions-refactor.md](integrations/ide-instructions-refactor.md) - IDE instruction refactor notes
-
-### Specs
-
-- [specs/README.md](specs/README.md) - Specs index
-- [specs/alert-rules.md](specs/alert-rules.md) - Alert inspection, editing, options, and connected sources
-- [specs/embedded-agent-openai-routing.md](specs/embedded-agent-openai-routing.md) - Embedded agent OpenAI routing spec
-- [specs/project-management.md](specs/project-management.md) - Project management tools spec
-- [specs/remembered-oauth-skills.md](specs/remembered-oauth-skills.md) - Remembered OAuth skill defaults spec
-- [specs/search-events.md](specs/search-events.md) - Search Events spec
-- [specs/sentry-bearer-cloudflare-auth.md](specs/sentry-bearer-cloudflare-auth.md) - Direct Sentry token auth for the Cloudflare transport
-- [specs/subpath-constraints.md](specs/subpath-constraints.md) - Subpath constraints spec
-
-### Releases
-
-- [releases/stdio.md](releases/stdio.md) - npm package release
-- [releases/cloudflare.md](releases/cloudflare.md) - Cloudflare deployment
-
-## Maintenance
-
-Update docs when patterns change, new tools are added, or common issues arise.
-Prefer cross-links over duplicated guidance: topic docs should link to the
-canonical policy or pattern that owns the detail.
+Keep repository-wide contributor guidance in `docs/contributing/`. Put product
+guides under the relevant product index, and link to existing material rather
+than copying it. CLI website pages and generated command documentation remain
+in `apps/cli-docs/`; changes there follow the CLI documentation build and
+release. Root `docs/` changes run the repository documentation checks; they do
+not deploy a website or select a product build on their own.

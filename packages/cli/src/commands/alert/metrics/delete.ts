@@ -77,19 +77,19 @@ export const deleteCommand = buildDeleteCommand({
     requireExplicitTarget(
       parseOrgProjectArg(targetArg),
       "Metric alert target",
-      USAGE_HINT
+      USAGE_HINT,
     );
     const org = await resolveOrgOnlyFromArg(
       targetArg,
       cwd,
-      "alert metrics delete"
+      "alert metrics delete",
     );
     const orgSlugs = [org];
 
     const { orgSlug, rule } = await resolveMetricAlertRule(
       orgSlugs,
       ref,
-      USAGE_HINT
+      USAGE_HINT,
     );
     const key = `${orgSlug}/${rule.id}`;
     const name = rule.name;
@@ -105,7 +105,7 @@ export const deleteCommand = buildDeleteCommand({
     if (!isConfirmationBypassed(flags)) {
       const ok = await confirmByTyping(
         key,
-        `Type '${key}' to permanently delete this metric alert rule:`
+        `Type '${key}' to permanently delete this metric alert rule:`,
       );
       if (!ok) {
         logger.info("Delete cancelled.");

@@ -22,7 +22,7 @@ export function extractSentryOptions(sdkTypesSource: string): string {
   const startMatch = sdkTypesSource.match(SENTRY_OPTIONS_START);
   if (!startMatch || startMatch.index === undefined) {
     throw new Error(
-      `Could not find the \`SentryOptions\` declaration in ${SDK_TYPES_PATH}.`
+      `Could not find the \`SentryOptions\` declaration in ${SDK_TYPES_PATH}.`,
     );
   }
 
@@ -42,7 +42,7 @@ export function extractSentryOptions(sdkTypesSource: string): string {
   const endMatch = sdkTypesSource.slice(i - 1).match(SENTRY_OPTIONS_END);
   if (depth !== 0 || !endMatch) {
     throw new Error(
-      `Could not find the \`SentryOptions\` declaration in ${SDK_TYPES_PATH}.`
+      `Could not find the \`SentryOptions\` declaration in ${SDK_TYPES_PATH}.`,
     );
   }
 

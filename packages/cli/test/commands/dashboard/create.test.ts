@@ -16,11 +16,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 
@@ -31,11 +31,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../src/types/dashboard.js";
 
@@ -160,7 +160,7 @@ describe("dashboard create", () => {
     const func = await createCommand.loader();
 
     await expect(
-      func.call(context, { json: false }, "My Dashboard")
+      func.call(context, { json: false }, "My Dashboard"),
     ).rejects.toThrow(ContextError);
   });
 
@@ -171,7 +171,7 @@ describe("dashboard create", () => {
       context,
       { json: false },
       "my-org/my-project",
-      "My Dashboard"
+      "My Dashboard",
     );
 
     expect(fetchProjectIdSpy).toHaveBeenCalledWith("my-org", "my-project");

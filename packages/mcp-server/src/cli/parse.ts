@@ -33,11 +33,11 @@ export function parseArgv(argv: string[]): CliArgs {
   });
 
   const knownLong = new Set(Object.keys(options));
-  const knownShort = new Set([
-    ...(Object.values(options)
+  const knownShort = new Set(
+    Object.values(options)
       .map((o) => ("short" in o ? (o.short as string | undefined) : undefined))
-      .filter(Boolean) as string[]),
-  ]);
+      .filter(Boolean) as string[],
+  );
 
   const unknownArgs: string[] = [];
   for (const t of (tokens as any[]) || []) {

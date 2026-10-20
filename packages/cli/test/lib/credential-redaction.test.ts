@@ -5,6 +5,44 @@ import { SentryError } from "../../src/lib/sdk-types.js";
 
 describe("credential redaction", () => {
   test.each([
+    ["/ingest/SYNTHETIC_ingest-cap", "/ingest/[REDACTED]"],
+    [
+      "/stream?cap=SYNTHETIC_read-cap&base64=true",
+      "/stream?cap=[REDACTED]&base64=true",
+    ],
+    [
+      "/stream?base64=true&cap=SYNTHETIC_read-cap",
+      "/stream?base64=true&cap=[REDACTED]",
+    ],
+    [
+      "/stream?cap=SYNTHETIC_one&cap=SYNTHETIC_two",
+      "/stream?cap=[REDACTED]&cap=[REDACTED]",
+    ],
+    ["/ui/reset?cap=SYNTHETIC_read-cap", "/ui/reset?cap=[REDACTED]"],
+    ["/ui/retention?cap=SYNTHETIC_read-cap", "/ui/retention?cap=[REDACTED]"],
+    ["/ui/close?cap=SYNTHETIC_read-cap", "/ui/close?cap=[REDACTED]"],
+  ])(
+    "redacts Local URL capabilities in diagnostics: %s",
+    (suffix, safeSuffix) => {
+      const path = "/_local/v1/sessions/session-id";
+      for (const origin of ["", "http://127.0.0.1:8969", "http://[::1]:8969"]) {
+        const message = `POST ${origin}${path}${suffix}`;
+        const expected = `POST ${origin}${path}${safeSuffix}`;
+        expect(redactCredentialText(message)).toBe(expected);
+        expect(
+          JSON.parse(redactCredentialText(JSON.stringify({ message }))),
+        ).toEqual({ message: expected });
+      }
+    },
+  );
+
+  test("preserves URLs outside the Local capability routes", () => {
+    const message =
+      "https://example.com/stream?cap=public /_local/v1/sessions/web /_local/v1/sessions/web/ingest/:cap";
+    expect(redactCredentialText(message)).toBe(message);
+  });
+
+  test.each([
     "sntrys_SYNTHETIC_PAYLOAD\n_SYNTHETIC_SECRET",
     "sntryu_SYNTHETIC_PAYLOAD\r\n_SYNTHETIC_SECRET",
     "legacy_SYNTHETIC_PAYLOAD\n_SYNTHETIC_SECRET",
@@ -45,7 +83,7 @@ describe("credential redaction", () => {
     const diagnostic = 'Headers.set: "Bearer SYNTHETIC_SECRET"; ';
     const expected = 'Headers.set: "Bearer [REDACTED]"; ';
     expect(redactCredentialText(diagnostic.repeat(10_000))).toBe(
-      expected.repeat(10_000)
+      expected.repeat(10_000),
     );
   });
 
@@ -68,7 +106,7 @@ describe("credential redaction", () => {
       const input = `Rejected ${prefix}SYNTHETIC_FIRST${separator}SYNTHETIC_TAIL`;
       expect(redactCredentialText(input)).not.toContain("SYNTHETIC");
       expect(
-        redactCredentialText(JSON.stringify({ error: input }))
+        redactCredentialText(JSON.stringify({ error: input })),
       ).not.toContain("SYNTHETIC");
     }
   });
@@ -115,7 +153,7 @@ describe("credential redaction", () => {
 
   test("redacts a quoted header truncated before its closing quote", () => {
     expect(
-      redactCredentialText('Headers.set: "Bearer legacy_PAYLOAD\n_SECRET...')
+      redactCredentialText('Headers.set: "Bearer legacy_PAYLOAD\n_SECRET...'),
     ).toBe('Headers.set: "Bearer [REDACTED]"');
   });
 
@@ -153,7 +191,7 @@ describe("error output boundaries", () => {
     expect(error.stack).not.toContain("SYNTHETIC");
     expect(error.stderr).not.toContain("SYNTHETIC");
     expect(JSON.stringify({ message: error.message, ...error })).not.toContain(
-      "SYNTHETIC"
+      "SYNTHETIC",
     );
   });
 });

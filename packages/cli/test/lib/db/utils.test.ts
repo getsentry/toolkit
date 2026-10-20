@@ -6,7 +6,7 @@ describe("upsert", () => {
     const result = upsert("auth", { id: 1, token: "abc123" }, ["id"]);
 
     expect(result.sql).toBe(
-      "INSERT INTO auth (id, token) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET token = excluded.token"
+      "INSERT INTO auth (id, token) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET token = excluded.token",
     );
     expect(result.values).toEqual([1, "abc123"]);
   });
@@ -15,11 +15,11 @@ describe("upsert", () => {
     const result = upsert(
       "users",
       { id: 1, name: "Bob", age: 30, updated_at: 12_345 },
-      ["id"]
+      ["id"],
     );
 
     expect(result.sql).toBe(
-      "INSERT INTO users (id, name, age, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, age = excluded.age, updated_at = excluded.updated_at"
+      "INSERT INTO users (id, name, age, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, age = excluded.age, updated_at = excluded.updated_at",
     );
     expect(result.values).toEqual([1, "Bob", 30, 12_345]);
   });
@@ -28,11 +28,11 @@ describe("upsert", () => {
     const result = upsert(
       "cache",
       { org_id: "org1", project_id: "proj1", data: "cached" },
-      ["org_id", "project_id"]
+      ["org_id", "project_id"],
     );
 
     expect(result.sql).toBe(
-      "INSERT INTO cache (org_id, project_id, data) VALUES (?, ?, ?) ON CONFLICT(org_id, project_id) DO UPDATE SET data = excluded.data"
+      "INSERT INTO cache (org_id, project_id, data) VALUES (?, ?, ?) ON CONFLICT(org_id, project_id) DO UPDATE SET data = excluded.data",
     );
     expect(result.values).toEqual(["org1", "proj1", "cached"]);
   });
@@ -42,11 +42,11 @@ describe("upsert", () => {
       "users",
       { id: 1, name: "Bob", created_at: 1000, updated_at: 2000 },
       ["id"],
-      { excludeFromUpdate: ["created_at"] }
+      { excludeFromUpdate: ["created_at"] },
     );
 
     expect(result.sql).toBe(
-      "INSERT INTO users (id, name, created_at, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at"
+      "INSERT INTO users (id, name, created_at, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at",
     );
     expect(result.values).toEqual([1, "Bob", 1000, 2000]);
   });
@@ -57,7 +57,7 @@ describe("upsert", () => {
     });
 
     expect(result.sql).toBe(
-      "INSERT INTO settings (id, value) VALUES (?, ?) ON CONFLICT(id) DO NOTHING"
+      "INSERT INTO settings (id, value) VALUES (?, ?) ON CONFLICT(id) DO NOTHING",
     );
   });
 
@@ -65,11 +65,11 @@ describe("upsert", () => {
     const result = upsert(
       "auth",
       { id: 1, token: "abc", refresh_token: null },
-      ["id"]
+      ["id"],
     );
 
     expect(result.sql).toBe(
-      "INSERT INTO auth (id, token, refresh_token) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET token = excluded.token, refresh_token = excluded.refresh_token"
+      "INSERT INTO auth (id, token, refresh_token) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET token = excluded.token, refresh_token = excluded.refresh_token",
     );
     expect(result.values).toEqual([1, "abc", null]);
   });
@@ -78,7 +78,7 @@ describe("upsert", () => {
     const result = upsert(
       "auth",
       { id: 1, token: "abc", refresh_token: undefined },
-      ["id"]
+      ["id"],
     );
 
     expect(result.values).toEqual([1, "abc", undefined]);
@@ -86,13 +86,13 @@ describe("upsert", () => {
 
   test("throws error for empty data object", () => {
     expect(() => upsert("auth", {}, ["id"])).toThrow(
-      "upsert: data object must have at least one column"
+      "upsert: data object must have at least one column",
     );
   });
 
   test("throws error for empty conflict columns", () => {
     expect(() => upsert("auth", { id: 1 }, [])).toThrow(
-      "upsert: must specify at least one conflict column"
+      "upsert: must specify at least one conflict column",
     );
   });
 

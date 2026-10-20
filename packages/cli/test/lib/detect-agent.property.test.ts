@@ -47,14 +47,14 @@ const agentNameArb = array(constantFrom(...agentNameChars.split("")), {
       /^[a-z]/.test(s) &&
       !s.endsWith("-") &&
       !s.includes("--") &&
-      !GARBAGE_NAMES.has(s)
+      !GARBAGE_NAMES.has(s),
   );
 
 /** Generate semver-ish version strings. */
 const versionArb = tuple(
   constantFrom(...Array.from({ length: 20 }, (_, i) => String(i))),
   constantFrom(...Array.from({ length: 20 }, (_, i) => String(i))),
-  constantFrom(...Array.from({ length: 100 }, (_, i) => String(i)))
+  constantFrom(...Array.from({ length: 100 }, (_, i) => String(i))),
 ).map(([major, minor, patch]) => `${major}.${minor}.${patch}`);
 
 /** Generate role strings. */
@@ -68,7 +68,7 @@ const falsyGarbageArb = constantFrom("0", "false", "no", "off", "False", "NO");
 
 /** Generate compound agent strings: name/version/role. */
 const compoundArb = tuple(agentNameArb, versionArb, roleArb).map(
-  ([name, version, role]) => `${name}/${version}/${role}`
+  ([name, version, role]) => `${name}/${version}/${role}`,
 );
 
 describe("property: normalizeAgent", () => {
@@ -79,7 +79,7 @@ describe("property: normalizeAgent", () => {
         expect(result).toBeDefined();
         expect(result!.name).toBe(result!.name.toLowerCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -90,7 +90,7 @@ describe("property: normalizeAgent", () => {
         expect(result).toBeDefined();
         expect(result!.name.length).toBeGreaterThan(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -100,7 +100,7 @@ describe("property: normalizeAgent", () => {
         const result = normalizeAgent(raw);
         expect(result).toEqual({ name: "unknown" });
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -109,7 +109,7 @@ describe("property: normalizeAgent", () => {
       property(falsyGarbageArb, (raw) => {
         expect(normalizeAgent(raw)).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -122,7 +122,7 @@ describe("property: normalizeAgent", () => {
           expect(result.version).toMatch(/^\d+(\.\d+)*$/);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -136,9 +136,9 @@ describe("property: normalizeAgent", () => {
           if (result?.version) {
             expect(result.version.startsWith("v")).toBe(false);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -149,7 +149,7 @@ describe("property: normalizeAgent", () => {
         expect(result).toBeDefined();
         expect(result!.name).toBe(AGENT_ALIASES.get(aliasKey));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -162,7 +162,7 @@ describe("property: normalizeAgent", () => {
         expect(second).toBeDefined();
         expect(second!.name).toBe(first!.name);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -173,7 +173,7 @@ describe("property: normalizeAgent", () => {
         expect(result).toBeDefined();
         expect(result!.version).toBe(version);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -185,9 +185,9 @@ describe("property: normalizeAgent", () => {
           const result = normalizeAgent(`${name}/${version}/${role}`);
           expect(result).toBeDefined();
           expect(result!.role).toBe(role);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -199,7 +199,7 @@ describe("property: normalizeAgent", () => {
         expect(result!.version).toBeUndefined();
         expect(result!.role).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

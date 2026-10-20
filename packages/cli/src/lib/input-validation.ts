@@ -41,7 +41,7 @@ const PRE_ENCODED_PATTERN = /%[0-9a-fA-F]{2}/;
  * Built via RegExp constructor to avoid lint warnings about literal
  * control characters in regex patterns.
  */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: intentionally matching control chars for input validation
+// oxlint-disable-next-line no-control-regex -- intentionally matching control chars for input validation
 const CONTROL_CHAR_PATTERN = /[\x00-\x1f]/;
 
 /**
@@ -105,7 +105,7 @@ export function rejectControlChars(input: string, label: string): void {
     const capitalizedLabel = label.charAt(0).toUpperCase() + label.slice(1);
     throw new ValidationError(
       `Invalid ${label}: contains ${describeForbiddenChar(match[0])}.\n` +
-        `  ${capitalizedLabel} must not contain control characters.`
+        `  ${capitalizedLabel} must not contain control characters.`,
     );
   }
 }
@@ -126,7 +126,7 @@ export function rejectPreEncoded(input: string, label: string): void {
   if (match) {
     throw new ValidationError(
       `Invalid ${label}: contains URL-encoded sequence "${match[0]}".\n` +
-        `  Use plain text instead of percent-encoding (e.g., "my project" not "my%20project").`
+        `  Use plain text instead of percent-encoding (e.g., "my project" not "my%20project").`,
     );
   }
 }
@@ -155,7 +155,7 @@ export function validateResourceId(input: string, label: string): void {
   if (match) {
     throw new ValidationError(
       `Invalid ${label}: contains ${describeForbiddenChar(match[0])}.\n` +
-        "  Slugs and IDs must contain only letters, numbers, hyphens, and underscores."
+        "  Slugs and IDs must contain only letters, numbers, hyphens, and underscores.",
     );
   }
 }
@@ -183,7 +183,7 @@ export function validateEndpoint(endpoint: string): void {
   if (PATH_TRAVERSAL_PATTERN.test(endpoint)) {
     throw new ValidationError(
       'Invalid API endpoint: contains ".." path traversal.\n' +
-        "  Use absolute API paths (e.g., /api/0/organizations/my-org/issues/)."
+        "  Use absolute API paths (e.g., /api/0/organizations/my-org/issues/).",
     );
   }
 }

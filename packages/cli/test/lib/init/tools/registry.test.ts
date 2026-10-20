@@ -29,7 +29,7 @@ describe("tool registry", () => {
     };
 
     expect(describeTool(payload)).toBe(
-      "Reviewing official Sentry feature support..."
+      "Reviewing official Sentry feature support...",
     );
     await expect(executeTool(payload, makeContext())).resolves.toEqual({
       data: { acknowledged: true },

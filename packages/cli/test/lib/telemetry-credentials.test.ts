@@ -17,7 +17,7 @@ import {
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { extractMessagePrefix } from "../../src/lib/error-reporting.js";
 import { redactTelemetryEnvelope } from "../../src/lib/telemetry/credential-redaction.js";
-// biome-ignore lint/performance/noNamespaceImport: spy on the outbound transport factory
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spy on the outbound transport factory
 import * as transportModule from "../../src/lib/telemetry/zstd-transport.js";
 import { initSentry } from "../../src/lib/telemetry.js";
 
@@ -43,7 +43,7 @@ function captureTelemetry() {
   client.init();
   function serializedEnvelope(type: string): string {
     const envelope = send.mock.calls.find(([entry]) =>
-      entry[1].some(([header]) => header.type === type)
+      entry[1].some(([header]) => header.type === type),
     )?.[0];
     if (!envelope) {
       throw new Error(`Expected a ${type} envelope`);
@@ -90,7 +90,7 @@ describe("telemetry credential boundaries", () => {
   test("scrubs exception causes in the outgoing Sentry envelope", async () => {
     const capture = captureTelemetry();
     captureException(
-      new TypeError(headerError, { cause: new Error(`Rejected ${token}`) })
+      new TypeError(headerError, { cause: new Error(`Rejected ${token}`) }),
     );
     await capture.client.flush(1000);
 
@@ -104,7 +104,7 @@ describe("telemetry credential boundaries", () => {
   test("scrubs logs after the SDK adds scope attributes and fmt parameters", async () => {
     const capture = captureTelemetry();
     const frozen = Object.freeze({ token });
-    // biome-ignore lint/style/useConsistentBuiltinInstantiation: regression coverage for boxed log parameters
+    // regression coverage for boxed log parameters
     const boxed = new String(token);
     withScope((scope) => {
       scope.setAttribute("scope.token", token);
@@ -159,9 +159,41 @@ describe("telemetry credential boundaries", () => {
     expect(serialized).not.toContain("SYNTHETIC");
   });
 
+  test("removes Local capabilities from HTTP telemetry without changing caller URLs", async () => {
+    const capture = captureTelemetry();
+    const ingestUrl =
+      "http://127.0.0.1:8969/_local/v1/sessions/sdk/ingest/LOCAL_INGEST_SECRET";
+    const streamUrl =
+      "http://127.0.0.1:8969/_local/v1/sessions/sdk/stream?base64=true&cap=LOCAL_READ_SECRET";
+    const resetUrl =
+      "http://127.0.0.1:8969/_local/v1/sessions/sdk/ui/reset?cap=LOCAL_READ_SECRET";
+    const event: ErrorEvent = {
+      message: `Rejected POST ${ingestUrl}`,
+      request: { url: ingestUrl },
+      breadcrumbs: [{ type: "http", data: { url: streamUrl } }],
+      extra: { resetUrl },
+    };
+    captureEvent(event);
+    startSpan({ name: `POST ${ingestUrl}`, forceTransaction: true }, (span) => {
+      span.setAttribute("http.url", ingestUrl);
+      span.setAttribute("http.target", new URL(ingestUrl).pathname);
+      span.setAttribute("stream.url", streamUrl);
+    });
+    await capture.client.flush(1000);
+    for (const type of ["event", "transaction"]) {
+      const serialized = capture.serializedEnvelope(type);
+      expect(serialized).not.toContain("LOCAL_INGEST_SECRET");
+      expect(serialized).not.toContain("LOCAL_READ_SECRET");
+      expect(serialized).toContain("[REDACTED]");
+      expect(serialized).toContain("/_local/v1/sessions/sdk/");
+    }
+    expect(event.request?.url).toBe(ingestUrl);
+    expect(event.extra?.resetUrl).toBe(resetUrl);
+  });
+
   test("redacts before deriving a grouping key from the first line", () => {
     expect(extractMessagePrefix(headerError, 4)).toBe(
-      "Headers.set: is an invalid"
+      "Headers.set: is an invalid",
     );
   });
 

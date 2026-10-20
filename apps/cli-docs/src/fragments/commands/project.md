@@ -15,6 +15,9 @@ my-org      mobile-ios     cocoa         mobile-team
 ```
 
 ```bash
+# Several projects in the same org
+sentry project list my-org/frontend,backend
+
 # Filter by platform
 sentry project list my-org/ --platform javascript
 

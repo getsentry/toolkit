@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-dsn
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Find Sentry DSNs
 requires:
   bins: ["sentry"]
@@ -11,7 +11,7 @@ requires:
 
 Find Sentry DSNs
 
-### `sentry dsn list <org/project>`
+### `sentry dsn list [<org/project>]`
 
 List DSNs
 

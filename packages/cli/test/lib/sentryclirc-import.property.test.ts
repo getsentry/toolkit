@@ -34,7 +34,7 @@ import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 const slugArb = array(
   constantFrom(..."abcdefghijklmnopqrstuvwxyz0123456789-".split("")),
-  { minLength: 1, maxLength: 12 }
+  { minLength: 1, maxLength: 12 },
 ).map((chars) => chars.join(""));
 
 const tokenArb = string({ minLength: 8, maxLength: 40 });
@@ -63,7 +63,7 @@ describe("property: isSameFileOrigin", () => {
         };
         expect(isSameFileOrigin(plan)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -90,9 +90,9 @@ describe("property: isSameFileOrigin", () => {
             warnings: [],
           };
           expect(isSameFileOrigin(plan)).toBe(false);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -111,7 +111,7 @@ describe("property: isSameFileOrigin", () => {
         };
         expect(isSameFileOrigin(plan)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -127,7 +127,7 @@ describe("property: maskToken", () => {
         const masked = maskToken(token);
         expect(masked).toContain("*");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -137,14 +137,14 @@ describe("property: maskToken", () => {
     fcAssert(
       property(
         string({ minLength: 1, maxLength: 100 }).filter(
-          (t) => !/^\*+$/.test(t)
+          (t) => !/^\*+$/.test(t),
         ),
         (token) => {
           const masked = maskToken(token);
           expect(masked).not.toBe(token);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -155,7 +155,7 @@ describe("property: maskToken", () => {
         // Every character should be an asterisk
         expect(masked).toBe("*".repeat(token.length));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -187,7 +187,7 @@ describe("property: buildImportPlan merge order", () => {
         const plan = buildImportPlan([fileA, fileB]);
         expect(plan.effective.org).toBe(orgA);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -210,7 +210,7 @@ describe("property: buildImportPlan merge order", () => {
         expect(plan.effective.org).toBe(org);
         expect(plan.effective.token).toBe(token);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

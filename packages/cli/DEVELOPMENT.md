@@ -6,7 +6,7 @@
 - [Node.js](https://nodejs.org/) v22.15+ installed
 - [pnpm](https://pnpm.io/) v11.8+ installed
 <!-- GENERATED:END dev-prereq -->
-- A Sentry OAuth application (create one at https://sentry.io/settings/account/api/applications/)
+- A Sentry OAuth application client ID for builds, self-hosted Sentry, or a custom OAuth app (create one at https://sentry.io/settings/account/api/applications/)
 
 ## Setup
 
@@ -16,19 +16,19 @@
 pnpm install
 ```
 
-2. Create a `.env.local` file in the project root:
+2. Optionally, create `packages/cli/.env.local` (see `.env.example`):
 
 ```
 SENTRY_CLIENT_ID=your-sentry-oauth-client-id
 ```
 
-Get the client ID from your Sentry OAuth application settings.
+Dev mode (`pnpm run cli`) falls back to the CLI's public sentry.io client ID when `SENTRY_CLIENT_ID` is unset. Set it to use self-hosted Sentry or your own OAuth app. `pnpm run build` and `pnpm run bundle` require it. Get the client ID from your Sentry OAuth application settings.
 
 **Note:** No client secret is needed - the CLI uses OAuth 2.0 Device Authorization Grant (RFC 8628) which is designed for public clients.
 
 ## Running Locally
 
-Load environment variables from `.env.local` (e.g. via `dotenv` or `export $(cat .env.local | xargs)`), then:
+`pnpm run cli` loads `.env.local` automatically when it exists:
 
 ```bash
 pnpm run cli -- auth login
@@ -66,7 +66,7 @@ When creating your Sentry OAuth application:
 - **Scopes**: The CLI requests these scopes:
 <!-- GENERATED:START oauth-scopes -->
   - `project:read`, `project:write`, `project:admin`
-  - `org:read`
+  - `org:read`, `org:integrations`
   - `event:read`, `event:write`
   - `member:read`
   - `team:read`, `team:write`, `team:admin`
@@ -110,3 +110,24 @@ The CLI uses the OAuth 2.0 Device Authorization Grant ([RFC 8628](https://datatr
 4. CLI receives access token and stores it locally
 
 No proxy server is needed - the CLI communicates directly with Sentry.
+
+### API response retries
+
+`src/lib/sentry-client.ts` owns the CLI's single retry budget: at most three
+attempts, shared by transient HTTP statuses, network failures, and interrupted
+successful GET bodies. Finite GET bodies finish inside the attempt timeout.
+JSON parsing and response validation happen afterward; malformed JSON does not
+trigger another request. Successful mutations are not replayed for body errors.
+
+Generated API operations use `getSdkClientConfig` from
+`src/lib/sentry-sdk-client.ts`. Its request interceptor passes the SDK's
+`parseAs` intent to the transport before the SDK calls `fetch(Request)`.
+Explicit streams, automatic parsing without a Content-Type, and SSE remain
+streaming. Handwritten helpers that consume complete responses opt in through
+`bufferResponseBody`.
+
+When creating a bound `createSentryClient` instead, register
+`registerSdkResponseBodyMode(sentry.client)` once on that client's transport.
+Passing an existing client in its constructor config does not transfer
+interceptors. Keep the runtime SDK import outside `sentry-client.ts`, which is
+also loaded synchronously by telemetry's database integration.

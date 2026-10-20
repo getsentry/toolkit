@@ -8,7 +8,156 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
-import { ApiNotFoundError, ApiServerError } from "./errors";
+import {
+  ApiNotFoundError,
+  ApiPermissionError,
+  ApiServerError,
+  ApiValidationError,
+} from "./errors";
+import { z } from "zod";
+
+describe("validateEvents error bodies", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("retains structured validation results on HTTP 400", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        () =>
+          HttpResponse.json(
+            {
+              valid: false,
+              projects: [
+                {
+                  valid: false,
+                  error: "At least one valid project is required to query",
+                },
+              ],
+              dataset: [],
+              environment: [],
+              field: [],
+              orderby: [],
+              query: { valid: true, error: null, fields: [] },
+            },
+            { status: 400 },
+          ),
+      ),
+    );
+    const api = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    await expect(
+      api.validateEvents({ organizationSlug: "test-org" }),
+    ).resolves.toMatchObject({
+      valid: false,
+      projects: [
+        {
+          valid: false,
+          error: "At least one valid project is required to query",
+        },
+      ],
+    });
+  });
+
+  it.each([{}, { valid: false, detail: "Unexpected validation shape" }])(
+    "keeps malformed HTTP 400 validation results reportable: %j",
+    async (body) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          () => HttpResponse.json(body, { status: 400 }),
+        ),
+      );
+      const api = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+      await expect(
+        api.validateEvents({ organizationSlug: "test-org" }),
+      ).rejects.toBeInstanceOf(z.ZodError);
+    },
+  );
+
+  it.each([400, 200])(
+    "preserves error classification for HTTP %i",
+    async (status) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          () => HttpResponse.json({ detail: "Invalid query" }, { status }),
+        ),
+      );
+      const api = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+      const result = api.validateEvents({ organizationSlug: "test-org" });
+      if (status === 400) {
+        await expect(result).rejects.toBeInstanceOf(ApiValidationError);
+        await expect(result).rejects.toMatchObject({
+          status: 400,
+          detail: "Invalid query",
+        });
+      } else {
+        await expect(result).rejects.toBeInstanceOf(z.ZodError);
+      }
+    },
+  );
+});
+
+describe("API bearer token validation", () => {
+  it("removes edge padding before sending a request", async () => {
+    let authorization: string | null = null;
+    mswServer.use(
+      http.get(
+        "https://sentry.example.com/api/0/organizations/",
+        ({ request }) => {
+          authorization = request.headers.get("Authorization");
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    const api = new SentryApiService({
+      host: "sentry.example.com",
+      accessToken: " \tvalid-token\x7f ",
+    });
+    await api.listOrganizations();
+    expect(authorization).toBe("Bearer valid-token");
+  });
+
+  it("rejects a malformed credential before sending it or disclosing its value", async () => {
+    let requests = 0;
+    mswServer.use(
+      http.get("https://sentry.example.com/api/0/organizations/", () => {
+        requests += 1;
+        return HttpResponse.json([]);
+      }),
+    );
+    const api = new SentryApiService({
+      host: "sentry.example.com",
+      accessToken: "valid\nsecret",
+    });
+
+    const error = await api
+      .listOrganizations()
+      .catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(ConfigurationError);
+    expect(String(error)).toContain("Malformed authentication token");
+    expect(String(error)).not.toContain("valid\nsecret");
+    expect(requests).toBe(0);
+
+    const emptyTokenApi = new SentryApiService({
+      host: "sentry.example.com",
+      accessToken: "",
+    });
+    await expect(emptyTokenApi.listOrganizations()).rejects.toThrow(
+      ConfigurationError,
+    );
+    expect(requests).toBe(0);
+  });
+});
 
 describe("single-tenant web URLs", () => {
   const api = new SentryApiService({ host: "tenant.my.sentry.io" });
@@ -54,6 +203,50 @@ describe("single-tenant web URLs", () => {
       expect(url.searchParams.get("statsPeriod")).toBe("24h");
     },
   );
+});
+
+describe("array trace attributes", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("parses and filters array attributes from the API", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/trace-items/attributes/",
+        () =>
+          HttpResponse.json([
+            {
+              key: "tags[items,array]",
+              name: "items",
+              attributeType: "array",
+              attributeSource: { source_type: "user" },
+            },
+            {
+              key: "tags[name]",
+              name: "name",
+              attributeType: "string",
+              attributeSource: { source_type: "user" },
+            },
+          ]),
+      ),
+    );
+    const api = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    const result = await api.listTraceItemAttributes({
+      organizationSlug: "test-org",
+      itemType: "spans",
+      attributeTypes: ["array"],
+    });
+    expect(result).toEqual([
+      {
+        key: "tags[items,array]",
+        name: "items",
+        type: "array",
+        attributeSource: { source_type: "user" },
+      },
+    ]);
+  });
 });
 
 describe("getIssueUrl", () => {
@@ -251,6 +444,29 @@ describe("external issue linking API methods", () => {
     expect(
       await api.listIssueIntegrations({ organizationSlug, issueId }),
     ).toEqual([integration, { ...integration, id: 457 }]);
+    expect(pages).toEqual([null, "next-page"]);
+  });
+
+  it("uses the actual next link rather than a previous link's extension attribute", async () => {
+    const pages: (string | null)[] = [];
+    mswServer.use(
+      http.get(
+        "https://us.sentry.io/api/0/organizations/test-org/issues/123/integrations/",
+        ({ request }) => {
+          const cursor = new URL(request.url).searchParams.get("cursor");
+          pages.push(cursor);
+          return HttpResponse.json([], {
+            headers: cursor
+              ? {}
+              : {
+                  Link: '<https://us.sentry.io/>; x-rel="next"; rel="previous"; results="true"; cursor="previous-page", <https://us.sentry.io/>; rel="next"; results="true"; cursor="next-page"',
+                },
+          });
+        },
+      ),
+    );
+
+    await api.listIssueIntegrations({ organizationSlug, issueId });
     expect(pages).toEqual([null, "next-page"]);
   });
 
@@ -1297,6 +1513,47 @@ describe("listOrganizations", () => {
     globalThis.fetch = originalFetch;
   });
 
+  it("collects a requested page larger than the API maximum without skipping its next cursor", async () => {
+    const pageSizes: number[] = [];
+    const cursors: (string | null)[] = [];
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/", ({ request }) => {
+        const url = new URL(request.url);
+        const perPage = Number(url.searchParams.get("per_page"));
+        const cursor = url.searchParams.get("cursor");
+        pageSizes.push(perPage);
+        cursors.push(cursor);
+        if (perPage > 100) {
+          return HttpResponse.json(
+            { detail: "Invalid per_page" },
+            { status: 400 },
+          );
+        }
+        const start = cursor === null ? 0 : Number(cursor);
+        return HttpResponse.json(
+          Array.from({ length: perPage }, (_, offset) => ({
+            id: String(start + offset),
+            slug: `org-${start + offset}`,
+            name: `Org ${start + offset}`,
+          })),
+          {
+            headers: {
+              Link: `<https://sentry.io/api/0/organizations/?cursor=${start + perPage}>; rel="next"; results="true"; cursor="${start + perPage}"`,
+            },
+          },
+        );
+      }),
+    );
+
+    const api = new SentryApiService({ host: "sentry.io" });
+    const result = await api.listOrganizations({ limit: 205 });
+    expect(result.organizations).toHaveLength(205);
+    expect(result.organizations[204]?.slug).toBe("org-204");
+    expect(result.nextCursor).toBe("205");
+    expect(pageSizes).toEqual([100, 100, 5]);
+    expect(cursors).toEqual([null, "100", "200"]);
+  });
+
   it("should fetch from the organizations endpoint on the root host for SaaS", async () => {
     const mockOrgs = [
       { id: "1", slug: "org-us", name: "Org US" },
@@ -1307,11 +1564,7 @@ describe("listOrganizations", () => {
     globalThis.fetch = vi.fn().mockImplementation((url: string) => {
       callCount++;
       if (url.includes("/organizations/")) {
-        return Promise.resolve({
-          ok: true,
-          headers: new Headers({ "content-type": "application/json" }),
-          json: () => Promise.resolve(mockOrgs),
-        });
+        return Promise.resolve(HttpResponse.json(mockOrgs));
       }
       return Promise.reject(new Error("Unexpected URL"));
     });
@@ -1349,11 +1602,7 @@ describe("listOrganizations", () => {
     globalThis.fetch = vi.fn().mockImplementation((url: string) => {
       callCount++;
       if (url.includes("/organizations/")) {
-        return Promise.resolve({
-          ok: true,
-          headers: new Headers({ "content-type": "application/json" }),
-          json: () => Promise.resolve(mockOrgs),
-        });
+        return Promise.resolve(HttpResponse.json(mockOrgs));
       }
       return Promise.reject(new Error("Unexpected URL"));
     });
@@ -1374,6 +1623,133 @@ describe("listOrganizations", () => {
       expect.stringContaining("/users/me/regions/"),
       expect.any(Object),
     );
+  });
+});
+
+describe("organization SDK list pages", () => {
+  it.each([
+    {
+      resource: "teams",
+      fixture: teamFixture,
+      list: (api: SentryApiService) =>
+        api.listTeams(
+          "my-org",
+          { limit: 201, query: "api" },
+          { host: "de.sentry.io" },
+        ),
+    },
+    {
+      resource: "projects",
+      fixture: projectFixture,
+      list: (api: SentryApiService) =>
+        api.listProjects(
+          "my-org",
+          { limit: 201, query: "api" },
+          { host: "de.sentry.io" },
+        ),
+    },
+  ])(
+    "caps each $resource page and retains the regional host",
+    async ({ resource, fixture, list }) => {
+      const pageSizes: number[] = [];
+      mswServer.use(
+        http.get(
+          `https://de.sentry.io/api/0/organizations/my-org/${resource}/`,
+          ({ request }) => {
+            const url = new URL(request.url);
+            const perPage = Number(url.searchParams.get("per_page"));
+            pageSizes.push(perPage);
+            expect(url.searchParams.get("query")).toBe("api");
+            expect(request.headers.get("authorization")).toBe(
+              "Bearer test-token",
+            );
+            if (perPage > 100) {
+              return HttpResponse.json(
+                { detail: "Invalid per_page" },
+                { status: 400 },
+              );
+            }
+            const start = Number(url.searchParams.get("cursor") ?? "0");
+            return HttpResponse.json(
+              Array.from({ length: perPage }, (_, offset) => ({
+                ...fixture,
+                id: String(start + offset),
+              })),
+              {
+                headers: {
+                  Link: `<https://de.sentry.io/api/0/organizations/my-org/${resource}/?cursor=${start + perPage}>; rel="next"; results="true"; cursor="${start + perPage}"`,
+                },
+              },
+            );
+          },
+        ),
+      );
+      const api = new SentryApiService({ accessToken: "test-token" });
+      const result = await list(api);
+      const rows = "teams" in result ? result.teams : result.projects;
+      expect(rows).toHaveLength(201);
+      expect(result.nextCursor).toBe("201");
+      expect(pageSizes).toEqual([100, 100, 1]);
+    },
+  );
+
+  it("rejects dot-segment organization IDs before an SDK request", async () => {
+    const api = new SentryApiService({ host: "sentry.example.com" });
+    await expect(api.listProjects("..", { limit: 1 })).rejects.toThrow();
+    await expect(api.listTeams(".", { limit: 1 })).rejects.toThrow();
+  });
+
+  it("confines an organization slug with a slash to one path segment", async () => {
+    const paths: string[] = [];
+    mswServer.use(
+      http.get("https://sentry.io/api/0/*", ({ request }) => {
+        paths.push(new URL(request.url).pathname);
+        return HttpResponse.json([teamFixture]);
+      }),
+    );
+
+    const api = new SentryApiService({ host: "sentry.io" });
+    const result = await api.listTeams("my/org");
+    expect(result.teams).toHaveLength(1);
+    expect(paths).toEqual(["/api/0/organizations/my%2Forg/teams/"]);
+  });
+
+  it("keeps MCP's HTTP error class and details when an SDK list fails", async () => {
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/my-org/teams/", () =>
+        HttpResponse.json({ detail: "Team access denied" }, { status: 403 }),
+      ),
+    );
+    const api = new SentryApiService({ host: "sentry.io" });
+    const error = await api
+      .listTeams("my-org")
+      .catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(ApiPermissionError);
+    expect(error).toMatchObject({ status: 403, detail: "Team access denied" });
+  });
+
+  it("rejects repeated cursors and oversized limits without looping", async () => {
+    let requests = 0;
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/my-org/teams/", () => {
+        requests += 1;
+        return HttpResponse.json([teamFixture], {
+          headers: {
+            Link: '<https://sentry.io/api/0/organizations/my-org/teams/?cursor=again>; rel="next"; results="true"; cursor="again"',
+          },
+        });
+      }),
+    );
+
+    const api = new SentryApiService({ host: "sentry.io" });
+    await expect(api.listTeams("my-org", { limit: 5001 })).rejects.toThrow(
+      "limit must be an integer",
+    );
+    expect(requests).toBe(0);
+    await expect(api.listTeams("my-org", { limit: 3 })).rejects.toThrow(
+      "repeated pagination cursor",
+    );
+    expect(requests).toBe(2);
   });
 });
 
@@ -2544,6 +2920,35 @@ describe("API query builders", () => {
       });
 
       expect(repos).toHaveLength(0);
+    });
+
+    it("should accept repos with null externalSlug and externalId", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        headers: {
+          get: (key: string) =>
+            key === "content-type" ? "application/json" : null,
+        },
+        json: () =>
+          Promise.resolve([
+            {
+              id: "101",
+              name: "getsentry/sentry",
+              provider: { id: "integrations:github", name: "GitHub" },
+              status: "active",
+              externalSlug: null,
+              externalId: null,
+            },
+          ]),
+      });
+
+      const repos = await apiService.listRepos({
+        organizationSlug: "test-org",
+      });
+
+      expect(repos).toHaveLength(1);
+      expect(repos[0].externalSlug).toBeNull();
+      expect(repos[0].externalId).toBeNull();
     });
   });
 

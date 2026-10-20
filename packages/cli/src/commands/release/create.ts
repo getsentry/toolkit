@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { createRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownInline,
@@ -68,7 +69,7 @@ export const createCommand = buildCommand({
               ? ` in projects: ${projects.join(", ")}`
               : "") +
             (data.finalize ? " (finalized)" : "") +
-            " (dry run)"
+            " (dry run)",
         );
       }
       return formatReleaseCreated(data as SentryRelease);
@@ -81,7 +82,7 @@ export const createCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to create",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },
@@ -124,14 +125,14 @@ export const createCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string
+    target: string,
   ) {
     const { cwd } = this;
 
     const { version, org } = await resolveReleaseTarget(
       target,
       USAGE_HINT,
-      cwd
+      cwd,
     );
 
     const body: Parameters<typeof createRelease>[1] = { version };

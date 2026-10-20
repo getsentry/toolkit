@@ -57,7 +57,7 @@ toolkit/
 │       │   ├── commands/       # CLI commands
 │       │   │   ├── agent-conversation/# list, view
 │       │   │   ├── alert/       # create, delete, edit, list, view
-│       │   │   ├── auth/        # login, logout, refresh, status, token, whoami
+│       │   │   ├── auth/        # list, login, logout, refresh, status, switch, token, whoami
 │       │   │   ├── build/       # download, upload
 │       │   │   ├── cli/         # completion, defaults, feedback, fix, import, setup, uninstall, upgrade
 │       │   │   ├── code-mappings/# upload
@@ -68,8 +68,9 @@ toolkit/
 │       │   │   ├── dsn/         # list
 │       │   │   ├── event/       # list, send, view
 │       │   │   ├── feedback/    # list, resolve, spam, unresolve, view
-│       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, unresolve, view
-│       │   │   ├── local/       # run, serve
+│       │   │   ├── integration/ # delete, list
+│       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, unlink, unresolve, view
+│       │   │   ├── local/       # close, create, list, reset, restart, retention, run, serve, start, status, stop, view
 │       │   │   ├── log/         # list, view
 │       │   │   ├── monitor/     # list, run
 │       │   │   ├── org/         # list, view
@@ -92,6 +93,7 @@ toolkit/
 │       │   │   ├── help.ts      # Help command
 │       │   │   ├── info.ts      # Print configuration and verify authentication
 │       │   │   ├── init.ts      # Initialize Sentry in your project (experimental)
+│       │   │   ├── mcp.ts       # Start a local Sentry MCP server
 │       │   │   ├── schema.ts    # Browse the Sentry API schema
 │       │   │   └── wasm-split.ts# Add build ids to WebAssembly modules and split out debug data
 │       │   ├── lib/            # Shared utilities
@@ -122,22 +124,22 @@ pnpm run bundle
 ## Testing
 
 ```bash
-# Run all tests
+# Run unit tests with coverage (regenerates docs and the SDK first)
 pnpm run test
 
-# Run specific test file
-pnpm run test -- test/path/to/test.ts
+# Run a specific test file (skips the generate steps)
+pnpm exec vitest run test/path/to/test.ts
 
-# Run with watch mode
-pnpm run test -- --watch
+# Run in watch mode
+pnpm exec vitest
 
-# Run with coverage
-pnpm run test -- --coverage
+# Run end-to-end tests
+pnpm run test:e2e
 ```
 
 ## Code Style
 
-The project uses [Ultracite](https://github.com/getsentry/ultracite) for linting and formatting:
+The project uses Oxlint and Oxfmt for linting and formatting:
 
 ```bash
 # Check for issues

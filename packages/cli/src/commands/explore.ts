@@ -6,6 +6,11 @@
  * and ad-hoc event queries.
  */
 
+import {
+  isAggregateFieldOrEquation,
+  isTracemetricsAggregate,
+} from "@sentry/toolkit-core/events-fields";
+import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 import type { SentryContext } from "../context.js";
 import {
   isReplaySortValue,
@@ -114,7 +119,7 @@ const VALID_DATASETS = new Set([
  * Used by pagination hints so they emit `--dataset metrics` not `--dataset tracemetrics`.
  */
 const API_TO_USER_DATASET = new Map(
-  Array.from(VALID_DATASETS, (name) => [DATASET_ALIASES[name] ?? name, name])
+  Array.from(VALID_DATASETS, (name) => [DATASET_ALIASES[name] ?? name, name]),
 );
 
 // ---------------------------------------------------------------------------
@@ -171,7 +176,7 @@ function parseDataset(value: string): string {
   }
   throw new ValidationError(
     `Invalid dataset "${value}". Must be one of: ${Array.from(VALID_DATASETS).join(", ")}`,
-    "dataset"
+    "dataset",
   );
 }
 
@@ -196,20 +201,20 @@ function inferReplayFieldType(field: string): string {
 
 function buildReplayExploreResponse(
   fields: string[],
-  replays: Awaited<ReturnType<typeof listReplays>>["data"]
+  replays: Awaited<ReturnType<typeof listReplays>>["data"],
 ): { data: Record<string, unknown>[]; meta: NonNullable<ExploreData["meta"]> } {
   return {
     data: replays.map((replay) =>
       Object.fromEntries(
-        fields.map((field) => [field, getReplayFieldValue(replay, field)])
-      )
+        fields.map((field) => [field, getReplayFieldValue(replay, field)]),
+      ),
     ),
     meta: {
       fields: Object.fromEntries(
-        fields.map((field) => [field, inferReplayFieldType(field)])
+        fields.map((field) => [field, inferReplayFieldType(field)]),
       ),
       units: Object.fromEntries(
-        fields.map((field) => [field, field === "duration" ? "s" : null])
+        fields.map((field) => [field, field === "duration" ? "s" : null]),
       ),
     },
   };
@@ -229,7 +234,7 @@ function buildReplayExploreResponse(
  */
 function orderFieldNames(
   requestedFields: string[],
-  data: ExploreData
+  data: ExploreData,
 ): string[] {
   const apiFields = data.meta?.fields
     ? Object.keys(data.meta.fields)
@@ -264,7 +269,7 @@ function formatExploreHuman(data: ExploreData): string {
   const columns = buildMetaColumns(
     fieldNames,
     data.meta?.fields,
-    data.meta?.units
+    data.meta?.units,
   );
 
   const scope = data.project ? `${data.org}/${data.project}` : data.org;
@@ -318,7 +323,7 @@ function defaultFieldsForDataset(dataset: string): readonly string[] {
 function appendMetricHints(
   parts: string[],
   metric: string | undefined,
-  agg: string
+  agg: string,
 ): void {
   if (metric) {
     parts.push(`-m "${metric}"`);
@@ -333,11 +338,11 @@ function appendFieldHints(
   parts: string[],
   rawFields: string[] | undefined,
   dataset: string,
-  metricActive: boolean
+  metricActive: boolean,
 ): void {
   const fields = rawFields ?? [];
   const fieldList = metricActive
-    ? fields.filter((f) => !isAggregate(f))
+    ? fields.filter((f) => !isAggregateFieldOrEquation(f))
     : fields;
   const defaults = defaultFieldsForDataset(dataset).join(",");
   if (fieldList.join(",") !== defaults && fieldList.length > 0) {
@@ -361,7 +366,7 @@ function appendFlagHints(
     | "limit"
     | "metric"
     | "agg"
-  >
+  >,
 ): string {
   const parts: string[] = [];
   const defaultSort =
@@ -389,32 +394,6 @@ function appendFlagHints(
 }
 
 /**
- * Detect the first aggregate function in the field list.
- * Aggregates contain parentheses, e.g., `count()`, `p50(span.duration)`.
- */
-function findFirstAggregate(fieldList: string[]): string | undefined {
-  return fieldList.find((f) => f.includes("(") && f.includes(")"));
-}
-
-/** True when the field looks like an aggregate call: `fn(...)`. */
-function isAggregate(field: string): boolean {
-  return field.includes("(") && field.endsWith(")");
-}
-
-/**
- * True when the aggregate uses the tracemetrics comma-separated format:
- * `aggregation(value,metric_name,metric_type,unit)`.
- */
-function isTracemetricsAggregate(aggregate: string): boolean {
-  const parenIdx = aggregate.indexOf("(");
-  if (parenIdx < 0) {
-    return false;
-  }
-  const inner = aggregate.slice(parenIdx + 1, -1);
-  return inner.startsWith("value,") && inner.split(",").length === 4;
-}
-
-/**
  * Validate that aggregate fields use the tracemetrics format when querying
  * the `tracemetrics` dataset. Standard aggregates like `count()` or
  * `avg(measurements.fcp)` are invalid — the API requires the four-part
@@ -422,7 +401,7 @@ function isTracemetricsAggregate(aggregate: string): boolean {
  */
 function validateMetricsFields(fieldList: string[]): void {
   const badAggs = fieldList.filter(
-    (f) => isAggregate(f) && !isTracemetricsAggregate(f)
+    (f) => isAggregateFieldOrEquation(f) && !isTracemetricsAggregate(f),
   );
   if (badAggs.length === 0) {
     return;
@@ -439,34 +418,13 @@ function validateMetricsFields(fieldList: string[]): void {
       "  - metric_name: the metric name emitted by the SDK (e.g., llm.token_usage)\n" +
       "  - metric_type: distribution, gauge, counter, or set\n" +
       "  - unit: none, byte, second, millisecond, etc.",
-    "field"
+    "field",
   );
 }
 
 // ---------------------------------------------------------------------------
 // Dataset configuration
 // ---------------------------------------------------------------------------
-
-/**
- * Datasets whose Events endpoint accepts a `sort` param. A deterministic sort
- * is what makes offset-based cursor pagination stable — without it, multi-page
- * grouped aggregate queries overlap and skip rows (#1519). `metrics`
- * (`tracemetrics`) and `logs` reject `sort` with a 400, so they stay unsorted.
- *
- * This is a hand-curated contract, not a machine-readable capability lookup,
- * because no canonical source for it exists today (#1523):
- *   - The OpenAPI spec (`@sentry/api` `listOrganizationEvents`) models `sort`
- *     as a flat query param whose only documented constraint is "must be in
- *     the `field` list" — it does not encode which datasets accept it.
- *   - There is no dataset-capability introspection endpoint in the spec.
- *   - The spec's `dataset` enum is
- *     `errors | logs | profile_functions | spans | tracemetrics |
- *     uptime_results`; `discover` is a legacy virtual dataset that is not a
- *     valid `--dataset` value here (see {@link DATASET_ALIASES}), so it is
- *     intentionally omitted.
- * Revisit if Sentry ever publishes a per-dataset capability contract.
- */
-const SORTABLE_DATASETS = new Set(["spans", "errors"]);
 
 /**
  * Dataset-specific configuration resolved before the main query loop.
@@ -496,7 +454,7 @@ type DatasetConfig = {
  * syntax so they are ORed rather than ANDed.
  */
 function buildEnvironmentQuery(
-  environment: string[] | undefined
+  environment: string[] | undefined,
 ): string | undefined {
   if (!environment || environment.length === 0) {
     return;
@@ -526,8 +484,9 @@ function resolveEventsDataset(dataset: string, query: string | undefined) {
  * For the `replays` dataset this validates fields, resolves replay-specific
  * sort, and returns a fetch function that calls `listReplays`. For all other
  * datasets it translates `--environment` values into `environment:...` query
- * filter terms, resolves explore sort (spans-only), prepends `project:<slug>`
- * to the query, and returns a `queryEvents` fetch.
+ * filter terms, resolves the sort with {@link resolveEventsSort} (which also
+ * selects the sort column), prepends `project:<slug>` to the query, and
+ * returns a `queryEvents` fetch.
  */
 function resolveDatasetConfig(params: {
   dataset: string;
@@ -541,12 +500,12 @@ function resolveDatasetConfig(params: {
 
   if (dataset === "replays") {
     const unsupportedField = fieldList.find(
-      (field) => !isSupportedReplayField(field)
+      (field) => !isSupportedReplayField(field),
     );
     if (unsupportedField) {
       throw new ValidationError(
         `Unsupported replay field "${unsupportedField}". Supported fields include: ${listSupportedReplayFields().slice(0, 12).join(", ")}...`,
-        "field"
+        "field",
       );
     }
 
@@ -554,7 +513,7 @@ function resolveDatasetConfig(params: {
     if (!isReplaySortValue(sort)) {
       throw new ValidationError(
         `Invalid replay sort "${sort}". Use a replay sort like ${DEFAULT_REPLAY_SORT} or -count_errors.`,
-        "sort"
+        "sort",
       );
     }
 
@@ -587,27 +546,13 @@ function resolveDatasetConfig(params: {
   const queryWithEnv =
     [envPrefix, resolved.query].filter(Boolean).join(" ") || undefined;
 
-  const firstAgg = findFirstAggregate(fieldList);
-  const rawSort = flags.sort ?? (firstAgg ? `-${firstAgg}` : undefined);
-  let sort: string | undefined;
-  if (SORTABLE_DATASETS.has(resolved.dataset)) {
-    // A deterministic sort is required for correct cursor pagination: the
-    // events cursor is offset-based, so without a stable total order the
-    // separate page requests overlap and skip rows, producing duplicate and
-    // missing dimension tuples across the merged result (#1519). Defaulting
-    // to `-<firstAggregate>` gives grouped aggregate queries a stable order.
-    sort = rawSort;
-  } else {
-    // Warn only when the user explicitly passed --sort on a dataset that
-    // rejects it (metrics/logs). An auto-derived sort is silently dropped.
-    if (rawSort && flags.sort) {
-      const displayDataset = API_TO_USER_DATASET.get(dataset) ?? dataset;
-      log.warn(
-        `--sort is not supported on the ${displayDataset} dataset. Ignoring sort.`
-      );
-    }
-    sort = undefined;
-  }
+  // Every Events dataset honors sort as long as the sort column is selected.
+  // A stable sort is what keeps offset-based cursor pagination from
+  // duplicating and skipping rows (#1519) and makes --limit a top N (#1477).
+  const { fields, sort } = resolveEventsSort({
+    fields: fieldList,
+    sort: flags.sort,
+  });
 
   const query = buildProjectQuery(queryWithEnv, project);
   return {
@@ -615,7 +560,7 @@ function resolveDatasetConfig(params: {
     query,
     fetch: async ({ cursor, limit, timeRange }) =>
       queryEvents(org, {
-        fields: fieldList,
+        fields,
         dataset: resolved.dataset,
         query,
         sort,
@@ -767,7 +712,7 @@ export const exploreCommand = buildListCommand("explore", {
     const { org, project } = await resolveOrgOptionalFromArg(
       target,
       cwd,
-      "explore"
+      "explore",
     );
 
     let dataset = flags.dataset;
@@ -797,13 +742,13 @@ export const exploreCommand = buildListCommand("explore", {
           queryMetricsMeta(org, {
             ...metaParams,
             project,
-          })
+          }),
       );
 
       const aggField = resolveMetricField(flags.metric, flags.agg, metrics);
       // Prepend any user-supplied grouping fields, then the resolved aggregate
       const groupByFields = userSuppliedFields
-        ? fieldList.filter((f) => !isAggregate(f))
+        ? fieldList.filter((f) => !isAggregateFieldOrEquation(f))
         : [];
       fieldList = [...groupByFields, aggField];
     } else if (dataset === "tracemetrics") {
@@ -815,7 +760,7 @@ export const exploreCommand = buildListCommand("explore", {
             "  sentry explore my-org/ -m llm.token_usage --agg avg --dataset metrics\n\n" +
             "Manual mode (tracemetrics format):\n" +
             '  sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics',
-          "field"
+          "field",
         );
       }
       validateMetricsFields(fieldList);
@@ -840,12 +785,12 @@ export const exploreCommand = buildListCommand("explore", {
         q: flags.query,
         sort: config.sort,
         period: serializeTimeRange(timeRange),
-      }
+      },
     );
     const { cursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const { data: response, nextCursor } = await withProgress(
@@ -859,7 +804,7 @@ export const exploreCommand = buildListCommand("explore", {
           .catch((error: unknown): never => {
             // An unparseable user --query is a user input mistake, not a CLI bug.
             throw toSearchQueryError(error, flags.query);
-          })
+          }),
     );
 
     advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);
@@ -873,11 +818,11 @@ export const exploreCommand = buildListCommand("explore", {
       hasMore,
       prevHint: appendFlagHints(
         `sentry explore ${baseTarget} -c prev`,
-        hintFlags
+        hintFlags,
       ),
       nextHint: appendFlagHints(
         `sentry explore ${baseTarget} -c next`,
-        hintFlags
+        hintFlags,
       ),
     });
 

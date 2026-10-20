@@ -27,8 +27,9 @@ export type ExploreQueryOptions = {
   query?: string;
   /**
    * Sort field. Prefix with `-` for descending.
-   * Supported on the `spans`, `errors`, and `discover` datasets; `metrics` and
-   * `logs` reject it with 400. A stable sort is required for correct
+   * Every Events dataset accepts it as long as the sort column is in
+   * `fields`; resolve both with `resolveEventsSort` from
+   * `@sentry/toolkit-core/events-sort`. A stable sort is required for correct
    * offset-based cursor pagination on grouped aggregate queries (#1519).
    */
   sort?: string;
@@ -42,6 +43,12 @@ export type ExploreQueryOptions = {
   start?: string;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
   end?: string;
+  /**
+   * Numeric project IDs to scope the query to. Passed as repeated `project`
+   * params. Avoids the "project not actively selected" error when querying a
+   * specific project's events.
+   */
+  project?: string[];
 };
 
 /**
@@ -60,7 +67,7 @@ async function fetchEventsPage(
   regionUrl: string,
   orgSlug: string,
   options: ExploreQueryOptions,
-  perPage: number
+  perPage: number,
 ): Promise<PaginatedResponse<EventsTableResponse>> {
   const { data, headers } = await apiRequestToRegion<EventsTableResponse>(
     regionUrl,
@@ -79,9 +86,10 @@ async function fetchEventsPage(
         start: options.start,
         end: options.end,
         cursor: options.cursor,
+        project: options.project,
       },
       schema: EventsTableResponseSchema,
-    }
+    },
   );
 
   const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
@@ -111,7 +119,7 @@ export async function queryMetricsMeta(
     start?: string;
     end?: string;
     project?: string;
-  }
+  },
 ): Promise<MetricMeta[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const query = options?.project ? `project:${options.project}` : undefined;
@@ -136,7 +144,7 @@ export async function queryMetricsMeta(
       regionUrl,
       orgSlug,
       { ...baseOptions, cursor },
-      API_MAX_PER_PAGE
+      API_MAX_PER_PAGE,
     );
 
     allRows.push(...result.data.data);
@@ -171,7 +179,7 @@ export async function queryMetricsMeta(
  */
 export async function queryEvents(
   orgSlug: string,
-  options: ExploreQueryOptions
+  options: ExploreQueryOptions,
 ): Promise<PaginatedResponse<EventsTableResponse>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const limit = options.limit ?? 25;
@@ -192,7 +200,7 @@ export async function queryEvents(
       regionUrl,
       orgSlug,
       { ...options, cursor },
-      perPage
+      perPage,
     );
 
     if (page === 0) {

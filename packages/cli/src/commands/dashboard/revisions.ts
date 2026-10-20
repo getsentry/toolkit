@@ -12,6 +12,7 @@ import {
 } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -29,7 +30,7 @@ import {
   paginationHint,
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
-import { buildDashboardUrl } from "../../lib/sentry-urls.js";
+import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { DashboardRevision } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
@@ -73,7 +74,7 @@ function formatRevisionsHuman(result: RevisionsResult): string {
     id: r.id,
     title: escapeMarkdownCell(r.title),
     author: escapeMarkdownCell(
-      r.createdBy?.name ?? r.createdBy?.email ?? r.createdBy?.id ?? "—"
+      r.createdBy?.name ?? r.createdBy?.email ?? r.createdBy?.id ?? "—",
     ),
     created: `${escapeMarkdownCell(formatRelativeTime(r.dateCreated))}\n${colorTag("muted", r.dateCreated)}`,
   }));
@@ -94,7 +95,7 @@ function formatRevisionsHuman(result: RevisionsResult): string {
 
 function jsonTransformRevisions(
   result: RevisionsResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const items =
     fields && fields.length > 0
@@ -136,7 +137,7 @@ export const revisionsCommand = buildCommand({
       parameter: {
         placeholder: "org/dashboard",
         brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -153,19 +154,19 @@ export const revisionsCommand = buildCommand({
     const orgSlug = await resolveOrgFromTarget(
       parsed,
       cwd,
-      "sentry dashboard revisions <org>/ <id>"
+      "sentry dashboard revisions <org>/ <id>",
     );
     const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
 
     const contextKey = buildPaginationContextKey(
       "dashboard-revisions",
       `${orgSlug}/${dashboardId}`,
-      {}
+      {},
     );
     const { cursor: rawCursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
@@ -189,13 +190,13 @@ export const revisionsCommand = buildCommand({
           }
           cursor = nc;
         }
-      }
+      },
     ).catch(async (error: unknown) =>
       enrichDashboardError(error, {
         orgSlug,
         dashboardId,
         operation: "view",
-      })
+      }),
     );
 
     const trimmed = results.slice(0, flags.limit);
@@ -206,7 +207,7 @@ export const revisionsCommand = buildCommand({
       PAGINATION_KEY,
       contextKey,
       direction,
-      cursorToStore
+      cursorToStore,
     );
     const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 

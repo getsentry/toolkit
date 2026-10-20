@@ -5,6 +5,7 @@
 import { rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { uuidv7 } from "uuidv7";
 
 const _require = createRequire(import.meta.url);
 
@@ -34,7 +35,7 @@ function isMigrationCompleted(db: Database): boolean {
 function markMigrationCompleted(db: Database): void {
   db.query("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)").run(
     MIGRATION_COMPLETED_KEY,
-    "true"
+    "true",
   );
 }
 
@@ -46,7 +47,7 @@ function oldConfigExists(): boolean {
 
 function readOldConfig(): OldConfig | null {
   const configPath = join(getConfigDir(), OLD_CONFIG_FILENAME);
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const { readFileSync } = _require("node:fs");
     const content = readFileSync(configPath, "utf-8");
@@ -122,7 +123,7 @@ type OldConfig = {
 };
 
 /** Migrate once, retaining the original file and skipping auth if its access token is malformed. */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one-time migration
+// one-time migration
 export function migrateFromJson(db: Database): void {
   // Check SQLite metadata first - this is the authoritative source
   if (isMigrationCompleted(db)) {
@@ -170,26 +171,30 @@ export function migrateFromJson(db: Database): void {
     if (token && oldConfig.auth) {
       // Direct write (not via setAuthToken) — safe only because migration
       // runs during DB bootstrap, before getIdentityFingerprint() memoizes.
+      const now = Date.now();
+      db.query("UPDATE accounts SET is_active = 0 WHERE is_active = 1").run();
       db.query(`
-        INSERT OR REPLACE INTO auth (id, token, refresh_token, expires_at, issued_at, updated_at)
-        VALUES (1, ?, ?, ?, ?, ?)
+        INSERT INTO accounts (account_id, token, refresh_token, expires_at, issued_at, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
       `).run(
+        uuidv7(),
         token,
         oldConfig.auth.refreshToken ?? null,
         oldConfig.auth.expiresAt ?? null,
         oldConfig.auth.issuedAt ?? null,
-        Date.now()
+        now,
+        now,
       );
     }
 
     if (oldConfig.defaults?.organization) {
       db.query(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)"
+        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
       ).run("defaults.org", oldConfig.defaults.organization);
     }
     if (oldConfig.defaults?.project) {
       db.query(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)"
+        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
       ).run("defaults.project", oldConfig.defaults.project);
     }
 
@@ -221,7 +226,7 @@ export function migrateFromJson(db: Database): void {
           entry.projectSlug,
           entry.projectName,
           entry.cachedAt,
-          entry.cachedAt // last_accessed = cachedAt for migrated entries
+          entry.cachedAt, // last_accessed = cachedAt for migrated entries
         );
       }
     }
@@ -256,7 +261,7 @@ export function migrateFromJson(db: Database): void {
           entry.resolved?.projectSlug ?? null,
           entry.resolved?.projectName ?? null,
           entry.cachedAt,
-          entry.cachedAt
+          entry.cachedAt,
         );
       }
     }
@@ -274,7 +279,7 @@ export function migrateFromJson(db: Database): void {
       // Skip all aliases if cachedAt is missing (required for NOT NULL column)
       if (cachedAt !== null && cachedAt !== undefined) {
         for (const [alias, entry] of Object.entries(
-          oldConfig.projectAliases.aliases
+          oldConfig.projectAliases.aliases,
         )) {
           // Skip malformed entries missing required fields
           if (!(entry?.orgSlug && entry?.projectSlug)) {
@@ -286,7 +291,7 @@ export function migrateFromJson(db: Database): void {
             entry.projectSlug,
             fingerprint,
             cachedAt,
-            cachedAt
+            cachedAt,
           );
         }
       }
@@ -300,7 +305,7 @@ export function migrateFromJson(db: Database): void {
     if (invalidAuthToken) {
       log.warn(
         "Malformed authentication credentials were not migrated. The original config.json was kept. " +
-          "Run 'sentry auth login' to authenticate again, then remove the old file."
+          "Run 'sentry auth login' to authenticate again, then remove the old file.",
       );
     } else {
       // Best-effort cleanup: SQLite metadata prevents re-import if it fails.

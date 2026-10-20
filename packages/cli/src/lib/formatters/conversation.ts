@@ -8,6 +8,7 @@
 import type {
   AgentConversationSpan,
   ConversationListItem,
+  ConversationStats,
 } from "../../types/conversation.js";
 import {
   colorTag,
@@ -37,10 +38,20 @@ function formatTimestamp(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toLocaleString();
 }
 
+const USD_FORMAT = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 6,
+});
+
+function formatCost(cost: number): string {
+  return USD_FORMAT.format(cost);
+}
+
 /**
  * Minimum terminal width (columns) to show the full conversation table.
  * Below this, Tools/Errs/User are dropped so the core ID/Title/Started/
- * Tokens/First Input columns don't truncate aggressively.
+ * Tokens/Cost/First Input columns don't truncate aggressively.
  */
 const WIDE_TABLE_MIN_TERM_WIDTH = 100;
 
@@ -68,6 +79,12 @@ const STARTED_COLUMN: Column<ConversationListItem> = {
 const TOKENS_COLUMN: Column<ConversationListItem> = {
   header: "Tokens",
   value: (c) => String(c.totalTokens),
+  align: "right",
+};
+
+const COST_COLUMN: Column<ConversationListItem> = {
+  header: "Cost",
+  value: (c) => formatCost(c.totalCost),
   align: "right",
 };
 
@@ -109,6 +126,7 @@ function selectConversationColumns(): Column<ConversationListItem>[] {
       TITLE_COLUMN,
       STARTED_COLUMN,
       TOKENS_COLUMN,
+      COST_COLUMN,
       TOOLS_COLUMN,
       ERRS_COLUMN,
       USER_COLUMN,
@@ -120,6 +138,7 @@ function selectConversationColumns(): Column<ConversationListItem>[] {
     TITLE_COLUMN,
     STARTED_COLUMN,
     TOKENS_COLUMN,
+    COST_COLUMN,
     FIRST_INPUT_COLUMN,
   ];
 }
@@ -193,7 +212,7 @@ function getOperationType(span: AgentConversationSpan): string | undefined {
 }
 
 function parseJson(value: string): unknown {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return JSON.parse(value);
   } catch {
@@ -310,13 +329,13 @@ function extractAssistantContent(span: AgentConversationSpan): string | null {
 }
 
 export function extractTurns(
-  spans: AgentConversationSpan[]
+  spans: AgentConversationSpan[],
 ): ConversationTurn[] {
   const sorted = [...spans].sort(
-    (a, b) => a["precise.start_ts"] - b["precise.start_ts"]
+    (a, b) => a["precise.start_ts"] - b["precise.start_ts"],
   );
   const aiClientSpans = sorted.filter(
-    (s) => getOperationType(s) === "ai_client"
+    (s) => getOperationType(s) === "ai_client",
   );
   const toolSpans = sorted.filter((s) => getOperationType(s) === "tool");
 
@@ -335,7 +354,7 @@ export function extractTurns(
         spanId: ts.span_id,
         timestamp: ts["precise.start_ts"],
         durationMs: Math.round(
-          (ts["precise.finish_ts"] - ts["precise.start_ts"]) * 1000
+          (ts["precise.finish_ts"] - ts["precise.start_ts"]) * 1000,
         ),
         status: ts["span.status"],
       }));
@@ -347,7 +366,7 @@ export function extractTurns(
       started: span["precise.start_ts"],
       ended: span["precise.finish_ts"],
       durationMs: Math.round(
-        (span["precise.finish_ts"] - span["precise.start_ts"]) * 1000
+        (span["precise.finish_ts"] - span["precise.start_ts"]) * 1000,
       ),
       userContent: extractUserContent(span),
       assistantContent: extractAssistantContent(span),
@@ -381,7 +400,7 @@ function formatEpoch(ts: number): string {
 function appendContentBlock(
   lines: string[],
   label: string,
-  content: string
+  content: string,
 ): void {
   lines.push(`**${label}**`);
   lines.push("");
@@ -425,7 +444,7 @@ function formatTurnHuman(turn: ConversationTurn): string {
           ? ` (${escapeMarkdownInline(tc.status)})`
           : "";
       lines.push(
-        `- ${safeCodeSpan(tc.name)} — ${formatDuration(tc.durationMs)}${status}`
+        `- ${safeCodeSpan(tc.name)} — ${formatDuration(tc.durationMs)}${status}`,
       );
     }
     lines.push("");
@@ -440,7 +459,13 @@ export type TranscriptResult = {
   /** Stored conversation title, or null when none has been titled yet. */
   title: string | null;
   turns: ConversationTurn[];
+  errors?: number;
+  llmCalls?: number;
+  toolCalls?: number;
+  toolErrors?: number;
+  totalCost?: number;
   totalTokens: number;
+  traceIds: string[];
   spanCount: number;
   projects: string[];
   startTimestamp: number;
@@ -468,6 +493,21 @@ export function formatTranscriptResult(result: TranscriptResult): string {
     ["Spans", String(result.spanCount)],
     ["Tokens", String(result.totalTokens)],
   ];
+  if (result.totalCost !== undefined) {
+    rows.push(["Cost", formatCost(result.totalCost)]);
+  }
+  if (result.llmCalls !== undefined) {
+    rows.push(["LLM Calls", String(result.llmCalls)]);
+  }
+  if (result.toolCalls !== undefined) {
+    rows.push(["Tool Calls", String(result.toolCalls)]);
+  }
+  if (result.errors !== undefined) {
+    rows.push(["Errors", String(result.errors)]);
+  }
+  if (result.toolErrors !== undefined) {
+    rows.push(["Tool Errors", String(result.toolErrors)]);
+  }
   if (result.title) {
     rows.unshift(["Title", escapeMarkdownCell(result.title)]);
   }
@@ -483,8 +523,8 @@ export function formatTranscriptResult(result: TranscriptResult): string {
     lines.push(
       colorTag(
         "yellow",
-        "⚠ Transcript truncated — the conversation exceeds the pagination limit."
-      )
+        "⚠ Transcript truncated — the conversation exceeds the pagination limit.",
+      ),
     );
   }
   return renderMarkdown(lines.join("\n"));
@@ -494,31 +534,44 @@ export function buildTranscriptResult(
   conversationId: string,
   org: string,
   spans: AgentConversationSpan[],
-  title: string | null = null
+  details: { stats?: ConversationStats; title?: string | null } = {},
 ): TranscriptResult {
+  const { stats, title = null } = details;
   const turns = extractTurns(spans);
+  const summary = stats
+    ? {
+        errors: stats.errors,
+        llmCalls: stats.llmCalls,
+        toolCalls: stats.toolCalls,
+        toolErrors: stats.toolErrors,
+        totalCost: stats.totalCost,
+      }
+    : {};
   return {
     conversationId,
     org,
     title,
     turns,
-    // Sum tokens per turn (ai_client spans only). Summing every span would
-    // double-count parent invoke_agent spans that aggregate child usage.
-    totalTokens: turns.reduce((sum, t) => sum + t.totalTokens, 0),
+    ...summary,
+    // Prefer server totals. They cover the whole conversation without
+    // double-counting parent agent spans.
+    totalTokens:
+      stats?.totalTokens ?? turns.reduce((sum, t) => sum + t.totalTokens, 0),
+    traceIds: [...new Set(spans.map((s) => s.trace))].sort(),
     spanCount: spans.length,
     projects: [...new Set(spans.map((s) => s.project))].sort(),
     startTimestamp:
       spans.length > 0
         ? spans.reduce(
             (min, s) => Math.min(min, s["precise.start_ts"]),
-            Number.POSITIVE_INFINITY
+            Number.POSITIVE_INFINITY,
           )
         : 0,
     endTimestamp:
       spans.length > 0
         ? spans.reduce(
             (max, s) => Math.max(max, s["precise.finish_ts"]),
-            Number.NEGATIVE_INFINITY
+            Number.NEGATIVE_INFINITY,
           )
         : 0,
   };

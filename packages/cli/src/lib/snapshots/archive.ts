@@ -50,7 +50,7 @@ function safeEntryDest(root: string, name: string): string | null {
  */
 export async function extractZipStream(
   chunks: AsyncIterable<Uint8Array>,
-  outDir: string
+  outDir: string,
 ): Promise<number> {
   const root = resolve(outDir);
   mkdirSync(root, { recursive: true });
@@ -87,7 +87,7 @@ export async function extractZipStream(
           failure ??= err;
           resolveWrite();
         });
-      })
+      }),
     );
 
     file.ondata = (err, data, final) => {

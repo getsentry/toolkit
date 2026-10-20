@@ -33,7 +33,7 @@ import type {
  * Strip ANSI escape codes for content assertions.
  */
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI codes use control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -85,7 +85,7 @@ function makeSpan(overrides: Partial<TraceSpan> = {}): TraceSpan {
  * Create a minimal TransactionListItem for testing.
  */
 function makeTransaction(
-  overrides: Partial<TransactionListItem> = {}
+  overrides: Partial<TransactionListItem> = {},
 ): TransactionListItem {
   return {
     trace: "a".repeat(32),
@@ -154,7 +154,7 @@ describe("formatTraceRow (rendered mode)", () => {
 
   test("includes transaction name", () => {
     const row = formatTraceRow(
-      makeTransaction({ transaction: "POST /api/data" })
+      makeTransaction({ transaction: "POST /api/data" }),
     );
     expect(row).toContain("POST /api/data");
   });
@@ -200,7 +200,7 @@ describe("formatTraceRow (plain mode)", () => {
 
   test("includes transaction name", () => {
     const row = formatTraceRow(
-      makeTransaction({ transaction: "POST /api/data" })
+      makeTransaction({ transaction: "POST /api/data" }),
     );
     expect(row).toContain("POST /api/data");
   });
@@ -412,21 +412,21 @@ describe("formatTraceTable", () => {
   test("includes trace IDs", () => {
     const traceId = "a".repeat(32);
     const result = stripAnsi(
-      formatTraceTable([makeTransaction({ trace: traceId })])
+      formatTraceTable([makeTransaction({ trace: traceId })]),
     );
     expect(result).toContain(traceId);
   });
 
   test("includes formatted durations", () => {
     const result = stripAnsi(
-      formatTraceTable([makeTransaction({ "span.duration": 1500 })])
+      formatTraceTable([makeTransaction({ "span.duration": 1500 })]),
     );
     expect(result).toContain("1.50s");
   });
 
   test("shows 'unknown' for empty transaction", () => {
     const result = stripAnsi(
-      formatTraceTable([makeTransaction({ transaction: "" })])
+      formatTraceTable([makeTransaction({ transaction: "" })]),
     );
     expect(result).toContain("unknown");
   });
@@ -451,19 +451,19 @@ describe("translateSpanQuery", () => {
 
   test("mixed shorthand and bare words", () => {
     expect(translateSpanQuery("op:http GET duration:>50ms")).toBe(
-      "span.op:http GET span.duration:>50ms"
+      "span.op:http GET span.duration:>50ms",
     );
   });
 
   test("native keys pass through unchanged", () => {
     expect(translateSpanQuery("description:fetch project:backend")).toBe(
-      "description:fetch project:backend"
+      "description:fetch project:backend",
     );
   });
 
   test("transaction: passes through unchanged", () => {
     expect(translateSpanQuery("transaction:checkout")).toBe(
-      "transaction:checkout"
+      "transaction:checkout",
     );
   });
 
@@ -478,14 +478,14 @@ describe("translateSpanQuery", () => {
 
   test("quoted values are preserved", () => {
     expect(translateSpanQuery('description:"GET /api"')).toBe(
-      'description:"GET /api"'
+      'description:"GET /api"',
     );
   });
 
   test("negated shorthand keys are translated correctly", () => {
     expect(translateSpanQuery("!op:db")).toBe("!span.op:db");
     expect(translateSpanQuery("!duration:>100ms")).toBe(
-      "!span.duration:>100ms"
+      "!span.duration:>100ms",
     );
   });
 

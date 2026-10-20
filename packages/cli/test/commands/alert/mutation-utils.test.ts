@@ -177,13 +177,13 @@ describe("validateIssueRuleArrays", () => {
 
   test("passes for non-empty conditions", () => {
     expect(() =>
-      validateIssueRuleArrays([{ id: "a" }], undefined, "conditions")
+      validateIssueRuleArrays([{ id: "a" }], undefined, "conditions"),
     ).not.toThrow();
   });
 
   test("passes for non-empty actions", () => {
     expect(() =>
-      validateIssueRuleArrays(undefined, [{ id: "a" }], "actions")
+      validateIssueRuleArrays(undefined, [{ id: "a" }], "actions"),
     ).not.toThrow();
   });
 });
@@ -226,15 +226,12 @@ describe("normalizeMetricDataset", () => {
     expect(normalizeMetricDataset("  Error-Events  ")).toBe("errors");
   });
 
-  test.each([
-    "errors",
-    "sessions",
-    "events",
-    "spans",
-    "metrics",
-  ])('passes canonical value "%s" through unchanged', (value) => {
-    expect(normalizeMetricDataset(value)).toBe(value);
-  });
+  test.each(["errors", "sessions", "events", "spans", "metrics"])(
+    'passes canonical value "%s" through unchanged',
+    (value) => {
+      expect(normalizeMetricDataset(value)).toBe(value);
+    },
+  );
 
   test("lowercases unknown values but leaves them otherwise unchanged", () => {
     expect(normalizeMetricDataset("Unknown")).toBe("unknown");
@@ -267,18 +264,16 @@ describe("resolveMetricDataset", () => {
     });
   });
 
-  test.each([
-    "transaction",
-    "transactions",
-    "Transactions",
-    "  TRANSACTION ",
-  ])('routes "%s" to spans and adds is_transaction:true with a notice', (input) => {
-    const result = resolveMetricDataset(input, "environment:prod");
-    expect(result.dataset).toBe("spans");
-    expect(result.query).toBe("environment:prod is_transaction:true");
-    expect(result.notice).toContain("spans");
-    expect(result.notice).toContain("is_transaction:true");
-  });
+  test.each(["transaction", "transactions", "Transactions", "  TRANSACTION "])(
+    'routes "%s" to spans and adds is_transaction:true with a notice',
+    (input) => {
+      const result = resolveMetricDataset(input, "environment:prod");
+      expect(result.dataset).toBe("spans");
+      expect(result.query).toBe("environment:prod is_transaction:true");
+      expect(result.notice).toContain("spans");
+      expect(result.notice).toContain("is_transaction:true");
+    },
+  );
 
   test("adds the filter to an empty query", () => {
     const result = resolveMetricDataset("transactions", "");
@@ -289,7 +284,7 @@ describe("resolveMetricDataset", () => {
   test("does not duplicate an existing is_transaction:true filter", () => {
     const result = resolveMetricDataset(
       "transactions",
-      "environment:prod is_transaction:true"
+      "environment:prod is_transaction:true",
     );
     expect(result.query).toBe("environment:prod is_transaction:true");
   });
@@ -304,14 +299,12 @@ describe("validateMetricDataset", () => {
     });
   }
 
-  test.each([
-    "error",
-    "error-events",
-    "METRIC",
-    "span",
-  ])('passes for alias "%s"', (dataset) => {
-    expect(() => validateMetricDataset(dataset)).not.toThrow();
-  });
+  test.each(["error", "error-events", "METRIC", "span"])(
+    'passes for alias "%s"',
+    (dataset) => {
+      expect(() => validateMetricDataset(dataset)).not.toThrow();
+    },
+  );
 
   test.each([
     "tracemetrics",
@@ -402,7 +395,7 @@ describe("validateMetricTriggers", () => {
     expect(() =>
       validateMetricTriggers([
         { alertThreshold: 100, actions: [{ type: "email" }] },
-      ])
+      ]),
     ).not.toThrow();
   });
 });

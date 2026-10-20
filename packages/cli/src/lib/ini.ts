@@ -97,7 +97,7 @@ export function parseIni(content: string): IniData {
     const rawValue = line.slice(eqIndex + 1).trim();
     const value = stripQuotes(rawValue);
 
-    // biome-ignore lint/style/noNonNullAssertion: section is always initialized above
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- section is always initialized above
     data[currentSection]![key] = value;
   }
 

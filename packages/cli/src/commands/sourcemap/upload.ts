@@ -130,7 +130,7 @@ function jsRelativePath(jsPath: string, ctx: ArtifactContext): string {
  */
 function buildArtifactPair(
   result: InjectResult,
-  ctx: ArtifactContext
+  ctx: ArtifactContext,
 ): ArtifactFile[] {
   const { jsPath, map, debugId } = result;
   const jsRelative = jsRelativePath(jsPath, ctx);
@@ -176,7 +176,7 @@ function buildArtifactPair(
   // External map on disk.
   let mapRelative = relative(ctx.resolvedDir, map.mapPath).replaceAll(
     "\\",
-    "/"
+    "/",
   );
   if (ctx.pathPrefixToStrip) {
     mapRelative = stripPrefix(mapRelative, ctx.pathPrefixToStrip);
@@ -320,7 +320,7 @@ export const uploadCommand = buildCommand({
       "no-rewrite"?: boolean;
       "allow-empty"?: boolean;
     },
-    dir: string
+    dir: string,
   ) {
     // Validate the directory and discover pairs read-only first so we
     // don't write debug IDs when the upload won't proceed (empty dir,
@@ -337,7 +337,7 @@ export const uploadCommand = buildCommand({
       : undefined;
     const ignoreMatcher = await buildIgnoreMatcher(
       ignorePatterns,
-      flags["ignore-file"]
+      flags["ignore-file"],
     );
 
     const pairs = await discoverFilePairs(dir, extSet, ignoreMatcher);
@@ -365,7 +365,7 @@ export const uploadCommand = buildCommand({
     // Validate mutually exclusive flags before any file mutation
     if (flags["strip-prefix"] && flags["strip-common-prefix"]) {
       throw new ValidationError(
-        "--strip-prefix and --strip-common-prefix are mutually exclusive"
+        "--strip-prefix and --strip-common-prefix are mutually exclusive",
       );
     }
 
@@ -420,7 +420,7 @@ export const uploadCommand = buildCommand({
         urlPrefix,
         pathPrefixToStrip,
         noRewrite: flags["no-rewrite"] ?? false,
-      })
+      }),
     );
 
     await uploadSourcemaps({
@@ -435,7 +435,7 @@ export const uploadCommand = buildCommand({
     // buildArtifactPair returns no entries for inline pairs whose rewrite was
     // aborted, so this excludes skipped pairs that results.length would count.
     const filesUploaded = artifactFiles.filter(
-      (f) => f.type === "minified_source"
+      (f) => f.type === "minified_source",
     ).length;
 
     yield new CommandOutput<UploadCommandResult>({

@@ -70,7 +70,7 @@ describe("issue link", () => {
       context,
       { ...defaultFlags, integration: "99" },
       "test-org/APP-42",
-      externalUrl
+      externalUrl,
     );
 
     expect(resolveOrgAndIssueId).toHaveBeenCalledExactlyOnceWith({
@@ -104,7 +104,7 @@ describe("issue link", () => {
         field: ["team=team-1", "query=key=value", "optional="],
       },
       "APP-42",
-      "https://tracker.example/issues/42"
+      "https://tracker.example/issues/42",
     );
 
     expect(linkExternalIssue).toHaveBeenCalledExactlyOnceWith({
@@ -126,23 +126,26 @@ describe("issue link", () => {
     ["__proto__=value"],
     ["constructor=value"],
     ["prototype=value"],
-  ])("rejects malformed or ambiguous --field input %j before resolving or writing", async (...fields) => {
-    const { context, output } = createMockContext();
-    const func = await linkCommand.loader();
+  ])(
+    "rejects malformed or ambiguous --field input %j before resolving or writing",
+    async (...fields) => {
+      const { context, output } = createMockContext();
+      const func = await linkCommand.loader();
 
-    await expect(
-      func.call(
-        context,
-        { ...defaultFlags, app: "custom-tracker", field: fields },
-        "APP-42",
-        externalUrl
-      )
-    ).rejects.toBeInstanceOf(ValidationError);
+      await expect(
+        func.call(
+          context,
+          { ...defaultFlags, app: "custom-tracker", field: fields },
+          "APP-42",
+          externalUrl,
+        ),
+      ).rejects.toBeInstanceOf(ValidationError);
 
-    expect(resolveOrgAndIssueId).not.toHaveBeenCalled();
-    expect(linkExternalIssue).not.toHaveBeenCalled();
-    expect(output()).toBe("");
-  });
+      expect(resolveOrgAndIssueId).not.toHaveBeenCalled();
+      expect(linkExternalIssue).not.toHaveBeenCalled();
+      expect(output()).toBe("");
+    },
+  );
 
   test("renders a dry-run preview while forwarding the no-write flag", async () => {
     vi.mocked(linkExternalIssue).mockResolvedValue({
@@ -157,11 +160,11 @@ describe("issue link", () => {
       context,
       { ...defaultFlags, "dry-run": true },
       "APP-42",
-      externalUrl
+      externalUrl,
     );
 
     expect(linkExternalIssue).toHaveBeenCalledWith(
-      expect.objectContaining({ dryRun: true })
+      expect.objectContaining({ dryRun: true }),
     );
     expect(output()).toContain("Would link");
     expect(output()).toContain("dry run");
@@ -174,7 +177,7 @@ describe("issue link", () => {
       context,
       { ...defaultFlags, json: true },
       "APP-42",
-      externalUrl
+      externalUrl,
     );
 
     expect(JSON.parse(output())).toEqual(linkedResult);

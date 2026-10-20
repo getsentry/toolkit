@@ -5,7 +5,7 @@
  * Covers region discovery, fan-out, and region-aware routing.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -116,7 +116,7 @@ describe("getUserRegions", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -143,7 +143,7 @@ describe("getUserRegions", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -168,7 +168,7 @@ describe("getUserRegions", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -200,7 +200,7 @@ describe("listOrganizationsPage", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     };
 
@@ -287,7 +287,7 @@ describe("listOrganizations (control silo)", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       },
     });
@@ -296,10 +296,10 @@ describe("listOrganizations (control silo)", () => {
 
     // No region discovery call, and only one request to the control silo.
     expect(requestedUrls.some((u) => u.includes("/users/me/regions/"))).toBe(
-      false
+      false,
     );
     expect(
-      requestedUrls.filter((u) => u.includes("/organizations/"))
+      requestedUrls.filter((u) => u.includes("/organizations/")),
     ).toHaveLength(1);
 
     // Both orgs (from different regions) come back from that single call.
@@ -334,7 +334,7 @@ describe("listOrganizations (control silo)", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         ),
     });
 
@@ -386,7 +386,7 @@ describe("listOrganizations (control silo)", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         ),
     });
 
@@ -395,7 +395,7 @@ describe("listOrganizations (control silo)", () => {
     const cachedRegions = getAllOrgRegions();
     // Org with links should use its own regionUrl
     expect(cachedRegions.get("org-with-links")).toBe(
-      "https://custom.sentry.io"
+      "https://custom.sentry.io",
     );
     // Org without links falls back to the control silo base URL
     expect(cachedRegions.get("org-without-links")).toBe("https://sentry.io");
@@ -438,7 +438,7 @@ describe("listOrganizations (control silo)", () => {
                 "Content-Type": "application/json",
                 Link: '<https://sentry.io/api/0/organizations/>; rel="next"; results="true"; cursor="page2:0:0"',
               },
-            }
+            },
           );
         }
         return new Response(
@@ -449,7 +449,7 @@ describe("listOrganizations (control silo)", () => {
               "Content-Type": "application/json",
               Link: '<https://sentry.io/api/0/organizations/>; rel="next"; results="false"; cursor="end:0:0"',
             },
-          }
+          },
         );
       },
     });
@@ -482,7 +482,7 @@ describe("findProjectByDsnKey (multi-region)", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         return new Response(JSON.stringify([]), { status: 200 });
@@ -512,7 +512,7 @@ describe("findProjectByDsnKey (multi-region)", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         return new Response(JSON.stringify([]), { status: 200 });
@@ -521,17 +521,17 @@ describe("findProjectByDsnKey (multi-region)", () => {
 
     const project = await findProjectByDsnKey("abc123");
 
-    // Should have searched both regions
-    expect(
-      requestedUrls.some(
-        (u) => u.includes("us.sentry.io") && u.includes("/projects/")
-      )
-    ).toBe(true);
-    expect(
-      requestedUrls.some(
-        (u) => u.includes("de.sentry.io") && u.includes("/projects/")
-      )
-    ).toBe(true);
+    // Match the origin, not a hostname substring that could occur in another URL.
+    const searchedRegion = (region: string): boolean =>
+      requestedUrls.some((requestedUrl) => {
+        const url = new URL(requestedUrl);
+        return (
+          url.origin === `https://${region}.sentry.io` &&
+          url.pathname.includes("/projects/")
+        );
+      });
+    expect(searchedRegion("us")).toBe(true);
+    expect(searchedRegion("de")).toBe(true);
 
     // Should find the project from EU region
     expect(project).not.toBeNull();
@@ -549,7 +549,7 @@ describe("findProjectByDsnKey (multi-region)", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         return new Response(JSON.stringify([]), { status: 200 });
@@ -580,7 +580,7 @@ describe("findProjectByDsnKey (multi-region)", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         if (req.url.includes("/projects/")) {
@@ -595,7 +595,7 @@ describe("findProjectByDsnKey (multi-region)", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         return new Response(JSON.stringify([]), { status: 200 });
@@ -625,7 +625,7 @@ describe("findProjectByDsnKey (multi-region)", () => {
             {
               status: 200,
               headers: { "Content-Type": "application/json" },
-            }
+            },
           );
         }
         return new Response(JSON.stringify([]), { status: 200 });
@@ -645,7 +645,7 @@ describe("findProjectByDsnKey (multi-region)", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         ),
     });
 
@@ -700,7 +700,7 @@ describe("org-scoped requests use region cache", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     };
 

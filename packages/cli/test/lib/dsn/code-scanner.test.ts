@@ -66,17 +66,20 @@ describe("Code Scanner", () => {
       ["title", "Https://abc@o1.ingest.sentry.io/456"],
       ["mixed", "hTtPs://abc@o1.ingest.sentry.io/456"],
       ["http no s", "HTTP://abc@o1.ingest.sentry.io/456"],
-    ])("detects DSN with %s scheme casing (regression: literal-prefix fast path)", (_label, url) => {
-      // An earlier version of the literal-prefix probe used two
-      // case-sensitive `indexOf` calls (covering only all-lower and
-      // all-upper), which silently dropped mixed-case schemes like
-      // `Https://`. The probe is now `/http/i`. This test pins the
-      // correctness contract.
-      const content = `const DSN = "${url}";`;
-      const dsns = extractDsnsFromContent(content);
-      expect(dsns).toHaveLength(1);
-      expect(dsns[0]).toBe(url);
-    });
+    ])(
+      "detects DSN with %s scheme casing (regression: literal-prefix fast path)",
+      (_label, url) => {
+        // An earlier version of the literal-prefix probe used two
+        // case-sensitive `indexOf` calls (covering only all-lower and
+        // all-upper), which silently dropped mixed-case schemes like
+        // `Https://`. The probe is now `/http/i`. This test pins the
+        // correctness contract.
+        const content = `const DSN = "${url}";`;
+        const dsns = extractDsnsFromContent(content);
+        expect(dsns).toHaveLength(1);
+        expect(dsns[0]).toBe(url);
+      },
+    );
 
     test("extracts multiple DSNs", () => {
       const content = `
@@ -232,7 +235,7 @@ describe("Code Scanner", () => {
 
       // Invalid SENTRY_URL should throw immediately since nothing will work
       expect(() => extractDsnsFromContent(content)).toThrow(
-        /SENTRY_HOST\/SENTRY_URL.*not a valid URL/
+        /SENTRY_HOST\/SENTRY_URL.*not a valid URL/,
       );
     });
 
@@ -278,7 +281,7 @@ describe("Code Scanner", () => {
     test("finds DSN in root file", async () => {
       writeFileSync(
         join(testDir, "config.ts"),
-        'const DSN = "https://abc@o123.ingest.sentry.io/456";'
+        'const DSN = "https://abc@o123.ingest.sentry.io/456";',
       );
 
       const result = await scanCodeForFirstDsn(testDir);
@@ -291,7 +294,7 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "src"), { recursive: true });
       writeFileSync(
         join(testDir, "src/sentry.ts"),
-        'Sentry.init({ dsn: "https://abc@o123.ingest.sentry.io/456" });'
+        'Sentry.init({ dsn: "https://abc@o123.ingest.sentry.io/456" });',
       );
 
       const result = await scanCodeForFirstDsn(testDir);
@@ -312,7 +315,7 @@ describe("Code Scanner", () => {
       });
       writeFileSync(
         join(testDir, "node_modules/some-package/index.js"),
-        'const DSN = "https://abc@o123.ingest.sentry.io/456";'
+        'const DSN = "https://abc@o123.ingest.sentry.io/456";',
       );
 
       const result = await scanCodeForFirstDsn(testDir);
@@ -324,7 +327,7 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "test/lib"), { recursive: true });
       writeFileSync(
         join(testDir, "test/lib/scanner.test.ts"),
-        'const DSN = "https://testkey@o123.ingest.sentry.io/456";'
+        'const DSN = "https://testkey@o123.ingest.sentry.io/456";',
       );
 
       const result = await scanCodeForFirstDsn(testDir);
@@ -334,7 +337,7 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "tests/unit"), { recursive: true });
       writeFileSync(
         join(testDir, "tests/unit/app.test.ts"),
-        'const DSN = "https://testkey@o999.ingest.sentry.io/789";'
+        'const DSN = "https://testkey@o999.ingest.sentry.io/789";',
       );
 
       const allResult = await scanCodeForDsns(testDir);
@@ -345,12 +348,12 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "__mocks__"), { recursive: true });
       writeFileSync(
         join(testDir, "__mocks__/sentry.ts"),
-        'export const DSN = "https://mock@o123.ingest.sentry.io/111";'
+        'export const DSN = "https://mock@o123.ingest.sentry.io/111";',
       );
       mkdirSync(join(testDir, "fixtures"), { recursive: true });
       writeFileSync(
         join(testDir, "fixtures/config.ts"),
-        'export const DSN = "https://fixture@o123.ingest.sentry.io/222";'
+        'export const DSN = "https://fixture@o123.ingest.sentry.io/222";',
       );
 
       const result = await scanCodeForDsns(testDir);
@@ -362,18 +365,18 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "src"), { recursive: true });
       writeFileSync(
         join(testDir, "src/config.ts"),
-        'const DSN = "https://realkey@o123.ingest.sentry.io/456";'
+        'const DSN = "https://realkey@o123.ingest.sentry.io/456";',
       );
       mkdirSync(join(testDir, "test"), { recursive: true });
       writeFileSync(
         join(testDir, "test/fixture.ts"),
-        'const DSN = "https://fakekey@o999.ingest.sentry.io/999";'
+        'const DSN = "https://fakekey@o999.ingest.sentry.io/999";',
       );
 
       const result = await scanCodeForDsns(testDir);
       expect(result.dsns).toHaveLength(1);
       expect(result.dsns[0].raw).toBe(
-        "https://realkey@o123.ingest.sentry.io/456"
+        "https://realkey@o123.ingest.sentry.io/456",
       );
     });
 
@@ -382,11 +385,11 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "ignored"), { recursive: true });
       writeFileSync(
         join(testDir, "ignored/config.ts"),
-        'const DSN = "https://ignored@o123.ingest.sentry.io/456";'
+        'const DSN = "https://ignored@o123.ingest.sentry.io/456";',
       );
       writeFileSync(
         join(testDir, "real.ts"),
-        'const DSN = "https://real@o456.ingest.sentry.io/789";'
+        'const DSN = "https://real@o456.ingest.sentry.io/789";',
       );
 
       const result = await scanCodeForFirstDsn(testDir);
@@ -398,7 +401,7 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "packages/frontend"), { recursive: true });
       writeFileSync(
         join(testDir, "packages/frontend/sentry.ts"),
-        'const DSN = "https://abc@o123.ingest.sentry.io/456";'
+        'const DSN = "https://abc@o123.ingest.sentry.io/456";',
       );
 
       const result = await scanCodeForFirstDsn(testDir);
@@ -409,7 +412,7 @@ describe("Code Scanner", () => {
       // Test Python
       writeFileSync(
         join(testDir, "app.py"),
-        'sentry_sdk.init(dsn="https://py@o123.ingest.sentry.io/1")'
+        'sentry_sdk.init(dsn="https://py@o123.ingest.sentry.io/1")',
       );
 
       let result = await scanCodeForFirstDsn(testDir);
@@ -419,7 +422,7 @@ describe("Code Scanner", () => {
       rmSync(join(testDir, "app.py"));
       writeFileSync(
         join(testDir, "main.go"),
-        'sentry.Init(sentry.ClientOptions{Dsn: "https://go@o123.ingest.sentry.io/2"})'
+        'sentry.Init(sentry.ClientOptions{Dsn: "https://go@o123.ingest.sentry.io/2"})',
       );
 
       result = await scanCodeForFirstDsn(testDir);
@@ -429,7 +432,7 @@ describe("Code Scanner", () => {
       rmSync(join(testDir, "main.go"));
       writeFileSync(
         join(testDir, "config.rb"),
-        'Sentry.init do |config|\n  config.dsn = "https://rb@o123.ingest.sentry.io/3"\nend'
+        'Sentry.init do |config|\n  config.dsn = "https://rb@o123.ingest.sentry.io/3"\nend',
       );
 
       result = await scanCodeForFirstDsn(testDir);
@@ -442,11 +445,11 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "src"), { recursive: true });
       writeFileSync(
         join(testDir, "src/frontend.ts"),
-        'const DSN = "https://frontend@o123.ingest.sentry.io/111";'
+        'const DSN = "https://frontend@o123.ingest.sentry.io/111";',
       );
       writeFileSync(
         join(testDir, "src/backend.ts"),
-        'const DSN = "https://backend@o456.ingest.sentry.io/222";'
+        'const DSN = "https://backend@o456.ingest.sentry.io/222";',
       );
 
       const result = await scanCodeForDsns(testDir);
@@ -465,11 +468,11 @@ describe("Code Scanner", () => {
     test("deduplicates same DSN from multiple files", async () => {
       writeFileSync(
         join(testDir, "a.ts"),
-        'const DSN = "https://same@o123.ingest.sentry.io/456";'
+        'const DSN = "https://same@o123.ingest.sentry.io/456";',
       );
       writeFileSync(
         join(testDir, "b.ts"),
-        'const DSN = "https://same@o123.ingest.sentry.io/456";'
+        'const DSN = "https://same@o123.ingest.sentry.io/456";',
       );
 
       const result = await scanCodeForDsns(testDir);
@@ -525,13 +528,13 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "packages/spotlight/src"), { recursive: true });
       writeFileSync(
         join(testDir, "packages/spotlight/src/instrument.ts"),
-        'Sentry.init({ dsn: "https://spotlight@o123.ingest.sentry.io/111" });'
+        'Sentry.init({ dsn: "https://spotlight@o123.ingest.sentry.io/111" });',
       );
 
       const result = await scanCodeForDsns(testDir);
       expect(result.dsns).toHaveLength(1);
       expect(result.dsns[0]?.raw).toBe(
-        "https://spotlight@o123.ingest.sentry.io/111"
+        "https://spotlight@o123.ingest.sentry.io/111",
       );
       expect(result.dsns[0]?.packagePath).toBe("packages/spotlight");
     });
@@ -541,11 +544,11 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "packages/backend/src"), { recursive: true });
       writeFileSync(
         join(testDir, "packages/frontend/src/sentry.ts"),
-        'const DSN = "https://fe@o123.ingest.sentry.io/111";'
+        'const DSN = "https://fe@o123.ingest.sentry.io/111";',
       );
       writeFileSync(
         join(testDir, "packages/backend/src/sentry.ts"),
-        'const DSN = "https://be@o456.ingest.sentry.io/222";'
+        'const DSN = "https://be@o456.ingest.sentry.io/222";',
       );
 
       const result = await scanCodeForDsns(testDir);
@@ -571,13 +574,13 @@ describe("Code Scanner", () => {
       });
       writeFileSync(
         join(testDir, "packages/spotlight/src/electron/main/index.ts"),
-        'Sentry.init({ dsn: "https://electron@o123.ingest.sentry.io/333" });'
+        'Sentry.init({ dsn: "https://electron@o123.ingest.sentry.io/333" });',
       );
 
       const result = await scanCodeForDsns(testDir);
       expect(result.dsns).toHaveLength(1);
       expect(result.dsns[0]?.raw).toBe(
-        "https://electron@o123.ingest.sentry.io/333"
+        "https://electron@o123.ingest.sentry.io/333",
       );
       expect(result.dsns[0]?.packagePath).toBe("packages/spotlight");
     });
@@ -589,7 +592,7 @@ describe("Code Scanner", () => {
       mkdirSync(join(testDir, "src/very/deeply/nested"), { recursive: true });
       writeFileSync(
         join(testDir, "src/very/deeply/nested/config.ts"),
-        'const DSN = "https://deep@o123.ingest.sentry.io/999";'
+        'const DSN = "https://deep@o123.ingest.sentry.io/999";',
       );
 
       const result = await scanCodeForDsns(testDir);
@@ -601,7 +604,7 @@ describe("Code Scanner", () => {
       const filePath = join(testDir, "secret.ts");
       writeFileSync(
         filePath,
-        'const DSN = "https://abc@o123.ingest.sentry.io/456";'
+        'const DSN = "https://abc@o123.ingest.sentry.io/456";',
       );
       chmodSync(filePath, 0o000);
 

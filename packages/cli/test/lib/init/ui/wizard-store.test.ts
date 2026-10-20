@@ -25,16 +25,16 @@ describe("WizardStore step progress", () => {
     const store = new WizardStore();
     const snapshot = store.getSnapshot();
     expect(snapshot.steps.map((entry) => entry.id)).toEqual(
-      CHECKLIST_VISIBLE_STEPS.slice()
+      CHECKLIST_VISIBLE_STEPS.slice(),
     );
     expect(snapshot.steps.every((entry) => entry.status === "pending")).toBe(
-      true
+      true,
     );
     expect(snapshot.steps.some((entry) => entry.id === "install-deps")).toBe(
-      false
+      false,
     );
     expect(
-      snapshot.steps.find((entry) => entry.id === "apply-codemods")?.label
+      snapshot.steps.find((entry) => entry.id === "apply-codemods")?.label,
     ).toBe("Applying changes + deps");
   });
 
@@ -73,7 +73,7 @@ describe("WizardStore step progress", () => {
       }
     }
     expect(steps.find((entry) => entry.id === "verify-changes")?.status).toBe(
-      "in_progress"
+      "in_progress",
     );
   });
 
@@ -96,7 +96,7 @@ describe("WizardStore step progress", () => {
     const initialLength = store.getSnapshot().steps.length;
     store.setStepStatus("select-target-app", "in_progress");
     // Note: variable is deliberately not named `after` because
-    // Biome's `noDoneCallback` rule pattern-matches Mocha hooks
+    // The former lint rule pattern-matched Mocha hooks
     // (`after`, `before`, …) by identifier and would flag the
     // arrow-function callback inside `.find()` below.
     const updated = store.getSnapshot().steps;
@@ -325,10 +325,10 @@ describe("WizardStore file read state machine", () => {
     store.markFilesAnalyzed(["a.ts"]);
     const snap = store.getSnapshot();
     expect(snap.filesRead.find((e) => e.path === "a.ts")?.status).toBe(
-      "analyzed"
+      "analyzed",
     );
     expect(snap.filesRead.find((e) => e.path === "b.ts")?.status).toBe(
-      "reading"
+      "reading",
     );
   });
 

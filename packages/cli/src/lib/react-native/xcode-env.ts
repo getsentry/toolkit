@@ -162,7 +162,7 @@ function toPartialPlist(raw: Record<string, string>): Partial<InfoPlist> {
  */
 function preprocessPlist(
   path: string,
-  vars: Env
+  vars: Env,
 ): Record<string, string> | null {
   const args = ["-xc", "-P", "-E"];
   const other = vars.INFOPLIST_OTHER_PREPROCESSOR_FLAGS;
@@ -191,7 +191,7 @@ function preprocessPlist(
 async function loadAndProcess(
   path: string,
   vars: Env,
-  allowPreprocessing: boolean
+  allowPreprocessing: boolean,
 ): Promise<InfoPlist | null> {
   const shouldPreprocess =
     allowPreprocessing && vars.INFOPLIST_PREPROCESS === "YES";
@@ -279,7 +279,7 @@ function getXcodeProjectInfo(cwd: string): XcodeProjectInfo | null {
 function getBuildVars(
   projectPath: string,
   target: string,
-  configuration: string
+  configuration: string,
 ): Record<string, string> {
   const out = runCapture("xcodebuild", [
     "-showBuildSettings",
@@ -310,7 +310,7 @@ function getBuildVars(
 /** Case-insensitive lookup of a configuration name. */
 function findConfiguration(
   pi: XcodeProjectInfo,
-  name: string
+  name: string,
 ): string | undefined {
   const lower = name.toLowerCase();
   return pi.configurations.find((cfg) => cfg.toLowerCase() === lower);
@@ -319,7 +319,7 @@ function findConfiguration(
 /** Resolve the Info.plist for the project's first target (release, else debug). */
 async function fromProjectInfo(
   pi: XcodeProjectInfo,
-  allowPreprocessing: boolean
+  allowPreprocessing: boolean,
 ): Promise<InfoPlist | null> {
   const config =
     findConfiguration(pi, "release") ?? findConfiguration(pi, "debug");
@@ -336,7 +336,7 @@ async function fromProjectInfo(
   return await loadAndProcess(
     resolve(base, infoPlistFile),
     vars,
-    allowPreprocessing
+    allowPreprocessing,
   );
 }
 
@@ -354,7 +354,7 @@ async function fromProjectInfo(
 export async function discoverInfoPlist(
   env: Env,
   cwd: string,
-  allowPreprocessing = false
+  allowPreprocessing = false,
 ): Promise<InfoPlist | null> {
   if (env.XCODE_VERSION_ACTUAL) {
     const filename = env.INFOPLIST_FILE;
@@ -391,7 +391,7 @@ export async function resolveReleaseAndDist(
   env: Env,
   cwd: string,
   noAutoRelease: boolean,
-  allowPreprocessing = false
+  allowPreprocessing = false,
 ): Promise<ReleaseAndDist> {
   const distEnv = env.SENTRY_DIST;
   const releaseEnv = env.SENTRY_RELEASE;
@@ -407,7 +407,7 @@ export async function resolveReleaseAndDist(
   if (!plist) {
     throw new Error(
       "Could not determine release: set SENTRY_RELEASE/SENTRY_DIST, run from " +
-        "Xcode, or pass --no-auto-release."
+        "Xcode, or pass --no-auto-release.",
     );
   }
   return {

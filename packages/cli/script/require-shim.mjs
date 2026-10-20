@@ -18,7 +18,7 @@ import { createRequire, registerHooks } from "node:module";
 
 if (typeof globalThis.require === "undefined") {
   globalThis.require = createRequire(
-    new URL("../package.json", import.meta.url)
+    new URL("../package.json", import.meta.url),
   );
 }
 

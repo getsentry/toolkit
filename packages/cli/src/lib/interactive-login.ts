@@ -5,13 +5,14 @@
  * Used by both the `auth login` command and auto-auth in bin.ts.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import { openBrowser } from "./browser.js";
 import { setupCopyKeyListener } from "./clipboard.js";
+import { getAccountRow } from "./db/accounts.js";
 import { getDbPath } from "./db/index.js";
-import { setUserInfo } from "./db/user.js";
-import { formatError } from "./errors.js";
+import { clearUserInfo, setUserInfo } from "./db/user.js";
+import { formatError, ValidationError } from "./errors.js";
 import { renderInlineMarkdown } from "./formatters/markdown.js";
 import { logger } from "./logger.js";
 import { completeOAuthFlow, performDeviceFlow } from "./oauth.js";
@@ -46,7 +47,7 @@ export function toLoginUser(user: {
   username?: string | null;
 }): NonNullable<LoginResult["user"]> {
   return Object.fromEntries(
-    Object.entries(user).filter(([k, v]) => k === "id" || Boolean(v))
+    Object.entries(user).filter(([k, v]) => k === "id" || Boolean(v)),
   ) as NonNullable<LoginResult["user"]>;
 }
 
@@ -59,7 +60,83 @@ export type InteractiveLoginOptions = {
    * requests the full default scope set. Build via `resolveOAuthScopeString`.
    */
   scope?: string;
+  /**
+   * Store the login as a new account instead of replacing the active
+   * account's credentials (see {@link completeOAuthFlow}). Default: false.
+   */
+  newAccount?: boolean;
+  /**
+   * Only accept a login as this email. Sentry's device flow cannot be told
+   * which account to authorize (the browser's signed-in user approves), so
+   * the check happens here: a mismatching token is discarded, not stored.
+   */
+  expectedEmail?: string;
+  /**
+   * Re-authorize this stored account in place instead of the active one
+   * (scope recovery for the account an invocation picked for its target
+   * org). The login must be approved as that account's user; a different
+   * user's token is discarded, not stored.
+   */
+  accountId?: string;
 };
+
+/**
+ * Refuse a device-flow login that was approved as a different user than
+ * the one the user asked for with `sentry auth login <email>`.
+ *
+ * @throws {ValidationError} when the approving user's email differs
+ */
+export function assertExpectedLoginEmail(
+  expectedEmail: string | undefined,
+  actualEmail: string | null | undefined,
+): void {
+  if (!expectedEmail) {
+    return;
+  }
+  if (!actualEmail) {
+    log.warn(
+      `Could not confirm the login is for ${expectedEmail}: the server did not report an email.`,
+    );
+    return;
+  }
+  if (actualEmail.trim().toLowerCase() !== expectedEmail.trim().toLowerCase()) {
+    throw new ValidationError(
+      `Signed in as ${actualEmail}, not ${expectedEmail}. Nothing was saved.\n\n` +
+        `Sentry authorizes whichever user is signed in to the browser. Sign in as ${expectedEmail} ` +
+        "there (or use a private window) and run the command again.",
+    );
+  }
+}
+
+/**
+ * Refuse re-authorizing a stored account as a different user: its token
+ * would be stored under that account, and recording the user would then
+ * fold away the other user's own account.
+ *
+ * @throws {ValidationError} when the approving user isn't the account's
+ *   user, or either identity is unknown
+ */
+export function assertReauthorizingSameUser(
+  accountId: string | undefined,
+  user: { id: string; email?: string | null } | undefined,
+): void {
+  if (!accountId) {
+    return;
+  }
+  const account = getAccountRow(accountId);
+  if (account?.user_id && user?.id === account.user_id) {
+    return;
+  }
+  const expected = account?.email ?? account?.username ?? "the account in use";
+  const actual = user?.email
+    ? `Signed in as ${user.email}, not ${expected}`
+    : `Could not confirm the login is for ${expected}`;
+  throw new ValidationError(
+    `${actual}. Nothing was saved.\n\n` +
+      `Sentry authorizes whichever user is signed in to the browser. Sign in as ${expected} ` +
+      "there (or use a private window) and run the command again.",
+  );
+}
 
 /**
  * Build the user-facing display lines for the device flow verification step.
@@ -80,7 +157,7 @@ export function buildDeviceFlowDisplay(
   userCode: string,
   verificationUriComplete: string,
   browserOpened: boolean,
-  isTTY: boolean
+  isTTY: boolean,
 ): string[] {
   const lines: string[] = [];
 
@@ -117,12 +194,17 @@ export function buildDeviceFlowDisplay(
  * @returns Structured login result on success, or null on failure/cancellation
  */
 export async function runInteractiveLogin(
-  options?: InteractiveLoginOptions
+  options?: InteractiveLoginOptions,
 ): Promise<LoginResult | null> {
   const timeout = options?.timeout ?? 900_000; // 15 minutes default
   const scope = options?.scope;
+  const expectedEmail = options?.expectedEmail;
 
-  log.info("Starting authentication...");
+  log.info(
+    expectedEmail
+      ? `Starting authentication for ${expectedEmail}...`
+      : "Starting authentication...",
+  );
 
   let urlToCopy = "";
   // Object wrapper needed for TypeScript control flow analysis with async callbacks
@@ -134,7 +216,7 @@ export async function runInteractiveLogin(
         onUserCode: async (
           userCode,
           _verificationUri,
-          verificationUriComplete
+          verificationUriComplete,
         ) => {
           urlToCopy = verificationUriComplete;
 
@@ -150,12 +232,18 @@ export async function runInteractiveLogin(
             log.log(qr);
           }
 
+          if (expectedEmail) {
+            log.info(
+              `Approve the request in a browser signed in to Sentry as ${expectedEmail}.`,
+            );
+          }
+
           // Show the complete URL (with user_code embedded) and optional copy hint
           const displayLines = buildDeviceFlowDisplay(
             userCode,
             verificationUriComplete,
             browserOpened,
-            process.stdin.isTTY ?? false
+            process.stdin.isTTY ?? false,
           );
           for (const line of displayLines) {
             log.log(line);
@@ -168,23 +256,29 @@ export async function runInteractiveLogin(
           if (process.stdin.isTTY) {
             keyListener.cleanup = setupCopyKeyListener(
               process.stdin as NodeJS.ReadStream & { fd: 0 },
-              () => urlToCopy
+              () => urlToCopy,
             );
           }
         },
       },
       timeout,
-      scope
+      scope,
     );
 
     // Stop the spinner
     log.success("Authorization received!");
 
+    const user = tokenResponse.user;
+    assertExpectedLoginEmail(expectedEmail, user?.email);
+    assertReauthorizingSameUser(options?.accountId, user);
+
     // Store the token
-    await completeOAuthFlow(tokenResponse);
+    await completeOAuthFlow(tokenResponse, {
+      newAccount: options?.newAccount,
+      accountId: options?.accountId,
+    });
 
     // Store user info from token response for telemetry and display
-    const user = tokenResponse.user;
     if (user) {
       try {
         setUserInfo({
@@ -194,6 +288,15 @@ export async function runInteractiveLogin(
         });
       } catch (error) {
         // Report to Sentry but don't block auth - user info is not critical
+        Sentry.captureException(error);
+      }
+    } else if (!options?.newAccount) {
+      // The active account's credentials were replaced in place; without
+      // user info for the new ones, forget the previous user's identity
+      // rather than showing it against a token that may belong to someone else.
+      try {
+        clearUserInfo();
+      } catch (error) {
         Sentry.captureException(error);
       }
     }

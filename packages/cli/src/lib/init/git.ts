@@ -53,7 +53,7 @@ export async function checkGitStatus(opts: {
   if (!isInsideGitWorkTree({ cwd })) {
     if (yes) {
       ui.log.warn(
-        "You are not inside a git repository. Unable to revert changes if something goes wrong."
+        "You are not inside a git repository. Unable to revert changes if something goes wrong.",
       );
       return true;
     }
@@ -77,7 +77,7 @@ export async function checkGitStatus(opts: {
     const fileList = displayed.join("\n");
     if (yes) {
       ui.log.warn(
-        `You have uncommitted or untracked files:\n${fileList}\nProceeding anyway (--yes).`
+        `You have uncommitted or untracked files:\n${fileList}\nProceeding anyway (--yes).`,
       );
       return true;
     }

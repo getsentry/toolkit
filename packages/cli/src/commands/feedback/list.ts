@@ -11,6 +11,7 @@ import {
   listFeedback,
 } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -76,7 +77,7 @@ function formatScope(org: string, project?: string): string {
 }
 
 async function projectIdFor(
-  resolved: ResolvedOrgOptionalTarget
+  resolved: ResolvedOrgOptionalTarget,
 ): Promise<number | undefined> {
   if (!resolved.project) {
     return;
@@ -88,7 +89,7 @@ async function projectIdFor(
 
 function appendFeedbackFlags(
   base: string,
-  flags: Pick<ListFlags, "status" | "limit" | "query" | "period">
+  flags: Pick<ListFlags, "status" | "limit" | "query" | "period">,
 ): string {
   const parts: string[] = [];
   if (flags.status !== DEFAULT_STATUS) {
@@ -106,17 +107,17 @@ function pageHint(
   direction: "next" | "prev",
   org: string,
   project: string | undefined,
-  flags: Pick<ListFlags, "status" | "limit" | "query" | "period">
+  flags: Pick<ListFlags, "status" | "limit" | "query" | "period">,
 ): string {
   return appendFeedbackFlags(
     `sentry feedback list ${formatScope(org, project)} -c ${direction}`,
-    flags
+    flags,
   );
 }
 
 function jsonTransformFeedbackList(
   result: FeedbackListResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   return jsonTransformListResult(
     {
@@ -125,7 +126,7 @@ function jsonTransformFeedbackList(
       hasPrev: result.hasPrev,
       nextCursor: result.nextCursor,
     },
-    fields
+    fields,
   );
 }
 
@@ -158,7 +159,7 @@ export const listCommand = buildListCommand("feedback", {
         {
           placeholder: "org/project",
           brief: "<org>/, <org>/<project>, or <project> (search)",
-          parse: String,
+          parse: parseOrgProjectTarget,
           optional: true,
         },
       ],
@@ -199,7 +200,7 @@ export const listCommand = buildListCommand("feedback", {
     const resolved = await resolveOrgOptionalFromArg(
       target,
       this.cwd,
-      COMMAND_NAME
+      COMMAND_NAME,
     );
     const projectId = await projectIdFor(resolved);
     const contextKey = buildPaginationContextKey(
@@ -210,12 +211,12 @@ export const listCommand = buildListCommand("feedback", {
         limit: String(flags.limit),
         q: flags.query,
         period: serializeTimeRange(flags.period),
-      }
+      },
     );
     const { cursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const { feedback, nextCursor } = await withProgress(
@@ -233,7 +234,7 @@ export const listCommand = buildListCommand("feedback", {
           ...timeRangeToApiParams(flags.period),
         }).catch((error: unknown): never => {
           throw toSearchQueryError(error, flags.query);
-        })
+        }),
     );
 
     advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);

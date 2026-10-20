@@ -29,7 +29,7 @@ describe("property: sparkline", () => {
         const result = sparkline(values, width);
         expect(result.length).toBeLessThanOrEqual(width);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -39,7 +39,7 @@ describe("property: sparkline", () => {
         const result = sparkline(values, width);
         expect(result.length).toBe(Math.min(values.length, width));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -51,20 +51,21 @@ describe("property: sparkline", () => {
           expect(VALID_CHARS).toContain(char);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("all-zero input produces all scan-line characters", () => {
     fcAssert(
       property(integer({ min: 1, max: 50 }), widthArb, (len, width) => {
+        // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
         const values = new Array<number>(len).fill(0);
         const result = sparkline(values, width);
         for (const char of result) {
           expect(char).toBe("⎽");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -79,7 +80,7 @@ describe("property: sparkline", () => {
         const result = sparkline([v]);
         expect(result).toBe("█");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -95,7 +96,7 @@ describe("property: sparkline", () => {
         const maxIdx = values.indexOf(max);
         expect(result[maxIdx]).toBe("█");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -111,7 +112,7 @@ describe("property: sparkline", () => {
           expect(curr).toBeGreaterThanOrEqual(prev);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -122,7 +123,7 @@ describe("property: sparkline", () => {
         const b = sparkline(values, width);
         expect(a).toBe(b);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

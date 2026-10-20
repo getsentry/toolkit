@@ -70,7 +70,7 @@ export const SCAN_PERIODS: Record<HexEntityType, string> = {
 const LOG_RETENTION_CAP = RETENTION_DAYS.log;
 if (LOG_RETENTION_CAP === null || LOG_RETENTION_CAP <= 0) {
   throw new Error(
-    `RETENTION_DAYS.log must be a positive number; got ${LOG_RETENTION_CAP}`
+    `RETENTION_DAYS.log must be a positive number; got ${LOG_RETENTION_CAP}`,
   );
 }
 export const LOG_RETENTION_PERIOD = `${LOG_RETENTION_CAP}d`;

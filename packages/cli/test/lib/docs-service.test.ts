@@ -46,7 +46,7 @@ describe("queryDocs", () => {
         JSON.stringify({
           code: "DOCS_MODEL_UNAVAILABLE",
           error: "Sentry Docs AI is temporarily unavailable in this region.",
-        })
+        }),
       ),
     });
 
@@ -55,7 +55,7 @@ describe("queryDocs", () => {
         frameworks: [],
         languages: [],
         sentryConfigured: false,
-      })
+      }),
     ).rejects.toMatchObject({
       exitCode: EXIT.API,
       message:
@@ -72,7 +72,7 @@ describe("queryDocs", () => {
         JSON.stringify({
           code: "DOCS_UNGROUNDED",
           error: "Sentry documentation answer could not be verified",
-        })
+        }),
       ),
     });
 
@@ -81,11 +81,11 @@ describe("queryDocs", () => {
         frameworks: [],
         languages: [],
         sentryConfigured: false,
-      })
+      }),
     ).rejects.toMatchObject({
       exitCode: EXIT.API,
       message: expect.stringContaining(
-        "Could not produce a verified documentation answer."
+        "Could not produce a verified documentation answer.",
       ),
     });
   });
@@ -99,7 +99,7 @@ describe("queryDocs", () => {
         JSON.stringify({
           code: "DOCS_UNGROUNDED",
           error: "Sentry documentation answer could not be verified",
-        })
+        }),
       ),
     });
 

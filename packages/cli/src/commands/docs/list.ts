@@ -64,7 +64,7 @@ export const listCommand = buildCommand({
     if (!query) {
       throw new ValidationError(
         "Provide documentation keywords to search for.",
-        "keywords"
+        "keywords",
       );
     }
     yield new CommandOutput(await listDocs(query, flags.limit));

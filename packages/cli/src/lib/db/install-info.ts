@@ -56,7 +56,7 @@ export function getInstallInfo(): StoredInstallInfo | null {
  * @param info - Installation info to store (recordedAt is auto-set to now)
  */
 export function setInstallInfo(
-  info: Omit<StoredInstallInfo, "recordedAt">
+  info: Omit<StoredInstallInfo, "recordedAt">,
 ): void {
   const db = getDatabase();
   setMetadata(db, {

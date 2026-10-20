@@ -14,7 +14,7 @@ import {
 import type { TimeseriesResult } from "../../../src/types/dashboard.js";
 
 function makeTimeseries(
-  overrides: Partial<TimeseriesResult> = {}
+  overrides: Partial<TimeseriesResult> = {},
 ): TimeseriesResult {
   return {
     type: "timeseries",
@@ -67,7 +67,7 @@ describe("buildChartModel", () => {
           { label: "a", values: [] },
           { label: "b", values: [] },
         ],
-      })
+      }),
     );
     expect(model).toBeUndefined();
   });
@@ -100,7 +100,7 @@ describe("buildChartModel", () => {
             ],
           },
         ],
-      })
+      }),
     );
     expect(model?.stacked).toBe(true);
     expect(model?.buckets).toBe(2);
@@ -118,7 +118,7 @@ describe("buildCategoricalChartModel", () => {
           { label: "US", values: [{ timestamp: 1, value: 20 }] },
           { label: "GB", values: [{ timestamp: 1, value: 10 }] },
         ],
-      })
+      }),
     );
 
     expect(model?.kind).toBe("categorical");
@@ -180,7 +180,7 @@ describe("rasterizeChart", () => {
       value: i < 300 ? 0 : i,
     }));
     const model = buildChartModel(
-      makeTimeseries({ series: [{ label: "c", values }] })
+      makeTimeseries({ series: [{ label: "c", values }] }),
     );
     const width = 64;
     const img = rasterizeChart(model!, { width, height: 32 });
@@ -205,7 +205,7 @@ describe("rasterizeChart", () => {
           { label: "alpha", values: [{ timestamp: 1, value: 10 }] },
           { label: "beta", values: [{ timestamp: 1, value: 20 }] },
         ],
-      })
+      }),
     );
     const image = rasterizeChart(model!, { width: 40, height: 20 });
     const data = image?.data ?? new Uint8Array();

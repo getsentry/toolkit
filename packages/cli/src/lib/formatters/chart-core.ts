@@ -106,7 +106,7 @@ export type ChartModel = {
 
 /** Build a resolution-independent chart model from a timeseries result. */
 export function buildChartModel(
-  data: TimeseriesResult
+  data: TimeseriesResult,
 ): ChartModel | undefined {
   if (
     data.series.length === 0 ||
@@ -131,7 +131,7 @@ export function buildChartModel(
 
 /** Build a bar-per-category model from a categorical timeseries result. */
 export function buildCategoricalChartModel(
-  data: TimeseriesResult
+  data: TimeseriesResult,
 ): ChartModel | undefined {
   const series = data.series
     .map((item) => ({
@@ -167,7 +167,7 @@ export function buildCategoricalChartModel(
 
 /** Build a heatmap grid model from grouped timeseries data. */
 export function buildHeatmapModel(
-  data: TimeseriesResult
+  data: TimeseriesResult,
 ): HeatmapModel | undefined {
   if (data.series.length === 0) {
     return;
@@ -181,7 +181,8 @@ export function buildHeatmapModel(
     const vals = s.values.map((v) => v.value);
     // pad shorter rows so every row has exactly `buckets` columns
     return vals.length < buckets
-      ? [...vals, ...new Array(buckets - vals.length).fill(0)]
+      ? // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
+        [...vals, ...new Array(buckets - vals.length).fill(0)]
       : vals;
   });
   const maxVal = Math.max(1, ...rows.flat());
@@ -190,6 +191,7 @@ export function buildHeatmapModel(
 
 /** Sum each bucket across every series. */
 function bucketTotals(series: ChartSeries[], buckets: number): number[] {
+  // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
   const totals = new Array<number>(buckets).fill(0);
   for (const s of series) {
     for (let i = 0; i < buckets; i++) {
@@ -225,7 +227,7 @@ export type RasterizeOpts = {
  */
 export function rasterizeChart(
   model: ChartModel,
-  opts: RasterizeOpts
+  opts: RasterizeOpts,
 ): DecodedImage | undefined {
   const width = Math.max(16, Math.floor(opts.width));
   const height = Math.max(8, Math.floor(opts.height));
@@ -293,7 +295,7 @@ function drawBars(
   img: DecodedImage,
   model: ChartModel,
   height: number,
-  layout: BarLayout
+  layout: BarLayout,
 ): void {
   const series = model.series[0];
   if (!series) {
@@ -320,7 +322,7 @@ function drawStackedColumns(
   img: DecodedImage,
   model: ChartModel,
   height: number,
-  layout: BarLayout
+  layout: BarLayout,
 ): void {
   for (let b = 0; b < model.buckets; b++) {
     const x0 = b * (layout.barWidth + layout.gap);
@@ -338,7 +340,7 @@ function drawStackedColumns(
 
       const segmentHeight = Math.min(
         yBottom,
-        Math.max(1, Math.round((value / model.maxVal) * height))
+        Math.max(1, Math.round((value / model.maxVal) * height)),
       );
       const yTop = Math.max(0, yBottom - segmentHeight);
       drawPixelRect(img, {
@@ -358,7 +360,7 @@ function drawCategoricalBars(
   image: DecodedImage,
   model: ChartModel,
   height: number,
-  layout: BarLayout
+  layout: BarLayout,
 ): void {
   for (let index = 0; index < model.series.length; index += 1) {
     const series = model.series[index];
@@ -368,7 +370,7 @@ function drawCategoricalBars(
     const value = series.values[0] ?? 0;
     const barHeight = Math.min(
       height,
-      Math.max(0, Math.round((value / model.maxVal) * height))
+      Math.max(0, Math.round((value / model.maxVal) * height)),
     );
     drawPixelRect(image, {
       x: index * (layout.barWidth + layout.gap),
@@ -396,7 +398,7 @@ const HEATMAP_CELL_COLORS: [number, number, number][] = [
 /** Rasterize a heatmap grid into a pixel canvas (one colored cell per bucket). */
 export function rasterizeHeatmap(
   model: HeatmapModel,
-  opts: RasterizeOpts
+  opts: RasterizeOpts,
 ): DecodedImage | undefined {
   if (model.buckets === 0 || model.rows.length === 0) {
     return;

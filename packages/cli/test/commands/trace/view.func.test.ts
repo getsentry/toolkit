@@ -22,11 +22,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
@@ -36,11 +36,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
@@ -57,11 +57,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { TraceSpan } from "../../../src/types/sentry.js";
 
@@ -208,7 +208,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 100 },
       "test-org/test-project",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -228,7 +228,7 @@ describe("viewCommand.func", () => {
       context,
       { json: false, web: false, spans: 100 },
       "test-org/test-project",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -248,8 +248,8 @@ describe("viewCommand.func", () => {
         context,
         { json: false, web: false, spans: 100 },
         "test-org/test-project",
-        "00000000000000000000000000000000"
-      )
+        "00000000000000000000000000000000",
+      ),
     ).rejects.toThrow(ResolutionError);
   });
 
@@ -264,13 +264,13 @@ describe("viewCommand.func", () => {
         context,
         { json: false, web: false, spans: 100 },
         "test-org/test-project",
-        "deadbeef12345678deadbeef12345678"
+        "deadbeef12345678deadbeef12345678",
       );
       expect.unreachable("Should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ResolutionError);
       expect((error as ResolutionError).message).toContain(
-        "deadbeef12345678deadbeef12345678"
+        "deadbeef12345678deadbeef12345678",
       );
     }
   });
@@ -284,7 +284,7 @@ describe("viewCommand.func", () => {
       context,
       { json: false, web: true, spans: 100 },
       "test-org/test-project",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     expect(openInBrowserSpy).toHaveBeenCalled();
@@ -301,7 +301,7 @@ describe("viewCommand.func", () => {
       context,
       { json: false, web: false, spans: 0 },
       "test-org/test-project",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -322,16 +322,16 @@ describe("viewCommand.func", () => {
       context,
       { json: false, web: false, spans: 100 },
       "my-org/",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "my-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      expect.objectContaining({ projectId: undefined })
+      expect.objectContaining({ projectId: undefined }),
     );
     expect(getDetailedTraceSpy.mock.calls[0]?.[2]).not.toHaveProperty(
-      "timestamp"
+      "timestamp",
     );
   });
 
@@ -340,7 +340,7 @@ describe("viewCommand.func", () => {
     // error) also cannot resolve a target.
     resolveOrgAndProjectSpy.mockResolvedValue(null);
     vi.spyOn(resolveTarget, "guideOrgProjectFailure").mockRejectedValue(
-      new ContextError("Organization and project", "sentry trace view <id>")
+      new ContextError("Organization and project", "sentry trace view <id>"),
     );
 
     const { context } = createMockContext();
@@ -350,8 +350,8 @@ describe("viewCommand.func", () => {
       func.call(
         context,
         { json: false, web: false, spans: 100 },
-        "aaaa1111bbbb2222cccc3333dddd4444"
-      )
+        "aaaa1111bbbb2222cccc3333dddd4444",
+      ),
     ).rejects.toThrow(ContextError);
   });
 
@@ -370,7 +370,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 100 },
       "frontend",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     expect(findProjectsBySlugSpy).toHaveBeenCalledWith("frontend");
@@ -386,7 +386,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 100 },
       "aaaa1111bbbb2222cccc3333dddd4444",
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     // Command should complete (warning goes to consola, not stdout)
@@ -409,7 +409,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 100 },
       "CAM-82X",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     // The suggestion path fires (looksLikeIssueShortId("CAM-82X") → true)
@@ -441,7 +441,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       traceIdFromEvent,
-      { additionalAttributes: undefined, projectId: undefined }
+      { additionalAttributes: undefined, projectId: undefined },
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -466,7 +466,7 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false, spans: 100 }, "CLI-G5")
+      func.call(context, { json: false, web: false, spans: 100 }, "CLI-G5"),
     ).rejects.toThrow(ValidationError);
   });
 
@@ -477,7 +477,7 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false, spans: 100 }, "CLI-G5")
+      func.call(context, { json: false, web: false, spans: 100 }, "CLI-G5"),
     ).rejects.toThrow(ContextError);
   });
 
@@ -490,7 +490,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 100 },
       "test-org/test-project",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     expect(fetchMultiSpanDetailsSpy).toHaveBeenCalled();
@@ -505,7 +505,7 @@ describe("viewCommand.func", () => {
       context,
       { json: false, full: true, web: false, spans: 100 },
       "test-org/test-project",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     expect(fetchMultiSpanDetailsSpy).toHaveBeenCalled();
@@ -520,7 +520,7 @@ describe("viewCommand.func", () => {
       context,
       { json: false, web: false, spans: 100 },
       "test-org/test-project",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     expect(fetchMultiSpanDetailsSpy).not.toHaveBeenCalled();
@@ -543,7 +543,7 @@ describe("viewCommand.func", () => {
             links: null,
           },
         ],
-      ])
+      ]),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -552,7 +552,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 100 },
       "test-org/test-project",
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

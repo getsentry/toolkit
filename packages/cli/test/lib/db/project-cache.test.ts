@@ -580,32 +580,31 @@ describe("getCachedProjectBySlug", () => {
 });
 
 describe("getCachedProjectById", () => {
-  test.each([
-    "ids",
-    "dsn",
-    "list",
-  ])("finds an ID cached through the %s key shape without crossing organizations", (keyShape) => {
-    const project = {
-      orgSlug: "my-org",
-      orgName: "My Org",
-      projectSlug: "frontend",
-      projectName: "Frontend",
-      projectId: "42",
-    };
-    if (keyShape === "ids") {
-      setCachedProject("1", "42", project);
-    } else if (keyShape === "dsn") {
-      setCachedProjectByDsnKey("public-key", project);
-    } else {
-      cacheProjectsForOrg("my-org", "My Org", [
-        { id: "42", slug: "frontend", name: "Frontend" },
-      ]);
-    }
+  test.each(["ids", "dsn", "list"])(
+    "finds an ID cached through the %s key shape without crossing organizations",
+    (keyShape) => {
+      const project = {
+        orgSlug: "my-org",
+        orgName: "My Org",
+        projectSlug: "frontend",
+        projectName: "Frontend",
+        projectId: "42",
+      };
+      if (keyShape === "ids") {
+        setCachedProject("1", "42", project);
+      } else if (keyShape === "dsn") {
+        setCachedProjectByDsnKey("public-key", project);
+      } else {
+        cacheProjectsForOrg("my-org", "My Org", [
+          { id: "42", slug: "frontend", name: "Frontend" },
+        ]);
+      }
 
-    expect(getCachedProjectById("my-org", "42")).toMatchObject(project);
-    expect(getCachedProjectById("other-org", "42")).toBeUndefined();
-    expect(getCachedProjectById("my-org", "43")).toBeUndefined();
-  });
+      expect(getCachedProjectById("my-org", "42")).toMatchObject(project);
+      expect(getCachedProjectById("other-org", "42")).toBeUndefined();
+      expect(getCachedProjectById("my-org", "43")).toBeUndefined();
+    },
+  );
 
   test("uses the most recent slug when a project has been renamed", async () => {
     cacheProjectsForOrg("my-org", "My Org", [

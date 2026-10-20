@@ -38,7 +38,7 @@ const log = logger.withTag("release-notes");
  * Covers Dingbats (✨ U+2728), Misc Symbols (⚡ U+26A1), variation
  * selectors, and Supplemental Pictographics (🐛, 🔧, 📚).
  */
-// biome-ignore lint/suspicious/noMisleadingCharacterClass: intentional — stripping emoji ranges that include combining marks
+// oxlint-disable-next-line no-misleading-character-class -- intentional — stripping emoji ranges that include combining marks
 const EMOJI_RE = /[\u{2000}-\u{2BFF}\u{FE00}-\u{FE0F}\u{1F000}-\u{1FFFF}]/gu;
 
 /** Strips ` by @author in [#123](url)` or ` by @author in #123` suffixes */
@@ -256,7 +256,7 @@ function stripAttributions(md: string): string {
  */
 function truncateSectionMarkdown(
   md: string,
-  maxItems: number
+  maxItems: number,
 ): { markdown: string; removed: number } {
   const tokens = marked.lexer(md);
   let remaining = maxItems;
@@ -301,7 +301,7 @@ function truncateSectionMarkdown(
 function applySectionTruncation(
   sections: ChangeSection[],
   maxItems: number,
-  originalCount: number
+  originalCount: number,
 ): { totalItems: number; truncated: boolean } {
   let budget = maxItems;
 
@@ -320,7 +320,7 @@ function applySectionTruncation(
         ? Math.max(0, budget)
         : Math.min(
             Math.max(0, budget),
-            Math.max(1, Math.floor((sectionItems / originalCount) * maxItems))
+            Math.max(1, Math.floor((sectionItems / originalCount) * maxItems)),
           );
 
     if (sectionItems > sectionBudget) {
@@ -334,7 +334,7 @@ function applySectionTruncation(
 
   const totalItems = sections.reduce(
     (sum, s) => sum + countMarkdownListItems(s.markdown),
-    0
+    0,
   );
   return { totalItems, truncated: totalItems < originalCount };
 }
@@ -357,7 +357,7 @@ function buildSummaryFromSections(
   sections: ChangeSection[],
   fromVersion: string,
   toVersion: string,
-  maxItems?: number
+  maxItems?: number,
 ): ChangelogSummary | null {
   if (sections.length === 0) {
     return null;
@@ -365,7 +365,7 @@ function buildSummaryFromSections(
 
   const originalCount = sections.reduce(
     (sum, s) => sum + countMarkdownListItems(s.markdown),
-    0
+    0,
   );
 
   let totalItems = originalCount;
@@ -430,7 +430,7 @@ type ChangelogBuildOptions = {
 
 function normalizeChangelogReleases(
   releases: GitHubRelease[],
-  source: UpgradeSource
+  source: UpgradeSource,
 ): GitHubRelease[] {
   if (isNormalizedForSource(releases, source)) {
     return releases;
@@ -443,7 +443,7 @@ function buildChangelogSummaryForSource(
   releases: GitHubRelease[],
   fromVersion: string,
   toVersion: string,
-  options: ChangelogBuildOptions
+  options: ChangelogBuildOptions,
 ): ChangelogSummary | null {
   const { maxItems } = options;
   const inRange = releases.filter((release) => {
@@ -463,7 +463,7 @@ function buildChangelogSummaryForSource(
     mergedSections,
     fromVersion,
     toVersion,
-    maxItems
+    maxItems,
   );
 }
 
@@ -480,7 +480,7 @@ export function buildChangelogSummary(
   releases: GitHubRelease[],
   fromVersion: string,
   toVersion: string,
-  maxItems?: number
+  maxItems?: number,
 ): ChangelogSummary | null {
   return buildChangelogSummaryForSource(releases, fromVersion, toVersion, {
     maxItems,
@@ -592,13 +592,13 @@ const CHANGELOG_MAX_RELEASES = 30;
  * @returns Array of releases (newest first), or empty array on failure
  */
 async function fetchReleasesForChangelog(
-  source: UpgradeSource
+  source: UpgradeSource,
 ): Promise<GitHubRelease[]> {
   let response: Response;
   try {
     response = await customFetch(
       `${getGitHubReleasesUrl(source)}?per_page=${CHANGELOG_MAX_RELEASES}`,
-      { headers: getGitHubHeaders() }
+      { headers: getGitHubHeaders() },
     );
   } catch (error) {
     log.debug("Failed to fetch releases for changelog", error);
@@ -633,7 +633,7 @@ async function fetchReleasesForChangelog(
  * @returns Changelog summary, or null on failure
  */
 async function fetchStableChangelog(
-  options: FetchChangelogOptions & { source: UpgradeSource }
+  options: FetchChangelogOptions & { source: UpgradeSource },
 ): Promise<ChangelogSummary | null> {
   const { fromVersion, toVersion, maxItems, prefetchedReleases, source } =
     options;
@@ -658,7 +658,7 @@ function buildNightlyChangelogSummary(
   commits: GitHubCommit[],
   fromVersion: string,
   toVersion: string,
-  maxItems?: number
+  maxItems?: number,
 ): ChangelogSummary | null {
   const sections = parseCommitMessages(commits);
   return buildSummaryFromSections(sections, fromVersion, toVersion, maxItems);
@@ -681,7 +681,7 @@ async function fetchNightlyChangelog(
   fromVersion: string,
   toVersion: string,
   source: UpgradeSource,
-  maxItems?: number
+  maxItems?: number,
 ): Promise<ChangelogSummary | null> {
   const fromTs = extractNightlyTimestamp(fromVersion);
   const toTs = extractNightlyTimestamp(toVersion);
@@ -728,7 +728,7 @@ async function fetchNightlyChangelog(
     commits as GitHubCommit[],
     fromVersion,
     toVersion,
-    maxItems
+    maxItems,
   );
 }
 
@@ -759,7 +759,7 @@ export type FetchChangelogOptions = {
  * already fetched the same data.
  */
 export async function fetchChangelog(
-  opts: FetchChangelogOptions
+  opts: FetchChangelogOptions,
 ): Promise<ChangelogSummary | null> {
   try {
     const {
@@ -775,7 +775,7 @@ export async function fetchChangelog(
         fromVersion,
         toVersion,
         source,
-        maxItems
+        maxItems,
       );
     }
     return await fetchStableChangelog({

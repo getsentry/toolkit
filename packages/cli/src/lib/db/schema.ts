@@ -12,14 +12,16 @@
  */
 
 import { createRequire } from "node:module";
+import { uuidv7 } from "uuidv7";
 import { getEnv } from "../env.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
+import { storedCredentialIdentity } from "./identity-hash.js";
 import type { Database } from "./sqlite.js";
 
 const _require = createRequire(import.meta.url);
 
-export const CURRENT_SCHEMA_VERSION = 16;
+export const CURRENT_SCHEMA_VERSION = 19;
 
 /** Environment variable to disable auto-repair */
 const NO_AUTO_REPAIR_ENV = "SENTRY_CLI_NO_AUTO_REPAIR";
@@ -57,23 +59,50 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
       version: { type: "INTEGER", primaryKey: true },
     },
   },
-  auth: {
+  /**
+   * Stored Sentry accounts (one row per login). Replaces the single-row
+   * `auth` and `user_info` tables in schema v18.
+   *
+   * Exactly one row is active at a time (`is_active = 1`); every
+   * credential read targets that row. `user_id` is NULL until the login
+   * flow learns who the token belongs to. Rows sharing `(host, user_id)`
+   * are deduplicated when user info is recorded, so re-logging in to the
+   * same account updates it instead of adding a duplicate.
+   */
+  accounts: {
     columns: {
-      id: { type: "INTEGER", primaryKey: true, check: "id = 1" },
+      account_id: { type: "TEXT", primaryKey: true },
+      // Origin URL (scheme://host[:port]) this token was issued against.
+      // Enforced at the fetch layer: credentials are only attached to requests
+      // whose origin matches this host (with SaaS equivalence). NULL only for
+      // rows migrated from pre-v16 `auth` rows; backfilled lazily on read.
+      host: { type: "TEXT" },
+      user_id: { type: "TEXT" },
+      email: { type: "TEXT" },
+      username: { type: "TEXT" },
+      name: { type: "TEXT" },
       token: { type: "TEXT" },
       refresh_token: { type: "TEXT" },
       expires_at: { type: "INTEGER" },
       issued_at: { type: "INTEGER" },
+      is_active: { type: "INTEGER", notNull: true, default: "0" },
+      created_at: {
+        type: "INTEGER",
+        notNull: true,
+        default: "(unixepoch() * 1000)",
+      },
       updated_at: {
         type: "INTEGER",
         notNull: true,
         default: "(unixepoch() * 1000)",
       },
-      // Origin URL (scheme://host[:port]) this token was issued against.
-      // Enforced at the fetch layer: credentials are only attached to requests
-      // whose origin matches this host (with SaaS equivalence). Nullable for
-      // rows created before schema v16; migrated lazily in getAuthConfig.
-      host: { type: "TEXT", addedInVersion: 16 },
+      // When this account last became active (login, switch, or logout
+      // promotion). Logout promotes the most recently used account.
+      last_used_at: {
+        type: "INTEGER",
+        notNull: true,
+        default: "(unixepoch() * 1000)",
+      },
     },
   },
 
@@ -163,31 +192,22 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
   },
   org_regions: {
     columns: {
-      org_slug: { type: "TEXT", primaryKey: true },
+      org_slug: { type: "TEXT", notNull: true },
       org_id: { type: "TEXT", addedInVersion: 8 },
       org_name: { type: "TEXT", addedInVersion: 9 },
       org_role: { type: "TEXT", addedInVersion: 10 },
       region_url: { type: "TEXT", notNull: true },
+      credential_identity: { type: "TEXT", notNull: true, addedInVersion: 17 },
+      account_id: { type: "TEXT", addedInVersion: 19 },
+      source_origin: { type: "TEXT", notNull: true, addedInVersion: 17 },
+      response_origin: { type: "TEXT", notNull: true, addedInVersion: 17 },
       updated_at: {
         type: "INTEGER",
         notNull: true,
         default: "(unixepoch() * 1000)",
       },
     },
-  },
-  user_info: {
-    columns: {
-      id: { type: "INTEGER", primaryKey: true, check: "id = 1" },
-      user_id: { type: "TEXT", notNull: true },
-      email: { type: "TEXT" },
-      username: { type: "TEXT" },
-      name: { type: "TEXT", addedInVersion: 3 },
-      updated_at: {
-        type: "INTEGER",
-        notNull: true,
-        default: "(unixepoch() * 1000)",
-      },
-    },
+    compositePrimaryKey: ["credential_identity", "source_origin", "org_slug"],
   },
   instance_info: {
     columns: {
@@ -282,7 +302,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
 function columnDefsToDDL(
   tableName: string,
   columns: [string, ColumnDef][],
-  compositePrimaryKey?: string[]
+  compositePrimaryKey?: string[],
 ): string {
   const columnDefs = columns.map(([name, col]) => {
     const parts = [name, col.type];
@@ -311,12 +331,12 @@ function columnDefsToDDL(
 /** Generate CREATE TABLE DDL from a table schema */
 export function generateTableDDL(
   tableName: string,
-  schema: TableSchema
+  schema: TableSchema,
 ): string {
   return columnDefsToDDL(
     tableName,
     Object.entries(schema.columns),
-    schema.compositePrimaryKey
+    schema.compositePrimaryKey,
   );
 }
 
@@ -333,12 +353,12 @@ export function generatePreMigrationTableDDL(tableName: string): string {
   }
 
   const baseColumns = Object.entries(schema.columns).filter(
-    ([, col]) => col.addedInVersion === undefined
+    ([, col]) => col.addedInVersion === undefined,
   );
 
   if (baseColumns.length === 0) {
     throw new Error(
-      `Table ${tableName} has no base columns (all columns were added in migrations)`
+      `Table ${tableName} has no base columns (all columns were added in migrations)`,
     );
   }
 
@@ -350,7 +370,7 @@ export const EXPECTED_TABLES: Record<string, string> = Object.fromEntries(
   Object.entries(TABLE_SCHEMAS).map(([name, schema]) => [
     name,
     generateTableDDL(name, schema),
-  ])
+  ]),
 );
 
 /** Column info for repair operations */
@@ -369,14 +389,14 @@ export const EXPECTED_COLUMNS: Record<string, RepairColumnDef[]> =
           .map(([name, col]) => ({ name, type: col.type }));
         return [tableName, migratedColumns] as const;
       })
-      .filter(([, cols]) => cols.length > 0)
+      .filter(([, cols]) => cols.length > 0),
   );
 
 /** Check if a table exists in the database */
 export function tableExists(db: Database, table: string): boolean {
   const result = db
     .query(
-      "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name=?"
+      "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name=?",
     )
     .get(table) as { count: number };
   return result.count > 0;
@@ -386,11 +406,11 @@ export function tableExists(db: Database, table: string): boolean {
 export function hasColumn(
   db: Database,
   table: string,
-  column: string
+  column: string,
 ): boolean {
   const result = db
     .query(
-      `SELECT COUNT(*) as count FROM pragma_table_info('${table}') WHERE name='${column}'`
+      `SELECT COUNT(*) as count FROM pragma_table_info('${table}') WHERE name='${column}'`,
     )
     .get() as { count: number };
   return result.count > 0;
@@ -407,7 +427,7 @@ export function hasColumn(
 function hasCompositePrimaryKey(
   db: Database,
   table: string,
-  expectedColumns: string[]
+  expectedColumns: string[],
 ): boolean {
   const row = db
     .query("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")
@@ -426,7 +446,7 @@ function addColumnIfMissing(
   db: Database,
   table: string,
   column: string,
-  type: string
+  type: string,
 ): void {
   if (!hasColumn(db, table, column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
@@ -520,7 +540,7 @@ function repairMissingColumns(db: Database, result: RepairResult): void {
       } catch (e) {
         const msg = stringifyUnknown(e);
         result.failed.push(
-          `Failed to add column ${tableName}.${col.name}: ${msg}`
+          `Failed to add column ${tableName}.${col.name}: ${msg}`,
         );
       }
     }
@@ -552,7 +572,7 @@ function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
       db.exec(`DROP TABLE ${tableName}`);
       db.exec(EXPECTED_TABLES[tableName] as string);
       result.fixed.push(
-        `Recreated table ${tableName} with correct primary key`
+        `Recreated table ${tableName} with correct primary key`,
       );
     } catch (e) {
       const msg = stringifyUnknown(e);
@@ -576,10 +596,10 @@ export function repairSchema(db: Database): RepairResult {
   repairWrongPrimaryKeys(db, result);
 
   if (result.fixed.length > 0) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       db.query("UPDATE schema_version SET version = ?").run(
-        CURRENT_SCHEMA_VERSION
+        CURRENT_SCHEMA_VERSION,
       );
     } catch {
       // Ignore version update failures - schema is still fixed
@@ -660,7 +680,7 @@ export type RepairAttemptResult<T> =
  */
 export function tryRepairAndRetry<T>(
   operation: () => T,
-  error: unknown
+  error: unknown,
 ): RepairAttemptResult<T> {
   // Skip repair if disabled via environment variable
   if (getEnv()[NO_AUTO_REPAIR_ENV] === "1") {
@@ -679,7 +699,7 @@ export function tryRepairAndRetry<T>(
 
   isRepairing = true;
   let repairSucceeded = false;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     // Dynamic imports to avoid circular dependencies with db/index.js
     const { getRawDatabase } = _require("./index.js") as {
@@ -718,7 +738,7 @@ export function initSchema(db: Database): void {
 
   if (!versionRow) {
     db.query("INSERT OR IGNORE INTO schema_version (version) VALUES (?)").run(
-      CURRENT_SCHEMA_VERSION
+      CURRENT_SCHEMA_VERSION,
     );
   }
 }
@@ -730,6 +750,104 @@ function getSchemaVersion(db: Database): number {
   return row?.version ?? 0;
 }
 
+type LegacyAuthRow = {
+  token: string | null;
+  refresh_token: string | null;
+  expires_at: number | null;
+  issued_at: number | null;
+  updated_at: number | null;
+  host: string | null;
+};
+
+type LegacyUserRow = {
+  user_id: string | null;
+  email: string | null;
+  username: string | null;
+  name: string | null;
+};
+
+/**
+ * Copy the pre-v18 single-row credential (`auth`) and identity
+ * (`user_info`) into one active `accounts` row, then drop both tables.
+ *
+ * A NULL `host` (rows from before v16) is carried over as-is; the auth
+ * layer backfills it lazily from the boot-time URL snapshot.
+ */
+/** Tag cached org rows with the stored account whose credentials wrote them. */
+function backfillOrgRegionAccounts(db: Database): void {
+  if (!tableExists(db, "accounts")) {
+    return;
+  }
+  const accounts = db
+    .query("SELECT account_id, token, refresh_token FROM accounts")
+    .all() as {
+    account_id: string;
+    token: string | null;
+    refresh_token: string | null;
+  }[];
+  const update = db.query(
+    "UPDATE org_regions SET account_id = ? WHERE credential_identity = ? AND account_id IS NULL",
+  );
+  for (const account of accounts) {
+    const identity = storedCredentialIdentity(account);
+    if (identity) {
+      update.run(account.account_id, identity);
+    }
+  }
+}
+
+function migrateSingleAuthToAccounts(db: Database): void {
+  db.exec(EXPECTED_TABLES.accounts as string);
+
+  const auth = tableExists(db, "auth")
+    ? (db
+        .query(
+          `SELECT token, refresh_token, expires_at, issued_at, updated_at, ${
+            hasColumn(db, "auth", "host") ? "host" : "NULL AS host"
+          } FROM auth WHERE id = 1`,
+        )
+        .get() as LegacyAuthRow | undefined)
+    : undefined;
+  const user =
+    auth?.token && tableExists(db, "user_info")
+      ? (db
+          .query(
+            `SELECT user_id, email, username, ${
+              hasColumn(db, "user_info", "name") ? "name" : "NULL AS name"
+            } FROM user_info WHERE id = 1`,
+          )
+          .get() as LegacyUserRow | undefined)
+      : undefined;
+
+  if (auth?.token) {
+    const now = Date.now();
+    db.query("UPDATE accounts SET is_active = 0").run();
+    db.query(
+      `INSERT INTO accounts (account_id, host, user_id, email, username, name,
+        token, refresh_token, expires_at, issued_at, is_active, created_at, updated_at,
+        last_used_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+    ).run(
+      uuidv7(),
+      auth.host,
+      user?.user_id ?? null,
+      user?.email ?? null,
+      user?.username ?? null,
+      user?.name ?? null,
+      auth.token,
+      auth.refresh_token,
+      auth.expires_at,
+      auth.issued_at,
+      now,
+      auth.updated_at ?? now,
+      now,
+    );
+  }
+
+  db.exec("DROP TABLE IF EXISTS auth");
+  db.exec("DROP TABLE IF EXISTS user_info");
+}
+
 /**
  * Run migrations for schema changes between versions.
  *
@@ -739,21 +857,21 @@ function getSchemaVersion(db: Database): number {
  * - Column renames (requires data copy in SQLite)
  * - Complex constraints
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: sequential migration steps are inherently linear
+// sequential migration steps are inherently linear
 export function runMigrations(db: Database): void {
   const currentVersion = getSchemaVersion(db);
 
-  // Migration 1 -> 2: Add org_regions, user_info, and instance_info tables
+  // Migration 1 -> 2: Add org_regions and instance_info tables. The
+  // `user_info` table this step also created was folded into `accounts` in v18.
   if (currentVersion < 2) {
     db.exec(`
       ${EXPECTED_TABLES.org_regions};
-      ${EXPECTED_TABLES.user_info};
       ${EXPECTED_TABLES.instance_info};
     `);
   }
 
   // Migration 2 -> 3: Add name column to user_info table
-  if (currentVersion < 3) {
+  if (currentVersion < 3 && tableExists(db, "user_info")) {
     addColumnIfMissing(db, "user_info", "name", "TEXT");
   }
 
@@ -837,12 +955,12 @@ export function runMigrations(db: Database): void {
       .get() as { organization: string | null; project: string | null } | null;
     if (row?.organization) {
       db.query(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)"
+        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
       ).run("defaults.org", row.organization);
     }
     if (row?.project) {
       db.query(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)"
+        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
       ).run("defaults.project", row.project);
     }
     db.exec("DROP TABLE defaults");
@@ -863,17 +981,40 @@ export function runMigrations(db: Database): void {
   }
 
   // Migration 15 -> 16: Add host column to auth table for host-scoped tokens.
-  // The column is NULL for existing rows; getAuthConfig lazily backfills it
-  // with the currently-configured host on first access after upgrade, so
-  // users who already have SENTRY_HOST/SENTRY_URL set at upgrade time are
-  // migrated cleanly to the host-scoped model.
-  if (currentVersion < 16) {
+  // The column is NULL for existing rows; the first credential read backfills
+  // it from the boot-time explicit host (or SaaS), before later config shims
+  // can change SENTRY_URL.
+  if (currentVersion < 16 && tableExists(db, "auth")) {
     addColumnIfMissing(db, "auth", "host", "TEXT");
+  }
+
+  // Legacy region rows have no credential or response provenance. Rebuild the
+  // reconstructible cache rather than assigning foreign data to a new login.
+  if (currentVersion < 17) {
+    db.transaction(() => {
+      db.exec("DROP TABLE IF EXISTS org_regions");
+      db.exec(EXPECTED_TABLES.org_regions as string);
+    })();
+  }
+
+  // Migration 17 -> 18: Multi-account support. Fold the single-row `auth`
+  // and `user_info` tables into `accounts`; the migrated login stays active.
+  if (currentVersion < 18) {
+    db.transaction(() => migrateSingleAuthToAccounts(db))();
+  }
+
+  // Migration 18 -> 19: Record which account each cached org belongs to, so
+  // commands targeting an org can use that account without a manual switch.
+  if (currentVersion < 19) {
+    db.transaction(() => {
+      addColumnIfMissing(db, "org_regions", "account_id", "TEXT");
+      backfillOrgRegionAccounts(db);
+    })();
   }
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {
     db.query("UPDATE schema_version SET version = ?").run(
-      CURRENT_SCHEMA_VERSION
+      CURRENT_SCHEMA_VERSION,
     );
   }
 }

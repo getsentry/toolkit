@@ -48,7 +48,7 @@ export const PAGINATION_KEY = "issue-events";
 /** Build the CLI hint for fetching the next page, preserving active flags. */
 function nextPageHint(
   issueArg: string,
-  flags: Pick<EventsFlags, "query" | "full" | "period">
+  flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
   return appendEventsFlags(`sentry issue events ${issueArg} -c next`, flags);
 }
@@ -56,7 +56,7 @@ function nextPageHint(
 /** Build the CLI hint for fetching the previous page, preserving active flags. */
 function prevPageHint(
   issueArg: string,
-  flags: Pick<EventsFlags, "query" | "full" | "period">
+  flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
   return appendEventsFlags(`sentry issue events ${issueArg} -c prev`, flags);
 }
@@ -109,7 +109,7 @@ export const eventsCommand = buildListCommand("issue", {
     if (!org) {
       throw new ContextError(
         "Organization",
-        buildCommandHint(COMMAND_NAME, issueArg)
+        buildCommandHint(COMMAND_NAME, issueArg),
       );
     }
 
@@ -117,12 +117,12 @@ export const eventsCommand = buildListCommand("issue", {
     const contextKey = buildPaginationContextKey(
       "issue-events",
       `${org}/${issue.id}`,
-      { q: flags.query, period: serializeTimeRange(timeRange) }
+      { q: flags.query, period: serializeTimeRange(timeRange) },
     );
     const { cursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const { data: events, nextCursor } = await withProgress(
@@ -140,7 +140,7 @@ export const eventsCommand = buildListCommand("issue", {
         }).catch((error: unknown): never => {
           // An unparseable user --query is a user input mistake, not a CLI bug.
           throw toSearchQueryError(error, flags.query);
-        })
+        }),
     );
 
     // Update pagination state (handles both advance and truncation)

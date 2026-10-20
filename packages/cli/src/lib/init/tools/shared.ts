@@ -17,7 +17,7 @@ export function safePath(cwd: string, relative: string): string {
   }
 
   let realCwd: string;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     realCwd = fs.realpathSync(normalizedCwd);
   } catch {
@@ -30,7 +30,7 @@ export function safePath(cwd: string, relative: string): string {
       const real = fs.realpathSync(checkPath);
       if (!real.startsWith(realCwd + path.sep) && real !== realCwd) {
         throw new Error(
-          `Path "${relative}" resolves outside project directory via symlink`
+          `Path "${relative}" resolves outside project directory via symlink`,
         );
       }
       break;
@@ -57,9 +57,9 @@ export function safePath(cwd: string, relative: string): string {
  */
 export function validateToolSandbox(
   payload: Pick<ToolPayload, "cwd">,
-  directory: string
+  directory: string,
 ): { cwd: string } | ToolResult {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const realDirectory = fs.realpathSync(path.resolve(directory));
     const realCwd = fs.realpathSync(path.resolve(payload.cwd));

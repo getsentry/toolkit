@@ -9,14 +9,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach } from "vitest";
 import {
+  resetAccountSelection,
   resetAuthRowCache,
   resetAuthTokenCache,
   resetHasStoredCredsCache,
   resetIdentityFingerprintCache,
 } from "../src/lib/db/auth.js";
 import { CONFIG_DIR_ENV_VAR, closeDatabase } from "../src/lib/db/index.js";
+import { resetTipsCache } from "../src/lib/tips.js";
 
-// biome-ignore lint/performance/noBarrelFile: re-exporting a single constant, not a barrel
+// re-exporting a single constant, not a barrel
 export { TEST_TMP_DIR } from "./constants.js";
 
 import { TEST_TMP_DIR } from "./constants.js";
@@ -42,7 +44,7 @@ type TestConfigDirOptions = {
  */
 export async function createTestConfigDir(
   prefix = "sentry-test-",
-  options?: TestConfigDirOptions
+  options?: TestConfigDirOptions,
 ): Promise<string> {
   const dir = await mkdtemp(join(TEST_TMP_DIR, prefix));
 
@@ -103,7 +105,7 @@ export function mockFetch(fn: FetchMockFn): typeof fetch {
  */
 export function useTestConfigDir(
   prefix = "sentry-test-",
-  options?: TestConfigDirOptions
+  options?: TestConfigDirOptions,
 ): () => string {
   let dir: string;
   let savedConfigDir: string | undefined;
@@ -116,6 +118,8 @@ export function useTestConfigDir(
     resetAuthRowCache();
     resetHasStoredCredsCache();
     resetIdentityFingerprintCache();
+    resetTipsCache();
+    resetAccountSelection();
     dir = await createTestConfigDir(prefix, options);
     process.env[CONFIG_DIR_ENV_VAR] = dir;
   });
@@ -126,6 +130,8 @@ export function useTestConfigDir(
     resetAuthRowCache();
     resetHasStoredCredsCache();
     resetIdentityFingerprintCache();
+    resetTipsCache();
+    resetAccountSelection();
     // Always restore the previous value — never delete.
     // Deleting process.env.SENTRY_CONFIG_DIR causes failures in test files
     // that load after this afterEach runs, because their module-level code
@@ -274,7 +280,7 @@ export type FetchCall = {
  */
 export function installFetchMock(
   routes: FetchRoute[],
-  fallback?: { status?: number; body?: unknown }
+  fallback?: { status?: number; body?: unknown },
 ): { calls: FetchCall[]; restore: () => void } {
   const calls: FetchCall[] = [];
   const originalFetch = globalThis.fetch;
@@ -283,8 +289,8 @@ export function installFetchMock(
 
   globalThis.fetch = (async (
     input: RequestInfo | URL,
-    init?: RequestInit
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: test mock router requires branching for method/URL/body matching
+    init?: RequestInit,
+    // test mock router requires branching for method/URL/body matching
   ): Promise<Response> => {
     const url = extractFetchUrl(input);
     const method = init?.method ?? "GET";
@@ -317,12 +323,13 @@ export function installFetchMock(
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
+        // oxlint-disable-next-line unicorn/no-useless-fallback-in-spread -- Retain the existing fallback while migrating lint tools.
         ...(route.headers ?? {}),
       };
 
       return new Response(
         responseBody !== undefined ? JSON.stringify(responseBody) : undefined,
-        { status, headers }
+        { status, headers },
       );
     }
 

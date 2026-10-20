@@ -4,11 +4,11 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { sendCommand } from "../../../src/commands/event/send.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as dsnIndex from "../../../src/lib/dsn/index.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as eventSendDsn from "../../../src/lib/envelope/event-send-dsn.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as transport from "../../../src/lib/envelope/transport.js";
 import { ConfigError, ValidationError } from "../../../src/lib/errors.js";
 import { useTestConfigDir } from "../../helpers.js";
@@ -63,7 +63,7 @@ describe("sendCommand.func()", () => {
         level: "error",
         "no-environ": true,
       },
-      SAAS_DSN
+      SAAS_DSN,
     );
 
     expect(sendSpy).toHaveBeenCalledTimes(1);
@@ -85,7 +85,7 @@ describe("sendCommand.func()", () => {
         level: "fatal",
         "no-environ": true,
       },
-      SAAS_DSN
+      SAAS_DSN,
     );
 
     const body = sendSpy.mock.calls[0]?.[1] as string;
@@ -101,7 +101,7 @@ describe("sendCommand.func()", () => {
         tag: ["env:prod", "region:us"],
         "no-environ": true,
       },
-      SAAS_DSN
+      SAAS_DSN,
     );
 
     const body = sendSpy.mock.calls[0]?.[1] as string;
@@ -112,7 +112,7 @@ describe("sendCommand.func()", () => {
   test("missing DSN throws ConfigError", async () => {
     const { ctx } = makeContext();
     await expect(func.call(ctx, { "no-environ": true })).rejects.toBeInstanceOf(
-      ConfigError
+      ConfigError,
     );
   });
 
@@ -148,7 +148,7 @@ describe("sendCommand.func()", () => {
           level: "error",
           "no-environ": true,
         },
-        "grow-together-therapy/javascript-react"
+        "grow-together-therapy/javascript-react",
       );
       expect(resolveSpy).toHaveBeenCalledWith("/tmp", {
         kind: "project",
@@ -170,7 +170,7 @@ describe("sendCommand.func()", () => {
         json: true,
         "no-environ": true,
       },
-      SAAS_DSN
+      SAAS_DSN,
     );
 
     const output = writes.join("");
@@ -187,8 +187,8 @@ describe("sendCommand.func()", () => {
         ctx,
         { "no-environ": true },
         SAAS_DSN,
-        "/nonexistent/missing.json"
-      )
+        "/nonexistent/missing.json",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -196,7 +196,7 @@ describe("sendCommand.func()", () => {
     const { ctx } = makeContext();
 
     await expect(
-      func.call(ctx, { raw: true, "no-environ": true }, SAAS_DSN)
+      func.call(ctx, { raw: true, "no-environ": true }, SAAS_DSN),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 });

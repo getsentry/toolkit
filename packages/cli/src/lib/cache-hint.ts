@@ -71,7 +71,7 @@ export function formatCacheHint(): string | undefined {
  * - Neither → `undefined`
  */
 export function appendCacheHint(
-  existingHint: string | undefined
+  existingHint: string | undefined,
 ): string | undefined {
   const cacheHint = formatCacheHint();
   if (existingHint && cacheHint) {

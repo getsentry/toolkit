@@ -155,7 +155,7 @@ export const resolveCommand = buildCommand({
           "Organization",
           "sentry issue resolve <org>/<issue> --in @commit",
           [],
-          "--in @commit needs an organization context to look up the Sentry repo registry."
+          "--in @commit needs an organization context to look up the Sentry repo registry.",
         );
       }
       const resolved = await resolveCommitSpec(parsed.spec, org, cwd);
@@ -168,7 +168,7 @@ export const resolveCommand = buildCommand({
     });
 
     log.debug(
-      `Resolved ${updated.shortId} ${describeSpec(statusDetails ?? null)}`
+      `Resolved ${updated.shortId} ${describeSpec(statusDetails ?? null)}`,
     );
     yield new CommandOutput<ResolveResult>({
       issue: updated,

@@ -14,13 +14,13 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
 import { isatty } from "node:tty";
 import { planCommand } from "../../../src/commands/issue/plan.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 import { triggerSolutionPlanning } from "../../../src/lib/api-client.js";
 import { CliError } from "../../../src/lib/errors.js";
@@ -101,7 +101,7 @@ describe("issue plan waiting-for-user-response", () => {
   test("confirms the root cause and continues to planning when interactive", async () => {
     vi.mocked(isatty).mockReturnValue(true);
     analyzeSpy.mockResolvedValue(
-      waitingState([sampleCause(0, "First"), sampleCause(1, "Second")])
+      waitingState([sampleCause(0, "First"), sampleCause(1, "Second")]),
     );
     promptSpy.mockResolvedValue(true);
     const solutionSpy = vi
@@ -112,7 +112,7 @@ describe("issue plan waiting-for-user-response", () => {
 
     expect(promptSpy).toHaveBeenCalledWith(
       "Generate a solution plan for it?",
-      expect.objectContaining({ type: "confirm" })
+      expect.objectContaining({ type: "confirm" }),
     );
     expect(triggerSolutionPlanning).toHaveBeenCalledWith("test-org", "1", 42);
     expect(solutionSpy).toHaveBeenCalled();
@@ -186,7 +186,7 @@ describe("issue plan after solution planning", () => {
     pollSpy.mockResolvedValue({ status: "ERROR", run_id: 42, steps: [] });
 
     await expect(runPlan(createMockContext())).rejects.toThrow(
-      /Plan creation failed/
+      /Plan creation failed/,
     );
   });
 
@@ -194,7 +194,7 @@ describe("issue plan after solution planning", () => {
     pollSpy.mockResolvedValue({ status: "CANCELLED", run_id: 42, steps: [] });
 
     await expect(runPlan(createMockContext())).rejects.toThrow(
-      /Plan creation was cancelled/
+      /Plan creation was cancelled/,
     );
   });
 

@@ -18,6 +18,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ApiError,
   ContextError,
@@ -44,7 +45,7 @@ import {
   applySentryUrlContext,
   parseSentryUrl,
 } from "../../lib/sentry-url-parser.js";
-import { buildReplayUrl } from "../../lib/sentry-urls.js";
+import { buildReplayUrl } from "../../lib/sentry-web-urls.js";
 import type {
   ReplayActivityEvent,
   ReplayDetails,
@@ -107,7 +108,7 @@ function parseSingleArg(arg: string, usageHint: string): ParsedPositionalArgs {
   const { id: replayId, targetArg } = parseSlashSeparatedArg(
     trimmed,
     "Replay ID",
-    usageHint
+    usageHint,
   );
   return { replayId, targetArg };
 }
@@ -126,7 +127,7 @@ function parseSingleArg(arg: string, usageHint: string): ParsedPositionalArgs {
  */
 export function parsePositionalArgs(
   args: string[],
-  usageHint = USAGE_HINT
+  usageHint = USAGE_HINT,
 ): ParsedPositionalArgs {
   if (args.length === 0) {
     throw new ContextError("Replay ID", usageHint, []);
@@ -134,7 +135,7 @@ export function parsePositionalArgs(
   if (args.length > 2) {
     throw new ValidationError(
       `Too many positional arguments (got ${args.length}, expected at most 2).\n\nUsage: ${usageHint}`,
-      "positional"
+      "positional",
     );
   }
 
@@ -194,7 +195,7 @@ type ReplayProjectScope = {
  * has to be checked against the replay's own project.
  */
 export async function validateReplayProjectScope(
-  scope: ReplayProjectScope
+  scope: ReplayProjectScope,
 ): Promise<void> {
   const { expectedProjectId, org, project, replay, replayId } = scope;
   const command = scope.command ?? "view";
@@ -213,7 +214,7 @@ export async function validateReplayProjectScope(
       `sentry replay ${command} ${org}/${project}/${replayId}`,
       [
         `Use the org-scoped replay instead: sentry replay ${command} ${org}/${replayId}`,
-      ]
+      ],
     );
   }
 
@@ -225,14 +226,14 @@ export async function validateReplayProjectScope(
       `sentry replay ${command} ${org}/${project}/${replayId}`,
       [
         `Use the org-scoped replay instead: sentry replay ${command} ${org}/${replayId}`,
-      ]
+      ],
     );
   }
 }
 
 async function fetchReplayActivity(
   org: string,
-  replay: ReplayDetails
+  replay: ReplayDetails,
 ): Promise<ReplayActivityEvent[]> {
   if (
     replay.is_archived ||
@@ -247,7 +248,7 @@ async function fetchReplayActivity(
       org,
       String(replay.project_id),
       replay.id,
-      { expectedSegments: replay.count_segments }
+      { expectedSegments: replay.count_segments },
     );
     return extractReplayActivityEvents(segments, MAX_ACTIVITY_EVENTS);
   } catch (error) {
@@ -264,7 +265,7 @@ async function fetchReplayActivity(
  */
 function fetchRelatedReplayIssues(
   org: string,
-  replay: ReplayDetails
+  replay: ReplayDetails,
 ): Promise<ReplayRelatedIssue[]> {
   const eventIds = replay.error_ids.slice(0, MAX_RELATED_ERRORS);
 
@@ -286,13 +287,13 @@ function fetchRelatedReplayIssues(
         log.debug(`Failed to resolve issue for event ${eventId}`, error);
         return { eventId, issueId: null, shortId: null, title: null };
       }
-    })
+    }),
   );
 }
 
 function fetchRelatedReplayTraces(
   org: string,
-  replay: ReplayDetails
+  replay: ReplayDetails,
 ): Promise<ReplayRelatedTrace[]> {
   const traceIds = replay.trace_ids.slice(0, MAX_RELATED_TRACES);
 
@@ -317,13 +318,13 @@ function fetchRelatedReplayTraces(
           spanCount: null,
         };
       }
-    })
+    }),
   );
 }
 
 async function enrichReplayView(
   org: string,
-  replay: ReplayDetails
+  replay: ReplayDetails,
 ): Promise<
   Pick<ReplayViewData, "activity" | "relatedIssues" | "relatedTraces">
 > {
@@ -376,7 +377,7 @@ export const viewCommand = buildCommand({
       parameter: {
         placeholder: "replay-id-or-url",
         brief: "[<org>/<project>] <replay-id or trace-id> or <replay-url>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -402,7 +403,7 @@ export const viewCommand = buildCommand({
     const resolved = await resolveOrgOptionalFromArg(
       parsedArgs.targetArg,
       cwd,
-      "replay view"
+      "replay view",
     );
 
     let replay: ReplayDetails;
@@ -419,7 +420,7 @@ export const viewCommand = buildCommand({
           [
             "Check that you are querying the right organization",
             "The replay may be past your retention window",
-          ]
+          ],
         );
       }
       throw error;

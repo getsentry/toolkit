@@ -16,11 +16,11 @@ vi.mock("../../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
 import { ValidationError } from "../../../../src/lib/errors.js";
 
@@ -33,11 +33,11 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
 
@@ -135,7 +135,7 @@ describe("dashboard widget add", () => {
       context,
       { json: false, display: "line", query: ["count"] },
       "123",
-      "New Widget"
+      "New Widget",
     );
 
     expect(getDashboardSpy).toHaveBeenCalledWith("acme-corp", "123");
@@ -147,12 +147,64 @@ describe("dashboard widget add", () => {
         widgets: expect.arrayContaining([
           expect.objectContaining({ title: "New Widget", displayType: "line" }),
         ]),
-      })
+      }),
     );
     // Original widgets should be preserved plus the new one
     const body = updateDashboardSpy.mock.calls[0]?.[2];
     expect(body.widgets.length).toBe(3);
   });
+
+  test.each([
+    { ref: "my-org/123", target: { type: "org-all", org: "my-org" } },
+    {
+      ref: "my-org/web/123",
+      target: { type: "explicit", org: "my-org", project: "web" },
+    },
+  ])(
+    "adds a widget using the qualified dashboard ID $ref",
+    async ({ ref, target }) => {
+      resolveOrgOnlyTargetSpy.mockResolvedValue("my-org");
+      const listDashboardsSpy = vi
+        .spyOn(apiClient, "listDashboardsPaginated")
+        .mockResolvedValue({ data: [], nextCursor: undefined });
+      const { context, stdoutWrite } = createMockContext();
+      const func = await addCommand.loader();
+
+      try {
+        await func.call(
+          context,
+          { json: true, display: "line", query: ["count"] },
+          ref,
+          "New Widget",
+        );
+
+        expect(resolveOrgOnlyTargetSpy).toHaveBeenCalledWith(
+          target,
+          "/tmp",
+          "dashboard",
+          expect.any(String),
+        );
+        expect(getDashboardSpy).toHaveBeenCalledWith("my-org", "123");
+        expect(updateDashboardSpy).toHaveBeenCalledWith(
+          "my-org",
+          "123",
+          expect.objectContaining({
+            widgets: expect.arrayContaining([
+              expect.objectContaining({ title: "New Widget" }),
+            ]),
+          }),
+        );
+        expect(listDashboardsSpy).not.toHaveBeenCalled();
+        const output = JSON.parse(
+          stdoutWrite.mock.calls.map((call) => call[0]).join(""),
+        );
+        expect(output.url).toContain("my-org.sentry.io/dashboard/123");
+        expect(output.widget.title).toBe("New Widget");
+      } finally {
+        listDashboardsSpy.mockRestore();
+      }
+    },
+  );
 
   test("JSON output contains dashboard, widget, and url", async () => {
     const { context, stdoutWrite } = createMockContext();
@@ -161,7 +213,7 @@ describe("dashboard widget add", () => {
       context,
       { json: true, display: "big_number", query: ["count"] },
       "123",
-      "My Counter"
+      "My Counter",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -179,7 +231,7 @@ describe("dashboard widget add", () => {
       context,
       { json: false, display: "line", query: ["count"] },
       "123",
-      "Error Rate"
+      "Error Rate",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -207,7 +259,7 @@ describe("dashboard widget add", () => {
         context,
         { json: false, display: "invalid_type" },
         "123",
-        "Bad Widget"
+        "Bad Widget",
       )
       .catch((e: Error) => e);
     expect(err).toBeInstanceOf(ValidationError);
@@ -223,7 +275,7 @@ describe("dashboard widget add", () => {
         context,
         { json: false, display: "line", query: ["not_a_function"] },
         "123",
-        "Bad Widget"
+        "Bad Widget",
       )
       .catch((e: Error) => e);
     expect(err).toBeInstanceOf(ValidationError);
@@ -237,7 +289,7 @@ describe("dashboard widget add", () => {
       context,
       { json: false, display: "line", dataset: "issue" },
       "123",
-      "Issues Over Time"
+      "Issues Over Time",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -252,7 +304,7 @@ describe("dashboard widget add", () => {
       context,
       { json: false, display: "table", dataset: "issue" },
       "123",
-      "Top Issues"
+      "Top Issues",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -274,7 +326,7 @@ describe("dashboard widget add", () => {
         query: ["count"],
       },
       "123",
-      "Error Count"
+      "Error Count",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -294,7 +346,7 @@ describe("dashboard widget add", () => {
         query: ["p50(value,completion.duration_ms,distribution,none)"],
       },
       "123",
-      "Latency"
+      "Latency",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -317,7 +369,7 @@ describe("dashboard widget add", () => {
         query: ["last_seen"],
       },
       "123",
-      "Last Seen"
+      "Last Seen",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -338,7 +390,7 @@ describe("dashboard widget add", () => {
         query: ["count"],
       },
       "123",
-      "Errors"
+      "Errors",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -360,7 +412,7 @@ describe("dashboard widget add", () => {
           query: ["count"],
         },
         "123",
-        "Bad"
+        "Bad",
       )
       .catch((e: Error) => e);
 
@@ -383,7 +435,7 @@ describe("dashboard widget add", () => {
         limit: 5,
       },
       "123",
-      "Issues by Project"
+      "Issues by Project",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -410,7 +462,7 @@ describe("dashboard widget add", () => {
         height: 3,
       },
       "123",
-      "Full Width Widget"
+      "Full Width Widget",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -433,7 +485,7 @@ describe("dashboard widget add", () => {
         col: 4,
       },
       "123",
-      "Positioned Counter"
+      "Positioned Counter",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -452,7 +504,7 @@ describe("dashboard widget add", () => {
         context,
         { json: false, display: "line", query: ["count"], width: 7 },
         "123",
-        "Too Wide"
+        "Too Wide",
       )
       .catch((e: Error) => e);
     expect(err).toBeInstanceOf(ValidationError);
@@ -468,7 +520,7 @@ describe("dashboard widget add", () => {
         context,
         { json: false, display: "table", query: ["count"], col: 1 },
         "123",
-        "Wide Table"
+        "Wide Table",
       )
       .catch((e: Error) => e);
     expect(err).toBeInstanceOf(ValidationError);
@@ -483,7 +535,7 @@ describe("dashboard widget add", () => {
         context,
         { json: false, display: "line", query: ["count"], row: -1 },
         "123",
-        "Bad Y"
+        "Bad Y",
       )
       .catch((e: Error) => e);
     expect(err).toBeInstanceOf(ValidationError);
@@ -503,7 +555,7 @@ describe("dashboard widget add", () => {
         limit: 5,
       },
       "123",
-      "Top Browsers"
+      "Top Browsers",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -523,7 +575,7 @@ describe("dashboard widget add", () => {
         "group-by": ["browser.name"],
       },
       "123",
-      "Top Browsers"
+      "Top Browsers",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -546,7 +598,7 @@ describe("dashboard widget add", () => {
         limit: 10,
       },
       "123",
-      "Top Browsers"
+      "Top Browsers",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -561,7 +613,7 @@ describe("dashboard widget add", () => {
       context,
       { json: false, display: "big_number", query: ["count"] },
       "123",
-      "Total Count"
+      "Total Count",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -579,7 +631,7 @@ describe("dashboard widget add", () => {
       context,
       { json: false, display: "table", dataset: "issue" },
       "123",
-      "Top Issues"
+      "Top Issues",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -596,7 +648,7 @@ describe("dashboard widget add", () => {
       context,
       { json: false, display: "big_number", query: ["count"], layout: "dense" },
       "123",
-      "Dense Widget"
+      "Dense Widget",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -619,7 +671,7 @@ describe("dashboard widget add", () => {
         layout: "sequential",
       },
       "123",
-      "Sequential Widget"
+      "Sequential Widget",
     );
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -643,7 +695,7 @@ describe("dashboard widget add", () => {
           layout: "invalid",
         },
         "123",
-        "Bad Layout"
+        "Bad Layout",
       )
       .catch((e: unknown) => e);
 

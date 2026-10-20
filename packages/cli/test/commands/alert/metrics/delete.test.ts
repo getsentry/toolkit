@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { deleteCommand } from "../../../../src/commands/alert/metrics/delete.js";
 import type { MetricAlertRule } from "../../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../../helpers.js";
 
@@ -72,18 +72,18 @@ describe("alert metrics delete", () => {
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true },
-      "test-org/9"
+      "test-org/9",
     );
 
     expect(resolveSpy).toHaveBeenCalledWith(
       "test-org/",
       getConfigDir(),
-      "alert metrics delete"
+      "alert metrics delete",
     );
     expect(getRuleSpy).toHaveBeenCalledWith("test-org", "9");
     expect(deleteRuleSpy).not.toHaveBeenCalled();
     expect(stdoutWrite.mock.calls.map((c) => c[0]).join("")).toContain(
-      "Would delete metric alert rule"
+      "Would delete metric alert rule",
     );
   });
 
@@ -96,7 +96,7 @@ describe("alert metrics delete", () => {
     expect(getRuleSpy).toHaveBeenCalledWith("test-org", "9");
     expect(deleteRuleSpy).toHaveBeenCalledWith("test-org", "9");
     expect(stdoutWrite.mock.calls.map((c) => c[0]).join("")).toContain(
-      "Deleted metric alert rule"
+      "Deleted metric alert rule",
     );
   });
 
@@ -107,11 +107,11 @@ describe("alert metrics delete", () => {
     await func.call(
       context,
       { ...defaultFlags, yes: true, json: true },
-      "test-org/9"
+      "test-org/9",
     );
 
     expect(
-      JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""))
+      JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join("")),
     ).toEqual({
       deleted: true,
       org: "test-org",
@@ -124,16 +124,19 @@ describe("alert metrics delete", () => {
   test.each([
     ["--yes", { ...defaultFlags, yes: true }],
     ["--dry-run", { ...defaultFlags, "dry-run": true }],
-  ])("rejects bare rule id with %s before resolving target", async (_, flags) => {
-    const { context } = createContext();
-    const func = await deleteCommand.loader();
+  ])(
+    "rejects bare rule id with %s before resolving target",
+    async (_, flags) => {
+      const { context } = createContext();
+      const func = await deleteCommand.loader();
 
-    await expect(func.call(context, flags, "9")).rejects.toThrow(
-      "Auto-detection is disabled for destructive operations"
-    );
+      await expect(func.call(context, flags, "9")).rejects.toThrow(
+        "Auto-detection is disabled for destructive operations",
+      );
 
-    expect(resolveSpy).not.toHaveBeenCalled();
-    expect(getRuleSpy).not.toHaveBeenCalled();
-    expect(deleteRuleSpy).not.toHaveBeenCalled();
-  });
+      expect(resolveSpy).not.toHaveBeenCalled();
+      expect(getRuleSpy).not.toHaveBeenCalled();
+      expect(deleteRuleSpy).not.toHaveBeenCalled();
+    },
+  );
 });

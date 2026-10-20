@@ -27,7 +27,7 @@ type SearchResult = {
 async function runOneSearch(
   cwd: string,
   search: GrepSearch,
-  maxResults: number
+  maxResults: number,
 ): Promise<SearchResult> {
   // The scan engine trusts its `path` input (see
   // `GrepOptions.path`) — sandbox enforcement lives here. We only
@@ -76,8 +76,8 @@ export async function grep(payload: GrepPayload): Promise<ToolResult> {
     payload.params.maxResultsPerSearch ?? MAX_GREP_RESULTS_PER_SEARCH;
   const results = await Promise.all(
     payload.params.searches.map((search) =>
-      runOneSearch(payload.cwd, search, maxResults)
-    )
+      runOneSearch(payload.cwd, search, maxResults),
+    ),
   );
   return { ok: true, data: { results } };
 }
