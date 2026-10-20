@@ -4,6 +4,10 @@
   "tabWidth": 2,
   "sortPackageJson": false,
   "ignorePatterns": [
+    ".agents/skills/openspec-*/**",
+    ".claude/commands/opsx/**",
+    ".codex/skills/openspec-*/**",
+    ".cursor/commands/opsx-*.md",
     "apps/cli-docs/**",
     "packages/cli/plugins/**",
     "packages/cli/README.md",

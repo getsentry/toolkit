@@ -9,6 +9,7 @@ The MCP catalog already includes `create_project`, `update_project`, `create_tea
 Sentry's upstream project creation endpoint creates the project under a team and emits normal project creation side effects, including default key creation through Sentry's project post-save hook. Agents still need the DSN in the tool response because creating a Sentry project is usually followed immediately by SDK setup.
 
 Endpoint validation:
+
 - `~/src/sentry/src/sentry/core/endpoints/project_teams.py` lists project teams through `ProjectTeamsEndpoint.get`, backed by `OffsetPaginator` and cursor `Link` headers, so MCP must page through cursors before applying team-access safety checks.
 - `~/src/sentry/src/sentry/integrations/api/endpoints/organization_code_mappings_bulk.py` persists repository/project associations through `OrganizationCodeMappingsBulkEndpoint.post` at `/organizations/{org}/code-mappings/bulk/`; it resolves the project by slug, resolves the repository by name/provider, infers the default branch when possible, and creates or updates `RepositoryProjectPathConfig` rows.
 
