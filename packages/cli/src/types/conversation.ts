@@ -96,6 +96,17 @@ export type AgentConversationSpan = InferOutput<
   typeof AgentConversationSpanSchema
 >;
 
+export const ConversationStatsSchema = looseObject({
+  errors: number(),
+  llmCalls: number(),
+  toolCalls: number(),
+  toolErrors: number(),
+  totalCost: number(),
+  totalTokens: number(),
+});
+
+export type ConversationStats = InferOutput<typeof ConversationStatsSchema>;
+
 /**
  * Conversation details envelope returned by
  * `GET /organizations/{org}/agents/conversations/{conversationId}/`.
@@ -109,6 +120,8 @@ export const AgentConversationDetailsSchema = looseObject({
   conversationId: string(),
   title: nullable(string()),
   spans: array(AgentConversationSpanSchema),
+  /** Added after the original envelope; optional for older self-hosted servers. */
+  stats: optional(ConversationStatsSchema),
 });
 
 export type AgentConversationDetails = InferOutput<

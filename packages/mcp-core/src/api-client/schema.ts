@@ -35,6 +35,10 @@
  * }
  * ```
  */
+import type {
+  SentryIssueIdentity,
+  SentryNamedResource,
+} from "@sentry/toolkit-core/resource-identity";
 import { z } from "zod";
 
 /**
@@ -88,7 +92,7 @@ export const OrganizationSchema = z
     features: z.array(z.string()).optional(),
     hideAiFeatures: z.boolean().optional(),
   })
-  .passthrough();
+  .passthrough() satisfies z.ZodType<SentryNamedResource>;
 
 export const OrganizationListSchema = z.array(OrganizationSchema);
 
@@ -98,7 +102,7 @@ export const TeamSchema = z
     slug: z.string(),
     name: z.string(),
   })
-  .passthrough();
+  .passthrough() satisfies z.ZodType<SentryNamedResource>;
 
 export const TeamListSchema = z.array(TeamSchema);
 
@@ -113,7 +117,7 @@ export const ProjectSchema = z
     hasLogs: z.boolean().optional(),
     firstTransactionEvent: z.boolean().optional(),
   })
-  .passthrough();
+  .passthrough() satisfies z.ZodType<SentryNamedResource>;
 
 export const ProjectListSchema = z.array(ProjectSchema);
 
@@ -128,8 +132,8 @@ export const RepositorySchema = z
       })
       .passthrough(),
     status: z.string(),
-    externalSlug: z.string().optional(),
-    externalId: z.string().optional(),
+    externalSlug: z.string().nullish(),
+    externalId: z.string().nullish(),
     integrationId: z.union([z.string(), z.number()]).nullable().optional(),
   })
   .passthrough();
@@ -930,7 +934,7 @@ export const IssueSchema = z
   .passthrough()
   .transform((issue) =>
     Object.assign(issue, { shortId: issue.shortId ?? String(issue.id) }),
-  );
+  ) satisfies z.ZodType<SentryIssueIdentity>;
 
 export const IssueListSchema = z.array(IssueSchema);
 
@@ -1178,8 +1182,6 @@ const BaseEventSchema = z.object({
   _meta: z.unknown().optional(),
   // dateReceived is when the server received the event (may not be present in all contexts)
   dateReceived: z.string().datetime().nullish(),
-  // shared-formatter output, present when the event endpoint is called with ?llmFormat
-  formatted: z.object({ format: z.string(), content: z.string() }).optional(),
 });
 
 export const ErrorEventSchema = BaseEventSchema.omit({
@@ -1414,8 +1416,6 @@ export const AutofixRunStateSchema = z.object({
     })
     .passthrough()
     .nullable(),
-  // shared-formatter output, present when the autofix endpoint is called with ?llmFormat
-  formatted: z.object({ format: z.string(), content: z.string() }).optional(),
 });
 
 /**

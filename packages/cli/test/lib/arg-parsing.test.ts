@@ -21,6 +21,8 @@ import {
 import { stripDsnOrgPrefix } from "../../src/lib/dsn/index.js";
 import { ValidationError } from "../../src/lib/errors.js";
 
+const PROJECT_LIST_OPTIONS = { multi: true } as const;
+
 describe("stripDsnOrgPrefix", () => {
   test("strips 'o' prefix from DSN-style org IDs", () => {
     expect(stripDsnOrgPrefix("o1081365")).toBe("1081365");
@@ -69,6 +71,53 @@ describe("parseOrgProjectArg", () => {
       org: "sentry",
       project: "spotlight-electron",
     });
+  });
+
+  test("trims and de-duplicates comma-separated slugs", () => {
+    expect(
+      parseOrgProjectArg("acme/web, api,web", PROJECT_LIST_OPTIONS),
+    ).toEqual({
+      type: "explicit",
+      org: "acme",
+      project: "web",
+      projects: ["web", "api"],
+    });
+  });
+
+  test("trailing comma is treated as a single slug", () => {
+    expect(parseOrgProjectArg("acme/web,", PROJECT_LIST_OPTIONS)).toEqual({
+      type: "explicit",
+      org: "acme",
+      project: "web",
+    });
+  });
+
+  test("empty comma list throws ValidationError", () => {
+    expect(() => parseOrgProjectArg("acme/,,,", PROJECT_LIST_OPTIONS)).toThrow(
+      ValidationError,
+    );
+    expect(() => parseOrgProjectArg("acme/,,,", PROJECT_LIST_OPTIONS)).toThrow(
+      "empty",
+    );
+  });
+
+  test("bare comma list is a single project-search slug", () => {
+    expect(parseOrgProjectArg("web,api")).toEqual({
+      type: "project-search",
+      projectSlug: "web,api",
+    });
+  });
+
+  test("comma-separated display names are rejected", () => {
+    expect(() =>
+      parseOrgProjectArg("acme/My App,Other App", PROJECT_LIST_OPTIONS),
+    ).toThrow("must be slugs");
+  });
+
+  test("invalid character in one comma token throws", () => {
+    expect(() =>
+      parseOrgProjectArg("acme/web,api?x", PROJECT_LIST_OPTIONS),
+    ).toThrow(ValidationError);
   });
 
   // Error case - verify specific message
@@ -1465,6 +1514,45 @@ describe("parseOrgProjectArg: injection hardening", () => {
     expect(() => parseOrgProjectArg("sentry/cli\x00extra")).toThrow(
       ValidationError,
     );
+  });
+});
+
+// Agents pass targets with appended output/notes after a newline. A bare
+// trim() left the internal newline, which threw "Invalid project slug:
+// contains a newline" (CLI-1RA). Targets are single-line, so keep line one.
+describe("parseOrgProjectArg: multi-line input (CLI-1RA)", () => {
+  test("keeps the first line of an org/project target", () => {
+    expect(parseOrgProjectArg("sentry/cli\nextra")).toEqual({
+      type: "explicit",
+      org: "sentry",
+      project: "cli",
+    });
+  });
+
+  test("keeps the first line of a bare project target", () => {
+    expect(parseOrgProjectArg("cli\nsome note")).toEqual({
+      type: "project-search",
+      projectSlug: "cli",
+    });
+  });
+
+  test("skips leading blank lines and handles CRLF", () => {
+    expect(parseOrgProjectArg("\r\n  \r\nsentry/cli\r\nextra\r\n")).toEqual({
+      type: "explicit",
+      org: "sentry",
+      project: "cli",
+    });
+  });
+
+  test("keeps the first line of an org-all target", () => {
+    expect(parseOrgProjectArg("sentry/\nextra")).toEqual({
+      type: "org-all",
+      org: "sentry",
+    });
+  });
+
+  test("all-blank multi-line input auto-detects", () => {
+    expect(parseOrgProjectArg("  \n \r\n  ")).toEqual({ type: "auto-detect" });
   });
 });
 

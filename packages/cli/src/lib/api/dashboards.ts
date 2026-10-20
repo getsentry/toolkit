@@ -13,6 +13,7 @@ import {
 } from "@sentry/api";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
+import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 
 import { array, safeParse } from "valibot";
 
@@ -476,14 +477,16 @@ async function queryWidgetTimeseries(
 
     // Group-by columns enable topEvents mode
     if (hasGroupBy) {
-      reqParams.field = columns;
+      // Sort by the aggregate to get the actual top N groups. Every dataset
+      // honors sort, but the errors path rejects a sort column that is not in
+      // `field`, so select the aggregates alongside the group-by columns.
+      const { fields, sort } = resolveEventsSort({
+        fields: [...columns, ...aggregates],
+        sort: query.orderby,
+      });
+      reqParams.field = fields;
+      reqParams.sort = sort;
       reqParams.topEvents = widget.limit ?? 5;
-      // Sort by the aggregate to get the actual top N groups.
-      // The sort param is only supported on the spans dataset —
-      // the errors endpoint rejects it with 400.
-      if (dataset === "spans") {
-        reqParams.sort = query.orderby ?? `-${aggregates[0] ?? "count()"}`;
-      }
     }
 
     const { data: raw } = await apiRequestToRegion<unknown>(
@@ -529,21 +532,20 @@ async function queryWidgetTable(
     ...(query?.aggregates ?? []),
   ];
   const dataset = mapWidgetTypeToDataset(widget.widgetType);
+  const request = resolveEventsSort({ fields, sort: query?.orderby });
 
   const { data } = await apiRequestToRegion(
     regionUrl,
     `/organizations/${orgSlug}/events/`,
     {
       params: {
-        field: fields,
+        field: request.fields,
         query: query?.conditions || undefined,
         dataset: dataset ?? undefined,
         statsPeriod,
         start,
         end,
-        // sort is only supported on the spans dataset —
-        // the errors endpoint rejects it with 400.
-        sort: dataset === "spans" ? query?.orderby || undefined : undefined,
+        sort: request.sort,
         per_page: widget.limit ?? 10,
         environment: options.environment,
         project: options.project?.map(String),

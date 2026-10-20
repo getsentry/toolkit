@@ -55,10 +55,10 @@ export function isLoginHostTrusted(host: string): boolean {
  *    Covers 403 scope-recovery re-auth: the user is already authenticated to
  *    this exact instance, so re-authing to add scopes is safe. `setAuthToken`
  *    always records this, even when default-URL persistence failed.
- *  - **Persisted default URL** (`defaults.url`) — survives `clearAuth()`, so
- *    it covers the expired-session path, where both expired branches call
- *    `clearAuth()` before the `AuthError` reaches the middleware (see db/auth
- *    `refreshToken`) and the token row is already gone.
+ *  - **Persisted default URL** (`defaults.url`) — survives credential
+ *    invalidation, so it covers the expired-session path, where both expired
+ *    branches drop the active account's token before the `AuthError` reaches
+ *    the middleware (see db/auth `refreshToken`) and no token is left.
  *
  * Both are written only by explicit, confirmed user actions — never by the
  * `.sentryclirc` env shim — and {@link isHostTrusted} requires an exact match

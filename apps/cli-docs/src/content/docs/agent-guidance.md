@@ -116,6 +116,9 @@ sentry log list --follow
 
 # Filter logs by severity
 sentry log list --query "severity:error"
+
+# Match a regular expression on a string attribute (logs only)
+sentry log list --query 'message://^Timeout after \d+ms//'
 ```
 
 ### Capture Events Locally (Spotlight)
@@ -322,11 +325,12 @@ When querying the Events API (directly or via `sentry api`), valid dataset value
 ## Common Mistakes
 
 - **Wrong issue ID format**: Use `PROJECT-123` (short ID), not the numeric ID `123456789`. The short ID includes the project prefix.
-- **Pre-authenticating unnecessarily**: Don't run `sentry auth login` before every command. The CLI detects missing/expired auth and prompts automatically. Only run `sentry auth login` if you need to switch accounts.
+- **Pre-authenticating unnecessarily**: Don't run `sentry auth login` before every command. The CLI detects missing/expired auth and prompts automatically. Only run `sentry auth login` to add an account. With several stored accounts, commands pick the one that knows the target organization or server automatically; use `sentry auth switch` only to change the default.
 - **Missing `--json` for piping**: Human-readable output includes formatting. Use `--json` when parsing output programmatically.
 - **Specifying org/project when not needed**: Auto-detection resolves org/project from `.sentryclirc` config files, DSNs, env vars, and directory names. Let it work first — only add `<org>/<project>` if the CLI says it can't detect the target or detects the wrong one.
 - **Manually discovering the project before running a command**: Don't list the orgs you belong to, then list every project in each, to match the local checkout to a project — the CLI already does exactly this resolution internally on each command. Skip the fan-out and run the command directly; correct the target afterwards only if the output shows the wrong org/project.
 - **Confusing `--query` syntax**: The `--query` flag uses Sentry search syntax (e.g., `is:unresolved`, `assigned:me`), not free text search.
+- **Quoting a log regex**: Log search supports regular expressions as `key://pattern//` (RE2, case-sensitive, `(?i)` to ignore case, `!key://pattern//` to negate). Don't wrap it in quotes — `message:"//...//"` is a literal match. Prefer `*wildcards*` for plain substrings.
 - **Not using `--web`**: View commands support `-w`/`--web` to open the resource in the browser — useful for sharing links.
 - **Fetching API schemas instead of using the CLI**: Prefer `sentry schema` to browse the API and `sentry api` to make requests — the CLI handles authentication and endpoint resolution, so there's rarely a need to download OpenAPI specs separately.
 - **Fetching Sentry docs externally**: Use `sentry docs "your question"` to query Sentry's documentation from the CLI — this returns concise answers with source links, without needing to fetch or parse documentation pages.

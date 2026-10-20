@@ -10,6 +10,7 @@ import { encode as encodePng } from "fast-png";
 import { http, HttpResponse } from "msw";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import getSentryResource from "./get-sentry-resource.js";
+import { resolveDescription } from "../../tools/types.js";
 
 const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -46,7 +47,8 @@ function callHandler(params: {
     | "trace"
     | "replay"
     | "monitor"
-    | "snapshot";
+    | "snapshot"
+    | "dashboard";
   resourceId?: string;
   organizationSlug?: string;
 }) {
@@ -590,6 +592,56 @@ describe("get_sentry_resource", () => {
     });
   });
 
+  // ─── URL mode: dashboard URLs ──────────────────────────────────────────────
+  describe("URL mode — dashboard URLs", () => {
+    it("dispatches dashboard URL to get_dashboard_details", async () => {
+      const result = await callHandler({
+        url: "https://sentry-mcp-evals.sentry.io/dashboard/101/",
+      });
+      expect(result).toContain(
+        "# Dashboard Errors Overview in **sentry-mcp-evals**",
+      );
+      expect(result).toContain("**ID**: 101");
+      expect(result).toContain("[Open Dashboard]");
+    });
+
+    it("dispatches explicit dashboard resourceType to get_dashboard_details by ID", async () => {
+      const result = await callHandler({
+        resourceType: "dashboard",
+        resourceId: "101",
+        organizationSlug: "sentry-mcp-evals",
+      });
+      expect(result).toContain(
+        "# Dashboard Errors Overview in **sentry-mcp-evals**",
+      );
+      expect(result).toContain("**ID**: 101");
+    });
+
+    it("dispatches explicit dashboard resourceType to get_dashboard_details by title", async () => {
+      const result = await callHandler({
+        resourceType: "dashboard",
+        resourceId: "Errors Overview",
+        organizationSlug: "sentry-mcp-evals",
+      });
+      expect(result).toContain(
+        "# Dashboard Errors Overview in **sentry-mcp-evals**",
+      );
+      expect(result).toContain("**ID**: 101");
+    });
+
+    it("rejects dashboard URL when get_dashboard_details is not available", async () => {
+      await expect(
+        getSentryResource.handler(
+          { url: "https://sentry-mcp-evals.sentry.io/dashboard/101/" },
+          {
+            ...baseContext,
+            availableToolNames: new Set(["get_sentry_resource"]),
+          },
+        ),
+      ).rejects.toThrow("Dashboard resources require the inspect skill");
+    });
+  });
+
   // ─── URL mode: error cases ────────────────────────────────────────────────
   describe("URL mode — error cases", () => {
     it("throws for unsupported URL path (settings)", async () => {
@@ -1005,6 +1057,44 @@ describe("get_sentry_resource", () => {
         "resourceId",
         "organizationSlug",
       ]);
+    });
+
+    it("omits dashboard hints when get_dashboard_details is unavailable", () => {
+      const desc = resolveDescription(getSentryResource.description, {
+        experimentalMode: false,
+        availableToolNames: new Set([
+          "get_sentry_resource",
+          "get_monitor_details",
+        ]),
+      });
+      expect(desc).not.toContain("dashboard");
+      expect(desc).toContain("monitor");
+    });
+
+    it("includes dashboard hints when get_dashboard_details is available", () => {
+      const desc = resolveDescription(getSentryResource.description, {
+        experimentalMode: false,
+        availableToolNames: new Set([
+          "get_sentry_resource",
+          "get_monitor_details",
+          "get_dashboard_details",
+        ]),
+      });
+      expect(desc).toContain("dashboards");
+      expect(desc).toContain("dashboard: <dashboardId or title>");
+      expect(desc).toContain("/dashboard/542438/");
+    });
+
+    it("omits monitor hints when get_monitor_details is unavailable", () => {
+      const desc = resolveDescription(getSentryResource.description, {
+        experimentalMode: false,
+        availableToolNames: new Set([
+          "get_sentry_resource",
+          "get_dashboard_details",
+        ]),
+      });
+      expect(desc).not.toContain("monitor");
+      expect(desc).toContain("dashboard");
     });
   });
 });

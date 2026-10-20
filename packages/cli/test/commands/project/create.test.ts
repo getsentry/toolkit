@@ -1073,6 +1073,21 @@ describe("project create", () => {
     );
   });
 
+  test("preserves commas inside an organization-scoped project name", async () => {
+    const { context } = createMockContext();
+    const func = await createCommand.loader();
+    await func.call(context, { json: false }, "acme/web,api:node");
+
+    expect(resolveOrgSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ org: "acme" }),
+    );
+    expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
+      "acme-corp",
+      "engineering",
+      { name: "web,api", platform: "node" },
+    );
+  });
+
   test("splits a project specification on its final colon", async () => {
     const { context } = createMockContext();
     const func = await createCommand.loader();

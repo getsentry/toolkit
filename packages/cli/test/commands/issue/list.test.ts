@@ -51,8 +51,16 @@ import {
 } from "../../../src/lib/db/defaults.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- namespace needed for vi.spyOn on mocked module
 import * as paginationDb from "../../../src/lib/db/pagination.js";
+import {
+  getProjectByAlias,
+  setProjectAliases,
+} from "../../../src/lib/db/project-aliases.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
-import { ApiError, ValidationError } from "../../../src/lib/errors.js";
+import {
+  ApiError,
+  ResolutionError,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 import type { TimeRange } from "../../../src/lib/time-range.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
@@ -770,6 +778,178 @@ describe("issue list: server sort order preservation", () => {
     expect(output.data.map((issue: { id: string }) => issue.id)).toEqual([
       "1",
       "2",
+    ]);
+  });
+});
+
+describe("issue list: scoped counts via events endpoint (#1518)", () => {
+  /**
+   * Mock a single issue from the list endpoint and (optionally) a scoped-count
+   * response from the events endpoint. Tracks the events-endpoint URLs seen so
+   * tests can assert what was queried.
+   */
+  function mockScopedCounts(options?: {
+    events?: { count: number; userCount: number } | "error";
+    issues?: Record<string, unknown>[];
+  }) {
+    const eventsUrls: string[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      const projectResp = mockDefaultProject(req.url);
+      if (projectResp) return projectResp;
+      if (req.url.includes("/events/")) {
+        eventsUrls.push(req.url);
+        if (options?.events === "error") {
+          return new Response(JSON.stringify({ detail: "boom" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const ev = options?.events ?? { count: 0, userCount: 0 };
+        return Response.json({
+          data: [
+            {
+              "count()": ev.count,
+              "count_unique(user)": ev.userCount,
+            },
+          ],
+          meta: {},
+        });
+      }
+      if (req.url.includes("/issues/")) {
+        const issues = options?.issues ?? [mockIssue()];
+        return new Response(JSON.stringify(issues), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    return { eventsUrls };
+  }
+
+  test("replaces counts with scoped values from the events endpoint", async () => {
+    const { eventsUrls } = mockScopedCounts({
+      events: { count: 238, userCount: 189 },
+    });
+    const { context, stdout } = createContext();
+
+    await func.call(context, {
+      limit: 10,
+      sort: "date",
+      period: parsePeriod("90d"),
+      json: true,
+      query: 'release:"1.0.0"',
+    });
+
+    // The events endpoint is queried with issue:<shortId> AND the release filter.
+    expect(eventsUrls.length).toBe(1);
+    const decoded = decodeURIComponent(eventsUrls[0] ?? "");
+    expect(decoded).toContain("issue:TEST-PROJECT-1");
+    expect(decoded).toContain('release:"1.0.0"');
+
+    const output = JSON.parse(stdout.output);
+    expect(output.data[0].count).toBe("238");
+    expect(output.data[0].userCount).toBe(189);
+  });
+
+  test("does not call the events endpoint without an unscoped filter", async () => {
+    const { eventsUrls } = mockScopedCounts({
+      events: { count: 238, userCount: 189 },
+    });
+    const { context, stdout } = createContext();
+
+    await func.call(context, {
+      limit: 10,
+      sort: "date",
+      period: parsePeriod("90d"),
+      json: true,
+      query: "is:unresolved",
+    });
+
+    expect(eventsUrls.length).toBe(0);
+    const output = JSON.parse(stdout.output);
+    // Original list-endpoint count is preserved.
+    expect(output.data[0].count).toBe("10");
+    expect(output.data[0].userCount).toBe(5);
+  });
+
+  test("falls back to unscoped counts when the events refetch fails", async () => {
+    mockScopedCounts({ events: "error" });
+    const { context, stdout } = createContext();
+
+    await func.call(context, {
+      limit: 10,
+      sort: "date",
+      period: parsePeriod("90d"),
+      json: true,
+      query: 'release:"1.0.0"',
+    });
+
+    const output = JSON.parse(stdout.output);
+    // Listing still renders with the original list-endpoint counts.
+    expect(output.data[0].count).toBe("10");
+    expect(output.data[0].userCount).toBe(5);
+  });
+
+  test.each([
+    { label: "with counts shown", fields: undefined },
+    { label: "when --fields omits counts", fields: ["id", "title"] },
+  ])("--sort freq re-ranks by scoped counts $label", async ({ fields }) => {
+    // List endpoint orders by unscoped counts: A (100) before B (50).
+    const issues = [
+      mockIssue({ id: "A", shortId: "AAA-1", count: "100", userCount: 100 }),
+      mockIssue({ id: "B", shortId: "BBB-2", count: "50", userCount: 50 }),
+    ];
+    // Scoped counts invert the ranking: B (90) should outrank A (5).
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      const projectResp = mockDefaultProject(req.url);
+      if (projectResp) return projectResp;
+      if (req.url.includes("/events/")) {
+        const decoded = decodeURIComponent(req.url);
+        const scoped = decoded.includes("issue:AAA-1")
+          ? { count: 5, userCount: 5 }
+          : { count: 90, userCount: 90 };
+        return Response.json({
+          data: [
+            {
+              "count()": scoped.count,
+              "count_unique(user)": scoped.userCount,
+            },
+          ],
+          meta: {},
+        });
+      }
+      if (req.url.includes("/issues/")) {
+        return new Response(JSON.stringify(issues), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const { context, stdout } = createContext();
+
+    await func.call(context, {
+      limit: 10,
+      sort: "freq",
+      period: parsePeriod("90d"),
+      json: true,
+      fields,
+      query: 'release:"1.0.0"',
+    });
+
+    const output = JSON.parse(stdout.output);
+    expect(output.data.map((issue: { id: string }) => issue.id)).toEqual([
+      "B",
+      "A",
     ]);
   });
 });
@@ -1869,6 +2049,16 @@ describe("appendIssueFlags", () => {
     fresh: false,
   };
 
+  test("preserves quoted queries in page-navigation hints", () => {
+    expect(
+      appendIssueFlags("sentry issue list org/ -c next", {
+        ...baseFlags,
+        sort: "recommended",
+        query: 'transaction:"GET /checkout"',
+      }),
+    ).toContain(`--query='transaction:"GET /checkout"'`);
+  });
+
   test("on SaaS, recommended (the default) is omitted but date is shown", () => {
     delete process.env.SENTRY_URL;
     expect(
@@ -1899,6 +2089,187 @@ describe("appendIssueFlags", () => {
         sort: "recommended",
       }),
     ).toContain("--sort recommended");
+  });
+});
+
+describe("issue list: comma-separated project slugs", () => {
+  const catalog = [
+    { id: "1", slug: "web", name: "Web" },
+    { id: "2", slug: "api", name: "API" },
+    { id: "3", slug: "worker", name: "Worker" },
+  ] as Awaited<ReturnType<typeof projectsApi.listProjects>>;
+  const getProjectMock = vi.mocked(projectsApi.getProject);
+  const listProjectsMock = vi.mocked(projectsApi.listProjects);
+  const baseFlags = {
+    limit: 10,
+    sort: "date",
+    period: parsePeriod("90d"),
+    json: true,
+  } as const;
+
+  beforeEach(() => {
+    listIssuesAllPagesMock.mockReset();
+    listIssuesPaginatedMock.mockReset();
+    resolveCursorMock.mockReset();
+    advancePaginationStateMock.mockReset();
+    getProjectMock.mockReset();
+    getProjectMock.mockImplementation(async (_org, slug) => {
+      const project = catalog.find((candidate) => candidate.slug === slug);
+      if (!project) {
+        throw new ApiError("Not found", 404);
+      }
+      return project;
+    });
+    listProjectsMock.mockReset();
+    listProjectsMock.mockResolvedValue(catalog);
+  });
+
+  afterEach(() => {
+    getProjectMock.mockReset();
+    listProjectsMock.mockReset();
+  });
+
+  test("looks up each slug and selects all IDs in one SDK request", async () => {
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [
+        mockIssue({ id: "web", shortId: "WEB-1", project: { slug: "web" } }),
+        mockIssue({ id: "api", shortId: "API-1", project: { slug: "api" } }),
+      ],
+      nextCursor: undefined,
+    });
+
+    const { context, stdout } = createContext();
+    await func.call(context, baseFlags, "test-org/web,api");
+
+    expect(getProjectMock).toHaveBeenCalledTimes(2);
+    expect(listProjectsMock).not.toHaveBeenCalled();
+    expect(listIssuesAllPagesMock).toHaveBeenCalledTimes(1);
+    expect(listIssuesAllPagesMock).toHaveBeenCalledWith(
+      "test-org",
+      "",
+      expect.objectContaining({ limit: 10, projects: [1, 2] }),
+    );
+    const output = JSON.parse(stdout.output);
+    expect(output.data).toHaveLength(2);
+  });
+
+  test("registers aliases that resolve from any directory", async () => {
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [
+        mockIssue({ id: "1", shortId: "WEB-1", project: { slug: "web" } }),
+        mockIssue({ id: "2", shortId: "API-1", project: { slug: "api" } }),
+      ],
+      nextCursor: undefined,
+    });
+
+    const { context, stdout } = createContext();
+    await func.call(context, { ...baseFlags, json: false }, "test-org/web,api");
+
+    expect(stdout.output).toContain("Issues in test-org/web,api");
+    expect(stdout.output).toContain("sentry issue view <ALIAS>");
+    expect(stdout.output).toMatch(/\bw-1\b/);
+    expect(stdout.output).toMatch(/\ba-1\b/);
+    // `issue view` passes the fingerprint of the DSNs in its working directory.
+    expect(getProjectByAlias("w", "o1:2")).toEqual({
+      orgSlug: "test-org",
+      projectSlug: "web",
+    });
+    expect(getProjectByAlias("a", "")).toEqual({
+      orgSlug: "test-org",
+      projectSlug: "api",
+    });
+  });
+
+  test("replaces stored aliases even when the selector returns no issues", async () => {
+    setProjectAliases({ stale: { orgSlug: "old-org", projectSlug: "old" } });
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [],
+      nextCursor: undefined,
+    });
+
+    const { context, stdout } = createContext();
+    await func.call(context, { ...baseFlags, json: false }, "test-org/web,api");
+
+    expect(stdout.output).toContain("No issues found in test-org/web,api");
+    expect(getProjectByAlias("stale")).toBeUndefined();
+    expect(getProjectByAlias("w")).toEqual({
+      orgSlug: "test-org",
+      projectSlug: "web",
+    });
+  });
+
+  test("resumes the cursor when the slugs are retyped in another order", async () => {
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [
+        mockIssue({ id: "1", shortId: "WEB-1", project: { slug: "web" } }),
+      ],
+      nextCursor: "1735689600:0:1",
+    });
+    listIssuesPaginatedMock.mockResolvedValue({
+      data: [],
+      nextCursor: undefined,
+    });
+
+    await func.call(createContext().context, baseFlags, "test-org/web,api");
+    await func.call(
+      createContext().context,
+      { ...baseFlags, cursor: "next" },
+      "test-org/api,web",
+    );
+
+    expect(listIssuesPaginatedMock).toHaveBeenCalledWith(
+      "test-org",
+      "",
+      expect.objectContaining({ cursor: "1735689600:0:1", projects: [2, 1] }),
+    );
+  });
+
+  test("rejects an unknown slug before querying issues", async () => {
+    const error = await func
+      .call(createContext().context, baseFlags, "test-org/web,nope")
+      .catch((caught: Error) => caught);
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    expect((error as Error).message).toContain(
+      "Project 'nope' not found in organization 'test-org'",
+    );
+    expect(listIssuesAllPagesMock).not.toHaveBeenCalled();
+  });
+
+  test("reports every unknown slug in one error with attributed suggestions", async () => {
+    const error = await func
+      .call(createContext().context, baseFlags, "test-org/workr,web,nope")
+      .catch((caught: Error) => caught);
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    const { message, suggestions } = error as ResolutionError;
+    expect(message).toContain(
+      "Projects 'workr', 'nope' not found in organization 'test-org'",
+    );
+    expect(suggestions).toContain("'workr': Similar projects: 'worker'");
+    expect(
+      suggestions.filter((line) => line.includes("Check the project slug at")),
+    ).toEqual([
+      "Check the project slug at https://sentry.io/organizations/test-org/projects/",
+    ]);
+    expect(listIssuesAllPagesMock).not.toHaveBeenCalled();
+  });
+
+  test("fails instead of guessing when a project lookup errors", async () => {
+    getProjectMock.mockImplementation(async (_org, slug) => {
+      if (slug === "api") {
+        throw new ApiError("Forbidden", 403);
+      }
+      return catalog[0] as (typeof catalog)[number];
+    });
+
+    const error = await func
+      .call(createContext().context, baseFlags, "test-org/web,api")
+      .catch((caught: Error) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(403);
+    expect(listIssuesAllPagesMock).not.toHaveBeenCalled();
   });
 });
 

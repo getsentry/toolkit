@@ -11,6 +11,7 @@
  * - projects: project CRUD, search, DSN keys
  * - teams: team CRUD, project teams
  * - repositories: repository listing
+ * - integrations: installed integration listing and removal
  * - issues: issue listing, lookup, status updates
  * - events: event retrieval and resolution
  * - replays: replay listing and detail lookup
@@ -175,6 +176,12 @@ export {
   type ReplaySortValue,
   resolveReplay,
 } from "./api/replays.js";
+export {
+  deleteIntegration,
+  getIntegration,
+  listIntegrations,
+  listIntegrationsPaginated,
+} from "./api/integrations.js";
 export {
   listAllRepositories,
   listRepositories,

@@ -93,6 +93,69 @@ function parseSingleSlashLogArg(
 }
 
 /**
+ * Split a fully-qualified `<org>/<project>/<log-id>` arg into its target and
+ * log ID, or return `null` when the arg isn't in that shape (fewer than two
+ * slashes, or the trailing segment isn't a 32-char hex ID).
+ *
+ * Agents often pass several fully-qualified paths to one `log view` call
+ * (CLI-1XC). Without this, the first path was used verbatim as the target
+ * (yielding project `"<project>/<log-id>"`) and the rest failed hex validation.
+ */
+function splitFullLogPath(
+  arg: string,
+): { target: string; logId: string } | null {
+  const trimmed = arg.trim();
+  const firstSlash = trimmed.indexOf("/");
+  const lastSlash = trimmed.lastIndexOf("/");
+  if (firstSlash === -1 || firstSlash === lastSlash) {
+    return null;
+  }
+  const logId = normalizeHexId(trimmed.slice(lastSlash + 1));
+  if (!HEX_ID_RE.test(logId)) {
+    return null;
+  }
+  return { target: trimmed.slice(0, lastSlash), logId };
+}
+
+/**
+ * Parse multiple args where the first is a fully-qualified log path.
+ * Every later arg may be a fully-qualified path or a bare log ID; all paths
+ * must share the same org/project target.
+ *
+ * @throws {ValidationError} If the paths reference different targets
+ */
+function parseMultipleFullPaths(
+  args: string[],
+  target: string,
+): { rawLogIds: string[]; targetArg: string } {
+  const rawLogIds: string[] = [];
+  for (const arg of args) {
+    const full = splitFullLogPath(arg);
+    if (full) {
+      if (full.target !== target) {
+        throw new ValidationError(
+          `Log IDs reference different projects ('${target}' and '${full.target}'). ` +
+            `View logs from one project per call: ${USAGE_HINT}`,
+        );
+      }
+      rawLogIds.push(full.logId);
+    } else {
+      rawLogIds.push(...splitNewlineArg(arg));
+    }
+  }
+  return { rawLogIds, targetArg: target };
+}
+
+/**
+ * Strip a redundant `<target>/` prefix from a log ID arg, so
+ * `sentry log view org/proj org/proj/<id>` resolves `<id>` (CLI-1XC).
+ */
+function stripTargetPrefix(rawId: string, target: string): string {
+  const prefix = `${target.trim()}/`;
+  return rawId.startsWith(prefix) ? rawId.slice(prefix.length) : rawId;
+}
+
+/**
  * Parse positional arguments for log view.
  * Handles:
  * - `<log-id>` — single log ID (auto-detect org/project)
@@ -196,7 +259,16 @@ export function parsePositionalArgs(args: string[]): {
     }
   }
 
-  const rawLogIds = args.slice(1).flatMap(splitNewlineArg);
+  // Every arg is (or starts with) a fully-qualified `org/project/log-id`.
+  const firstFull = splitFullLogPath(first);
+  if (firstFull) {
+    return parseMultipleFullPaths(args, firstFull.target);
+  }
+
+  const rawLogIds = args
+    .slice(1)
+    .flatMap(splitNewlineArg)
+    .map((id) => stripTargetPrefix(id, first));
   if (rawLogIds.length === 0) {
     throw new ContextError("Log ID", USAGE_HINT, []);
   }

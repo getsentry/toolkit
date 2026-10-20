@@ -5,6 +5,7 @@
  * GitHub Actions). Pure function tests are in shell.property.test.ts.
  */
 
+import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -247,7 +248,7 @@ describe("shell utilities", () => {
       );
     });
 
-    test("skips if already configured", async () => {
+    test("repairs legacy configuration once", async () => {
       const configFile = join(testDir, ".zshrc");
       writeFileSync(
         configFile,
@@ -259,9 +260,63 @@ describe("shell utilities", () => {
         "/home/user/.local/share/zsh/site-functions",
       );
 
-      expect(result.modified).toBe(false);
-      expect(result.message).toContain("already configured");
+      expect(result.modified).toBe(true);
+      const configured = await readFile(configFile, "utf-8");
+      expect(configured.match(/fpath=/g)).toHaveLength(1);
+      const again = await addToFpath(
+        configFile,
+        "/home/user/.local/share/zsh/site-functions",
+      );
+      expect(again.modified).toBe(false);
+      expect(await readFile(configFile, "utf-8")).toBe(configured);
     });
+
+    test("preserves custom configuration containing the completion directory", async () => {
+      const configFile = join(testDir, ".zshrc");
+      const original =
+        'typeset -U fpath\nfpath=("/home/user/.local/share/zsh/site-functions" $fpath)\n';
+      writeFileSync(configFile, original);
+      const result = await addToFpath(
+        configFile,
+        "/home/user/.local/share/zsh/site-functions",
+      );
+      expect(result.modified).toBe(true);
+      expect(await readFile(configFile, "utf-8")).toContain(original);
+      expect(
+        (
+          await addToFpath(
+            configFile,
+            "/home/user/.local/share/zsh/site-functions",
+          )
+        ).modified,
+      ).toBe(false);
+    });
+
+    test.skipIf(!whichSync("zsh"))(
+      "does not initialize completion in non-interactive shells",
+      async () => {
+        const configFile = join(testDir, ".zshenv");
+        await addToFpath(configFile, join(testDir, "completions"));
+        const result = spawnSync(
+          "zsh",
+          [
+            "-df",
+            "-c",
+            'source "$1"; print -r -- "${+functions[compdef]}"',
+            "--",
+            configFile,
+          ],
+          {
+            encoding: "utf-8",
+            env: { ...process.env, HOME: testDir, ZDOTDIR: testDir },
+            timeout: 10000,
+          },
+        );
+        expect(result.status).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(result.stdout.trim()).toBe("0");
+      },
+    );
 
     test("appends newline separator when file doesn't end with newline", async () => {
       const configFile = join(testDir, ".zshrc");
@@ -288,9 +343,10 @@ describe("shell utilities", () => {
       );
 
       expect(result.modified).toBe(false);
-      expect(result.manualCommand).toBe(
+      expect(result.manualCommand).toContain(
         'fpath=("/home/user/.local/share/zsh/site-functions" $fpath)',
       );
+      expect(result.manualCommand).toContain("compdef _sentry sentry");
     });
   });
 

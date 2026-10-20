@@ -9,7 +9,8 @@
 import type { SentryContext } from "../../context.js";
 import { getCurrentUser } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { getAuthToken } from "../../lib/db/auth.js";
+import { type AccountSummary, listAccounts } from "../../lib/db/accounts.js";
+import { getAuthConfig, getAuthToken } from "../../lib/db/auth.js";
 import { setUserInfo } from "../../lib/db/user.js";
 import { ResolutionError } from "../../lib/errors.js";
 import {
@@ -17,6 +18,7 @@ import {
   formatUserIdentity,
   type OrgTokenIdentity,
 } from "../../lib/formatters/index.js";
+import { formatAccountLabel } from "../../lib/formatters/accounts.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   applyFreshFlag,
@@ -104,19 +106,57 @@ export const whoamiCommand = buildCommand({
 
     const user = await getCurrentUser();
 
-    // Keep cached user info up to date. Non-fatal: display must succeed even
-    // if the DB write fails (read-only filesystem, corrupted database, etc.).
-    try {
-      setUserInfo({
-        userId: user.id,
-        email: user.email ?? undefined,
-        username: user.username ?? undefined,
-        name: user.name ?? undefined,
-      });
-    } catch (error) {
-      log.debug("Failed to update cached user info", error);
+    // Keep cached user info up to date. Only for stored credentials: an env
+    // token's user must not be written onto the stored active account.
+    // Non-fatal: display must succeed even if the DB write fails (read-only
+    // filesystem, corrupted database, etc.).
+    if (getAuthConfig()?.source === "oauth") {
+      try {
+        setUserInfo({
+          userId: user.id,
+          email: user.email ?? undefined,
+          username: user.username ?? undefined,
+          name: user.name ?? undefined,
+        });
+      } catch (error) {
+        log.debug("Failed to update cached user info", error);
+      }
     }
 
-    return yield new CommandOutput(user);
+    yield new CommandOutput(user);
+    // An env-var token overrides stored accounts, so switching wouldn't help.
+    const hint = getAuthConfig()?.source.startsWith("env:")
+      ? undefined
+      : formatOtherIdentitiesHint(user);
+    return hint ? { hint } : undefined;
   },
 });
+
+/**
+ * A light reminder of the other stored accounts the user can switch to,
+ * e.g. "You are Jane, but you can be whoever you want — as long as it's
+ * one of: jane@personal.dev on sentry.io. Run 'sentry auth switch'."
+ * Returns `undefined` when no other usable account is stored.
+ */
+export function formatOtherIdentitiesHint(user: {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  username?: string | null;
+}): string | undefined {
+  let others: AccountSummary[];
+  try {
+    others = listAccounts().filter((a) => !a.active && a.usable);
+  } catch (error) {
+    log.debug("Could not list stored accounts", error);
+    return;
+  }
+  if (others.length === 0) {
+    return;
+  }
+  const you = user.name || user.username || user.email || `user ${user.id}`;
+  return (
+    `You are ${you}, but you can be whoever you want — as long as it's one of: ` +
+    `${others.map(formatAccountLabel).join(", ")}. Run 'sentry auth switch'.`
+  );
+}

@@ -221,8 +221,8 @@ function mapDetectorToMetricAlertRule(
 // `/projects/{org}/{project}/rules/` endpoint was deprecated on 2026-05-14 and
 // now returns HTTP 410 during recurring brownouts (getsentry/cli#1182). The
 // workflows endpoint returns rule-shaped payloads, so the existing
-// `IssueAlertRule` shape is preserved. Mutations (create/update/delete) still
-// use the legacy endpoint pending a follow-up migration.
+// `IssueAlertRule` shape is preserved. Mutations (create/update/delete) also
+// use the org-scoped workflows endpoint.
 
 /**
  * Keep only workflows that are attached to a detector.

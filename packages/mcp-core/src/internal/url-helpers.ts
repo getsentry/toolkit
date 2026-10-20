@@ -2,7 +2,7 @@
  * Unified URL parsing utilities for Sentry resources.
  *
  * Parses Sentry URLs to identify resource types and extract relevant identifiers.
- * Supports issue, trace, profile, event, replay, and monitor URLs across different
+ * Supports issue, trace, profile, event, replay, monitor, and dashboard URLs across different
  * Sentry URL formats (subdomain, path-based organization, self-hosted).
  */
 
@@ -21,6 +21,7 @@ export type SentryResourceType =
   | "monitor"
   | "release"
   | "snapshot"
+  | "dashboard"
   | "unknown";
 
 /**
@@ -64,6 +65,8 @@ export interface ParsedSentryUrl {
   snapshotId?: string;
   /** Selected snapshot image name (from ?selectedSnapshot= query param) */
   selectedSnapshot?: string;
+  /** Dashboard numeric ID (for dashboard URLs) */
+  dashboardId?: string;
 }
 
 /**
@@ -79,6 +82,7 @@ export interface ParsedSentryUrl {
  * - Replay: `/explore/replays/{replayId}/` or `/replays/{replayId}/`
  * - Monitor: `/crons/{monitorSlug}/` or `/monitors/{monitorSlug}/`
  * - Release: `/releases/{version}/`
+ * - Dashboard: `/dashboard/{dashboardId}/`
  *
  * Organization slug is extracted from:
  * 1. Subdomain (e.g., `my-org.sentry.io`)
@@ -164,6 +168,7 @@ function extractOrganizationSlug(parsedUrl: URL, pathParts: string[]): string {
     "monitors",
     "alerts",
     "feedback",
+    "dashboard",
     "dashboards",
     "discover",
     "insights",
@@ -394,6 +399,20 @@ function identifyResource(
         type: "issue",
         organizationSlug,
         issueId,
+      };
+    }
+  }
+
+  // Dashboard URL: /dashboard/{dashboardId}/
+  // Dashboard IDs are always numeric integers.
+  const dashboardIndex = pathParts.indexOf("dashboard");
+  if (dashboardIndex !== -1) {
+    const dashboardId = pathParts[dashboardIndex + 1];
+    if (dashboardId && /^\d+$/.test(dashboardId)) {
+      return {
+        type: "dashboard",
+        organizationSlug,
+        dashboardId,
       };
     }
   }

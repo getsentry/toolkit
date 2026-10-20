@@ -60,6 +60,7 @@ type UploadFlags = {
   "build-configuration"?: string;
   "release-notes"?: string;
   "install-group"?: string[];
+  dsym?: string[];
 } & VcsFlags;
 
 /** Result for a single uploaded path. */
@@ -103,9 +104,9 @@ function formatUploadResult(data: BuildUploadResult): string {
 async function uploadOne(
   ctx: SentryContext,
   path: string,
-  org: string,
-  project: string,
+  target: { org: string; project: string },
   metadata: BuildUploadMetadata,
+  dsymPaths: readonly string[],
 ): Promise<string> {
   let info: Awaited<ReturnType<typeof stat>>;
   try {
@@ -126,14 +127,26 @@ async function uploadOne(
     // validation refuses arbitrary directories so a stray
     // `sentry build upload ./` can't sweep up source, .git/, or secrets.
     if (info.isDirectory()) {
+      if (dsymPaths.length > 0) {
+        throw new ValidationError(
+          "--dsym can only be used with an IPA upload",
+          "dsym",
+        );
+      }
       validateXcarchiveDirectory(path);
       await normalizeBuildDirectory(path, outPath, plugin);
     } else {
       // detectBuildFormatFromFile only classifies files (apk/aab/ipa);
       // XCArchive is a directory, handled above.
       const format = await detectBuildFormatFromFile(path);
+      if (dsymPaths.length > 0 && format !== "ipa") {
+        throw new ValidationError(
+          "--dsym can only be used with an IPA upload",
+          "dsym",
+        );
+      }
       if (format === "ipa") {
-        await normalizeIpa(path, outPath, plugin);
+        await normalizeIpa(path, outPath, plugin, dsymPaths);
       } else if (format === "apk" || format === "aab") {
         await normalizeBuildFile(path, outPath, plugin);
       } else {
@@ -144,8 +157,7 @@ async function uploadOne(
       }
     }
     return await uploadBuild({
-      org,
-      project,
+      ...target,
       contentPath: outPath,
       metadata,
     });
@@ -162,13 +174,47 @@ export const uploadCommand = buildCommand({
       "is normalized into a deterministic ZIP and uploaded via the " +
       "chunk-upload + assemble protocol.\n\n" +
       "Supported formats: Android APK/AAB, iOS XCArchive (a directory) and IPA. " +
-      "Note: iOS Assets.car asset catalogs are not parsed into per-asset " +
-      "images. This feature only works with Sentry SaaS.\n\n" +
-      "Usage:\n" +
-      "  sentry build upload ./app-release.apk\n" +
-      "  sentry build upload ./MyApp.xcarchive\n" +
-      "  sentry build upload ./MyApp.ipa --build-configuration Release\n" +
-      "  sentry build upload ./app.aab --install-group qa --install-group beta",
+      "The macOS arm64 standalone binary expands iOS asset catalogs into " +
+      "per-asset images and metadata with CoreUI. Other runtimes, or failed " +
+      "extractions, upload the original catalogs unchanged. " +
+      "This feature only works with Sentry SaaS.\n\n" +
+      "Use --dsym to attach debug symbols to a single IPA upload. Each value " +
+      "may be a .dSYM bundle, a directory of bundles, or a ZIP archive.",
+    examples: [
+      {
+        description: "Upload an Android build",
+        command: "sentry build upload ./app-release.apk",
+      },
+      {
+        description: "Upload an XCArchive directory",
+        command: "sentry build upload ./MyApp.xcarchive",
+      },
+      {
+        description: "Upload an IPA with a build configuration",
+        command:
+          "sentry build upload ./MyApp.ipa --build-configuration Release",
+      },
+      {
+        description: "Attach debug symbols to an IPA",
+        command:
+          "sentry build upload ./MyApp.ipa --dsym ./MyApp.app.dSYM --dsym ./frameworks-dsyms.zip",
+      },
+      {
+        description: "Upload with release notes",
+        command:
+          'sentry build upload ./app.aab --build-configuration Release --release-notes "Nightly"',
+      },
+      {
+        description: "Tag a build with install groups",
+        command:
+          "sentry build upload ./app.aab --install-group qa --install-group beta",
+      },
+      {
+        description: "Attach explicit git metadata",
+        command:
+          'sentry build upload ./app.aab --head-sha "$GIT_SHA" --pr-number 42 --base-ref main',
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -202,6 +248,14 @@ export const uploadCommand = buildCommand({
         parse: String,
         brief:
           "Install group(s) for this build (repeatable); builds sharing a group show updates for each other",
+        optional: true,
+        variadic: true,
+      },
+      dsym: {
+        kind: "parsed",
+        parse: String,
+        brief:
+          "dSYM bundle, directory of bundles, or ZIP for a single IPA (repeatable)",
         optional: true,
         variadic: true,
       },
@@ -274,6 +328,12 @@ export const uploadCommand = buildCommand({
     if (paths.length === 0) {
       throw new ValidationError("At least one build path is required", "path");
     }
+    if (flags.dsym?.length && paths.length > 1) {
+      throw new ValidationError(
+        "--dsym can only be used when uploading a single IPA",
+        "dsym",
+      );
+    }
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
@@ -306,7 +366,13 @@ export const uploadCommand = buildCommand({
     const builds: BuildUploadEntry[] = [];
     for (const path of paths) {
       try {
-        const artifactUrl = await uploadOne(this, path, org, project, metadata);
+        const artifactUrl = await uploadOne(
+          this,
+          path,
+          { org, project },
+          metadata,
+          flags.dsym ?? [],
+        );
         builds.push({ path, artifactUrl, error: null });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

@@ -9,6 +9,8 @@
     "apps/cli-docs/**",
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json",
+    "packages/toolkit-core/src/generated/**",
+    "packages/toolkit-core/test/fixtures/**",
     "packages/mcp-server-mocks/src/fixtures/**"
   ],
   "rules": {

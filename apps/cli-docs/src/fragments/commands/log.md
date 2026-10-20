@@ -27,6 +27,9 @@ sentry log list -q 'severity:error'
 # Filter by message content
 sentry log list -q 'database'
 
+# Match a regular expression (key://pattern//)
+sentry log list -q 'message://^Timeout after \d+ms//'
+
 # Limit results
 sentry log list --limit 50
 ```
@@ -45,6 +48,15 @@ sentry log list my-org/backend -f -q 'severity:error'
 ```
 
 ### View a log entry
+
+Copy the full ID from the `ID` column in `sentry log list` or `sentry trace logs`
+into `sentry log view`. An abbreviated prefix can match multiple logs and cannot
+be expanded into a unique full ID by itself.
+
+Log ID lookups automatically narrow the search when a usable timestamp can be
+determined from each ID. Otherwise, they use a 90-day lookup window. If a partial
+scan leaves IDs missing, the CLI retries those IDs once with the highest
+available scan accuracy.
 
 ```bash
 sentry log view 968c763c740cfda8b6728f27fb9e9b01

@@ -18,6 +18,7 @@ function makeListItem(
     conversationId: "conv-abc-123",
     startTimestamp: 1_716_500_000,
     totalTokens: 500,
+    totalCost: 0.01,
     toolCalls: 3,
     errors: 0,
     firstInput: "Hello world",
@@ -76,6 +77,8 @@ describe("formatConversationTable", () => {
     expect(result).toContain("test@");
     expect(result).toContain("Hello");
     expect(result).toContain("500");
+    expect(result).toContain("Cost");
+    expect(result).toContain("$0.01");
     // Wide mode keeps the Tools/Errs/User columns.
     expect(result).toContain("Tools");
     expect(result).toContain("User");
@@ -102,6 +105,7 @@ describe("formatConversationTable", () => {
     expect(result).toContain("conv-");
     expect(result).toContain("Hello");
     expect(result).toContain("500");
+    expect(result).toContain("Cost");
     // Lower-value columns are dropped to avoid aggressive truncation.
     expect(result).not.toContain("Tools");
     expect(result).not.toContain("test@");
@@ -237,18 +241,41 @@ describe("buildTranscriptResult", () => {
     expect(result.org).toBe("my-org");
     expect(result.spanCount).toBe(1);
     expect(result.totalTokens).toBe(100);
+    expect(result.traceIds).toEqual(["00112233445566778899aabbccddeeff"]);
     expect(result.projects).toEqual(["my-project"]);
     expect(result.startTimestamp).toBe(1_716_500_000);
     expect(result.endTimestamp).toBe(1_716_500_010);
   });
 
+  test("uses server conversation summary", () => {
+    const result = buildTranscriptResult("conv-123", "my-org", [makeSpan()], {
+      stats: {
+        errors: 1,
+        llmCalls: 2,
+        toolCalls: 3,
+        toolErrors: 1,
+        totalCost: 0.0042,
+        totalTokens: 900,
+      },
+    });
+    expect(result).toMatchObject({
+      errors: 1,
+      llmCalls: 2,
+      toolCalls: 3,
+      toolErrors: 1,
+      totalCost: 0.0042,
+      totalTokens: 900,
+    });
+    const output = formatTranscriptResult(result);
+    expect(output).toContain("$0.0042");
+    expect(output).toContain("LLM Calls");
+    expect(output).toContain("Tool Errors");
+  });
+
   test("includes title when provided", () => {
-    const result = buildTranscriptResult(
-      "conv-123",
-      "my-org",
-      [makeSpan()],
-      "Refund a duplicate charge",
-    );
+    const result = buildTranscriptResult("conv-123", "my-org", [makeSpan()], {
+      title: "Refund a duplicate charge",
+    });
     expect(result.title).toBe("Refund a duplicate charge");
   });
 
@@ -278,6 +305,7 @@ describe("formatTranscriptResult", () => {
       title: null,
       turns: [],
       totalTokens: 0,
+      traceIds: [],
       spanCount: 0,
       projects: [],
       startTimestamp: 0,
@@ -295,6 +323,7 @@ describe("formatTranscriptResult", () => {
       title: "Refund a duplicate charge",
       turns: [],
       totalTokens: 0,
+      traceIds: [],
       spanCount: 0,
       projects: [],
       startTimestamp: 0,
@@ -322,7 +351,7 @@ describe("formatTranscriptResult", () => {
       "conv-123",
       "my-org",
       [makeSpan()],
-      "Refund a duplicate charge",
+      { title: "Refund a duplicate charge" },
     );
     const output = formatTranscriptResult(transcript);
     expect(output).toContain("Agent Conversation: conv-123");
@@ -336,6 +365,7 @@ describe("formatTranscriptResult", () => {
       title: null,
       turns: [],
       totalTokens: 0,
+      traceIds: [],
       spanCount: 1,
       projects: [],
       startTimestamp: 100,

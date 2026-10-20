@@ -19,6 +19,7 @@ import {
   listConversations,
 } from "../../../src/lib/api/conversations.js";
 import { MAX_PAGINATION_PAGES } from "../../../src/lib/api/infrastructure.js";
+import type { ConversationStats } from "../../../src/types/conversation.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
 // ============================================================================
@@ -140,6 +141,14 @@ describe("listConversations", () => {
     expect(decodeURIComponent(getCapturedUrl())).toContain("query=has:errors");
   });
 
+  test("passes sort param", async () => {
+    const { getCapturedUrl } = mockOk([]);
+
+    await listConversations(ORG, { sort: "-conversation.totalCost" });
+
+    expect(getCapturedUrl()).toContain("sort=-conversation.totalCost");
+  });
+
   test("passes statsPeriod param", async () => {
     const { getCapturedUrl } = mockOk([]);
 
@@ -186,6 +195,7 @@ describe("listConversations", () => {
 
     const url = getCapturedUrl();
     expect(url).not.toContain("query=");
+    expect(url).not.toContain("sort=");
     expect(url).not.toContain("statsPeriod=");
     expect(url).not.toContain("start=");
     expect(url).not.toContain("end=");
@@ -311,11 +321,13 @@ describe("getConversationSpans", () => {
   function makeEnvelope(
     spans: ReturnType<typeof makeSpan>[],
     title: string | null = "Test conversation",
+    stats?: ConversationStats,
   ) {
     return {
       conversationId: CONV_ID,
       title,
       spans,
+      ...(stats ? { stats } : {}),
     };
   }
 
@@ -340,15 +352,26 @@ describe("getConversationSpans", () => {
     expect(url).toContain("statsPeriod=30d");
   });
 
-  test("returns spans from a single page envelope", async () => {
+  test("returns spans and stats from a single page envelope", async () => {
     const spans = [makeSpan("span-1-aabb1122")];
-    mockOk(makeEnvelope(spans, "Refund flow"));
+    mockOk(
+      makeEnvelope(spans, "Refund flow", {
+        errors: 1,
+        llmCalls: 1,
+        toolCalls: 2,
+        toolErrors: 1,
+        totalCost: 0.0042,
+        totalTokens: 100,
+      }),
+    );
 
     const result = await getConversationSpans(ORG, CONV_ID);
 
     expect(result.spans).toHaveLength(1);
     expect(result.spans[0].span_id).toBe("span-1-aabb1122");
     expect(result.title).toBe("Refund flow");
+    expect(result.stats?.totalCost).toBe(0.0042);
+    expect(result.stats?.totalTokens).toBe(100);
     expect(result.truncated).toBe(false);
   });
 

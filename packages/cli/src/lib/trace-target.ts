@@ -32,6 +32,7 @@ import {
   resolveOrgOptionalTarget,
   resolveProjectBoundTarget,
 } from "./resolve-target.js";
+import { applySentryUrlContext, parseSentryUrl } from "./sentry-url-parser.js";
 import { setOrgProjectContext } from "./telemetry.js";
 import { isTraceId, validateTraceId } from "./trace-id.js";
 
@@ -136,6 +137,14 @@ export function parseTraceTarget(
     throw new ContextError("Trace ID", usageHint, []);
   }
 
+  // Sentry trace URLs (often copy-pasted with a trailing slash) carry the
+  // trace ID and org in the path; slash-splitting them yields an empty or
+  // bogus trace ID segment (CLI-13F).
+  const urlTarget = traceTargetFromUrl(first);
+  if (urlTarget) {
+    return urlTarget;
+  }
+
   // Warn about extra positional args that will be ignored
   if (args.length > 2) {
     log.warn(
@@ -158,6 +167,51 @@ export function parseTraceTarget(
 }
 
 /**
+ * Build a trace target from a Sentry trace detail URL.
+ *
+ * Returns `null` when the input is not a Sentry URL or the URL has no trace
+ * ID. Side effect: configures `SENTRY_URL` for self-hosted hosts via
+ * {@link applySentryUrlContext} (throws `HostScopeError` for untrusted hosts).
+ *
+ * @internal Exported for testing
+ */
+export function traceTargetFromUrl(input: string): ParsedTraceTarget | null {
+  const urlParsed = parseSentryUrl(input.trim());
+  if (!urlParsed?.traceId) {
+    return null;
+  }
+  applySentryUrlContext(urlParsed.baseUrl);
+  const traceId = validateTraceId(urlParsed.traceId);
+  if (urlParsed.org) {
+    return { type: "org-scoped", traceId, org: urlParsed.org };
+  }
+  return { type: "auto-detect", traceId };
+}
+
+/**
+ * Remove trailing `/` characters when the segment before them is a trace ID,
+ * so `org/project/<trace-id>/` splits the same as `org/project/<trace-id>`.
+ *
+ * Inputs like `org/project/` are left untouched: the trailing slash there
+ * means the trace ID was omitted, which must stay a "Trace ID is required"
+ * error rather than being misread as `org/<trace-id=project>`.
+ *
+ * @internal Exported for testing
+ */
+export function stripTrailingSlashesAfterTraceId(input: string): string {
+  let end = input.length;
+  while (end > 0 && input[end - 1] === "/") {
+    end -= 1;
+  }
+  if (end === input.length) {
+    return input;
+  }
+  const stripped = input.slice(0, end);
+  const tail = stripped.slice(stripped.lastIndexOf("/") + 1);
+  return isTraceId(tail) ? stripped : input;
+}
+
+/**
  * Parse a single slash-separated argument into a trace target.
  *
  * - No slashes → auto-detect (bare trace ID)
@@ -167,9 +221,10 @@ export function parseTraceTarget(
  * @internal Exported for testing
  */
 export function parseSlashSeparatedTraceTarget(
-  input: string,
+  rawInput: string,
   usageHint: string,
 ): ParsedTraceTarget {
+  const input = stripTrailingSlashesAfterTraceId(rawInput);
   const lastSlash = input.lastIndexOf("/");
 
   if (lastSlash === -1) {
@@ -298,10 +353,11 @@ export function extractRawTraceId(
     return null;
   }
   if (args.length === 1) {
-    const first = args[0];
-    if (!first) {
+    const rawFirst = args[0];
+    if (!rawFirst) {
       return null;
     }
+    const first = stripTrailingSlashesAfterTraceId(rawFirst);
     const lastSlash = first.lastIndexOf("/");
     if (lastSlash === -1) {
       return { rawTraceId: first };
@@ -650,9 +706,16 @@ export function parseDualModeArgs(
     }
   }
 
+  // Trace detail URL → trace mode (the URL itself carries the trace ID)
+  const urlTarget = traceTargetFromUrl(first);
+  if (urlTarget) {
+    return { mode: "trace", parsed: urlTarget };
+  }
+
   // Single arg: check the tail segment (last part after "/", or entire arg)
-  const lastSlash = first.lastIndexOf("/");
-  const tail = lastSlash === -1 ? first : first.slice(lastSlash + 1);
+  const stripped = stripTrailingSlashesAfterTraceId(first);
+  const lastSlash = stripped.lastIndexOf("/");
+  const tail = lastSlash === -1 ? stripped : stripped.slice(lastSlash + 1);
   if (isTraceId(tail)) {
     return {
       mode: "trace",

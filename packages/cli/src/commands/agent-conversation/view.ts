@@ -136,7 +136,7 @@ export const viewCommand = buildCommand({
     }
     const org = resolved.org;
 
-    const { spans, truncated, title } = await withProgress(
+    const { spans, stats, truncated, title } = await withProgress(
       {
         message: "Fetching conversation spans...",
         json: flags.json,
@@ -144,7 +144,10 @@ export const viewCommand = buildCommand({
       () => getConversationSpans(org, conversationId),
     );
 
-    const result = buildTranscriptResult(conversationId, org, spans, title);
+    const result = buildTranscriptResult(conversationId, org, spans, {
+      stats,
+      title,
+    });
     result.truncated = truncated;
     yield new CommandOutput<TranscriptResult>(result);
   },

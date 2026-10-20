@@ -20,6 +20,7 @@ import {
   type AgentConversationSpan,
   type ConversationListItem,
   ConversationListItemSchema,
+  type ConversationStats,
 } from "../../types/conversation.js";
 
 import { logger } from "../logger.js";
@@ -47,6 +48,7 @@ async function fetchConversationsPage(
   orgSlug: string,
   options: {
     query?: string;
+    sort?: string;
     cursor?: string;
     statsPeriod?: string;
     start?: string;
@@ -73,6 +75,9 @@ async function fetchConversationsPage(
   if (options.query) {
     params.query = options.query;
   }
+  if (options.sort) {
+    params.sort = options.sort;
+  }
   if (options.project) {
     params.project = options.project;
   }
@@ -95,13 +100,14 @@ async function fetchConversationsPage(
  * pages using cursor-based pagination (bounded by {@link MAX_PAGINATION_PAGES}).
  *
  * @param orgSlug - Organization slug
- * @param options - Query options (query, limit, cursor, statsPeriod, etc.)
+ * @param options - Query options (query, sort, limit, cursor, statsPeriod, etc.)
  * @returns Paginated response with conversation items and optional next cursor
  */
 export async function listConversations(
   orgSlug: string,
   options: {
     query?: string;
+    sort?: string;
     limit?: number;
     cursor?: string;
     statsPeriod?: string;
@@ -126,6 +132,7 @@ export async function getConversationSpans(
   } = {},
 ): Promise<{
   spans: AgentConversationSpan[];
+  stats?: ConversationStats;
   truncated: boolean;
   title: string | null;
 }> {
@@ -140,6 +147,7 @@ export async function getConversationSpans(
   }
 
   const spans: AgentConversationSpan[] = [];
+  let stats: ConversationStats | undefined;
   let title: string | null = null;
   let cursor: string | undefined;
 
@@ -156,6 +164,7 @@ export async function getConversationSpans(
       );
 
     if (page === 0) {
+      stats = data.stats;
       title = data.title;
     }
     spans.push(...data.spans);
@@ -173,5 +182,5 @@ export async function getConversationSpans(
     );
   }
 
-  return { spans, truncated, title };
+  return { spans, stats, truncated, title };
 }

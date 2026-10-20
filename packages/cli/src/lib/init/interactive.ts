@@ -197,6 +197,7 @@ async function handleSelect(
 
   const selected = await ui.select<string>({
     message: payload.prompt,
+    filterable: apps.length > 0,
     options: items.map((item) => {
       const app = apps.find((a) => a.name === item);
       return {

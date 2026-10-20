@@ -19,6 +19,14 @@
       "types": "./src/auth-token.ts",
       "default": "./src/auth-token.ts"
     },
+    "./events-fields": {
+      "types": "./src/events-fields.ts",
+      "default": "./src/events-fields.ts"
+    },
+    "./events-sort": {
+      "types": "./src/events-sort.ts",
+      "default": "./src/events-sort.ts"
+    },
     "./oauth-device": {
       "types": "./src/oauth-device.ts",
       "default": "./src/oauth-device.ts"
@@ -31,6 +39,14 @@
       "types": "./src/region-cache.ts",
       "default": "./src/region-cache.ts"
     },
+    "./resource-identity": {
+      "types": "./src/resource-identity.ts",
+      "default": "./src/resource-identity.ts"
+    },
+    "./search-syntax": {
+      "types": "./src/search-syntax.ts",
+      "default": "./src/search-syntax.ts"
+    },
     "./sentry-host": {
       "types": "./src/sentry-host.ts",
       "default": "./src/sentry-host.ts"
@@ -41,11 +57,13 @@
     }
   },
   "scripts": {
+    "generate": "tsx script/generate-parsers.ts",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "tsc": "tsc --noEmit"
   },
   "devDependencies": {
+    "peggy": "^5.1.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

@@ -119,6 +119,8 @@ function formatTimestamp(timestamp: string): string {
 
 /**
  * Extract cell values for a log row (shared by streaming and batch paths).
+ * Preserve the full log ID for copying into `log view`: UUIDv7 timestamp
+ * prefixes can identify many logs rather than a single entry.
  *
  * When `includeTrace` is true (the default), a short trace-ID suffix is
  * appended to the message cell — useful in Explore/Events lists where rows
@@ -141,7 +143,7 @@ export function buildLogRowCells(
   extraFields?: string[],
 ): string[] {
   const logId = getLogId(log);
-  const shortId = logId ? colorTag("muted", logId.slice(0, 8)) : "";
+  const id = logId ? colorTag("muted", logId) : "";
   const timestamp = formatTimestamp(log.timestamp);
   const level = padSeverity
     ? formatSeverity(log.severity)
@@ -149,7 +151,7 @@ export function buildLogRowCells(
   const message = escapeMarkdownCell(log.message ?? "");
   const trace =
     includeTrace && log.trace ? ` \`[${log.trace.slice(0, 8)}]\`` : "";
-  const cells: string[] = [shortId, timestamp, level, `${message}${trace}`];
+  const cells: string[] = [id, timestamp, level, `${message}${trace}`];
   if (extraFields) {
     for (const field of extraFields) {
       const val = log[field];
@@ -183,7 +185,7 @@ export function formatLogRow(
 /** Hint rows for column width estimation in streaming mode. */
 const LOG_HINT_ROWS: string[][] = [
   [
-    "ace106b2",
+    "019a0000123470008000000000000001",
     "2026-01-15 23:59:59",
     "WARNING",
     "A typical log message with some detail",
@@ -271,7 +273,7 @@ export function formatLogTable(
       renderInlineMarkdown(c),
     ),
   );
-  return renderTextTable(headers, rows);
+  return renderTextTable(headers, rows, { shrinkable: [false] });
 }
 
 /**

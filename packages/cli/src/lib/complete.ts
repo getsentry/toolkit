@@ -160,6 +160,8 @@ export const ORG_ONLY_COMMANDS = new Set([
   "release set-commits",
   "team list",
   "repo list",
+  "integration list",
+  "integration delete",
   "monitor list",
   "trial list",
   "trial start",
@@ -233,10 +235,12 @@ export function completeProjectCreateSpec(partial: string): Completion[] {
     const platformPartial = partial.slice(colonIdx + 1);
     const candidates =
       platformPartial === "" ? COMMON_PLATFORMS : VALID_PLATFORMS;
-    return fuzzyMatch(platformPartial, candidates).map((platform) => ({
-      value: `${specPrefix}${platform}`,
-      description: "Platform",
-    }));
+    return fuzzyMatch(platformPartial, candidates, { mode: "search" }).map(
+      (platform) => ({
+        value: `${specPrefix}${platform}`,
+        description: "Platform",
+      }),
+    );
   }
 
   if (partial.includes("/")) {
@@ -263,7 +267,9 @@ export function completeOrgSlugs(partial: string, suffix = ""): Completion[] {
   }
 
   const nameMap = new Map(orgs.map((o) => [o.slug, o.name]));
-  const matched = fuzzyMatch(partial, Array.from(nameMap.keys()));
+  const matched = fuzzyMatch(partial, Array.from(nameMap.keys()), {
+    mode: "search",
+  });
 
   return matched.map((slug) => ({
     value: `${slug}${suffix}`,
@@ -343,7 +349,9 @@ export function completeProjectSlugs(
   }
 
   const nameMap = new Map(projects.map((p) => [p.projectSlug, p.projectName]));
-  const matched = fuzzyMatch(projectPartial, Array.from(nameMap.keys()));
+  const matched = fuzzyMatch(projectPartial, Array.from(nameMap.keys()), {
+    mode: "search",
+  });
 
   return matched.map((slug) => ({
     value: `${orgSlug}/${slug}`,
@@ -385,7 +393,7 @@ export function completeAliases(partial: string): Completion[] {
   }
 
   const keys = Object.keys(aliases);
-  const matched = fuzzyMatch(partial, keys);
+  const matched = fuzzyMatch(partial, keys, { mode: "search" });
 
   return matched.map((alias) => {
     const entry = aliases[alias];

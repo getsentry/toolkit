@@ -29,6 +29,8 @@ import { feedbackRoute } from "./commands/feedback/index.js";
 import { helpCommand } from "./commands/help.js";
 import { infoCommand } from "./commands/info.js";
 import { initCommand } from "./commands/init.js";
+import { integrationRoute } from "./commands/integration/index.js";
+import { listCommand as integrationListCommand } from "./commands/integration/list.js";
 import { issueRoute } from "./commands/issue/index.js";
 import { listCommand as issueListCommand } from "./commands/issue/list.js";
 import { localRoute } from "./commands/local/index.js";
@@ -97,6 +99,7 @@ const PLURAL_TO_SINGULAR: Record<string, string> = {
   dashboards: "dashboard",
   dsns: "dsn",
   events: "event",
+  integrations: "integration",
   issues: "issue",
   orgs: "org",
   platforms: "platform",
@@ -137,6 +140,7 @@ export const routes = buildRouteMap({
     release: releaseRoute,
     repo: repoRoute,
     team: teamRoute,
+    integration: integrationRoute,
     issue: issueRoute,
     event: eventRoute,
     events: eventListCommand,
@@ -165,6 +169,7 @@ export const routes = buildRouteMap({
     "agent-conversations": conversationListCommand,
     dashboards: dashboardListCommand,
     dsns: dsnListCommand,
+    integrations: integrationListCommand,
     issues: issueListCommand,
     orgs: orgListCommand,
     platforms: platformListCommand,
@@ -191,6 +196,7 @@ export const routes = buildRouteMap({
       "agent-conversations": true,
       dashboards: true,
       events: true,
+      integrations: true,
       issues: true,
       orgs: true,
       platforms: true,
