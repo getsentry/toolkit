@@ -36,6 +36,9 @@ import {
   WIDGET_TYPES,
 } from "../../types/dashboard.js";
 
+/** Only slug-shaped prefixes with a numeric ID are qualified references. */
+const DASHBOARD_ID_PATH_RE = /^([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?)\/(\d+)$/;
+
 /** Shared widget query flags used by `add` and `edit` commands */
 export type WidgetQueryFlags = {
   readonly display?: string;
@@ -122,6 +125,7 @@ function tryExtractDashboardUrl(
  *
  * Handles:
  * - `<id-or-title>` — single arg (auto-detect org)
+ * - `<org>/<id>` or `<org>/<project>/<id>` — qualified numeric ID
  * - `<target> <id-or-title>` — explicit target + dashboard ref
  * - Full Sentry dashboard URL — extracts org + dashboard ID
  *
@@ -151,6 +155,13 @@ export function parseDashboardPositionalArgs(
   }
 
   if (args.length === 1) {
+    const [, target, dashboardRef] = DASHBOARD_ID_PATH_RE.exec(first) ?? [];
+    if (target && dashboardRef) {
+      return {
+        dashboardRef,
+        targetArg: target.includes("/") ? target : `${target}/`,
+      };
+    }
     return {
       dashboardRef: first,
       targetArg: undefined,

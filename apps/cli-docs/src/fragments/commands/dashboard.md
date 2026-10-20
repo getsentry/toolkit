@@ -31,12 +31,26 @@ sentry dashboard view 'Frontend Performance'
 # View by ID
 sentry dashboard view 12345
 
+# View by ID in an explicit organization
+sentry dashboard view my-org/12345
+
+# Include project context in the same argument
+sentry dashboard view my-org/my-project/12345
+
 # Auto-refresh every 30 seconds
 sentry dashboard view "Backend Performance" --refresh 30
 
 # Open in browser
 sentry dashboard view 12345 -w
 ```
+
+Numeric IDs accept `org/ID` and `org/project/ID` in `view`, `revisions`,
+`restore`, and the widget commands. Dashboards belong to the organization;
+the optional project segment does not filter the dashboard.
+
+Titles containing `/` are still supported. If a title looks like a qualified
+numeric ID, pass the organization separately to select it by title:
+`sentry dashboard view my-org/ "incidents/2026"`.
 
 ```
 Dashboard: Frontend Performance (ID: 12345)
@@ -65,6 +79,10 @@ URL: https://my-org.sentry.io/dashboard/12348/
 ```bash
 # Simple counter widget
 sentry dashboard widget add 'My Dashboard' "Error Count" \
+  --display big_number --query count
+
+# Use an ID in an explicit organization
+sentry dashboard widget add my-org/12345 "Error Count" \
   --display big_number --query count
 
 # Line chart with group-by
