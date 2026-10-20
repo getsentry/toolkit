@@ -5,7 +5,6 @@
  * when several are logged in.
  */
 
-import picomatch from "picomatch";
 import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
@@ -14,7 +13,7 @@ import { DEFAULT_SENTRY_HOST } from "../../lib/constants.js";
 import {
   type AccountSummary,
   accountSelectorOf,
-  accountSelectorParts,
+  accountServerOf,
   serverKey,
   toAccountSummary,
 } from "../../lib/db/accounts.js";
@@ -25,10 +24,11 @@ import {
 import { getAllOrgRegions } from "../../lib/db/regions.js";
 import { ApiError, AuthError } from "../../lib/errors.js";
 import { formatAccountLabel } from "../../lib/formatters/accounts.js";
-import { fuzzyMatch } from "../../lib/fuzzy.js";
+import { getNestedValue } from "../../lib/formatters/json.js";
 import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
+import { filterByName } from "../../lib/list-filter.js";
 import {
   applyFreshFlag,
   buildListLimitFlag,
@@ -49,25 +49,24 @@ type ListFlags = {
 
 /** The stored account an organization was listed under (no secrets). */
 type OrgListAccount = {
+  /**
+   * What `--account` and `sentry auth login` accept: `<who>:<server>`, e.g.
+   * `jane@acme.com:sentry.io` (just `<who>` when no server is recorded).
+   */
+  name: string;
   id: string;
-  host?: string;
   email?: string;
   username?: string;
+  /**
+   * The server part of `name`: `host[:port]`, or the full origin such as
+   * `http://localhost:8000` for a non-HTTPS server.
+   */
+  server?: string;
+  /** The server's full origin, e.g. `https://sentry.io`. */
+  host?: string;
   /** Human label, e.g. `Jane <jane@acme.com> on sentry.io`. */
   label: string;
-  /** What `--account` accepts, e.g. `jane@acme.com:sentry.io`. */
-  selector: string;
-  /**
-   * `selector` already split: `who` (email, else username, else id) and
-   * `server` (`host[:port]`, or the full origin such as
-   * `http://localhost:8000` for a non-HTTPS server; absent when no host is
-   * recorded).
-   */
-  selectorParts: { who: string; server?: string };
 };
-
-/** Optional account fields copied into {@link OrgListAccount} when set. */
-const ORG_LIST_ACCOUNT_FIELDS = ["host", "email", "username"] as const;
 
 /**
  * An organization enriched with an optional region display name and the
@@ -129,16 +128,24 @@ function getRegionDisplayName(regionUrl: string): string {
   }
 }
 
-/** Table columns in display order: header → the entry's cell value. */
-const ORG_LIST_COLUMNS: Record<
-  string,
-  (e: OrgListEntry) => string | undefined
-> = {
-  SLUG: (e) => e.slug,
-  REGION: (e) => e.region,
-  NAME: (e) => e.name,
-  ACCOUNT: (e) => e.account?.selector,
+/**
+ * Table columns in display order: header → the entry's field, as a
+ * `--fields` path (`account.name`).
+ */
+const ORG_LIST_COLUMNS: Record<string, string> = {
+  SLUG: "slug",
+  REGION: "region",
+  NAME: "name",
+  ACCOUNT: "account.name",
 };
+
+/** The string at `path` in `entry`, or `undefined` when unset. */
+function cellOf(entry: OrgListEntry, path: string): string | undefined {
+  const lookup = getNestedValue(entry, path);
+  return lookup.found && typeof lookup.value === "string"
+    ? lookup.value
+    : undefined;
+}
 
 /** Columns shown only when at least one entry has a value for them. */
 const OPTIONAL_ORG_LIST_COLUMNS = new Set(["REGION", "ACCOUNT"]);
@@ -157,13 +164,13 @@ function formatOrgListHuman(entries: OrgListEntry[]): string {
   // REGION and ACCOUNT only appear when some entry has one.
   const columns: Column<OrgListEntry>[] = Object.entries(ORG_LIST_COLUMNS)
     .filter(
-      ([header, value]) =>
+      ([header, path]) =>
         !OPTIONAL_ORG_LIST_COLUMNS.has(header) ||
-        entries.some((e) => value(e) !== undefined),
+        entries.some((e) => cellOf(e, path) !== undefined),
     )
-    .map(([header, value]) => ({
+    .map(([header, path]) => ({
       header,
-      value: (e) => escapeMarkdownCell(value(e) ?? ""),
+      value: (e) => escapeMarkdownCell(cellOf(e, path) ?? ""),
     }));
 
   const parts: string[] = [];
@@ -174,16 +181,20 @@ function formatOrgListHuman(entries: OrgListEntry[]): string {
 }
 
 function toOrgListAccount(account: AccountSummary): OrgListAccount {
+  const optional = {
+    email: account.email,
+    username: account.username,
+    server: accountServerOf(account),
+    host: account.host,
+  };
   const entry: OrgListAccount = {
+    name: accountSelectorOf(account),
     id: account.id,
     label: formatAccountLabel(account),
-    selector: accountSelectorOf(account),
-    selectorParts: accountSelectorParts(account),
   };
-  for (const field of ORG_LIST_ACCOUNT_FIELDS) {
-    const value = account[field];
+  for (const [field, value] of Object.entries(optional)) {
     if (value) {
-      entry[field] = value;
+      entry[field as keyof typeof optional] = value;
     }
   }
   return entry;
@@ -273,51 +284,6 @@ function mergeAccountOrgs(results: AccountOrgs[]): {
     }
   }
   return { orgs, accountOf, regionOf };
-}
-
-/** Glob metacharacters: a filter with any of them is matched as a glob. */
-const GLOB_CHARS_RE = /[*?[\]{}]/;
-
-/**
- * Orgs whose slug or name matches `filter`, case-insensitively. A glob
- * (`acme-*`) must match the whole slug or name and keeps the list order.
- * Plain text uses the shared {@link fuzzyMatch} search (exact, prefix,
- * substring, then small typos), best matches first.
- */
-function filterOrgs(
-  orgs: SentryOrganization[],
-  filter: string | undefined,
-): SentryOrganization[] {
-  const needle = filter?.trim().toLowerCase();
-  if (!needle) {
-    return orgs;
-  }
-  if (GLOB_CHARS_RE.test(needle)) {
-    const matches = picomatch(needle, { dot: true });
-    return orgs.filter(
-      (org) =>
-        matches(org.slug.toLowerCase()) || matches(org.name.toLowerCase()),
-    );
-  }
-  const candidates = [...new Set(orgs.flatMap((org) => [org.slug, org.name]))];
-  const rankOf = new Map(
-    fuzzyMatch(needle, candidates, { mode: "search" }).map((value, rank) => [
-      value,
-      rank,
-    ]),
-  );
-  // An org ranks by its better-matching slug or name; the sort is stable.
-  return orgs
-    .map((org) => ({
-      org,
-      rank: Math.min(
-        rankOf.get(org.slug) ?? Number.POSITIVE_INFINITY,
-        rankOf.get(org.name) ?? Number.POSITIVE_INFINITY,
-      ),
-    }))
-    .filter(({ rank }) => rank !== Number.POSITIVE_INFINITY)
-    .sort((a, b) => a.rank - b.rank)
-    .map(({ org }) => org);
 }
 
 /**
@@ -446,7 +412,10 @@ export const listCommand = buildCommand({
     );
     const merged = mergeAccountOrgs(results);
     const { accountOf, regionOf } = merged;
-    const orgs = filterOrgs(merged.orgs, filter);
+    const orgs = filterByName(merged.orgs, filter, (org) => [
+      org.slug,
+      org.name,
+    ]);
     const limitedOrgs = orgs.slice(0, flags.limit);
 
     // Show regions when one login's orgs span several (e.g. US and EU).

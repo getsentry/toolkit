@@ -22,8 +22,8 @@ organization reachable from several accounts on the same server is listed once,
 under the active account if it is one of them, else the most recently used.
 Accounts whose login fails are skipped with a warning. `SENTRY_HOST`/`SENTRY_URL` limits the list to accounts on that server,
 and `--account` to a single account. The stored active account never changes.
-With `--json`, each entry's `account` carries that notation as `selector` and,
-already split, as `selectorParts.who` and `selectorParts.server`.
+With `--json`, each entry's `account` carries that notation as `name`, with its
+parts alongside: `email` (or `username`) and `server`.
 
 ```
 $ sentry org list

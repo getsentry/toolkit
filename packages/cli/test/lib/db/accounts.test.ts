@@ -9,7 +9,8 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   accountSelectorOf,
-  accountSelectorParts,
+  accountServerOf,
+  splitAccountSelector,
   findAccounts,
   getAccountRow,
   getActiveAccountRow,
@@ -300,10 +301,9 @@ describe("findAccounts", () => {
     expect(selfAccount && accountSelectorOf(selfAccount)).toBe(
       "jane@example.com:sentry.example.com:9000",
     );
-    expect(selfAccount && accountSelectorParts(selfAccount)).toEqual({
-      who: "jane@example.com",
-      server: "sentry.example.com:9000",
-    });
+    expect(selfAccount && accountServerOf(selfAccount)).toBe(
+      "sentry.example.com:9000",
+    );
     for (const selector of [
       "jane@example.com:sentry.io",
       "jane@example.com:us.sentry.io",
@@ -333,10 +333,7 @@ describe("findAccounts", () => {
     const account = listAccounts().find((a) => a.id === local);
     const selector = account && accountSelectorOf(account);
     expect(selector).toBe("jane@example.com:http://localhost:8000");
-    expect(account && accountSelectorParts(account)).toEqual({
-      who: "jane@example.com",
-      server: "http://localhost:8000",
-    });
+    expect(account && accountServerOf(account)).toBe("http://localhost:8000");
     expect(findAccounts(selector ?? "").map((a) => a.id)).toEqual([local]);
     // A bare host means HTTPS, which is a different server.
     expect(findAccounts("jane@example.com:localhost:8000")).toEqual([]);
@@ -367,4 +364,30 @@ describe("serverKey", () => {
     expect(serverKey("not a url")).toBeUndefined();
     expect(isSameServer("not a url", "not a url")).toBe(false);
   });
+});
+
+describe("splitAccountSelector", () => {
+  test("splits on the first colon; the server may have a scheme or port", () => {
+    expect(splitAccountSelector(" jane@acme.com ")).toEqual({
+      who: "jane@acme.com",
+    });
+    expect(splitAccountSelector("jane@acme.com:sentry.acme.com")).toEqual({
+      who: "jane@acme.com",
+      server: "https://sentry.acme.com",
+    });
+    expect(splitAccountSelector("jane:sentry.acme.com:9000")).toEqual({
+      who: "jane",
+      server: "https://sentry.acme.com:9000",
+    });
+    expect(splitAccountSelector("jane@acme.com:http://localhost:8000")).toEqual(
+      { who: "jane@acme.com", server: "http://localhost:8000" },
+    );
+  });
+
+  test.each([":sentry.io", "jane@acme.com:", "jane@acme.com: "])(
+    "rejects %s",
+    (selector) => {
+      expect(splitAccountSelector(selector)).toBeUndefined();
+    },
+  );
 });

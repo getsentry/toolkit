@@ -21,7 +21,11 @@ import {
   setActiveAccount,
   setAuthToken,
 } from "../../lib/db/auth.js";
-import { getAccountRow, isAccountRowUsable } from "../../lib/db/accounts.js";
+import {
+  getAccountRow,
+  isAccountRowUsable,
+  splitAccountSelector,
+} from "../../lib/db/accounts.js";
 import { getDbPath } from "../../lib/db/index.js";
 import { getUserInfo, setUserInfo } from "../../lib/db/user.js";
 import { getEnv } from "../../lib/env.js";
@@ -170,7 +174,8 @@ export function parseLoginEmail(raw: string): string {
 
 /**
  * Split a `sentry auth login` target into its email and, for
- * `<email>:<server>`, the normalized server origin.
+ * `<email>:<server>`, the server's normalized origin. Uses the same
+ * {@link splitAccountSelector} as `--account`, plus an email check.
  *
  * @throws {ValidationError} when either part is invalid
  */
@@ -178,33 +183,27 @@ export function splitLoginTarget(
   target: string,
   raw = target,
 ): { email: string; url?: string } {
-  const at = target.indexOf("@");
-  // The separator is the first `:` after the `@`; the server part may
-  // itself contain `:` (a scheme or port).
-  const colon = at > 0 ? target.indexOf(":", at) : -1;
-  const email = colon > 0 ? target.slice(0, colon) : target;
-  if (
-    at <= 0 ||
-    at === email.length - 1 ||
-    email.indexOf("@", at + 1) !== -1 ||
-    /\s/.test(email)
-  ) {
+  const parts = splitAccountSelector(target);
+  if (!(parts && isEmailAddress(parts.who))) {
     throw new ValidationError(
-      `Expected an email address (or <email>:<server>) to log in as, got '${raw}'.`,
+      `Expected an email address, or <email>:<server> with a valid server, to log in as; got '${raw}'.`,
       "email",
     );
   }
-  if (colon < 0) {
-    return { email };
-  }
-  const url = normalizeOrigin(normalizeUrl(target.slice(colon + 1)));
-  if (!url) {
-    throw new ValidationError(
-      `Expected <email>:<server> with a valid server, got '${raw}'.`,
-      "email",
-    );
-  }
-  return { email, url };
+  return parts.server
+    ? { email: parts.who, url: parts.server }
+    : { email: parts.who };
+}
+
+/** One `@` with text on both sides, and no whitespace. */
+function isEmailAddress(value: string): boolean {
+  const at = value.indexOf("@");
+  return (
+    at > 0 &&
+    at < value.length - 1 &&
+    value.indexOf("@", at + 1) === -1 &&
+    !/\s/.test(value)
+  );
 }
 
 /**

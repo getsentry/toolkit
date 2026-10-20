@@ -190,22 +190,27 @@ export function listAccounts(): AccountSummary[] {
 }
 
 /**
- * Split a `<who>:<server>` account selector (e.g.
- * `jane@acme.com:sentry.acme.com`) into its identity and server origin.
- * The server may be a bare host (with port) or a URL. `undefined` when the
- * selector has no `:` or either side is empty or not a valid server.
+ * Split a `<who>[:<server>]` account selector (e.g.
+ * `jane@acme.com:sentry.acme.com`) on its first `:`. Emails, usernames, and
+ * account ids never contain one, so everything after it is the server: a
+ * bare host (HTTPS, may include a port) or a URL. Shared by `--account`,
+ * `auth switch`/`logout`, and `auth login`.
+ *
+ * @returns `{ who }` without a `:`; `{ who, server }` with the server's
+ *   normalized origin; `undefined` when a side of the `:` is empty or the
+ *   server is not an HTTP(S) URL
  */
-export function parseAccountServerSelector(
+export function splitAccountSelector(
   selector: string,
-): { who: string; server: string } | undefined {
+): { who: string; server?: string } | undefined {
   const trimmed = selector.trim();
   const colon = trimmed.indexOf(":");
-  if (colon <= 0) {
-    return;
+  if (colon < 0) {
+    return { who: trimmed };
   }
   const who = trimmed.slice(0, colon);
   const server = normalizeHttpOrigin(normalizeUrl(trimmed.slice(colon + 1)));
-  return server ? { who, server } : undefined;
+  return who && server ? { who, server } : undefined;
 }
 
 /**
@@ -215,31 +220,20 @@ export function parseAccountServerSelector(
  * account id; the server part is omitted when no host is recorded.
  */
 export function accountSelectorOf(account: AccountSummary): string {
-  const { who, server } = accountSelectorParts(account);
+  const who = account.email ?? account.username ?? account.id;
+  const server = accountServerOf(account);
   return server ? `${who}:${server}` : who;
 }
 
 /**
- * The two halves of {@link accountSelectorOf}: `who` (email, else username,
- * else account id) and `server` (`host[:port]`, or the full origin for a
- * non-HTTPS server; absent when no host is
- * recorded). For machine-readable output, so consumers needn't split.
+ * The server part of an account's selector: `host[:port]` for HTTPS, the
+ * full origin (`http://host[:port]`) otherwise, since selector parsing
+ * assumes HTTPS for a bare host. `undefined` when no host is recorded.
  */
-export function accountSelectorParts(account: AccountSummary): {
-  who: string;
-  server?: string;
-} {
-  const who = account.email ?? account.username ?? account.id;
-  const server = serverOf(account.host);
-  return server ? { who, server } : { who };
-}
-
-/**
- * The server part of a selector for a stored account origin: `host[:port]`
- * for HTTPS, the full origin (`http://host[:port]`) otherwise, since
- * selector parsing assumes HTTPS for a bare host.
- */
-function serverOf(host: string | undefined): string | undefined {
+export function accountServerOf(account: {
+  readonly host?: string;
+}): string | undefined {
+  const host = account.host;
   const origin = normalizeHttpOrigin(host);
   if (!origin) {
     return hostnameOf(host);
@@ -267,12 +261,11 @@ export function findAccounts(selector: string): AccountSummary[] {
   if (direct.length > 0) {
     return direct;
   }
-  const onServer = parseAccountServerSelector(needle);
-  if (onServer) {
+  const parts = splitAccountSelector(needle);
+  const server = parts?.server;
+  if (parts && server) {
     return accounts.filter(
-      (a) =>
-        matchesIdentity(a, onServer.who) &&
-        isAccountOnServer(a, onServer.server),
+      (a) => matchesIdentity(a, parts.who) && isAccountOnServer(a, server),
     );
   }
   const at = needle.lastIndexOf("@");
