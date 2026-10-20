@@ -7,8 +7,9 @@
 
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
+import { logger } from "../../../src/lib/logger.js";
 import { Hono } from "hono";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   buildApp,
   consumeSSE,
@@ -38,6 +39,7 @@ type ServeFunc = (
     format: "human" | "json";
     attributes: boolean;
     open: boolean;
+    session?: string;
   },
 ) => Promise<void>;
 
@@ -133,6 +135,22 @@ describe("parsePort", () => {
 });
 
 describe("sentry local serve --open", () => {
+  let info: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    info = vi.spyOn(logger, "info").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    info.mockRestore();
+  });
+  function expectViewerHint() {
+    const hints = info.mock.calls
+      .map((c) => String(c[0]))
+      .filter((line) => line.startsWith("View events at "));
+    expect(hints).toHaveLength(1);
+    const url = new URL(hints[0]!.slice("View events at ".length));
+    expect(url.origin).toBe("https://local.sentry.dev");
+    expect(new URL(url.searchParams.get("url")!).pathname).toBe("/stream");
+  }
   const flags = {
     host: "127.0.0.1",
     quiet: true,
@@ -141,6 +159,57 @@ describe("sentry local serve --open", () => {
     attributes: false,
     open: true,
   };
+
+  test("scoped serve opens the viewer with explicit session discovery", async () => {
+    const daemon = await import("../../../src/commands/local/daemon.js");
+    const { server, port } = await tryListen(
+      buildApp(createSpotlightBuffer(5)),
+      0,
+      "127.0.0.1",
+    );
+    const streamUrl = `http://127.0.0.1:${port}/stream`;
+    const directoryUrl = `http://127.0.0.1:${port}/_local/v1/ui/sessions?cap=directory-secret`;
+    const create = vi
+      .spyOn(daemon, "createLocalDaemonSession")
+      .mockResolvedValue({
+        id: "web",
+        cwd: "/web",
+        label: "web",
+        streamUrl,
+        ingestUrl: streamUrl,
+        directoryUrl,
+      });
+    const retain = vi
+      .spyOn(daemon, "retainLocalDaemonSession")
+      .mockResolvedValue(undefined);
+    const signal = interceptShutdownSignal();
+    const opener = vi.mocked(openBrowser);
+    opener.mockClear();
+    const func = (await serverCommand.loader()) as unknown as ServeFunc;
+    try {
+      const command = func.call(
+        { cwd: "/web" },
+        { ...flags, port, session: "web" },
+      );
+      await vi.waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
+      signal.trigger();
+      await command;
+      expectViewerHint();
+      const url = new URL(opener.mock.calls[0]![0]);
+      expect(new URLSearchParams(url.hash.slice(1)).get("directory")).toBe(
+        directoryUrl,
+      );
+      expect(url.search).toBe("");
+    } finally {
+      signal.restore();
+      create.mockRestore();
+      retain.mockRestore();
+      await new Promise<void>((r) => {
+        server.close(() => r());
+        server.closeAllConnections();
+      });
+    }
+  });
 
   test("opens the UI after starting an owned receiver", async () => {
     const signal = interceptShutdownSignal();
@@ -153,6 +222,7 @@ describe("sentry local serve --open", () => {
       await vi.waitFor(() => expect(openBrowserMock).toHaveBeenCalledTimes(1));
       signal.trigger();
       await command;
+      expectViewerHint();
     } finally {
       signal.restore();
     }
@@ -187,6 +257,7 @@ describe("sentry local serve --open", () => {
       await vi.waitFor(() => expect(openBrowserMock).toHaveBeenCalledTimes(1));
       signal.trigger();
       await command;
+      expectViewerHint();
     } finally {
       signal.restore();
       globalThis.fetch = savedFetch;
@@ -349,6 +420,85 @@ async function readFirstSSEEvent(streamPath: string): Promise<string> {
 }
 
 describe("buildApp", () => {
+  test("hosted retention updates preserve standalone data and leave other controls blocked", async () => {
+    const retention = createLocalRetentionBuffer(500);
+    const app = buildApp(retention.buffer, { uiActions: true, retention });
+    await app.request("/stream", {
+      method: "POST",
+      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+      body: TEST_ENVELOPE,
+    });
+    const before = retention.buffer.read({ all: true });
+    const origin = "https://local.sentry.dev";
+    const preflight = await app.request("/retention", {
+      method: "OPTIONS",
+      headers: {
+        Origin: origin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+        "Access-Control-Request-Private-Network": "true",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    expect(preflight.headers.get("Access-Control-Allow-Private-Network")).toBe(
+      "true",
+    );
+    const updated = await app.request("/retention", {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: '{"maxEnvelopes":50000}',
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    expect(await updated.json()).toMatchObject({
+      maxEnvelopes: 50000,
+      retainedEnvelopes: 1,
+    });
+    for (const value of [-1, 0, 1.5, 50001, "1000", null]) {
+      expect(
+        (
+          await app.request("/retention", {
+            method: "POST",
+            headers: { Origin: origin },
+            body: JSON.stringify({ maxEnvelopes: value }),
+          })
+        ).status,
+      ).toBe(400);
+    }
+    expect(retention.buffer.read({ all: true })).toEqual(before);
+    expect(
+      (
+        await app.request("/clear", {
+          method: "DELETE",
+          headers: { Origin: origin },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await app.request("/retention", {
+          method: "POST",
+          headers: { Origin: "https://evil.example" },
+          body: '{"maxEnvelopes":1000}',
+        })
+      ).status,
+    ).toBe(403);
+    const disabled = buildApp(retention.buffer, {
+      uiActions: false,
+      retention,
+    });
+    expect(
+      (
+        await disabled.request("/retention", {
+          method: "POST",
+          headers: { Origin: origin },
+          body: '{"maxEnvelopes":1000}',
+        })
+      ).status,
+    ).toBe(403);
+  });
+
   test("changes legacy retention only when explicit and preserves history on rejected decreases", async () => {
     const retention = createLocalRetentionBuffer(2);
     const app = buildApp(retention.buffer, { uiActions: true, retention });
@@ -358,7 +508,7 @@ describe("buildApp", () => {
       body: TEST_ENVELOPE,
     });
     const retained = retention.buffer.read({ all: true });
-    for (const origin of ["https://example.com", "https://local.sentry.dev"]) {
+    for (const origin of ["https://example.com"]) {
       expect(
         (
           await app.request("/retention", {

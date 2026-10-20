@@ -26,6 +26,7 @@ import { detectDevCommand } from "../../lib/dev-script.js";
 import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
+  printLocalViewerHint,
   type FilterValue,
   type FormatValue,
   formatEnvelopeLines,
@@ -499,6 +500,7 @@ export const runCommand = buildCommand({
     let daemonSessionId: string | undefined;
     let daemonIngestUrl: string | undefined;
     let daemonStreamUrl: string | undefined;
+    let daemonDirectoryUrl: string | undefined;
 
     const useJson = flags.format === "json";
     const activeFilters = new Set(flags.filter);
@@ -514,6 +516,7 @@ export const runCommand = buildCommand({
           daemonSessionId = session.id;
           daemonIngestUrl = session.ingestUrl;
           daemonStreamUrl = session.streamUrl;
+          daemonDirectoryUrl = session.directoryUrl;
           return attachToExistingServer({
             activeFilters,
             showAttributes: flags.attributes,
@@ -531,8 +534,13 @@ export const runCommand = buildCommand({
           showAttributes: flags.attributes,
         });
     url = tail.url;
+    printLocalViewerHint(url, useJson);
 
-    await openLocalUiIfRequested(flags.open, daemonStreamUrl ?? url);
+    await openLocalUiIfRequested(
+      flags.open,
+      daemonStreamUrl ?? url,
+      daemonDirectoryUrl,
+    );
 
     const spotlightUrl = daemonIngestUrl ?? `${url}/stream`;
     const wrangler = await injectWranglerSpotlightBinding(
@@ -686,6 +694,7 @@ async function* runWithVerify(
   );
   const url = formatLocalServerUrl(flags.host, boundPort);
   logger.info(`Verify server listening on ${bold(url)}`);
+  printLocalViewerHint(url, flags.format === "json");
 
   const spotlightUrl = `${url}/stream`;
 

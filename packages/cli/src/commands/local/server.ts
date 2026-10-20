@@ -1,3 +1,5 @@
+import { isHostedUiOrigin } from "./viewer-protocol.js";
+export { isHostedUiOrigin } from "./viewer-protocol.js";
 import { isLoopbackHost } from "./loopback.js";
 /**
  * sentry local serve
@@ -32,6 +34,7 @@ import type { FilterValue, FormatValue } from "../../lib/formatters/local.js";
 import {
   FILTER_VALUES,
   FORMAT_VALUES,
+  printLocalViewerHint,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
   formatItem,
@@ -138,8 +141,6 @@ export function parsePort(value: string): number {
 /** Match localhost origins on any port (http or https), including IPv6. */
 const LOCALHOST_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
-const LOCAL_UI_ORIGIN = "https://local.sentry.dev";
-const LOCAL_UI_PREVIEW_HOST_RE = /^sentry-local-git-[a-z0-9-]+\.sentry\.dev$/;
 
 export { isLoopbackHost } from "./loopback.js";
 
@@ -148,25 +149,6 @@ type LocalReceiverOptions = {
   uiActions?: boolean;
   retention?: LocalRetentionBuffer;
 };
-
-/** Whether an origin is the production or preview Local viewer. */
-export function isHostedUiOrigin(origin: string | undefined): origin is string {
-  if (!origin) {
-    return false;
-  }
-
-  if (!URL.canParse(origin)) {
-    return false;
-  }
-
-  const url = new URL(origin);
-  return (
-    origin === url.origin &&
-    url.protocol === "https:" &&
-    (url.origin === LOCAL_UI_ORIGIN ||
-      LOCAL_UI_PREVIEW_HOST_RE.test(url.hostname))
-  );
-}
 
 function isHostedUiStreamRequest(request: {
   method: string;
@@ -254,6 +236,12 @@ export function buildApp(
 ): Hono {
   const app = new Hono();
 
+  const hostedRetentionCors = cors({
+    origin: (origin) => (isHostedUiOrigin(origin) ? origin : null),
+    allowMethods: ["POST", "OPTIONS"],
+    allowHeaders: ["Content-Type"],
+  });
+
   app.use("*", async (c, next) => {
     c.header("X-Powered-By", SERVER_IDENTIFIER);
     await next();
@@ -280,13 +268,21 @@ export function buildApp(
     const hostedUiOrigin = isHostedUiOrigin(requestOrigin);
     const hostedStreamRequest = isHostedUiStreamRequest(c.req);
 
-    // The hosted UI may only read the event stream. CORS alone cannot stop a
-    // simple cross-origin POST, so reject any other hosted-origin request.
-    if (hostedUiOrigin && !hostedStreamRequest) {
+    const hostedRetentionRequest =
+      hostedUiOrigin &&
+      uiActions &&
+      retention &&
+      c.req.path === "/retention" &&
+      (c.req.method === "POST" ||
+        (c.req.method === "OPTIONS" &&
+          c.req.header("access-control-request-method") === "POST"));
+    // CORS alone cannot stop simple POSTs. Hosted viewers may only read the
+    // stream or change its validated retention limit; other controls stay local.
+    if (hostedUiOrigin && !hostedStreamRequest && !hostedRetentionRequest) {
       return c.body(null, 403);
     }
 
-    if (!hostedStreamRequest) {
+    if (!hostedStreamRequest && !hostedRetentionRequest) {
       return localhostCors(c, next);
     }
 
@@ -294,8 +290,14 @@ export function buildApp(
       const isPrivateNetworkRequest =
         c.req.header("access-control-request-private-network") === "true";
       c.header("Access-Control-Allow-Origin", requestOrigin);
-      c.header("Access-Control-Allow-Methods", "GET, OPTIONS");
-      c.header("Access-Control-Allow-Headers", "Last-Event-ID");
+      c.header(
+        "Access-Control-Allow-Methods",
+        hostedRetentionRequest ? "POST, OPTIONS" : "GET, OPTIONS",
+      );
+      c.header(
+        "Access-Control-Allow-Headers",
+        hostedRetentionRequest ? "Content-Type" : "Last-Event-ID",
+      );
       if (isPrivateNetworkRequest) {
         c.header("Access-Control-Allow-Private-Network", "true");
       }
@@ -312,14 +314,16 @@ export function buildApp(
       return c.body(null, 204);
     }
 
-    return await hostedStreamCors(c, next);
+    return hostedRetentionRequest
+      ? hostedRetentionCors(c, next)
+      : hostedStreamCors(c, next);
   });
 
   app.get("/health", (c) => c.text("OK"));
 
   // These endpoints deliberately describe and manage only the in-memory
-  // receiver session. They remain unavailable to the hosted UI origin; the
-  // CORS guard above limits them to a loopback-served Local UI.
+  // receiver session. Only validated retention updates are available to the
+  // trusted hosted viewer; other controls require a loopback-served Local UI.
   app.get("/capabilities", (c) =>
     uiActions
       ? c.json({
@@ -335,7 +339,7 @@ export function buildApp(
     if (
       !uiActions ||
       !retention ||
-      (origin && !LOCALHOST_ORIGIN_RE.test(origin))
+      (origin && !LOCALHOST_ORIGIN_RE.test(origin) && !isHostedUiOrigin(origin))
     )
       return c.body(null, 403);
     const input: unknown = await c.req.json().catch(() => undefined);
@@ -1066,12 +1070,17 @@ export const serverCommand = buildCommand({
         port: flags.port,
       });
       logger.info("Sentry Local telemetry session");
+      printLocalViewerHint(session.streamUrl, flags.format === "json");
       logger.info(`  Session: ${bold(session.id)} (${session.label})`);
       logger.info(
         `  Capabilities: sentry local session view ${session.id} --json`,
       );
       logger.info("Press Ctrl-C to stop.");
-      await openLocalUiIfRequested(flags.open, session.streamUrl);
+      await openLocalUiIfRequested(
+        flags.open,
+        session.streamUrl,
+        session.directoryUrl,
+      );
 
       const controller = new AbortController();
       const stop = () => controller.abort();
@@ -1098,6 +1107,7 @@ export const serverCommand = buildCommand({
     if (await isServerRunning(url)) {
       await configureExistingRetention(url, flags["max-envelopes"]);
       logger.info(`Connected to existing server at ${bold(url)}`);
+      printLocalViewerHint(url, flags.format === "json");
       await openLocalUiIfRequested(flags.open, url);
       if (activeFilters.size > 0) {
         logger.info(`Filtering: ${[...activeFilters].join(", ")}`);
@@ -1166,6 +1176,7 @@ export const serverCommand = buildCommand({
 
     const listenUrl = formatLocalServerUrl(flags.host, boundPort);
     logger.info("Sentry Local Dev Server");
+    printLocalViewerHint(listenUrl, useJson);
     logger.info(`  Ingest: ${bold(`${listenUrl}/stream`)}`);
     logger.info(`  Events: ${bold(`${listenUrl}/stream`)} (SSE)`);
     logger.info("");
