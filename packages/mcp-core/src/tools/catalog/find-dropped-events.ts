@@ -28,6 +28,7 @@ const droppedBucketSchema = z.object({
   start: z.number(),
   end: z.number(),
   count: z.number(),
+  tags: z.array(z.string()).default([]),
 });
 
 export const findDroppedEventsOutputSchema = z.object({
@@ -68,6 +69,7 @@ export default defineTool({
     "<hints>",
     "- This is independent of any search query — it reports drops for the whole project/time range.",
     "- `outcome` is the drop kind (e.g. rate_limited, filtered); `reason` is the sub-cause (e.g. key_quota, sample_rate).",
+    "- Each bucket's `tags` classify the drop: `intentional` (user-configured, e.g. sampling or filters) vs `unintentional` (not intended, e.g. quota or abuse).",
     "- Pass `outcome` and/or `reason` to scope the dropped side to one classification; the accepted volume is always returned in full.",
     "- An empty `droppedEvents` list means no drops in the window — the data can be trusted.",
     "</hints>",
@@ -169,6 +171,7 @@ export default defineTool({
       start: number;
       end: number;
       count: number;
+      tags?: string[];
     }) => ({
       outcome: bucket.outcome,
       reason: bucket.reason,
@@ -176,6 +179,7 @@ export default defineTool({
       start: bucket.start,
       end: bucket.end,
       count: bucket.count,
+      tags: bucket.tags ?? [],
     });
 
     return structuredResult({
