@@ -288,6 +288,7 @@ type FetchWithTimeoutArgs = {
   headers: Headers;
   externalSignal: AbortSignal | undefined | null;
   timeoutMs: number;
+  bufferResponseBody: boolean;
 };
 
 /**
@@ -301,6 +302,7 @@ async function fetchWithTimeout({
   headers,
   externalSignal,
   timeoutMs,
+  bufferResponseBody,
 }: FetchWithTimeoutArgs): Promise<Response> {
   const controller = new AbortController();
   let timedOut = false;
@@ -319,12 +321,18 @@ async function fetchWithTimeout({
       warnIfSaasWithEnvCa(extractFullUrl(input));
     }
 
-    return await fetch(input, {
+    const response = await fetch(input, {
       ...init,
       headers,
       signal: controller.signal,
       ...customTls,
     });
+    if (bufferResponseBody && response.ok) {
+      // Drain a clone within this attempt so body failures can retry without
+      // replacing the original Response or consuming the caller's body.
+      await response.clone().body?.pipeTo(new WritableStream());
+    }
+    return response;
   } catch (error) {
     if (timedOut) {
       const tagged = (
@@ -584,6 +592,7 @@ type RetryContext = {
   fullUrl: string;
   credential: CredentialContext;
   validatedRedirects: boolean;
+  bufferResponseBody: boolean;
 };
 
 async function fetchWithRetry({
@@ -593,6 +602,7 @@ async function fetchWithRetry({
   fullUrl,
   credential,
   validatedRedirects,
+  bufferResponseBody,
 }: RetryContext): Promise<Response> {
   const issuedAt =
     credential.issuedAt ??
@@ -630,6 +640,7 @@ async function fetchWithRetry({
       isLastAttempt,
       timeoutMs,
       validatedRedirects,
+      bufferResponseBody,
     });
 
     if (result.action === "done") {
@@ -687,6 +698,8 @@ async function fetchWithRetry({
 type AuthenticatedFetchOptions = {
   credential?: CredentialContext;
   validatedRedirects?: boolean;
+  /** Complete successful GET bodies inside the retry/timeout budget. */
+  bufferResponseBody?: boolean;
 };
 
 function createAuthenticatedFetch(
@@ -752,6 +765,9 @@ function createAuthenticatedFetch(
           fullUrl,
           credential,
           validatedRedirects: options.validatedRedirects === true,
+          bufferResponseBody:
+            options.bufferResponseBody === true &&
+            method.toUpperCase() === "GET",
         });
         span.setAttribute("http.response.status_code", response.status);
         if (!response.ok) {
@@ -778,6 +794,7 @@ type ExecuteAttemptArgs = {
   isLastAttempt: boolean;
   timeoutMs: number;
   validatedRedirects: boolean;
+  bufferResponseBody: boolean;
 };
 
 async function cancelResponseBody(response: Response): Promise<void> {
@@ -901,6 +918,7 @@ async function fetchFollowingValidatedRedirects({
   headers,
   credential,
   timeoutMs,
+  bufferResponseBody,
 }: Omit<
   ExecuteAttemptArgs,
   "isLastAttempt" | "validatedRedirects"
@@ -926,6 +944,7 @@ async function fetchFollowingValidatedRedirects({
       headers: requestHeaders,
       externalSignal: init?.signal ?? original.signal,
       timeoutMs,
+      bufferResponseBody,
     });
     if (!isRedirectStatus(response.status)) {
       const origin = normalizeHttpOrigin(request.url);
@@ -968,6 +987,7 @@ async function executeAttempt({
   isLastAttempt,
   timeoutMs,
   validatedRedirects,
+  bufferResponseBody,
 }: ExecuteAttemptArgs): Promise<AttemptResult> {
   try {
     const response = validatedRedirects
@@ -977,6 +997,7 @@ async function executeAttempt({
           headers,
           credential,
           timeoutMs,
+          bufferResponseBody,
         })
       : await fetchWithTimeout({
           input,
@@ -984,6 +1005,7 @@ async function executeAttempt({
           headers,
           externalSignal: init?.signal,
           timeoutMs,
+          bufferResponseBody,
         });
     return handleResponse(response, headers, credential, isLastAttempt);
   } catch (error) {
@@ -1001,7 +1023,11 @@ let cachedFetch: typeof fetch | null = null;
 function getAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): typeof fetch {
-  if (options.credential || options.validatedRedirects) {
+  if (
+    options.credential ||
+    options.validatedRedirects ||
+    options.bufferResponseBody
+  ) {
     return createAuthenticatedFetch(options) as unknown as typeof fetch;
   }
   if (!cachedFetch) {
@@ -1066,9 +1092,11 @@ export function getSdkConfig(
 /**
  * Get SDK config for the default API (control silo or self-hosted).
  */
-export function getDefaultSdkConfig() {
+export function getDefaultSdkConfig(
+  options: Pick<AuthenticatedFetchOptions, "bufferResponseBody"> = {},
+) {
   const credential = getCredentialContext();
-  return getSdkConfig(getApiBaseUrl(credential), { credential });
+  return getSdkConfig(getApiBaseUrl(credential), { ...options, credential });
 }
 
 /**

@@ -863,7 +863,9 @@ export async function rawApiRequest(
 
   // Both configs share createAuthenticatedFetch(), whose prepareHeaders()
   // enforces isRequestOriginTrusted() before attaching Authorization.
-  const config = baseUrl ? getSdkConfig(baseUrl) : getDefaultSdkConfig();
+  const config = baseUrl
+    ? getSdkConfig(baseUrl, { bufferResponseBody: true })
+    : getDefaultSdkConfig({ bufferResponseBody: true });
 
   const endpointWithParams = appendSearchParams(endpoint, params);
   const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
