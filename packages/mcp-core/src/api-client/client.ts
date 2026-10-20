@@ -1,4 +1,8 @@
 import {
+  getColumnsAndAggregates,
+  isAggregateFieldOrEquation,
+} from "@sentry/toolkit-core/events-fields";
+import {
   createSentryClient,
   listOrganizationProjects,
   listOrganizationTeams,
@@ -1430,9 +1434,7 @@ export class SentryApiService {
   private isAggregateExplorerQuery(params: ExplorerAggregateParams): boolean {
     return Boolean(
       params.aggregateFunctions?.length ||
-      params.fields?.some(
-        (field) => field.includes("(") && field.includes(")"),
-      ),
+      params.fields?.some(isAggregateFieldOrEquation),
     );
   }
 
@@ -1466,12 +1468,10 @@ export class SentryApiService {
     }
 
     // Fall back to deriving aggregate metadata from the selected fields.
-    const parsedGroupByFields =
-      fields?.filter((field) => !field.includes("(") && !field.includes(")")) ??
-      [];
-    const parsedAggregateFunctions =
-      fields?.filter((field) => field.includes("(") && field.includes(")")) ??
-      [];
+    const {
+      columns: parsedGroupByFields,
+      aggregates: parsedAggregateFunctions,
+    } = getColumnsAndAggregates(fields ?? []);
 
     for (const field of parsedGroupByFields) {
       urlParams.append("aggregateField", JSON.stringify({ groupBy: field }));
@@ -4415,8 +4415,7 @@ export class SentryApiService {
     opts?: RequestOptions,
   ): Promise<Event> {
     const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/${eventId}/` +
-        `?llmFormat=json`,
+      apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/${eventId}/`,
       undefined,
       opts,
     );
@@ -5429,8 +5428,7 @@ export class SentryApiService {
     opts?: RequestOptions,
   ): Promise<AutofixRunState> {
     const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/autofix/` +
-        `?llmFormat=markdown`,
+      apiPath`/organizations/${organizationSlug}/issues/${issueId}/autofix/`,
       undefined,
       opts,
     );

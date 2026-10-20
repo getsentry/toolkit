@@ -194,6 +194,51 @@ describe("runInteractiveLogin", () => {
     });
   });
 
+  test("expectedEmail: refuses a login approved as someone else without storing it", async () => {
+    performDeviceFlowSpy = vi
+      .spyOn(oauth, "performDeviceFlow")
+      .mockResolvedValue(
+        makeTokenResponse({
+          id: "1",
+          name: "Bob",
+          email: "bob@example.com",
+        }),
+      );
+
+    const result = await runInteractiveLogin({
+      timeout: 1000,
+      newAccount: true,
+      expectedEmail: "jane@example.com",
+    });
+
+    expect(result).toBeNull();
+    expect(completeOAuthFlowSpy).not.toHaveBeenCalled();
+    expect(setUserInfoSpy).not.toHaveBeenCalled();
+  });
+
+  test("expectedEmail: stores a matching login (case-insensitive) as requested", async () => {
+    performDeviceFlowSpy = vi
+      .spyOn(oauth, "performDeviceFlow")
+      .mockResolvedValue(
+        makeTokenResponse({
+          id: "1",
+          name: "Jane",
+          email: "Jane@Example.com",
+        }),
+      );
+
+    const result = await runInteractiveLogin({
+      timeout: 1000,
+      newAccount: true,
+      expectedEmail: "jane@example.com",
+    });
+
+    expect(result).not.toBeNull();
+    expect(completeOAuthFlowSpy).toHaveBeenCalledWith(expect.anything(), {
+      newAccount: true,
+    });
+  });
+
   test("null user.email is omitted from result", async () => {
     performDeviceFlowSpy = vi
       .spyOn(oauth, "performDeviceFlow")
@@ -236,11 +281,32 @@ describe("runInteractiveLogin", () => {
         return makeTokenResponse(); // no user
       });
 
+    const clearUserInfoSpy = vi
+      .spyOn(dbUser, "clearUserInfo")
+      .mockReturnValue(undefined);
+
     const result = await runInteractiveLogin({ timeout: 1000 });
 
     expect(result).not.toBeNull();
     expect(result!.user).toBeUndefined();
     expect(setUserInfoSpy).not.toHaveBeenCalled();
+    // Credentials were replaced in place: forget the previous identity.
+    expect(clearUserInfoSpy).toHaveBeenCalled();
+    clearUserInfoSpy.mockRestore();
+  });
+
+  test("no user in token response for a new account: nothing to clear", async () => {
+    performDeviceFlowSpy = vi
+      .spyOn(oauth, "performDeviceFlow")
+      .mockResolvedValue(makeTokenResponse());
+    const clearUserInfoSpy = vi
+      .spyOn(dbUser, "clearUserInfo")
+      .mockReturnValue(undefined);
+
+    await runInteractiveLogin({ timeout: 1000, newAccount: true });
+
+    expect(clearUserInfoSpy).not.toHaveBeenCalled();
+    clearUserInfoSpy.mockRestore();
   });
 
   test("forwards an explicit scope string to performDeviceFlow", async () => {

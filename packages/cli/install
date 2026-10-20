@@ -187,10 +187,12 @@ tmpdir="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
 tmp_binary="${tmpdir}/sentry-install-$$${suffix}"
 blob_headers="${tmpdir}/sentry-install-headers-$$"
 blob_file="${tmpdir}/sentry-install-blob-$$"
+metadata_file="${tmpdir}/sentry-install-metadata-$$"
+init_binary="${tmpdir}/sentry-install-init-$$${suffix}"
 version=""
 
 # Clean up temporary files after setup or on failure.
-trap 'rm -f "$tmp_binary" "$blob_headers" "$blob_file"' EXIT
+trap 'rm -f "$tmp_binary" "$blob_headers" "$blob_file" "$metadata_file" "$init_binary"' EXIT
 
 if [[ "$requested_version" == "nightly" ]]; then
   # Nightly build: download from GHCR via OCI blob protocol.
@@ -273,19 +275,78 @@ if [[ "$requested_version" == "nightly" ]]; then
   esac
 
 else
-  # Stable build: resolve version and download from GitHub Releases.
-
-  if [[ -z "$requested_version" ]]; then
-    # Craft publishes this app's stable version to the release registry.
-    # Consume the full response: an early parser exit can cause SIGPIPE under pipefail.
-    if metadata=$(curl -fsSL --max-time 10 https://release-registry.services.sentry.io/apps/sentry/latest); then
-      version=$(printf '%s\n' "$metadata" \
-        | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')
+  # Stable build. Sentry's release registry is the source of truth for
+  # versions, download URLs, and checksums. GitHub is only a fallback for
+  # registry outages.
+  if [[ -n "$requested_version" ]]; then
+    version="${requested_version#cli@}"
+    version="${version#v}"
+    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+      die "Invalid release version: ${version}" "resolve-version"
     fi
-    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      echo -e "${MUTED}Could not resolve latest version from Sentry's release registry. Trying GitHub...${NC}" >&2
+    registry_path="$version"
+  else
+    registry_path="latest"
+  fi
+
+  asset="sentry-${os}-${arch}${suffix}"
+  gz_url=""
+  gz_sha=""
+  raw_url=""
+  raw_sha=""
+  registry_version=""
+  registry_status=$(curl -sS --max-time 10 -o "$metadata_file" -w '%{http_code}' \
+    "https://release-registry.services.sentry.io/apps/sentry/${registry_path}" 2>/dev/null) \
+    || registry_status="000"
+  if [[ "$registry_status" == "200" ]]; then
+    # Asset names, URLs, and checksums contain no whitespace, so stripping it
+    # lets the parser below treat compact and pretty-printed JSON the same.
+    metadata=$(tr -d ' \t\r\n' < "$metadata_file")
+    registry_version=$(printf '%s\n' "$metadata" \
+      | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
+    if [[ "$registry_path" == "latest" && ! "$registry_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      registry_version=""
+    elif [[ "$registry_path" != "latest" && "$registry_version" != "$version" ]]; then
+      registry_version=""
+    fi
+  fi
+
+  if [[ -n "$registry_version" ]]; then
+    version="$registry_version"
+    # Print the url and sha256 of one `files` entry, one per line.
+    registry_file() {
+      printf '%s\n' "$metadata" | awk -v key="\"$1\":{" '
+        {
+          i = index($0, key)
+          if (!i) exit
+          s = substr($0, i + length(key) - 1)
+          n = length(s)
+          depth = 0
+          for (j = 1; j <= n; j++) {
+            c = substr(s, j, 1)
+            if (c == "{") depth++
+            else if (c == "}" && --depth == 0) break
+          }
+          obj = substr(s, 1, j)
+          url = ""
+          sha = ""
+          if (match(obj, /"url":"https:\/\/[^"]*"/)) url = substr(obj, RSTART + 7, RLENGTH - 8)
+          if (match(obj, /"sha256-hex":"[0-9a-f]+"/)) sha = substr(obj, RSTART + 14, RLENGTH - 15)
+          print url
+          print sha
+        }'
+    }
+    { read -r gz_url || true; read -r gz_sha || true; } <<< "$(registry_file "${asset}.gz")"
+    { read -r raw_url || true; read -r raw_sha || true; } <<< "$(registry_file "$asset")"
+    if [[ -z "$gz_url" && -z "$raw_url" ]]; then
+      die "Sentry CLI ${version} has no ${asset} build" "resolve-asset"
+    fi
+  elif [[ "$registry_status" == "404" && "$registry_path" != "latest" ]]; then
+    die "Unknown Sentry CLI version: ${version}" "resolve-version"
+  else
+    echo -e "${MUTED}Could not resolve ${registry_path} from Sentry's release registry. Trying GitHub...${NC}" >&2
+    if [[ "$registry_path" == "latest" ]]; then
       release_tag=""
-      # GitHub may have many pages of MCP releases before its newest CLI release.
       for page in {1..20}; do
         if ! releases=$(curl -fsSL "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=${page}"); then
           die "Failed to list Toolkit releases" "gh-version"
@@ -337,69 +398,56 @@ else
         fi
       done
       if [[ -z "$release_tag" ]]; then
-        if [[ "$releases" != "[]" ]]; then
-          die "Toolkit release pagination exceeded 20 pages" "gh-version"
-        fi
-        # Before the first Toolkit CLI release, use the legacy version only
-        # after checking whether that exact Toolkit tag exists.
-        if ! legacy_release=$(curl -fsSL 'https://api.github.com/repos/getsentry/cli/releases/latest'); then
-          die "Failed to fetch latest stable version from Sentry's release registry and GitHub. Retry or install a specific version with --version <version>." "resolve-version"
-        fi
-        release_tag=$(printf '%s\n' "$legacy_release" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
-        if [[ ! "${release_tag#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          die "Failed to fetch latest stable version from Sentry's release registry and GitHub. Retry or install a specific version with --version <version>." "resolve-version"
-        fi
+        die "Failed to fetch latest stable version from Sentry's release registry and GitHub. Retry or install a specific version with --version <version>." "resolve-version"
       fi
       version="${release_tag#cli@}"
-      version="${version#v}"
     fi
-  else
-    version="$requested_version"
-    version="${version#cli@}"
-    version="${version#v}"
+    gz_url="https://github.com/getsentry/toolkit/releases/download/cli@${version}/${asset}.gz"
+    raw_url="${gz_url%.gz}"
+    echo -e "${MUTED}Warning: GitHub fallback downloads are not checksum-verified.${NC}" >&2
   fi
 
-  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    die "Invalid release version: ${version}" "gh-version"
-  fi
-
-  # Fall back to legacy only when GitHub confirms the exact Toolkit tag is absent.
-  if ! release_status=$(curl -sS -o /dev/null -w '%{http_code}' \
-    "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%40${version}"); then
-    die "Failed to check Toolkit release" "gh-version"
-  fi
-  case "$release_status" in
-    200) release_repo="getsentry/toolkit"; release_tag="cli@${version}" ;;
-    404)
-      if ! legacy_status=$(curl -sS -o /dev/null -w '%{http_code}' \
-        "https://api.github.com/repos/getsentry/cli/releases/tags/${version}"); then
-        die "Failed to check legacy CLI release" "gh-version"
-      fi
-      if [[ "$legacy_status" != "200" ]]; then
-        die "Legacy CLI release unavailable (HTTP ${legacy_status})" "gh-version"
-      fi
-      release_repo="getsentry/cli"
-      release_tag="$version"
-      ;;
-    *) die "Toolkit release check failed (HTTP ${release_status})" "gh-version" ;;
-  esac
-
-  filename="sentry-${os}-${arch}${suffix}"
-  url="https://github.com/${release_repo}/releases/download/${release_tag}/${filename}"
+  # Usage: verify_sha256 <file> <expected-hex>; a missing checksum is a no-op.
+  verify_sha256() {
+    [[ -z "$2" ]] && return 0
+    local actual
+    if command -v sha256sum >/dev/null 2>&1; then
+      actual=$(sha256sum "$1" | awk '{print $1}')
+    elif command -v shasum >/dev/null 2>&1; then
+      actual=$(shasum -a 256 "$1" | awk '{print $1}')
+    else
+      echo -e "${MUTED}Warning: sha256sum and shasum are unavailable; skipping checksum verification.${NC}" >&2
+      return 0
+    fi
+    if [[ "$actual" != "$2" ]]; then
+      die "Checksum mismatch for ${asset} ${version}: expected $2, got ${actual}" "checksum"
+    fi
+  }
 
   echo -e "${MUTED}Downloading sentry v${version}...${NC}"
 
-  # Try gzip-compressed download first (~60% smaller, ~37 MB vs ~99 MB).
-  # gunzip is POSIX and available on all Unix systems.
-  # Falls back to raw binary if the .gz asset doesn't exist yet.
-  if curl -fsSL "${url}.gz" 2>/dev/null | gunzip > "$tmp_binary" 2>/dev/null; then
-    : # Compressed download succeeded
+  # Prefer the gzip asset (~60% smaller, ~37 MB vs ~99 MB); fall back to the
+  # raw binary when it is missing.
+  if [[ -n "$gz_url" ]] && curl -fsSL -o "$blob_file" "$gz_url" 2>/dev/null; then
+    verify_sha256 "$blob_file" "$gz_sha"
+    gunzip -c "$blob_file" > "$tmp_binary"
+  elif [[ -n "$raw_url" ]]; then
+    curl -fsSL --progress-bar -o "$tmp_binary" "$raw_url" \
+      || die "Failed to download ${raw_url}" "download"
+    verify_sha256 "$tmp_binary" "$raw_sha"
   else
-    curl -fsSL --progress-bar "$url" -o "$tmp_binary"
+    die "Failed to download ${gz_url}" "download"
   fi
 fi
 
 chmod +x "$tmp_binary"
+
+# `sentry init` runs from a hard link to the downloaded binary: setup removes
+# the temp binary after installing it, and the link means the installer never
+# has to know which directory setup chose.
+if [[ "${SENTRY_INIT:-}" == "1" ]]; then
+  ln -f "$tmp_binary" "$init_binary" 2>/dev/null || cp "$tmp_binary" "$init_binary"
+fi
 
 # Delegate installation and configuration to the binary itself.
 # setup --install handles: directory selection, binary placement, PATH,
@@ -439,35 +487,8 @@ fi
 # Reconnect stdin to the real terminal so the wizard can prompt
 # interactively — when piped (curl | bash), stdin is the pipe.
 if [[ "${SENTRY_INIT:-}" == "1" ]]; then
-  # Only honor XDG_BIN_HOME when absolute, per the XDG spec (matches the Node
-  # determineInstallDir logic); a relative value is ignored. Accept both POSIX
-  # (/…) and Windows drive-letter (C:\… or C:/…) absolute paths so a Windows
-  # XDG_BIN_HOME isn't dropped while Node still installs there.
-  xdg_bin_home="${XDG_BIN_HOME:-}"
-  if [[ "$xdg_bin_home" != /* && ! "$xdg_bin_home" =~ ^[A-Za-z]:[\\/] ]]; then
-    xdg_bin_home=""
-  fi
-  if [[ -n "${SENTRY_INSTALL_DIR:-}" ]]; then
-    install_dir="$SENTRY_INSTALL_DIR"
-  elif [[ -n "$xdg_bin_home" ]]; then
-    install_dir="$xdg_bin_home"
-  else
-    # Match determineInstallDir(): prefer existing directories on PATH, then
-    # fall back to the XDG location even when it is not yet on PATH.
-    install_dir="$HOME/.local/bin"
-    for dir in "$HOME/.local/bin" "$HOME/bin"; do
-      if [[ -d "$dir" ]] && { [[ ":${PATH:-}:" == *":${dir}:"* ]] || [[ ":${PATH:-}:" == *":${dir}/:"* ]]; }; then
-        install_dir="$dir"
-        break
-      fi
-    done
-  fi
-  sentry_bin="${install_dir}/sentry${suffix}"
-  if [[ ! -x "$sentry_bin" ]]; then
-    die "Cannot find installed sentry binary" "init"
-  fi
   if [[ ! -e /dev/tty ]]; then
     die "SENTRY_INIT=1 requires an interactive terminal (/dev/tty not available)" "init"
   fi
-  "$sentry_bin" init </dev/tty
+  "$init_binary" init </dev/tty
 fi

@@ -58,3 +58,15 @@ test("editor and staged files use Oxc for root, MCP, and CLI", () => {
   assert.deepEqual(extensions.recommendations, ["oxc.oxc-vscode"]);
   assert.deepEqual(Object.keys(packageJson["lint-staged"]), ["*"]);
 });
+
+test("CI lint checks formatting for commits that skip the pre-commit hook", () => {
+  const { scripts } = readRootJson("package.json");
+  const workflow = readFileSync(
+    new URL("../.github/workflows/test.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.equal(scripts["lint:format"], "oxfmt --check");
+  assert.match(scripts.lint, /pnpm run lint:format/);
+  assert.match(workflow, /^\s*- run: pnpm run lint$/m);
+});

@@ -177,13 +177,13 @@ async function setCommitsDefault(
   } catch (error) {
     // Only fall back to local git when the org genuinely has no repository
     // integration. setCommitsAuto internally calls setCommitsWithRefs, which can
-    // return a server 400 for unrelated reasons (invalid refs, bad release
-    // state) — those must propagate, not be masked as "no integration" (which
+    // return a server 400 or 404 for unrelated reasons (invalid refs, missing
+    // release) — those must propagate, not be masked as "no integration" (which
     // would also poison the cache). Match on the exact client-side message since
     // the API exposes no stable error code for this case.
     if (
       error instanceof ApiError &&
-      error.status === 400 &&
+      error.status === 404 &&
       error.message === NO_REPO_INTEGRATIONS_MESSAGE
     ) {
       cacheNoRepoIntegration(org);

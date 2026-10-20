@@ -127,6 +127,7 @@ function createContext() {
 describe("whoamiCommand.func", () => {
   let isAuthenticatedSpy: ReturnType<typeof spyOn>;
   let getAuthTokenSpy: ReturnType<typeof spyOn>;
+  let storedAuthConfigSpy: ReturnType<typeof spyOn>;
   let getCurrentUserSpy: ReturnType<typeof spyOn>;
   let setUserInfoSpy: ReturnType<typeof spyOn>;
   let func: WhoamiFunc;
@@ -134,6 +135,10 @@ describe("whoamiCommand.func", () => {
   beforeEach(async () => {
     isAuthenticatedSpy = vi.spyOn(dbAuth, "isAuthenticated");
     getAuthTokenSpy = vi.spyOn(dbAuth, "getAuthToken");
+    // Default credential source: a stored OAuth login.
+    storedAuthConfigSpy = vi
+      .spyOn(dbAuth, "getAuthConfig")
+      .mockReturnValue({ token: OAUTH_TOKEN, source: "oauth" });
     getCurrentUserSpy = vi.spyOn(apiClient, "getCurrentUser");
     setUserInfoSpy = vi.spyOn(dbUser, "setUserInfo");
     // Default token type: OAuth (not org, not PAT). Tests that need a
@@ -145,6 +150,7 @@ describe("whoamiCommand.func", () => {
   afterEach(() => {
     isAuthenticatedSpy.mockRestore();
     getAuthTokenSpy.mockRestore();
+    storedAuthConfigSpy.mockRestore();
     getCurrentUserSpy.mockRestore();
     setUserInfoSpy.mockRestore();
   });
@@ -351,6 +357,21 @@ describe("whoamiCommand.func", () => {
         username: "janedoe",
         email: "jane@example.com",
       });
+    });
+
+    test("does not write an env token's user onto the stored account", async () => {
+      isAuthenticatedSpy.mockReturnValue(true);
+      storedAuthConfigSpy.mockReturnValue({
+        token: OAUTH_TOKEN,
+        source: "env:SENTRY_AUTH_TOKEN",
+      });
+      getCurrentUserSpy.mockResolvedValue(FULL_USER);
+
+      const { context, getOutput } = createContext();
+      await func.call(context, { json: false });
+
+      expect(setUserInfoSpy).not.toHaveBeenCalled();
+      expect(getOutput()).toContain("Jane Doe");
     });
 
     test("still displays identity when DB cache write fails", async () => {

@@ -48,6 +48,7 @@ import {
   type AssetCatalogExtraction,
   extractAssetCatalogImages,
 } from "./asset-catalog-extract.js";
+import { collectDsymEntries } from "./dsyms.js";
 import { DeterministicZipWriter } from "./zip-writer.js";
 
 const log = logger.withTag("build.normalize");
@@ -623,20 +624,24 @@ async function stageIpaPayload(
  * `ipa_to_xcarchive` + `normalize_directory`.
  *
  * The IPA is stream-unzipped to temp files and stream-wrapped, so neither the
- * IPA nor the wrapper is held in memory in full.
+ * IPA nor the wrapper is held in memory in full. Additional dSYM bundles are
+ * streamed under `archive.xcarchive/dSYMs/`; ZIP inputs are staged on disk.
  *
  * @param ipaPath - Path to the IPA file.
  * @param outPath - Destination path for the normalized wrapper ZIP.
  * @param plugin - Optional plugin identity for the metadata file.
+ * @param dsymPaths - Additional bundles, directories of bundles, or ZIPs.
  * @throws {Error} If the IPA does not contain exactly one `.app`.
  */
 export async function normalizeIpa(
   ipaPath: string,
   outPath: string,
   plugin: PipelinePlugin | null,
+  dsymPaths: readonly string[] = [],
 ): Promise<void> {
   const stageDir = await mkdtemp(join(tmpdir(), "sentry-ipa-"));
   try {
+    const dsyms = await collectDsymEntries(dsymPaths, stageDir);
     const staged = await stageIpaPayload(ipaPath, stageDir);
     const appName = extractIpaAppName(staged.map((e) => e.name));
 
@@ -656,6 +661,10 @@ export async function normalizeIpa(
         name: `${archiveDir}/Info.plist`,
         data: strToU8(xcarchiveInfoPlist(appName)),
       },
+      ...dsyms.map((entry) => ({
+        name: `${archiveDir}/dSYMs/${entry.relPath}`,
+        stagePath: entry.sourcePath,
+      })),
     ];
     for (const entry of staged) {
       if (!entry.name.startsWith(appPrefix)) {

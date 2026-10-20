@@ -375,6 +375,9 @@ export async function linkNativeIssue(
       0,
     );
   }
+  if (!result.response) {
+    throw new ApiError("Link operation returned no HTTP response", 0);
+  }
   const data = parsed.output;
   return {
     link: {

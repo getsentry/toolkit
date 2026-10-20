@@ -5,6 +5,7 @@
 import { rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { uuidv7 } from "uuidv7";
 
 const _require = createRequire(import.meta.url);
 
@@ -170,15 +171,19 @@ export function migrateFromJson(db: Database): void {
     if (token && oldConfig.auth) {
       // Direct write (not via setAuthToken) — safe only because migration
       // runs during DB bootstrap, before getIdentityFingerprint() memoizes.
+      const now = Date.now();
+      db.query("UPDATE accounts SET is_active = 0 WHERE is_active = 1").run();
       db.query(`
-        INSERT OR REPLACE INTO auth (id, token, refresh_token, expires_at, issued_at, updated_at)
-        VALUES (1, ?, ?, ?, ?, ?)
+        INSERT INTO accounts (account_id, token, refresh_token, expires_at, issued_at, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
       `).run(
+        uuidv7(),
         token,
         oldConfig.auth.refreshToken ?? null,
         oldConfig.auth.expiresAt ?? null,
         oldConfig.auth.issuedAt ?? null,
-        Date.now(),
+        now,
+        now,
       );
     }
 

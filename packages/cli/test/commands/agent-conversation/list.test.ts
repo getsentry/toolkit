@@ -448,7 +448,7 @@ describe("listCommand.func", () => {
     expect(output).toContain(
       `agent-conversation list ${ORG}/${PROJECT.slug} -c next`,
     );
-    expect(output).toContain('-q "conversation.errors:>0"');
+    expect(output).toContain("--query='conversation.errors:>0'");
     expect(output).toContain('--sort "-conversation.totalCost"');
     expect(resolveCursorSpy).toHaveBeenCalledWith(
       undefined,

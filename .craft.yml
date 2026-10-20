@@ -1,4 +1,4 @@
-minVersion: '2.33.0'
+minVersion: "2.33.0"
 workspaces:
   packages/cli:
     changelog:
@@ -16,23 +16,23 @@ workspaces:
       config:
         artifacts:
           Build:
-            - '/^sentry-.*$/'
-            - 'npm-package'
-            - 'vercel'
+            - "/^sentry-.*$/"
+            - "npm-package"
+            - "vercel"
     targets:
       - name: npm
         includeNames: '/^sentry-\d.*\.tgz$/'
       - name: github
-        tagPrefix: 'cli@'
+        tagPrefix: "cli@"
       - name: vercel
         projectId: prj_wVkOnIwI3eIQbGD1Gw7qS1MqFFIK
       - name: registry
         apps:
-          'app:sentry':
-            name: 'Sentry CLI'
-            packageUrl: 'https://www.npmjs.com/package/sentry'
-            mainDocsUrl: 'https://cli.sentry.dev'
-            urlTemplate: 'https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/{{file}}'
+          "app:sentry":
+            name: "Sentry CLI"
+            packageUrl: "https://www.npmjs.com/package/sentry"
+            mainDocsUrl: "https://cli.sentry.dev"
+            urlTemplate: "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/{{file}}"
             includeNames: '/^sentry-.*\.gz$/'
             checksums:
               - algorithm: sha256
@@ -96,5 +96,5 @@ workspaces:
       - name: github
         includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'
       - name: npm
-        id: '@sentry/mcp-server'
+        id: "@sentry/mcp-server"
         includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'

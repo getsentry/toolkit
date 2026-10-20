@@ -119,6 +119,11 @@ describe("resolveOAuthScopeString", () => {
     expect(OAUTH_SCOPES).toContain("team:admin");
   });
 
+  test("default scopes include org:integrations but not org:admin", () => {
+    expect(OAUTH_SCOPES).toContain("org:integrations");
+    expect(OAUTH_SCOPES).not.toContain("org:admin");
+  });
+
   test("default (no selection) returns the full OAUTH_SCOPES set", () => {
     expect(resolveOAuthScopeString()).toBe(OAUTH_SCOPES.join(" "));
     expect(resolveOAuthScopeString({})).toBe(OAUTH_SCOPES.join(" "));

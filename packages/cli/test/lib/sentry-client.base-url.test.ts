@@ -104,13 +104,16 @@ describe("API base URL for org-auth credentials", () => {
     process.env.SENTRY_AUTH_TOKEN = orgAuthToken;
     const db = getDatabase();
     db.query(
-      "INSERT OR REPLACE INTO auth (id, token, refresh_token, host, updated_at) VALUES (1, 'stored-token', 'refresh-token', NULL, ?)",
+      "INSERT INTO accounts (account_id, token, refresh_token, host, is_active, updated_at) VALUES ('legacy', 'stored-token', 'refresh-token', NULL, 1, ?)",
     ).run(Date.now());
 
     expect(getApiBaseUrl()).toBe(DEFAULT_SENTRY_URL);
     expect(
-      (db.query("SELECT host FROM auth WHERE id = 1").get() as { host: string })
-        .host,
+      (
+        db.query("SELECT host FROM accounts WHERE is_active = 1").get() as {
+          host: string;
+        }
+      ).host,
     ).toBe(DEFAULT_SENTRY_URL);
   });
 
@@ -131,13 +134,16 @@ describe("API base URL for org-auth credentials", () => {
     });
     const db = getDatabase();
     db.query(
-      "INSERT OR REPLACE INTO auth (id, token, refresh_token, host, updated_at) VALUES (1, 'stored-token', 'refresh-token', NULL, ?)",
+      "INSERT INTO accounts (account_id, token, refresh_token, host, is_active, updated_at) VALUES ('legacy', 'stored-token', 'refresh-token', NULL, 1, ?)",
     ).run(Date.now());
 
     expect(getApiBaseUrl()).toBe(DEFAULT_SENTRY_URL);
     expect(
-      (db.query("SELECT host FROM auth WHERE id = 1").get() as { host: string })
-        .host,
+      (
+        db.query("SELECT host FROM accounts WHERE is_active = 1").get() as {
+          host: string;
+        }
+      ).host,
     ).toBe(DEFAULT_SENTRY_URL);
   });
 

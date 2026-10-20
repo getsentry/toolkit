@@ -32,11 +32,13 @@ Examples:
 ## Access verification
 
 When you connect with a scoped path, we validate that:
+
 - The slugs are well-formed
 - The organization exists and you have access
 - If a project is included, the project exists and you have access
 
 If there’s a problem, you’ll receive a clear HTTP error when connecting:
+
 - 400: Invalid slug format
 - 401: Missing authentication
 - 403: You don’t have access to the specified org/project
@@ -66,6 +68,7 @@ For Sentry Cloud, your organization may be hosted in a regional cluster. When yo
 ## Reference
 
 Supported URL patterns:
+
 ```
 /mcp/{organizationSlug}/{projectSlug}
 /mcp/{organizationSlug}
@@ -77,5 +80,6 @@ Supported URL patterns:
 ```
 
 For implementation details and security notes, see:
+
 - `docs/specs/subpath-constraints.md`
 - `docs/architecture/overview.md`

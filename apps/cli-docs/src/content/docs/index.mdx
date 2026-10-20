@@ -23,6 +23,7 @@ import sectionBg3 from '../../assets/section-bg-3.png';
 <div class="hero-command">
 <InstallSelector options={[
   { label: "curl", command: "curl https://cli.sentry.dev/install -fsS | bash" },
+  { label: "powershell", command: "irm https://cli.sentry.dev/install.ps1 | iex" },
   { label: "brew", command: "brew install getsentry/tools/sentry" },
   { label: "npx", command: "npx sentry@latest" },
   { label: "npm", command: "npm install -g sentry" },

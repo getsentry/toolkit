@@ -17,6 +17,7 @@ import {
   clearInstallInfo,
   setInstallInfo,
 } from "../../../src/lib/db/install-info.js";
+import { addToFpath } from "../../../src/lib/shell.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 const getConfigDir = useTestConfigDir("uninstall-");
@@ -171,6 +172,17 @@ describe("removeSentryLinesFromConfig", () => {
   afterEach(async () => {
     const { rm } = await import("node:fs/promises");
     await rm(tempDir, { recursive: true, force: true });
+  });
+
+  test("removes repaired zsh completion setup without removing user configuration", async () => {
+    const { removeSentryLinesFromConfig } =
+      await import("../../../src/commands/cli/uninstall.js");
+    const configFile = join(tempDir, ".zshrc");
+    const original = "autoload -Uz compinit; compinit\n";
+    await writeFile(configFile, original);
+    await addToFpath(configFile, join(tempDir, "completions"));
+    expect(await removeSentryLinesFromConfig(configFile)).toBe(true);
+    expect(await readFile(configFile, "utf-8")).toBe(original);
   });
 
   test("removes single # sentry block", async () => {

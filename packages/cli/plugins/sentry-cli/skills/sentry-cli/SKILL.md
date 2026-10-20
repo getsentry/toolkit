@@ -337,7 +337,7 @@ When querying the Events API (directly or via `sentry api`), valid dataset value
 ### Common Mistakes
 
 - **Wrong issue ID format**: Use `PROJECT-123` (short ID), not the numeric ID `123456789`. The short ID includes the project prefix.
-- **Pre-authenticating unnecessarily**: Don't run `sentry auth login` before every command. The CLI detects missing/expired auth and prompts automatically. Only run `sentry auth login` if you need to switch accounts.
+- **Pre-authenticating unnecessarily**: Don't run `sentry auth login` before every command. The CLI detects missing/expired auth and prompts automatically. Only run `sentry auth login` to add an account. With several stored accounts, commands pick the one that knows the target organization or server automatically; use `sentry auth switch` only to change the default.
 - **Missing `--json` for piping**: Human-readable output includes formatting. Use `--json` when parsing output programmatically.
 - **Specifying org/project when not needed**: Auto-detection resolves org/project from `.sentryclirc` config files, DSNs, env vars, and directory names. Let it work first — only add `<org>/<project>` if the CLI says it can't detect the target or detects the wrong one.
 - **Manually discovering the project before running a command**: Don't list the orgs you belong to, then list every project in each, to match the local checkout to a project — the CLI already does exactly this resolution internally on each command. Skip the fan-out and run the command directly; correct the target afterwards only if the output shows the wrong org/project.
@@ -379,10 +379,12 @@ sentry auth logout
 
 Authenticate with Sentry
 
-- `sentry auth login` — Authenticate with Sentry
-- `sentry auth logout` — Log out of Sentry
+- `sentry auth list` — List stored accounts
+- `sentry auth login [<email>]` — Authenticate with Sentry
+- `sentry auth logout <account...>` — Log out of Sentry
 - `sentry auth refresh` — Refresh your OAuth access token
 - `sentry auth status` — View authentication status
+- `sentry auth switch [<account>]` — Switch the active account
 - `sentry auth token` — Print the stored authentication token
 - `sentry auth whoami` — Show the currently authenticated identity
 
@@ -624,6 +626,15 @@ Work with Sentry teams
 - `sentry team list [<org/project>]` — List teams
 
 → Full flags and examples: `references/team.md`
+
+### Integration
+
+Work with Sentry integrations
+
+- `sentry integration list [<org/project>]` — List installed integrations
+- `sentry integration delete <org/integration-id>` — Remove an installed integration
+
+→ Full flags and examples: `references/integration.md`
 
 ### Explore
 

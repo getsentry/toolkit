@@ -160,6 +160,8 @@ export const ORG_ONLY_COMMANDS = new Set([
   "release set-commits",
   "team list",
   "repo list",
+  "integration list",
+  "integration delete",
   "monitor list",
   "trial list",
   "trial start",

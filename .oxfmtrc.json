@@ -4,6 +4,10 @@
   "tabWidth": 2,
   "sortPackageJson": false,
   "ignorePatterns": [
+    ".agents/skills/openspec-*/**",
+    ".claude/commands/opsx/**",
+    ".codex/skills/openspec-*/**",
+    ".cursor/commands/opsx-*.md",
     "apps/cli-docs/**",
     "packages/cli/plugins/**",
     "packages/cli/README.md",
@@ -12,6 +16,8 @@
     "packages/cli/AGENTS.md",
     "packages/mcp-server-mocks/src/fixtures/**",
     "**/worker-configuration.d.ts",
-    "**/tsconfig*.json"
+    "**/tsconfig*.json",
+    "packages/toolkit-core/src/generated/**",
+    "packages/toolkit-core/test/fixtures/**"
   ]
 }

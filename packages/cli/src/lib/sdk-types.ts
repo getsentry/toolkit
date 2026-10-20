@@ -12,8 +12,9 @@ import { redactCredentialText } from "./credential-redaction.js";
 /** Options for programmatic CLI invocation. */
 export type SentryOptions = {
   /**
-   * Auth token override. When omitted, falls back to `SENTRY_AUTH_TOKEN`
-   * or `SENTRY_TOKEN` environment variables, then stored credentials.
+   * Auth token override. When omitted, falls back to stored credentials from
+   * `sentry auth login`, then the `SENTRY_AUTH_TOKEN` or `SENTRY_TOKEN`
+   * environment variables (set `SENTRY_FORCE_ENV_TOKEN=1` to prefer them).
    */
   token?: string;
 

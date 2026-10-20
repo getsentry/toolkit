@@ -86,6 +86,17 @@ describe("handleFileError", () => {
       expect(captureException).not.toHaveBeenCalled();
     });
 
+    test("ENOTCONN — scandir on a disconnected network or FUSE mount", () => {
+      handleFileError(
+        errnoError("ENOTCONN", "ENOTCONN: socket is not connected, scandir"),
+        {
+          operation: "scan.walk.readdir",
+          path: "/mnt/remote",
+        },
+      );
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
     test("UNKNOWN code — non-POSIX error with UNKNOWN code", () => {
       handleFileError(errnoError("UNKNOWN", "Unknown system error -11"), {
         operation: "scandir",

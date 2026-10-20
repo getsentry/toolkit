@@ -14,7 +14,11 @@ import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
 import { logger } from "../logger.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { recordCacheHit } from "../telemetry.js";
-import { getCredentialContext, getIdentityFingerprint } from "./auth.js";
+import {
+  getAccountIdForIdentity,
+  getCredentialContext,
+  getIdentityFingerprint,
+} from "./auth.js";
 import { getDatabase } from "./index.js";
 import { runUpsert } from "./utils.js";
 
@@ -220,6 +224,7 @@ type OrgRegionRow = {
   org_role: string | null;
   region_url: string;
   credential_identity: string;
+  account_id: string | null;
   source_origin: string;
   response_origin: string;
   updated_at: number;
@@ -326,6 +331,7 @@ export function setOrgRegion(
       org_slug: orgSlug,
       region_url: region,
       credential_identity: identity,
+      account_id: getAccountIdForIdentity(identity) ?? null,
       source_origin: source,
       response_origin: response,
       updated_at: now,
@@ -369,6 +375,14 @@ export function setOrgRegions(entries: OrgRegionEntry[]): void {
   });
   const db = getDatabase();
   const now = Date.now();
+  // Record which stored account saw each org, so later commands targeting
+  // it can pick that account automatically (see `selectAccountForOrg`).
+  const accountIds = new Map<string, string | null>();
+  for (const { identity } of normalized) {
+    if (!accountIds.has(identity)) {
+      accountIds.set(identity, getAccountIdForIdentity(identity) ?? null);
+    }
+  }
 
   db.transaction(() => {
     for (const item of normalized) {
@@ -377,6 +391,7 @@ export function setOrgRegions(entries: OrgRegionEntry[]): void {
         org_slug: entry.slug,
         region_url: item.region,
         credential_identity: item.identity,
+        account_id: accountIds.get(item.identity) ?? null,
         source_origin: item.source,
         response_origin: item.response,
         updated_at: now,
@@ -465,7 +480,7 @@ export type CachedOrg = {
  * fresh API fetch. 7 days balances offline usability with picking up
  * new org memberships.
  */
-const ORG_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const ORG_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Get all cached organizations with id, slug, and name.

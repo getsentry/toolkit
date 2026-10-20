@@ -123,7 +123,7 @@ describe("sentry auth whoami", () => {
     // Model a pre-validation credential; the setter now rejects this input.
     const db = new Database(join(ctx.configDir, "cli.db"));
     try {
-      db.query("UPDATE auth SET token = ? WHERE id = 1").run(token);
+      db.query("UPDATE accounts SET token = ? WHERE is_active = 1").run(token);
     } finally {
       db.close();
     }
