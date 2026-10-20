@@ -20,8 +20,8 @@ import {
   getApiBaseUrl,
   getResponseCredentialIdentity,
   getResponseRequestOrigin,
-  getSdkConfig,
 } from "./sentry-client.js";
+import { getSdkClientConfig } from "./sentry-sdk-client.js";
 import {
   isSentrySaasUrl,
   normalizeHttpOrigin,
@@ -139,7 +139,7 @@ async function resolveOrgRegionUncached(
   }
 
   // 2. Fetch org details via SDK to discover the region URL
-  const config = getSdkConfig(baseUrl, {
+  const config = getSdkClientConfig(baseUrl, {
     credential,
     validatedRedirects: true,
   });
