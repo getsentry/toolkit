@@ -479,7 +479,11 @@ async function resolveProjectSearch(
 
   // Fall back to findProjectsBySlug for precise error messages
   //    and retry the issue lookup (handles transient failures).
-  return resolveProjectSearchFallback(projectSlug, suffix, commandContext);
+  return await resolveProjectSearchFallback(
+    projectSlug,
+    suffix,
+    commandContext,
+  );
 }
 
 /**

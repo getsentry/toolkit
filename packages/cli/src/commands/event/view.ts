@@ -747,7 +747,7 @@ async function fetchLatestEventData(
   project?: string,
 ): Promise<SingleEventViewData> {
   const event = await getLatestEvent(org, issueId);
-  return buildSingleEventViewData(org, event, spans, project);
+  return await buildSingleEventViewData(org, event, spans, project);
 }
 
 /**
@@ -902,7 +902,7 @@ async function resolveIssueShortIdEvent(
   spans: number,
 ): Promise<SingleEventViewData> {
   const issue = await getIssueByShortId(org, issueShortId);
-  return fetchLatestEventData(org, issue.id, spans, issue.project?.slug);
+  return await fetchLatestEventData(org, issue.id, spans, issue.project?.slug);
 }
 
 /** Result from an issue-based shortcut (URL or short ID) */

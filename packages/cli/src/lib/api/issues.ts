@@ -614,10 +614,13 @@ export async function updateIssueStatus(
   }
 
   // Legacy global endpoint — works without org but not region-aware.
-  return apiRequest<SentryIssue>(`/issues/${encodeURIComponent(issueId)}/`, {
-    method: "PUT",
-    body,
-  });
+  return await apiRequest<SentryIssue>(
+    `/issues/${encodeURIComponent(issueId)}/`,
+    {
+      method: "PUT",
+      body,
+    },
+  );
 }
 
 /** Result of a successful issue-merge operation. */

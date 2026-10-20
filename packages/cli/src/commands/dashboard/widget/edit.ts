@@ -357,7 +357,7 @@ export const editCommand = buildCommand({
     // GET current dashboard → find widget → merge changes → PUT
     const current = await getDashboard(orgSlug, dashboardId).catch(
       async (error: unknown) =>
-        enrichDashboardError(error, {
+        await enrichDashboardError(error, {
           orgSlug,
           dashboardId,
           operation: "view",
@@ -394,12 +394,13 @@ export const editCommand = buildCommand({
       orgSlug,
       dashboardId,
       updateBody,
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
-        orgSlug,
-        dashboardId,
-        operation: "update",
-      }),
+    ).catch(
+      async (error: unknown) =>
+        await enrichDashboardError(error, {
+          orgSlug,
+          dashboardId,
+          operation: "update",
+        }),
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 

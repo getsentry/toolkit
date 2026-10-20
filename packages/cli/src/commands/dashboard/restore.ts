@@ -109,12 +109,13 @@ export const restoreCommand = buildCommand({
     const dashboard = await withProgress(
       { message: `Restoring revision ${flags.revision}...`, json: flags.json },
       () => restoreDashboardRevision(orgSlug, dashboardId, flags.revision),
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
-        orgSlug,
-        dashboardId,
-        operation: "update",
-      }),
+    ).catch(
+      async (error: unknown) =>
+        await enrichDashboardError(error, {
+          orgSlug,
+          dashboardId,
+          operation: "update",
+        }),
     );
 
     const outputData: RestoreResult = {

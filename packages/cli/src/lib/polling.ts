@@ -227,7 +227,7 @@ export async function withProgress<T>(
     (options.interactiveOnly && !process.stdout.isTTY)
   ) {
     // JSON mode or non-TTY: skip the spinner entirely, pass a no-op setMessage
-    return fn(() => {
+    return await fn(() => {
       /* spinner suppressed */
     });
   }

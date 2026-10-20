@@ -1036,8 +1036,9 @@ async function executeAttempt({
       : input instanceof Request
         ? input.signal
         : undefined;
+  let response: Response;
   try {
-    const response = validatedRedirects
+    response = validatedRedirects
       ? await fetchFollowingValidatedRedirects({
           input,
           init,
@@ -1054,10 +1055,12 @@ async function executeAttempt({
           timeoutMs,
           responseBodyMode,
         });
-    return handleResponse(response, headers, credential, isLastAttempt);
   } catch (error) {
     return handleFetchError(error, signal, isLastAttempt);
   }
+  // Outside the try: response handling errors must not be treated as fetch
+  // failures (and retried).
+  return await handleResponse(response, headers, credential, isLastAttempt);
 }
 
 /** Singleton authenticated fetch instance - reused across all requests */

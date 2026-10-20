@@ -70,3 +70,16 @@ test("CI lint checks formatting for commits that skip the pre-commit hook", () =
   assert.match(scripts.lint, /pnpm run lint:format/);
   assert.match(workflow, /^\s*- run: pnpm run lint$/m);
 });
+
+test("CLI sources require awaited returned promises via type-aware Oxlint", () => {
+  const config = readRootJson(".oxlintrc.json");
+  const packageJson = readRootJson("package.json");
+  const cli = config.overrides.find(
+    ({ files }) =>
+      files.length === 1 && files[0] === "packages/cli/src/**/*.{ts,tsx}",
+  );
+
+  assert.equal(config.options.typeAware, true);
+  assert.ok(packageJson.dependencies["oxlint-tsgolint"]);
+  assert.deepEqual(cli.rules["typescript/return-await"], ["error", "always"]);
+});

@@ -187,7 +187,7 @@ export async function queryEvents(
 
   // Fast path: single-page fetch when limit fits in one API page
   if (limit <= API_MAX_PER_PAGE) {
-    return fetchEventsPage(regionUrl, orgSlug, options, perPage);
+    return await fetchEventsPage(regionUrl, orgSlug, options, perPage);
   }
 
   // Multi-page: accumulate rows across pages up to the requested limit

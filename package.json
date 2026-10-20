@@ -57,6 +57,7 @@
     "lint-staged": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
     "simple-git-hooks": "catalog:",
     "tsdown": "catalog:",
     "tsx": "catalog:",

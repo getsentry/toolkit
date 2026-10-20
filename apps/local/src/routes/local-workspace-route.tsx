@@ -14,7 +14,7 @@ export function LocalWorkspaceRoute({ children }: { children: ReactNode }) {
   const workspaceQuery = useWorkspaceQueryState();
 
   const navigateToWorkspace = (view: WorkspaceView) => {
-    navigate({ pathname: workspacePath(view), search: location.search });
+    void navigate({ pathname: workspacePath(view), search: location.search });
   };
 
   const navigateToCommandSelection = (
@@ -32,7 +32,7 @@ export function LocalWorkspaceRoute({ children }: { children: ReactNode }) {
       search.set("trace", selection.trace);
     }
     const query = search.toString();
-    navigate({
+    void navigate({
       pathname: workspacePath(view),
       search: query ? `?${query}` : "",
     });

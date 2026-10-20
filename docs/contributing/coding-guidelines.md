@@ -30,6 +30,9 @@ product-specific implementation patterns.
 - Root, MCP, and CLI files use Oxlint and Oxfmt. The CLI-specific rules live in
   `packages/cli/lint-rules/cli-oxlint-plugin.js`, with inline Oxlint suppressions
   for intentional exceptions.
+- Oxlint runs type-aware (`options.typeAware` in `.oxlintrc.json`, backed by
+  `oxlint-tsgolint`). Type-aware rules from the correctness category that
+  still have a backlog are turned off at the root; enable them once fixed.
 - VS Code uses the Oxc extension for formatting and linting. Run
   `pnpm exec oxfmt --write <file>` to format a file.
 

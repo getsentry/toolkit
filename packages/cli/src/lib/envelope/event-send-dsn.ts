@@ -78,7 +78,7 @@ export async function resolveEventSendDsn(
     return target.dsn.trim();
   }
   if (target?.kind === "project") {
-    return dsnFromProjectTarget(target.target, cwd);
+    return await dsnFromProjectTarget(target.target, cwd);
   }
   const scanned = await resolveIngestDsn({}, cwd);
   if (scanned) {

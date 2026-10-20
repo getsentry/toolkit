@@ -190,12 +190,13 @@ export const revisionsCommand = buildCommand({
           cursor = nc;
         }
       },
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
-        orgSlug,
-        dashboardId,
-        operation: "view",
-      }),
+    ).catch(
+      async (error: unknown) =>
+        await enrichDashboardError(error, {
+          orgSlug,
+          dashboardId,
+          operation: "view",
+        }),
     );
 
     const trimmed = results.slice(0, flags.limit);

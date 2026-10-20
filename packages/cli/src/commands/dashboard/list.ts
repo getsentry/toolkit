@@ -461,8 +461,9 @@ export const listCommand = buildListCommand("dashboard", {
           afterId,
           glob,
         }),
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "list" }),
+    ).catch(
+      async (error: unknown) =>
+        await enrichDashboardError(error, { orgSlug, operation: "list" }),
     );
 
     // Advance the pagination cursor stack

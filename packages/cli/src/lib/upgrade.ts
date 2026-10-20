@@ -833,7 +833,7 @@ async function standaloneVersionExists(
   }
   if (source) {
     if (isNightlyVersion(version)) {
-      return nightlyVersionExists(version, source);
+      return await nightlyVersionExists(version, source);
     }
     const response = await fetchWithUpgradeError(
       getGitHubReleaseByTagUrl(version, source),
@@ -874,7 +874,7 @@ export async function versionExists(
   source?: UpgradeSource,
 ): Promise<boolean> {
   if (isNightlyVersion(version) || method === "curl" || method === "brew") {
-    return standaloneVersionExists(version, source);
+    return await standaloneVersionExists(version, source);
   }
 
   validateStableVersion(version, "Requested package version");
@@ -1477,7 +1477,7 @@ export async function executeUpgrade(
 ): Promise<DownloadResult | null> {
   switch (method) {
     case "curl":
-      return downloadBinaryToTemp(
+      return await downloadBinaryToTemp(
         version,
         downloadTag,
         offline,

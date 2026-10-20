@@ -167,7 +167,7 @@ export function createLocalControlPlane({
       if (!isLoopbackBrowserRequest(c.req.raw)) {
         return c.body(null, 403);
       }
-      return loopbackCors(c, next);
+      return await loopbackCors(c, next);
     },
   );
   const hostedCors = cors({
@@ -185,7 +185,7 @@ export function createLocalControlPlane({
       return c.body(null, 403);
     }
     if (!isHostedUiOrigin(origin)) {
-      return loopbackCors(c, next);
+      return await loopbackCors(c, next);
     }
     if (c.req.method === "OPTIONS") {
       if (c.req.header("access-control-request-method") !== "GET") {
@@ -206,7 +206,7 @@ export function createLocalControlPlane({
     if (c.req.method !== "GET") {
       return c.body(null, 403);
     }
-    return hostedCors(c, next);
+    return await hostedCors(c, next);
   });
   app.use(
     `${CONTROL_PLANE_PREFIX}/sessions/:id/ui/*`,
@@ -424,7 +424,7 @@ export function createLocalControlPlane({
     ) {
       return c.body(null, 401);
     }
-    if (c.req.param("action") === "retention") return updateRetention(c);
+    if (c.req.param("action") === "retention") return await updateRetention(c);
     if (c.req.param("action") === "reset") {
       sessionStore.getBuffer(c.req.param("id")).clear();
       return c.body(null, 204);

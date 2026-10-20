@@ -145,7 +145,7 @@ export async function listOrganizations(): Promise<SentryOrganization[]> {
   }
 
   // Cache miss — fetch from API (also populates cache for next time)
-  return listOrganizationsUncached(credential);
+  return await listOrganizationsUncached(credential);
 }
 
 type OrganizationPageContext = {

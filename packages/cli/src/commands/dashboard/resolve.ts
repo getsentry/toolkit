@@ -334,8 +334,9 @@ export async function resolveDashboardId(
     const { data, nextCursor } = await listDashboardsPaginated(orgSlug, {
       perPage: API_MAX_PER_PAGE,
       cursor,
-    }).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "list" }),
+    }).catch(
+      async (error: unknown) =>
+        await enrichDashboardError(error, { orgSlug, operation: "list" }),
     );
     // Match by ID/slug first (e.g. "default-overview"), then fall back to title
     const match =

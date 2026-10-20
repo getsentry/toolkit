@@ -258,12 +258,13 @@ export const viewCommand = buildCommand({
     const dashboard = await withProgress(
       { message: "Fetching dashboard...", json: flags.json },
       () => getDashboard(orgSlug, dashboardId),
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
-        orgSlug,
-        dashboardId,
-        operation: "view",
-      }),
+    ).catch(
+      async (error: unknown) =>
+        await enrichDashboardError(error, {
+          orgSlug,
+          dashboardId,
+          operation: "view",
+        }),
     );
 
     const regionUrl = await resolveOrgRegion(orgSlug);
