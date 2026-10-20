@@ -8,6 +8,7 @@
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   mdKvTable,
@@ -97,7 +98,6 @@ export const deployCommand = buildCommand({
   output: {
     human: formatDeployCreated,
   },
-  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",
@@ -105,7 +105,7 @@ export const deployCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version",
-          parse: String,
+          parse: parseOrgTarget,
         },
         {
           placeholder: "environment",

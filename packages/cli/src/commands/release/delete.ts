@@ -9,6 +9,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { deleteRelease, getRelease } from "../../lib/api-client.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ApiError } from "../../lib/errors.js";
 import { renderMarkdown, safeCodeSpan } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -92,7 +93,6 @@ export const deleteCommand = buildDeleteCommand({
   output: {
     human: formatReleaseDeleted,
   },
-  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",
@@ -100,7 +100,7 @@ export const deleteCommand = buildDeleteCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to delete",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },

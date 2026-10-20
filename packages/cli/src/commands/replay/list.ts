@@ -11,6 +11,7 @@ import {
   type ReplaySortValue,
 } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -273,7 +274,6 @@ export const listCommand = buildListCommand("replay", {
     jsonTransform: jsonTransformReplayList,
     schema: ReplayListItemOutputSchema,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "tuple",
@@ -281,7 +281,7 @@ export const listCommand = buildListCommand("replay", {
         {
           placeholder: "org/project",
           brief: "<org>/, <org>/<project>, or <project> (search)",
-          parse: String,
+          parse: parseOrgProjectTarget,
           optional: true,
         },
       ],

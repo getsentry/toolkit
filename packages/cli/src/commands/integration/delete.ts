@@ -9,6 +9,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { deleteIntegration, getIntegration } from "../../lib/api-client.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ApiError, ContextError, ValidationError } from "../../lib/errors.js";
 import { renderMarkdown, safeCodeSpan } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -143,7 +144,6 @@ export const deleteCommand = buildDeleteCommand({
   output: {
     human: formatIntegrationDeleted,
   },
-  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",
@@ -151,7 +151,7 @@ export const deleteCommand = buildDeleteCommand({
         {
           placeholder: "org/integration-id",
           brief: "[<org>/]<integration-id> - Integration to remove",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },

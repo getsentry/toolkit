@@ -28,6 +28,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ApiError,
   AuthError,
@@ -1183,7 +1184,6 @@ export const viewCommand = buildCommand({
     jsonTransform: jsonTransformEventView,
     schema: EventViewOutputSchema,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",
@@ -1191,7 +1191,7 @@ export const viewCommand = buildCommand({
         placeholder: "org/project/event-id",
         brief:
           "[<org>/<project>] <event-id> [<event-id>...] - Target (optional) and one or more event IDs",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

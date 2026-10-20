@@ -239,14 +239,15 @@ const parsed = parseOrgProjectArg(targetArg);
 
 Reference: `span/list.ts`, `trace/view.ts`, `event/view.ts`
 
-**Shell completion:** Commands whose target positional is org- or project-scoped
-declare `completionTarget` in `buildCommand()` (also accepted by
-`buildListCommand` and `buildDeleteCommand`): `"org/project"` completes
-`org/`, `org/project`, and project aliases; `"org"` completes org slugs only.
+**Shell completion:** Target positionals that take an org or project use a
+completion-aware parser from `src/lib/completion-target.ts` instead of
+`String`: `parseOrgProjectTarget` completes `org/`, `org/project`, and project
+aliases; `parseOrgTarget` completes org slugs only. `LIST_TARGET_POSITIONAL`
+and `LIST_ORG_TARGET_POSITIONAL` already use them.
 `pnpm run generate:completions` collects these into the gitignored
 `src/generated/completion-targets.ts` that the `__complete` fast path reads.
-`buildOrgListCommand` sets `"org"` automatically. `project create` keeps its
-dedicated `name:platform` completer in `src/lib/complete.ts`.
+`project create` keeps its dedicated `name:platform` completer in
+`src/lib/complete.ts`.
 
 ### Multiple Values in Arguments
 

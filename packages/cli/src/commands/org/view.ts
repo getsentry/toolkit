@@ -8,6 +8,7 @@ import type { SentryContext } from "../../context.js";
 import { getOrganization } from "../../lib/api-client.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { formatOrgDetails } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -37,7 +38,6 @@ export const viewCommand = buildCommand({
       "  3. SENTRY_DSN environment variable or source code detection",
   },
   output: { human: formatOrgDetails },
-  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",
@@ -45,7 +45,7 @@ export const viewCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (optional if auto-detected)",
-          parse: String,
+          parse: parseOrgTarget,
           optional: true,
         },
       ],

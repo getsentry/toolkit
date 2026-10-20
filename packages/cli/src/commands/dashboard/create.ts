@@ -11,6 +11,7 @@ import {
   parseOrgProjectArg,
 } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { formatDashboardCreated } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -152,14 +153,13 @@ export const createCommand = buildCommand({
   output: {
     human: formatDashboardCreated,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",
       parameter: {
         placeholder: "org/project/title",
         brief: "[<org/project>] <title>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {},

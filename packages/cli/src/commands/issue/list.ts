@@ -1728,7 +1728,6 @@ export const listCommand = buildListCommand("issue", {
       "Alias: `sentry issues` → `sentry issue list`",
   },
   output: issueListOutput,
-  completionTarget: "org/project",
   parameters: {
     positional: LIST_TARGET_POSITIONAL,
     flags: {

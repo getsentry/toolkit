@@ -14,6 +14,7 @@ import {
 } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -386,14 +387,13 @@ export const listCommand = buildListCommand("dashboard", {
     human: formatDashboardListHuman,
     jsonTransform: jsonTransformDashboardList,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",
       parameter: {
         placeholder: "org/title-filter",
         brief: "[<org/project>] [<name-glob>]",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

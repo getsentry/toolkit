@@ -9,6 +9,7 @@
 import type { SentryContext } from "../../context.js";
 import { getCustomerTrialInfo } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -213,7 +214,6 @@ export const listCommand = buildCommand({
     jsonExclude: ["displayName"],
     schema: ProductTrialSchema,
   },
-  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple" as const,
@@ -221,7 +221,7 @@ export const listCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (auto-detected if omitted)",
-          parse: String,
+          parse: parseOrgTarget,
           optional: true as const,
         },
       ],

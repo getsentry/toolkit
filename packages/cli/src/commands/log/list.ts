@@ -19,6 +19,7 @@ import {
   parseLogSort,
   validateLimit,
 } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   AuthError,
   stringifyUnknown,
@@ -725,7 +726,6 @@ export const listCommand = buildListCommand(
       jsonTransform: jsonTransformLogOutput,
       schema: SentryLogSchema,
     },
-    completionTarget: "org/project",
     parameters: {
       positional: {
         kind: "array",
@@ -733,7 +733,7 @@ export const listCommand = buildListCommand(
           placeholder: "org/project-or-trace-id",
           brief:
             "[<org>/[<project>/]]<trace-id>, <org>/<project>, or <project>",
-          parse: String,
+          parse: parseOrgProjectTarget,
         },
       },
       flags: {

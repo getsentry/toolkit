@@ -38,7 +38,6 @@ export const unlinkCommand = buildDeleteCommand({
       "  sentry issue unlink FRONT-123 https://linear.app/example/issue/APP-42/fix-error --dry-run",
   },
   output: { human: formatIssueLinkResult },
-  completionTarget: "org/project",
   parameters: {
     positional: EXTERNAL_ISSUE_POSITIONALS,
     flags: EXTERNAL_ISSUE_FLAGS,

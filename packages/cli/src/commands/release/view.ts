@@ -8,6 +8,7 @@
 import type { SentryContext } from "../../context.js";
 import { getRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownCell,
@@ -171,7 +172,6 @@ export const viewCommand = buildCommand({
   output: {
     human: formatReleaseDetails,
   },
-  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",
@@ -179,7 +179,7 @@ export const viewCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to view",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },

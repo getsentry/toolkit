@@ -260,7 +260,6 @@ export const viewCommand = buildCommand({
     jsonTransform: jsonTransformIssueView,
     schema: IssueViewOutputSchema,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: issueIdsPositional,
     flags: {

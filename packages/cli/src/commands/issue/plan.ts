@@ -229,7 +229,6 @@ export const planCommand = buildCommand({
   output: {
     human: formatPlanOutput,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: issueIdPositional,
     flags: {

@@ -20,6 +20,7 @@ import {
 import { detectSwappedTrialArgs } from "../../lib/arg-parsing.js";
 import { openBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { success } from "../../lib/formatters/colors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -90,7 +91,6 @@ export const startCommand = buildCommand({
       "  sentry trial start --json seer",
   },
   output: { human: formatStartResult },
-  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple" as const,
@@ -103,7 +103,7 @@ export const startCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (auto-detected if omitted)",
-          parse: String,
+          parse: parseOrgTarget,
           optional: true as const,
         },
       ],

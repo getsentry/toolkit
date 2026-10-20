@@ -12,6 +12,7 @@ import {
   setCommitsWithRefs,
 } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { getDatabase } from "../../lib/db/index.js";
 import { clearMetadata, getMetadata, setMetadata } from "../../lib/db/utils.js";
 import {
@@ -373,7 +374,6 @@ export const setCommitsCommand = buildCommand({
   output: {
     human: formatCommitsSet,
   },
-  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",
@@ -381,7 +381,7 @@ export const setCommitsCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },

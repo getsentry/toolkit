@@ -115,7 +115,6 @@ export const explainCommand = buildCommand({
     human: formatIssueExplain,
     jsonTransform: jsonTransformIssueExplain,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: issueIdsPositional,
     flags: {

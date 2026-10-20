@@ -23,6 +23,7 @@
 import type { SentryContext } from "../../context.js";
 import { type MergeIssuesResult, mergeIssues } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ApiError,
   CliError,
@@ -271,14 +272,13 @@ export const mergeCommand = buildCommand({
     human: formatMerged,
     jsonTransform,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",
       parameter: {
         placeholder: "issue",
         brief: "Issue IDs to merge (2 or more required)",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

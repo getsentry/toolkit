@@ -11,6 +11,7 @@ import {
   listFeedback,
 } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -151,7 +152,6 @@ export const listCommand = buildListCommand("feedback", {
     jsonTransform: jsonTransformFeedbackList,
     schema: SentryFeedbackSchema,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "tuple",
@@ -159,7 +159,7 @@ export const listCommand = buildListCommand("feedback", {
         {
           placeholder: "org/project",
           brief: "<org>/, <org>/<project>, or <project> (search)",
-          parse: String,
+          parse: parseOrgProjectTarget,
           optional: true,
         },
       ],

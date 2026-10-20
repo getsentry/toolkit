@@ -17,6 +17,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { AuthError, ContextError, withAuthGuard } from "../../lib/errors.js";
 import { divider, formatProjectDetails } from "../../lib/formatters/index.js";
 import { filterFields } from "../../lib/formatters/json.js";
@@ -272,7 +273,6 @@ export const viewCommand = buildCommand({
     human: formatProjectViewHuman,
     jsonTransform: jsonTransformProjectView,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "tuple",
@@ -280,7 +280,7 @@ export const viewCommand = buildCommand({
         {
           placeholder: "org/project",
           brief: "<org>/<project>, <project> (search), or omit for auto-detect",
-          parse: String,
+          parse: parseOrgProjectTarget,
           optional: true,
         },
       ],

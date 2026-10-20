@@ -10,6 +10,7 @@ import { getDashboard, queryAllWidgets } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import type { DashboardViewData } from "../../lib/formatters/dashboard.js";
 import { createDashboardViewRenderer } from "../../lib/formatters/dashboard.js";
 import { ClearScreen, CommandOutput } from "../../lib/formatters/output.js";
@@ -185,14 +186,13 @@ export const viewCommand = buildCommand({
     human: createDashboardViewRenderer,
     jsonExclude: ["rendererPreference", "graphicsCap"],
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",
       parameter: {
         placeholder: "org/project/dashboard",
         brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

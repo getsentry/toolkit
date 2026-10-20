@@ -114,7 +114,6 @@ export const viewCommand = buildCommand({
     jsonTransform: jsonTransformFeedbackView,
     schema: FeedbackViewOutputSchema,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: feedbackIdPositional,
     flags: {

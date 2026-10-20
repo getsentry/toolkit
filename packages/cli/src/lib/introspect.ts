@@ -10,7 +10,11 @@
  * for introspection and documentation generation.
  */
 
-import type { CommandExample, CompletionTarget } from "./command.js";
+import type { CommandExample } from "./command.js";
+import {
+  type CompletionTarget,
+  getCompletionTarget,
+} from "./completion-target.js";
 import {
   extractSchemaFields,
   type SchemaFieldInfo,
@@ -61,8 +65,6 @@ export type Command = {
    */
   __primaryUsage?: string;
   __examples?: readonly CommandExample[];
-  /** Shell completion target kind declared via `buildCommand({ completionTarget })`. */
-  __completionTarget?: CompletionTarget;
 };
 
 /** Positional parameter definitions — either fixed-length tuple or variadic array */
@@ -75,6 +77,8 @@ export type PositionalParam = {
   brief?: string;
   placeholder?: string;
   optional?: boolean;
+  /** Stricli parser; completion-aware parsers carry a {@link CompletionTarget}. */
+  parse?: unknown;
 };
 
 /** Extracted metadata for a single positional argument */
@@ -400,7 +404,45 @@ export function extractAllRoutes(routeMap: RouteMap): RouteInfo[] {
 export type CompletionTargets = Record<CompletionTarget, string[]>;
 
 /**
- * Collect every visible command that declares a `completionTarget`.
+ * Read a command's completion target from its positional parsers.
+ *
+ * A command completes org or org/project slugs when one of its positionals
+ * uses `parseOrgTarget` or `parseOrgProjectTarget` (see
+ * `completion-target.ts`). Mixing both kinds in one command is rejected
+ * because `__complete` classifies whole commands, not argument positions.
+ *
+ * @param command - Command to inspect
+ * @param path - Command path, used in the error message
+ */
+function getCommandCompletionTarget(
+  command: Command,
+  path: string,
+): CompletionTarget | undefined {
+  const positional = command.parameters.positional;
+  if (!positional) {
+    return;
+  }
+  const params =
+    positional.kind === "tuple"
+      ? positional.parameters
+      : [positional.parameter];
+  const kinds = new Set<CompletionTarget>();
+  for (const param of params) {
+    const kind = getCompletionTarget(param.parse);
+    if (kind) {
+      kinds.add(kind);
+    }
+  }
+  if (kinds.size > 1) {
+    throw new Error(
+      `Command "${path}" mixes org and org/project completion targets`,
+    );
+  }
+  return kinds.values().next().value;
+}
+
+/**
+ * Collect every visible command whose positionals declare a completion target.
  *
  * Paths are space-separated route segments without the binary name (e.g.
  * `"issue list"`); nested groups contribute their full path. Sorted for
@@ -420,15 +462,19 @@ export function extractCompletionTargets(
       continue;
     }
 
-    const path = [...prefix, entry.name.original];
+    const segments = [...prefix, entry.name.original];
+    const path = segments.join(" ");
     const target = entry.target;
 
     if (isRouteMap(target)) {
-      const nested = extractCompletionTargets(target, path);
+      const nested = extractCompletionTargets(target, segments);
       targets.org.push(...nested.org);
       targets["org/project"].push(...nested["org/project"]);
-    } else if (isCommand(target) && target.__completionTarget) {
-      targets[target.__completionTarget].push(path.join(" "));
+    } else if (isCommand(target)) {
+      const kind = getCommandCompletionTarget(target, path);
+      if (kind) {
+        targets[kind].push(path);
+      }
     }
   }
 

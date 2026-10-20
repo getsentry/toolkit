@@ -21,6 +21,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -479,7 +480,6 @@ export const viewCommand = buildCommand({
     human: formatTraceView,
     jsonTransform: jsonTransformTraceView,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",
@@ -487,7 +487,7 @@ export const viewCommand = buildCommand({
         placeholder: "org/project/trace-id",
         brief:
           "[<org>/<project>/]<trace-id> - Target (optional) and trace ID (required)",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { getConversationSpans } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ContextError, validationError } from "../../lib/errors.js";
 import {
   buildTranscriptResult,
@@ -98,7 +99,6 @@ export const viewCommand = buildCommand({
   output: {
     human: formatTranscriptResult,
   },
-  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",
@@ -106,7 +106,7 @@ export const viewCommand = buildCommand({
         {
           placeholder: "org/conversation-id",
           brief: "Organization slug (optional) and conversation ID",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },

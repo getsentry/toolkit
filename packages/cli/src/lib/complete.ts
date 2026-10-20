@@ -19,7 +19,7 @@ import {
   ORG_ONLY_COMMANDS,
   ORG_PROJECT_COMMANDS,
 } from "../generated/completion-targets.js";
-import type { CompletionTarget } from "./command.js";
+import type { CompletionTarget } from "./completion-target.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getCredentialContext } from "./db/auth.js";
 import { queueCompletionTelemetry } from "./db/completion-telemetry.js";
@@ -104,8 +104,9 @@ export function handleComplete(args: string[]): void {
  *
  * Commands are leaves of the route tree, so at most one prefix of the
  * preceding words can name a command; everything after it is positionals
- * or flags. The sets are generated from each command's `completionTarget`
- * by `script/generate-completion-targets.ts` because this fast path cannot
+ * or flags. The sets are generated from the commands' positional parsers
+ * (`parseOrgTarget` / `parseOrgProjectTarget`) by
+ * `script/generate-completion-targets.ts` because this fast path cannot
  * boot Stricli to walk the route tree.
  */
 function findCompletionTarget(words: string[]): CompletionTarget | undefined {

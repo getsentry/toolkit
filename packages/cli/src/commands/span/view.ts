@@ -13,6 +13,7 @@ import {
 } from "../../lib/api-client.js";
 import { spansFlag } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -383,7 +384,6 @@ export const viewCommand = buildCommand({
     human: formatSpanViewHuman,
     jsonTransform: jsonTransformSpanView,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",
@@ -391,7 +391,7 @@ export const viewCommand = buildCommand({
         placeholder: "trace-id/span-id",
         brief:
           "[<org>/<project>/]<trace-id> <span-id> [<span-id>...] - Trace ID and one or more span IDs",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

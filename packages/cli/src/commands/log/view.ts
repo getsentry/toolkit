@@ -19,6 +19,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -579,7 +580,6 @@ export const viewCommand = buildCommand({
         ? data.logs.map((entry) => filterFields(entry, fields))
         : data.logs,
   },
-  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",
@@ -587,7 +587,7 @@ export const viewCommand = buildCommand({
         placeholder: "org/project/log-id",
         brief:
           "[<org>/<project>] <log-id> [<log-id>...] - Target (optional) and one or more log IDs",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

@@ -733,7 +733,6 @@ export const listCommand = buildListCommand("project", {
     },
     jsonTransform: jsonTransformListResult,
   } satisfies OutputConfig<ListResult<ProjectWithOrg>>,
-  completionTarget: "org/project",
   parameters: {
     positional: LIST_TARGET_POSITIONAL,
     flags: {
