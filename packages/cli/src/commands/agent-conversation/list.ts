@@ -198,7 +198,7 @@ export const listCommand = buildListCommand("agent-conversation", {
     jsonTransform,
     schema: ConversationListItemSchema,
   },
-  completionTarget: "org",
+  completionTarget: "org/project",
   parameters: {
     positional: LIST_TARGET_POSITIONAL,
     flags: {
