@@ -4,11 +4,12 @@
  * Provides request configuration for @sentry/api SDK functions,
  * including authentication, retry logic, timeout, and multi-region support.
  *
- * Instead of managing client instances, we pass configuration per-request
- * through the SDK function options (baseUrl, fetch, headers).
+ * Authentication and routing configuration remain per request. The SDK client
+ * and its parsing hooks are configured separately in sentry-sdk-client.ts.
  */
 
 import { setTimeout as sleepMs } from "node:timers/promises";
+import type { SentryClient } from "@sentry/api";
 import { getTraceData } from "@sentry/node-core/light";
 import {
   formatAuthHeader,
@@ -94,6 +95,42 @@ const INTERNAL_TIMEOUT_MARKER = Symbol("sentry-cli:internal-timeout");
 const MAX_REDIRECTS = 20;
 const responseRequestOrigins = new WeakMap<Response, string>();
 const responseCredentialIdentities = new WeakMap<Response, string>();
+type ResponseBodyMode = "auto" | "buffer" | "stream";
+const sdkResponseBodyModes = new WeakMap<Request, ResponseBodyMode>();
+
+/**
+ * Preserve the SDK's parsing intent before it calls fetch(Request), which
+ * otherwise loses parseAs. Register once on each SDK client using this transport.
+ */
+export function registerSdkResponseBodyMode(
+  client: SentryClient["client"],
+): void {
+  client.interceptors.request.use((request, options) => {
+    const parseAs = options.parseAs;
+    sdkResponseBodyModes.set(
+      request,
+      parseAs === "auto" || parseAs === "stream" ? parseAs : "buffer",
+    );
+    return request;
+  });
+}
+
+function shouldBufferResponse(
+  response: Response,
+  mode: ResponseBodyMode,
+): boolean {
+  const contentType = response.headers.get("Content-Type");
+  // SSE reconnects and streaming parsers own consumption of their bodies.
+  if (
+    contentType?.split(";")[0]?.trim().toLowerCase() === "text/event-stream"
+  ) {
+    return false;
+  }
+  // The SDK's auto parser returns a stream when Content-Type is absent.
+  return (
+    response.ok && (mode === "buffer" || (mode === "auto" && !!contentType))
+  );
+}
 
 /** Provenance attached only after manually validated discovery requests. */
 export function getResponseRequestOrigin(
@@ -288,7 +325,7 @@ type FetchWithTimeoutArgs = {
   headers: Headers;
   externalSignal: AbortSignal | undefined | null;
   timeoutMs: number;
-  bufferResponseBody: boolean;
+  responseBodyMode: ResponseBodyMode;
 };
 
 /**
@@ -302,7 +339,7 @@ async function fetchWithTimeout({
   headers,
   externalSignal,
   timeoutMs,
-  bufferResponseBody,
+  responseBodyMode,
 }: FetchWithTimeoutArgs): Promise<Response> {
   const controller = new AbortController();
   let timedOut = false;
@@ -327,7 +364,7 @@ async function fetchWithTimeout({
       signal: controller.signal,
       ...customTls,
     });
-    if (bufferResponseBody && response.ok) {
+    if (shouldBufferResponse(response, responseBodyMode)) {
       // Drain a clone within this attempt so body failures can retry without
       // replacing the original Response or consuming the caller's body.
       await response.clone().body?.pipeTo(new WritableStream());
@@ -592,7 +629,7 @@ type RetryContext = {
   fullUrl: string;
   credential: CredentialContext;
   validatedRedirects: boolean;
-  bufferResponseBody: boolean;
+  responseBodyMode: ResponseBodyMode;
 };
 
 async function fetchWithRetry({
@@ -602,7 +639,7 @@ async function fetchWithRetry({
   fullUrl,
   credential,
   validatedRedirects,
-  bufferResponseBody,
+  responseBodyMode,
 }: RetryContext): Promise<Response> {
   const issuedAt =
     credential.issuedAt ??
@@ -640,7 +677,7 @@ async function fetchWithRetry({
       isLastAttempt,
       timeoutMs,
       validatedRedirects,
-      bufferResponseBody,
+      responseBodyMode,
     });
 
     if (result.action === "done") {
@@ -765,9 +802,13 @@ function createAuthenticatedFetch(
           fullUrl,
           credential,
           validatedRedirects: options.validatedRedirects === true,
-          bufferResponseBody:
-            options.bufferResponseBody === true &&
-            method.toUpperCase() === "GET",
+          responseBodyMode:
+            method.toUpperCase() !== "GET"
+              ? "stream"
+              : ((input instanceof Request
+                  ? sdkResponseBodyModes.get(input)
+                  : undefined) ??
+                (options.bufferResponseBody ? "buffer" : "stream")),
         });
         span.setAttribute("http.response.status_code", response.status);
         if (!response.ok) {
@@ -794,7 +835,7 @@ type ExecuteAttemptArgs = {
   isLastAttempt: boolean;
   timeoutMs: number;
   validatedRedirects: boolean;
-  bufferResponseBody: boolean;
+  responseBodyMode: ResponseBodyMode;
 };
 
 async function cancelResponseBody(response: Response): Promise<void> {
@@ -918,7 +959,7 @@ async function fetchFollowingValidatedRedirects({
   headers,
   credential,
   timeoutMs,
-  bufferResponseBody,
+  responseBodyMode,
 }: Omit<
   ExecuteAttemptArgs,
   "isLastAttempt" | "validatedRedirects"
@@ -944,7 +985,7 @@ async function fetchFollowingValidatedRedirects({
       headers: requestHeaders,
       externalSignal: init?.signal ?? original.signal,
       timeoutMs,
-      bufferResponseBody,
+      responseBodyMode,
     });
     if (!isRedirectStatus(response.status)) {
       const origin = normalizeHttpOrigin(request.url);
@@ -987,8 +1028,14 @@ async function executeAttempt({
   isLastAttempt,
   timeoutMs,
   validatedRedirects,
-  bufferResponseBody,
+  responseBodyMode,
 }: ExecuteAttemptArgs): Promise<AttemptResult> {
+  const signal =
+    init?.signal !== undefined
+      ? init.signal
+      : input instanceof Request
+        ? input.signal
+        : undefined;
   try {
     const response = validatedRedirects
       ? await fetchFollowingValidatedRedirects({
@@ -997,19 +1044,19 @@ async function executeAttempt({
           headers,
           credential,
           timeoutMs,
-          bufferResponseBody,
+          responseBodyMode,
         })
       : await fetchWithTimeout({
           input,
           init,
           headers,
-          externalSignal: init?.signal,
+          externalSignal: signal,
           timeoutMs,
-          bufferResponseBody,
+          responseBodyMode,
         });
     return handleResponse(response, headers, credential, isLastAttempt);
   } catch (error) {
-    return handleFetchError(error, init?.signal, isLastAttempt);
+    return handleFetchError(error, signal, isLastAttempt);
   }
 }
 
@@ -1056,21 +1103,19 @@ export function getControlSiloUrl(credential = getCredentialContext()): string {
 }
 
 /**
- * Get request configuration for an @sentry/api SDK function call.
+ * Get authenticated transport configuration for direct fetch callers.
  *
- * Returns the common options needed by every SDK function call:
+ * Generated SDK operations use getSdkClientConfig from sentry-sdk-client.ts
+ * so their parsing intent reaches the transport. Bound SDK clients register
+ * registerSdkResponseBodyMode on their own underlying client.
+ *
+ * Returns the common transport options:
  * - `baseUrl`: The API base URL for the target region
  * - `fetch`: Authenticated fetch with retry, timeout, and 401 refresh
  * - `throwOnError`: Always false (we handle errors ourselves)
  *
  * @param regionUrl - The base URL for the target region (e.g., https://us.sentry.io)
- * @returns Configuration object to spread into SDK function options
- *
- * @example
- * ```ts
- * const config = getSdkConfig("https://us.sentry.io");
- * const result = await listOrganizations({ ...config });
- * ```
+ * @returns Configuration for direct fetch calls or bound SDK client setup
  */
 export function getSdkConfig(
   regionUrl: string,

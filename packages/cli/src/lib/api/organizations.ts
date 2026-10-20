@@ -22,8 +22,8 @@ import {
   getControlSiloUrl,
   getResponseCredentialIdentity,
   getResponseRequestOrigin,
-  getSdkConfig,
 } from "../sentry-client.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { normalizeHttpOrigin, normalizeRegionBaseUrl } from "../sentry-urls.js";
 
 import {
@@ -87,7 +87,7 @@ export async function listOrganizationsPage(
   options: { cursor?: string; perPage?: number } = {},
   credential = getCredentialContext(),
 ): Promise<PaginatedResponse<SentryOrganization[]>> {
-  const config = getSdkConfig(baseUrl, {
+  const config = getSdkClientConfig(baseUrl, {
     credential,
     validatedRedirects: true,
   });

@@ -110,3 +110,24 @@ The CLI uses the OAuth 2.0 Device Authorization Grant ([RFC 8628](https://datatr
 4. CLI receives access token and stores it locally
 
 No proxy server is needed - the CLI communicates directly with Sentry.
+
+### API response retries
+
+`src/lib/sentry-client.ts` owns the CLI's single retry budget: at most three
+attempts, shared by transient HTTP statuses, network failures, and interrupted
+successful GET bodies. Finite GET bodies finish inside the attempt timeout.
+JSON parsing and response validation happen afterward; malformed JSON does not
+trigger another request. Successful mutations are not replayed for body errors.
+
+Generated API operations use `getSdkClientConfig` from
+`src/lib/sentry-sdk-client.ts`. Its request interceptor passes the SDK's
+`parseAs` intent to the transport before the SDK calls `fetch(Request)`.
+Explicit streams, automatic parsing without a Content-Type, and SSE remain
+streaming. Handwritten helpers that consume complete responses opt in through
+`bufferResponseBody`.
+
+When creating a bound `createSentryClient` instead, register
+`registerSdkResponseBodyMode(sentry.client)` once on that client's transport.
+Passing an existing client in its constructor config does not transfer
+interceptors. Keep the runtime SDK import outside `sentry-client.ts`, which is
+also loaded synchronously by telemetry's database integration.

@@ -34,7 +34,8 @@ import {
 } from "valibot";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
-import { getControlSiloUrl, getSdkConfig } from "../sentry-client.js";
+import { getControlSiloUrl } from "../sentry-client.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { isAllDigits, parseHttpUrl } from "../utils.js";
 import {
   fetchAllPages,
@@ -194,7 +195,7 @@ export async function listAppIssueLinks(
   issueId: string,
 ): Promise<AppIssueLink[]> {
   requireIssueTarget(orgSlug, issueId);
-  const config = getSdkConfig(await resolveOrgRegion(orgSlug));
+  const config = getSdkClientConfig(await resolveOrgRegion(orgSlug));
   return fetchAllPages(
     async (cursor) => {
       const result = await listOrganizationIssueExternalIssues({
@@ -247,7 +248,7 @@ async function resolveInstallation(
   orgSlug: string,
   appSlug: string,
 ): Promise<AppInstallation> {
-  const config = getSdkConfig(getControlSiloUrl());
+  const config = getSdkClientConfig(getControlSiloUrl());
   const installations = await fetchAllPages(
     async (cursor) => {
       const result = await listOrganizationSentryAppInstallations({
@@ -285,7 +286,7 @@ async function getLinkForm(
   orgSlug: string,
   installation: AppInstallation,
 ): Promise<LinkForm> {
-  const config = getSdkConfig(getControlSiloUrl());
+  const config = getSdkClientConfig(getControlSiloUrl());
   const components = await fetchAllPages(
     async (cursor) => {
       const result = await listOrganizationSentryAppComponents({
@@ -350,7 +351,7 @@ async function getChoices({
     (field.depends_on ?? []).map((name) => [name, values[name]]),
   );
   const result = await getSentryAppInstallationExternalRequestOptions({
-    ...getSdkConfig(getControlSiloUrl()),
+    ...getSdkClientConfig(getControlSiloUrl()),
     path: { uuid: installationUuid },
     query: {
       uri: field.uri,
@@ -678,7 +679,7 @@ export async function linkAppIssue(
   prepared: PreparedAppIssueLink,
 ): Promise<{ link: AppIssueLink; changed: boolean }> {
   const result = await executeSentryAppInstallationExternalIssueAction({
-    ...getSdkConfig(getControlSiloUrl()),
+    ...getSdkClientConfig(getControlSiloUrl()),
     path: { uuid: prepared.installationUuid },
     query: {
       expectedExternalIssueUrl: prepared.existing?.webUrl ?? prepared.url,
@@ -710,7 +711,7 @@ export async function unlinkAppIssueLink(
   }
   requireIssueTarget(orgSlug, issueId);
   const result = await deleteOrganizationIssueExternalIssue({
-    ...getSdkConfig(await resolveOrgRegion(orgSlug)),
+    ...getSdkClientConfig(await resolveOrgRegion(orgSlug)),
     path: {
       organization_id_or_slug: orgSlug,
       issue_id: issueId,

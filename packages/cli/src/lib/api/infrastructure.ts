@@ -33,6 +33,7 @@ import {
   getDefaultSdkConfig,
   getSdkConfig,
 } from "../sentry-client.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
@@ -376,7 +377,7 @@ export function appendSearchParams(
  */
 export async function getOrgSdkConfig(orgSlug: string) {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  return getSdkConfig(regionUrl);
+  return getSdkClientConfig(regionUrl);
 }
 
 /**
@@ -584,7 +585,11 @@ export async function apiRequestToRegion<T>(
     credential,
     validatedRedirects,
   } = options;
-  const config = getSdkConfig(regionUrl, { credential, validatedRedirects });
+  const config = getSdkConfig(regionUrl, {
+    credential,
+    validatedRedirects,
+    bufferResponseBody: true,
+  });
 
   const endpointWithParams = appendSearchParams(endpoint, params);
   const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
@@ -736,7 +741,7 @@ export async function apiRequestToRegionNoContent(
   options: Omit<ApiRequestOptions, "schema"> = {},
 ): Promise<void> {
   const { method = "GET", body, params } = options;
-  const config = getSdkConfig(regionUrl);
+  const config = getSdkConfig(regionUrl, { bufferResponseBody: true });
 
   const searchParams = buildSearchParams(params);
   const queryString = searchParams ? `?${searchParams.toString()}` : "";

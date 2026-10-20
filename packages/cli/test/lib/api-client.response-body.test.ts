@@ -4,6 +4,10 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { rawApiRequest } from "../../src/lib/api-client.js";
+import {
+  apiRequestToRegion,
+  apiRequestToRegionNoContent,
+} from "../../src/lib/api/infrastructure.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { TimeoutError } from "../../src/lib/errors.js";
 import {
@@ -21,6 +25,64 @@ beforeEach(async () => {
   originalFetch = globalThis.fetch;
   await setAuthToken("test-token");
   resetAuthenticatedFetch();
+});
+
+describe("handwritten API response body recovery", () => {
+  test.each(["json", "no-content"] as const)(
+    "retries interrupted GET bodies in the %s helper",
+    async (kind) => {
+      let calls = 0;
+      globalThis.fetch = mockFetch(async () => {
+        calls += 1;
+        return calls === 1
+          ? interruptedResponse(new TypeError("terminated"))
+          : Response.json(
+              { ok: true },
+              { headers: { "X-Request-Id": "complete" } },
+            );
+      });
+
+      if (kind === "json") {
+        const result = await apiRequestToRegion(
+          "https://us.sentry.io",
+          "/body/",
+        );
+        expect(result.data).toEqual({ ok: true });
+        expect(result.headers.get("X-Request-Id")).toBe("complete");
+      } else {
+        await apiRequestToRegionNoContent("https://us.sentry.io", "/body/");
+      }
+      expect(calls).toBe(2);
+    },
+  );
+
+  test("does not misreport an exhausted interrupted GET as invalid JSON", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return interruptedResponse(new TypeError("terminated"));
+    });
+
+    await expect(
+      apiRequestToRegion("https://us.sentry.io", "/body/"),
+    ).rejects.toThrow("terminated");
+    expect(calls).toBe(3);
+  });
+
+  test("does not retry a complete but invalid JSON body", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return new Response("{invalid", {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await expect(
+      apiRequestToRegion("https://us.sentry.io", "/body/"),
+    ).rejects.toThrow("Invalid JSON");
+    expect(calls).toBe(1);
+  });
 });
 
 afterEach(() => {
@@ -43,6 +105,24 @@ function interruptedResponse(error: Error): Response {
 }
 
 describe("rawApiRequest response body recovery", () => {
+  test("respects a null signal overriding an aborted Request signal", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const input = new Request("https://us.sentry.io/api/0/body-signal/", {
+      signal: controller.signal,
+    });
+    globalThis.fetch = mockFetch(async (_input, init) => {
+      expect(init?.signal?.aborted).toBe(false);
+      return Response.json({ ok: true });
+    });
+
+    const response = await getSdkConfig("https://us.sentry.io", {
+      bufferResponseBody: true,
+    }).fetch(input, { signal: null });
+
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
   test.each([
     {
       name: "JSON from the default host",
