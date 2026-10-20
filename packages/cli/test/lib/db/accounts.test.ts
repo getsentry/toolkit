@@ -319,6 +319,28 @@ describe("findAccounts", () => {
     }
     expect(findAccounts("jane@example.com:sentry.example.com")).toEqual([]);
   });
+
+  test("an HTTP account's selector keeps its scheme, so it round-trips", () => {
+    login("saas", "https://sentry.io", {
+      userId: "1",
+      email: "jane@example.com",
+    });
+    const local = login("local", "http://localhost:8000", {
+      userId: "1",
+      email: "jane@example.com",
+    });
+
+    const account = listAccounts().find((a) => a.id === local);
+    const selector = account && accountSelectorOf(account);
+    expect(selector).toBe("jane@example.com:http://localhost:8000");
+    expect(account && accountSelectorParts(account)).toEqual({
+      who: "jane@example.com",
+      server: "http://localhost:8000",
+    });
+    expect(findAccounts(selector ?? "").map((a) => a.id)).toEqual([local]);
+    // A bare host means HTTPS, which is a different server.
+    expect(findAccounts("jane@example.com:localhost:8000")).toEqual([]);
+  });
 });
 
 describe("serverKey", () => {

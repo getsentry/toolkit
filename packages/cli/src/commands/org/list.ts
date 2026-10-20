@@ -59,7 +59,9 @@ type OrgListAccount = {
   selector: string;
   /**
    * `selector` already split: `who` (email, else username, else id) and
-   * `server` (`host[:port]`, absent when no host is recorded).
+   * `server` (`host[:port]`, or the full origin such as
+   * `http://localhost:8000` for a non-HTTPS server; absent when no host is
+   * recorded).
    */
   selectorParts: { who: string; server?: string };
 };

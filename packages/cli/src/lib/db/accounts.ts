@@ -221,7 +221,8 @@ export function accountSelectorOf(account: AccountSummary): string {
 
 /**
  * The two halves of {@link accountSelectorOf}: `who` (email, else username,
- * else account id) and `server` (`host[:port]`, absent when no host is
+ * else account id) and `server` (`host[:port]`, or the full origin for a
+ * non-HTTPS server; absent when no host is
  * recorded). For machine-readable output, so consumers needn't split.
  */
 export function accountSelectorParts(account: AccountSummary): {
@@ -233,10 +234,18 @@ export function accountSelectorParts(account: AccountSummary): {
   return server ? { who, server } : { who };
 }
 
-/** `host[:port]` of a stored account origin, lowercased. */
+/**
+ * The server part of a selector for a stored account origin: `host[:port]`
+ * for HTTPS, the full origin (`http://host[:port]`) otherwise, since
+ * selector parsing assumes HTTPS for a bare host.
+ */
 function serverOf(host: string | undefined): string | undefined {
   const origin = normalizeHttpOrigin(host);
-  return origin ? new URL(origin).host : hostnameOf(host);
+  if (!origin) {
+    return hostnameOf(host);
+  }
+  const url = new URL(origin);
+  return url.protocol === "https:" ? url.host : origin;
 }
 
 /**

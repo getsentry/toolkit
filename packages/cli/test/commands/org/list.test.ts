@@ -455,4 +455,25 @@ describe("org list --account", () => {
     );
     expect(requests).toEqual([]);
   });
+
+  test("the log-in-again hint for an HTTP server keeps the scheme", async () => {
+    const local = addAccount(
+      "local-token",
+      "http://localhost:8000",
+      "jane@local.dev",
+    );
+    addAccount("saas-token", SAAS, "jane@example.com");
+    getDatabase()
+      .query("UPDATE accounts SET token = NULL WHERE account_id = ?")
+      .run(local);
+
+    const error = await runList({
+      account: "jane@local.dev:http://localhost:8000",
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(AuthError);
+    expect((error as AuthError).message).toContain(
+      "sentry auth login jane@local.dev:http://localhost:8000",
+    );
+  });
 });
