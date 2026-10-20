@@ -138,6 +138,7 @@ Requests for a metric over time ("per hour", "per day", "trend", "over time") re
 - The embedded agent sets `timeSeries: { yAxis, interval }` on its output. `yAxis` is the aggregate to plot (e.g. `count()`); the query, environment, and time range are reused from the normal translation.
 - **Interval is agent-decided, never a required input.** It is set only when the user names a granularity ("per hour" → `1h`); otherwise it is left `null` so Sentry picks a sensible bucket for the range (mirrors `get_interval_from_range`). Sentry rejects an interval that would produce too many buckets.
 - The handler routes `timeSeries` to `SentryApiService.getEventsTimeSeries` and renders the buckets (with total and peak) via `formatTimeSeriesResults`.
+- Series declared as `valueType: "string"` preserve raw values, including identifiers with leading zeros, and omit total and peak. Numeric series retain their formatting and summaries; ISO datetime strings are displayed as returned and ordered by their parsed timestamp for the peak.
 - Buckets Sentry flags as `incomplete` are marked in the table. Those still receiving data (`NOT_ELAPSED`, `INGESTION_PENDING`) get `*`, are excluded from the peak, and label the total "so far". Those that start before the retention window (`OUTSIDE_RETENTION`) get `†` and stay in the peak, since their value is final. When the response carries `meta.ingestion`, an **Ingestion** line reports the measured delay and the time data is complete through.
 
 ### Key Technical Constraints

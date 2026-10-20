@@ -997,6 +997,8 @@ export function formatTimeSeriesResults(params: {
     url,
   } = params;
 
+  // String aggregates can return identifiers, even when their values look numeric.
+  const isStringSeries = series.timeSeries[0]?.meta.valueType === "string";
   const points = (series.timeSeries[0]?.values ?? []).map((bucket) => {
     // OUTSIDE_RETENTION buckets start before the retention window: their data
     // is permanently partial. Every other reason means data is still arriving.
@@ -1011,7 +1013,8 @@ export function formatTimeSeriesResults(params: {
     return {
       time: formatBucketTime(bucket.timestamp),
       value: isNumeric ? numeric : Date.parse(String(raw)) || 0,
-      display: isNumeric ? numeric.toLocaleString() : String(raw),
+      display:
+        !isStringSeries && isNumeric ? numeric.toLocaleString() : String(raw),
       filling: bucket.incomplete && !outsideRetention,
       outsideRetention,
     };
@@ -1021,13 +1024,14 @@ export function formatTimeSeriesResults(params: {
 
   // Total is only meaningful for additive aggregates; summing count_unique /
   // avg / percentile buckets would be wrong, so omit it for those.
-  const total = isAdditiveAggregate(yAxis)
-    ? points.reduce((sum, p) => sum + p.value, 0)
-    : null;
+  const total =
+    !isStringSeries && isAdditiveAggregate(yAxis)
+      ? points.reduce((sum, p) => sum + p.value, 0)
+      : null;
   // Buckets still filling can't be the peak yet. Partial retention buckets are
   // final, so if one still tops the rest it is a real peak.
   const peak = points
-    .filter((p) => !p.filling)
+    .filter((p) => !isStringSeries && !p.filling)
     .reduce<(typeof points)[number] | undefined>(
       (max, p) => (max === undefined || p.value > max.value ? p : max),
       undefined,

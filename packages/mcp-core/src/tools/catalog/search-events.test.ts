@@ -497,6 +497,81 @@ describe("search_events", () => {
     expect(result).not.toContain("NaN");
   });
 
+  it.each([
+    {
+      yAxis: "latest_event()",
+      value: "abcdef0123456789abcdef0123456789",
+    },
+    { yAxis: "any(user.id)", value: "00123" },
+  ])(
+    "preserves string values and omits Peak for $yAxis timeseries",
+    async ({ yAxis, value }) => {
+      const response = mockAIResponse("errors", "", []);
+      const output = {
+        ...response.experimental_output,
+        timeSeries: { yAxis, interval: "1h" },
+      };
+      mockGenerateText.mockResolvedValueOnce({
+        ...response,
+        text: JSON.stringify(output),
+        experimental_output: output,
+      });
+
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+          () =>
+            HttpResponse.json({
+              timeSeries: [
+                {
+                  yAxis,
+                  values: [
+                    // String aggregates also have numeric zero-filled buckets.
+                    { timestamp: 1757548800000, value: 0, incomplete: false },
+                    { timestamp: 1757552400000, value, incomplete: false },
+                  ],
+                  meta: {
+                    interval: 3600000,
+                    valueType: "string",
+                    valueUnit: null,
+                  },
+                },
+              ],
+            }),
+        ),
+      );
+
+      const result = await searchEvents.handler(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          dataset: "errors",
+          query: "representative identifiers per hour",
+          fields: null,
+          sort: null,
+          period: "24h",
+          limit: 10,
+          includeExplanation: false,
+        },
+        {
+          accessToken: "test-token",
+          userId: "user-123",
+          clientId: "client-123",
+          grantedSkills: new Set(),
+          constraints: {},
+          sentryHost: "sentry.io",
+        },
+      );
+
+      expect(result).toContain(`${yAxis} over time`);
+      expect(result).toContain("| 2025-09-11 00:00 | 0 |");
+      expect(result).toContain(`| 2025-09-11 01:00 | ${value} |`);
+      expect(result).not.toContain("**Peak**");
+      expect(result).not.toContain("**Total**");
+    },
+  );
+
   it("marks incomplete buckets and reports ingestion delay", async () => {
     const output = {
       dataset: "errors" as const,
