@@ -370,6 +370,7 @@ export const viewCommand = buildCommand({
     },
     schema: ReplayViewOutputSchema,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

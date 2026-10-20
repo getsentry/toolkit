@@ -23,6 +23,7 @@ import { parseOrgProjectArg } from "./arg-parsing.js";
 import {
   buildCommand,
   type CommandDocumentation,
+  type CompletionTarget,
   numberParser,
 } from "./command.js";
 import { disableOrgCache } from "./db/regions.js";
@@ -556,6 +557,7 @@ export function buildListCommand<
     // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig is generic but type is erased at the builder level
     readonly output?: OutputConfig<any>;
     readonly auth?: boolean;
+    readonly completionTarget?: CompletionTarget;
   },
   options?: ListCommandOptions,
 ): Command<CONTEXT> {
@@ -692,6 +694,7 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
 ): Command<SentryContext> {
   return buildListCommand(routeName, {
     docs,
+    completionTarget: "org",
     output: {
       human: (result: ListResult<TWithOrg>) => formatListHuman(result, config),
       jsonTransform: (result: ListResult<TWithOrg>, fields?: string[]) =>

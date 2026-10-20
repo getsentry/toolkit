@@ -74,6 +74,7 @@ export const createCommand = buildCommand({
       return formatReleaseCreated(data as SentryRelease);
     },
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

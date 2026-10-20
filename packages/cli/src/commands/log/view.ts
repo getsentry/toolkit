@@ -579,6 +579,7 @@ export const viewCommand = buildCommand({
         ? data.logs.map((entry) => filterFields(entry, fields))
         : data.logs,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

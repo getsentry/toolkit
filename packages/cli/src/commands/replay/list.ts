@@ -273,6 +273,7 @@ export const listCommand = buildListCommand("replay", {
     jsonTransform: jsonTransformReplayList,
     schema: ReplayListItemOutputSchema,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "tuple",

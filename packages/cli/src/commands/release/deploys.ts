@@ -44,6 +44,7 @@ export const deploysCommand = buildCommand({
   output: {
     human: formatDeployList,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

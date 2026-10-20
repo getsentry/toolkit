@@ -15,6 +15,7 @@ import type {
 import {
   buildCommandInfo,
   extractAllRoutes,
+  extractCompletionTargets,
   extractFlags,
   extractPositionals,
   extractRouteGroupCommands,
@@ -375,6 +376,46 @@ describe("extractAllRoutes", () => {
     const routes = extractAllRoutes(topLevel);
     expect(routes).toHaveLength(1);
     expect(routes[0].name).toBe("visible");
+  });
+});
+
+describe("extractCompletionTargets", () => {
+  test("groups annotated commands by target with full nested paths", () => {
+    const orgProject = makeCommand({ __completionTarget: "org/project" });
+    const orgOnly = makeCommand({ __completionTarget: "org" });
+    const plain = makeCommand();
+
+    const nested = makeRouteMap([makeEntry("view", orgProject)]);
+    const issueRoute = makeRouteMap([
+      makeEntry("view", orgProject),
+      makeEntry("list", orgProject),
+      makeEntry("help", plain),
+      makeEntry("rules", nested),
+    ]);
+    const topLevel = makeRouteMap([
+      makeEntry("issue", issueRoute),
+      makeEntry("explore", orgOnly),
+      makeEntry("api", plain),
+    ]);
+
+    expect(extractCompletionTargets(topLevel)).toEqual({
+      org: ["explore"],
+      "org/project": ["issue list", "issue rules view", "issue view"],
+    });
+  });
+
+  test("skips hidden commands and hidden groups", () => {
+    const annotated = makeCommand({ __completionTarget: "org" });
+    const hiddenGroup = makeRouteMap([makeEntry("list", annotated)]);
+    const topLevel = makeRouteMap([
+      makeEntry("secret", annotated, true),
+      makeEntry("internal", hiddenGroup, true),
+    ]);
+
+    expect(extractCompletionTargets(topLevel)).toEqual({
+      org: [],
+      "org/project": [],
+    });
   });
 });
 

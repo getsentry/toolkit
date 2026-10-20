@@ -92,6 +92,7 @@ export const deleteCommand = buildDeleteCommand({
   output: {
     human: formatReleaseDeleted,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

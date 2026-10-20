@@ -1183,6 +1183,7 @@ export const viewCommand = buildCommand({
     jsonTransform: jsonTransformEventView,
     schema: EventViewOutputSchema,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

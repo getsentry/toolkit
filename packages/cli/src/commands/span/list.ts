@@ -569,6 +569,7 @@ export const listCommand = buildListCommand("span", {
     jsonTransform: jsonTransformSpanList,
     schema: SpanListItemSchema,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

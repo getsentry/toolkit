@@ -357,6 +357,7 @@ export const archiveCommand = buildCommand({
   output: {
     human: formatArchived,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: issueIdPositional,
     flags: {

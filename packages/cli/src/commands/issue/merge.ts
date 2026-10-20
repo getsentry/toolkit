@@ -271,6 +271,7 @@ export const mergeCommand = buildCommand({
     human: formatMerged,
     jsonTransform,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

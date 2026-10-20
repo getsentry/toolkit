@@ -130,6 +130,7 @@ export const revisionsCommand = buildCommand({
     human: formatRevisionsHuman,
     jsonTransform: jsonTransformRevisions,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

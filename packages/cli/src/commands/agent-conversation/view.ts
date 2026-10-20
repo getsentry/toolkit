@@ -98,6 +98,7 @@ export const viewCommand = buildCommand({
   output: {
     human: formatTranscriptResult,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

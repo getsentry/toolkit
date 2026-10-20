@@ -37,6 +37,7 @@ export const linkCommand = buildCommand({
       "  sentry issue link FRONT-123 https://github.com/example/app/issues/42 --dry-run",
   },
   output: { human: formatIssueLinkResult },
+  completionTarget: "org/project",
   parameters: {
     positional: EXTERNAL_ISSUE_POSITIONALS,
     flags: {

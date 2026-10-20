@@ -97,6 +97,7 @@ export const deployCommand = buildCommand({
   output: {
     human: formatDeployCreated,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

@@ -213,6 +213,7 @@ export const listCommand = buildCommand({
     jsonExclude: ["displayName"],
     schema: ProductTrialSchema,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple" as const,

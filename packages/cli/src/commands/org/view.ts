@@ -37,6 +37,7 @@ export const viewCommand = buildCommand({
       "  3. SENTRY_DSN environment variable or source code detection",
   },
   output: { human: formatOrgDetails },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

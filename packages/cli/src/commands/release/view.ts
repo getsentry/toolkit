@@ -171,6 +171,7 @@ export const viewCommand = buildCommand({
   output: {
     human: formatReleaseDetails,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

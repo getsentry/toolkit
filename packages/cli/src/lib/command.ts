@@ -102,6 +102,18 @@ export type CommandExample = {
 };
 
 /**
+ * Which cached slugs shell completion suggests for a command's target
+ * positional.
+ *
+ * - `"org"`: organization slugs only (e.g. `org/version`, `org/id`)
+ * - `"org/project"`: `org/` prefixes, `org/project` pairs, and project aliases
+ *
+ * Collected from the route tree by `script/generate-completion-targets.ts`
+ * so the `__complete` fast path can classify commands without booting Stricli.
+ */
+export type CompletionTarget = "org" | "org/project";
+
+/**
  * Native Stricli documentation plus canonical examples for generated docs.
  */
 export type CommandDocumentation =
@@ -192,6 +204,11 @@ type LocalCommandBuilderArguments<
    * repo-local `.sentryclirc` URL mismatches the current token.
    */
   readonly skipRcUrlCheck?: boolean;
+  /**
+   * Dynamic shell completion for the command's target positional.
+   * Omit for commands whose positionals are not org- or project-scoped.
+   */
+  readonly completionTarget?: CompletionTarget;
 };
 
 // ---------------------------------------------------------------------------
@@ -881,6 +898,10 @@ export function buildCommand<
   if (builderArgs.docs.examples?.length) {
     (cmd as unknown as Record<string, unknown>).__examples =
       builderArgs.docs.examples;
+  }
+  if (builderArgs.completionTarget) {
+    (cmd as unknown as Record<string, unknown>).__completionTarget =
+      builderArgs.completionTarget;
   }
 
   // Attach the JSON schema to the built command as a non-standard property.

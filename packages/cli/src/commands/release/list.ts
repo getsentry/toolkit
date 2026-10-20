@@ -663,6 +663,7 @@ export const listCommand = buildListCommand("release", {
     jsonTransform: (result: ListResult<ReleaseWithOrg>, fields?: string[]) =>
       jsonTransformListResult(result, fields),
   },
+  completionTarget: "org",
   parameters: {
     positional: LIST_TARGET_POSITIONAL,
     flags: {

@@ -316,6 +316,7 @@ export const listCommand = buildListCommand("dsn", {
     jsonTransform: (result: ListResult<DsnListItem>, fields?: string[]) =>
       jsonTransformListResult(result, fields),
   },
+  completionTarget: "org/project",
   parameters: {
     positional: LIST_TARGET_POSITIONAL,
     flags: {

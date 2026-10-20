@@ -217,6 +217,7 @@ export const listCommand = buildListCommand("trace", {
     jsonTransform: jsonTransformTraceList,
     schema: TransactionListItemSchema,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "tuple",

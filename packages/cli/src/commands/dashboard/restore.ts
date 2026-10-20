@@ -67,6 +67,7 @@ export const restoreCommand = buildCommand({
   output: {
     human: formatRestoreHuman,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

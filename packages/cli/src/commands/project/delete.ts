@@ -161,6 +161,7 @@ export const deleteCommand = buildDeleteCommand({
       };
     },
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "tuple",

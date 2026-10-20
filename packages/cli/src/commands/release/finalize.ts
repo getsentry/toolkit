@@ -53,6 +53,7 @@ export const finalizeCommand = buildCommand({
   output: {
     human: formatReleaseFinalized,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

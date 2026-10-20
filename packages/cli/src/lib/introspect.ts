@@ -10,7 +10,7 @@
  * for introspection and documentation generation.
  */
 
-import type { CommandExample } from "./command.js";
+import type { CommandExample, CompletionTarget } from "./command.js";
 import {
   extractSchemaFields,
   type SchemaFieldInfo,
@@ -61,6 +61,8 @@ export type Command = {
    */
   __primaryUsage?: string;
   __examples?: readonly CommandExample[];
+  /** Shell completion target kind declared via `buildCommand({ completionTarget })`. */
+  __completionTarget?: CompletionTarget;
 };
 
 /** Positional parameter definitions — either fixed-length tuple or variadic array */
@@ -392,6 +394,47 @@ export function extractAllRoutes(routeMap: RouteMap): RouteInfo[] {
   }
 
   return result;
+}
+
+/** Command paths (without the `sentry` prefix) grouped by completion target. */
+export type CompletionTargets = Record<CompletionTarget, string[]>;
+
+/**
+ * Collect every visible command that declares a `completionTarget`.
+ *
+ * Paths are space-separated route segments without the binary name (e.g.
+ * `"issue list"`); nested groups contribute their full path. Sorted for
+ * stable generated output.
+ *
+ * @param routeMap - Top-level Stricli route map
+ * @param prefix - Route segments above `routeMap` (used for recursion)
+ */
+export function extractCompletionTargets(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+): CompletionTargets {
+  const targets: CompletionTargets = { org: [], "org/project": [] };
+
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden) {
+      continue;
+    }
+
+    const path = [...prefix, entry.name.original];
+    const target = entry.target;
+
+    if (isRouteMap(target)) {
+      const nested = extractCompletionTargets(target, path);
+      targets.org.push(...nested.org);
+      targets["org/project"].push(...nested["org/project"]);
+    } else if (isCommand(target) && target.__completionTarget) {
+      targets[target.__completionTarget].push(path.join(" "));
+    }
+  }
+
+  targets.org.sort();
+  targets["org/project"].sort();
+  return targets;
 }
 
 /** Matches the "sentry " prefix at the start of a command path. */

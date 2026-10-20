@@ -99,6 +99,7 @@ export const listCommand = buildListCommand("event", {
     jsonTransform: jsonTransformEvents,
     schema: IssueEventSchema,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: issueIdPositional,
     flags: EVENTS_FLAGS,

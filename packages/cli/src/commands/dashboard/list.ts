@@ -386,6 +386,7 @@ export const listCommand = buildListCommand("dashboard", {
     human: formatDashboardListHuman,
     jsonTransform: jsonTransformDashboardList,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

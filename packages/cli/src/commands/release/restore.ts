@@ -58,6 +58,7 @@ export const restoreCommand = buildCommand({
   output: {
     human: formatReleaseRestored,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

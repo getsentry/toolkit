@@ -125,6 +125,7 @@ export const logsCommand = buildCommand({
       return { data: items, hasMore: data.hasMore };
     },
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

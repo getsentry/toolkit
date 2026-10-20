@@ -39,6 +39,7 @@ export const unresolveCommand = buildCommand({
   output: {
     human: formatUnresolved,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: issueIdPositional,
   },

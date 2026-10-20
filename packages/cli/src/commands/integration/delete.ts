@@ -143,6 +143,7 @@ export const deleteCommand = buildDeleteCommand({
   output: {
     human: formatIntegrationDeleted,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

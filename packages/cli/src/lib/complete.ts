@@ -15,6 +15,11 @@
  *   Exit:   0 on success (even if no completions)
  */
 
+import {
+  ORG_ONLY_COMMANDS,
+  ORG_PROJECT_COMMANDS,
+} from "../generated/completion-targets.js";
+import type { CompletionTarget } from "./command.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getCredentialContext } from "./db/auth.js";
 import { queueCompletionTelemetry } from "./db/completion-telemetry.js";
@@ -95,77 +100,26 @@ export function handleComplete(args: string[]): void {
 }
 
 /**
- * Commands that accept org/project positional args.
+ * Find the completion target declared by the command named in `words`.
  *
- * Hardcoded for fast-path performance — cannot derive from the route map
- * at runtime because `app.ts` imports `@sentry/node-core`. A property test in
- * `completions.property.test.ts` verifies this set stays in sync.
- *
- * @internal Exported for testing only.
+ * Commands are leaves of the route tree, so at most one prefix of the
+ * preceding words can name a command; everything after it is positionals
+ * or flags. The sets are generated from each command's `completionTarget`
+ * by `script/generate-completion-targets.ts` because this fast path cannot
+ * boot Stricli to walk the route tree.
  */
-export const ORG_PROJECT_COMMANDS = new Set([
-  "dsn list",
-  "issue list",
-  "issue events",
-  "issue view",
-  "issue explain",
-  "issue plan",
-  "issue resolve",
-  "issue link",
-  "issue unlink",
-  "issue unresolve",
-  "issue archive",
-  "issue merge",
-  "feedback list",
-  "feedback view",
-  "project list",
-  "project view",
-  "project delete",
-  "replay list",
-  "replay view",
-  "trace list",
-  "trace view",
-  "trace logs",
-  "span list",
-  "span view",
-  "event view",
-  "event list",
-  "log list",
-  "log view",
-  "dashboard list",
-  "dashboard view",
-  "dashboard create",
-  "dashboard revisions",
-  "dashboard restore",
-]);
-
-/**
- * Commands that accept only an org slug (no project).
- *
- * @internal Exported for testing only.
- */
-export const ORG_ONLY_COMMANDS = new Set([
-  "agent-conversation list",
-  "agent-conversation view",
-  "org view",
-  "release list",
-  "release view",
-  "release create",
-  "release finalize",
-  "release delete",
-  "release archive",
-  "release restore",
-  "release deploy",
-  "release deploys",
-  "release set-commits",
-  "team list",
-  "repo list",
-  "integration list",
-  "integration delete",
-  "monitor list",
-  "trial list",
-  "trial start",
-]);
+function findCompletionTarget(words: string[]): CompletionTarget | undefined {
+  for (let length = 1; length <= words.length; length++) {
+    const path = words.slice(0, length).join(" ");
+    if (ORG_PROJECT_COMMANDS.has(path)) {
+      return "org/project";
+    }
+    if (ORG_ONLY_COMMANDS.has(path)) {
+      return "org";
+    }
+  }
+  return;
+}
 
 /**
  * Determine what completions to provide based on the command context.
@@ -186,20 +140,21 @@ export function getCompletions(
       ? `${precedingWords[0]} ${precedingWords[1]}`
       : "";
 
+  // `project create` takes `name:platform` specs, not an existing target,
+  // so it keeps a dedicated completer instead of a generated target kind.
   if (cmdPath === "project create") {
     return completeProjectCreateSpec(partial);
   }
 
-  if (ORG_PROJECT_COMMANDS.has(cmdPath)) {
-    return completeOrgSlashProject(partial);
+  switch (findCompletionTarget(precedingWords)) {
+    case "org/project":
+      return completeOrgSlashProject(partial);
+    case "org":
+      return completeOrgSlugs(partial);
+    default:
+      // Not a known command path — no dynamic completions
+      return [];
   }
-
-  if (ORG_ONLY_COMMANDS.has(cmdPath)) {
-    return completeOrgSlugs(partial);
-  }
-
-  // Not a known command path — no dynamic completions
-  return [];
 }
 
 /**

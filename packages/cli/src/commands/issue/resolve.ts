@@ -117,6 +117,7 @@ export const resolveCommand = buildCommand({
     human: formatResolved,
     jsonTransform,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: issueIdPositional,
     flags: {

@@ -383,6 +383,7 @@ export const viewCommand = buildCommand({
     human: formatSpanViewHuman,
     jsonTransform: jsonTransformSpanView,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

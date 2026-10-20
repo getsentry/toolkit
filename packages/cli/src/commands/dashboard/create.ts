@@ -152,6 +152,7 @@ export const createCommand = buildCommand({
   output: {
     human: formatDashboardCreated,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

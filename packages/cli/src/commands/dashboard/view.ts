@@ -185,6 +185,7 @@ export const viewCommand = buildCommand({
     human: createDashboardViewRenderer,
     jsonExclude: ["rendererPreference", "graphicsCap"],
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",

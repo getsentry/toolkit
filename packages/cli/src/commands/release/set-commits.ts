@@ -373,6 +373,7 @@ export const setCommitsCommand = buildCommand({
   output: {
     human: formatCommitsSet,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

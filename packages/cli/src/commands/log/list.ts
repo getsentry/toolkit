@@ -725,6 +725,7 @@ export const listCommand = buildListCommand(
       jsonTransform: jsonTransformLogOutput,
       schema: SentryLogSchema,
     },
+    completionTarget: "org/project",
     parameters: {
       positional: {
         kind: "array",

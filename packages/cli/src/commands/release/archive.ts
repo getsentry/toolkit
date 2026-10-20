@@ -60,6 +60,7 @@ export const archiveCommand = buildCommand({
   output: {
     human: formatReleaseArchived,
   },
+  completionTarget: "org",
   parameters: {
     positional: {
       kind: "tuple",

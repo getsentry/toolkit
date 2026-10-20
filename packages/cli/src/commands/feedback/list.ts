@@ -151,6 +151,7 @@ export const listCommand = buildListCommand("feedback", {
     jsonTransform: jsonTransformFeedbackList,
     schema: SentryFeedbackSchema,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "tuple",

@@ -272,6 +272,7 @@ export const viewCommand = buildCommand({
     human: formatProjectViewHuman,
     jsonTransform: jsonTransformProjectView,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "tuple",

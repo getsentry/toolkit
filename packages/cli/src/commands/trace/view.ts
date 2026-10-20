@@ -479,6 +479,7 @@ export const viewCommand = buildCommand({
     human: formatTraceView,
     jsonTransform: jsonTransformTraceView,
   },
+  completionTarget: "org/project",
   parameters: {
     positional: {
       kind: "array",
