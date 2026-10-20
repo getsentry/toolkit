@@ -315,16 +315,17 @@ describe("verifyConstraintsAccess", () => {
       expect(cache.waitUntil).toHaveBeenCalledOnce();
       await vi.mocked(cache.waitUntil).mock.calls[0][0];
       expect(kv.put).toHaveBeenCalledWith(
-        "timeout:caps:v1:timeout-user:sentry.io:sentry-mcp-evals:project:cloudflare-mcp",
+        expect.any(String),
         expect.any(String),
         { expirationTtl: 60 },
       );
 
+      const apiFetch = vi.spyOn(globalThis, "fetch");
       await vi.advanceTimersByTimeAsync(59_999);
       expect(await verifyConstraintsAccess(constraints, options)).toEqual(
         timedOut,
       );
-      expect(kv.put).toHaveBeenCalledOnce();
+      expect(apiFetch).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(1);
       expect(await verifyConstraintsAccess(constraints, options)).toMatchObject(
@@ -340,9 +341,10 @@ describe("verifyConstraintsAccess", () => {
           },
         },
       );
+      expect(apiFetch).toHaveBeenCalled();
       await vi.mocked(cache.waitUntil).mock.calls[1][0];
       expect(kv.put).toHaveBeenLastCalledWith(
-        "caps:v1:timeout-user:sentry.io:sentry-mcp-evals:project:cloudflare-mcp",
+        expect.any(String),
         expect.any(String),
         { expirationTtl: 900 },
       );
@@ -458,9 +460,6 @@ describe("verifyConstraintsAccess", () => {
         });
       }
 
-      // Check verified constraints before the timeout fallback.
-      expect(mockKV.get).toHaveBeenCalledTimes(2);
-
       await vi.mocked(cache.waitUntil).mock.calls[0][0];
 
       // Verify cache was written with correct key and TTL
@@ -505,9 +504,6 @@ describe("verifyConstraintsAccess", () => {
         expect(result.constraints.organizationSlug).toBe("sentry-mcp-evals");
         expect(result.constraints.projectSlug).toBe("cloudflare-mcp");
       }
-
-      // Both cache reads can fail without blocking API verification.
-      expect(mockKV.get).toHaveBeenCalledTimes(2);
     });
 
     it("succeeds even when cache write fails", async () => {

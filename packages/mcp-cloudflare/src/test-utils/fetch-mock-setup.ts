@@ -244,7 +244,17 @@ export function registerFetchMockInterceptors(fetchMock: FetchMockLike) {
         path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/?collapse=organization",
         method: "GET",
       })
-      .reply(200, projectFixture, { headers: JSON_HEADERS })
+      .reply(
+        200,
+        {
+          ...projectFixture,
+          organization: {
+            id: organizationFixture.id,
+            slug: organizationFixture.slug,
+          },
+        },
+        { headers: JSON_HEADERS },
+      )
       .persist();
 
     pool

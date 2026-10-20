@@ -998,6 +998,8 @@ describe("monitor time parameters", () => {
 });
 
 describe("getProject", () => {
+  afterEach(() => mswServer.resetHandlers());
+
   const project = {
     ...projectFixture,
     id: "123",
