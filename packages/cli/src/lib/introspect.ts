@@ -12,6 +12,13 @@
 
 import type { CommandExample } from "./command.js";
 import {
+  COMPLETION_TARGETS,
+  type CompletionTarget,
+  getCompletionTarget,
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
+} from "./completion-target.js";
+import {
   extractSchemaFields,
   type SchemaFieldInfo,
 } from "./formatters/output.js";
@@ -73,6 +80,8 @@ export type PositionalParam = {
   brief?: string;
   placeholder?: string;
   optional?: boolean;
+  /** Stricli parser; completion-aware parsers carry a {@link CompletionTarget}. */
+  parse?: unknown;
 };
 
 /** Extracted metadata for a single positional argument */
@@ -392,6 +401,94 @@ export function extractAllRoutes(routeMap: RouteMap): RouteInfo[] {
   }
 
   return result;
+}
+
+/** Command paths (without the `sentry` prefix) grouped by completion target. */
+export type CompletionTargets = Record<CompletionTarget, string[]>;
+
+/**
+ * Read a command's completion target from its positional parsers.
+ *
+ * A command completes org or org/project slugs when one of its positionals
+ * uses `parseOrgTarget` or `parseOrgProjectTarget` (see
+ * `completion-target.ts`). Mixing both kinds in one command is rejected
+ * because `__complete` classifies whole commands, not argument positions.
+ *
+ * @param command - Command to inspect
+ * @param path - Command path, used in the error message
+ */
+function getCommandCompletionTarget(
+  command: Command,
+  path: string,
+): CompletionTarget | undefined {
+  const positional = command.parameters.positional;
+  if (!positional) {
+    return;
+  }
+  const params =
+    positional.kind === "tuple"
+      ? positional.parameters
+      : [positional.parameter];
+  const kinds = new Set<CompletionTarget>();
+  for (const param of params) {
+    const kind = getCompletionTarget(param.parse);
+    if (kind) {
+      kinds.add(kind);
+    }
+  }
+  if (kinds.size > 1) {
+    throw new Error(
+      `Command "${path}" mixes org and org/project completion targets`,
+    );
+  }
+  return kinds.values().next().value;
+}
+
+/**
+ * Collect every visible command whose positionals declare a completion target.
+ *
+ * Paths are space-separated route segments without the binary name (e.g.
+ * `"issue list"`); nested groups contribute their full path. Sorted for
+ * stable generated output.
+ *
+ * @param routeMap - Top-level Stricli route map
+ * @param prefix - Route segments above `routeMap` (used for recursion)
+ */
+export function extractCompletionTargets(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+): CompletionTargets {
+  const targets: CompletionTargets = {
+    [ORG_TARGET]: [],
+    [ORG_PROJECT_TARGET]: [],
+  };
+
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden) {
+      continue;
+    }
+
+    const segments = [...prefix, entry.name.original];
+    const path = segments.join(" ");
+    const target = entry.target;
+
+    if (isRouteMap(target)) {
+      const nested = extractCompletionTargets(target, segments);
+      for (const kind of COMPLETION_TARGETS) {
+        targets[kind].push(...nested[kind]);
+      }
+    } else if (isCommand(target)) {
+      const kind = getCommandCompletionTarget(target, path);
+      if (kind) {
+        targets[kind].push(path);
+      }
+    }
+  }
+
+  for (const kind of COMPLETION_TARGETS) {
+    targets[kind].sort();
+  }
+  return targets;
 }
 
 /** Matches the "sentry " prefix at the start of a command path. */

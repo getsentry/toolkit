@@ -4,6 +4,7 @@
 
 import { listFeedback } from "../../lib/api-client.js";
 import { type IssueSelector, parseIssueArg } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ApiError,
   ContextError,
@@ -24,7 +25,7 @@ export const feedbackIdPositional = {
       placeholder: "feedback",
       brief:
         "Feedback: @latest, numeric ID, short ID, <org>/SHORT-ID, or <org>/<project>/<suffix>",
-      parse: String,
+      parse: parseOrgProjectTarget,
     },
   ],
 } as const;
