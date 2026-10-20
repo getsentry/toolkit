@@ -5,8 +5,11 @@
  * API call parameters, output formatting, pagination, and dataset handling.
  */
 
+import { execFileSync } from "node:child_process";
+import { buildApplication, run } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { exploreCommand } from "../../src/commands/explore.js";
+import { buildContext } from "../../src/context.js";
 
 vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
@@ -982,6 +985,56 @@ describe("sentry explore", () => {
   });
 
   describe("pagination", () => {
+    test.runIf(process.platform !== "win32")(
+      "a copied next-page hint reuses the cursor for a quoted query",
+      async () => {
+        const actual = await vi.importActual<
+          typeof import("../../src/lib/db/pagination.js")
+        >("../../src/lib/db/pagination.js");
+        resolveCursorSpy.mockImplementation(actual.resolveCursor);
+        advancePaginationStateSpy.mockImplementation(
+          actual.advancePaginationState,
+        );
+        hasPreviousPageSpy.mockImplementation(actual.hasPreviousPage);
+        queryEventsSpy.mockResolvedValue({
+          data: MOCK_EVENTS_RESPONSE,
+          nextCursor: "page-2",
+        });
+        const query = 'transaction:"GET /checkout"';
+        const { context, getStdout } = createContext();
+
+        await func.call(context, { ...DEFAULT_FLAGS, query }, "test-org/");
+
+        const hint = getStdout().match(/Next: (sentry explore[^\n]+)/)?.[1];
+        expect(hint).toBeDefined();
+        const args = execFileSync(
+          "/bin/sh",
+          ["-c", `sentry() { printf '%s\\0' "$@"; }\n${hint}`],
+          { encoding: "utf8" },
+        )
+          .split("\0")
+          .slice(0, -1);
+        const resumedContext = {
+          ...buildContext(process).forCommand({
+            prefix: ["sentry", "explore"],
+          }),
+          ...createContext().context,
+          process: { ...process, exitCode: undefined },
+        };
+        await run(
+          buildApplication(exploreCommand, { name: "explore" }),
+          args.slice(1),
+          resumedContext,
+        );
+        expect(resumedContext.process.exitCode).toBe(0);
+
+        expect(queryEventsSpy).toHaveBeenLastCalledWith(
+          "test-org",
+          expect.objectContaining({ query, cursor: "page-2" }),
+        );
+      },
+    );
+
     test("includes nextCursor in JSON when more results available", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       queryEventsSpy.mockResolvedValue({

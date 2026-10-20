@@ -18,6 +18,7 @@ import { formatTraceTable } from "../../lib/formatters/index.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
+  appendQueryHint,
   buildListCommand,
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
@@ -99,9 +100,7 @@ function appendTraceFlags(
   if (flags.sort !== "date") {
     parts.push(`--sort ${flags.sort}`);
   }
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   appendPeriodHint(parts, flags.period, DEFAULT_PERIOD);
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }

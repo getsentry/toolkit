@@ -2049,6 +2049,16 @@ describe("appendIssueFlags", () => {
     fresh: false,
   };
 
+  test("preserves quoted queries in page-navigation hints", () => {
+    expect(
+      appendIssueFlags("sentry issue list org/ -c next", {
+        ...baseFlags,
+        sort: "recommended",
+        query: 'transaction:"GET /checkout"',
+      }),
+    ).toContain(`--query='transaction:"GET /checkout"'`);
+  });
+
   test("on SaaS, recommended (the default) is omitted but date is shown", () => {
     delete process.env.SENTRY_URL;
     expect(
