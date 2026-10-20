@@ -45,6 +45,7 @@ import {
 } from "./org-list.js";
 import { disableResponseCache } from "./response-cache.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
+import { shellQuote } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // Level A: shared parameter / flag definitions
@@ -277,18 +278,18 @@ export function paginationHint(opts: {
 }
 
 /**
- * Append `-q "<query>"` to a hint-flag parts array when the user passed `--query`.
+ * Append a shell-quoted `--query` argument when the user passed `--query`.
  *
- * Standard helper for pagination-hint builders that need to preserve the
- * active search filter. Quotes are added unconditionally to handle queries
- * containing spaces.
+ * Preserve the exact query, including quotes and shell metacharacters, so copied
+ * pagination hints resolve the cursor stored for the original search. The inline
+ * flag value also keeps quoted segments in one argument in PowerShell.
  */
 export function appendQueryHint(
   parts: string[],
   query: string | undefined,
 ): void {
   if (query) {
-    parts.push(`-q "${query}"`);
+    parts.push(`--query=${shellQuote(query)}`);
   }
 }
 

@@ -31,6 +31,7 @@ import { filterFields } from "../../lib/formatters/json.js";
 import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
+  appendQueryHint,
   buildListCommand,
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
@@ -210,9 +211,7 @@ function appendFlagHints(
   if (flags.sort !== DEFAULT_SORT) {
     parts.push(`--sort ${flags.sort}`);
   }
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   appendPeriodHint(parts, flags.period, DEFAULT_PERIOD);
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }

@@ -61,6 +61,7 @@ import {
   type OutputConfig,
 } from "../../lib/formatters/output.js";
 import {
+  appendQueryHint,
   buildListCommand,
   buildListLimitFlag,
   LIST_BASE_ALIASES,
@@ -804,9 +805,7 @@ function appendIssueFlags(base: string, flags: ListFlags): string {
   if (flags.sort !== defaultIssueSort()) {
     parts.push(`--sort ${flags.sort}`);
   }
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   appendPeriodHint(parts, flags.period, DEFAULT_PERIOD, "-t");
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }
