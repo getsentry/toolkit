@@ -215,9 +215,22 @@ export function parseAccountServerSelector(
  * account id; the server part is omitted when no host is recorded.
  */
 export function accountSelectorOf(account: AccountSummary): string {
+  const { who, server } = accountSelectorParts(account);
+  return server ? `${who}:${server}` : who;
+}
+
+/**
+ * The two halves of {@link accountSelectorOf}: `who` (email, else username,
+ * else account id) and `server` (`host[:port]`, absent when no host is
+ * recorded). For machine-readable output, so consumers needn't split.
+ */
+export function accountSelectorParts(account: AccountSummary): {
+  who: string;
+  server?: string;
+} {
   const who = account.email ?? account.username ?? account.id;
-  const host = serverOf(account.host);
-  return host ? `${who}:${host}` : who;
+  const server = serverOf(account.host);
+  return server ? { who, server } : { who };
 }
 
 /** `host[:port]` of a stored account origin, lowercased. */

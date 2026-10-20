@@ -171,6 +171,7 @@ describe("org list across stored accounts", () => {
       email: "jane@acme.com",
       label: "jane@acme.com on sentry.acme.com",
       selector: "jane@acme.com:sentry.acme.com",
+      selectorParts: { who: "jane@acme.com", server: "sentry.acme.com" },
     });
     expect(requests.sort()).toEqual(
       [`${SAAS} saas-token`, `${ACME} acme-token`].sort(),

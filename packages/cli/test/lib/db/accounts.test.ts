@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   accountSelectorOf,
+  accountSelectorParts,
   findAccounts,
   getAccountRow,
   getActiveAccountRow,
@@ -299,6 +300,10 @@ describe("findAccounts", () => {
     expect(selfAccount && accountSelectorOf(selfAccount)).toBe(
       "jane@example.com:sentry.example.com:9000",
     );
+    expect(selfAccount && accountSelectorParts(selfAccount)).toEqual({
+      who: "jane@example.com",
+      server: "sentry.example.com:9000",
+    });
     for (const selector of [
       "jane@example.com:sentry.io",
       "jane@example.com:us.sentry.io",

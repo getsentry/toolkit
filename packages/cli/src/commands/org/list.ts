@@ -14,6 +14,7 @@ import { DEFAULT_SENTRY_HOST } from "../../lib/constants.js";
 import {
   type AccountSummary,
   accountSelectorOf,
+  accountSelectorParts,
   serverKey,
   toAccountSummary,
 } from "../../lib/db/accounts.js";
@@ -56,6 +57,11 @@ type OrgListAccount = {
   label: string;
   /** What `--account` accepts, e.g. `jane@acme.com:sentry.io`. */
   selector: string;
+  /**
+   * `selector` already split: `who` (email, else username, else id) and
+   * `server` (`host[:port]`, absent when no host is recorded).
+   */
+  selectorParts: { who: string; server?: string };
 };
 
 /** Optional account fields copied into {@link OrgListAccount} when set. */
@@ -170,6 +176,7 @@ function toOrgListAccount(account: AccountSummary): OrgListAccount {
     id: account.id,
     label: formatAccountLabel(account),
     selector: accountSelectorOf(account),
+    selectorParts: accountSelectorParts(account),
   };
   for (const field of ORG_LIST_ACCOUNT_FIELDS) {
     const value = account[field];
