@@ -74,6 +74,7 @@ server has none); accounts on other servers are never replaced.
 # Add (or log in again to) a specific account without prompting
 sentry auth login jane@example.com
 sentry auth login jane@example.com --url https://sentry.example.com
+sentry auth login jane@example.com:sentry.example.com   # same as --url
 
 # Show stored accounts; * marks the active one
 sentry auth list
@@ -90,7 +91,9 @@ nothing) if it belongs to someone else.
 Select an account by email, username, user ID, or account ID (from
 `sentry auth list --json`). `sentry auth switch` also accepts a close match —
 `sentry auth switch jane` picks `jane@example.com` with a warning when it's the
-only candidate. If the same email is stored on several servers, add `--url`:
+only candidate. If the same email is stored on several servers, add the server
+after a colon, as `sentry org list` shows it
+(`sentry auth switch jane@example.com:sentry.example.com`), or pass `--url`:
 `sentry auth switch jane@example.com --url https://sentry.example.com`.
 
 Most of the time you don't need to switch: commands pick the stored account

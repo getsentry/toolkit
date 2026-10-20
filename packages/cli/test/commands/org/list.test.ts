@@ -26,6 +26,7 @@ type ListFunc = (
     fresh: boolean;
     account?: string;
   },
+  filter?: string,
 ) => Promise<void>;
 
 useTestConfigDir("org-list-");
@@ -107,22 +108,27 @@ function createContext() {
 
 async function runList(
   flags: { account?: string; limit?: number } = {},
+  filter?: string,
 ): Promise<Record<string, unknown>[]> {
   const func = (await listCommand.loader()) as unknown as ListFunc;
   const { context, getOutput } = createContext();
-  await func.call(context, {
-    limit: flags.limit ?? 100,
-    json: true,
-    fresh: true,
-    ...(flags.account ? { account: flags.account } : {}),
-  });
+  await func.call(
+    context,
+    {
+      limit: flags.limit ?? 100,
+      json: true,
+      fresh: true,
+      ...(flags.account ? { account: flags.account } : {}),
+    },
+    filter,
+  );
   return JSON.parse(getOutput()) as Record<string, unknown>[];
 }
 
-async function runListHuman(): Promise<string> {
+async function runListHuman(filter?: string): Promise<string> {
   const func = (await listCommand.loader()) as unknown as ListFunc;
   const { context, getOutput } = createContext();
-  await func.call(context, { limit: 100, json: false, fresh: true });
+  await func.call(context, { limit: 100, json: false, fresh: true }, filter);
   return getOutput();
 }
 
@@ -159,9 +165,12 @@ describe("org list across stored accounts", () => {
       ["alpha", "jane@example.com"],
       ["acme-internal", "jane@acme.com"],
     ]);
-    expect(entries[1]?.account).toMatchObject({
+    expect(entries[1]?.account).toEqual({
+      id: expect.any(String),
       host: ACME,
+      email: "jane@acme.com",
       label: "jane@acme.com on sentry.acme.com",
+      selector: "jane@acme.com:sentry.acme.com",
     });
     expect(requests.sort()).toEqual(
       [`${SAAS} saas-token`, `${ACME} acme-token`].sort(),
@@ -303,8 +312,53 @@ describe("org list across stored accounts", () => {
     const out = await runListHuman();
 
     expect(out).toContain("ACCOUNT");
-    expect(out).toContain("sentry.acme.com");
+    // The notation --account and `sentry auth login` accept.
+    expect(out).toContain("jane@acme.com:sentry.acme.com");
+    expect(out).toContain("jane@example.com:sentry.io");
     expect(out).not.toContain("REGION");
+  });
+});
+
+describe("org list filter", () => {
+  beforeEach(() => {
+    addAccount("saas-token", SAAS, "jane@example.com");
+    orgsByToken["saas-token"] = [
+      { id: "1", slug: "acme-prod", name: "Acme Production", regionUrl: SAAS },
+      { id: "2", slug: "acme-dev", name: "Acme Dev", regionUrl: SAAS },
+      { id: "3", slug: "globex", name: "Globex Corp", regionUrl: SAAS },
+    ];
+  });
+
+  test("plain text matches anywhere in the slug or name, ignoring case", async () => {
+    expect((await runList({}, "PROD")).map((e) => e.slug)).toEqual([
+      "acme-prod",
+    ]);
+    expect((await runList({}, "corp")).map((e) => e.slug)).toEqual(["globex"]);
+  });
+
+  test("a glob must match the whole slug or name", async () => {
+    expect((await runList({}, "acme-*")).map((e) => e.slug)).toEqual([
+      "acme-prod",
+      "acme-dev",
+    ]);
+    expect((await runList({}, "acme")).map((e) => e.slug)).toEqual([
+      "acme-prod",
+      "acme-dev",
+    ]);
+    expect(await runList({}, "acme?")).toEqual([]);
+  });
+
+  test("--limit applies after filtering", async () => {
+    expect((await runList({ limit: 1 }, "acme")).map((e) => e.slug)).toEqual([
+      "acme-prod",
+    ]);
+  });
+
+  test("no match says how many organizations were filtered out", async () => {
+    const out = await runListHuman("initech");
+
+    expect(out).toContain("No organizations found.");
+    expect(out).toContain("None of your 3 organizations match 'initech'");
   });
 });
 
@@ -336,6 +390,23 @@ describe("org list --account", () => {
     expect(requests).toEqual([`${ACME} acme-token`]);
   });
 
+  test("<email>:<server> picks one of the same email's accounts", async () => {
+    addAccount("acme-token", ACME, "jane@example.com");
+    addAccount("saas-token", SAAS, "jane@example.com");
+    orgsByToken["saas-token"] = [org("alpha")];
+    orgsByToken["acme-token"] = [org("acme-internal", ACME)];
+
+    await expect(runList({ account: "jane@example.com" })).rejects.toThrow(
+      ResolutionError,
+    );
+    const entries = await runList({
+      account: "jane@example.com:sentry.acme.com",
+    });
+
+    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
+    expect(requests).toEqual([`${ACME} acme-token`]);
+  });
+
   test("an unknown account is an error", async () => {
     addAccount("saas-token", SAAS, "jane@example.com");
 
@@ -356,8 +427,9 @@ describe("org list --account", () => {
     );
 
     expect(error).toBeInstanceOf(AuthError);
+    // `<email>:<server>` logs in to that account's server.
     expect((error as AuthError).message).toContain(
-      "sentry auth login jane@acme.com",
+      "sentry auth login jane@acme.com:sentry.acme.com",
     );
     expect(requests).toEqual([]);
   });

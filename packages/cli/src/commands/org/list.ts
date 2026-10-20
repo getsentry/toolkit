@@ -5,6 +5,7 @@
  * when several are logged in.
  */
 
+import picomatch from "picomatch";
 import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
@@ -12,7 +13,8 @@ import { buildCommand } from "../../lib/command.js";
 import { DEFAULT_SENTRY_HOST } from "../../lib/constants.js";
 import {
   type AccountSummary,
-  isSameServer,
+  accountSelectorOf,
+  serverKey,
   toAccountSummary,
 } from "../../lib/db/accounts.js";
 import {
@@ -49,9 +51,14 @@ type OrgListAccount = {
   host?: string;
   email?: string;
   username?: string;
-  /** Human label, e.g. `jane@acme.com on sentry.io`. */
+  /** Human label, e.g. `Jane <jane@acme.com> on sentry.io`. */
   label: string;
+  /** What `--account` accepts, e.g. `jane@acme.com:sentry.io`. */
+  selector: string;
 };
+
+/** Optional account fields copied into {@link OrgListAccount} when set. */
+const ORG_LIST_ACCOUNT_FIELDS = ["host", "email", "username"] as const;
 
 /**
  * An organization enriched with an optional region display name and the
@@ -113,6 +120,20 @@ function getRegionDisplayName(regionUrl: string): string {
   }
 }
 
+/** Table columns in display order: header → the entry's cell value. */
+const ORG_LIST_COLUMNS: Record<
+  string,
+  (e: OrgListEntry) => string | undefined
+> = {
+  SLUG: (e) => e.slug,
+  REGION: (e) => e.region,
+  NAME: (e) => e.name,
+  ACCOUNT: (e) => e.account?.selector,
+};
+
+/** Columns shown only when at least one entry has a value for them. */
+const OPTIONAL_ORG_LIST_COLUMNS = new Set(["REGION", "ACCOUNT"]);
+
 /**
  * Format org list entries as a human-readable table.
  *
@@ -124,53 +145,38 @@ function formatOrgListHuman(entries: OrgListEntry[]): string {
     return "No organizations found.";
   }
 
-  const showRegion = entries.some((e) => e.region !== undefined);
-  const showAccount = entries.some((e) => e.account !== undefined);
-
-  type OrgRow = {
-    slug: string;
-    name: string;
-    region?: string;
-    account?: string;
-  };
-  const rows: OrgRow[] = entries.map((org) => ({
-    slug: org.slug,
-    name: org.name,
-    region: showRegion ? (org.region ?? "") : undefined,
-    account: org.account?.label,
-  }));
-
-  const columns: Column<OrgRow>[] = [
-    { header: "SLUG", value: (r) => r.slug },
-    ...(showRegion
-      ? [{ header: "REGION", value: (r: OrgRow) => r.region ?? "" }]
-      : []),
-    { header: "NAME", value: (r) => escapeMarkdownCell(r.name) },
-    ...(showAccount
-      ? [
-          {
-            header: "ACCOUNT",
-            value: (r: OrgRow) => escapeMarkdownCell(r.account ?? ""),
-          },
-        ]
-      : []),
-  ];
+  // REGION and ACCOUNT only appear when some entry has one.
+  const columns: Column<OrgListEntry>[] = Object.entries(ORG_LIST_COLUMNS)
+    .filter(
+      ([header, value]) =>
+        !OPTIONAL_ORG_LIST_COLUMNS.has(header) ||
+        entries.some((e) => value(e) !== undefined),
+    )
+    .map(([header, value]) => ({
+      header,
+      value: (e) => escapeMarkdownCell(value(e) ?? ""),
+    }));
 
   const parts: string[] = [];
   const buffer: Writer = { write: (s: string) => parts.push(s) };
-  writeTable(buffer, rows, columns);
+  writeTable(buffer, entries, columns);
 
   return parts.join("").trimEnd();
 }
 
 function toOrgListAccount(account: AccountSummary): OrgListAccount {
-  return {
+  const entry: OrgListAccount = {
     id: account.id,
-    ...(account.host ? { host: account.host } : {}),
-    ...(account.email ? { email: account.email } : {}),
-    ...(account.username ? { username: account.username } : {}),
     label: formatAccountLabel(account),
+    selector: accountSelectorOf(account),
   };
+  for (const field of ORG_LIST_ACCOUNT_FIELDS) {
+    const value = account[field];
+    if (value) {
+      entry[field] = value;
+    }
+  }
+  return entry;
 }
 
 /** Fetch orgs (and their cached regions) with the credentials in effect. */
@@ -180,16 +186,18 @@ async function fetchOrgs(account?: AccountSummary): Promise<AccountOrgs> {
 }
 
 /** Fetch `account`'s orgs with its own credentials, on its own server. */
-function fetchAccountOrgs(account: AccountSummary): Promise<AccountOrgs> {
+async function fetchAccountOrgs(account: AccountSummary): Promise<AccountOrgs> {
   const host = account.host;
   if (!host) {
-    return Promise.reject(
-      new AuthError("not_authenticated", "Account has no server recorded.", {
-        skipAutoAuth: true,
-      }),
+    throw new AuthError(
+      "not_authenticated",
+      "Account has no server recorded.",
+      { skipAutoAuth: true },
     );
   }
-  return withStoredAccount({ id: account.id, host }, () => fetchOrgs(account));
+  return await withStoredAccount({ id: account.id, host }, () =>
+    fetchOrgs(account),
+  );
 }
 
 /**
@@ -203,10 +211,10 @@ async function fetchOrgsAcrossAccounts(
   const settled = await Promise.allSettled(accounts.map(fetchAccountOrgs));
   const fetched: AccountOrgs[] = [];
   let firstError: unknown;
-  settled.forEach((result, i) => {
+  for (const [i, result] of settled.entries()) {
     if (result.status === "fulfilled") {
       fetched.push(result.value);
-      return;
+      continue;
     }
     const error = result.reason;
     if (!(error instanceof AuthError || error instanceof ApiError)) {
@@ -217,7 +225,7 @@ async function fetchOrgsAcrossAccounts(
     log.warn(
       `Skipped ${account ? formatAccountLabel(account) : "an account"}: ${error.message}`,
     );
-  });
+  }
   if (fetched.length === 0 && firstError !== undefined) {
     throw firstError;
   }
@@ -237,18 +245,17 @@ function mergeAccountOrgs(results: AccountOrgs[]): {
   const orgs: SentryOrganization[] = [];
   const accountOf = new Map<SentryOrganization, AccountSummary | undefined>();
   const regionOf = new Map<SentryOrganization, string | undefined>();
-  const seen: { host: string; slug: string }[] = [];
+  // `<server key> <slug>` of every org listed so far.
+  const seen = new Set<string>();
   for (const { account, orgs: accountOrgs, regions } of results) {
+    const server = account?.host ? serverKey(account.host) : undefined;
     for (const org of accountOrgs) {
-      const host = account?.host;
-      if (
-        host &&
-        seen.some((s) => s.slug === org.slug && isSameServer(s.host, host))
-      ) {
-        continue;
-      }
-      if (host) {
-        seen.push({ host, slug: org.slug });
+      if (server) {
+        const key = `${server} ${org.slug}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
       }
       orgs.push(org);
       accountOf.set(org, account);
@@ -256,6 +263,43 @@ function mergeAccountOrgs(results: AccountOrgs[]): {
     }
   }
   return { orgs, accountOf, regionOf };
+}
+
+/** Glob metacharacters: a filter with any of them is matched as a glob. */
+const GLOB_CHARS_RE = /[*?[\]{}]/;
+
+/**
+ * Orgs whose slug or name matches `filter`, case-insensitively: a glob
+ * (`acme-*`) must match the whole slug or name, plain text may appear
+ * anywhere in it.
+ */
+function filterOrgs(
+  orgs: SentryOrganization[],
+  filter: string | undefined,
+): SentryOrganization[] {
+  const needle = filter?.trim().toLowerCase();
+  if (!needle) {
+    return orgs;
+  }
+  const matches = GLOB_CHARS_RE.test(needle)
+    ? picomatch(needle, { dot: true })
+    : (value: string) => value.includes(needle);
+  return orgs.filter(
+    (org) => matches(org.slug.toLowerCase()) || matches(org.name.toLowerCase()),
+  );
+}
+
+/**
+ * The command that logs back in to `account`: `sentry auth login
+ * <email>:<server>` when its email is known, else `--url <server>`.
+ */
+function reloginCommand(account: AccountSummary): string {
+  if (account.email) {
+    return `sentry auth login ${accountSelectorOf(account)}`;
+  }
+  return account.host
+    ? `sentry auth login --url ${account.host}`
+    : "sentry auth login";
 }
 
 /**
@@ -276,11 +320,9 @@ function resolveAccounts(selector?: string): AccountSummary[] | undefined {
       },
     );
     if (!account.usable) {
-      const who = account.email ?? account.username;
-      const relogin = who ? `sentry auth login ${who}` : "sentry auth login";
       throw new AuthError(
         "expired",
-        `${formatAccountLabel(account)} is logged out. Run '${relogin}'.`,
+        `${formatAccountLabel(account)} is logged out. Run '${reloginCommand(account)}'.`,
         { skipAutoAuth: true },
       );
     }
@@ -306,11 +348,18 @@ export const listCommand = buildCommand({
       "organization use that account automatically. An organization reachable\n" +
       "from several accounts on the same server is listed once. Accounts whose\n" +
       "login fails are skipped with a warning. SENTRY_HOST/SENTRY_URL limits the\n" +
-      "list to accounts on that server; --account limits it to one account.\n\n" +
+      "list to accounts on that server; --account limits it to one account\n" +
+      "(an email, username, or account id; add :<server> to pick one server's\n" +
+      "login, e.g. jane@example.com:sentry.example.com, as shown in ACCOUNT).\n\n" +
+      "Pass a filter to only list organizations whose slug or name contains it\n" +
+      "(case-insensitive), or matches it when it is a glob like 'acme-*'.\n\n" +
       "Examples:\n" +
       "  sentry org list\n" +
+      "  sentry org list acme\n" +
+      "  sentry org list 'acme-*'\n" +
       "  sentry org list --limit 10\n" +
       "  sentry org list --account jane@example.com\n" +
+      "  sentry org list -a jane@example.com:sentry.example.com\n" +
       "  sentry org list --json\n\n" +
       "Alias: `sentry orgs` → `sentry org list`",
   },
@@ -323,14 +372,26 @@ export const listCommand = buildCommand({
         kind: "parsed",
         parse: String,
         brief:
-          "Only list organizations of this stored account (email, username, or account id)",
+          "Only list organizations of this stored account (email, username, or account id; <who>:<server> for one server)",
         optional: true,
       },
     },
     // Only -n for --limit; no -c since org list has no --cursor flag
-    aliases: { ...FRESH_ALIASES, n: "limit" },
+    aliases: { ...FRESH_ALIASES, n: "limit", a: "account" },
+    positional: {
+      kind: "tuple",
+      parameters: [
+        {
+          placeholder: "filter",
+          brief:
+            "Only list organizations whose slug or name contains this text or matches this glob",
+          parse: String,
+          optional: true,
+        },
+      ],
+    },
   },
-  async *func(this: SentryContext, flags: ListFlags) {
+  async *func(this: SentryContext, flags: ListFlags, filter?: string) {
     applyFreshFlag(flags);
 
     const accounts = resolveAccounts(flags.account);
@@ -351,7 +412,9 @@ export const listCommand = buildCommand({
           : await Promise.all(accounts.map(fetchAccountOrgs));
       },
     );
-    const { orgs, accountOf, regionOf } = mergeAccountOrgs(results);
+    const merged = mergeAccountOrgs(results);
+    const { accountOf, regionOf } = merged;
+    const orgs = filterOrgs(merged.orgs, filter);
     const limitedOrgs = orgs.slice(0, flags.limit);
 
     // Show regions when one login's orgs span several (e.g. US and EU).
@@ -383,6 +446,10 @@ export const listCommand = buildCommand({
     }
     if (entries.length > 0) {
       hints.push("Tip: Use 'sentry org view <slug>' for details");
+    } else if (filter && merged.orgs.length > 0) {
+      hints.push(
+        `None of your ${merged.orgs.length} organizations match '${filter}'. Run 'sentry org list' to see them all.`,
+      );
     }
 
     yield new CommandOutput(entries);

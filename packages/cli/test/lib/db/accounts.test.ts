@@ -8,10 +8,13 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  accountSelectorOf,
   findAccounts,
   getAccountRow,
   getActiveAccountRow,
+  isSameServer,
   listAccounts,
+  serverKey,
 } from "../../../src/lib/db/accounts.js";
 import {
   getActiveAccountId,
@@ -274,5 +277,67 @@ describe("findAccounts", () => {
     expect(
       findAccounts("jane@example.com@sentry.example.com").map((a) => a.id),
     ).toEqual([selfHosted]);
+  });
+
+  test("narrows with <who>:<server>, the notation accountSelectorOf shows", () => {
+    const saas = login("saas", "https://sentry.io", {
+      userId: "1",
+      email: "jane@example.com",
+    });
+    const selfHosted = login("self", "https://sentry.example.com:9000", {
+      userId: "1",
+      email: "jane@example.com",
+      username: "jane",
+    });
+
+    const [saasAccount, selfAccount] = [saas, selfHosted].map((id) =>
+      listAccounts().find((a) => a.id === id),
+    );
+    expect(saasAccount && accountSelectorOf(saasAccount)).toBe(
+      "jane@example.com:sentry.io",
+    );
+    expect(selfAccount && accountSelectorOf(selfAccount)).toBe(
+      "jane@example.com:sentry.example.com:9000",
+    );
+    for (const selector of [
+      "jane@example.com:sentry.io",
+      "jane@example.com:us.sentry.io",
+      "JANE@example.com:https://sentry.io",
+    ]) {
+      expect(findAccounts(selector).map((a) => a.id)).toEqual([saas]);
+    }
+    for (const selector of [
+      "jane@example.com:sentry.example.com:9000",
+      "jane:sentry.example.com:9000",
+    ]) {
+      expect(findAccounts(selector).map((a) => a.id)).toEqual([selfHosted]);
+    }
+    expect(findAccounts("jane@example.com:sentry.example.com")).toEqual([]);
+  });
+});
+
+describe("serverKey", () => {
+  test("is shared by every SaaS origin, and otherwise by the same origin only", () => {
+    const groups = [
+      [
+        "https://sentry.io",
+        "https://us.sentry.io",
+        "https://de.sentry.io/api/0/",
+      ],
+      ["https://sentry.example.com", "https://sentry.example.com/path"],
+      ["https://sentry.example.com:9000"],
+      ["http://sentry.example.com"],
+    ];
+    const keys = groups.map((urls) => new Set(urls.map(serverKey)));
+    for (const set of keys) {
+      expect(set.size).toBe(1);
+      expect(set.has(undefined)).toBe(false);
+    }
+    expect(new Set(keys.flatMap((set) => [...set])).size).toBe(groups.length);
+    expect(isSameServer("https://us.sentry.io", "https://sentry.io")).toBe(
+      true,
+    );
+    expect(serverKey("not a url")).toBeUndefined();
+    expect(isSameServer("not a url", "not a url")).toBe(false);
   });
 });
