@@ -43,10 +43,14 @@ import {
   buildListCommand,
   buildListLimitFlag,
   LIST_BASE_ALIASES,
-  LIST_TARGET_POSITIONAL,
+  LIST_TARGET_FILTER_POSITIONAL,
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
+import {
+  filterByName,
+  splitListTargetAndFilter,
+} from "../../lib/list-filter.js";
 
 import {
   dispatchOrgScopedList,
@@ -80,6 +84,12 @@ type ListFlags = {
   readonly fresh: boolean;
   readonly fields?: string[];
 };
+
+/**
+ * {@link ListFlags} plus the optional name filter positional
+ * (`sentry project list <org>/ <filter>`), which the handlers apply.
+ */
+type ProjectListFlags = ListFlags & { readonly filter?: string };
 
 /**
  * Project with optional organization context for display.
@@ -153,6 +163,40 @@ export function filterByPlatform(
   return projects.filter((p) =>
     p.platform?.toLowerCase().includes(lowerPlatform),
   );
+}
+
+/** The names a project name filter matches: slug and display name. */
+function projectNamesOf(project: SentryProject): string[] {
+  return [project.slug, project.name];
+}
+
+/**
+ * Projects matching `--platform` and the name filter. With a name filter,
+ * best matches come first (see {@link filterByName}).
+ */
+function filterProjects(
+  projects: ProjectWithOrg[],
+  flags: ProjectListFlags,
+): ProjectWithOrg[] {
+  return filterByName(
+    filterByPlatform(projects, flags.platform),
+    flags.filter,
+    projectNamesOf,
+  );
+}
+
+/** ` matching '<filter>'` for messages, or `""` without a name filter. */
+function matchingFilter(flags: ProjectListFlags): string {
+  return flags.filter ? ` matching '${flags.filter}'` : "";
+}
+
+/** Why a named project was left out by `--platform` and/or the name filter. */
+function noMatchHint(projectSlug: string, flags: ProjectListFlags): string {
+  if (!flags.filter) {
+    return `No project '${projectSlug}' found matching platform '${flags.platform}'.`;
+  }
+  const platformCtx = flags.platform ? ` on platform '${flags.platform}'` : "";
+  return `Project '${projectSlug}' doesn't match '${flags.filter}'${platformCtx}.`;
 }
 
 /**
@@ -278,9 +322,9 @@ async function fetchPaginatedSafe(
  */
 async function fetchAutoDetectProjects(
   orgs: string[],
-  flags: ListFlags,
+  flags: ProjectListFlags,
 ): Promise<{ projects: ProjectWithOrg[]; nextCursor?: string }> {
-  if (orgs.length === 1 && !flags.platform) {
+  if (orgs.length === 1 && !flags.platform && !flags.filter) {
     return await fetchPaginatedSafe(orgs[0] as string, flags.limit);
   }
   if (orgs.length > 0) {
@@ -336,7 +380,7 @@ function selfHostedWarning(
  */
 export async function handleAutoDetect(
   cwd: string,
-  flags: ListFlags,
+  flags: ProjectListFlags,
 ): Promise<ListResult<ProjectWithOrg>> {
   const {
     orgs: orgsToFetch,
@@ -352,7 +396,7 @@ export async function handleAutoDetect(
     () => fetchAutoDetectProjects(orgsToFetch, flags),
   );
 
-  const filtered = filterByPlatform(allProjects, flags.platform);
+  const filtered = filterProjects(allProjects, flags);
   const limitCount =
     orgsToFetch.length > 1 ? flags.limit * orgsToFetch.length : flags.limit;
   const limited = filtered.slice(0, limitCount);
@@ -368,7 +412,7 @@ export async function handleAutoDetect(
   const hintParts: string[] = [];
 
   if (limited.length === 0) {
-    hintParts.push("No projects found.");
+    hintParts.push(`No projects${matchingFilter(flags)} found.`);
   } else {
     // header is rendered inline by the human formatter — don't duplicate here
     if (footer) {
@@ -402,7 +446,7 @@ export async function handleAutoDetect(
 export async function handleExplicit(
   org: string,
   projectSlug: string,
-  flags: ListFlags,
+  flags: ProjectListFlags,
 ): Promise<ListResult<ProjectWithOrg>> {
   const projectResult = await withProgress(
     { message: "Fetching project...", json: flags.json },
@@ -418,12 +462,12 @@ export async function handleExplicit(
   }
   const project: ProjectWithOrg = { ...projectResult.value, orgSlug: org };
 
-  const filtered = filterByPlatform([project], flags.platform);
+  const filtered = filterProjects([project], flags);
 
   if (filtered.length === 0) {
     return {
       items: [],
-      hint: `No project '${projectSlug}' found matching platform '${flags.platform}'.`,
+      hint: noMatchHint(projectSlug, flags),
     };
   }
 
@@ -445,13 +489,19 @@ export async function handleExplicit(
 async function handleExplicitProjects(
   org: string,
   slugs: readonly string[],
-  flags: ListFlags,
+  flags: ProjectListFlags,
 ): Promise<ListResult<ProjectWithOrg>> {
   const { found, missing } = await withProgress(
     { message: "Fetching projects...", json: flags.json },
     () => findProjectsInOrg(org, slugs),
   );
-  const selected = found.map((project) => ({ ...project, orgSlug: org }));
+  const withOrg = found.map((project) => ({ ...project, orgSlug: org }));
+  // Name filter first, so the --platform hint only lists projects it excluded.
+  const selected = filterByName(withOrg, flags.filter, projectNamesOf);
+  const selectedSlugs = new Set(selected.map((project) => project.slug));
+  const nameFiltered = withOrg
+    .filter((project) => !selectedSlugs.has(project.slug))
+    .map((project) => project.slug);
   const filtered = filterByPlatform(selected, flags.platform);
   const includedSlugs = new Set(filtered.map((project) => project.slug));
   const platformFiltered = selected
@@ -471,6 +521,11 @@ async function handleExplicitProjects(
   if (missing.length > 0) {
     hintParts.push(
       `Missing: ${missing.join(", ")}. Tip: Use 'sentry project list ${org}/' to see all projects`,
+    );
+  }
+  if (nameFiltered.length > 0) {
+    hintParts.push(
+      `No match for '${flags.filter}': ${nameFiltered.join(", ")}`,
     );
   }
   if (platformFiltered.length > 0) {
@@ -497,7 +552,7 @@ async function handleExplicitProjects(
 
 export type OrgAllOptions = {
   org: string;
-  flags: ListFlags;
+  flags: ProjectListFlags;
   contextKey: string;
   cursor: string | undefined;
   direction: CursorDirection;
@@ -513,6 +568,9 @@ export async function handleOrgAll(
   options: OrgAllOptions,
 ): Promise<ListResult<ProjectWithOrg>> {
   const { org, flags, contextKey, cursor, direction } = options;
+  if (flags.filter) {
+    return await handleOrgAllFiltered(org, flags);
+  }
   const response: PaginatedResponse<SentryProject[]> = await withProgress(
     {
       message: `Fetching projects (up to ${flags.limit})...`,
@@ -585,12 +643,49 @@ export async function handleOrgAll(
 }
 
 /**
+ * Org-all mode with a name filter (`sentry project list <org>/ web-*`).
+ * Matching (and fuzzy ranking) needs every project, so this fetches all
+ * pages instead of one cursor page; `--limit` applies to the matches.
+ */
+async function handleOrgAllFiltered(
+  org: string,
+  flags: ProjectListFlags,
+): Promise<ListResult<ProjectWithOrg>> {
+  const projects = await withProgress(
+    {
+      message: `Fetching projects${matchingFilter(flags)}...`,
+      json: flags.json,
+    },
+    () => fetchOrgProjects(org),
+  );
+  const matches = filterProjects(projects, flags);
+  const items = matches.slice(0, flags.limit);
+  if (items.length === 0) {
+    const platformCtx = flags.platform
+      ? ` on platform '${flags.platform}'`
+      : "";
+    return {
+      items: [],
+      hint: `No projects${matchingFilter(flags)}${platformCtx} in organization '${org}'.`,
+    };
+  }
+  return {
+    items,
+    header:
+      matches.length > items.length
+        ? `Showing ${items.length} of ${matches.length} matches. Use --limit to show more.`
+        : `Showing ${items.length} projects`,
+    hint: "Tip: Use 'sentry project view <org>/<project>' for details",
+  };
+}
+
+/**
  * Handle project-search mode (bare slug, e.g., "sentry").
  * Searches for the project across all accessible organizations.
  */
 export async function handleProjectSearch(
   projectSlug: string,
-  flags: ListFlags,
+  flags: ProjectListFlags,
   options?: {
     /** Original user input before normalization — for clearer messages. */
     originalSlug?: string;
@@ -645,11 +740,11 @@ export async function handleProjectSearch(
       : resolution.projects;
   const resolvedProjectSlug =
     resolution.kind === "fuzzy-project" ? resolution.project : projectSlug;
-  const filtered = filterByPlatform(projects, flags.platform);
-  if (filtered.length === 0 && flags.platform) {
+  const filtered = filterProjects(projects, flags);
+  if (filtered.length === 0 && (flags.platform || flags.filter)) {
     return {
       items: [],
-      hint: `No project '${resolvedProjectSlug}' found matching platform '${flags.platform}'.`,
+      hint: noMatchHint(resolvedProjectSlug, flags),
     };
   }
 
@@ -709,6 +804,10 @@ export const listCommand = buildListCommand("project", {
       "  sentry project list <org>/ -c next      # next page\n" +
       "  sentry project list <org>/ -c prev      # previous page\n" +
       "  sentry project list <org>/ -c <cursor>  # resume at specific cursor\n\n" +
+      "Name filter (a glob, or text matched fuzzily; searches every page):\n" +
+      "  sentry project list <org>/ 'web-*'    # slug or name matches the glob\n" +
+      "  sentry project list <org>/ frontnd    # fuzzy: finds 'frontend'\n" +
+      "  sentry project list 'web-*'           # a lone glob filters auto-detected orgs\n\n" +
       "Filtering and output:\n" +
       "  sentry project list --platform javascript  # filter by platform\n" +
       "  sentry project list --limit 50              # show more results\n" +
@@ -726,6 +825,10 @@ export const listCommand = buildListCommand("project", {
       {
         description: "Filter by platform",
         command: "sentry project list my-org/ --platform javascript",
+      },
+      {
+        description: "Only projects whose slug or name matches a glob",
+        command: "sentry project list my-org/ 'web-*'",
       },
     ],
   },
@@ -748,7 +851,7 @@ export const listCommand = buildListCommand("project", {
     jsonTransform: jsonTransformListResult,
   } satisfies OutputConfig<ListResult<ProjectWithOrg>>,
   parameters: {
-    positional: LIST_TARGET_POSITIONAL,
+    positional: LIST_TARGET_FILTER_POSITIONAL,
     flags: {
       limit: buildListLimitFlag("projects"),
       platform: {
@@ -760,16 +863,24 @@ export const listCommand = buildListCommand("project", {
     },
     aliases: { ...LIST_BASE_ALIASES, p: "platform" },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    cliFlags: ListFlags,
+    rawTarget?: string,
+    rawFilter?: string,
+  ) {
     const { cwd } = this;
 
+    const { target, filter } = splitListTargetAndFilter(rawTarget, rawFilter);
     const parsed = parseOrgProjectArg(target, { multi: true });
+    const flags: ProjectListFlags = { ...cliFlags, filter };
 
     const result = await dispatchOrgScopedList({
       config: projectListMeta,
       cwd,
       flags,
       parsed,
+      filter,
       overrides: {
         "auto-detect": (ctx) => handleAutoDetect(ctx.cwd, flags),
         explicit: (ctx) =>

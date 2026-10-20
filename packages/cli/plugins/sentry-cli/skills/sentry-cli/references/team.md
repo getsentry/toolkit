@@ -11,7 +11,7 @@ requires:
 
 Work with Sentry teams
 
-### `sentry team list [<org/project>]`
+### `sentry team list [<org/project>] [<filter>]`
 
 List teams
 
@@ -43,6 +43,9 @@ sentry team list my-org/
 
 # Fetch the next page
 sentry team list my-org/ -c next
+
+# Only teams whose slug or name matches a glob
+sentry team list my-org/ 'back*'
 
 # Output as JSON
 sentry team list --json

@@ -66,6 +66,7 @@ const monitorListConfig: OrgListConfig<SentryMonitor, MonitorWithOrg> = {
   listForOrg: (org) => listMonitors(org),
   listPaginated: (org, opts) => listMonitorsPaginated(org, opts),
   withOrg: (monitor, orgSlug) => ({ ...monitor, orgSlug }),
+  namesOf: (monitor) => [monitor.slug, monitor.name],
   displayTable: (monitors: MonitorWithOrg[]) =>
     formatTable(monitors, MONITOR_COLUMNS),
   schema: SentryMonitorSchema,
@@ -80,6 +81,10 @@ const docs: OrgListCommandDocs = {
     "  sentry monitor list <org>/        # list all monitors in org (paginated)\n" +
     "  sentry monitor list <org>/<proj>  # list monitors in org (project context)\n" +
     "  sentry monitor list <org>         # list monitors in org\n\n" +
+    "Name filter (searches every page, so it can't be paginated):\n" +
+    "  sentry monitor list <org>/ nightly      # fuzzy match on the slug or name\n" +
+    "  sentry monitor list <org>/ 'nightly-*'  # glob on the slug or name\n" +
+    "  sentry monitor list 'nightly-*'         # a lone glob filters the auto-detected org(s)\n\n" +
     "Pagination:\n" +
     "  sentry monitor list <org>/ -c next  # fetch next page\n" +
     "  sentry monitor list <org>/ -c prev  # fetch previous page\n\n" +
@@ -96,6 +101,10 @@ const docs: OrgListCommandDocs = {
     {
       description: "Fetch the next page",
       command: "sentry monitor list my-org/ -c next",
+    },
+    {
+      description: "Only monitors whose slug or name matches a glob",
+      command: "sentry monitor list my-org/ 'nightly-*'",
     },
     { description: "Output as JSON", command: "sentry monitor list --json" },
   ],

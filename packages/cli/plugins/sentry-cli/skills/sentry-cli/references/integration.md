@@ -11,7 +11,7 @@ requires:
 
 Work with Sentry integrations
 
-### `sentry integration list [<org/project>]`
+### `sentry integration list [<org/project>] [<filter>]`
 
 List installed integrations
 
@@ -43,6 +43,9 @@ sentry integration list my-org/
 
 # Fetch the next page
 sentry integration list my-org/ -c next
+
+# Only integrations whose name matches a glob
+sentry integration list my-org/ 'git*'
 
 # Output as JSON
 sentry integration list --json

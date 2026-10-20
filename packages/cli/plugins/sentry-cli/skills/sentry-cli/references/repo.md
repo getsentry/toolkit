@@ -11,7 +11,7 @@ requires:
 
 Work with Sentry repositories
 
-### `sentry repo list [<org/project>]`
+### `sentry repo list [<org/project>] [<filter>]`
 
 List repositories
 
@@ -45,6 +45,9 @@ sentry repo list my-org/
 
 # Fetch the next page
 sentry repo list my-org/ -c next
+
+# Only repositories whose name matches a glob
+sentry repo list my-org/ 'getsentry/*'
 
 # Output as JSON
 sentry repo list --json

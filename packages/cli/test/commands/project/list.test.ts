@@ -1580,3 +1580,109 @@ describe("handleAutoDetect", () => {
     expect(result.hasMore).toBe(false);
   });
 });
+
+describe("project list: name filter", () => {
+  const flags = { limit: 30, json: true, fresh: false };
+  const projects: SentryProject[] = [
+    ...sampleProjects,
+    {
+      id: "3",
+      slug: "web-checkout",
+      name: "Web Checkout",
+      platform: "javascript",
+      dateCreated: "2024-01-01T00:00:00Z",
+      status: "active",
+    },
+  ];
+  let func: Awaited<ReturnType<typeof listCommand.loader>>;
+
+  beforeEach(async () => {
+    originalFetch = globalThis.fetch;
+    func = await listCommand.loader();
+    setAuthToken("test-token");
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  async function run(
+    runFlags: Record<string, unknown>,
+    ...args: (string | undefined)[]
+  ): Promise<string> {
+    let output = "";
+    const context = {
+      process,
+      env: process.env,
+      stdout: {
+        write(value: string) {
+          output += value;
+          return true;
+        },
+      },
+      stderr: { write: () => true },
+      cwd: getConfigDir(),
+    };
+    await func.call(context, { ...flags, ...runFlags }, ...args);
+    return output;
+  }
+
+  function slugs(output: string): string[] {
+    const parsed = JSON.parse(output) as
+      | SentryProject[]
+      | { data: SentryProject[] };
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    return items.map(({ slug }) => slug);
+  }
+
+  test("<org>/ <glob> keeps projects whose slug or name matches", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(slugs(await run({}, "test-org/", "*end"))).toEqual([
+      "frontend",
+      "backend",
+    ]);
+    expect(slugs(await run({}, "test-org/", "web checkout"))).toEqual([
+      "web-checkout",
+    ]);
+  });
+
+  test("plain text is fuzzy", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(slugs(await run({}, "test-org/", "frontnd"))).toEqual(["frontend"]);
+  });
+
+  test("a lone <org>/<glob> splits into target and filter", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(slugs(await run({}, "test-org/web-*"))).toEqual(["web-checkout"]);
+  });
+
+  test("combines with --platform", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(
+      slugs(await run({ platform: "javascript" }, "test-org/", "*end")),
+    ).toEqual(["frontend"]);
+  });
+
+  test("--limit applies after filtering", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(slugs(await run({ limit: 1 }, "test-org/", "*end"))).toEqual([
+      "frontend",
+    ]);
+  });
+
+  test("names the filter when nothing matches", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    const output = await run({ json: false }, "test-org/", "nope-*");
+    expect(output).toContain(
+      "No projects matching 'nope-*' in organization 'test-org'.",
+    );
+  });
+
+  test("rejects --cursor with a filter", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    await expect(run({ cursor: "next" }, "test-org/", "web-*")).rejects.toThrow(
+      ValidationError,
+    );
+  });
+});

@@ -48,6 +48,7 @@ const integrationListConfig: OrgListConfig<
   listForOrg: (org) => listIntegrations(org),
   listPaginated: (org, opts) => listIntegrationsPaginated(org, opts),
   withOrg: (integration, orgSlug) => ({ ...integration, orgSlug }),
+  namesOf: (integration) => [integration.name],
   displayTable: (integrations: IntegrationWithOrg[]) =>
     formatTable(integrations, INTEGRATION_COLUMNS),
   schema: SentryIntegrationSchema,
@@ -63,6 +64,10 @@ const docs: OrgListCommandDocs = {
     "  sentry integration list <org>/        # list all integrations in org (paginated)\n" +
     "  sentry integration list <org>/<proj>  # list integrations in org (project context)\n" +
     "  sentry integration list <org>         # list integrations in org\n\n" +
+    "Name filter (searches every page, so it can't be paginated):\n" +
+    "  sentry integration list <org>/ github  # fuzzy match on the name\n" +
+    "  sentry integration list <org>/ 'git*'  # glob on the name\n" +
+    "  sentry integration list 'git*'         # a lone glob filters the auto-detected org(s)\n\n" +
     "Pagination:\n" +
     "  sentry integration list <org>/ -c next  # fetch next page\n" +
     "  sentry integration list <org>/ -c prev  # fetch previous page\n\n" +
@@ -79,6 +84,10 @@ const docs: OrgListCommandDocs = {
     {
       description: "Fetch the next page",
       command: "sentry integration list my-org/ -c next",
+    },
+    {
+      description: "Only integrations whose name matches a glob",
+      command: "sentry integration list my-org/ 'git*'",
     },
     {
       description: "Output as JSON",

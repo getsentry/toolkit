@@ -1,6 +1,7 @@
 /**
- * Name filters for list commands (`sentry org list <filter>`): a glob, or
- * text matched with the shared fuzzy search.
+ * Name filters for list commands (`sentry org list <filter>`,
+ * `sentry team list <org>/ <filter>`): a glob, or text matched with the
+ * shared fuzzy search.
  */
 
 import picomatch from "picomatch";
@@ -31,7 +32,9 @@ export function filterByName<T>(
     return [...items];
   }
   if (isGlobFilter(needle)) {
-    const matches = picomatch(needle, { dot: true });
+    // Names aren't paths: `bash` lets `*` match `/` too, so `*-sdk` matches
+    // the repository `getsentry/sentry-python-sdk`.
+    const matches = picomatch(needle, { dot: true, bash: true });
     return items.filter((item) =>
       namesOf(item).some((name) => matches(name.toLowerCase())),
     );
@@ -56,4 +59,30 @@ export function filterByName<T>(
     .filter(({ rank }) => rank !== Number.POSITIVE_INFINITY)
     .sort((a, b) => a.rank - b.rank)
     .map(({ item }) => item);
+}
+
+/**
+ * Split a list command's `[<target>] [<filter>]` positionals into the
+ * target and name filter. With no second positional, a glob in the lone
+ * argument is a filter, since no slug contains glob characters:
+ * `web-*` → filter `web-*` (auto-detected org), `acme/web-*` → target
+ * `acme/` and filter `web-*`. Any other lone argument stays the target.
+ */
+export function splitListTargetAndFilter(
+  target: string | undefined,
+  filter: string | undefined,
+): { target?: string; filter?: string } {
+  const trimmedFilter = filter?.trim() || undefined;
+  if (trimmedFilter || !target) {
+    return { target, filter: trimmedFilter };
+  }
+  const slash = target.indexOf("/");
+  if (slash < 0) {
+    return isGlobFilter(target) ? { filter: target.trim() } : { target };
+  }
+  const rest = target.slice(slash + 1);
+  if (rest.includes("/") || !isGlobFilter(rest)) {
+    return { target };
+  }
+  return { target: target.slice(0, slash + 1), filter: rest };
 }

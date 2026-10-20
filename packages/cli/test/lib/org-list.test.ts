@@ -1246,3 +1246,128 @@ describe("dispatchOrgScopedList", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// dispatchOrgScopedList — name filter
+// ---------------------------------------------------------------------------
+
+describe("dispatchOrgScopedList name filter", () => {
+  const WIDGETS: FakeEntity[] = [
+    { id: "1", name: "web-frontend" },
+    { id: "2", name: "api" },
+    { id: "3", name: "web-backend" },
+  ];
+  let resolveEffectiveOrgSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    resolveEffectiveOrgSpy = vi
+      .spyOn(region, "resolveEffectiveOrg")
+      .mockImplementation((org: string) => Promise.resolve(org));
+  });
+
+  afterEach(() => {
+    resolveEffectiveOrgSpy.mockRestore();
+  });
+
+  function filterConfig() {
+    return makeConfig({
+      listForOrg: vi.fn(() => Promise.resolve(WIDGETS)),
+      namesOf: (widget) => [widget.name],
+    });
+  }
+
+  test("org-all fetches every widget instead of one page, then filters", async () => {
+    const config = filterConfig();
+    const result = await dispatchOrgScopedList({
+      config,
+      cwd: "/tmp",
+      flags: { limit: 10, json: true },
+      parsed: { type: "org-all", org: "my-org" },
+      filter: "web-*",
+    });
+
+    expect(result.items.map((w: FakeWithOrg) => w.name)).toEqual([
+      "web-frontend",
+      "web-backend",
+    ]);
+    expect(config.listForOrg).toHaveBeenCalledWith("my-org");
+    expect(config.listPaginated).not.toHaveBeenCalled();
+    // The paginated `<org>/` tip would drop the filter.
+    expect(result.hint ?? "").not.toContain("paginated");
+  });
+
+  test("plain text is fuzzy and --limit applies to the matches", async () => {
+    const result = await dispatchOrgScopedList({
+      config: filterConfig(),
+      cwd: "/tmp",
+      flags: { limit: 1, json: true },
+      parsed: { type: "org-all", org: "my-org" },
+      filter: "web-backnd",
+    });
+
+    expect(result.items.map((w: FakeWithOrg) => w.name)).toEqual([
+      "web-backend",
+    ]);
+  });
+
+  test("an empty result names the filter", async () => {
+    const result = await dispatchOrgScopedList({
+      config: filterConfig(),
+      cwd: "/tmp",
+      flags: { limit: 10, json: false },
+      parsed: { type: "org-all", org: "my-org" },
+      filter: "nope-*",
+    });
+
+    expect(result.items).toEqual([]);
+    expect(result.hint).toBe(
+      "No widgets matching 'nope-*' found in organization 'my-org'.",
+    );
+  });
+
+  test("filters project-scoped listings too", async () => {
+    const listForProject = vi.fn(() => Promise.resolve(WIDGETS));
+    const config = makeConfig({
+      listForProject,
+      namesOf: (widget) => [widget.name],
+    });
+    const result = await dispatchOrgScopedList({
+      config,
+      cwd: "/tmp",
+      flags: { limit: 10, json: true },
+      parsed: { type: "explicit", org: "my-org", project: "proj" },
+      filter: "api",
+    });
+
+    expect(result.items.map((w: FakeWithOrg) => w.name)).toEqual(["api"]);
+    expect(listForProject).toHaveBeenCalledWith("my-org", "proj");
+  });
+
+  test("rejects --cursor with a filter", async () => {
+    await expect(
+      dispatchOrgScopedList({
+        config: filterConfig(),
+        cwd: "/tmp",
+        flags: { limit: 10, json: false, cursor: "next" },
+        parsed: { type: "org-all", org: "my-org" },
+        filter: "web-*",
+      }),
+    ).rejects.toThrow(/name filter/);
+  });
+
+  test("overrides receive the filter as ctx.filter", async () => {
+    const orgAll = vi.fn(() => Promise.resolve({ items: [] }));
+    await dispatchOrgScopedList({
+      config: META_ONLY,
+      cwd: "/tmp",
+      flags: { limit: 10, json: true },
+      parsed: { type: "org-all", org: "my-org" },
+      filter: " web-* ",
+      overrides: { "org-all": orgAll },
+    });
+
+    expect(orgAll).toHaveBeenCalledWith(
+      expect.objectContaining({ filter: "web-*" }),
+    );
+  });
+});

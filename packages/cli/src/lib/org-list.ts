@@ -48,6 +48,7 @@ import {
 } from "./errors.js";
 import { filterFields } from "./formatters/json.js";
 import { paginationHint } from "./list-command.js";
+import { filterByName } from "./list-filter.js";
 import { logger } from "./logger.js";
 import { withProgress } from "./polling.js";
 import { resolveEffectiveOrg } from "./region.js";
@@ -432,6 +433,13 @@ export type OrgListConfig<TEntity, TWithOrg> = ListCommandMeta & {
    * `--help`, `sentry help`, and SKILL.md can document available fields.
    */
   schema?: import("valibot").GenericSchema;
+
+  /**
+   * The names a name filter matches against (e.g. slug and display name).
+   * When set, `buildOrgListCommand` accepts `[<target>] [<filter>]` and the
+   * default handlers keep only matching entities (see {@link filterByName}).
+   */
+  namesOf?: (entity: TEntity) => readonly string[];
 };
 
 /** Extract a specific variant from the {@link ParsedOrgProject} union by its `type` discriminant. */
@@ -463,6 +471,12 @@ export type HandlerContext<
    * Present only when project-search mode continues to a handler.
    */
   projectSearchResolution?: ProjectSearchTargetResolution;
+  /**
+   * Name filter (glob or fuzzy text) from the command line, if any. Handlers
+   * must apply it to the whole result set before `--limit`; the dispatcher
+   * already rejects it with `--cursor`.
+   */
+  filter?: string;
 };
 
 /**
@@ -785,6 +799,11 @@ type ExplicitOrgOptions<TEntity, TWithOrg> = {
   flags: BaseListFlags;
   /** When true, include a note that the entity type is org-scoped. */
   noteOrgScoped?: boolean;
+  /**
+   * When true, omit the tip pointing at the paginated `<org>/` listing,
+   * which would drop a name filter.
+   */
+  filtered?: boolean;
 };
 
 /**
@@ -799,7 +818,7 @@ type ExplicitOrgOptions<TEntity, TWithOrg> = {
 export async function handleExplicitOrg<TEntity, TWithOrg>(
   options: ExplicitOrgOptions<TEntity, TWithOrg>,
 ): Promise<ListResult<TWithOrg>> {
-  const { config, org, flags, noteOrgScoped = false } = options;
+  const { config, org, flags, noteOrgScoped = false, filtered } = options;
   const items = await withProgress(
     {
       message: `Fetching ${config.entityPlural} (up to ${flags.limit})...`,
@@ -821,7 +840,7 @@ export async function handleExplicitOrg<TEntity, TWithOrg>(
     result.header = result.header ? `${note}\n${result.header}` : note;
   }
 
-  if (items.length > 0) {
+  if (items.length > 0 && !filtered) {
     const tip = `Tip: Use '${config.commandPrefix} ${org}/' for paginated results`;
     result.hint = result.hint ? `${result.hint}\n${tip}` : tip;
   }
@@ -835,6 +854,8 @@ type ExplicitProjectOptions<TEntity, TWithOrg> = {
   org: string;
   project: string;
   flags: BaseListFlags;
+  /** When true, omit the tip pointing at the unfiltered `<org>/` listing. */
+  filtered?: boolean;
 };
 
 /**
@@ -848,7 +869,7 @@ type ExplicitProjectOptions<TEntity, TWithOrg> = {
 export async function handleExplicitProject<TEntity, TWithOrg>(
   options: ExplicitProjectOptions<TEntity, TWithOrg>,
 ): Promise<ListResult<TWithOrg>> {
-  const { config, org, project, flags } = options;
+  const { config, org, project, flags, filtered } = options;
   const listForProject = config.listForProject;
   if (!listForProject) {
     throw new Error(
@@ -871,7 +892,7 @@ export async function handleExplicitProject<TEntity, TWithOrg>(
     contextLabel: `project '${org}/${project}'`,
   });
 
-  if (items.length > 0) {
+  if (items.length > 0 && !filtered) {
     const tip = `Tip: Use '${config.commandPrefix} ${org}/' to see all ${config.entityPlural} in the org`;
     result.hint = result.hint ? `${result.hint}\n${tip}` : tip;
   }
@@ -1027,6 +1048,34 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
 }
 
 /**
+ * `config` narrowed to entities whose names match `filter`. Its fetchers
+ * filter (and rank) each fetched set, and `entityPlural` names the filter
+ * (`teams matching 'back*'`) so progress, empty, and count messages say what
+ * was matched.
+ */
+function withNameFilter<TEntity, TWithOrg>(
+  config: OrgListConfig<TEntity, TWithOrg>,
+  filter: string,
+): OrgListConfig<TEntity, TWithOrg> {
+  const { namesOf, listForOrg, listForProject } = config;
+  if (!namesOf) {
+    throw new Error(
+      `'${config.commandPrefix}' got a name filter but its config has no namesOf.`,
+    );
+  }
+  const keep = (entities: TEntity[]) => filterByName(entities, filter, namesOf);
+  return {
+    ...config,
+    entityPlural: `${config.entityPlural} matching '${filter}'`,
+    listForOrg: async (org) => keep(await listForOrg(org)),
+    ...(listForProject && {
+      listForProject: async (org: string, project: string) =>
+        keep(await listForProject(org, project)),
+    }),
+  };
+}
+
+/**
  * Build the default `ModeHandlerMap` for the given config.
  *
  * Each handler receives a {@link HandlerContext} with the correctly-narrowed
@@ -1037,8 +1086,14 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
  * covered by the caller's overrides, which would be a programming error.
  */
 function buildDefaultHandlers<TEntity, TWithOrg>(
-  config: ListCommandMeta | OrgListConfig<TEntity, TWithOrg>,
+  fullConfig: ListCommandMeta | OrgListConfig<TEntity, TWithOrg>,
+  filter?: string,
 ): ModeHandlerMap {
+  const config =
+    filter && isOrgListConfig(fullConfig)
+      ? withNameFilter(fullConfig, filter)
+      : fullConfig;
+  const filtered = filter !== undefined;
   function notSupported<T extends ParsedOrgProject["type"]>(
     mode: string,
   ): ModeHandler<T> {
@@ -1070,6 +1125,7 @@ function buildDefaultHandlers<TEntity, TWithOrg>(
           org: ctx.parsed.org,
           project: ctx.parsed.project,
           flags: ctx.flags,
+          filtered,
         });
       }
       return handleExplicitOrg({
@@ -1077,19 +1133,37 @@ function buildDefaultHandlers<TEntity, TWithOrg>(
         org: ctx.parsed.org,
         flags: ctx.flags,
         noteOrgScoped: true,
+        filtered,
       });
     },
 
     "project-search": (ctx) =>
       handleProjectSearch(config, ctx.parsed.projectSlug, {
         flags: ctx.flags,
-        orgAllFallback: (orgSlug) => runOrgAll(config, orgSlug, ctx.flags),
+        orgAllFallback: (orgSlug) =>
+          filtered
+            ? handleExplicitOrg({
+                config,
+                org: orgSlug,
+                flags: ctx.flags,
+                filtered,
+              })
+            : runOrgAll(config, orgSlug, ctx.flags),
         originalSlug: ctx.parsed.originalSlug,
         org: ctx.parsed.org,
         projectSearchResolution: ctx.projectSearchResolution,
       }),
 
     "org-all": (ctx) => {
+      // A filter needs every entity, so it skips cursor pagination.
+      if (filtered) {
+        return handleExplicitOrg({
+          config,
+          org: ctx.parsed.org,
+          flags: ctx.flags,
+          filtered,
+        });
+      }
       const contextKey = buildOrgContextKey(ctx.parsed.org);
       const { cursor, direction } = resolveCursor(
         ctx.flags.cursor,
@@ -1129,6 +1203,12 @@ export type DispatchOptions<TEntity = unknown, TWithOrg = unknown> = {
    * `issue list`) can list those mode types here to bypass the guard.
    */
   allowCursorInModes?: readonly ParsedOrgProject["type"][];
+  /**
+   * Name filter from the command line (glob or fuzzy text). Default
+   * handlers apply it with the config's `namesOf`; overrides receive it as
+   * `ctx.filter`. Rejected together with `--cursor`.
+   */
+  filter?: string;
 };
 
 type OrgSlugMatchResult = {
@@ -1218,6 +1298,16 @@ export async function dispatchOrgScopedList<TEntity, TWithOrg>(
     ...(options.allowCursorInModes ?? []),
   ];
 
+  const filter = options.filter?.trim() || undefined;
+  if (filter && flags.cursor) {
+    throw new ValidationError(
+      `The --cursor flag can't be combined with a name filter ('${filter}'): ` +
+        "filtering searches every page, so the matches arrive as one list. " +
+        "Use --limit to see more of them.",
+      "cursor",
+    );
+  }
+
   if (effectiveParsed.type === "project-search") {
     const resolution = await resolveOrgSlugMatch(
       effectiveParsed,
@@ -1245,7 +1335,7 @@ export async function dispatchOrgScopedList<TEntity, TWithOrg>(
 
   effectiveParsed = await resolveOrgInParsed(effectiveParsed);
 
-  const defaults = buildDefaultHandlers(config);
+  const defaults = buildDefaultHandlers(config, filter);
   const handlers: ModeHandlerMap = { ...defaults, ...overrides };
   const handler = handlers[effectiveParsed.type];
 
@@ -1254,6 +1344,7 @@ export async function dispatchOrgScopedList<TEntity, TWithOrg>(
     cwd,
     flags,
     projectSearchResolution,
+    filter,
   };
 
   // oxlint-disable-next-line typescript/no-explicit-any -- safe — dispatch guarantees type match

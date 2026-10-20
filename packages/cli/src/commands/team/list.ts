@@ -50,6 +50,7 @@ const teamListConfig: OrgListConfig<SentryTeam, TeamWithOrg> = {
   listForOrg: (org) => listTeams(org),
   listPaginated: (org, opts) => listTeamsPaginated(org, opts),
   withOrg: (team, orgSlug) => ({ ...team, orgSlug }),
+  namesOf: (team) => [team.slug, team.name],
   displayTable: (teams: TeamWithOrg[]) => formatTable(teams, TEAM_COLUMNS),
   listForProject: (org, project) => listProjectTeams(org, project),
   schema: SentryTeamSchema,
@@ -64,6 +65,10 @@ const docs: OrgListCommandDocs = {
     "  sentry team list <org>/        # list all teams in org (paginated)\n" +
     "  sentry team list <org>/<proj>  # list teams in org (project context)\n" +
     "  sentry team list <org>         # list teams in org\n\n" +
+    "Name filter (searches every page, so it can't be paginated):\n" +
+    "  sentry team list <org>/ backend  # fuzzy match on the slug or name\n" +
+    "  sentry team list <org>/ 'back*'  # glob on the slug or name\n" +
+    "  sentry team list 'back*'         # a lone glob filters the auto-detected org(s)\n\n" +
     "Pagination:\n" +
     "  sentry team list <org>/ -c next  # fetch next page\n" +
     "  sentry team list <org>/ -c prev  # fetch previous page\n\n" +
@@ -80,6 +85,10 @@ const docs: OrgListCommandDocs = {
     {
       description: "Fetch the next page",
       command: "sentry team list my-org/ -c next",
+    },
+    {
+      description: "Only teams whose slug or name matches a glob",
+      command: "sentry team list my-org/ 'back*'",
     },
     { description: "Output as JSON", command: "sentry team list --json" },
   ],

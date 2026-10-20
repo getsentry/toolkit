@@ -548,3 +548,45 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     );
   });
 });
+
+describe("listCommand.func — name filter", () => {
+  const listTeamsSpy = vi.mocked(apiClient.listTeams);
+  const listTeamsPaginatedSpy = vi.mocked(apiClient.listTeamsPaginated);
+  const resolveOrgsForListingSpy = vi.mocked(
+    resolveTarget.resolveOrgsForListing,
+  );
+
+  beforeEach(() => {
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    listTeamsSpy.mockResolvedValue(sampleTeams);
+  });
+
+  afterEach(() => {
+    listTeamsSpy.mockReset();
+    listTeamsPaginatedSpy.mockReset();
+    resolveOrgsForListingSpy.mockReset();
+  });
+
+  async function runJson(...args: (string | undefined)[]) {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(context, { limit: 30, json: true }, ...args);
+    const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
+    const parsed = JSON.parse(output);
+    const items: SentryTeam[] = Array.isArray(parsed) ? parsed : parsed.data;
+    return items.map((team) => team.slug);
+  }
+
+  test("<org>/ <filter> lists the whole org and keeps matching teams", async () => {
+    expect(await runJson("test-org/", "front*")).toEqual(["frontend"]);
+    expect(await runJson("test-org/", "backend team")).toEqual(["backend"]);
+    expect(listTeamsSpy).toHaveBeenCalledWith("test-org");
+    expect(listTeamsPaginatedSpy).not.toHaveBeenCalled();
+  });
+
+  test("a lone glob filters the auto-detected org", async () => {
+    resolveOrgsForListingSpy.mockResolvedValue({ orgs: ["test-org"] });
+    expect(await runJson("*end")).toEqual(["backend", "frontend"]);
+    expect(await runJson("back*")).toEqual(["backend"]);
+  });
+});

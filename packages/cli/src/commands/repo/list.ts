@@ -49,6 +49,7 @@ const repoListConfig: OrgListConfig<SentryRepository, RepositoryWithOrg> = {
   listForOrg: (org) => listRepositories(org),
   listPaginated: (org, opts) => listRepositoriesPaginated(org, opts),
   withOrg: (repo, orgSlug) => ({ ...repo, orgSlug }),
+  namesOf: (repo) => [repo.name],
   displayTable: (repos: RepositoryWithOrg[]) =>
     formatTable(repos, REPO_COLUMNS),
   schema: SentryRepositorySchema,
@@ -63,6 +64,10 @@ const docs: OrgListCommandDocs = {
     "  sentry repo list <org>/        # list all repos in org (paginated)\n" +
     "  sentry repo list <org>/<proj>  # list repos in org (project context)\n" +
     "  sentry repo list <org>         # list repos in org\n\n" +
+    "Name filter (searches every page, so it can't be paginated):\n" +
+    "  sentry repo list <org>/ sentry         # fuzzy match on the name\n" +
+    "  sentry repo list <org>/ 'getsentry/*'  # glob on the name\n" +
+    "  sentry repo list '*-sdk'               # a lone glob filters the auto-detected org(s)\n\n" +
     "Pagination:\n" +
     "  sentry repo list <org>/ -c next  # fetch next page\n" +
     "  sentry repo list <org>/ -c prev  # fetch previous page\n\n" +
@@ -79,6 +84,10 @@ const docs: OrgListCommandDocs = {
     {
       description: "Fetch the next page",
       command: "sentry repo list my-org/ -c next",
+    },
+    {
+      description: "Only repositories whose name matches a glob",
+      command: "sentry repo list my-org/ 'getsentry/*'",
     },
     { description: "Output as JSON", command: "sentry repo list --json" },
   ],
