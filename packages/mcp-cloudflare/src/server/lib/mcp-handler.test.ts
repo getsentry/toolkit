@@ -560,6 +560,64 @@ describe("MCP Handler", () => {
   });
 
   describe("URL constraints", () => {
+    it("keeps the constraint cache write alive after returning the response", async () => {
+      let finishWrite!: () => void;
+      const writeReady = new Promise<void>((resolve) => {
+        finishWrite = resolve;
+      });
+      let stored: unknown = null;
+      const env = createTestEnv();
+      env.MCP_CACHE = {
+        get: vi.fn().mockResolvedValue(null),
+        put: vi.fn().mockImplementation(async (_key: string, value: string) => {
+          await writeReady;
+          stored = JSON.parse(value);
+        }),
+      } as unknown as KVNamespace;
+      const ctx = createMcpContext();
+      const request = createMcpRequest(
+        "initialize",
+        {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "test-client", version: "1.0.0" },
+        },
+        { path: "/mcp/sentry-mcp-evals/cloudflare-mcp" },
+      );
+
+      try {
+        const response = await mcpHandler.fetch!(request, env, ctx);
+        expect(response.status).toBe(200);
+        expect(stored).toBeNull();
+        expect(ctx.waitUntil).toHaveBeenCalled();
+
+        let backgroundCompleted = false;
+        const background = Promise.all(
+          vi.mocked(ctx.waitUntil).mock.calls.map(([task]) => task),
+        ).then(() => {
+          backgroundCompleted = true;
+        });
+        // Let an unrelated, already-resolved task settle before checking ownership.
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(backgroundCompleted).toBe(false);
+
+        finishWrite();
+        await background;
+        expect(stored).toMatchObject({
+          regionUrl: "https://us.sentry.io",
+          projectCapabilities: {
+            profiles: false,
+            replays: false,
+            logs: false,
+            traces: false,
+          },
+        });
+      } finally {
+        finishWrite();
+      }
+    });
+
     it("should handle /mcp without constraints", async () => {
       const request = createMcpRequest(
         "initialize",

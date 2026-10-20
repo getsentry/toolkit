@@ -997,6 +997,83 @@ describe("monitor time parameters", () => {
   });
 });
 
+describe("getProject", () => {
+  const project = {
+    ...projectFixture,
+    id: "123",
+    slug: "backend",
+    name: "Backend",
+    organization: {
+      id: "456",
+      slug: "test-org",
+      name: "Test Organization",
+      features: ["organizations:issue-basic"],
+    },
+    hasProfiles: true,
+    hasReplays: false,
+    hasLogs: true,
+    firstTransactionEvent: false,
+  };
+  const api = new SentryApiService({
+    host: "sentry.io",
+    accessToken: "test-token",
+  });
+
+  it("keeps the default request and full organization response", async () => {
+    const requests: string[] = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/projects/test-org/backend/",
+        ({ request }) => {
+          requests.push(request.url);
+          return HttpResponse.json(project);
+        },
+      ),
+    );
+
+    const result = await api.getProject({
+      organizationSlug: "test-org",
+      projectSlugOrId: "backend",
+    });
+
+    expect(requests).toEqual([
+      "https://sentry.io/api/0/projects/test-org/backend/",
+    ]);
+    expect(result).toEqual(project);
+  });
+
+  it("collapses organization on the regional host and preserves project capabilities", async () => {
+    const collapsedProject = {
+      ...project,
+      organization: { id: "456", slug: "test-org" },
+    };
+    const requests: string[] = [];
+    mswServer.use(
+      http.get(
+        "https://eu.sentry.io/api/0/projects/test-org/backend/",
+        ({ request }) => {
+          requests.push(request.url);
+          return HttpResponse.json(collapsedProject);
+        },
+      ),
+    );
+
+    const result = await api.getProject(
+      {
+        organizationSlug: "test-org",
+        projectSlugOrId: "backend",
+        collapse: "organization",
+      },
+      { host: "eu.sentry.io" },
+    );
+
+    expect(requests).toEqual([
+      "https://eu.sentry.io/api/0/projects/test-org/backend/?collapse=organization",
+    ]);
+    expect(result).toEqual(collapsedProject);
+  });
+});
+
 describe("getIssue", () => {
   it("uses the numeric issue ID when Sentry returns a null shortId", async () => {
     mswServer.use(

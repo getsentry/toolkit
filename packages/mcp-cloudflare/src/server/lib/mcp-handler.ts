@@ -412,6 +412,7 @@ async function handleAuthenticatedMcpRequest(
               cache: {
                 kv: env.MCP_CACHE,
                 userId: auth.userId,
+                waitUntil: (promise) => ctx.waitUntil(promise),
               },
             },
           );
