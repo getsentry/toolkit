@@ -7,6 +7,8 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
   parseOrgProjectTarget,
   parseOrgTarget,
 } from "../../src/lib/completion-target.js";
@@ -426,8 +428,8 @@ describe("extractCompletionTargets", () => {
     ]);
 
     expect(extractCompletionTargets(topLevel)).toEqual({
-      org: ["trial"],
-      "org/project": ["issue list", "issue rules view", "issue view"],
+      [ORG_TARGET]: ["trial"],
+      [ORG_PROJECT_TARGET]: ["issue list", "issue rules view", "issue view"],
     });
   });
 
@@ -440,8 +442,8 @@ describe("extractCompletionTargets", () => {
     ]);
 
     expect(extractCompletionTargets(topLevel)).toEqual({
-      org: [],
-      "org/project": [],
+      [ORG_TARGET]: [],
+      [ORG_PROJECT_TARGET]: [],
     });
   });
 

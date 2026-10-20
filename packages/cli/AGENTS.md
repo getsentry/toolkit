@@ -245,7 +245,7 @@ completion-aware parser from `src/lib/completion-target.ts` instead of
 aliases; `parseOrgTarget` completes org slugs only. `LIST_TARGET_POSITIONAL`
 and `LIST_ORG_TARGET_POSITIONAL` already use them.
 `pnpm run generate:completions` collects these into the gitignored
-`src/generated/completion-targets.ts` that the `__complete` fast path reads.
+`src/generated/completion-targets.json` that the `__complete` fast path reads.
 `project create` keeps its dedicated `name:platform` completer in
 `src/lib/complete.ts`.
 

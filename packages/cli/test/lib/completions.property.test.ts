@@ -17,16 +17,14 @@ import { proposeCompletions } from "@stricli/core";
 import { constantFrom, assert as fcAssert, property } from "fast-check";
 import { describe, expect, test } from "vitest";
 import { app, routes } from "../../src/app.js";
-import {
-  ORG_ONLY_COMMANDS,
-  ORG_PROJECT_COMMANDS,
-} from "../../src/generated/completion-targets.js";
+import generatedTargets from "../../src/generated/completion-targets.json";
 import {
   extractCommandTree,
   generateBashCompletion,
   generateFishCompletion,
   generateZshCompletion,
 } from "../../src/lib/completions.js";
+import { COMPLETION_TARGETS } from "../../src/lib/completion-target.js";
 import {
   extractCompletionTargets,
   type RouteMap,
@@ -404,18 +402,15 @@ describe("complete.ts: generated completion targets", () => {
   // vitest because Node's CJS require can't resolve .js→.ts for transitive imports.
   const targets = extractCompletionTargets(routes as unknown as RouteMap);
 
-  // A mismatch means src/generated/completion-targets.ts is stale.
+  // A mismatch means src/generated/completion-targets.json is stale.
   // Regenerate with: pnpm run generate:completions
-  test("ORG_PROJECT_COMMANDS matches the route tree", () => {
-    expect([...ORG_PROJECT_COMMANDS]).toEqual(targets["org/project"]);
-  });
-
-  test("ORG_ONLY_COMMANDS matches the route tree", () => {
-    expect([...ORG_ONLY_COMMANDS]).toEqual(targets.org);
+  test("generated completion targets match the route tree", () => {
+    expect(generatedTargets).toEqual(targets);
   });
 
   test("project create keeps its dedicated name:platform completer", () => {
-    expect(ORG_PROJECT_COMMANDS.has("project create")).toBe(false);
-    expect(ORG_ONLY_COMMANDS.has("project create")).toBe(false);
+    for (const kind of COMPLETION_TARGETS) {
+      expect(generatedTargets[kind]).not.toContain("project create");
+    }
   });
 });

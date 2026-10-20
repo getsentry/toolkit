@@ -15,11 +15,13 @@
  *   Exit:   0 on success (even if no completions)
  */
 
+import generatedTargets from "../generated/completion-targets.json";
 import {
-  ORG_ONLY_COMMANDS,
-  ORG_PROJECT_COMMANDS,
-} from "../generated/completion-targets.js";
-import type { CompletionTarget } from "./completion-target.js";
+  COMPLETION_TARGETS,
+  type CompletionTarget,
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
+} from "./completion-target.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getCredentialContext } from "./db/auth.js";
 import { queueCompletionTelemetry } from "./db/completion-telemetry.js";
@@ -100,23 +102,33 @@ export function handleComplete(args: string[]): void {
 }
 
 /**
+ * Command path → completion target, from `src/generated/completion-targets.json`.
+ *
+ * Generated from the commands' positional parsers (`parseOrgTarget` /
+ * `parseOrgProjectTarget`) by `script/generate-completion-targets.ts`
+ * because this fast path cannot boot Stricli to walk the route tree.
+ */
+const COMMAND_TARGETS = new Map<string, CompletionTarget>(
+  COMPLETION_TARGETS.flatMap((kind) =>
+    generatedTargets[kind].map((path): [string, CompletionTarget] => [
+      path,
+      kind,
+    ]),
+  ),
+);
+
+/**
  * Find the completion target declared by the command named in `words`.
  *
  * Commands are leaves of the route tree, so at most one prefix of the
  * preceding words can name a command; everything after it is positionals
- * or flags. The sets are generated from the commands' positional parsers
- * (`parseOrgTarget` / `parseOrgProjectTarget`) by
- * `script/generate-completion-targets.ts` because this fast path cannot
- * boot Stricli to walk the route tree.
+ * or flags.
  */
 function findCompletionTarget(words: string[]): CompletionTarget | undefined {
   for (let length = 1; length <= words.length; length++) {
-    const path = words.slice(0, length).join(" ");
-    if (ORG_PROJECT_COMMANDS.has(path)) {
-      return "org/project";
-    }
-    if (ORG_ONLY_COMMANDS.has(path)) {
-      return "org";
+    const target = COMMAND_TARGETS.get(words.slice(0, length).join(" "));
+    if (target) {
+      return target;
     }
   }
   return;
@@ -148,9 +160,9 @@ export function getCompletions(
   }
 
   switch (findCompletionTarget(precedingWords)) {
-    case "org/project":
+    case ORG_PROJECT_TARGET:
       return completeOrgSlashProject(partial);
-    case "org":
+    case ORG_TARGET:
       return completeOrgSlugs(partial);
     default:
       // Not a known command path — no dynamic completions

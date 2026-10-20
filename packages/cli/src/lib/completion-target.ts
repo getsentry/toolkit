@@ -9,13 +9,17 @@
  * the route tree.
  */
 
-/**
- * Which cached slugs shell completion suggests for a target positional.
- *
- * - `"org"`: organization slugs only (e.g. `org`, `org/version`, `org/id`)
- * - `"org/project"`: `org/` prefixes, `org/project` pairs, and project aliases
- */
-export type CompletionTarget = "org" | "org/project";
+/** Completes organization slugs only (e.g. `org`, `org/version`, `org/id`). */
+export const ORG_TARGET = "org";
+
+/** Completes `org/` prefixes, `org/project` pairs, and project aliases. */
+export const ORG_PROJECT_TARGET = "org/project";
+
+/** Every completion target kind, in a stable order. */
+export const COMPLETION_TARGETS = [ORG_TARGET, ORG_PROJECT_TARGET] as const;
+
+/** Which cached slugs shell completion suggests for a target positional. */
+export type CompletionTarget = (typeof COMPLETION_TARGETS)[number];
 
 /** Parser for positionals whose leading segment is an organization slug. */
 export function parseOrgTarget(input: string): string {
@@ -37,10 +41,10 @@ export function getCompletionTarget(
   parse: unknown,
 ): CompletionTarget | undefined {
   if (parse === parseOrgTarget) {
-    return "org";
+    return ORG_TARGET;
   }
   if (parse === parseOrgProjectTarget) {
-    return "org/project";
+    return ORG_PROJECT_TARGET;
   }
   return;
 }

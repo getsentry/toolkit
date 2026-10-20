@@ -12,8 +12,11 @@
 
 import type { CommandExample } from "./command.js";
 import {
+  COMPLETION_TARGETS,
   type CompletionTarget,
   getCompletionTarget,
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
 } from "./completion-target.js";
 import {
   extractSchemaFields,
@@ -455,7 +458,10 @@ export function extractCompletionTargets(
   routeMap: RouteMap,
   prefix: readonly string[] = [],
 ): CompletionTargets {
-  const targets: CompletionTargets = { org: [], "org/project": [] };
+  const targets: CompletionTargets = {
+    [ORG_TARGET]: [],
+    [ORG_PROJECT_TARGET]: [],
+  };
 
   for (const entry of routeMap.getAllEntries()) {
     if (entry.hidden) {
@@ -468,8 +474,9 @@ export function extractCompletionTargets(
 
     if (isRouteMap(target)) {
       const nested = extractCompletionTargets(target, segments);
-      targets.org.push(...nested.org);
-      targets["org/project"].push(...nested["org/project"]);
+      for (const kind of COMPLETION_TARGETS) {
+        targets[kind].push(...nested[kind]);
+      }
     } else if (isCommand(target)) {
       const kind = getCommandCompletionTarget(target, path);
       if (kind) {
@@ -478,8 +485,9 @@ export function extractCompletionTargets(
     }
   }
 
-  targets.org.sort();
-  targets["org/project"].sort();
+  for (const kind of COMPLETION_TARGETS) {
+    targets[kind].sort();
+  }
   return targets;
 }
 
