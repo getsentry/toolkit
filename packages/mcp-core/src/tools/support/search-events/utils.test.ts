@@ -722,7 +722,7 @@ describe("datasetAttributes tool pagination", () => {
     expect(result).toContain(
       "call datasetAttributes again with the same arguments and offset: 50",
     );
-    expect(result).not.toContain("- device.memory: The estimated");
+    expect(result).not.toContain("- device.memory (number): The estimated");
     expect(result).toContain("EXAMPLE QUERIES FOR SPANS");
   });
 
