@@ -560,6 +560,76 @@ describe("MCP Handler", () => {
   });
 
   describe("URL constraints", () => {
+    it("rejects upstream permission failures with cached unknown capabilities", async () => {
+      const env = createTestEnv();
+      env.MCP_CACHE = {
+        get: vi.fn().mockResolvedValue({
+          regionUrl: "https://us.sentry.io",
+          projectCapabilities: null,
+          cachedAt: Date.now(),
+        }),
+        put: vi.fn(),
+      } as unknown as KVNamespace;
+      const ctx = createMcpContext({
+        accessToken: "test-current-user-token",
+        grantedSkills: ["inspect"],
+        constraintOrganizationSlug: "test-org",
+        constraintProjectSlug: "test-project",
+      });
+      const profileId = "00000000000040008000000000000001";
+      const request = createMcpRequest(
+        "tools/call",
+        {
+          name: "execute_sentry_tool",
+          arguments: {
+            name: "get_profile_details",
+            arguments: { profileId },
+          },
+        },
+        { path: "/mcp/test-org/test-project" },
+      );
+      const apiFetch = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(
+          Response.json(
+            { detail: "You do not have permission to perform this action." },
+            { status: 403 },
+          ),
+        );
+
+      try {
+        const response = await mcpHandler.fetch!(request, env, ctx);
+
+        expect(response.status).toBe(200);
+        const body = await parseSSEResponse<{
+          result: {
+            isError?: boolean;
+            content: Array<{ type: string; text: string }>;
+          };
+        }>(response);
+        expect(body.result.isError).toBe(true);
+        expect(body.result.content).toEqual([
+          { type: "text", text: expect.stringContaining("HTTP 403") },
+        ]);
+        expect(env.MCP_CACHE.get).toHaveBeenCalledWith(
+          "caps:v1:test-user-123:sentry.io:test-org:project:test-project",
+          "json",
+        );
+        expect(env.MCP_CACHE.put).not.toHaveBeenCalled();
+        expect(apiFetch).toHaveBeenCalledOnce();
+        expect(apiFetch).toHaveBeenCalledWith(
+          `https://us.sentry.io/api/0/projects/test-org/test-project/profiling/profiles/${profileId}/`,
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: `Bearer ${ctx.props.accessToken}`,
+            }),
+          }),
+        );
+      } finally {
+        apiFetch.mockRestore();
+      }
+    });
+
     it("keeps the constraint cache write alive after returning the response", async () => {
       let finishWrite!: () => void;
       const writeReady = new Promise<void>((resolve) => {
