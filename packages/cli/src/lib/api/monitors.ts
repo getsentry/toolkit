@@ -7,14 +7,12 @@
  * envelope transport (`src/lib/envelope/`), not this module.
  */
 
-import { listOrganizationMonitors } from "@sentry/api";
-
 import type { SentryMonitor } from "../../types/index.js";
 
 import {
   API_MAX_PER_PAGE,
   autoPaginate,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   unwrapPaginatedResult,
@@ -30,11 +28,10 @@ import {
  * @returns Monitors, including nested monitor environments
  */
 export async function listMonitors(orgSlug: string): Promise<SentryMonitor[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
   const { data: allResults } = await autoPaginate(async (cursor) => {
-    const result = await listOrganizationMonitors({
-      ...config,
+    const result = await sentry.listOrganizationMonitors({
       path: { organization_id_or_slug: orgSlug },
       query: { cursor, per_page: API_MAX_PER_PAGE } as {
         cursor?: string;
@@ -62,10 +59,9 @@ export async function listMonitorsPaginated(
   orgSlug: string,
   options: { cursor?: string; perPage?: number } = {},
 ): Promise<PaginatedResponse<SentryMonitor[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await listOrganizationMonitors({
-    ...config,
+  const result = await sentry.listOrganizationMonitors({
     path: { organization_id_or_slug: orgSlug },
     query: {
       cursor: options.cursor,

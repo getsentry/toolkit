@@ -4,8 +4,6 @@
  * Functions for listing Sentry repositories in an organization.
  */
 
-import { listOrganizationRepos } from "@sentry/api";
-
 import type { SentryRepository } from "../../types/index.js";
 import { getCachedRepos, setCachedRepos } from "../db/repo-cache.js";
 import { ApiError } from "../errors.js";
@@ -14,7 +12,7 @@ import { logger } from "../logger.js";
 import {
   API_MAX_PER_PAGE,
   autoPaginate,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   unwrapPaginatedResult,
@@ -33,10 +31,9 @@ const log = logger.withTag("api.repositories");
 export async function listRepositories(
   orgSlug: string,
 ): Promise<SentryRepository[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await listOrganizationRepos({
-    ...config,
+  const result = await sentry.listOrganizationRepos({
     path: { organization_id_or_slug: orgSlug },
   });
 
@@ -60,10 +57,9 @@ export async function listRepositoriesPaginated(
   orgSlug: string,
   options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryRepository[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await listOrganizationRepos({
-    ...config,
+  const result = await sentry.listOrganizationRepos({
     path: { organization_id_or_slug: orgSlug },
     query: {
       cursor: options.cursor,

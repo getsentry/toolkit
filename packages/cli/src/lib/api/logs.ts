@@ -5,7 +5,7 @@
  * including trace-associated logs.
  */
 
-import { listOrganizationEvents } from "@sentry/api";
+import type { SentryClient } from "@sentry/api";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import { type GenericSchema, safeParse } from "valibot";
@@ -27,7 +27,7 @@ import { isAllDigits } from "../utils.js";
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   paginate,
   parseLinkHeader,
   unwrapPaginatedResult,
@@ -189,7 +189,7 @@ export async function listLogs(
     .filter(Boolean)
     .join(" ");
 
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
   // Merge extra fields (from --fields) with the default set, deduplicating
   const fields = options.extraFields?.length
@@ -202,8 +202,7 @@ export async function listLogs(
   const { data } = await paginate(
     options,
     async (perPage, cursor) => {
-      const result = await listOrganizationEvents({
-        ...config,
+      const result = await sentry.listOrganizationEvents({
         path: { organization_id_or_slug: orgSlug },
         query: {
           dataset: "logs",
@@ -220,7 +219,7 @@ export async function listLogs(
           start: options.start,
           end: options.end,
           sort: toApiSort(options.sort),
-        } as Parameters<typeof listOrganizationEvents>[0]["query"],
+        } as Parameters<typeof sentry.listOrganizationEvents>[0]["query"],
       });
 
       const { data: raw, nextCursor } = unwrapPaginatedResult<unknown>(
@@ -304,7 +303,7 @@ function getLogLookupWindow(
  * Batch size must not exceed {@link API_MAX_PER_PAGE}.
  */
 type GetLogsBatchOptions = {
-  config: Awaited<ReturnType<typeof getOrgSdkConfig>>;
+  sentry: SentryClient;
   extraFields?: string[];
   /** Numeric project ID for direct project selection. @see {@link ListLogsOptions.projectId} */
   projectId?: number;
@@ -314,7 +313,7 @@ async function getLogsBatch(
   orgSlug: string,
   projectSlug: string,
   batchIds: string[],
-  { config, extraFields, projectId }: GetLogsBatchOptions,
+  { sentry, extraFields, projectId }: GetLogsBatchOptions,
 ): Promise<DetailedSentryLog[]> {
   const numericProjectId = resolveNumericProjectId(projectSlug, projectId);
 
@@ -344,8 +343,7 @@ async function getLogsBatch(
       sampling,
       ...getLogLookupWindow(ids),
     };
-    const result = await listOrganizationEvents({
-      ...config,
+    const result = await sentry.listOrganizationEvents({
       path: { organization_id_or_slug: orgSlug },
       query: queryParams,
     });
@@ -415,8 +413,8 @@ export async function getLogs(
   options: GetLogsOptions = {},
 ): Promise<DetailedSentryLog[]> {
   const { extraFields, projectId } = options;
-  const config = await getOrgSdkConfig(orgSlug);
-  const batchOptions: GetLogsBatchOptions = { config, extraFields, projectId };
+  const sentry = await getOrgSentryClient(orgSlug);
+  const batchOptions: GetLogsBatchOptions = { sentry, extraFields, projectId };
 
   // Single batch — no splitting needed
   if (logIds.length <= API_MAX_PER_PAGE) {

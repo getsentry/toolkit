@@ -4,16 +4,7 @@
  * CRUD operations, search, and DSN key retrieval for Sentry projects.
  */
 
-import {
-  createOrganizationProject,
-  createTeamProject,
-  listOrganizationProjectKeys,
-  listOrganizationProjects,
-  listProjectKeys,
-  type ProjectKey as SdkProjectKey,
-  deleteProject as sdkDeleteProject,
-  getProject as sdkGetProject,
-} from "@sentry/api";
+import type { ProjectKey as SdkProjectKey } from "@sentry/api";
 
 import pLimit from "p-limit";
 
@@ -40,7 +31,7 @@ import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
   autoPaginate,
-  getOrgSdkConfig,
+  getOrgSentryClient,
   MAX_PAGINATION_PAGES,
   ORG_FANOUT_CONCURRENCY,
   type PaginatedResponse,
@@ -73,11 +64,10 @@ function reportBestEffortFailure(message: string, error: unknown): void {
  * @returns All projects in the organization
  */
 export async function listProjects(orgSlug: string): Promise<SentryProject[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
   const { data: allResults } = await autoPaginate(async (cursor) => {
-    const result = await listOrganizationProjects({
-      ...config,
+    const result = await sentry.listOrganizationProjects({
       path: { organization_id_or_slug: orgSlug },
       query: { cursor, per_page: API_MAX_PER_PAGE } as {
         cursor?: string;
@@ -122,14 +112,13 @@ export async function listProjectsPaginated(
   orgSlug: string,
   options: { cursor?: string; perPage?: number } = {},
 ): Promise<PaginatedResponse<SentryProject[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
   const perPage = Math.min(
     options.perPage ?? API_MAX_PER_PAGE,
     API_MAX_PER_PAGE,
   );
 
-  const result = await listOrganizationProjects({
-    ...config,
+  const result = await sentry.listOrganizationProjects({
     path: { organization_id_or_slug: orgSlug },
     query: {
       cursor: options.cursor,
@@ -190,9 +179,8 @@ export async function createProject(
   teamSlug: string,
   body: CreateProjectBody,
 ): Promise<SentryProject> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await createTeamProject({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.createTeamProject({
     path: {
       organization_id_or_slug: orgSlug,
       team_id_or_slug: teamSlug,
@@ -348,9 +336,8 @@ export async function createProjectWithAutoTeam(
   orgSlug: string,
   body: CreateProjectBody,
 ): Promise<CreatedAutoTeamProjectDetails> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await createOrganizationProject({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.createOrganizationProject({
     path: { organization_id_or_slug: orgSlug },
     body,
   });
@@ -379,9 +366,8 @@ export async function deleteProject(
   orgSlug: string,
   projectSlug: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
-  const result = await sdkDeleteProject({
-    ...config,
+  const sentry = await getOrgSentryClient(orgSlug);
+  const result = await sentry.deleteProject({
     path: {
       organization_id_or_slug: orgSlug,
       project_id_or_slug: projectSlug,
@@ -603,14 +589,13 @@ export async function getProject(
   orgSlug: string,
   projectSlug: string,
 ): Promise<SentryProject> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
   // `collapse=organization` is server-supported but absent from the OpenAPI
   // spec, so the SDK types `query` as `never` on `GetProjectData`. Cast just
   // this param to send it at runtime; the trimmed `{id, slug}` payload it
   // yields is modeled by the `SentryProject.organization` overlay.
-  const result = await sdkGetProject({
-    ...config,
+  const result = await sentry.getProject({
     path: {
       organization_id_or_slug: orgSlug,
       project_id_or_slug: projectSlug,
@@ -684,13 +669,12 @@ export async function listProjectDsns(
   projectSlug: string,
   options: { limit?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<ProjectDsn[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
   return paginate(options, async (perPage, cursor) => {
     // The SDK omits the shared per_page parameter supported by this endpoint.
     const query = { cursor, per_page: perPage };
-    const result = await listProjectKeys({
-      ...config,
+    const result = await sentry.listProjectKeys({
       path: {
         organization_id_or_slug: orgSlug,
         project_id_or_slug: projectSlug,
@@ -718,7 +702,7 @@ export async function listOrganizationDsns(
   orgSlug: string,
   options: { limit?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<(ProjectDsn & { project: string })[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
   const projectLookups = new Map<number, Promise<string>>();
   const limitProjectLookups = pLimit(ORG_FANOUT_CONCURRENCY);
 
@@ -726,8 +710,7 @@ export async function listOrganizationDsns(
     // These shared query parameters are supported by the backend but absent
     // from the SDK type. -1 includes accessible projects outside the user's teams.
     const query = { cursor, per_page: perPage, project: -1 };
-    const result = await listOrganizationProjectKeys({
-      ...config,
+    const result = await sentry.listOrganizationProjectKeys({
       path: { organization_id_or_slug: orgSlug },
       query,
     });
@@ -767,10 +750,9 @@ export async function getProjectKeys(
   projectSlug: string,
   options: { status?: "active" | "inactive" } = {},
 ): Promise<ProjectKey[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const sentry = await getOrgSentryClient(orgSlug);
 
-  const result = await listProjectKeys({
-    ...config,
+  const result = await sentry.listProjectKeys({
     path: {
       organization_id_or_slug: orgSlug,
       project_id_or_slug: projectSlug,
