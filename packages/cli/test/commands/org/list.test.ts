@@ -14,9 +14,14 @@ import {
 } from "../../../src/lib/db/auth.js";
 import { resetAccountScopes } from "../../../src/lib/db/account-scope.js";
 import { getDatabase } from "../../../src/lib/db/index.js";
+import { getEnvTokenHost } from "../../../src/lib/env-token-host.js";
 import { setUserInfo } from "../../../src/lib/db/user.js";
 import { AuthError, ResolutionError } from "../../../src/lib/errors.js";
-import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import {
+  resetHostScopingState,
+  useEnvSandbox,
+  useTestConfigDir,
+} from "../../helpers.js";
 
 type ListFunc = (
   this: unknown,
@@ -45,6 +50,8 @@ type Org = { id: string; slug: string; name: string; regionUrl: string };
 
 /** Orgs each token can see; a token missing here gets a 401. */
 let orgsByToken: Record<string, Org[]>;
+/** The `/auth/` user of each token; a token missing here gets a 401. */
+let usersByToken: Record<string, { id: string; email: string; name: string }>;
 /** `<origin> <token>` for every org-list request, to check token routing. */
 let requests: string[];
 let originalFetch: typeof globalThis.fetch;
@@ -53,14 +60,24 @@ function org(slug: string, regionUrl = SAAS, id = slug): Org {
   return { id, slug, name: `${slug} name`, regionUrl };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Each case boots afresh: the env token's server is snapshotted once.
+  await resetHostScopingState();
   orgsByToken = {};
+  usersByToken = {};
   requests = [];
   originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init);
     const url = new URL(req.url);
     const token = req.headers.get("Authorization")?.replace(/^Bearer /, "");
+    if (url.pathname === "/api/0/auth/") {
+      requests.push(`${url.origin} ${token} /auth/`);
+      const user = token ? usersByToken[token] : undefined;
+      return user
+        ? Response.json(user)
+        : Response.json({ detail: "Invalid token" }, { status: 401 });
+    }
     if (!url.pathname.startsWith("/api/0/organizations/")) {
       return Response.json({ detail: "Not found" }, { status: 404 });
     }
@@ -475,5 +492,154 @@ describe("org list --account", () => {
     expect((error as AuthError).message).toContain(
       "sentry auth login jane@local.dev:http://localhost:8000",
     );
+  });
+});
+
+describe("org list with an env token", () => {
+  test("lists it as one more account, first, fetched only on its own server", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    addAccount("acme-token", ACME, "jane@acme.com");
+    addAccount("saas-token", SAAS, "jane@example.com");
+    orgsByToken["env-token"] = [org("ci-org")];
+    orgsByToken["saas-token"] = [org("alpha")];
+    orgsByToken["acme-token"] = [org("acme-internal", ACME)];
+    usersByToken["env-token"] = {
+      id: "7",
+      email: "ci@example.com",
+      name: "CI Bot",
+    };
+
+    const entries = await runList();
+
+    expect(entries.map((e) => e.slug)).toEqual([
+      "ci-org",
+      "alpha",
+      "acme-internal",
+    ]);
+    expect(entries[0]?.account).toEqual({
+      name: "env:SENTRY_AUTH_TOKEN",
+      id: "env:SENTRY_AUTH_TOKEN",
+      email: "ci@example.com",
+      server: "sentry.io",
+      host: SAAS,
+      label: "CI Bot <ci@example.com> via SENTRY_AUTH_TOKEN on sentry.io",
+      envVar: "SENTRY_AUTH_TOKEN",
+    });
+    // Never sent to a stored account's server, nor stored tokens to SaaS
+    // on its behalf.
+    expect(requests.filter((r) => r.includes("env-token")).sort()).toEqual(
+      [`${SAAS} env-token`, `${SAAS} env-token /auth/`].sort(),
+    );
+    expect(requests).toContain(`${ACME} acme-token`);
+  });
+
+  test("an org it shares with a login is listed under it, and commands then use it", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    addAccount("saas-token", SAAS, "jane@example.com");
+    orgsByToken["env-token"] = [org("shared")];
+    orgsByToken["saas-token"] = [org("shared"), org("alpha")];
+
+    const entries = await runList();
+    resetAccountScopes();
+    selectAccountForOrg("shared");
+
+    expect(slugsWithAccount(entries)).toEqual([
+      ["shared", ""],
+      ["alpha", "jane@example.com"],
+    ]);
+    expect(entries[0]?.account).toMatchObject({
+      name: "env:SENTRY_AUTH_TOKEN",
+    });
+    expect(getAuthToken()).toBe("env-token");
+  });
+
+  test("is labeled by its variable when the server doesn't say whose it is", async () => {
+    process.env.SENTRY_TOKEN = "env-token";
+    addAccount("saas-token", SAAS, "jane@example.com");
+    orgsByToken["env-token"] = [org("ci-org")];
+    orgsByToken["saas-token"] = [org("alpha")];
+
+    const out = await runListHuman();
+
+    expect(out).toContain("env:SENTRY_TOKEN");
+  });
+
+  test("uses the server configured at boot", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env.SENTRY_URL = ACME;
+    addAccount("acme-token", ACME, "jane@acme.com");
+    orgsByToken["env-token"] = [org("ci-org", ACME)];
+    orgsByToken["acme-token"] = [org("acme-internal", ACME)];
+
+    const entries = await runList();
+
+    expect(entries.map((e) => e.slug)).toEqual(["ci-org", "acme-internal"]);
+    expect(requests).toContain(`${ACME} env-token`);
+    expect(requests.some((r) => r.startsWith(`${SAAS} `))).toBe(false);
+  });
+
+  test("an explicit server set after boot on another server leaves it out", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    getEnvTokenHost();
+    addAccount("acme-token", ACME, "jane@acme.com");
+    addAccount("saas-token", SAAS, "jane@example.com");
+    process.env.SENTRY_URL = ACME;
+    orgsByToken["env-token"] = [org("ci-org")];
+    orgsByToken["acme-token"] = [org("acme-internal", ACME)];
+
+    const entries = await runList();
+
+    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
+    expect(requests.some((r) => r.includes("env-token"))).toBe(false);
+  });
+
+  test("alone, keeps the single-account output", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    orgsByToken["env-token"] = [org("ci-org")];
+
+    const entries = await runList();
+
+    expect(entries.map((e) => e.slug)).toEqual(["ci-org"]);
+    expect(entries[0]?.account).toBeUndefined();
+  });
+
+  test("forced, it is the only account listed", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    addAccount("saas-token", SAAS, "jane@example.com");
+    orgsByToken["env-token"] = [org("ci-org")];
+    orgsByToken["saas-token"] = [org("alpha")];
+
+    const entries = await runList();
+
+    expect(entries.map((e) => e.slug)).toEqual(["ci-org"]);
+    expect(requests).toEqual([`${SAAS} env-token`]);
+  });
+
+  test("--account env:SENTRY_AUTH_TOKEN lists only its orgs", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    addAccount("saas-token", SAAS, "jane@example.com");
+    orgsByToken["env-token"] = [org("ci-org")];
+    orgsByToken["saas-token"] = [org("alpha")];
+
+    const entries = await runList({ account: "env:SENTRY_AUTH_TOKEN" });
+
+    expect(entries.map((e) => e.slug)).toEqual(["ci-org"]);
+    expect(requests.some((r) => r.includes("saas-token"))).toBe(false);
+  });
+
+  test("is not an account when it came from .sentryclirc after boot", async () => {
+    getEnvTokenHost();
+    process.env.SENTRY_AUTH_TOKEN = "rc-token";
+    addAccount("acme-token", ACME, "jane@acme.com");
+    addAccount("saas-token", SAAS, "jane@example.com");
+    orgsByToken["rc-token"] = [org("rc-org")];
+    orgsByToken["saas-token"] = [org("alpha")];
+    orgsByToken["acme-token"] = [org("acme-internal", ACME)];
+
+    const entries = await runList();
+
+    expect(entries.map((e) => e.slug)).toEqual(["alpha", "acme-internal"]);
+    expect(requests.some((r) => r.includes("rc-token"))).toBe(false);
   });
 });

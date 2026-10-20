@@ -44,6 +44,12 @@ type HostSnapshot = {
   host: string;
   configuredHost: string | null;
   claimError?: ConfigError;
+  /**
+   * The env token present when the snapshot was taken. A token set later
+   * (the `.sentryclirc` shim copies `[auth] token` into `SENTRY_AUTH_TOKEN`)
+   * was not scoped by this snapshot.
+   */
+  token?: string;
 };
 const EXPLICIT_SCHEME_RE = /^([a-z][a-z\d+.-]*):\/\//i;
 
@@ -123,12 +129,14 @@ export function captureEnvTokenHost(): void {
       env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim(),
       env.SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL",
     ) ?? null;
+  const token = getRawEnvToken();
   // Claim first: for sntrys_ tokens, the embedded url is authoritative.
-  const claim = captureClaimHost(getRawEnvToken());
+  const claim = captureClaimHost(token);
   snapshotState.byEnv.set(env, {
     configuredHost,
     host: claim.host ?? configuredHost ?? DEFAULT_SENTRY_URL,
     ...(claim.error ? { claimError: claim.error } : {}),
+    ...(token ? { token } : {}),
   });
 }
 
@@ -147,6 +155,27 @@ export function getEnvTokenHost(): string {
     throw snapshot.claimError;
   }
   return snapshot?.host ?? DEFAULT_SENTRY_URL;
+}
+
+/**
+ * The env token's host when it is known from a trusted source: the token's
+ * `sntrys_` claim, or `SENTRY_HOST`/`SENTRY_URL` from the boot env, else
+ * SaaS. `undefined` when the current env token was not present at the
+ * snapshot (a `.sentryclirc` token, whose server is unknown) or its claim
+ * is malformed. Gates using the env token as an account of its own (see
+ * `getEnvAccount` in `db/auth.ts`).
+ */
+export function getTrustedEnvTokenHost(): string | undefined {
+  const env = getEnv();
+  if (!snapshotState.byEnv.has(env)) {
+    captureEnvTokenHost();
+  }
+  const snapshot = snapshotState.byEnv.get(env);
+  const token = getRawEnvToken();
+  if (!(snapshot && token) || snapshot.claimError || snapshot.token !== token) {
+    return;
+  }
+  return snapshot.host;
 }
 
 /** Only the explicit URL captured at boot may migrate a legacy stored login. */

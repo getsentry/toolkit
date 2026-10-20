@@ -1961,13 +1961,29 @@ export function formatAuthStatus(data: AuthStatusData): string {
 function formatEnvTokenSection(
   envToken: NonNullable<AuthStatusData["envToken"]>,
 ): string {
-  const status = envToken.active
-    ? "active"
-    : "set but not used (using OAuth credentials)";
+  let status = "active";
+  if (!envToken.active) {
+    status = envToken.host
+      ? "used for organizations it can access (OAuth credentials otherwise)"
+      : "set but not used (using OAuth credentials)";
+  }
   const rows: [string, string][] = [
     ["Env var", safeCodeSpan(envToken.envVar)],
     ["Status", status],
   ];
+  if (envToken.host) {
+    rows.push(["Server", escapeMarkdownInline(envToken.host)]);
+  }
+  const user = envToken.user;
+  const who = user?.name ?? user?.username ?? user?.email;
+  if (who) {
+    rows.push([
+      "User",
+      escapeMarkdownInline(
+        user?.email && user.email !== who ? `${who} <${user.email}>` : who,
+      ),
+    ]);
+  }
   return `\n${mdKvTable(rows, "Environment Token")}`;
 }
 

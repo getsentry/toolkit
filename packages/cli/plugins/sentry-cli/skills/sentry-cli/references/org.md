@@ -18,7 +18,7 @@ List organizations
 **Flags:**
 - `-n, --limit <value> - Maximum number of organizations to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
-- `-a, --account <value> - Only list organizations of this stored account (email, username, or account id; <who>:<server> for one server)`
+- `-a, --account <value> - Only list organizations of this account (email, username, or account id; <who>:<server> for one server; env:SENTRY_AUTH_TOKEN)`
 
 ### `sentry org view [<org>]`
 

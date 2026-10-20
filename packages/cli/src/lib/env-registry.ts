@@ -44,7 +44,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_AUTH_TOKEN",
     description:
-      "Authentication token for the Sentry API. This is the primary way to authenticate in CI/CD pipelines and scripts where interactive login is not possible.\n\nYou can create auth tokens in your [Sentry account settings](https://sentry.io/settings/account/api/auth-tokens/). When a stored OAuth login from `sentry auth login` also exists, the stored login takes priority — set `SENTRY_FORCE_ENV_TOKEN=1` to override.",
+      "Authentication token for the Sentry API. This is the primary way to authenticate in CI/CD pipelines and scripts where interactive login is not possible.\n\nYou can create auth tokens in your [Sentry account settings](https://sentry.io/settings/account/api/auth-tokens/). When a stored OAuth login from `sentry auth login` also exists, the stored login is used by default and the env token acts as one more account: commands targeting an organization it can access (as listed by `sentry org list`) use it, and so does its own server when no stored login is on it. That requires its server to be known: `SENTRY_HOST`/`SENTRY_URL` from the environment, or sentry.io when neither is set. Set `SENTRY_FORCE_ENV_TOKEN=1` to use only the env token.",
     example: "sntrys_YOUR_TOKEN_HERE",
     topLevel: true,
     briefDescription: "Auth token used for API requests (CI, scripts).",
@@ -59,7 +59,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_FORCE_ENV_TOKEN",
     description:
-      "When set, environment variable tokens (`SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`) take precedence over the stored OAuth token from `sentry auth login`. By default, the stored OAuth token takes priority because it supports automatic refresh. Set this if you want to ensure the environment variable token is always used, which is useful for self-hosted setups or CI environments.",
+      "When set, environment variable tokens (`SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`) are the only credential used, overriding the stored OAuth token from `sentry auth login` and account selection. By default, the stored OAuth token takes priority because it supports automatic refresh, and the env token is only used for organizations it can access and for its own server. Set this if you want to ensure the environment variable token is always used, which is useful for self-hosted setups or CI environments.",
     example: "1",
     topLevel: true,
     briefDescription: "Prefer the env-var token over a stored OAuth login.",
