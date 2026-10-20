@@ -9,6 +9,7 @@
 
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { uuidv7 } from "uuidv7";
+import { normalizeUrl } from "../constants.js";
 import { fuzzyMatch } from "../fuzzy.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { storedCredentialIdentity } from "./identity-hash.js";
@@ -189,12 +190,65 @@ export function listAccounts(): AccountSummary[] {
 }
 
 /**
+ * Split a `<who>[:<server>]` account selector (e.g.
+ * `jane@acme.com:sentry.acme.com`) on its first `:`. Emails, usernames, and
+ * account ids never contain one, so everything after it is the server: a
+ * bare host (HTTPS, may include a port) or a URL. Shared by `--account`,
+ * `auth switch`/`logout`, and `auth login`.
+ *
+ * @returns `{ who }` without a `:`; `{ who, server }` with the server's
+ *   normalized origin; `undefined` when a side of the `:` is empty or the
+ *   server is not an HTTP(S) URL
+ */
+export function splitAccountSelector(
+  selector: string,
+): { who: string; server?: string } | undefined {
+  const trimmed = selector.trim();
+  const colon = trimmed.indexOf(":");
+  if (colon < 0) {
+    return { who: trimmed };
+  }
+  const who = trimmed.slice(0, colon);
+  const server = normalizeHttpOrigin(normalizeUrl(trimmed.slice(colon + 1)));
+  return who && server ? { who, server } : undefined;
+}
+
+/**
+ * The `<who>:<server>` selector naming an account, e.g.
+ * `jane@acme.com:sentry.acme.com`: what `--account` and
+ * `sentry auth login` accept. Uses the email, else the username, else the
+ * account id; the server part is omitted when no host is recorded.
+ */
+export function accountSelectorOf(account: AccountSummary): string {
+  const who = account.email ?? account.username ?? account.id;
+  const server = accountServerOf(account);
+  return server ? `${who}:${server}` : who;
+}
+
+/**
+ * The server part of an account's selector: `host[:port]` for HTTPS, the
+ * full origin (`http://host[:port]`) otherwise, since selector parsing
+ * assumes HTTPS for a bare host. `undefined` when no host is recorded.
+ */
+export function accountServerOf(account: {
+  readonly host?: string;
+}): string | undefined {
+  const host = account.host;
+  const origin = normalizeHttpOrigin(host);
+  if (!origin) {
+    return hostnameOf(host);
+  }
+  const url = new URL(origin);
+  return url.protocol === "https:" ? url.host : origin;
+}
+
+/**
  * Find stored accounts matching a user-supplied selector.
  *
  * Matches, in order of precedence: exact account id, then case-insensitive
- * email, username, or user id. A selector of the form `<who>@<host>` where
- * `<host>` matches the account's hostname narrows by server as well.
- * Returns every match so callers can report ambiguity.
+ * email, username, or user id. A selector of the form `<who>:<server>`
+ * (see {@link accountSelectorOf}) or `<who>@<hostname>` narrows by server
+ * as well. Returns every match so callers can report ambiguity.
  */
 export function findAccounts(selector: string): AccountSummary[] {
   const accounts = listAccounts();
@@ -206,6 +260,13 @@ export function findAccounts(selector: string): AccountSummary[] {
   const direct = accounts.filter((a) => matchesIdentity(a, needle));
   if (direct.length > 0) {
     return direct;
+  }
+  const parts = splitAccountSelector(needle);
+  const server = parts?.server;
+  if (parts && server) {
+    return accounts.filter(
+      (a) => matchesIdentity(a, parts.who) && isAccountOnServer(a, server),
+    );
   }
   const at = needle.lastIndexOf("@");
   if (at <= 0) {
@@ -240,6 +301,7 @@ export function findSimilarAccounts(
       account.username,
       account.name,
       account.email && host ? `${account.email}@${host}` : undefined,
+      account.host ? accountSelectorOf(account) : undefined,
     ];
     for (const value of values) {
       if (value) {
@@ -292,14 +354,25 @@ export function hostnameOf(host: string | undefined): string | undefined {
  * is already allowed to reach.
  */
 export function isSameServer(a: string, b: string): boolean {
-  const left = normalizeHttpOrigin(a);
-  const right = normalizeHttpOrigin(b);
-  if (!(left && right)) {
-    return false;
+  const left = serverKey(a);
+  return left !== undefined && left === serverKey(b);
+}
+
+/** Every SaaS origin (`*.sentry.io`) shares one {@link serverKey}. */
+const SAAS_SERVER_KEY = "saas";
+
+/**
+ * Canonical key for a server URL: equal for exactly the URLs
+ * {@link isSameServer} treats as one installation (the same origin, or any
+ * SaaS origin), so it can key a `Set` or `Map`. `undefined` for a URL that
+ * isn't a credential-free HTTP(S) origin.
+ */
+export function serverKey(url: string): string | undefined {
+  const origin = normalizeHttpOrigin(url);
+  if (!origin) {
+    return;
   }
-  return (
-    left === right || (isSaaSTrustOrigin(left) && isSaaSTrustOrigin(right))
-  );
+  return isSaaSTrustOrigin(origin) ? SAAS_SERVER_KEY : origin;
 }
 
 /**

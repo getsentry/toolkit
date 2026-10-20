@@ -21,7 +21,11 @@ import {
   setActiveAccount,
   setAuthToken,
 } from "../../lib/db/auth.js";
-import { getAccountRow, isAccountRowUsable } from "../../lib/db/accounts.js";
+import {
+  getAccountRow,
+  isAccountRowUsable,
+  splitAccountSelector,
+} from "../../lib/db/accounts.js";
 import { getDbPath } from "../../lib/db/index.js";
 import { getUserInfo, setUserInfo } from "../../lib/db/user.js";
 import { getEnv } from "../../lib/env.js";
@@ -154,20 +158,77 @@ function resolveLoginScope(flags: LoginFlags): string | undefined {
  */
 /** @internal exported for testing */
 /**
- * Parse the optional `email` argument of `sentry auth login`.
+ * Parse the optional `email` argument of `sentry auth login`: an email, or
+ * `<email>:<server>` (the notation `sentry org list` shows, e.g.
+ * `jane@acme.com:sentry.acme.com`) to also pick the server like `--url`.
+ * Returns the trimmed argument; {@link splitLoginTarget} splits it.
  *
- * @throws {ValidationError} when the value is not an email address
+ * @throws {ValidationError} when the value is not an email address, or the
+ *   server part is not a valid URL
  */
 export function parseLoginEmail(raw: string): string {
-  const email = raw.trim();
-  const at = email.indexOf("@");
-  if (at <= 0 || at === email.length - 1 || /\s/.test(email)) {
+  const target = raw.trim();
+  splitLoginTarget(target, raw);
+  return target;
+}
+
+/**
+ * Split a `sentry auth login` target into its email and, for
+ * `<email>:<server>`, the server's normalized origin. Uses the same
+ * {@link splitAccountSelector} as `--account`, plus an email check.
+ *
+ * @throws {ValidationError} when either part is invalid
+ */
+export function splitLoginTarget(
+  target: string,
+  raw = target,
+): { email: string; url?: string } {
+  const parts = splitAccountSelector(target);
+  if (!(parts && isEmailAddress(parts.who))) {
     throw new ValidationError(
-      `Expected an email address to log in as, got '${raw}'.`,
+      `Expected an email address, or <email>:<server> with a valid server, to log in as; got '${raw}'.`,
       "email",
     );
   }
-  return email;
+  return parts.server
+    ? { email: parts.who, url: parts.server }
+    : { email: parts.who };
+}
+
+/** One `@` with text on both sides, and no whitespace. */
+function isEmailAddress(value: string): boolean {
+  const at = value.indexOf("@");
+  return (
+    at > 0 &&
+    at < value.length - 1 &&
+    value.indexOf("@", at + 1) === -1 &&
+    !/\s/.test(value)
+  );
+}
+
+/**
+ * Apply the server of an `<email>:<server>` login target as `--url`.
+ *
+ * @throws {ValidationError} when `--url` names a different server
+ */
+function applyLoginTarget(
+  flags: LoginFlags,
+  target: string | undefined,
+): { flags: LoginFlags; email?: string } {
+  if (target === undefined) {
+    return { flags };
+  }
+  const { email, url } = splitLoginTarget(target);
+  if (!url) {
+    return { flags, email };
+  }
+  if (flags.url && flags.url !== url) {
+    throw new ValidationError(
+      `'${target}' names ${url}, but --url is ${flags.url}. Pass only one server.`,
+      "url",
+    );
+  }
+  return { flags: { ...flags, url }, email };
 }
 
 export function parseLoginUrl(raw: string): string {
@@ -470,21 +531,22 @@ export const loginCommand = buildCommand({
       "Log in to Sentry using OAuth or an API token.\n\n" +
       "The OAuth flow uses a device code - you'll be given a code to enter at a URL.\n" +
       "Alternatively, use --token to authenticate with an existing API token.\n\n" +
-      "For self-hosted Sentry, pass --url <url> to authenticate against that\n" +
-      "instance. This is the ONLY way to trust a new Sentry host — URL\n" +
-      "arguments and config files are refused when they don't match the\n" +
-      "currently-authenticated host.\n\n" +
+      "For self-hosted Sentry, pass --url <url> (or an <email>:<server>\n" +
+      "argument) to authenticate against that instance. This is the ONLY way\n" +
+      "to trust a new Sentry host — URL arguments and config files are\n" +
+      "refused when they don't match the currently-authenticated host.\n\n" +
       "When already logged in, the new login is stored as another account\n" +
       "(see 'sentry auth list' / 'sentry auth switch'); --force instead\n" +
       "replaces the stored login for that server (accounts on other servers\n" +
-      "are kept). Pass an email to add or log in\n" +
-      "again to that account without prompting: Sentry approves the request\n" +
-      "as whoever is signed in to the browser, so a login approved as another\n" +
-      "user is refused and nothing is saved.\n\n" +
+      "are kept). Pass an email (or <email>:<server>, as 'sentry org list'\n" +
+      "shows it) to add or log in again to that account without prompting:\n" +
+      "Sentry approves the request as whoever is signed in to the browser,\n" +
+      "so a login approved as another user is refused and nothing is saved.\n\n" +
       "Examples:\n" +
       "  sentry auth login\n" +
       "  sentry auth login jane@acme.com\n" +
-      "  sentry auth login jane@acme.com --url https://sentry.acme.com",
+      "  sentry auth login jane@acme.com --url https://sentry.acme.com\n" +
+      "  sentry auth login jane@acme.com:sentry.acme.com",
   },
   parameters: {
     flags: {
@@ -539,7 +601,7 @@ export const loginCommand = buildCommand({
         {
           placeholder: "email",
           brief:
-            "Email of the account to add or log in to again; the login is refused if you approve it as someone else",
+            "Email of the account to add or log in to again (<email>:<server> also sets --url); the login is refused if you approve it as someone else",
           parse: parseLoginEmail,
           optional: true,
         },
@@ -547,7 +609,9 @@ export const loginCommand = buildCommand({
     },
   },
   output: { human: formatLoginResult },
-  async *func(this: SentryContext, flags: LoginFlags, email?: string) {
+  async *func(this: SentryContext, rawFlags: LoginFlags, target?: string) {
+    // `<email>:<server>` picks the server just like `--url <server>`.
+    const { flags, email } = applyLoginTarget(rawFlags, target);
     // Resolve OAuth scopes up front so conflicting flag combinations
     // (--token + --read-only/--scope, --read-only + --scope) and invalid
     // scope values fail fast before any network or DB work.

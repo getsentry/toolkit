@@ -394,7 +394,7 @@ Authenticate with Sentry
 
 Work with Sentry organizations
 
-- `sentry org list` — List organizations
+- `sentry org list [<filter>]` — List organizations
 - `sentry org view [<org>]` — View details of an organization
 
 → Full flags and examples: `references/org.md`
