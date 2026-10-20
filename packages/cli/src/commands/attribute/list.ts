@@ -431,10 +431,11 @@ export const listCommand = buildListCommand(
       return { hint: result.hint };
     },
   },
-  // No --cursor / -c: pagination for now. Instead this command makes a single request
+  // No --cursor / -c: pagination. Instead this command makes a single request
   // (up to --limit, max 1000) and users narrow using --type/--search/--with.
   // The per_page parameter is per attribute type, so a single request can return more
   // than --limit rows. The API can also append extra internal attributes, which can
-  // cause the results to exceed --limit as well
+  // cause the results to exceed --limit as well. So to simplify logic, it drops
+  // extra rows and avoids pagination for now.
   { noCursorFlag: true },
 );
