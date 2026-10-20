@@ -11,7 +11,10 @@ import {
   API_MAX_PER_PAGE,
   listDashboardsPaginated,
 } from "../../lib/api-client.js";
-import type { parseOrgProjectArg } from "../../lib/arg-parsing.js";
+import {
+  type parseOrgProjectArg,
+  parseSlashSeparatedArg,
+} from "../../lib/arg-parsing.js";
 import {
   ApiError,
   ResolutionError,
@@ -36,8 +39,8 @@ import {
   WIDGET_TYPES,
 } from "../../types/dashboard.js";
 
-/** Only slug-shaped prefixes with a numeric ID are qualified references. */
-const DASHBOARD_ID_PATH_RE = /^([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?)\/(\d+)$/;
+/** Recognize slug-shaped targets without treating arbitrary slash titles as paths. */
+const DASHBOARD_REF_PATH_RE = /^([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?)\/(.+)$/;
 
 /** Shared widget query flags used by `add` and `edit` commands */
 export type WidgetQueryFlags = {
@@ -155,12 +158,18 @@ export function parseDashboardPositionalArgs(
   }
 
   if (args.length === 1) {
-    const [, target, dashboardRef] = DASHBOARD_ID_PATH_RE.exec(first) ?? [];
-    if (target && dashboardRef) {
-      return {
-        dashboardRef,
-        targetArg: target.includes("/") ? target : `${target}/`,
-      };
+    const [, target, dashboardRef] = DASHBOARD_REF_PATH_RE.exec(first) ?? [];
+    if (target && dashboardRef && isAllDigits(dashboardRef)) {
+      // Like replay targets, org/ID needs handling before the project-scoped parser.
+      if (!target.includes("/")) {
+        return { dashboardRef, targetArg: `${target}/` };
+      }
+      const { id, targetArg } = parseSlashSeparatedArg(
+        first,
+        "Dashboard ID",
+        "sentry dashboard <command> [<org>/<project>/]<dashboard-id>",
+      );
+      return { dashboardRef: id, targetArg };
     }
     return {
       dashboardRef: first,
