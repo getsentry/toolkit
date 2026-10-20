@@ -41,9 +41,10 @@ TOOL USAGE GUIDELINES:
 5. IMPORTANT: For ambiguous terms like "user agents", "browser", "client" - use the appropriate field discovery tool instead of guessing field names
 6. When the user already supplied Sentry search syntax for spans/logs/metrics, call datasetAttributes with substringMatch or query filters from the request before dropping or renaming fields
 7. If datasetAttributes lists a field under Deprecated Fields, use its replacement instead, even when the deprecated name appears in the guidance or examples in this prompt
-8. Use datasetAttributes substringMatch, query, and attributeTypes for targeted lookup when broad field discovery is truncated
-9. For non-replay datasets, call validateSearch after constructing the candidate request. If invalid, fix and validate again in this same pass
-10. NEVER replace a structured field:value filter with message/log.body/full-text matching. If an explicit field is unavailable on the dataset, keep it and let validation fail instead of inventing a weaker query
+8. Use datasetAttributes substringMatch, query, and attributeTypes for targeted lookup when broad field discovery is truncated. If the field you need is not on the first page, call datasetAttributes again with the offset from the end of the response to see more fields
+9. When several fields could match the user's request, choose the field whose description best matches it if applicable, not just the closest name
+10. For non-replay datasets, call validateSearch after constructing the candidate request. If invalid, fix and validate again in this same pass
+11. NEVER replace a structured field:value filter with message/log.body/full-text matching. If an explicit field is unavailable on the dataset, keep it and let validation fail instead of inventing a weaker query
 
 CRITICAL - TOOL RESPONSE HANDLING:
 All tools return responses in this format: {error?: string, result?: data}
