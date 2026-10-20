@@ -306,6 +306,265 @@ describe("search_events", () => {
     expect(result).toContain("**Peak**: 8");
   });
 
+  it("handles timeseries when the API returns count as a numeric string (e.g. max(timestamp) epoch)", async () => {
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "max(timestamp)", interval: "1d" },
+      timeRange: { statsPeriod: "45d" },
+      explanation: "Max timestamp per day",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    // The Sentry API returns `count` as a string for non-count aggregates; numeric
+    // epoch strings should be parsed correctly and never render as "NaN".
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-stats/",
+        () =>
+          HttpResponse.json({
+            data: [
+              [1757548800, [{ count: "1757548800" }]],
+              [1757635200, [{ count: "1757635200" }]],
+              [1757721600, [{ count: "1757721600" }]],
+            ],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "latest event timestamp per day",
+        fields: null,
+        sort: null,
+        period: "45d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("max(timestamp) over time");
+    expect(result).not.toContain("NaN");
+  });
+
+  it("handles timeseries when the API returns count as an ISO datetime string", async () => {
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "max(timestamp)", interval: "1d" },
+      timeRange: { statsPeriod: "7d" },
+      explanation: "Max timestamp per day",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    // When the API returns ISO datetime strings, the output must display the raw
+    // string rather than "NaN".
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-stats/",
+        () =>
+          HttpResponse.json({
+            data: [
+              [1757548800, [{ count: "2026-07-11T00:00:00" }]],
+              [1757635200, [{ count: "2026-07-12T00:00:00" }]],
+              [1757721600, [{ count: "2026-07-13T00:00:00" }]],
+            ],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "latest event timestamp per day",
+        fields: null,
+        sort: null,
+        period: "7d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("max(timestamp) over time");
+    // ISO datetime strings must appear in the output as-is, never as "NaN".
+    expect(result).toContain("2026-07-13T00:00:00");
+    expect(result).not.toContain("NaN");
+  });
+
+  it("omits Peak when all count values are opaque identifier strings (e.g. latest_event())", async () => {
+    // A zero-filled bucket followed by a populated bucket with an event ID.
+    // Before the fix, both coerced to 0 so the empty bucket won as "Peak".
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "latest_event()", interval: "1d" },
+      timeRange: { statsPeriod: "7d" },
+      explanation: "Latest event ID per day",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-stats/",
+        () =>
+          HttpResponse.json({
+            data: [
+              // Empty bucket first — must not win as Peak.
+              [1757548800, [{ count: 0 }]],
+              [1757635200, [{ count: "abc1234567890abcdef" }]],
+              [1757721600, [{ count: "def9876543210fedcba" }]],
+            ],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "latest event ID per day",
+        fields: null,
+        sort: null,
+        period: "7d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("latest_event() over time");
+    // Event IDs must appear literally in the table.
+    expect(result).toContain("abc1234567890abcdef");
+    expect(result).toContain("def9876543210fedcba");
+    // Peak must be omitted — no meaningful numeric/date peak for identifier series.
+    expect(result).not.toContain("**Peak**");
+    expect(result).not.toContain("NaN");
+  });
+
+  it("preserves leading-zero numeric-looking string identifiers without coercing them to numbers", async () => {
+    // "00123" is a numeric-looking identifier. Number("00123") = 123, so the
+    // old code would display "123" and silently change the value.
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "latest_event()", interval: "1d" },
+      timeRange: { statsPeriod: "7d" },
+      explanation: "Leading-zero identifier",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-stats/",
+        () =>
+          HttpResponse.json({
+            data: [
+              [1757548800, [{ count: "00123" }]],
+              [1757635200, [{ count: "00456" }]],
+            ],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "leading-zero identifiers",
+        fields: null,
+        sort: null,
+        period: "7d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("latest_event() over time");
+    // Strings must appear literally — "00123" must NOT appear as "123".
+    expect(result).toContain("00123");
+    expect(result).toContain("00456");
+    expect(result).not.toContain("| 123 |");
+    expect(result).not.toContain("NaN");
+  });
+
   it("should handle spans dataset queries", async () => {
     // Mock AI response for spans dataset
     mockGenerateText.mockResolvedValueOnce(

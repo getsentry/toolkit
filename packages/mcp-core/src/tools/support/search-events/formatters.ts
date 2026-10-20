@@ -943,7 +943,7 @@ function isAdditiveAggregate(yAxis: string): boolean {
  * `interval` is null when Sentry chose the bucket size for the range.
  */
 export function formatTimeSeriesResults(params: {
-  series: { data: Array<[number, Array<{ count?: number | null }>]> };
+  series: { data: Array<[number, Array<{ count?: string | number | null }>]> };
   yAxis: string;
   interval: string | null;
   inputQuery: string;
@@ -963,18 +963,52 @@ export function formatTimeSeriesResults(params: {
     url,
   } = params;
 
-  const points = series.data.map(([ts, values]) => ({
-    time: new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " "),
-    value: values[0]?.count ?? 0,
-  }));
+  const points = series.data.map(([ts, values]) => {
+    const raw = values[0]?.count ?? 0;
+    const time = new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " ");
+
+    // Direct number from the API: format normally.
+    if (typeof raw === "number") {
+      return { time, sortValue: raw as number | null, display: raw.toLocaleString() };
+    }
+
+    // String value from the API. Only treat as numeric when the round-trip is
+    // exact — this prevents leading-zero identifiers such as "00123" from being
+    // silently changed to 123.
+    const asNumber = Number(raw);
+    if (!isNaN(asNumber) && String(asNumber) === raw) {
+      return { time, sortValue: asNumber as number | null, display: asNumber.toLocaleString() };
+    }
+
+    // Non-numeric string: may be an ISO datetime (max(timestamp)) or an opaque
+    // identifier (latest_event()). Preserve the raw string for display. Use the
+    // parsed date in milliseconds as the sort key so date series still order
+    // correctly; null for identifiers that are neither numeric nor valid dates.
+    const dateParsed = Date.parse(raw);
+    return {
+      time,
+      sortValue: isNaN(dateParsed) ? null : (dateParsed as number | null),
+      display: raw,
+    };
+  });
 
   // Total is only meaningful for additive aggregates; summing count_unique /
   // avg / percentile buckets would be wrong, so omit it for those.
   const total = isAdditiveAggregate(yAxis)
-    ? points.reduce((sum, p) => sum + p.value, 0)
+    ? points.reduce((sum, p) => sum + (p.sortValue ?? 0), 0)
     : null;
-  const peak = points.reduce<(typeof points)[number] | undefined>(
-    (max, p) => (max === undefined || p.value > max.value ? p : max),
+  // Detect whether this is a string-identifier series (e.g. latest_event()).
+  // When it is, numeric zeros come from empty-bucket markers in the API, not
+  // real values, and must be excluded so they don't falsely win as Peak.
+  const hasIdentifierPoints = points.some((p) => p.sortValue === null);
+  // Only consider points that have a meaningful sort value (numeric or date);
+  // omit Peak entirely when all values are opaque identifiers.
+  const peakablePoints = points.filter(
+    (p): p is typeof p & { sortValue: number } =>
+      p.sortValue !== null && !(hasIdentifierPoints && p.sortValue === 0),
+  );
+  const peak = peakablePoints.reduce<(typeof peakablePoints)[number] | undefined>(
+    (max, p) => (max === undefined || p.sortValue > max.sortValue ? p : max),
     undefined,
   );
 
@@ -1000,7 +1034,7 @@ export function formatTimeSeriesResults(params: {
     lines.push(`- **Total**: ${total.toLocaleString()}`);
   }
   if (peak) {
-    lines.push(`- **Peak**: ${peak.value.toLocaleString()} at ${peak.time}`);
+    lines.push(`- **Peak**: ${peak.display} at ${peak.time}`);
   }
 
   if (shown.length > 0) {
@@ -1012,7 +1046,7 @@ export function formatTimeSeriesResults(params: {
       "| --- | --- |",
     );
     for (const p of shown) {
-      lines.push(`| ${p.time} | ${p.value.toLocaleString()} |`);
+      lines.push(`| ${p.time} | ${p.display} |`);
     }
   } else {
     lines.push("", "No data points in this range.");
