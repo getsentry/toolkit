@@ -14,24 +14,32 @@ function createMockKV(options?: {
   getError?: Error;
   putError?: Error;
 }): KVNamespace {
-  let stored = options?.getResult ?? null;
-  let expiresAt = Number.POSITIVE_INFINITY;
+  const entries = new Map<
+    string,
+    { value: CachedConstraints; expiresAt: number }
+  >();
   return {
-    get: vi.fn().mockImplementation(async () => {
+    get: vi.fn().mockImplementation(async (key: string) => {
       if (options?.getError) throw options.getError;
-      return Date.now() < expiresAt ? stored : null;
+      const entry = entries.get(key);
+      if (entry) {
+        return Date.now() < entry.expiresAt ? entry.value : null;
+      }
+      return options?.getResult ?? null;
     }),
     put: vi
       .fn()
       .mockImplementation(
         async (
-          _key: string,
+          key: string,
           value: string,
           { expirationTtl }: { expirationTtl: number },
         ) => {
           if (options?.putError) throw options.putError;
-          stored = JSON.parse(value);
-          expiresAt = Date.now() + expirationTtl * 1000;
+          entries.set(key, {
+            value: JSON.parse(value),
+            expiresAt: Date.now() + expirationTtl * 1000,
+          });
         },
       ),
     delete: vi.fn(),
@@ -210,6 +218,65 @@ describe("verifyConstraintsAccess", () => {
   });
 
   describe("caching", () => {
+    it("preserves verified capabilities when a concurrent request times out later", async () => {
+      vi.useFakeTimers();
+      let notifyProjectStarted!: () => void;
+      const projectStarted = new Promise<void>((resolve) => {
+        notifyProjectStarted = resolve;
+      });
+      const slowProjectResponse = mockProjectResponse(() => {
+        notifyProjectStarted();
+        return new Promise(() => {});
+      });
+      const kv = createMockKV();
+      const cache: CacheOptions = {
+        kv,
+        userId: "concurrent-user",
+        waitUntil: vi.fn(),
+      };
+      const constraints = {
+        organizationSlug: "sentry-mcp-evals",
+        projectSlug: "cloudflare-mcp",
+      };
+      const options = { accessToken: token, sentryHost: host, cache };
+
+      const slowRequest = verifyConstraintsAccess(constraints, options);
+      await projectStarted;
+      slowProjectResponse.mockRestore();
+
+      const verified = await verifyConstraintsAccess(constraints, options);
+      expect(verified).toMatchObject({
+        ok: true,
+        constraints: {
+          projectCapabilities: {
+            profiles: false,
+            replays: false,
+            logs: false,
+            traces: false,
+          },
+        },
+      });
+      await vi.mocked(cache.waitUntil).mock.calls[0][0];
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await slowRequest).toMatchObject({
+        ok: true,
+        constraints: { projectCapabilities: null },
+      });
+      await vi.mocked(cache.waitUntil).mock.calls[1][0];
+
+      const apiFetch = vi.spyOn(globalThis, "fetch");
+      expect(await verifyConstraintsAccess(constraints, options)).toEqual(
+        verified,
+      );
+      // The late timeout must not shorten the verified entry's lifetime either.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(await verifyConstraintsAccess(constraints, options)).toEqual(
+        verified,
+      );
+      expect(apiFetch).not.toHaveBeenCalled();
+    });
+
     it("reuses a project timeout for 60 seconds, then refreshes capabilities", async () => {
       vi.useFakeTimers();
       let notifyProjectStarted!: () => void;
@@ -248,7 +315,7 @@ describe("verifyConstraintsAccess", () => {
       expect(cache.waitUntil).toHaveBeenCalledOnce();
       await vi.mocked(cache.waitUntil).mock.calls[0][0];
       expect(kv.put).toHaveBeenCalledWith(
-        "caps:v1:timeout-user:sentry.io:sentry-mcp-evals:project:cloudflare-mcp",
+        "timeout:caps:v1:timeout-user:sentry.io:sentry-mcp-evals:project:cloudflare-mcp",
         expect.any(String),
         { expirationTtl: 60 },
       );
@@ -391,8 +458,8 @@ describe("verifyConstraintsAccess", () => {
         });
       }
 
-      // Verify cache was checked
-      expect(mockKV.get).toHaveBeenCalledOnce();
+      // Check verified constraints before the timeout fallback.
+      expect(mockKV.get).toHaveBeenCalledTimes(2);
 
       await vi.mocked(cache.waitUntil).mock.calls[0][0];
 
@@ -439,8 +506,8 @@ describe("verifyConstraintsAccess", () => {
         expect(result.constraints.projectSlug).toBe("cloudflare-mcp");
       }
 
-      // Verify cache read was attempted
-      expect(mockKV.get).toHaveBeenCalledOnce();
+      // Both cache reads can fail without blocking API verification.
+      expect(mockKV.get).toHaveBeenCalledTimes(2);
     });
 
     it("succeeds even when cache write fails", async () => {

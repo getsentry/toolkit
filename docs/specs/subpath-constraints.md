@@ -49,9 +49,12 @@ to avoid fetching organization metadata that is not needed for project
 capabilities. Successful verification is cached for 15 minutes. If project
 verification takes longer than five seconds, the request continues with unknown
 project capabilities. This result is cached for 60 seconds to reduce repeated
-delays; after it expires, the next request retries verification. Cache propagation
-and concurrent requests can still cause repeated verification. Each tool still
-requires permission to access the requested data.
+delays; after it expires, the next request retries verification. Timeout results
+use separate cache keys, and verified results take precedence, so a concurrent
+timeout cannot overwrite verified capabilities or shorten their cache lifetime.
+Cache propagation and concurrent requests can still cause repeated verification
+or temporarily return unknown capabilities. Each tool still requires permission
+to access the requested data.
 
 ## Region awareness
 

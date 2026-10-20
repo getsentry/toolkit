@@ -33,6 +33,7 @@ export type CacheOptions = {
  * Build a cache key for constraints verification.
  * Format: caps:v1:{userId}:{sentryHost}:{organizationSlug}:{scopeKey}
  * scopeKey is "org" for org-only entries or "project:{slug}" for project-scoped entries.
+ * Timeouts use a separate timeout:{cacheKey} so late writes cannot overwrite verified data.
  */
 function buildCacheKey(
   userId: string,
@@ -167,7 +168,11 @@ export async function verifyConstraintsAccess(
       organizationSlug,
       projectSlug,
     );
-    const cached = await getCachedConstraints(cache.kv, cacheKey);
+    const cached =
+      (await getCachedConstraints(cache.kv, cacheKey)) ??
+      (projectSlug
+        ? await getCachedConstraints(cache.kv, `timeout:${cacheKey}`)
+        : null);
     if (cached) {
       return {
         ok: true,
@@ -263,20 +268,20 @@ export async function verifyConstraintsAccess(
   }
 
   if (cache && cacheKey) {
-    const ttlSeconds =
-      projectSlug && projectCapabilities === null
-        ? PROJECT_TIMEOUT_CACHE_TTL_SECONDS
-        : CACHE_TTL_SECONDS;
+    const isProjectTimeout =
+      Boolean(projectSlug) && projectCapabilities === null;
     cache.waitUntil(
       setCachedConstraints(
         cache.kv,
-        cacheKey,
+        isProjectTimeout ? `timeout:${cacheKey}` : cacheKey,
         {
           regionUrl: regionUrl || null,
           projectCapabilities,
           cachedAt: Date.now(),
         },
-        ttlSeconds,
+        isProjectTimeout
+          ? PROJECT_TIMEOUT_CACHE_TTL_SECONDS
+          : CACHE_TTL_SECONDS,
       ),
     );
   }

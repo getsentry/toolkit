@@ -563,7 +563,7 @@ describe("MCP Handler", () => {
     it("rejects upstream permission failures with cached unknown capabilities", async () => {
       const env = createTestEnv();
       env.MCP_CACHE = {
-        get: vi.fn().mockResolvedValue({
+        get: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({
           regionUrl: "https://us.sentry.io",
           projectCapabilities: null,
           cachedAt: Date.now(),
@@ -613,6 +613,10 @@ describe("MCP Handler", () => {
         ]);
         expect(env.MCP_CACHE.get).toHaveBeenCalledWith(
           "caps:v1:test-user-123:sentry.io:test-org:project:test-project",
+          "json",
+        );
+        expect(env.MCP_CACHE.get).toHaveBeenCalledWith(
+          "timeout:caps:v1:test-user-123:sentry.io:test-org:project:test-project",
           "json",
         );
         expect(env.MCP_CACHE.put).not.toHaveBeenCalled();
