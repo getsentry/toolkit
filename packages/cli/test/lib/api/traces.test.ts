@@ -731,6 +731,29 @@ describe("getSpanDetails", () => {
       value: "db.query",
     });
   });
+
+  test("accepts int attributes serialized as strings", async () => {
+    mockOk({
+      ...DETAIL_RESPONSE,
+      attributes: [
+        { name: "project_id", type: "int", value: "4508608809533441" },
+        { name: "retry.count", type: "int", value: 3 },
+      ],
+    });
+
+    const result = await getSpanDetails(
+      "my-org",
+      "my-project",
+      "span-id-abc",
+      "trace-id-xyz",
+    );
+
+    // Strings are kept as-is so int64 IDs don't lose precision
+    expect(result.attributes).toEqual([
+      { name: "project_id", type: "int", value: "4508608809533441" },
+      { name: "retry.count", type: "int", value: 3 },
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------

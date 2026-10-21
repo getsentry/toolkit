@@ -1056,7 +1056,13 @@ export type DetailedLogsResponse = InferOutput<
  */
 export const TraceItemAttributeSchema = variant("type", [
   object({ name: string(), type: literal("str"), value: string() }),
-  object({ name: string(), type: literal("int"), value: number() }),
+  // Sentry serializes int64 values as strings to avoid precision loss
+  // (e.g. project_id: "4508608809533441"); keep them as strings.
+  object({
+    name: string(),
+    type: literal("int"),
+    value: union([number(), string()]),
+  }),
   object({ name: string(), type: literal("float"), value: number() }),
   object({ name: string(), type: literal("bool"), value: boolean() }),
   // "array" is gated by organizations:trace-item-details-array-fields in Sentry backend
