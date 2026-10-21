@@ -271,8 +271,9 @@ function assertRefreshHostTrusted(refreshUrl: string): string {
  *
  * @param scope - Space-joined scope string to request. Defaults to the full
  *   {@link SCOPES} set. Use {@link resolveOAuthScopeString} to build it.
+ * @param loginHint - Email of the account expected to approve the request
  */
-function requestDeviceCode(scope: string = SCOPES) {
+function requestDeviceCode(scope: string = SCOPES, loginHint?: string) {
   const clientId = getClientId();
   return withHttpSpan("POST", "/oauth/device/code/", async () => {
     const response = await fetchWithConnectionError(
@@ -280,7 +281,7 @@ function requestDeviceCode(scope: string = SCOPES) {
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: deviceCodeRequestBody(clientId, scope),
+        body: deviceCodeRequestBody(clientId, scope, loginHint),
       },
     );
 
@@ -423,6 +424,8 @@ async function attemptPoll(
  * @param timeout - Maximum time to wait for authorization in ms (default: 10 minutes)
  * @param scope - Space-joined scope string to request. Defaults to the full
  *   {@link SCOPES} set. Build it via {@link resolveOAuthScopeString}.
+ * @param loginHint - Email of the account expected to approve the request.
+ *   Sentry refuses approval from any other signed-in user.
  * @returns The token response containing access_token and metadata
  * @throws {ApiError} When unable to connect to Sentry or API returns an error
  * @throws {DeviceFlowError} When authorization fails, is denied, or times out
@@ -431,6 +434,7 @@ export async function performDeviceFlow(
   callbacks: DeviceFlowCallbacks,
   timeout = 600_000, // 10 minutes default (matches Sentry's expires_in)
   scope: string = SCOPES,
+  loginHint?: string,
 ): Promise<TokenResponse> {
   // Step 1: Request device code
   const {
@@ -440,7 +444,7 @@ export async function performDeviceFlow(
     verification_uri_complete,
     interval,
     expires_in,
-  } = await requestDeviceCode(scope);
+  } = await requestDeviceCode(scope, loginHint);
 
   // Notify caller of the user code
   await callbacks.onUserCode(
