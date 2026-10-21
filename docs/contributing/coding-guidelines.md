@@ -35,6 +35,9 @@ product-specific implementation patterns.
   write `return await` in async functions so callers stay in async stack
   traces. Type-aware correctness rules that still have a backlog are turned
   off at the root; #1573 tracks enabling them.
+- Don't pass an async callback to `.catch()`. Use `try`/`await`/`catch`, or a
+  wrapper such as `withDashboardErrors(ctx, fn)`. The `no-async-catch-callback`
+  ast-grep rule enforces this.
 - VS Code uses the Oxc extension for formatting and linting. Run
   `pnpm exec oxfmt --write <file>` to format a file.
 
