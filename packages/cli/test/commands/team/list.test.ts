@@ -558,7 +558,10 @@ describe("listCommand.func — name filter", () => {
 
   beforeEach(() => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
-    listTeamsSpy.mockResolvedValue(sampleTeams);
+    listTeamsPaginatedSpy.mockResolvedValue({
+      data: sampleTeams,
+      nextCursor: undefined,
+    });
   });
 
   afterEach(() => {
@@ -577,11 +580,15 @@ describe("listCommand.func — name filter", () => {
     return items.map((team) => team.slug);
   }
 
-  test("<org>/ <filter> lists the whole org and keeps matching teams", async () => {
+  test("<org>/ <filter> reads every page and keeps matching teams", async () => {
     expect(await runJson("test-org/", "front*")).toEqual(["frontend"]);
     expect(await runJson("test-org/", "backend team")).toEqual(["backend"]);
-    expect(listTeamsSpy).toHaveBeenCalledWith("test-org");
-    expect(listTeamsPaginatedSpy).not.toHaveBeenCalled();
+    // listTeams returns only the first page, so a filter walks the pages.
+    expect(listTeamsPaginatedSpy).toHaveBeenCalledWith("test-org", {
+      cursor: undefined,
+      perPage: 100,
+    });
+    expect(listTeamsSpy).not.toHaveBeenCalled();
   });
 
   test("a lone glob filters the auto-detected org", async () => {

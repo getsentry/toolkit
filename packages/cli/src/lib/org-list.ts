@@ -30,7 +30,12 @@
  * how to render the result — JSON envelope, human table, or custom formatting.
  */
 
-import { paginate } from "./api/infrastructure.js";
+import {
+  API_MAX_PER_PAGE,
+  autoPaginate,
+  MAX_PAGINATION_PAGES,
+  paginate,
+} from "./api/infrastructure.js";
 import { listOrganizations, type PaginatedResponse } from "./api-client.js";
 import { explicitProjectSlugs, type ParsedOrgProject } from "./arg-parsing.js";
 import {
@@ -1048,16 +1053,57 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
 }
 
 /**
+ * Every entity in `org`, walking all pages of `listPaginated`. Some
+ * `listForOrg` implementations return only the first page, which a name
+ * filter can't rely on. Errors propagate.
+ */
+async function listEveryPage<TEntity, TWithOrg>(
+  config: OrgListConfig<TEntity, TWithOrg>,
+  org: string,
+): Promise<TEntity[]> {
+  const { data } = await autoPaginate(
+    (cursor) =>
+      config.listPaginated(org, { cursor, perPage: API_MAX_PER_PAGE }),
+    MAX_PAGINATION_PAGES * API_MAX_PER_PAGE,
+  );
+  return data;
+}
+
+/**
+ * Org-all mode with a name filter (`sentry team list <org>/ back*`): every
+ * page instead of one cursor page, since matching and fuzzy ranking need the
+ * whole set; `--limit` applies to the matches. Like unfiltered org-all, API
+ * errors propagate rather than reading as "no matches". `config` comes from
+ * {@link withNameFilter}.
+ */
+async function handleOrgAllFiltered<TEntity, TWithOrg>(
+  config: OrgListConfig<TEntity, TWithOrg>,
+  org: string,
+  flags: BaseListFlags,
+): Promise<ListResult<TWithOrg>> {
+  const entities = await withProgress(
+    { message: `Fetching ${config.entityPlural}...`, json: flags.json },
+    () => config.listForOrg(org),
+  );
+  return buildFetchedItemsResult({
+    config,
+    items: entities.map((entity) => config.withOrg(entity, org)),
+    flags,
+    contextLabel: `organization '${org}'`,
+  });
+}
+
+/**
  * `config` narrowed to entities whose names match `filter`. Its fetchers
- * filter (and rank) each fetched set, and `entityPlural` names the filter
- * (`teams matching 'back*'`) so progress, empty, and count messages say what
- * was matched.
+ * read every page and filter (and rank) the set, and `entityPlural` names the
+ * filter (`teams matching 'back*'`) so progress, empty, and count messages
+ * say what was matched.
  */
 function withNameFilter<TEntity, TWithOrg>(
   config: OrgListConfig<TEntity, TWithOrg>,
   filter: string,
 ): OrgListConfig<TEntity, TWithOrg> {
-  const { namesOf, listForOrg, listForProject } = config;
+  const { namesOf, listForProject } = config;
   if (!namesOf) {
     throw new Error(
       `'${config.commandPrefix}' got a name filter but its config has no namesOf.`,
@@ -1067,7 +1113,7 @@ function withNameFilter<TEntity, TWithOrg>(
   return {
     ...config,
     entityPlural: `${config.entityPlural} matching '${filter}'`,
-    listForOrg: async (org) => keep(await listForOrg(org)),
+    listForOrg: async (org) => keep(await listEveryPage(config, org)),
     ...(listForProject && {
       listForProject: async (org: string, project: string) =>
         keep(await listForProject(org, project)),
@@ -1142,12 +1188,7 @@ function buildDefaultHandlers<TEntity, TWithOrg>(
         flags: ctx.flags,
         orgAllFallback: (orgSlug) =>
           filtered
-            ? handleExplicitOrg({
-                config,
-                org: orgSlug,
-                flags: ctx.flags,
-                filtered,
-              })
+            ? handleOrgAllFiltered(config, orgSlug, ctx.flags)
             : runOrgAll(config, orgSlug, ctx.flags),
         originalSlug: ctx.parsed.originalSlug,
         org: ctx.parsed.org,
@@ -1155,14 +1196,8 @@ function buildDefaultHandlers<TEntity, TWithOrg>(
       }),
 
     "org-all": (ctx) => {
-      // A filter needs every entity, so it skips cursor pagination.
       if (filtered) {
-        return handleExplicitOrg({
-          config,
-          org: ctx.parsed.org,
-          flags: ctx.flags,
-          filtered,
-        });
+        return handleOrgAllFiltered(config, ctx.parsed.org, ctx.flags);
       }
       const contextKey = buildOrgContextKey(ctx.parsed.org);
       const { cursor, direction } = resolveCursor(

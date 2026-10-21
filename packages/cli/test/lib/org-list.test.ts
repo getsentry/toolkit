@@ -53,6 +53,7 @@ vi.mock("../../src/lib/db/regions.js", async (importOriginal) => {
 });
 
 import {
+  ApiError,
   AuthError,
   ResolutionError,
   ValidationError,
@@ -1271,12 +1272,14 @@ describe("dispatchOrgScopedList name filter", () => {
 
   function filterConfig() {
     return makeConfig({
-      listForOrg: vi.fn(() => Promise.resolve(WIDGETS)),
+      listPaginated: vi.fn(() =>
+        Promise.resolve({ data: WIDGETS, nextCursor: undefined }),
+      ),
       namesOf: (widget) => [widget.name],
     });
   }
 
-  test("org-all fetches every widget instead of one page, then filters", async () => {
+  test("org-all fetches every widget, then filters", async () => {
     const config = filterConfig();
     const result = await dispatchOrgScopedList({
       config,
@@ -1290,10 +1293,56 @@ describe("dispatchOrgScopedList name filter", () => {
       "web-frontend",
       "web-backend",
     ]);
-    expect(config.listForOrg).toHaveBeenCalledWith("my-org");
-    expect(config.listPaginated).not.toHaveBeenCalled();
+    expect(config.listPaginated).toHaveBeenCalledWith("my-org", {
+      cursor: undefined,
+      perPage: 100,
+    });
+    // listForOrg may return only the first page.
+    expect(config.listForOrg).not.toHaveBeenCalled();
     // The paginated `<org>/` tip would drop the filter.
     expect(result.hint ?? "").not.toContain("paginated");
+  });
+
+  test("walks every page, so matches past the first page are kept", async () => {
+    const listPaginated = vi.fn((_org: string, opts: { cursor?: string }) =>
+      Promise.resolve(
+        opts.cursor
+          ? { data: [{ id: "9", name: "web-late" }], nextCursor: undefined }
+          : { data: WIDGETS, nextCursor: "page-2" },
+      ),
+    );
+    const result = await dispatchOrgScopedList({
+      config: makeConfig({ listPaginated, namesOf: (w) => [w.name] }),
+      cwd: "/tmp",
+      flags: { limit: 10, json: true },
+      parsed: { type: "org-all", org: "my-org" },
+      filter: "web-*",
+    });
+
+    expect(result.items.map((w: FakeWithOrg) => w.name)).toEqual([
+      "web-frontend",
+      "web-backend",
+      "web-late",
+    ]);
+    expect(listPaginated).toHaveBeenCalledTimes(2);
+  });
+
+  test("API errors propagate instead of reading as no matches", async () => {
+    const config = makeConfig({
+      listPaginated: vi.fn(() =>
+        Promise.reject(new ApiError("Organization not found", 404)),
+      ),
+      namesOf: (widget) => [widget.name],
+    });
+    await expect(
+      dispatchOrgScopedList({
+        config,
+        cwd: "/tmp",
+        flags: { limit: 10, json: true },
+        parsed: { type: "org-all", org: "missing-org" },
+        filter: "web-*",
+      }),
+    ).rejects.toThrow(ApiError);
   });
 
   test("plain text is fuzzy and --limit applies to the matches", async () => {
