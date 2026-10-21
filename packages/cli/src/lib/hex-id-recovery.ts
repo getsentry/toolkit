@@ -805,7 +805,7 @@ async function recoverHexIdInternal(
     };
   }
 
-  return runFuzzyLookup(input, entityType, candidate, ctx);
+  return await runFuzzyLookup(input, entityType, candidate, ctx);
 }
 
 /**

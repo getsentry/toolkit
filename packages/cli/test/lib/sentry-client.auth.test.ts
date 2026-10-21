@@ -252,7 +252,7 @@ describe("authenticated fetch bearer validation", () => {
         const cached = await getCachedResponse("GET", RESOURCE_URL, {
           authorization: "Bearer synthetic-token",
         });
-        return cached?.json();
+        return await cached?.json();
       })
       .toEqual({ source: "network" });
     expect(requests).toEqual([

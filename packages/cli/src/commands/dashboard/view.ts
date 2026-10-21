@@ -37,7 +37,7 @@ import type {
   WidgetDataResult,
 } from "../../types/dashboard.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardPositionalArgs,
   resolveDashboardId,
   resolveOrgFromTarget,
@@ -256,15 +256,17 @@ export const viewCommand = buildCommand({
     }
 
     // Fetch the dashboard definition (widget structure)
-    const dashboard = await withProgress(
-      { message: "Fetching dashboard...", json: flags.json },
-      () => getDashboard(orgSlug, dashboardId),
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    const dashboard = await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "view",
-      }),
+      },
+      () =>
+        withProgress(
+          { message: "Fetching dashboard...", json: flags.json },
+          () => getDashboard(orgSlug, dashboardId),
+        ),
     );
 
     const regionUrl = await resolveOrgRegion(orgSlug);

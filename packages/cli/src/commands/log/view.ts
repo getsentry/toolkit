@@ -358,7 +358,7 @@ async function resolveTarget(
       throw new ContextError("Specific project", USAGE_HINT, []);
 
     case "auto-detect":
-      return resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
+      return await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
 
     default: {
       const _exhaustiveCheck: never = parsed;

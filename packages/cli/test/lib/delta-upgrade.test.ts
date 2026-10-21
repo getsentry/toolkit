@@ -1935,7 +1935,7 @@ async function importDeltaUpgradeWithVersion(version: string) {
       await importOriginal<typeof import("../../src/lib/constants.js")>();
     return { ...actual, CLI_VERSION: version };
   });
-  return import("../../src/lib/delta-upgrade.js");
+  return await import("../../src/lib/delta-upgrade.js");
 }
 
 function restoreDeltaUpgradeModule(): void {

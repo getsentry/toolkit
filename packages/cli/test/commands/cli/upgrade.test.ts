@@ -463,7 +463,7 @@ describe("sentry cli upgrade", () => {
       setVersionCheckInfo("88.88.88");
       mockFetch(async (url) => {
         requests.push(String(url));
-        return response();
+        return await response();
       });
       const { context, errors, getOutput, restore } = createMockContext({
         homeDir: testDir,

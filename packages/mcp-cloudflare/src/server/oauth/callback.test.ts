@@ -78,7 +78,7 @@ function createTestEnv(): Env {
 }
 
 async function createClient(testEnv: Env, name = "Test Client") {
-  return testEnv.OAUTH_PROVIDER.createClient({
+  return await testEnv.OAUTH_PROVIDER.createClient({
     clientName: name,
     redirectUris: [REDIRECT_URI],
     tokenEndpointAuthMethod: "none",
@@ -106,7 +106,7 @@ async function createSignedCallbackState(
     exp: now + 10 * 60 * 1000,
   } as unknown as OAuthState;
 
-  return signState(payload, COOKIE_SECRET);
+  return await signState(payload, COOKIE_SECRET);
 }
 
 async function approveClient(
@@ -171,7 +171,7 @@ async function callCallback(
     url.searchParams.set("error_description", options.errorDescription);
   }
 
-  return oauthApp.fetch(
+  return await oauthApp.fetch(
     new Request(url, {
       method: "GET",
       headers: options.cookie ? { Cookie: options.cookie } : undefined,

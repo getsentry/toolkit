@@ -182,7 +182,7 @@ export async function resolveOrCreateTeam(
 
   // No teams — auto-create one if a slug was provided
   if (teams.length === 0) {
-    return resolveEmptyTeams(orgSlug, options);
+    return await resolveEmptyTeams(orgSlug, options);
   }
 
   // Single team — auto-select

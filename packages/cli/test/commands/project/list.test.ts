@@ -581,7 +581,7 @@ describe("project list: comma-separated project slugs", () => {
           status: 403,
         });
       }
-      return projectFetch(input, init);
+      return await projectFetch(input, init);
     }) as typeof globalThis.fetch;
     const { context } = createCommandContext();
 

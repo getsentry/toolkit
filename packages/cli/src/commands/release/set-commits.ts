@@ -168,7 +168,7 @@ async function setCommitsDefault(
 ): Promise<SentryRelease> {
   // Fast path: cached "no repos" — skip the API call entirely
   if (hasNoRepoIntegration(org)) {
-    return setCommitsFromLocal(org, version, cwd, { depth });
+    return await setCommitsFromLocal(org, version, cwd, { depth });
   }
 
   try {
@@ -192,14 +192,14 @@ async function setCommitsDefault(
         "Could not auto-discover commits (no repository integration). " +
           "Falling back to local git history.",
       );
-      return setCommitsFromLocal(org, version, cwd, { depth });
+      return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     if (error instanceof ValidationError && error.field === "repository") {
       log.warn(
         `Auto-discovery failed: ${error.message}. ` +
           "Falling back to local git history.",
       );
-      return setCommitsFromLocal(org, version, cwd, { depth });
+      return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     throw error;
   }

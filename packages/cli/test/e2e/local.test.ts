@@ -21,7 +21,7 @@ const fetch = (globalThis as { __originalFetch: typeof globalThis.fetch })
 const getConfigDir = useTestConfigDir("local-e2e-");
 
 async function cli(...args: string[]) {
-  return runCli(["local", ...args, "--json"], {
+  return await runCli(["local", ...args, "--json"], {
     env: {
       SENTRY_CONFIG_DIR: getConfigDir(),
       SENTRY_CLI_NO_TELEMETRY: "1",

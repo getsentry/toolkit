@@ -597,7 +597,7 @@ export default defineTool({
 
     switch (resolved.type) {
       case "issue":
-        return getIssueDetails.handler(
+        return await getIssueDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
             issueId: resolved.issueId,
@@ -607,7 +607,7 @@ export default defineTool({
         );
 
       case "event":
-        return getIssueDetails.handler(
+        return await getIssueDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
             issueId: resolved.issueId,
@@ -618,7 +618,7 @@ export default defineTool({
         );
 
       case "trace":
-        return getTraceDetails.handler(
+        return await getTraceDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
             traceId: resolved.traceId!,
@@ -628,7 +628,7 @@ export default defineTool({
         );
 
       case "span":
-        return getSpanDetails.handler(
+        return await getSpanDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
             traceId: resolved.traceId!,
@@ -639,7 +639,7 @@ export default defineTool({
         );
 
       case "ai_conversation":
-        return getAIConversationDetails.handler(
+        return await getAIConversationDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
             conversationId: resolved.conversationId!,
@@ -652,7 +652,7 @@ export default defineTool({
         );
 
       case "replay":
-        return getReplayDetails.handler(
+        return await getReplayDetails.handler(
           {
             replayUrl: params.url,
             organizationSlug: resolved.organizationSlug,
@@ -664,7 +664,7 @@ export default defineTool({
 
       case "monitor":
         assertCatalogToolAvailable(context, "get_monitor_details", "Monitor");
-        return getMonitorDetails.handler(
+        return await getMonitorDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
             projectSlugOrId: resolved.projectSlugOrId ?? null,
@@ -682,7 +682,7 @@ export default defineTool({
         );
 
       case "profile":
-        return getProfileDetails.handler(
+        return await getProfileDetails.handler(
           {
             profileUrl: params.url,
             organizationSlug: resolved.organizationSlug,
@@ -703,7 +703,7 @@ export default defineTool({
           "get_dashboard_details",
           "Dashboard",
         );
-        return getDashboardDetails.handler(
+        return await getDashboardDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
             dashboardIdOrTitle: resolved.dashboardIdOrTitle!,
@@ -714,7 +714,7 @@ export default defineTool({
 
       case "snapshot":
         if (resolved.selectedSnapshot) {
-          return getSnapshotImage.handler(
+          return await getSnapshotImage.handler(
             {
               organizationSlug: resolved.organizationSlug,
               snapshotId: resolved.snapshotId!,
@@ -726,7 +726,7 @@ export default defineTool({
           );
         }
 
-        return getSnapshot.handler(
+        return await getSnapshot.handler(
           {
             organizationSlug: resolved.organizationSlug,
             snapshotId: resolved.snapshotId!,

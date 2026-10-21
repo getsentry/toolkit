@@ -287,7 +287,7 @@ export function buildApp(
     }
 
     if (!hostedStreamRequest) {
-      return localhostCors(c, next);
+      return await localhostCors(c, next);
     }
 
     if (c.req.method === "OPTIONS") {

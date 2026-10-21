@@ -447,7 +447,7 @@ export async function autoPaginate<T>(
 ): Promise<PaginatedResponse<T[]>> {
   // Fast path: single-page fetch when limit fits in one API page
   if (limit <= API_MAX_PER_PAGE) {
-    return fetchPage(initialCursor);
+    return await fetchPage(initialCursor);
   }
 
   // Multi-page: accumulate rows across pages up to the requested limit

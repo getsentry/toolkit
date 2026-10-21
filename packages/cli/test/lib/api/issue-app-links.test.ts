@@ -356,7 +356,7 @@ describe("app issue-link action", () => {
       const request = new Request(input, init);
       const parsed = new globalThis.URL(request.url);
       if (!parsed.pathname.endsWith("/sentry-app-installations/")) {
-        return defaultFetch(input, init);
+        return await defaultFetch(input, init);
       }
       calls.push(request);
       if (parsed.searchParams.get("cursor") === "install-page-2") {
@@ -383,7 +383,7 @@ describe("app issue-link action", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const request = new Request(input, init);
       if (!request.url.includes("/sentry-app-installations/")) {
-        return defaultFetch(input, init);
+        return await defaultFetch(input, init);
       }
       calls.push(request);
       return json({ detail: "Installation access denied" }, 403);

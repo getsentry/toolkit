@@ -74,6 +74,7 @@ catalog:
   open: ^10.1.2
   oxfmt: 0.72.0
   oxlint: 1.87.0
+  oxlint-tsgolint: 7.0.2004
   react: ^19.2.8
   react-dom: ^19.2.8
   react-markdown: ^9.1.0

@@ -409,7 +409,7 @@ async function executeWithCapture<T>(
       const { withTelemetry } = await import("./telemetry.js");
 
       try {
-        await withTelemetry(async (span) => executor(captureCtx, span), {
+        await withTelemetry(async (span) => await executor(captureCtx, span), {
           libraryMode: true,
         });
       } catch (thrown) {
@@ -495,7 +495,7 @@ function executeWithStream<T>(
         const { withTelemetry } = await import("./telemetry.js");
 
         // oxlint-disable-next-line typescript/no-non-null-assertion -- captureCtx is assigned on the line above
-        await withTelemetry(async (span) => executor(captureCtx!, span), {
+        await withTelemetry(async (span) => await executor(captureCtx!, span), {
           libraryMode: true,
         });
 

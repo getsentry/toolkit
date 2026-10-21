@@ -352,7 +352,7 @@ async function verifyCachedDsn(
 ): Promise<DetectedDsn | null> {
   // Env var source (lowest priority) - check for higher-priority sources
   if (cached.source === "env") {
-    return verifyEnvVarCache(cwd, cached);
+    return await verifyEnvVarCache(cwd, cached);
   }
 
   // Env file source - check for higher-priority code DSNs first
@@ -364,7 +364,7 @@ async function verifyCachedDsn(
   }
 
   // Verify file-based sources (code, env_file, config)
-  return verifyFileDsnCache(cwd, cached);
+  return await verifyFileDsnCache(cwd, cached);
 }
 
 /**

@@ -30,6 +30,14 @@ product-specific implementation patterns.
 - Root, MCP, and CLI files use Oxlint and Oxfmt. The CLI-specific rules live in
   `packages/cli/lint-rules/cli-oxlint-plugin.js`, with inline Oxlint suppressions
   for intentional exceptions.
+- Oxlint runs type-aware (`options.typeAware` in `.oxlintrc.json`, backed by
+  `oxlint-tsgolint`). `typescript/return-await` (`always`) is on repo-wide:
+  write `return await` in async functions so callers stay in async stack
+  traces. Type-aware correctness rules that still have a backlog are turned
+  off at the root; #1573 tracks enabling them.
+- Don't pass an async callback to `.catch()`. Use `try`/`await`/`catch`, or a
+  wrapper such as `withDashboardErrors(ctx, fn)`. The `no-async-catch-callback`
+  ast-grep rule enforces this.
 - VS Code uses the Oxc extension for formatting and linting. Run
   `pnpm exec oxfmt --write <file>` to format a file.
 

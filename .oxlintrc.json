@@ -2,6 +2,9 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "jsx-a11y"],
   "jsPlugins": ["./packages/cli/lint-rules/cli-oxlint-plugin.js"],
+  "options": {
+    "typeAware": true
+  },
   "categories": {
     "correctness": "error"
   },
@@ -11,10 +14,21 @@
     "**/tsconfig*.json",
     "packages/toolkit-core/src/generated/**",
     "packages/toolkit-core/test/fixtures/**",
-    "packages/mcp-server-mocks/src/fixtures/**"
+    "packages/mcp-server-mocks/src/fixtures/**",
+    "packages/cli/test/init-eval/templates/sveltekit-app/**"
   ],
   "rules": {
     "no-unused-vars": "off",
+    "typescript/return-await": ["error", "always"],
+    "typescript/await-thenable": "off",
+    "typescript/no-base-to-string": "off",
+    "typescript/no-duplicate-type-constituents": "off",
+    "typescript/no-floating-promises": "off",
+    "typescript/no-misused-spread": "off",
+    "typescript/no-redundant-type-constituents": "off",
+    "typescript/require-array-sort-compare": "off",
+    "typescript/restrict-template-expressions": "off",
+    "typescript/unbound-method": "off",
     "jsx-a11y/interactive-supports-focus": "off"
   },
   "overrides": [

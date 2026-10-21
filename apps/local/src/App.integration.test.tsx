@@ -71,7 +71,7 @@ function envelope(transaction: string, options: EnvelopeOptions = {}): string {
 }
 
 async function startReceiver() {
-  return tryListen(buildApp(createSpotlightBuffer(10)), 0, "127.0.0.1");
+  return await tryListen(buildApp(createSpotlightBuffer(10)), 0, "127.0.0.1");
 }
 
 async function stopReceiver(

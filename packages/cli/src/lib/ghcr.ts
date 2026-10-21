@@ -655,5 +655,5 @@ export async function downloadLayerBlob(
   source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<ArrayBuffer> {
   const response = await downloadNightlyBlob(token, digest, signal, source);
-  return response.arrayBuffer();
+  return await response.arrayBuffer();
 }

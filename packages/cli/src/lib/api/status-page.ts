@@ -103,7 +103,7 @@ export async function fetchSentryStatus(
   const normalized = baseUrl.replace(TRAILING_SLASHES, "");
 
   const summary = await tryFetchStatuspageSummary(normalized);
-  return summary ?? probeSelfHostedHealth(normalized);
+  return await (summary ?? probeSelfHostedHealth(normalized));
 }
 
 /**

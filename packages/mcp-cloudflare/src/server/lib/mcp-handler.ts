@@ -284,7 +284,7 @@ export async function handleSentryBearerMcpRequest(
     return skills.response;
   }
 
-  return handleAuthenticatedMcpRequest(request, env, ctx, {
+  return await handleAuthenticatedMcpRequest(request, env, ctx, {
     kind: "sentry-bearer",
     accessToken,
     grantedSkills: skills.grantedSkills,
@@ -456,7 +456,7 @@ async function handleAuthenticatedMcpRequest(
 
   // The modern handler requires a factory and creates a fresh SDK v2 server
   // for every request. Context remains request-scoped through tool closures.
-  return createMcpHandler(
+  return await createMcpHandler(
     () =>
       buildServer({
         context: serverContext,
@@ -592,7 +592,7 @@ const mcpHandler: ExportedHandler<Env> = {
 
     let upstreamUnauthorizedHandled = false;
 
-    return handleAuthenticatedMcpRequest(request, env, ctx, {
+    return await handleAuthenticatedMcpRequest(request, env, ctx, {
       kind: "oauth",
       userId,
       clientId,

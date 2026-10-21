@@ -495,7 +495,7 @@ export async function setCommitsAuto(
       if (previousCommit) {
         ref.previousCommit = previousCommit;
       }
-      return setCommitsWithRefs(orgSlug, version, [ref]);
+      return await setCommitsWithRefs(orgSlug, version, [ref]);
     }
 
     if (!result.nextCursor) {

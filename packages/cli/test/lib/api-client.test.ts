@@ -82,7 +82,7 @@ function createMockFetch(
     // OAuth token refresh endpoint
     if (req.url.includes("/oauth/token/")) {
       if (options.oauthHandler) {
-        return options.oauthHandler(req);
+        return await options.oauthHandler(req);
       }
       return new Response(
         JSON.stringify({
@@ -100,7 +100,7 @@ function createMockFetch(
 
     // API requests - delegate to handler
     apiRequestCount += 1;
-    return apiRequestHandler(req, apiRequestCount);
+    return await apiRequestHandler(req, apiRequestCount);
   };
 }
 

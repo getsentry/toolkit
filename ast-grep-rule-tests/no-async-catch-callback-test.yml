@@ -1,0 +1,27 @@
+id: no-async-catch-callback
+valid:
+  - |
+    const value = await getDashboard(org, id).catch((error) => {
+      throw wrap(error);
+    });
+  - |
+    try {
+      return await getDashboard(org, id);
+    } catch (error) {
+      return await enrichDashboardError(error, ctx);
+    }
+  - |
+    await withDashboardErrors(ctx, () => getDashboard(org, id));
+invalid:
+  - |
+    const value = await getDashboard(org, id).catch(
+      async (error: unknown) => await enrichDashboardError(error, ctx),
+    );
+  - |
+    await withProgress(options, fn).catch(async (error) => {
+      await report(error);
+    });
+  - |
+    run().catch(async function (error) {
+      await report(error);
+    });
