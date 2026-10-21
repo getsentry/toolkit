@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   addCorsHeaders,
+  addOAuthPublicClientCorsHeaders,
+  isOAuthPublicClientEndpoint,
   isPublicMetadataEndpoint,
   stripCorsHeaders,
 } from "./cors";
@@ -82,6 +84,63 @@ describe("addCorsHeaders", () => {
     expect(result.headers.has("Access-Control-Max-Age")).toBe(false);
     expect(result.headers.has("Access-Control-Expose-Headers")).toBe(false);
     expect(result.headers.has("Access-Control-Allow-Credentials")).toBe(false);
+  });
+});
+
+describe("isOAuthPublicClientEndpoint", () => {
+  it("should match the token exchange and registration endpoints", () => {
+    expect(isOAuthPublicClientEndpoint("/oauth/token")).toBe(true);
+    expect(isOAuthPublicClientEndpoint("/oauth/register")).toBe(true);
+  });
+
+  it("should not match other OAuth or MCP routes", () => {
+    expect(isOAuthPublicClientEndpoint("/oauth/authorize")).toBe(false);
+    expect(isOAuthPublicClientEndpoint("/mcp")).toBe(false);
+    expect(isOAuthPublicClientEndpoint("/oauth/token/")).toBe(false);
+  });
+});
+
+describe("addOAuthPublicClientCorsHeaders", () => {
+  it("should reflect the requesting origin", () => {
+    const response = new Response("ok", { status: 200 });
+    const result = addOAuthPublicClientCorsHeaders(
+      response,
+      "https://dash.cloudflare.com",
+    );
+
+    expect(result.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://dash.cloudflare.com",
+    );
+    expect(result.headers.get("Vary")).toBe("Origin");
+    expect(result.headers.get("Access-Control-Allow-Methods")).toBe(
+      "POST, OPTIONS",
+    );
+    expect(result.headers.get("Access-Control-Allow-Headers")).toBe(
+      "Content-Type, Authorization",
+    );
+  });
+
+  it("should not set Access-Control-Allow-Origin when there is no Origin header", () => {
+    const response = new Response("ok", { status: 200 });
+    const result = addOAuthPublicClientCorsHeaders(response, null);
+
+    expect(result.headers.has("Access-Control-Allow-Origin")).toBe(false);
+    expect(result.headers.has("Vary")).toBe(false);
+  });
+
+  it("should never set Access-Control-Allow-Credentials", () => {
+    const response = new Response("ok", {
+      status: 200,
+      headers: { "Access-Control-Allow-Credentials": "true" },
+    });
+    const result = addOAuthPublicClientCorsHeaders(
+      response,
+      "https://example.com",
+    );
+
+    expect(result.headers.has("Access-Control-Allow-Credentials")).toBe(
+      false,
+    );
   });
 });
 
