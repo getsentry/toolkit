@@ -226,6 +226,12 @@ for (const [key, patchPath] of Object.entries(patches)) {
  * `--verbose` alias at every position; `--version` remains the version flag.
  * The stale marker is the original `inputs[0] === "-v"` version check.
  *
+ * @stricli/core (argument-error exit codes): the patch adds an optional
+ * `determineArgumentErrorExitCode` application hook so a CliError thrown from a
+ * flag or positional `parse` function keeps its own exit code (e.g. 21 for a
+ * ValidationError) instead of Stricli's InvalidArgument. This is a pure
+ * insertion, guarded by the `exitCodeForArgumentErrors` required marker.
+ *
  * @sentry/core and @sentry/node-core: these are tree-shaking patches that strip
  * unused re-exports (AI/integration modules) from the build barrels so esbuild
  * excludes them from the bundle. They edit bundler-generated barrels and are
@@ -307,6 +313,18 @@ const CONTENT_ASSERTIONS: ReadonlyArray<{
     requiredMarker: "renderHelp",
     description:
       "@stricli/core CJS: pluggable `renderHelp` hook missing (`sentry --help --json` will fall back to text help instead of structured JSON)",
+  },
+  {
+    file: "@stricli/core/dist/index.js",
+    requiredMarker: "exitCodeForArgumentErrors",
+    description:
+      "@stricli/core ESM: `determineArgumentErrorExitCode` hook missing (a CliError thrown by a flag or positional parser exits with Stricli's InvalidArgument code instead of its own)",
+  },
+  {
+    file: "@stricli/core/dist/index.cjs",
+    requiredMarker: "exitCodeForArgumentErrors",
+    description:
+      "@stricli/core CJS: `determineArgumentErrorExitCode` hook missing (a CliError thrown by a flag or positional parser exits with Stricli's InvalidArgument code instead of its own)",
   },
   {
     file: "@sentry/core/build/cjs/index.js",

@@ -1,5 +1,6 @@
 import {
   type ApplicationText,
+  ArgumentParseError,
   buildApplication,
   text_en,
   UnexpectedPositionalError,
@@ -313,6 +314,22 @@ function escapesToOuterMiddleware(exc: unknown): boolean {
 }
 
 /**
+ * Exit code for an argument-parsing failure.
+ *
+ * Stricli wraps exceptions from flag and positional `parse` functions in
+ * {@link ArgumentParseError}. When the wrapped value is a {@link CliError},
+ * return its own exit code (e.g. 21 for a `ValidationError`). Every other
+ * scanner error returns `undefined`, which keeps Stricli's
+ * `ExitCode.InvalidArgument`.
+ */
+function getArgumentErrorExitCode(exc: unknown): number | undefined {
+  if (exc instanceof ArgumentParseError && exc.exception instanceof CliError) {
+    return exc.exception.exitCode;
+  }
+  return;
+}
+
+/**
  * Custom error formatting for CLI errors.
  *
  * - AuthError (not_authenticated): Re-thrown to allow auto-login flow in bin.ts
@@ -325,6 +342,17 @@ const customText: ApplicationText = {
     exc: unknown,
     ansiColor: boolean,
   ): string => {
+    // A parser threw a CliError: keep Stricli's input and parameter context,
+    // but render the error the same way as one thrown from the command.
+    if (
+      exc instanceof ArgumentParseError &&
+      exc.exception instanceof CliError
+    ) {
+      return redactCredentialText(
+        `Failed to parse "${exc.input}" for ${exc.externalFlagNameOrPlaceholder}: ${formatError(exc.exception)}`,
+      );
+    }
+
     // Case A: bare route group with no subcommand (e.g., `sentry issue`)
     if (exc instanceof UnsatisfiedPositionalError) {
       const bareHint = detectBareRouteGroup(ansiColor);
@@ -442,6 +470,7 @@ export const app = buildApplication(routes, {
     topLevelFlags: buildTopLevelFlags(),
   },
   determineExitCode: getExitCode,
+  determineArgumentErrorExitCode: getArgumentErrorExitCode,
   documentation: {
     // Pluggable help renderer (via our @stricli/core patch): render `--help
     // --json` as structured JSON through the same introspection path as

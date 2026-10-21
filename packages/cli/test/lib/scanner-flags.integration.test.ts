@@ -20,11 +20,12 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { run } from "@stricli/core";
+import { ExitCode, run } from "@stricli/core";
 import { describe, expect, test } from "vitest";
 import { app } from "../../src/app.js";
 import type { SentryContext } from "../../src/context.js";
 import { CLI_VERSION } from "../../src/lib/constants.js";
+import { EXIT } from "../../src/lib/errors.js";
 import { useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("scanner-flags-integration-");
@@ -315,5 +316,35 @@ describe("--help --json renders structured help via renderHelp hook", () => {
     const parsed = JSON.parse(stdout);
     expect(parsed).toHaveProperty("error");
     expect(parsed.error).toContain("nope");
+  });
+});
+
+describe("CliErrors thrown by argument parsers", () => {
+  // Stricli wraps a parser exception in ArgumentParseError and exits with
+  // ExitCode.InvalidArgument. The patch's `determineArgumentErrorExitCode`
+  // hook lets the app keep a CliError's own exit code instead.
+
+  test("a ValidationError from a flag parser exits with the validation code", async () => {
+    const { stderr, exitCode } = await runApp([
+      "issue",
+      "list",
+      "--period",
+      "bogus",
+    ]);
+    expect(exitCode).toBe(EXIT.VALIDATION);
+    expect(stderr).toContain('Failed to parse "bogus" for period');
+    expect(stderr).toContain("Invalid period 'bogus'");
+  });
+
+  test("a non-CliError parser failure keeps Stricli's exit code", async () => {
+    // `--limit` uses Stricli's numberParser, which throws a plain SyntaxError.
+    const { stderr, exitCode } = await runApp([
+      "issue",
+      "list",
+      "--limit",
+      "abc",
+    ]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain('Failed to parse "abc" for limit');
   });
 });
