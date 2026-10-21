@@ -239,6 +239,16 @@ const parsed = parseOrgProjectArg(targetArg);
 
 Reference: `span/list.ts`, `trace/view.ts`, `event/view.ts`
 
+**Shell completion:** Target positionals that take an org or project use a
+completion-aware parser from `src/lib/completion-target.ts` instead of
+`String`: `parseOrgProjectTarget` completes `org/`, `org/project`, and project
+aliases; `parseOrgTarget` completes org slugs only. `LIST_TARGET_POSITIONAL`
+and `LIST_ORG_TARGET_POSITIONAL` already use them.
+`pnpm run generate:completions` collects these into the gitignored
+`src/generated/completion-targets.json` that the `__complete` fast path reads.
+`project create` keeps its dedicated `name:platform` completer in
+`src/lib/complete.ts`.
+
 ### Multiple Values in Arguments
 
 Split by argument type — do not mix the conventions:
@@ -435,7 +445,7 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 ### Generated Docs & Skills
 
-All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:banner`, `generate:command-docs`, `generate:skill`, then `generate:docs-sections`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
+All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:banner`, `generate:completions`, `generate:command-docs`, `generate:skill`, then `generate:docs-sections`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.

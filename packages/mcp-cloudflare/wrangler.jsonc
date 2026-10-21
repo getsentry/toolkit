@@ -16,6 +16,8 @@
   // Available environment variables:
   // - AUTORAG_INDEX_NAME: Name of the AutoRAG index to use for documentation search (default: "sentry-docs")
   "keep_vars": true,
+  // Source maps are uploaded to Sentry by the Vite plugin.
+  "upload_source_maps": false,
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

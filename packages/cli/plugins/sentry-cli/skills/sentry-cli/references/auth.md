@@ -122,6 +122,7 @@ Switch the active account
 # Add (or log in again to) a specific account without prompting
 sentry auth login jane@example.com
 sentry auth login jane@example.com --url https://sentry.example.com
+sentry auth login jane@example.com:sentry.example.com   # same as --url
 
 # Show stored accounts; * marks the active one
 sentry auth list

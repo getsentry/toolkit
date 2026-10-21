@@ -1981,6 +1981,7 @@ export class SentryApiService {
    * @param params Project fetch parameters
    * @param params.organizationSlug Organization identifier
    * @param params.projectSlugOrId Project slug or numeric ID
+   * @param params.collapse Return only organization ID and slug instead of full organization data
    * @param opts Request options
    * @returns Project data
    */
@@ -1988,14 +1989,22 @@ export class SentryApiService {
     {
       organizationSlug,
       projectSlugOrId,
+      collapse,
     }: {
       organizationSlug: string;
       projectSlugOrId: string;
+      collapse?: "organization";
     },
     opts?: RequestOptions,
   ): Promise<Project> {
+    const queryParams = new URLSearchParams();
+    if (collapse) {
+      queryParams.set("collapse", collapse);
+    }
+    const queryString = queryParams.toString();
+    const projectPath = apiPath`/projects/${organizationSlug}/${projectSlugOrId}/`;
     const body = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlugOrId}/`,
+      `${projectPath}${queryString ? `?${queryString}` : ""}`,
       undefined,
       opts,
     );

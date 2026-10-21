@@ -22,7 +22,7 @@ import type { Writer } from "../../types/index.js";
  * @param obj - Source object to traverse
  * @param path - Key path: literal property name or dot-separated nesting
  */
-function getNestedValue(
+export function getNestedValue(
   obj: unknown,
   path: string,
 ): { found: true; value: unknown } | { found: false } {

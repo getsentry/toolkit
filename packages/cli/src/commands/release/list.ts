@@ -29,7 +29,7 @@ import {
   buildListCommand,
   buildListLimitFlag,
   LIST_BASE_ALIASES,
-  LIST_TARGET_POSITIONAL,
+  LIST_ORG_TARGET_POSITIONAL,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
 import {
@@ -664,7 +664,7 @@ export const listCommand = buildListCommand("release", {
       jsonTransformListResult(result, fields),
   },
   parameters: {
-    positional: LIST_TARGET_POSITIONAL,
+    positional: LIST_ORG_TARGET_POSITIONAL,
     flags: {
       limit: buildListLimitFlag("releases"),
       sort: {

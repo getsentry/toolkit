@@ -6,6 +6,12 @@
  */
 
 import { describe, expect, test } from "vitest";
+import {
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
+  parseOrgProjectTarget,
+  parseOrgTarget,
+} from "../../src/lib/completion-target.js";
 import type {
   Command,
   FlagDef,
@@ -15,6 +21,7 @@ import type {
 import {
   buildCommandInfo,
   extractAllRoutes,
+  extractCompletionTargets,
   extractFlags,
   extractPositionals,
   extractRouteGroupCommands,
@@ -375,6 +382,77 @@ describe("extractAllRoutes", () => {
     const routes = extractAllRoutes(topLevel);
     expect(routes).toHaveLength(1);
     expect(routes[0].name).toBe("visible");
+  });
+});
+
+describe("extractCompletionTargets", () => {
+  /** Command whose positionals use the given parsers. */
+  function commandWith(...parsers: unknown[]): Command {
+    return makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: parsers.map((parse, i) => ({
+            placeholder: `arg${i}`,
+            parse,
+          })),
+        },
+      },
+    });
+  }
+
+  test("classifies commands by their positional parsers with full nested paths", () => {
+    const orgProject = commandWith(parseOrgProjectTarget);
+    const variadic = makeCommand({
+      parameters: {
+        positional: {
+          kind: "array",
+          parameter: { placeholder: "issue", parse: parseOrgProjectTarget },
+        },
+      },
+    });
+    const orgSecond = commandWith(String, parseOrgTarget);
+    const plain = commandWith(String);
+
+    const nested = makeRouteMap([makeEntry("view", orgProject)]);
+    const issueRoute = makeRouteMap([
+      makeEntry("view", variadic),
+      makeEntry("list", orgProject),
+      makeEntry("help", plain),
+      makeEntry("rules", nested),
+    ]);
+    const topLevel = makeRouteMap([
+      makeEntry("issue", issueRoute),
+      makeEntry("trial", orgSecond),
+      makeEntry("api", makeCommand()),
+    ]);
+
+    expect(extractCompletionTargets(topLevel)).toEqual({
+      [ORG_TARGET]: ["trial"],
+      [ORG_PROJECT_TARGET]: ["issue list", "issue rules view", "issue view"],
+    });
+  });
+
+  test("skips hidden commands and hidden groups", () => {
+    const annotated = commandWith(parseOrgTarget);
+    const hiddenGroup = makeRouteMap([makeEntry("list", annotated)]);
+    const topLevel = makeRouteMap([
+      makeEntry("secret", annotated, true),
+      makeEntry("internal", hiddenGroup, true),
+    ]);
+
+    expect(extractCompletionTargets(topLevel)).toEqual({
+      [ORG_TARGET]: [],
+      [ORG_PROJECT_TARGET]: [],
+    });
+  });
+
+  test("rejects commands that mix org and org/project targets", () => {
+    const topLevel = makeRouteMap([
+      makeEntry("bad", commandWith(parseOrgTarget, parseOrgProjectTarget)),
+    ]);
+
+    expect(() => extractCompletionTargets(topLevel)).toThrow(/bad/);
   });
 });
 

@@ -25,6 +25,7 @@ import {
   type CommandDocumentation,
   numberParser,
 } from "./command.js";
+import { parseOrgProjectTarget, parseOrgTarget } from "./completion-target.js";
 import { disableOrgCache } from "./db/regions.js";
 import { logger } from "./logger.js";
 
@@ -78,7 +79,23 @@ export const LIST_TARGET_POSITIONAL = {
     {
       placeholder: "org/project",
       brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
-      parse: String,
+      parse: parseOrgProjectTarget,
+      optional: true as const,
+    },
+  ],
+};
+
+/**
+ * {@link LIST_TARGET_POSITIONAL} for org-scoped resources (teams, repos,
+ * releases, …): same syntax, but shell completion suggests org slugs only.
+ */
+export const LIST_ORG_TARGET_POSITIONAL = {
+  kind: "tuple" as const,
+  parameters: [
+    {
+      placeholder: "org/project",
+      brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
+      parse: parseOrgTarget,
       optional: true as const,
     },
   ],
@@ -699,7 +716,7 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
       schema: config.schema,
     } satisfies OutputConfig<ListResult<TWithOrg>>,
     parameters: {
-      positional: LIST_TARGET_POSITIONAL,
+      positional: LIST_ORG_TARGET_POSITIONAL,
       flags: {
         limit: buildListLimitFlag(config.entityPlural),
       },
