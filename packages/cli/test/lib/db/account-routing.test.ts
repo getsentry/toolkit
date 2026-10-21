@@ -369,8 +369,15 @@ describe("organization-based selection", () => {
     const peer = login("peer-token", ACME, "peer");
     seeOrg("acme-org", ACME);
     // More recently used on ACME, but has never seen the org.
-    login("other-token", ACME, "other");
+    const other = login("other-token", ACME, "other");
     const saas = login("saas-token", SAAS, "saas");
+    // Back-to-back logins can share a millisecond; pin the recency so the
+    // configured server deterministically picks `other`.
+    const setLastUsed = getDatabase().query(
+      "UPDATE accounts SET last_used_at = ? WHERE account_id = ?",
+    );
+    setLastUsed.run(1000, peer);
+    setLastUsed.run(2000, other);
     process.env.SENTRY_URL = ACME;
     expect(getAuthToken()).toBe("other-token");
 
