@@ -47,6 +47,16 @@ export {
   DashboardWidgetQuerySchema,
   DashboardWidgetSchema,
 } from "./dashboard.js";
+// Dropped-events types and schemas
+export type {
+  DroppedEventsBucket,
+  DroppedEventsResponse,
+} from "./dropped-events.js";
+export {
+  DroppedEventsBucketSchema,
+  DroppedEventsResponseSchema,
+  outcomeLabel,
+} from "./dropped-events.js";
 // Feedback types and schemas
 export type {
   FeedbackListResult,
