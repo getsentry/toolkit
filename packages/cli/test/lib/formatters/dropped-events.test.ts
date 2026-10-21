@@ -1,10 +1,3 @@
-/**
- * Unit tests for the dropped-events summarizer and human formatter.
- *
- * Covers the grouping/share math and that drop-classification tags survive
- * into both the structured result and the rendered table.
- */
-
 import { describe, expect, test } from "vitest";
 import {
   formatDroppedEvents,

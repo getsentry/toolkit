@@ -1,17 +1,3 @@
-/**
- * sentry event dropped
- *
- * Summarize events Sentry received but dropped (rate-limited, filtered,
- * invalid, abuse, client-discarded, cardinality-limited), grouped by outcome
- * and reason. Hits `GET /organizations/{org}/events-dropped/`; the accepted
- * volume comes back too so each slice's share of total volume is shown.
- *
- * `--json` and `--fields` are injected automatically by the output config, so
- * the same sectioned data serializes for agents and automation without a
- * separate code path. Each reason carries its drop classification tag
- * (intentional vs unintentional).
- */
-
 import type { SentryContext } from "../../context.js";
 import { getDroppedEvents, getProject } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
@@ -20,7 +6,6 @@ import {
   type DroppedEventsResult,
   DroppedEventsOutputSchema,
   formatDroppedEvents,
-  outcomeLabel,
   summarizeDroppedEvents,
 } from "../../lib/formatters/dropped-events.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -34,10 +19,8 @@ import {
 } from "../../lib/time-range.js";
 import type { DroppedEventsResponse } from "../../types/index.js";
 
-const COMMAND_NAME = "dropped";
-const USAGE_HINT = "sentry event dropped <org>/<project>";
+const COMMAND_NAME = "event dropped";
 
-/** Dropped-data types accepted by the events-dropped endpoint. */
 const DATASETS = ["errors", "spans", "logs", "metrics"] as const;
 
 type DroppedFlags = {
@@ -129,6 +112,3 @@ export const droppedCommand = buildCommand({
     return undefined;
   },
 });
-
-// Re-exported so the route and tests share the single source of truth.
-export { outcomeLabel, USAGE_HINT };

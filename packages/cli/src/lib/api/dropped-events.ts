@@ -1,13 +1,3 @@
-/**
- * Sentry dropped-events API — events received but discarded before storage.
- *
- * Wraps `GET /organizations/{org}/events-dropped/`, the same endpoint the
- * Explore dropped-data UI, MCP `find_dropped_events`, and Seer use. Returns
- * drop counts bucketed by outcome and reason plus the accepted volume per
- * bucket. The `project` param is a numeric ID, so callers resolve a slug to an
- * ID first (see `getProject`).
- */
-
 import {
   type DroppedEventsResponse,
   DroppedEventsResponseSchema,
@@ -40,12 +30,15 @@ export async function getDroppedEvents(
   options: DroppedEventsOptions = {},
 ): Promise<DroppedEventsResponse> {
   const regionUrl = await resolveOrgRegion(orgSlug);
+  // The events API dataset is `tracemetrics`; `metrics` is the user-facing
+  // alias and 400s if sent through unchanged.
+  const dataset = options.dataset ?? "errors";
   const { data } = await apiRequestToRegion<DroppedEventsResponse>(
     regionUrl,
     `/organizations/${orgSlug}/events-dropped/`,
     {
       params: {
-        dataset: options.dataset ?? "errors",
+        dataset: dataset === "metrics" ? "tracemetrics" : dataset,
         project: options.projectId,
         statsPeriod:
           options.start || options.end

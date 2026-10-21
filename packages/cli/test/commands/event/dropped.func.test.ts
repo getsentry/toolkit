@@ -1,11 +1,3 @@
-/**
- * Event Dropped Command Tests
- *
- * Drives `droppedCommand.func()` with a mocked API + project resolution to
- * verify human and JSON output, including the drop-classification tags that
- * were added after the original (now-closed) sentry-cli PRs.
- */
-
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { droppedCommand } from "../../../src/commands/event/dropped.js";
 import type { DroppedEventsResponse } from "../../../src/types/dropped-events.js";

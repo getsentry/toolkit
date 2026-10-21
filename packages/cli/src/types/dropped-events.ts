@@ -1,14 +1,3 @@
-/**
- * Dropped-events types and schemas.
- *
- * Mirrors the Sentry `GET /organizations/{org}/events-dropped/` response
- * (`src/sentry/api/endpoints/organization_events_dropped.py`): per-bucket
- * drop counts by outcome and reason, plus the accepted volume so a caller can
- * compute each slice's share. Each bucket carries `tags` classifying the drop
- * as `intentional` (user-configured, e.g. sampling or inbound filters) or
- * `unintentional` (e.g. quota, abuse); accepted buckets carry no tag.
- */
-
 import {
   array,
   description,
@@ -68,7 +57,6 @@ export type DroppedEventsResponse = InferOutput<
   typeof DroppedEventsResponseSchema
 >;
 
-/** Human label for a drop outcome. Falls back to the raw code. */
 export function outcomeLabel(outcome: string): string {
   switch (outcome) {
     case "client_discard":

@@ -1,13 +1,3 @@
-/**
- * Formatting for `sentry event dropped`.
- *
- * {@link summarizeDroppedEvents} collapses the raw bucketed API response into
- * per-outcome sections, each with its reason rows, drop counts, shares of total
- * volume, and drop-classification tags. The same shape feeds both the human
- * table ({@link formatDroppedEvents}) and the auto-serialized `--json` output,
- * so the two can never diverge.
- */
-
 import {
   array,
   description,
@@ -22,8 +12,6 @@ import { outcomeLabel } from "../../types/dropped-events.js";
 import { bold } from "./colors.js";
 import { fmtCount } from "./numbers.js";
 import { type Column, formatTable } from "./table.js";
-
-export { outcomeLabel };
 
 // ---------------------------------------------------------------------------
 // Output schema (documents the --json contract; drives --fields and help)
@@ -90,7 +78,6 @@ export function summarizeDroppedEvents(
   const total =
     sumCounts(response.droppedEvents) + sumCounts(response.acceptedEvents);
 
-  // outcome -> reason -> accumulated row
   const byOutcome = new Map<string, Map<string, ReasonRow>>();
   for (const bucket of response.droppedEvents) {
     const reasons = byOutcome.get(bucket.outcome) ?? new Map();
@@ -145,7 +132,6 @@ function formatShare(ratio: number): string {
   return `${(ratio * 100).toFixed(2)}%`;
 }
 
-/** Join a bucket's classification tags, or "—" when untagged. */
 function formatTags(tags: string[]): string {
   return tags.length > 0 ? tags.join(", ") : "—";
 }
