@@ -531,21 +531,19 @@ export function hasCachedOrgForIdentity(
   const id = orgId ?? null;
   const row = getDatabase()
     .query(
-      `SELECT 1 AS found FROM org_regions r
-       WHERE r.credential_identity = ? AND ${server.sql} AND (
-         r.org_slug = ? OR r.org_id = ? OR EXISTS (
-           SELECT 1 FROM org_regions m
-           WHERE m.org_id = ? AND m.org_slug = r.org_slug
-             AND m.source_origin = r.source_origin
+      `SELECT EXISTS (
+         SELECT 1 FROM org_regions r
+         WHERE r.credential_identity = ? AND ${server.sql} AND (
+           r.org_slug = ? OR r.org_id = ? OR EXISTS (
+             SELECT 1 FROM org_regions m
+             WHERE m.org_id = ? AND m.org_slug = r.org_slug
+               AND m.source_origin = r.source_origin
+           )
          )
-       )
-       LIMIT 1`,
+       ) AS found`,
     )
-    .get(identity, ...server.params, orgSlug, id, id) as
-    | { found: number }
-    | null
-    | undefined;
-  return Boolean(row);
+    .get(identity, ...server.params, orgSlug, id, id) as { found: number };
+  return row.found === 1;
 }
 
 /**
