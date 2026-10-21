@@ -13,10 +13,6 @@ import { bold } from "./colors.js";
 import { fmtCount } from "./numbers.js";
 import { type Column, formatTable } from "./table.js";
 
-// ---------------------------------------------------------------------------
-// Output schema (documents the --json contract; drives --fields and help)
-// ---------------------------------------------------------------------------
-
 const ReasonRowSchema = pipe(
   object({
     reason: pipe(string(), description("Drop reason (sub-classification)")),
@@ -58,10 +54,6 @@ export const DroppedEventsOutputSchema = pipe(
 export type DroppedEventsResult = InferOutput<typeof DroppedEventsOutputSchema>;
 type ReasonRow = InferOutput<typeof ReasonRowSchema>;
 type OutcomeSection = DroppedEventsResult["outcomes"][number];
-
-// ---------------------------------------------------------------------------
-// Summarization
-// ---------------------------------------------------------------------------
 
 function shareRatio(events: number, total: number): number {
   return total === 0 ? 0 : events / total;
@@ -120,10 +112,6 @@ export function summarizeDroppedEvents(
 function sumCounts(buckets: DroppedEventsResponse["droppedEvents"]): number {
   return buckets.reduce((sum, bucket) => sum + bucket.count, 0);
 }
-
-// ---------------------------------------------------------------------------
-// Human output
-// ---------------------------------------------------------------------------
 
 function formatShare(ratio: number): string {
   if (ratio > 0 && ratio < 0.0001) {
