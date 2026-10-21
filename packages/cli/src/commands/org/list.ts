@@ -16,11 +16,16 @@ import {
   accountServerOf,
   serverKey,
   toAccountSummary,
+  toEnvAccountSummary,
 } from "../../lib/db/accounts.js";
 import {
+  getEnvAccount,
+  getEnvAccountInScope,
   listUsableAccountsInScope,
+  withEnvAccount,
   withStoredAccount,
 } from "../../lib/db/auth.js";
+import { fetchEnvAccountUser } from "../../lib/env-account.js";
 import { getAllOrgRegions } from "../../lib/db/regions.js";
 import { ApiError, AuthError } from "../../lib/errors.js";
 import { formatAccountLabel } from "../../lib/formatters/accounts.js";
@@ -47,11 +52,15 @@ type ListFlags = {
   readonly fields?: string[];
 };
 
-/** The stored account an organization was listed under (no secrets). */
+/**
+ * The account an organization was listed under (no secrets): a stored
+ * account, or the env token's virtual account.
+ */
 type OrgListAccount = {
   /**
-   * What `--account` and `sentry auth login` accept: `<who>:<server>`, e.g.
-   * `jane@acme.com:sentry.io` (just `<who>` when no server is recorded).
+   * What `--account` accepts: `<who>:<server>`, e.g.
+   * `jane@acme.com:sentry.io` (just `<who>` when no server is recorded), as
+   * `sentry auth login` does too; `env:SENTRY_AUTH_TOKEN` for the env token.
    */
   name: string;
   id: string;
@@ -66,6 +75,8 @@ type OrgListAccount = {
   host?: string;
   /** Human label, e.g. `Jane <jane@acme.com> on sentry.io`. */
   label: string;
+  /** The variable providing the token, for the env token's account. */
+  envVar?: string;
 };
 
 /**
@@ -186,6 +197,7 @@ function toOrgListAccount(account: AccountSummary): OrgListAccount {
     username: account.username,
     server: accountServerOf(account),
     host: account.host,
+    envVar: account.envVar,
   };
   const entry: OrgListAccount = {
     name: accountSelectorOf(account),
@@ -206,8 +218,36 @@ async function fetchOrgs(account?: AccountSummary): Promise<AccountOrgs> {
   return { account, orgs, regions: getAllOrgRegions() };
 }
 
+/**
+ * Fetch the env token's orgs with only the env token, on its own server,
+ * and ask the server whose token it is (best-effort) to label it.
+ */
+async function fetchEnvAccountOrgs(
+  account: AccountSummary,
+): Promise<AccountOrgs> {
+  const envAccount = getEnvAccount();
+  if (!envAccount) {
+    throw new AuthError(
+      "not_authenticated",
+      `${account.envVar ?? "The env token"} is no longer usable.`,
+      { skipAutoAuth: true },
+    );
+  }
+  const [fetched, user] = await Promise.all([
+    withEnvAccount(envAccount, () => fetchOrgs()),
+    fetchEnvAccountUser(envAccount),
+  ]);
+  return {
+    ...fetched,
+    account: toEnvAccountSummary(envAccount.envVar, envAccount.host, user),
+  };
+}
+
 /** Fetch `account`'s orgs with its own credentials, on its own server. */
 async function fetchAccountOrgs(account: AccountSummary): Promise<AccountOrgs> {
+  if (account.envVar) {
+    return await fetchEnvAccountOrgs(account);
+  }
   const host = account.host;
   if (!host) {
     throw new AuthError(
@@ -256,7 +296,8 @@ async function fetchOrgsAcrossAccounts(
 /**
  * Flatten per-account results into list entries. An org reachable from
  * several accounts on the same server is listed once, under the first of
- * them (the active account, else the most recently used).
+ * them (the env token, which org routing prefers, then the active
+ * account, then the most recently used).
  */
 function mergeAccountOrgs(results: AccountOrgs[]): {
   orgs: SentryOrganization[];
@@ -300,15 +341,27 @@ function reloginCommand(account: AccountSummary): string {
 }
 
 /**
- * Which stored accounts to list: the one named by `--account`, else every
- * usable account in scope. `undefined` means "the credentials in effect"
- * (no usable stored account, only the active one, or a forced env token),
- * which keeps the single-account output unchanged. A single usable account
- * that isn't the active one (say, the active login was logged out) is
- * listed with its own credentials.
+ * Which accounts to list: the one named by `--account`, else the env
+ * token's virtual account (when its server is trusted, see
+ * `getEnvAccount`) and every usable stored account in scope. `undefined`
+ * means "the credentials in effect" (no usable account, only the active
+ * one or only the env token, or a forced env token), which keeps the
+ * single-account output unchanged. A single usable account that isn't the
+ * active one (say, the active login was logged out) is listed with its own
+ * credentials.
  */
 function resolveAccounts(selector?: string): AccountSummary[] | undefined {
   if (selector !== undefined) {
+    const envAccount = getEnvAccount();
+    const envSummary = envAccount
+      ? toEnvAccountSummary(envAccount.envVar, envAccount.host)
+      : undefined;
+    if (
+      envSummary &&
+      selector.trim().toLowerCase() === envSummary.id.toLowerCase()
+    ) {
+      return [envSummary];
+    }
     const account = resolveAccountSelector(
       selector,
       "sentry org list --account",
@@ -325,13 +378,19 @@ function resolveAccounts(selector?: string): AccountSummary[] | undefined {
     }
     return [account];
   }
-  // The active account first, then most recently used: its orgs lead the
-  // list, and an org it shares with another account is listed under it.
-  const accounts = listUsableAccountsInScope()
+  // The env token, then the active account, then most recently used: an
+  // org several of them share is listed under the one commands use for it.
+  const stored = listUsableAccountsInScope()
     .map(toAccountSummary)
     .sort((a, b) => Number(b.active) - Number(a.active));
+  const envAccount = getEnvAccountInScope();
+  const accounts = envAccount
+    ? [toEnvAccountSummary(envAccount.envVar, envAccount.host), ...stored]
+    : stored;
   const [only] = accounts;
-  return accounts.length > 1 || (only && !only.active) ? accounts : undefined;
+  return accounts.length > 1 || (only && !only.active && !only.envVar)
+    ? accounts
+    : undefined;
 }
 
 export const listCommand = buildCommand({
@@ -348,6 +407,11 @@ export const listCommand = buildCommand({
       "list to accounts on that server; --account limits it to one account\n" +
       "(an email, username, or account id; add :<server> to pick one server's\n" +
       "login, e.g. jane@example.com:sentry.example.com, as shown in ACCOUNT).\n\n" +
+      "SENTRY_AUTH_TOKEN (or SENTRY_TOKEN) is listed as one more account,\n" +
+      "env:SENTRY_AUTH_TOKEN, when its server is known: an organization auth\n" +
+      "token's own URL, or sentry.io. Organizations it can access are listed\n" +
+      "under it, and commands targeting them use it.\n" +
+      "With SENTRY_FORCE_ENV_TOKEN=1, only the env token is used.\n\n" +
       "Pass a filter to only list organizations whose slug or name matches it,\n" +
       "ignoring case: exactly, as a prefix or substring, or with a small typo\n" +
       "(best matches first), or as a glob like 'acme-*'.\n\n" +
@@ -370,7 +434,7 @@ export const listCommand = buildCommand({
         kind: "parsed",
         parse: String,
         brief:
-          "Only list organizations of this stored account (email, username, or account id; <who>:<server> for one server)",
+          "Only list organizations of this account (email, username, or account id; <who>:<server> for one server; env:SENTRY_AUTH_TOKEN)",
         optional: true,
       },
     },

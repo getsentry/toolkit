@@ -283,6 +283,43 @@ describe("statusCommand.func", () => {
       expect(getOutput()).toContain("environment variable");
     });
 
+    test("shows the server and user of an env token next to stored OAuth", async () => {
+      getAuthConfigSpy.mockReturnValue({
+        token: "oauth-token",
+        source: "oauth",
+      });
+      isAuthenticatedSpy.mockReturnValue(true);
+      const rawEnvSpy = vi
+        .spyOn(dbAuth, "getRawEnvToken")
+        .mockReturnValue("env-pat");
+      const envAccountSpy = vi.spyOn(dbAuth, "getEnvAccount").mockReturnValue({
+        envVar: "SENTRY_AUTH_TOKEN",
+        host: "https://sentry.io",
+        identity: "env-identity",
+      });
+      const userSpy = vi.spyOn(apiClient, "getCurrentUser").mockResolvedValue({
+        id: "7",
+        name: "CI Bot",
+        email: "ci@example.com",
+      } as Awaited<ReturnType<typeof apiClient.getCurrentUser>>);
+
+      try {
+        const { context, getOutput } = createContext();
+        await func.call(context, jsonFlags);
+
+        expect(JSON.parse(getOutput()).envToken).toEqual({
+          envVar: "SENTRY_AUTH_TOKEN",
+          active: false,
+          host: "https://sentry.io",
+          user: { name: "CI Bot", email: "ci@example.com" },
+        });
+      } finally {
+        rawEnvSpy.mockRestore();
+        envAccountSpy.mockRestore();
+        userSpy.mockRestore();
+      }
+    });
+
     test("does not show expiration or auto-refresh for env tokens", async () => {
       getAuthConfigSpy.mockReturnValue({
         token: "sntrys_env_token_123",

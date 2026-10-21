@@ -107,6 +107,19 @@ that fits what they target, without changing the active account:
 - **Server** — `SENTRY_HOST`/`SENTRY_URL`, `.sentryclirc`, or a pasted Sentry
   URL for another account's server (for example a self-hosted issue link) uses
   the account stored for that server.
+- **Environment token** — `SENTRY_AUTH_TOKEN` (or `SENTRY_TOKEN`) acts as one
+  more account, never stored, when its server is known from a trusted source:
+  an organization auth token's own URL, else sentry.io (including a sentry.io
+  `SENTRY_HOST`/`SENTRY_URL`; never `.sentryclirc` or a pasted URL). A
+  self-hosted `SENTRY_HOST`/`SENTRY_URL` alone doesn't count, since CI steps
+  can set it without access to the token: use an organization auth token, or
+  `SENTRY_FORCE_ENV_TOKEN=1`. `sentry org list` lists its
+  organizations under `env:SENTRY_AUTH_TOKEN` and caches them; commands
+  targeting one of them then use the env token, even when a stored account
+  knows the organization too. It also serves its
+  server when no stored account is on it. `sentry auth list` and
+  `sentry auth status` show it with its user when the server reports one. It
+  can't be selected with `sentry auth switch`.
 
 ```bash
 # Active account is personal; this uses the work account that knows acme-corp
@@ -204,8 +217,10 @@ By default, the CLI checks for auth tokens in the following order:
 3. `SENTRY_TOKEN` environment variable (legacy alias)
 
 The stored credential takes priority. Stored OAuth credentials support
-automatic refresh; manually provided API tokens do not use a refresh token. To
-override this precedence and force environment tokens to win, set
+automatic refresh; manually provided API tokens do not use a refresh token.
+An environment token with a known server is still used for the organizations it
+can access and for its own server (see account selection above). To override
+this precedence and use only the environment token, set
 `SENTRY_FORCE_ENV_TOKEN=1`.
 
 When a token comes from an environment variable, the CLI skips expiry checks and automatic refresh.
