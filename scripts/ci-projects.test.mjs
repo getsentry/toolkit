@@ -193,8 +193,8 @@ describe("workspace CI selection", () => {
     assert.match(workflow, /Validate packaged runtime on Node 22/);
     assert.match(workflow, /Validate packaged runtime on Node 24/);
     assert.match(workflow, /NODE_VERSION_20: "20\.20\.2"/);
-    assert.match(workflow, /NODE_VERSION_22: "22\.23\.1"/);
-    assert.match(workflow, /NODE_VERSION_24: "24\.18\.0"/);
+    assert.match(workflow, /NODE_VERSION_22: "22\.23\.4"/);
+    assert.match(workflow, /NODE_VERSION_24: "24\.22\.1"/);
     assert.match(workflow, /RUNTIME_RESULT.*needs\.npm-runtime\.result/);
     assert.match(workflow, /name: Verify JUnit/);
     assert.match(workflow, /name: Verify coverage/);
