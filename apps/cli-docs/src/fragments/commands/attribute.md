@@ -17,7 +17,7 @@ sentry attribute list --search http --type string
 # Attributes seen on the same spans as the specified attribute
 sentry attribute list --with gen_ai.request.model
 
-# Add descriptions, example values, and deprecation info
+# Show descriptions, example values, and deprecation info
 sentry attribute list --search http --context
 
 # Show more than the default 25

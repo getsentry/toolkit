@@ -132,7 +132,6 @@ export const ORG_PROJECT_COMMANDS = new Set([
   "event list",
   "log list",
   "log view",
-  "attribute list",
   "dashboard list",
   "dashboard view",
   "dashboard create",
