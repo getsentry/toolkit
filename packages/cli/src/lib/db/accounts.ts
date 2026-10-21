@@ -524,19 +524,52 @@ export function hasCachedOrgForIdentity(
   orgSlug: string,
   orgId?: string,
 ): boolean {
+  const server = sameServerOriginSql("r.source_origin", host);
+  if (!server) {
+    return false;
+  }
   const id = orgId ?? null;
-  const rows = getDatabase()
+  const row = getDatabase()
     .query(
-      `SELECT DISTINCT r.source_origin FROM org_regions r
-       WHERE r.credential_identity = ? AND (
+      `SELECT 1 AS found FROM org_regions r
+       WHERE r.credential_identity = ? AND ${server.sql} AND (
          r.org_slug = ? OR r.org_id = ? OR EXISTS (
            SELECT 1 FROM org_regions m
            WHERE m.org_id = ? AND m.org_slug = r.org_slug
              AND m.source_origin = r.source_origin
          )
-       )`,
+       )
+       LIMIT 1`,
     )
-    .all(identity, orgSlug, id, id) as { source_origin: string }[];
-  // Same-server matching (`*.sentry.io` as one server) stays in TypeScript.
-  return rows.some((row) => isSameServer(row.source_origin, host));
+    .get(identity, ...server.params, orgSlug, id, id) as
+    | { found: number }
+    | null
+    | undefined;
+  return Boolean(row);
+}
+
+/**
+ * SQL form of {@link isSameServer} for a column of normalized origins (as
+ * `org_regions.source_origin` stores them): `{@link serverKey}`'s
+ * canonicalization, so every SaaS origin (`https://sentry.io` and
+ * `https://*.sentry.io`) matches as one server and any other server only by
+ * its exact origin. `undefined` when `host` has no server key.
+ */
+function sameServerOriginSql(
+  column: string,
+  host: string,
+): { sql: string; params: string[] } | undefined {
+  const key = serverKey(host);
+  if (key === undefined) {
+    return;
+  }
+  if (key === SAAS_SERVER_KEY) {
+    // Normalized origins carry no path, credentials, or default port, so
+    // this is exactly `isSaaSTrustOrigin` for them.
+    return {
+      sql: `(${column} = 'https://sentry.io' OR ${column} LIKE 'https://%.sentry.io')`,
+      params: [],
+    };
+  }
+  return { sql: `${column} = ?`, params: [key] };
 }

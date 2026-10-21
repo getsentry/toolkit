@@ -59,7 +59,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_FORCE_ENV_TOKEN",
     description:
-      "When set, environment variable tokens (`SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`) are the only credential used, overriding the stored OAuth token from `sentry auth login` and account selection. By default, the stored OAuth token takes priority because it supports automatic refresh, and the env token is only used for organizations it can access and for its own server. Set this if you want to ensure the environment variable token is always used, which is useful for self-hosted setups or CI environments.",
+      "When set to a truthy value (`1`, `true`, `yes`, `on`), environment variable tokens (`SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`) are the only credential used, overriding the stored OAuth token from `sentry auth login` and account selection. By default, the stored OAuth token takes priority because it supports automatic refresh, and the env token is only used for organizations it can access and for its own server. Set this if you want to ensure the environment variable token is always used, which is useful for self-hosted setups or CI environments.",
     example: "1",
     topLevel: true,
     briefDescription: "Prefer the env-var token over a stored OAuth login.",

@@ -38,6 +38,7 @@ import {
 } from "../env-token-host.js";
 import { AuthError, ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
+import { parseBoolValue } from "../parse-bool.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { withDbSpan } from "../telemetry.js";
 import {
@@ -312,9 +313,17 @@ export function getActiveEnvVarName(): string {
     : "SENTRY_AUTH_TOKEN";
 }
 
+/**
+ * Whether `SENTRY_FORCE_ENV_TOKEN` is set to an affirmative value (`1`,
+ * `true`, `yes`, `on`, ...). Negative or unrecognized values leave it off.
+ */
+export function isForceEnvTokenSet(): boolean {
+  return parseBoolValue(getEnv().SENTRY_FORCE_ENV_TOKEN ?? "") === true;
+}
+
 /** Whether `SENTRY_FORCE_ENV_TOKEN` makes a set env token the only credential. */
 export function isEnvTokenForced(): boolean {
-  return Boolean(getEnv().SENTRY_FORCE_ENV_TOKEN?.trim() && getEnvToken());
+  return isForceEnvTokenSet() && getEnvToken() !== undefined;
 }
 
 /**
@@ -367,8 +376,7 @@ export function getAuthConfig(): AuthConfig | undefined {
   // Otherwise, check the DB first — stored OAuth takes priority over env tokens.
   // This is the core fix for #646: wizard-generated build tokens no longer
   // silently override the user's interactive login.
-  const forceEnv = getEnv().SENTRY_FORCE_ENV_TOKEN?.trim();
-  if (forceEnv) {
+  if (isForceEnvTokenSet()) {
     const envToken = getEnvToken();
     if (envToken) {
       return { token: envToken.token, source: envToken.source };
@@ -539,8 +547,7 @@ export function getAuthToken(): string | undefined {
 }
 
 function computeAuthToken(): string | undefined {
-  const forceEnv = getEnv().SENTRY_FORCE_ENV_TOKEN?.trim();
-  if (forceEnv) {
+  if (isForceEnvTokenSet()) {
     const envToken = getEnvToken();
     if (envToken) {
       return envToken.token;
@@ -1265,7 +1272,7 @@ export function resetIdentityFingerprintCache(): void {
 
 function computeIdentityFingerprint(): string {
   // Forced env-token: matches what `refreshToken()` will actually send.
-  if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim()) {
+  if (isForceEnvTokenSet()) {
     const envToken = getRawEnvToken();
     if (envToken) {
       return hashIdentity("env", envToken);
@@ -1315,7 +1322,7 @@ function envCredentialContext(): CredentialContext | undefined {
 }
 
 export function getCredentialContext(): CredentialContext | undefined {
-  if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim()) {
+  if (isForceEnvTokenSet()) {
     const forced = envCredentialContext();
     if (forced) {
       return forced;
@@ -1627,7 +1634,7 @@ export async function refreshToken(
   options: RefreshTokenOptions = {},
 ): Promise<RefreshTokenResult> {
   // With SENTRY_FORCE_ENV_TOKEN, env token takes priority (no refresh needed).
-  const forced = getEnv().SENTRY_FORCE_ENV_TOKEN?.trim()
+  const forced = isForceEnvTokenSet()
     ? getEnvRefreshResult(options.expectedCredential)
     : undefined;
   if (forced) {

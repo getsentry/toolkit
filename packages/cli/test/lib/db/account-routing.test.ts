@@ -288,6 +288,17 @@ describe("organization-based selection", () => {
     expect(getAuthToken()).toBe("env-token");
   });
 
+  test.each(["0", "false", "no", "off"])(
+    "SENTRY_FORCE_ENV_TOKEN=%s doesn't force the env token",
+    (value) => {
+      login("work-token", SAAS, "work");
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env.SENTRY_FORCE_ENV_TOKEN = value;
+
+      expect(getAuthToken()).toBe("work-token");
+    },
+  );
+
   test("skips accounts whose credentials were invalidated", () => {
     const work = login("work-token", SAAS, "work");
     seeOrg("work-org", SAAS);
@@ -530,6 +541,18 @@ describe("the env token as an account", () => {
     selectAccountForOrg("eu-org");
 
     expect(getAuthToken()).toBe("env-token");
+  });
+
+  test("ignores orgs it saw on look-alike SaaS servers", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    login("saas-token", SAAS, "saas");
+    envSeesOrg("env-token", "lookalike", "https://sentry.io.example.com");
+    envSeesOrg("env-token", "lookalike", "https://notsentry.io");
+    envSeesOrg("env-token", "lookalike", "http://us.sentry.io");
+
+    selectAccountForOrg("lookalike");
+
+    expect(getAuthToken()).toBe("saas-token");
   });
 
   test("leaves orgs it doesn't know to the stored login", () => {
