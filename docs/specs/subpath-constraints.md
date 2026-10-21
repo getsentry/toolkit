@@ -44,6 +44,18 @@ If there’s a problem, you’ll receive a clear HTTP error when connecting:
 - 403: You don’t have access to the specified org/project
 - 404: Organization or project not found
 
+For OAuth connections, project verification requests `collapse=organization`
+to avoid fetching organization metadata that is not needed for project
+capabilities. Successful verification is cached for 15 minutes. If project
+verification takes longer than five seconds, the request continues with unknown
+project capabilities. This result is cached for 60 seconds to reduce repeated
+delays; after it expires, the next request retries verification. Timeout results
+use separate cache keys, and verified results take precedence, so a concurrent
+timeout cannot overwrite verified capabilities or shorten their cache lifetime.
+Cache propagation and concurrent requests can still cause repeated verification
+or temporarily return unknown capabilities. Each tool still requires permission
+to access the requested data.
+
 ## Region awareness
 
 For Sentry Cloud, your organization may be hosted in a regional cluster. When you scope by organization, we automatically determine the region (if available) and use it for API calls. You don’t need to take any action—this happens behind the scenes. For self-hosted Sentry, the region concept doesn’t apply.

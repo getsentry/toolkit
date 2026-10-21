@@ -1,4 +1,8 @@
 import type { ExecutionContext, RateLimit } from "@cloudflare/workers-types";
+import {
+  createExecutionContext,
+  waitOnExecutionContext,
+} from "cloudflare:test";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DIRECT_AUTH_ASSERTION_TOKEN } from "../../test-utils/fetch-mock-setup";
 import type { Env } from "../types";
@@ -8,7 +12,8 @@ const { sentryMetricsCount, sentrySetUser } = vi.hoisted(() => ({
   sentrySetUser: vi.fn(),
 }));
 
-vi.mock("@sentry/cloudflare", () => ({
+vi.mock("@sentry/cloudflare", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/cloudflare")>()),
   getActiveSpan: vi.fn(() => undefined),
   metrics: {
     count: sentryMetricsCount,
@@ -560,6 +565,141 @@ describe("MCP Handler", () => {
   });
 
   describe("URL constraints", () => {
+    it("rejects upstream permission failures with cached unknown capabilities", async () => {
+      const env = createTestEnv();
+      const timeoutKey =
+        "timeout:caps:v1:test-user-123:sentry.io:test-org:project:test-project";
+      env.MCP_CACHE = {
+        get: vi.fn().mockImplementation(async (key: string) =>
+          key === timeoutKey
+            ? {
+                regionUrl: "https://us.sentry.io",
+                projectCapabilities: null,
+                cachedAt: Date.now(),
+              }
+            : null,
+        ),
+        put: vi.fn(),
+      } as unknown as KVNamespace;
+      const ctx = createMcpContext({
+        accessToken: "test-current-user-token",
+        grantedSkills: ["inspect"],
+        constraintOrganizationSlug: "test-org",
+        constraintProjectSlug: "test-project",
+      });
+      const profileId = "00000000000040008000000000000001";
+      const profileUrl = `https://us.sentry.io/api/0/projects/test-org/test-project/profiling/profiles/${profileId}/`;
+      const request = createMcpRequest(
+        "tools/call",
+        {
+          name: "execute_sentry_tool",
+          arguments: {
+            name: "get_profile_details",
+            arguments: { profileId },
+          },
+        },
+        { path: "/mcp/test-org/test-project" },
+      );
+      const originalFetch = globalThis.fetch;
+      const apiFetch = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation((input, init) => {
+          const url = input instanceof Request ? input.url : String(input);
+          if (url === profileUrl) {
+            return Promise.resolve(
+              Response.json(
+                {
+                  detail: "You do not have permission to perform this action.",
+                },
+                { status: 403 },
+              ),
+            );
+          }
+          return originalFetch(input, init);
+        });
+
+      try {
+        const response = await mcpHandler.fetch!(request, env, ctx);
+
+        expect(response.status).toBe(200);
+        const body = await parseSSEResponse<{
+          result: {
+            isError?: boolean;
+            content: Array<{ type: string; text: string }>;
+          };
+        }>(response);
+        expect(body.result.isError).toBe(true);
+        expect(body.result.content).toEqual([
+          { type: "text", text: expect.stringContaining("HTTP 403") },
+        ]);
+        expect(env.MCP_CACHE.put).not.toHaveBeenCalled();
+        expect(apiFetch).toHaveBeenCalledOnce();
+        expect(apiFetch).toHaveBeenCalledWith(
+          profileUrl,
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: `Bearer ${ctx.props.accessToken}`,
+            }),
+          }),
+        );
+      } finally {
+        apiFetch.mockRestore();
+      }
+    });
+
+    it("keeps the constraint cache write alive after returning the response", async () => {
+      let finishWrite!: () => void;
+      const writeReady = new Promise<void>((resolve) => {
+        finishWrite = resolve;
+      });
+      let stored: unknown = null;
+      const env = createTestEnv();
+      env.MCP_CACHE = {
+        get: vi.fn().mockResolvedValue(null),
+        put: vi.fn().mockImplementation(async (_key: string, value: string) => {
+          await writeReady;
+          stored = JSON.parse(value);
+        }),
+      } as unknown as KVNamespace;
+      const ctx = Object.assign(createExecutionContext(), {
+        props: { ...DEFAULT_OAUTH_PROPS },
+      });
+      const request = createMcpRequest(
+        "initialize",
+        {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "test-client", version: "1.0.0" },
+        },
+        { path: "/mcp/sentry-mcp-evals/cloudflare-mcp" },
+      );
+
+      try {
+        const response = await mcpHandler.fetch!(request, env, ctx);
+        expect(response.status).toBe(200);
+        const body = await parseSSEResponse<{
+          result: { protocolVersion: string };
+        }>(response);
+        expect(body.result.protocolVersion).toBeDefined();
+        expect(stored).toBeNull();
+
+        let backgroundCompleted = false;
+        const background = waitOnExecutionContext(ctx).then(() => {
+          backgroundCompleted = true;
+        });
+        // Let completed tasks drain; only the blocked KV write should remain.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(backgroundCompleted).toBe(false);
+
+        finishWrite();
+        await background;
+        expect(stored).not.toBeNull();
+      } finally {
+        finishWrite();
+        await waitOnExecutionContext(ctx);
+      }
+    });
+
     it("should handle /mcp without constraints", async () => {
       const request = createMcpRequest(
         "initialize",

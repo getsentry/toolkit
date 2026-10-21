@@ -7,6 +7,7 @@ const CAPABILITIES_TIMEOUT_MS = 5000;
 
 // Cache configuration
 const CACHE_TTL_SECONDS = 900; // 15 minutes
+const PROJECT_TIMEOUT_CACHE_TTL_SECONDS = 60;
 const CACHE_KEY_VERSION = "v1";
 
 /**
@@ -14,7 +15,7 @@ const CACHE_KEY_VERSION = "v1";
  */
 export type CachedConstraints = {
   regionUrl: string | null;
-  /** Populated when a project constraint was verified; null for org-only cache entries. */
+  /** Null for org-only entries or a project verification timeout. */
   projectCapabilities: ProjectCapabilities | null;
   cachedAt: number;
 };
@@ -25,12 +26,14 @@ export type CachedConstraints = {
 export type CacheOptions = {
   kv: KVNamespace;
   userId: string;
+  waitUntil: (promise: Promise<void>) => void;
 };
 
 /**
  * Build a cache key for constraints verification.
  * Format: caps:v1:{userId}:{sentryHost}:{organizationSlug}:{scopeKey}
  * scopeKey is "org" for org-only entries or "project:{slug}" for project-scoped entries.
+ * Timeouts use a separate timeout:{cacheKey} so late writes cannot overwrite verified data.
  */
 function buildCacheKey(
   userId: string,
@@ -54,8 +57,7 @@ async function getCachedConstraints(
   key: string,
 ): Promise<CachedConstraints | null> {
   try {
-    const cached = await kv.get(key, "json");
-    return cached as CachedConstraints | null;
+    return await kv.get<CachedConstraints>(key, "json");
   } catch (error) {
     logWarn("Failed to read constraints cache", {
       loggerScope: ["cloudflare", "constraint-utils"],
@@ -67,16 +69,17 @@ async function getCachedConstraints(
 
 /**
  * Store constraints in KV cache.
- * Fire-and-forget - errors are logged but don't block the response.
+ * Registered with waitUntil by the caller; write errors do not fail requests.
  */
 async function setCachedConstraints(
   kv: KVNamespace,
   key: string,
   data: CachedConstraints,
+  ttlSeconds: number,
 ): Promise<void> {
   try {
     await kv.put(key, JSON.stringify(data), {
-      expirationTtl: CACHE_TTL_SECONDS,
+      expirationTtl: ttlSeconds,
     });
   } catch (error) {
     logWarn("Failed to write constraints cache", {
@@ -114,8 +117,8 @@ async function withTimeout<T>(
  * Verify that provided org/project constraints exist and the user has access
  * by querying Sentry's API using the provided OAuth access token.
  *
- * If cache options are provided with a projectSlug, results will be cached
- * in KV to avoid repeated API calls during MCP sessions.
+ * Cache verified constraints for 15 minutes and project timeouts for 60 seconds
+ * to reduce repeated request delays while periodically retrying verification.
  */
 export async function verifyConstraintsAccess(
   { organizationSlug, projectSlug }: Constraints,
@@ -165,7 +168,11 @@ export async function verifyConstraintsAccess(
       organizationSlug,
       projectSlug,
     );
-    const cached = await getCachedConstraints(cache.kv, cacheKey);
+    const cached =
+      (await getCachedConstraints(cache.kv, cacheKey)) ??
+      (projectSlug
+        ? await getCachedConstraints(cache.kv, `timeout:${cacheKey}`)
+        : null);
     if (cached) {
       return {
         ok: true,
@@ -214,6 +221,7 @@ export async function verifyConstraintsAccess(
           {
             organizationSlug,
             projectSlugOrId: projectSlug,
+            collapse: "organization",
           },
           regionUrl ? { host: new URL(regionUrl).host } : undefined,
         ),
@@ -259,14 +267,23 @@ export async function verifyConstraintsAccess(
     }
   }
 
-  // Cache: org-only after org fetch; org+project only when project verification
-  // succeeded (skip caching on project timeout so the next request can retry).
-  if (cacheKey && (!projectSlug || projectCapabilities !== null)) {
-    void setCachedConstraints(cache!.kv, cacheKey, {
-      regionUrl: regionUrl || null,
-      projectCapabilities: projectSlug ? projectCapabilities : null,
-      cachedAt: Date.now(),
-    });
+  if (cache && cacheKey) {
+    const isProjectTimeout =
+      Boolean(projectSlug) && projectCapabilities === null;
+    cache.waitUntil(
+      setCachedConstraints(
+        cache.kv,
+        isProjectTimeout ? `timeout:${cacheKey}` : cacheKey,
+        {
+          regionUrl: regionUrl || null,
+          projectCapabilities,
+          cachedAt: Date.now(),
+        },
+        isProjectTimeout
+          ? PROJECT_TIMEOUT_CACHE_TTL_SECONDS
+          : CACHE_TTL_SECONDS,
+      ),
+    );
   }
 
   return {
