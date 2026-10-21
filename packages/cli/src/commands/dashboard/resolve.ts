@@ -331,12 +331,13 @@ export async function resolveDashboardId(
   let cursor: string | undefined;
 
   for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-    const { data, nextCursor } = await listDashboardsPaginated(orgSlug, {
-      perPage: API_MAX_PER_PAGE,
-      cursor,
-    }).catch(
-      async (error: unknown) =>
-        await enrichDashboardError(error, { orgSlug, operation: "list" }),
+    const { data, nextCursor } = await withDashboardErrors(
+      { orgSlug, operation: "list" },
+      () =>
+        listDashboardsPaginated(orgSlug, {
+          perPage: API_MAX_PER_PAGE,
+          cursor,
+        }),
     );
     // Match by ID/slug first (e.g. "default-overview"), then fall back to title
     const match =
@@ -787,6 +788,24 @@ export async function enrichDashboardError(
   }
 
   throw error;
+}
+
+/**
+ * Run a dashboard API operation, converting its failures with
+ * {@link enrichDashboardError}.
+ *
+ * @param ctx - Context about the operation for building error messages
+ * @param fn - The operation to run
+ */
+export async function withDashboardErrors<T>(
+  ctx: DashboardErrorContext,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    return await enrichDashboardError(error, ctx);
+  }
 }
 
 /**

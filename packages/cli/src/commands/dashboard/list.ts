@@ -38,7 +38,7 @@ import {
 import type { DashboardListItem } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardListArgs,
   resolveOrgFromTarget,
 } from "./resolve.js";
@@ -448,22 +448,21 @@ export const listCommand = buildListCommand("dashboard", {
       dashboards: results,
       cursorToStore,
       allTitles,
-    } = await withProgress(
-      {
-        message: `Fetching dashboards${titleFilter ? ` matching '${titleFilter}'` : ""} (up to ${flags.limit})...`,
-        json: flags.json,
-      },
-      () =>
-        fetchDashboards(orgSlug, {
-          limit: flags.limit,
-          perPage,
-          serverCursor,
-          afterId,
-          glob,
-        }),
-    ).catch(
-      async (error: unknown) =>
-        await enrichDashboardError(error, { orgSlug, operation: "list" }),
+    } = await withDashboardErrors({ orgSlug, operation: "list" }, () =>
+      withProgress(
+        {
+          message: `Fetching dashboards${titleFilter ? ` matching '${titleFilter}'` : ""} (up to ${flags.limit})...`,
+          json: flags.json,
+        },
+        () =>
+          fetchDashboards(orgSlug, {
+            limit: flags.limit,
+            perPage,
+            serverCursor,
+            afterId,
+            glob,
+          }),
+      ),
     );
 
     // Advance the pagination cursor stack

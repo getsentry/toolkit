@@ -18,6 +18,7 @@ import {
   resolveOrgFromTarget,
   resolveWidgetIndex,
   validateWidgetEnums,
+  withDashboardErrors,
 } from "../../../src/commands/dashboard/resolve.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -807,6 +808,24 @@ describe("enrichDashboardError", () => {
     await expect(
       enrichDashboardError(apiErr, { orgSlug: "my-org", operation: "list" }),
     ).rejects.toThrow(apiErr);
+  });
+});
+
+describe("withDashboardErrors", () => {
+  test("returns the operation's result", async () => {
+    await expect(
+      withDashboardErrors({ orgSlug: "my-org", operation: "list" }, () =>
+        Promise.resolve("ok"),
+      ),
+    ).resolves.toBe("ok");
+  });
+
+  test("enriches operation failures", async () => {
+    await expect(
+      withDashboardErrors({ orgSlug: "my-org", operation: "list" }, () =>
+        Promise.reject(new ApiError("Not Found", 404)),
+      ),
+    ).rejects.toThrow(ResolutionError);
   });
 });
 

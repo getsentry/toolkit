@@ -1050,7 +1050,7 @@ export async function validateEventsSearch(
     end?: string;
   },
 ): Promise<EventsValidationResult> {
-  return apiService.validateEvents({
+  return await apiService.validateEvents({
     organizationSlug,
     dataset,
     fields,

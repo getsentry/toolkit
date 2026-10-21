@@ -22,7 +22,7 @@ async function importKey(secret: string): Promise<CryptoKey> {
     );
   }
   const enc = new TextEncoder();
-  return crypto.subtle.importKey(
+  return await crypto.subtle.importKey(
     "raw",
     enc.encode(secret),
     { name: "HMAC", hash: "SHA-256" },

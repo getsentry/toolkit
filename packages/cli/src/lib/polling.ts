@@ -226,7 +226,9 @@ export async function withProgress<T>(
     isPlainOutput() ||
     (options.interactiveOnly && !process.stdout.isTTY)
   ) {
-    // JSON mode or non-TTY: skip the spinner entirely, pass a no-op setMessage
+    // JSON mode or non-TTY: skip the spinner entirely, pass a no-op setMessage.
+    // The `await` doesn't change the result; it keeps withProgress in async
+    // stack traces (typescript/return-await).
     return await fn(() => {
       /* spinner suppressed */
     });

@@ -369,8 +369,9 @@ describe("buildApp", () => {
         ).status,
       ).toBe(403);
     }
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
-      app.request(new URL(url).pathname, init),
+    const fetchMock = vi.fn(
+      async (url: string, init?: RequestInit) =>
+        await app.request(new URL(url).pathname, init),
     );
     vi.stubGlobal("fetch", fetchMock);
     try {

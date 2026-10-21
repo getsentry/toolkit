@@ -131,7 +131,7 @@ describe("getAnonymousToken", () => {
     let requests = 0;
     mockFetch(async (_url, init) => {
       requests += 1;
-      return new Promise((_resolve, reject) => {
+      return await new Promise((_resolve, reject) => {
         init?.signal?.addEventListener(
           "abort",
           () => reject(new DOMException("aborted", "AbortError")),

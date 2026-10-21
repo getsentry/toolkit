@@ -16,7 +16,7 @@ import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { DashboardDetail } from "../../types/dashboard.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardPositionalArgs,
   resolveDashboardId,
   resolveOrgFromTarget,
@@ -106,16 +106,20 @@ export const restoreCommand = buildCommand({
     );
     const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
 
-    const dashboard = await withProgress(
-      { message: `Restoring revision ${flags.revision}...`, json: flags.json },
-      () => restoreDashboardRevision(orgSlug, dashboardId, flags.revision),
-    ).catch(
-      async (error: unknown) =>
-        await enrichDashboardError(error, {
-          orgSlug,
-          dashboardId,
-          operation: "update",
-        }),
+    const dashboard = await withDashboardErrors(
+      {
+        orgSlug,
+        dashboardId,
+        operation: "update",
+      },
+      () =>
+        withProgress(
+          {
+            message: `Restoring revision ${flags.revision}...`,
+            json: flags.json,
+          },
+          () => restoreDashboardRevision(orgSlug, dashboardId, flags.revision),
+        ),
     );
 
     const outputData: RestoreResult = {

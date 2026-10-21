@@ -243,7 +243,7 @@ export async function executeToolHandler({
 }) {
   const paramsWithConstraints = prepareToolParams({ tool, params, context });
 
-  return tool.handler(paramsWithConstraints as never, context);
+  return await tool.handler(paramsWithConstraints as never, context);
 }
 
 export function prepareToolParams({

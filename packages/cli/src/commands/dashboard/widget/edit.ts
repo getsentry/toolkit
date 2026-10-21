@@ -28,7 +28,7 @@ import {
 } from "../../../types/dashboard.js";
 import {
   applyGroupLimitAutoDefault,
-  enrichDashboardError,
+  withDashboardErrors,
   normalizeDataset,
   parseDashboardPositionalArgs,
   resolveDashboardId,
@@ -355,13 +355,13 @@ export const editCommand = buildCommand({
     const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
 
     // GET current dashboard → find widget → merge changes → PUT
-    const current = await getDashboard(orgSlug, dashboardId).catch(
-      async (error: unknown) =>
-        await enrichDashboardError(error, {
-          orgSlug,
-          dashboardId,
-          operation: "view",
-        }),
+    const current = await withDashboardErrors(
+      {
+        orgSlug,
+        dashboardId,
+        operation: "view",
+      },
+      () => getDashboard(orgSlug, dashboardId),
     );
     const widgets = current.widgets ?? [];
     const widgetIndex = resolveWidgetIndex(
@@ -390,17 +390,13 @@ export const editCommand = buildCommand({
 
     updateBody.widgets[widgetIndex] = replacement;
 
-    const updated = await updateDashboard(
-      orgSlug,
-      dashboardId,
-      updateBody,
-    ).catch(
-      async (error: unknown) =>
-        await enrichDashboardError(error, {
-          orgSlug,
-          dashboardId,
-          operation: "update",
-        }),
+    const updated = await withDashboardErrors(
+      {
+        orgSlug,
+        dashboardId,
+        operation: "update",
+      },
+      () => updateDashboard(orgSlug, dashboardId, updateBody),
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 

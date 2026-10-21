@@ -31,8 +31,10 @@ product-specific implementation patterns.
   `packages/cli/lint-rules/cli-oxlint-plugin.js`, with inline Oxlint suppressions
   for intentional exceptions.
 - Oxlint runs type-aware (`options.typeAware` in `.oxlintrc.json`, backed by
-  `oxlint-tsgolint`). Type-aware rules from the correctness category that
-  still have a backlog are turned off at the root; enable them once fixed.
+  `oxlint-tsgolint`). `typescript/return-await` (`always`) is on repo-wide:
+  write `return await` in async functions so callers stay in async stack
+  traces. Type-aware correctness rules that still have a backlog are turned
+  off at the root; #1573 tracks enabling them.
 - VS Code uses the Oxc extension for formatting and linting. Run
   `pnpm exec oxfmt --write <file>` to format a file.
 

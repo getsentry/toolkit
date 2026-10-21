@@ -24,7 +24,7 @@ import {
 } from "../../../types/dashboard.js";
 import {
   buildWidgetFromFlags,
-  enrichDashboardError,
+  withDashboardErrors,
   normalizeDataset,
   parseDashboardPositionalArgs,
   resolveDashboardId,
@@ -255,13 +255,13 @@ export const addCommand = buildCommand({
     validateWidgetLayout(flags);
 
     // GET current dashboard → append widget with layout → PUT
-    const current = await getDashboard(orgSlug, dashboardId).catch(
-      async (error: unknown) =>
-        await enrichDashboardError(error, {
-          orgSlug,
-          dashboardId,
-          operation: "view",
-        }),
+    const current = await withDashboardErrors(
+      {
+        orgSlug,
+        dashboardId,
+        operation: "view",
+      },
+      () => getDashboard(orgSlug, dashboardId),
     );
     const updateBody = prepareDashboardForUpdate(current);
 
@@ -298,17 +298,13 @@ export const addCommand = buildCommand({
 
     updateBody.widgets.push(newWidget);
 
-    const updated = await updateDashboard(
-      orgSlug,
-      dashboardId,
-      updateBody,
-    ).catch(
-      async (error: unknown) =>
-        await enrichDashboardError(error, {
-          orgSlug,
-          dashboardId,
-          operation: "update",
-        }),
+    const updated = await withDashboardErrors(
+      {
+        orgSlug,
+        dashboardId,
+        operation: "update",
+      },
+      () => updateDashboard(orgSlug, dashboardId, updateBody),
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 

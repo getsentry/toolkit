@@ -782,7 +782,7 @@ export class SentryApiService {
     const method = (options.method ?? "GET").toUpperCase();
     const isIdempotent = method === "GET";
 
-    return retryWithBackoff(
+    return await retryWithBackoff(
       () => this.requestOnce(path, options, requestOptions),
       {
         maxRetries: isIdempotent ? RETRYABLE_REQUEST_MAX_RETRIES : 0,
@@ -994,7 +994,7 @@ export class SentryApiService {
   private async parseJsonResponse(response: Response): Promise<unknown> {
     // Handle case where response might not have all properties (e.g., in tests or promise chains)
     if (!response.headers?.get) {
-      return response.json();
+      return await response.json();
     }
 
     const contentType = response.headers.get("content-type");
@@ -1052,7 +1052,7 @@ export class SentryApiService {
     requestOptions?: { host?: string },
   ): Promise<unknown> {
     const response = await this.request(path, options, requestOptions);
-    return this.parseJsonResponse(response);
+    return await this.parseJsonResponse(response);
   }
 
   /** Let SDK operations build paths and queries while MCP owns transport and errors. */
@@ -4156,7 +4156,7 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<ExternalIssueList> {
-    return this.listIssueLinkPages(
+    return await this.listIssueLinkPages(
       apiPath`/organizations/${organizationSlug}/issues/${issueId}/external-issues/`,
       ExternalIssueListSchema,
       opts,
@@ -4191,7 +4191,7 @@ export class SentryApiService {
     }: { organizationSlug: string; issueId: string },
     opts?: RequestOptions,
   ): Promise<IssueIntegrationList> {
-    return this.listIssueLinkPages(
+    return await this.listIssueLinkPages(
       apiPath`/organizations/${organizationSlug}/issues/${issueId}/integrations/`,
       IssueIntegrationListSchema,
       opts,
@@ -4257,7 +4257,7 @@ export class SentryApiService {
     { organizationSlug }: { organizationSlug: string },
     opts?: RequestOptions,
   ): Promise<SentryAppInstallationList> {
-    return this.listIssueLinkPages(
+    return await this.listIssueLinkPages(
       apiPath`/organizations/${organizationSlug}/sentry-app-installations/`,
       SentryAppInstallationListSchema,
       { ...opts, host: this.isPublicSaas() ? "sentry.io" : opts?.host },
@@ -4268,7 +4268,7 @@ export class SentryApiService {
     { organizationSlug }: { organizationSlug: string },
     opts?: RequestOptions,
   ): Promise<SentryAppComponentList> {
-    return this.listIssueLinkPages(
+    return await this.listIssueLinkPages(
       apiPath`/organizations/${organizationSlug}/sentry-app-components/` +
         "?filter=issue-link",
       SentryAppComponentListSchema,
@@ -4502,7 +4502,7 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Event> {
-    return this.getEventForIssue(
+    return await this.getEventForIssue(
       {
         organizationSlug,
         issueId,
@@ -5914,7 +5914,7 @@ export class SentryApiService {
     const path =
       apiPath`/organizations/${organizationSlug}/preprodartifacts/snapshots/${snapshotId}/` +
       `?${params.toString()}`;
-    return this.requestJSON(path);
+    return await this.requestJSON(path);
   }
 
   async getSnapshotImageDetail({
@@ -5927,7 +5927,7 @@ export class SentryApiService {
     imageIdentifier: string;
   }): Promise<unknown> {
     const path = apiPath`/organizations/${organizationSlug}/preprodartifacts/snapshots/${snapshotId}/images/${imageIdentifier}/`;
-    return this.requestJSON(path);
+    return await this.requestJSON(path);
   }
 
   async fetchImageByUrl(
@@ -5978,6 +5978,6 @@ export class SentryApiService {
     const path =
       apiPath`/organizations/${organizationSlug}/preprodartifacts/snapshots/latest-base/` +
       `?${params.toString()}`;
-    return this.requestJSON(path);
+    return await this.requestJSON(path);
   }
 }

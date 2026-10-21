@@ -45,7 +45,7 @@ describe("withProgress", () => {
         rotatingMessages: ["Finding the relevant bits…"],
         rotationIntervalMs: 4000,
       },
-      async () => deferred.promise,
+      async () => await deferred.promise,
     );
 
     await vi.advanceTimersByTimeAsync(4000);
@@ -72,7 +72,7 @@ describe("withProgress", () => {
         rotatingMessages: ["It’s getting there…"],
         rotationIntervalMs: 4000,
       },
-      async () => deferred.promise,
+      async () => await deferred.promise,
     );
 
     await vi.advanceTimersByTimeAsync(4000);
