@@ -243,6 +243,7 @@ interface WorkerProps {
   scope: string; // MCP permissions granted
   grantedSkills?: string[]; // Skills granted (primary authorization)
   // grantedScopes is deprecated and will be removed Jan 1, 2026
+  upstreamScopes?: string[]; // Scopes Sentry granted on the upstream token
 }
 ```
 

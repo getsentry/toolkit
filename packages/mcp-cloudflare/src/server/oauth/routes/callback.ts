@@ -42,6 +42,18 @@ function getUpstreamTokenExpiryTimestamp(payload: {
     : Date.now() + payload.expires_in * 1000;
 }
 
+/**
+ * Parse the space-delimited `scope` from Sentry's token response (RFC 6749
+ * §5.1) into a sorted list. Returns undefined when Sentry omitted it so we
+ * don't record an empty list that looks like "no scopes granted".
+ */
+function parseUpstreamScopes(scope: string | undefined): string[] | undefined {
+  if (typeof scope !== "string") {
+    return undefined;
+  }
+  return Array.from(new Set(scope.split(/\s+/).filter(Boolean))).sort();
+}
+
 function getUpstreamUserLabel(payload: {
   user: { name: string | null; email?: string | null; id: string };
 }): string {
@@ -323,6 +335,9 @@ export default new Hono<{ Bindings: Env }>().get("/", async (c) => {
       // Scopes derived from skills - for backward compatibility with old MCP clients
       // that don't support grantedSkills and only understand grantedScopes
       grantedScopes: Array.from(grantedScopes),
+      // Scopes Sentry actually granted on the upstream token (from the token
+      // response), which can differ from the skill-derived grantedScopes
+      upstreamScopes: parseUpstreamScopes(payload.scope),
       grantedSkills, // Primary authorization method
 
       constraintOrganizationSlug,
