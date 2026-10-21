@@ -45,7 +45,7 @@ export function parseMetricRuleArg(
     return { ref: trimmed, targetArg: undefined };
   }
 
-  const slashCount = [...trimmed].filter((c) => c === "/").length;
+  const slashCount = trimmed.split("/").length - 1;
   if (slashCount > 1) {
     throw new ValidationError(
       `Metric alerts are org-scoped — use '<org>/<rule-id-or-name>', not '<org>/<project>/<rule>'.\nUse: ${usageHint}`,

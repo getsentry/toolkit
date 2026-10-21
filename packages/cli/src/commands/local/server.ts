@@ -143,6 +143,19 @@ const LOCAL_UI_PREVIEW_HOST_RE = /^sentry-local-git-[a-z0-9-]+\.sentry\.dev$/;
 
 export { isLoopbackHost } from "./loopback.js";
 
+/**
+ * Read Spotlight's `__spotlight_envelope_id` envelope header as a string.
+ * Spotlight stores a `uuidv7` UUID object there, which renders through its
+ * own `toString()`.
+ */
+export function spotlightEnvelopeId(header: Record<string, unknown>): string {
+  const id = header.__spotlight_envelope_id as
+    | { toString(): string }
+    | null
+    | undefined;
+  return id == null ? "" : id.toString();
+}
+
 type LocalReceiverOptions = {
   /** Enables stateful UI routes only when the receiver itself is loopback-bound. */
   uiActions?: boolean;
@@ -225,11 +238,10 @@ export function buildSSEHandler(
       if (!parsed) {
         return;
       }
-      const header = parsed.envelope[0];
-      const envelopeId = header.__spotlight_envelope_id;
+      const envelopeId = spotlightEnvelopeId(parsed.envelope[0]);
       stream
         .writeSSE({
-          id: envelopeId ? String(envelopeId) : undefined,
+          id: envelopeId || undefined,
           event: `${container.getContentType()}${base64Indicator}`,
           data: JSON.stringify(parsed.envelope),
         })

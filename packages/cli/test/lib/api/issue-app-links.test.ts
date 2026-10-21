@@ -68,7 +68,7 @@ function json(data: unknown, status = 200, headers?: HeadersInit): Response {
 
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion(ORG, "https://de.sentry.io");
   resetAuthenticatedFetch();
   calls = [];

@@ -55,13 +55,6 @@ type IgnoreState = {
   message: string;
 };
 
-type IssueStatusDisplay =
-  | "resolved"
-  | "resolvedInNextRelease"
-  | "unresolved"
-  | "ignored"
-  | string;
-
 type IgnoreParams = {
   status?: string;
   ignoreMode?: IgnoreMode;
@@ -162,7 +155,12 @@ function formatIgnoreUntil(ignoreUntil: string): string {
   return `${date.toISOString().slice(0, 19).replace("T", " ")} UTC`;
 }
 
-function getIssueStatusDisplay(issue: Issue): IssueStatusDisplay {
+/**
+ * Issue status for display: `resolvedInNextRelease` for next-release
+ * resolutions, otherwise the raw API status (`resolved`, `unresolved`,
+ * `ignored`, ...).
+ */
+function getIssueStatusDisplay(issue: Issue): string {
   const statusDetails = getIssueStatusDetails(issue);
 
   if (issue.status === "resolved" && statusDetails.inNextRelease === true) {

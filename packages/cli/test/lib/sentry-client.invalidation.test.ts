@@ -10,6 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { setAuthToken } from "../../src/lib/db/auth.js";
+import { fetchInputUrl } from "../../src/lib/fetch-input.js";
 import {
   getCachedResponse,
   storeCachedResponse,
@@ -82,7 +83,7 @@ describe("HTTP-layer auto-invalidation", () => {
 
     installMockFetch(async (input, init) => {
       expect(init?.method).toBe("PUT");
-      expect(String(input)).toBe(DETAIL_URL);
+      expect(fetchInputUrl(input)).toBe(DETAIL_URL);
       return makeResponse({ id: "12345", status: "resolved" });
     });
     const response = await runAuthenticatedFetch(DETAIL_URL, "PUT");

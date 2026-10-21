@@ -9,6 +9,7 @@ import type {
   SentryLog,
   TraceItemAttribute,
 } from "../../types/index.js";
+import { stringifyUnknown } from "../errors.js";
 import { buildTraceUrl } from "../sentry-web-urls.js";
 import {
   colorTag,
@@ -157,7 +158,7 @@ export function buildLogRowCells(
       const val = log[field];
       cells.push(
         escapeMarkdownCell(
-          val !== null && val !== undefined ? String(val) : "",
+          val !== null && val !== undefined ? stringifyUnknown(val) : "",
         ),
       );
     }

@@ -43,6 +43,7 @@ import {
 import { CLI_VERSION } from "./constants.js";
 import { customFetch } from "./custom-ca.js";
 import { getConfigDir } from "./db/index.js";
+import { fetchInputUrl } from "./fetch-input.js";
 import { formatBytes } from "./formatters/numbers.js";
 import { logger } from "./logger.js";
 import { makeByteProgress, type SetMessage } from "./progress.js";
@@ -177,7 +178,7 @@ function stableSource(source: UpgradeSource): SourceStrategy {
   const releasesUrl = getGitHubReleasesUrl(source);
   const sourceFetch: typeof customFetch = async (input, init) => {
     const response = await customFetch(input, init);
-    if (!(response.ok && String(input).startsWith(`${releasesUrl}?`))) {
+    if (!(response.ok && fetchInputUrl(input).startsWith(`${releasesUrl}?`))) {
       return response;
     }
     const data: unknown = await response.json();

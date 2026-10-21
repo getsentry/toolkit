@@ -510,7 +510,7 @@ export async function completeOAuthFlow(
   tokenResponse: TokenResponse,
   options: StoreTokenOptions = {},
 ): Promise<void> {
-  await setAuthToken(
+  setAuthToken(
     tokenResponse.access_token,
     tokenResponse.expires_in,
     tokenResponse.refresh_token,
@@ -534,7 +534,7 @@ export async function setApiToken(
   token: string,
   options: StoreTokenOptions = {},
 ): Promise<void> {
-  await setAuthToken(token, undefined, undefined, {
+  setAuthToken(token, undefined, undefined, {
     host: getSentryUrl(),
     newAccount: options.newAccount,
   });

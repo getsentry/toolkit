@@ -66,7 +66,7 @@ beforeEach(async () => {
   listedOrgs = [cachedOrg];
   listingStatus = 200;
   issues = new Map();
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegions([
     {
       slug: cachedOrg.slug,

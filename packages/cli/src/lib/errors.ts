@@ -141,7 +141,7 @@ export class HostScopeError extends CliError {
   constructor(
     sourceOrMessage: string,
     destinationUrl?: string,
-    tokenHost?: string | undefined,
+    tokenHost?: string,
   ) {
     if (destinationUrl === undefined) {
       super(sourceOrMessage, EXIT.AUTH_HOST_SCOPE);
@@ -783,12 +783,12 @@ export function stringifyUnknown(value: unknown): string {
   }
   if (value && typeof value === "object") {
     // JSON.stringify can throw on circular references or BigInt values.
-    // Fall back to String() which is always safe.
+    // Fall back to the tag string (e.g. `[object Object]`), which is always safe.
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       return JSON.stringify(value);
     } catch {
-      return String(value);
+      return Object.prototype.toString.call(value);
     }
   }
   return String(value);

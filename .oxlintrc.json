@@ -20,18 +20,33 @@
   "rules": {
     "no-unused-vars": "off",
     "typescript/return-await": ["error", "always"],
-    "typescript/await-thenable": "off",
-    "typescript/no-base-to-string": "off",
-    "typescript/no-duplicate-type-constituents": "off",
-    "typescript/no-floating-promises": "off",
-    "typescript/no-misused-spread": "off",
-    "typescript/no-redundant-type-constituents": "off",
-    "typescript/require-array-sort-compare": "off",
-    "typescript/restrict-template-expressions": "off",
-    "typescript/unbound-method": "off",
+    "typescript/no-floating-promises": [
+      "error",
+      {
+        "allowForKnownSafeCalls": [
+          {
+            "from": "package",
+            "package": "node:test",
+            "name": ["test", "it", "describe", "suite"]
+          }
+        ]
+      }
+    ],
+    "typescript/restrict-template-expressions": [
+      "error",
+      {
+        "allowNever": true
+      }
+    ],
     "jsx-a11y/interactive-supports-focus": "off"
   },
   "overrides": [
+    {
+      "files": ["**/*.test.{ts,tsx,mjs}", "**/test/**/*.{ts,tsx}"],
+      "rules": {
+        "typescript/unbound-method": "off"
+      }
+    },
     {
       "files": ["packages/mcp-cloudflare/src/client/**/*.tsx"],
       "rules": {

@@ -27,7 +27,7 @@ let originalFetch: typeof globalThis.fetch;
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
   resetAuthenticatedFetch();
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 });
 

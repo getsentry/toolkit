@@ -44,7 +44,7 @@ beforeEach(async () => {
   originalFetch = globalThis.fetch;
 
   // Set up initial auth token with a refresh token so 401 retry can get a new token
-  await setAuthToken("initial-token", 3600, "test-refresh-token");
+  setAuthToken("initial-token", 3600, "test-refresh-token");
 });
 
 afterEach(() => {
@@ -242,7 +242,7 @@ describe("401 retry behavior", () => {
 
   test("does not retry for manual API tokens (no refresh token)", async () => {
     // Manual API tokens have no expiry and no refresh token
-    await setAuthToken("manual-api-token"); // No expiry, no refresh token
+    setAuthToken("manual-api-token"); // No expiry, no refresh token
 
     const requests: RequestLog[] = [];
 

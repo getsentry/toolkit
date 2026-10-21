@@ -88,7 +88,7 @@ export async function connectToRemoteMCPServer(
           span.setStatus({ code: 1 });
 
           logSuccess(
-            `Connected to MCP server (${mcpUrl})`,
+            `Connected to MCP server (${mcpUrl.href})`,
             `${tools.size} tools available`,
           );
 

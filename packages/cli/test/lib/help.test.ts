@@ -23,7 +23,7 @@ function maxLineWidth(banner: string): number {
     0,
     ...stripAnsi(banner)
       .split("\n")
-      .map((line) => [...line].length),
+      .map((line) => Array.from(line).length),
   );
 }
 

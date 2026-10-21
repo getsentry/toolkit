@@ -584,7 +584,7 @@ function summarizeObject(
         (typeof nested === "string" || typeof nested === "number"),
     )
     .slice(0, 3)
-    .map(([key, nested]) => `${key}=${nested}`);
+    .map(([key, nested]) => `${key}=${String(nested)}`);
 
   return entries.length > 0
     ? `payload=${quoteDetail(entries.join(", "))}`

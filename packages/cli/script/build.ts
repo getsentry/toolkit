@@ -418,7 +418,7 @@ async function compileAllTargets(
       successes += 1;
     } catch (error) {
       console.error(
-        `  Post-processing ${getPackageName(target)} failed: ${error}`,
+        `  Post-processing ${getPackageName(target)} failed: ${String(error)}`,
       );
       failures += 1;
     }

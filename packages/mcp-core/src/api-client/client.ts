@@ -900,7 +900,7 @@ export class SentryApiService {
         return response;
       }
       const errorText = await response.text();
-      let parsed: unknown | undefined;
+      let parsed: unknown;
       try {
         parsed = JSON.parse(errorText);
       } catch (error) {
@@ -2329,7 +2329,7 @@ export class SentryApiService {
   ): Promise<string> {
     const query = new URLSearchParams({ alert_rule_id: String(alertRuleId) });
     const body = await this.requestJSON(
-      `${apiPath`/organizations/${organizationSlug}/alert-rule-detector/`}?${query}`,
+      `${apiPath`/organizations/${organizationSlug}/alert-rule-detector/`}?${query.toString()}`,
       undefined,
       opts,
     );
@@ -2442,7 +2442,7 @@ export class SentryApiService {
     if (query) search.set("query", query);
     if (cursor) search.set("cursor", cursor);
     const response = await this.request(
-      `${apiPath`/organizations/${organizationSlug}/detectors/`}?${search}`,
+      `${apiPath`/organizations/${organizationSlug}/detectors/`}?${search.toString()}`,
       undefined,
       opts,
     );
@@ -2474,7 +2474,7 @@ export class SentryApiService {
     }
     if (cursor) search.set("cursor", cursor);
     const response = await this.request(
-      `${apiPath`/organizations/${organizationSlug}/available-actions/`}?${search}`,
+      `${apiPath`/organizations/${organizationSlug}/available-actions/`}?${search.toString()}`,
       undefined,
       opts,
     );
@@ -2506,7 +2506,7 @@ export class SentryApiService {
     const search = new URLSearchParams({ group, per_page: String(limit) });
     if (cursor) search.set("cursor", cursor);
     const response = await this.request(
-      `${apiPath`/organizations/${organizationSlug}/data-conditions/`}?${search}`,
+      `${apiPath`/organizations/${organizationSlug}/data-conditions/`}?${search.toString()}`,
       undefined,
       opts,
     );
@@ -3502,7 +3502,7 @@ export class SentryApiService {
       method?: string;
       headers?: Array<[string, string]>;
       body?: string | null;
-      assertion?: unknown | null;
+      assertion?: unknown;
       status?: "active" | "disabled";
       owner?: string | null;
       environment?: string | null;
@@ -3585,7 +3585,7 @@ export class SentryApiService {
       method?: string;
       headers?: Array<[string, string]>;
       body?: string | null;
-      assertion?: unknown | null;
+      assertion?: unknown;
       status?: "active" | "disabled";
       owner?: string | null;
       environment?: string | null;

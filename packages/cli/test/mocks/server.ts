@@ -17,8 +17,8 @@ export type MockRoute = {
   method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   /** Path pattern with optional :params (e.g., "/api/0/organizations/:orgSlug/") */
   path: string;
-  /** Static response body, or handler function for dynamic responses */
-  response: unknown | RouteHandler;
+  /** Static response body, or a {@link RouteHandler} for dynamic responses */
+  response: unknown;
   /** HTTP status code (default: 200) */
   status?: number;
 };
@@ -32,7 +32,8 @@ type CompiledRoute = {
   method: string;
   pattern: RegExp;
   paramNames: string[];
-  response: unknown | RouteHandler;
+  /** Static response body or {@link RouteHandler} */
+  response: unknown;
   status: number;
 };
 

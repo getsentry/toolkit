@@ -8,6 +8,7 @@
 
 import type { EventsTableResponse } from "../../types/dashboard.js";
 import { EventsTableResponseSchema } from "../../types/dashboard.js";
+import { stringifyUnknown } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
   API_MAX_PER_PAGE,
@@ -156,9 +157,9 @@ export async function queryMetricsMeta(
   }
 
   return allRows.map((row) => ({
-    name: String(row["metric.name"] ?? ""),
-    type: String(row["metric.type"] ?? "distribution"),
-    unit: String(row["metric.unit"] ?? "none"),
+    name: stringifyUnknown(row["metric.name"] ?? ""),
+    type: stringifyUnknown(row["metric.type"] ?? "distribution"),
+    unit: stringifyUnknown(row["metric.unit"] ?? "none"),
   }));
 }
 

@@ -277,7 +277,7 @@ function checkForUpdateInBackgroundImpl(): void {
 
   const channel = getReleaseChannel();
 
-  Sentry.startSpanManual(
+  void Sentry.startSpanManual(
     {
       name: "version-check",
       op: "version.check",

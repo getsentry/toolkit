@@ -42,7 +42,7 @@ export function parseIssueRuleArg(
     );
   }
 
-  const slashCount = [...trimmed].filter((c) => c === "/").length;
+  const slashCount = trimmed.split("/").length - 1;
   if (slashCount === 0) {
     return { ref: trimmed, targetArg: undefined };
   }

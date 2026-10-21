@@ -165,7 +165,7 @@ describe("resolveEffectiveOrg with API refresh", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
   });
 
   afterEach(() => {

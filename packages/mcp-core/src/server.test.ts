@@ -226,7 +226,7 @@ describe("buildServer", () => {
       tools: {
         v2_tool: createMockTool("v2_tool", {
           inputSchema: { value: z.string() },
-          handler: async ({ value }) => `v2:${value}`,
+          handler: async ({ value }) => `v2:${String(value)}`,
         }),
       },
       sdkVersion: "v2",
