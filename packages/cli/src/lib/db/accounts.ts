@@ -524,50 +524,29 @@ export function hasCachedOrgForIdentity(
   orgSlug: string,
   orgId?: string,
 ): boolean {
-  const server = sameServerOriginSql("r.source_origin", host);
+  const server = serverKey(host);
   if (!server) {
     return false;
   }
+  // `source_origin` holds normalized origins: every SaaS origin is one
+  // server (as in `serverKey`), anything else must match exactly.
+  const saas = server === SAAS_SERVER_KEY;
+  const sameServer = saas
+    ? "(r.source_origin = 'https://sentry.io' OR r.source_origin LIKE 'https://%.sentry.io')"
+    : "r.source_origin = ?";
   const id = orgId ?? null;
   const row = getDatabase()
     .query(
-      `SELECT EXISTS (
-         SELECT 1 FROM org_regions r
-         WHERE r.credential_identity = ? AND ${server.sql} AND (
-           r.org_slug = ? OR r.org_id = ? OR EXISTS (
-             SELECT 1 FROM org_regions m
-             WHERE m.org_id = ? AND m.org_slug = r.org_slug
-               AND m.source_origin = r.source_origin
-           )
+      `SELECT 1 FROM org_regions r
+       WHERE r.credential_identity = ? AND ${sameServer} AND (
+         r.org_slug = ? OR r.org_id = ? OR EXISTS (
+           SELECT 1 FROM org_regions m
+           WHERE m.org_id = ? AND m.org_slug = r.org_slug
+             AND m.source_origin = r.source_origin
          )
-       ) AS found`,
+       )
+       LIMIT 1`,
     )
-    .get(identity, ...server.params, orgSlug, id, id) as { found: number };
-  return row.found === 1;
-}
-
-/**
- * SQL form of {@link isSameServer} for a column of normalized origins (as
- * `org_regions.source_origin` stores them): `{@link serverKey}`'s
- * canonicalization, so every SaaS origin (`https://sentry.io` and
- * `https://*.sentry.io`) matches as one server and any other server only by
- * its exact origin. `undefined` when `host` has no server key.
- */
-function sameServerOriginSql(
-  column: string,
-  host: string,
-): { sql: string; params: string[] } | undefined {
-  const key = serverKey(host);
-  if (key === undefined) {
-    return;
-  }
-  if (key === SAAS_SERVER_KEY) {
-    // Normalized origins carry no path, credentials, or default port, so
-    // this is exactly `isSaaSTrustOrigin` for them.
-    return {
-      sql: `(${column} = 'https://sentry.io' OR ${column} LIKE 'https://%.sentry.io')`,
-      params: [],
-    };
-  }
-  return { sql: `${column} = ?`, params: [key] };
+    .get(identity, ...(saas ? [] : [server]), orgSlug, id, id);
+  return Boolean(row);
 }
