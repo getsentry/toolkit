@@ -3197,6 +3197,75 @@ describe("search_events", () => {
     expect(result).toContain("span1");
   });
 
+  it("runs the search when the validate endpoint is unavailable (404)", async () => {
+    let eventsRequestUrl: URL | undefined;
+
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse(
+        "errors",
+        "level:error",
+        ["issue", "title", "timestamp"],
+        undefined,
+        "-timestamp",
+        { statsPeriod: "24h" },
+      ),
+    );
+
+    // Simulate an older/self-hosted Sentry that does not expose the
+    // `/events/validate/` endpoint.
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        () => HttpResponse.json({ detail: "Not Found" }, { status: 404 }),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          eventsRequestUrl = new URL(request.url);
+          return HttpResponse.json({
+            data: [
+              {
+                id: "issue1",
+                title: "Database Error",
+                level: "error",
+                timestamp: "2024-01-15T10:30:00Z",
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "level:error",
+        fields: null,
+        sort: null,
+        period: "24h",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        constraints: {
+          organizationSlug: null,
+          regionUrl: null,
+          projectSlug: null,
+        },
+        accessToken: "test-token",
+        userId: "1",
+      },
+    );
+
+    // Validation is skipped, so the search still executes and returns data.
+    expect(eventsRequestUrl).toBeDefined();
+    expect(eventsRequestUrl!.searchParams.get("dataset")).toBe("errors");
+    expect(result).toContain("Database Error");
+  });
+
   it("fails complete structured requests honestly without an external repair loop", async () => {
     let validateCalls = 0;
 
