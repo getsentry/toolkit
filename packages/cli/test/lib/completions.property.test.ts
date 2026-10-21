@@ -27,6 +27,7 @@ import {
 import { COMPLETION_TARGETS } from "../../src/lib/completion-target.js";
 import {
   extractCompletionTargets,
+  extractCompletionValueFlags,
   type RouteMap,
 } from "../../src/lib/introspect.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
@@ -401,16 +402,17 @@ describe("complete.ts: generated completion targets", () => {
   // Use the ESM import (routes) instead of require() which fails under
   // vitest because Node's CJS require can't resolve .js→.ts for transitive imports.
   const targets = extractCompletionTargets(routes as unknown as RouteMap);
+  const valueFlags = extractCompletionValueFlags(routes as unknown as RouteMap);
 
   // A mismatch means src/generated/completion-targets.json is stale.
   // Regenerate with: pnpm run generate:completions
   test("generated completion targets match the route tree", () => {
-    expect(generatedTargets).toEqual(targets);
+    expect(generatedTargets).toEqual({ targets, valueFlags });
   });
 
   test("project create keeps its dedicated name:platform completer", () => {
     for (const kind of COMPLETION_TARGETS) {
-      expect(generatedTargets[kind]).not.toContain("project create");
+      expect(generatedTargets.targets[kind]).not.toContain("project create");
     }
   });
 });

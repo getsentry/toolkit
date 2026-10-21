@@ -488,6 +488,72 @@ export function extractCompletionTargets(
   return targets;
 }
 
+/** Value-taking flag spellings (`--name`, `-a`) per command path. */
+export type CompletionValueFlags = Record<string, string[]>;
+
+/**
+ * Spellings of a command's flags that consume the next word as their value.
+ *
+ * Every non-boolean flag counts, including hidden ones, because the parser
+ * still accepts them. Single-letter aliases are included as `-x`.
+ */
+function getCommandValueFlags(command: Command): string[] {
+  const flags = command.parameters.flags ?? {};
+  const names = new Set(
+    Object.entries(flags)
+      .filter(([, def]) => def.kind !== "boolean")
+      .map(([name]) => name),
+  );
+  const spellings = [...names].map((name) => `--${name}`);
+  for (const [alias, name] of Object.entries(
+    command.parameters.aliases ?? {},
+  )) {
+    if (names.has(name)) {
+      spellings.push(`-${alias}`);
+    }
+  }
+  return spellings.sort();
+}
+
+/**
+ * Collect the value-taking flags of every command with a completion target.
+ *
+ * `__complete` uses these to tell a flag value apart from a positional, so
+ * it does not suggest targets after `--period` or count `7d` as an
+ * argument. Commands without value flags are omitted.
+ *
+ * @param routeMap - Top-level Stricli route map
+ * @param prefix - Route segments above `routeMap` (used for recursion)
+ */
+export function extractCompletionValueFlags(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+): CompletionValueFlags {
+  const result: CompletionValueFlags = {};
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden) {
+      continue;
+    }
+    const segments = [...prefix, entry.name.original];
+    const target = entry.target;
+    if (isRouteMap(target)) {
+      Object.assign(result, extractCompletionValueFlags(target, segments));
+    } else if (isCommand(target)) {
+      const path = segments.join(" ");
+      if (!getCommandCompletionTarget(target, path)) {
+        continue;
+      }
+      const flags = getCommandValueFlags(target);
+      if (flags.length > 0) {
+        result[path] = flags;
+      }
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(result).sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
+
 /** Matches the "sentry " prefix at the start of a command path. */
 const SENTRY_PREFIX_RE = /^sentry /;
 

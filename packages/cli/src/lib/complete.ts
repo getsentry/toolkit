@@ -112,25 +112,59 @@ export function handleComplete(args: string[]): void {
 /**
  * Command path → completion target, from `src/generated/completion-targets.json`.
  *
- * Generated from the commands' positional parsers (`parseOrgTarget` /
- * `parseOrgProjectTarget`) by `script/generate-completion-targets.ts`
+ * Generated from the commands' completion-aware positional parsers (see
+ * `completion-target.ts`) by `script/generate-completion-targets.ts`
  * because this fast path cannot boot Stricli to walk the route tree.
  */
 const COMMAND_TARGETS = new Map<string, CompletionTarget>(
   COMPLETION_TARGETS.flatMap((kind) =>
-    generatedTargets[kind].map((path): [string, CompletionTarget] => [
+    generatedTargets.targets[kind].map((path): [string, CompletionTarget] => [
       path,
       kind,
     ]),
   ),
 );
 
+/** Command path → spellings of its flags that take a value. */
+const COMMAND_VALUE_FLAGS: Readonly<Record<string, readonly string[]>> =
+  generatedTargets.valueFlags;
+
 /** The command named by the preceding words and what follows it. */
 type CommandMatch = {
   target: CompletionTarget;
   /** Words typed after the command path (positionals and flags). */
   args: string[];
+  /** Flags of this command that consume the next word as their value. */
+  valueFlags: ReadonlySet<string>;
 };
+
+/** Words typed after a command path, split into positionals and flags. */
+type ParsedArgs = {
+  positionals: string[];
+  /** The word being completed is the value of the last flag (`--period <TAB>`). */
+  completingFlagValue: boolean;
+};
+
+/**
+ * Separate positionals from flags in the words typed after a command path.
+ *
+ * A value-taking flag written as `--period 7d` consumes the next word;
+ * `--period=7d` is a single word. Other `-`-prefixed words are flags.
+ */
+function parseArgs(match: CommandMatch): ParsedArgs {
+  const positionals: string[] = [];
+  let expectingValue = false;
+  for (const word of match.args) {
+    if (expectingValue) {
+      expectingValue = false;
+    } else if (word.startsWith("-")) {
+      expectingValue = match.valueFlags.has(word);
+    } else {
+      positionals.push(word);
+    }
+  }
+  return { positionals, completingFlagValue: expectingValue };
+}
 
 /**
  * Find the completion target declared by the command named in `words`.
@@ -141,9 +175,14 @@ type CommandMatch = {
  */
 function findCompletionTarget(words: string[]): CommandMatch | undefined {
   for (let length = 1; length <= words.length; length++) {
-    const target = COMMAND_TARGETS.get(words.slice(0, length).join(" "));
+    const path = words.slice(0, length).join(" ");
+    const target = COMMAND_TARGETS.get(path);
     if (target) {
-      return { target, args: words.slice(length) };
+      return {
+        target,
+        args: words.slice(length),
+        valueFlags: new Set(COMMAND_VALUE_FLAGS[path] ?? []),
+      };
     }
   }
   return;
@@ -175,7 +214,16 @@ export function getCompletions(
   }
 
   const match = findCompletionTarget(precedingWords);
-  switch (match?.target) {
+  if (!match) {
+    // Not a known command path — no dynamic completions
+    return [];
+  }
+  const args = parseArgs(match);
+  if (args.completingFlagValue) {
+    // The word is a flag value (e.g. after `--period`), not a target
+    return [];
+  }
+  switch (match.target) {
     case ORG_PROJECT_TARGET:
       return completeOrgSlashProject(partial);
     case ORG_TARGET:
@@ -183,9 +231,8 @@ export function getCompletions(
     case ISSUE_TARGET:
       return completeIssues(partial);
     case DASHBOARD_TARGET:
-      return completeDashboards(partial, match.args);
+      return completeDashboards(partial, args.positionals);
     default:
-      // Not a known command path — no dynamic completions
       return [];
   }
 }
@@ -517,18 +564,13 @@ export function completeIssues(partial: string): Completion[] {
  * - First positional, `org/…`: `org/<id>` for that org's dashboards
  * - Second positional: bare IDs for the org named by the first one
  *
- * Words starting with `-` are treated as flags. A flag value given as a
- * separate word counts as a positional, which can only hide suggestions.
- *
  * @param partial - The partial dashboard argument
- * @param args - Words typed after the command path
+ * @param positionals - Positional words before the partial (flags removed)
  */
 export function completeDashboards(
   partial: string,
-  args: readonly string[],
+  positionals: readonly string[],
 ): Completion[] {
-  const positionals = args.filter((word) => !word.startsWith("-"));
-
   if (positionals.length === 1) {
     const orgPart = positionals[0]?.split("/")[0];
     const org = orgPart ? fuzzyResolveOrg(orgPart) : undefined;

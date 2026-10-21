@@ -26,6 +26,7 @@ import {
   buildCommandInfo,
   extractAllRoutes,
   extractCompletionTargets,
+  extractCompletionValueFlags,
   extractFlags,
   extractPositionals,
   extractRouteGroupCommands,
@@ -475,6 +476,38 @@ describe("extractCompletionTargets", () => {
     ]);
 
     expect(() => extractCompletionTargets(topLevel)).toThrow(/bad/);
+  });
+});
+
+describe("extractCompletionValueFlags", () => {
+  test("lists value-taking flags and aliases of commands with a target", () => {
+    const withFlags = makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: [
+            { placeholder: "dashboard", parse: parseDashboardTarget },
+          ],
+        },
+        flags: {
+          web: { kind: "boolean" },
+          period: { kind: "parsed" },
+          sort: { kind: "enum" },
+        },
+        aliases: { w: "web", t: "period" },
+      },
+    });
+    const noTarget = makeCommand({
+      parameters: { flags: { query: { kind: "parsed" } } },
+    });
+    const topLevel = makeRouteMap([
+      makeEntry("dashboard", makeRouteMap([makeEntry("view", withFlags)])),
+      makeEntry("api", noTarget),
+    ]);
+
+    expect(extractCompletionValueFlags(topLevel)).toEqual({
+      "dashboard view": ["--period", "--sort", "-t"],
+    });
   });
 });
 

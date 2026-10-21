@@ -95,6 +95,19 @@ describe("getCompletions: context detection", () => {
     expect(result.length).toBeGreaterThan(0);
   });
 
+  test("returns nothing for the value of a value-taking flag", async () => {
+    await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
+    expect(getCompletions(["issue", "list", "--query"], "")).toEqual([]);
+    expect(getCompletions(["issue", "list", "-q"], "")).toEqual([]);
+    // Once the value is given, the next word is a target again.
+    expect(
+      getCompletions(["issue", "list", "--query", "is:unresolved"], "").length,
+    ).toBeGreaterThan(0);
+    expect(
+      getCompletions(["issue", "list", "--query=is:unresolved"], "").length,
+    ).toBeGreaterThan(0);
+  });
+
   test("returns org/project completions for project list", async () => {
     await seedOrgs([{ slug: "test-org", name: "Test" }]);
     const result = getCompletions(["project", "list"], "test");
@@ -572,10 +585,34 @@ describe("completeDashboards", () => {
     expect(completeDashboards("", ["acme/"])).toEqual([
       { value: "12", description: "Errors" },
     ]);
-    expect(completeDashboards("", ["--web", "beta"])).toEqual([
+    expect(completeDashboards("", ["beta"])).toEqual([
       { value: "34", description: "Latency" },
     ]);
     expect(completeDashboards("", ["acme/", "12"])).toEqual([]);
+  });
+
+  test("skips flag values when counting positionals", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(DASHBOARD_ENTITY, "acme", [
+      { value: "12", label: "Errors" },
+    ]);
+
+    // The value of --period is not a dashboard.
+    expect(getCompletions(["dashboard", "view", "--period"], "")).toEqual([]);
+    expect(
+      getCompletions(["dashboard", "restore", "acme", "--revision"], ""),
+    ).toEqual([]);
+    // `7d` is the flag value, so the next word is still the first positional.
+    expect(
+      getCompletions(["dashboard", "view", "--period", "7d"], "acme/"),
+    ).toEqual([{ value: "acme/12", description: "Errors" }]);
+    expect(
+      getCompletions(["dashboard", "view", "--period", "7d", "acme"], ""),
+    ).toEqual([{ value: "12", description: "Errors" }]);
+    // Boolean flags do not consume a value.
+    expect(getCompletions(["dashboard", "view", "--web", "acme"], "")).toEqual([
+      { value: "12", description: "Errors" },
+    ]);
   });
 
   test("is used by dashboard commands that take an existing dashboard", async () => {
