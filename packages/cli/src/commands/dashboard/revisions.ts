@@ -12,7 +12,7 @@ import {
 } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { parseDashboardTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -137,7 +137,7 @@ export const revisionsCommand = buildCommand({
       parameter: {
         placeholder: "org/dashboard",
         brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: parseOrgProjectTarget,
+        parse: parseDashboardTarget,
       },
     },
     flags: {

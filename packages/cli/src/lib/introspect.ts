@@ -15,8 +15,6 @@ import {
   COMPLETION_TARGETS,
   type CompletionTarget,
   getCompletionTarget,
-  ORG_PROJECT_TARGET,
-  ORG_TARGET,
 } from "./completion-target.js";
 import {
   extractSchemaFields,
@@ -409,10 +407,10 @@ export type CompletionTargets = Record<CompletionTarget, string[]>;
 /**
  * Read a command's completion target from its positional parsers.
  *
- * A command completes org or org/project slugs when one of its positionals
- * uses `parseOrgTarget` or `parseOrgProjectTarget` (see
- * `completion-target.ts`). Mixing both kinds in one command is rejected
- * because `__complete` classifies whole commands, not argument positions.
+ * A command declares a completion target when one of its positionals uses a
+ * completion-aware parser such as `parseOrgTarget` (see
+ * `completion-target.ts`). Mixing kinds in one command is rejected because
+ * `__complete` classifies whole commands, not argument positions.
  *
  * @param command - Command to inspect
  * @param path - Command path, used in the error message
@@ -438,7 +436,7 @@ function getCommandCompletionTarget(
   }
   if (kinds.size > 1) {
     throw new Error(
-      `Command "${path}" mixes org and org/project completion targets`,
+      `Command "${path}" mixes completion targets: ${[...kinds].join(", ")}`,
     );
   }
   return kinds.values().next().value;
@@ -458,10 +456,9 @@ export function extractCompletionTargets(
   routeMap: RouteMap,
   prefix: readonly string[] = [],
 ): CompletionTargets {
-  const targets: CompletionTargets = {
-    [ORG_TARGET]: [],
-    [ORG_PROJECT_TARGET]: [],
-  };
+  const targets = Object.fromEntries(
+    COMPLETION_TARGETS.map((kind) => [kind, [] as string[]]),
+  ) as CompletionTargets;
 
   for (const entry of routeMap.getAllEntries()) {
     if (entry.hidden) {

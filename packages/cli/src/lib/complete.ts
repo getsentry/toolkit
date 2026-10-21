@@ -7,7 +7,7 @@
  * Designed for minimal startup time — no Stricli boot, no telemetry,
  * no auth check, no API calls. Opens the SQLite cache directly for ~1ms
  * reads. All data comes from caches already populated by normal CLI
- * usage (org_regions, project_cache, project_aliases).
+ * usage (org_regions, project_cache, project_aliases, completion_cache).
  *
  * Protocol:
  *   Input:  `sentry __complete <word1> <word2> ... <partial>`
@@ -19,11 +19,19 @@ import generatedTargets from "../generated/completion-targets.json";
 import {
   COMPLETION_TARGETS,
   type CompletionTarget,
+  DASHBOARD_TARGET,
+  ISSUE_TARGET,
   ORG_PROJECT_TARGET,
   ORG_TARGET,
 } from "./completion-target.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getCredentialContext } from "./db/auth.js";
+import {
+  type CompletionEntityKind,
+  DASHBOARD_ENTITY,
+  getCachedCompletionEntities,
+  ISSUE_ENTITY,
+} from "./db/completion-cache.js";
 import { queueCompletionTelemetry } from "./db/completion-telemetry.js";
 import { getProjectAliases } from "./db/project-aliases.js";
 import { getCachedProjectsForOrg } from "./db/project-cache.js";
@@ -117,6 +125,13 @@ const COMMAND_TARGETS = new Map<string, CompletionTarget>(
   ),
 );
 
+/** The command named by the preceding words and what follows it. */
+type CommandMatch = {
+  target: CompletionTarget;
+  /** Words typed after the command path (positionals and flags). */
+  args: string[];
+};
+
 /**
  * Find the completion target declared by the command named in `words`.
  *
@@ -124,11 +139,11 @@ const COMMAND_TARGETS = new Map<string, CompletionTarget>(
  * preceding words can name a command; everything after it is positionals
  * or flags.
  */
-function findCompletionTarget(words: string[]): CompletionTarget | undefined {
+function findCompletionTarget(words: string[]): CommandMatch | undefined {
   for (let length = 1; length <= words.length; length++) {
     const target = COMMAND_TARGETS.get(words.slice(0, length).join(" "));
     if (target) {
-      return target;
+      return { target, args: words.slice(length) };
     }
   }
   return;
@@ -159,11 +174,16 @@ export function getCompletions(
     return completeProjectCreateSpec(partial);
   }
 
-  switch (findCompletionTarget(precedingWords)) {
+  const match = findCompletionTarget(precedingWords);
+  switch (match?.target) {
     case ORG_PROJECT_TARGET:
       return completeOrgSlashProject(partial);
     case ORG_TARGET:
       return completeOrgSlugs(partial);
+    case ISSUE_TARGET:
+      return completeIssues(partial);
+    case DASHBOARD_TARGET:
+      return completeDashboards(partial, match.args);
     default:
       // Not a known command path — no dynamic completions
       return [];
@@ -369,5 +389,172 @@ export function completeAliases(partial: string): Completion[] {
       value: alias,
       description: entry ? `${entry.orgSlug}/${entry.projectSlug}` : undefined,
     };
+  });
+}
+
+/** Most cached-entity suggestions returned for one completion. */
+const MAX_ENTITY_COMPLETIONS = 50;
+
+/** Where cached entities are looked up and how their values are written. */
+type EntityScope = {
+  /** Only suggest entities from this org; all completion orgs otherwise. */
+  org?: string;
+  /** Prepended to every suggested value (e.g. `my-org/`). */
+  prefix?: string;
+  /** Always write `org/value`, not only when a value exists in several orgs. */
+  qualify?: boolean;
+};
+
+/**
+ * Complete entities remembered in the `completion_cache` table.
+ *
+ * Matches the partial against both the value and its label (issue or
+ * dashboard title), so typing part of a title finds its ID. An empty partial
+ * returns the most recently seen entities first.
+ *
+ * Without a scope, values are bare unless the same value exists in more than
+ * one org, in which case they are written as `org/value` to stay unambiguous.
+ *
+ * @param kind - Entity type to complete
+ * @param partial - Partial value or title
+ * @param scope - Optional org restriction and value formatting
+ */
+export function completeCachedEntities(
+  kind: CompletionEntityKind,
+  partial: string,
+  scope: EntityScope = {},
+): Completion[] {
+  const orgs = scope.org
+    ? [scope.org]
+    : getCompletionOrganizations().map((org) => org.slug);
+  const entities = getCachedCompletionEntities(kind, orgs);
+  if (entities.length === 0) {
+    return [];
+  }
+
+  let ranked = entities;
+  if (partial !== "") {
+    const candidates = new Set<string>();
+    for (const entity of entities) {
+      candidates.add(entity.value);
+      if (entity.label) {
+        candidates.add(entity.label);
+      }
+    }
+    const rank = new Map(
+      fuzzyMatch(partial, [...candidates], { mode: "search" }).map(
+        (candidate, index) => [candidate, index],
+      ),
+    );
+    const score = (entity: (typeof entities)[number]) =>
+      Math.min(
+        rank.get(entity.value) ?? Number.POSITIVE_INFINITY,
+        entity.label
+          ? (rank.get(entity.label) ?? Number.POSITIVE_INFINITY)
+          : Number.POSITIVE_INFINITY,
+      );
+    ranked = entities
+      .map((entity) => ({ entity, score: score(entity) }))
+      .filter(({ score: s }) => Number.isFinite(s))
+      .sort((a, b) => a.score - b.score)
+      .map(({ entity }) => entity);
+  }
+
+  const orgsPerValue = new Map<string, number>();
+  for (const entity of entities) {
+    orgsPerValue.set(entity.value, (orgsPerValue.get(entity.value) ?? 0) + 1);
+  }
+
+  const prefix = scope.prefix ?? "";
+  return ranked.slice(0, MAX_ENTITY_COMPLETIONS).map((entity) => {
+    const qualified =
+      scope.qualify || (orgsPerValue.get(entity.value) ?? 0) > 1
+        ? `${entity.orgSlug}/${entity.value}`
+        : entity.value;
+    return { value: `${prefix}${qualified}`, description: entity.label };
+  });
+}
+
+/**
+ * Complete an issue positional.
+ *
+ * Offers everything {@link completeOrgSlashProject} does plus issue short IDs
+ * remembered from earlier `issue list` / `issue view` runs:
+ * - No slash: `org/` prefixes, aliases, and short IDs (e.g. `CLI-1A2`)
+ * - `org/…`: projects in the org and `org/SHORT-ID` for its issues
+ *
+ * @param partial - The partial issue argument
+ */
+export function completeIssues(partial: string): Completion[] {
+  const slashIdx = partial.indexOf("/");
+  if (slashIdx === -1) {
+    return [
+      ...completeOrgSlashProject(partial),
+      ...completeCachedEntities(ISSUE_ENTITY, partial),
+    ];
+  }
+
+  const orgPart = partial.slice(0, slashIdx);
+  const org = orgPart ? fuzzyResolveOrg(orgPart) : undefined;
+  if (!org) {
+    return [];
+  }
+  const rest = partial.slice(slashIdx + 1);
+  return [
+    ...completeProjectSlugs(rest, org),
+    ...completeCachedEntities(ISSUE_ENTITY, rest, {
+      org,
+      prefix: `${org}/`,
+    }),
+  ];
+}
+
+/**
+ * Complete a `[<org/project>] <dashboard-id-or-title>` positional.
+ *
+ * - First positional, no slash: `org/` prefixes and `org/<id>` for
+ *   remembered dashboards (the title is shown as description and matched)
+ * - First positional, `org/…`: `org/<id>` for that org's dashboards
+ * - Second positional: bare IDs for the org named by the first one
+ *
+ * Words starting with `-` are treated as flags. A flag value given as a
+ * separate word counts as a positional, which can only hide suggestions.
+ *
+ * @param partial - The partial dashboard argument
+ * @param args - Words typed after the command path
+ */
+export function completeDashboards(
+  partial: string,
+  args: readonly string[],
+): Completion[] {
+  const positionals = args.filter((word) => !word.startsWith("-"));
+
+  if (positionals.length === 1) {
+    const orgPart = positionals[0]?.split("/")[0];
+    const org = orgPart ? fuzzyResolveOrg(orgPart) : undefined;
+    return org
+      ? completeCachedEntities(DASHBOARD_ENTITY, partial, { org })
+      : [];
+  }
+  if (positionals.length > 1) {
+    return [];
+  }
+
+  const slashIdx = partial.indexOf("/");
+  if (slashIdx === -1) {
+    return [
+      ...completeOrgSlugsWithSlash(partial),
+      ...completeCachedEntities(DASHBOARD_ENTITY, partial, { qualify: true }),
+    ];
+  }
+
+  const orgPart = partial.slice(0, slashIdx);
+  const org = orgPart ? fuzzyResolveOrg(orgPart) : undefined;
+  if (!org) {
+    return [];
+  }
+  return completeCachedEntities(DASHBOARD_ENTITY, partial.slice(slashIdx + 1), {
+    org,
+    prefix: `${org}/`,
   });
 }

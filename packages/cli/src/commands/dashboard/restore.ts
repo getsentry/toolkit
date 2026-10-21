@@ -8,7 +8,7 @@ import type { SentryContext } from "../../context.js";
 import { restoreDashboardRevision } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { parseDashboardTarget } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -74,7 +74,7 @@ export const restoreCommand = buildCommand({
       parameter: {
         placeholder: "org/dashboard",
         brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: parseOrgProjectTarget,
+        parse: parseDashboardTarget,
       },
     },
     flags: {

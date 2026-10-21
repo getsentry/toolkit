@@ -7,8 +7,12 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  DASHBOARD_TARGET,
+  ISSUE_TARGET,
   ORG_PROJECT_TARGET,
   ORG_TARGET,
+  parseDashboardTarget,
+  parseIssueTarget,
   parseOrgProjectTarget,
   parseOrgTarget,
 } from "../../src/lib/completion-target.js";
@@ -430,6 +434,8 @@ describe("extractCompletionTargets", () => {
     expect(extractCompletionTargets(topLevel)).toEqual({
       [ORG_TARGET]: ["trial"],
       [ORG_PROJECT_TARGET]: ["issue list", "issue rules view", "issue view"],
+      [ISSUE_TARGET]: [],
+      [DASHBOARD_TARGET]: [],
     });
   });
 
@@ -444,6 +450,22 @@ describe("extractCompletionTargets", () => {
     expect(extractCompletionTargets(topLevel)).toEqual({
       [ORG_TARGET]: [],
       [ORG_PROJECT_TARGET]: [],
+      [ISSUE_TARGET]: [],
+      [DASHBOARD_TARGET]: [],
+    });
+  });
+
+  test("classifies issue and dashboard positionals", () => {
+    const topLevel = makeRouteMap([
+      makeEntry("issue", commandWith(parseIssueTarget)),
+      makeEntry("dashboard", commandWith(parseDashboardTarget)),
+    ]);
+
+    expect(extractCompletionTargets(topLevel)).toEqual({
+      [ORG_TARGET]: [],
+      [ORG_PROJECT_TARGET]: [],
+      [ISSUE_TARGET]: ["issue"],
+      [DASHBOARD_TARGET]: ["dashboard"],
     });
   });
 

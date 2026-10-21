@@ -48,6 +48,10 @@ import {
   updateIssueStatus,
 } from "../../src/lib/api-client.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
+import {
+  getCachedCompletionEntities,
+  ISSUE_ENTITY,
+} from "../../src/lib/db/completion-cache.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
 import { ApiError, AuthError } from "../../src/lib/errors.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
@@ -200,6 +204,23 @@ describe("issues.ts", () => {
 
       const result = await getIssueByShortId("test-org", "test-1");
       expect(result.shortId).toBe("TEST-1");
+    });
+
+    test("remembers the issue for shell completion", async () => {
+      const issue = mockIssue({ shortId: "TEST-1", title: "Boom" });
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(JSON.stringify({ group: issue }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+
+      await getIssueByShortId("test-org", "test-1");
+
+      expect(getCachedCompletionEntities(ISSUE_ENTITY, ["test-org"])).toEqual([
+        { orgSlug: "test-org", value: "TEST-1", label: "Boom" },
+      ]);
     });
 
     test("passes collapse query params when provided", async () => {

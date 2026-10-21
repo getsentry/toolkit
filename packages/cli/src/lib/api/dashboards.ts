@@ -38,6 +38,7 @@ import {
   type WidgetDataResult,
 } from "../../types/dashboard.js";
 import { stringifyUnknown } from "../errors.js";
+import { seedDashboardCompletions } from "./completion-seed.js";
 
 import { resolveOrgRegion } from "../region.js";
 
@@ -73,10 +74,12 @@ export async function listDashboardsPaginated(
     query: { per_page: options.perPage, cursor: options.cursor },
   });
 
-  return unwrapPaginatedResult<DashboardListItem[]>(
+  const page = unwrapPaginatedResult<DashboardListItem[]>(
     result,
     "Failed to list dashboards",
   );
+  seedDashboardCompletions(orgSlug, page.data);
+  return page;
 }
 
 /**
@@ -100,10 +103,12 @@ export async function getDashboard(
     },
   });
 
-  return unwrapResult<DashboardDetail>(
+  const dashboard = unwrapResult<DashboardDetail>(
     result,
     `Failed to get dashboard '${dashboardId}'`,
   );
+  seedDashboardCompletions(orgSlug, [dashboard]);
+  return dashboard;
 }
 
 /**
@@ -127,7 +132,12 @@ export async function createDashboard(
     >[0]["body"],
   });
 
-  return unwrapResult<DashboardDetail>(result, "Failed to create dashboard");
+  const dashboard = unwrapResult<DashboardDetail>(
+    result,
+    "Failed to create dashboard",
+  );
+  seedDashboardCompletions(orgSlug, [dashboard]);
+  return dashboard;
 }
 
 /**
