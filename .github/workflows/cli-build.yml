@@ -17,8 +17,8 @@ permissions:
 env:
   SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
   NODE_VERSION_20: "20.20.2"
-  NODE_VERSION_22: "22.23.1"
-  NODE_VERSION_24: "24.18.0"
+  NODE_VERSION_22: "22.23.4"
+  NODE_VERSION_24: "24.22.1"
 
 jobs:
   nightly-version:
