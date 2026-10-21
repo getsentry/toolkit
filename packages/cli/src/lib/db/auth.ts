@@ -341,9 +341,9 @@ export type EnvAccount = Readonly<{
 
 /**
  * The env token's virtual account, when its server is known from a trusted
- * source: its `sntrys_` claim, `SENTRY_HOST`/`SENTRY_URL` from the boot
- * env, or SaaS when neither is set (see `getTrustedEnvTokenHost`). Never
- * from `.sentryclirc` or a URL argument. `undefined` without an env token
+ * source: its `sntrys_` claim, or SaaS (see `getTrustedEnvTokenHost`). A
+ * self-hosted `SENTRY_HOST`/`SENTRY_URL` alone never qualifies, nor does
+ * `.sentryclirc` or a URL argument. `undefined` without an env token
  * or a trusted server; the env token then keeps its fallback role only.
  */
 export function getEnvAccount(): EnvAccount | undefined {

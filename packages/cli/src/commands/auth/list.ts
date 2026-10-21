@@ -29,7 +29,7 @@ export const listCommand = buildCommand({
       "The active account (marked with *) is used for commands. Log in again to add\n" +
       "another account, and use 'sentry auth switch' to change the active one.\n\n" +
       "SENTRY_AUTH_TOKEN (or SENTRY_TOKEN) is listed too when its server is known\n" +
-      "(SENTRY_HOST/SENTRY_URL from the environment, or sentry.io), with the user\n" +
+      "(an organization auth token's own URL, or sentry.io), with the user\n" +
       "it belongs to when the server says. It is never stored and can't be\n" +
       "switched to: commands targeting an organization it can access use it.",
   },

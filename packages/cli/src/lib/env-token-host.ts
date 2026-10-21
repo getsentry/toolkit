@@ -34,6 +34,7 @@
  *   4. getDefaultUrl() fallback   ← may write env.SENTRY_URL
  */
 
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { DEFAULT_SENTRY_URL, normalizeUrl } from "./constants.js";
 import { getRawEnvToken } from "./db/auth.js";
 import { getEnv } from "./env.js";
@@ -42,6 +43,8 @@ import { parseSntrysClaim } from "./token-claims.js";
 
 type HostSnapshot = {
   host: string;
+  /** Whether `host` came from the token's `sntrys_` claim. */
+  hostFromClaim: boolean;
   configuredHost: string | null;
   claimError?: ConfigError;
   /**
@@ -135,6 +138,7 @@ export function captureEnvTokenHost(): void {
   snapshotState.byEnv.set(env, {
     configuredHost,
     host: claim.host ?? configuredHost ?? DEFAULT_SENTRY_URL,
+    hostFromClaim: claim.host !== undefined,
     ...(claim.error ? { claimError: claim.error } : {}),
     ...(token ? { token } : {}),
   });
@@ -159,11 +163,19 @@ export function getEnvTokenHost(): string {
 
 /**
  * The env token's host when it is known from a trusted source: the token's
- * `sntrys_` claim, or `SENTRY_HOST`/`SENTRY_URL` from the boot env, else
- * SaaS. `undefined` when the current env token was not present at the
+ * `sntrys_` claim, or a Sentry SaaS origin (the default when no server is
+ * configured). Gates using the env token as an account of its own, next to
+ * stored logins (see `getEnvAccount` in `db/auth.ts`).
+ *
+ * A self-hosted `SENTRY_HOST`/`SENTRY_URL` alone is not enough: in layered
+ * CI it can be injected without access to the token (see the trust model
+ * above), and treating it as the token's server would send the token there
+ * even when a stored login exists. Such tokens keep the stored-login-first
+ * behavior; `SENTRY_FORCE_ENV_TOKEN` opts into them explicitly.
+ *
+ * `undefined` as well when the current env token was not present at the
  * snapshot (a `.sentryclirc` token, whose server is unknown) or its claim
- * is malformed. Gates using the env token as an account of its own (see
- * `getEnvAccount` in `db/auth.ts`).
+ * is malformed.
  */
 export function getTrustedEnvTokenHost(): string | undefined {
   const env = getEnv();
@@ -173,6 +185,9 @@ export function getTrustedEnvTokenHost(): string | undefined {
   const snapshot = snapshotState.byEnv.get(env);
   const token = getRawEnvToken();
   if (!(snapshot && token) || snapshot.claimError || snapshot.token !== token) {
+    return;
+  }
+  if (!(snapshot.hostFromClaim || isSaaSTrustOrigin(snapshot.host))) {
     return;
   }
   return snapshot.host;

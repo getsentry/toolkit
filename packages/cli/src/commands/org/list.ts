@@ -408,9 +408,9 @@ export const listCommand = buildCommand({
       "(an email, username, or account id; add :<server> to pick one server's\n" +
       "login, e.g. jane@example.com:sentry.example.com, as shown in ACCOUNT).\n\n" +
       "SENTRY_AUTH_TOKEN (or SENTRY_TOKEN) is listed as one more account,\n" +
-      "env:SENTRY_AUTH_TOKEN, when its server is known: SENTRY_HOST/SENTRY_URL\n" +
-      "from the environment, or sentry.io when neither is set. Organizations it\n" +
-      "can access are listed under it, and commands targeting them use it.\n" +
+      "env:SENTRY_AUTH_TOKEN, when its server is known: an organization auth\n" +
+      "token's own URL, or sentry.io. Organizations it can access are listed\n" +
+      "under it, and commands targeting them use it.\n" +
       "With SENTRY_FORCE_ENV_TOKEN=1, only the env token is used.\n\n" +
       "Pass a filter to only list organizations whose slug or name matches it,\n" +
       "ignoring case: exactly, as a prefix or substring, or with a small typo\n" +

@@ -108,9 +108,12 @@ that fits what they target, without changing the active account:
   URL for another account's server (for example a self-hosted issue link) uses
   the account stored for that server.
 - **Environment token** — `SENTRY_AUTH_TOKEN` (or `SENTRY_TOKEN`) acts as one
-  more account, never stored, when its server is known: an organization auth
-  token's own URL, else `SENTRY_HOST`/`SENTRY_URL` from the environment, else
-  sentry.io (never `.sentryclirc` or a pasted URL). `sentry org list` lists its
+  more account, never stored, when its server is known from a trusted source:
+  an organization auth token's own URL, else sentry.io (including a sentry.io
+  `SENTRY_HOST`/`SENTRY_URL`; never `.sentryclirc` or a pasted URL). A
+  self-hosted `SENTRY_HOST`/`SENTRY_URL` alone doesn't count, since CI steps
+  can set it without access to the token: use an organization auth token, or
+  `SENTRY_FORCE_ENV_TOKEN=1`. `sentry org list` lists its
   organizations under `env:SENTRY_AUTH_TOKEN` and caches them; commands
   targeting one of them then use the env token, even when a stored account
   knows the organization too. It also serves its

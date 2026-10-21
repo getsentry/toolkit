@@ -18,6 +18,7 @@ import { getEnvTokenHost } from "../../../src/lib/env-token-host.js";
 import { setUserInfo } from "../../../src/lib/db/user.js";
 import { AuthError, ResolutionError } from "../../../src/lib/errors.js";
 import {
+  mintSntrysToken,
   resetHostScopingState,
   useEnvSandbox,
   useTestConfigDir,
@@ -564,7 +565,22 @@ describe("org list with an env token", () => {
     expect(out).toContain("env:SENTRY_TOKEN");
   });
 
-  test("uses the server configured at boot", async () => {
+  test("uses its org auth token's server", async () => {
+    const token = mintSntrysToken({ iat: 1, url: ACME, org: "ci-org" });
+    process.env.SENTRY_AUTH_TOKEN = token;
+    process.env.SENTRY_URL = ACME;
+    addAccount("acme-token", ACME, "jane@acme.com");
+    orgsByToken[token] = [org("ci-org", ACME)];
+    orgsByToken["acme-token"] = [org("acme-internal", ACME)];
+
+    const entries = await runList();
+
+    expect(entries.map((e) => e.slug)).toEqual(["ci-org", "acme-internal"]);
+    expect(requests).toContain(`${ACME} ${token}`);
+    expect(requests.some((r) => r.startsWith(`${SAAS} `))).toBe(false);
+  });
+
+  test("leaves out a token on a self-hosted server only the env names", async () => {
     process.env.SENTRY_AUTH_TOKEN = "env-token";
     process.env.SENTRY_URL = ACME;
     addAccount("acme-token", ACME, "jane@acme.com");
@@ -573,9 +589,8 @@ describe("org list with an env token", () => {
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["ci-org", "acme-internal"]);
-    expect(requests).toContain(`${ACME} env-token`);
-    expect(requests.some((r) => r.startsWith(`${SAAS} `))).toBe(false);
+    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
+    expect(requests.some((r) => r.includes("env-token"))).toBe(false);
   });
 
   test("an explicit server set after boot on another server leaves it out", async () => {
