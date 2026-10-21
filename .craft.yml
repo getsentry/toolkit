@@ -75,10 +75,22 @@ workspaces:
 
             def install
               bin.install Dir["sentry-*"].first => "sentry"
+              # Homebrew-managed completion dirs survive the build sandbox and
+              # are cleaned up by `brew uninstall`. Writing into $HOME from
+              # post_install does not work: it runs under a throwaway HOME.
+              generate_completions_from_executable(bin/"sentry", "cli", "completion")
             end
 
-            def post_install
-              system bin/"sentry", "cli", "setup", "--method", "brew", "--no-modify-path"
+            def caveats
+              <<~EOS
+                Shell completions for bash, zsh, and fish are installed by Homebrew.
+
+                To install the Sentry CLI skill for detected AI coding agents, run:
+                  sentry cli setup --no-modify-path --no-completions
+
+                `sentry cli upgrade` refreshes the skill automatically. After a
+                `brew upgrade`, run the command above again.
+              EOS
             end
 
             test do

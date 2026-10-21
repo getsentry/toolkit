@@ -123,6 +123,12 @@ On Alpine and other musl-based Linux systems, install Node.js and use
 brew install getsentry/tools/sentry
 ```
 
+Homebrew installs shell completions but can't install agent skills into your home directory. Run `sentry cli setup` once to add them, and again after `brew upgrade`:
+
+```bash
+sentry cli setup --no-modify-path --no-completions
+```
+
 ## Package Managers
 
 Install globally with your preferred package manager (the npm packages require **Node.js 20+**; on **22.15+** the built-in `node:sqlite` is used, on 20–22.14 a bundled WASM fallback is used transparently):
@@ -134,7 +140,7 @@ Install globally with your preferred package manager (the npm packages require *
   bun="bun add -g sentry"
 />
 
-Unlike the install script and Homebrew, package manager installs don't set up shell completions or agent skills. Run `sentry cli setup` once to enable them:
+Unlike the install script, package manager installs don't set up shell completions or agent skills. Run `sentry cli setup` once to enable them:
 
 ```bash
 sentry cli setup
