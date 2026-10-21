@@ -1273,6 +1273,7 @@ export function createDatasetAttributesTool(options: {
             attributeTypes,
             substringMatch,
             query,
+            context: true,
           },
         );
 
