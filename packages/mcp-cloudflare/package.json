@@ -48,7 +48,7 @@
     "vite": "catalog:",
     "vitest": "catalog:",
     "miniflare": "catalog:",
-    "wrangler": "4.136.1"
+    "wrangler": "4.151.3"
   },
   "dependencies": {
     "@ai-sdk/mcp": "catalog:",

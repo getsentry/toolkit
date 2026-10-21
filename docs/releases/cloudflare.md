@@ -169,12 +169,16 @@ The `production` GitHub environment allows only `main`. Store
 out of command arguments and logs. After a verified deployment, remove any
 repository-level copy of `CLOUDFLARE_API_TOKEN`.
 
-The MCP package pins Wrangler to 4.136.1, the first release that reads
+The MCP package pins Wrangler to 4.151.3. Since 4.136.1, Wrangler reads
 `workers.dev` and version-preview URLs from the Worker resource. Older versions
 can upload successfully with a Worker-scoped token, then fail while reading the
 account-level subdomain. This upgrade requires Node 22 or newer. When changing
 the pin, run the local smoke workflow as well as the build: Wrangler 4.125.0
 previously caused the local Worker to exit during OAuth metadata requests.
+
+`upload_source_maps` stays explicitly disabled for Cloudflare uploads; the Vite
+plugin uploads source maps to Sentry. Wrangler 4.150.0 changed its default to
+upload source maps when this setting is omitted.
 
 See `github-actions.md` for detailed setup instructions.
 
