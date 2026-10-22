@@ -155,7 +155,7 @@ Create a metric alert rule
 - `--name <value> - Rule name`
 - `--query <value> - Metric query filter string`
 - `--aggregate <value> - Aggregate expression (for example count(), p95(span.duration))`
-- `--dataset <value> - Dataset: errors (error-events), events, spans, logs, sessions, metrics (transaction(s) routes to spans)`
+- `--dataset <value> - Dataset: errors, events, spans, logs, metrics, sessions (error-events is errors; transaction(s) routes to spans)`
 - `--time-window <value> - Evaluation window in minutes`
 - `-t, --trigger <value>... - Trigger object JSON (repeatable, or pass one JSON array)`
 - `-p, --project <value>... - Project slug filter (repeatable or comma-separated)`
@@ -214,7 +214,7 @@ Edit a metric alert rule
 - `--status <value> - active or disabled`
 - `--query <value> - Metric query filter`
 - `--aggregate <value> - Aggregate expression`
-- `--dataset <value> - Dataset: errors (error-events), events, spans, logs, sessions, metrics (transaction(s) routes to spans)`
+- `--dataset <value> - Dataset: errors, events, spans, logs, metrics, sessions (error-events is errors; transaction(s) routes to spans)`
 - `--time-window <value> - Evaluation window in minutes`
 - `-t, --trigger <value>... - Trigger object JSON (repeatable, or pass one JSON array)`
 - `-p, --project <value>... - Project slug filter (repeatable or comma-separated)`

@@ -3,49 +3,13 @@
  */
 
 import { ValidationError } from "../../lib/errors.js";
+import {
+  METRIC_ALERT_DATASET_ALIASES,
+  METRIC_ALERT_DATASET_NAMES,
+  metricAlertSource,
+} from "../../types/metric-alert.js";
 
 const ISSUE_MATCH_MODES = new Set(["all", "any"]);
-const METRIC_DATASET_VALUES = new Set([
-  "errors",
-  "sessions",
-  "events",
-  "spans",
-  "logs",
-  "metrics",
-]);
-
-/**
- * Maps user-provided dataset aliases to canonical metric alert dataset values.
- *
- * Only aliases that resolve to a value already accepted by the metric alert API
- * are listed here: the singular forms (`error` → `errors`, `span` → `spans`)
- * and the dashboard terminology for the error dataset (`error-events` →
- * `errors`). This lets users copying from dashboard docs avoid a validation
- * error without changing which dataset is sent.
- *
- * Names that denote a *distinct* dataset in the metric alert path — e.g.
- * `tracemetrics`, `metricsenhanced`, `eap`, `events_analytics_platform` — are
- * deliberately NOT aliased here. Rewriting them onto `metrics`/`spans` would
- * silently send the wrong dataset in the create/edit payload (the CLI's
- * canonical `metrics` is session/crash-rate, not trace metrics), with no
- * validation error to catch it.
- *
- * The deprecated `transaction`/`transactions` datasets are handled separately
- * by {@link resolveMetricDataset} — they route to `spans` with an added
- * `is_transaction:true` filter rather than a plain rename, so they are not
- * listed here.
- */
-const METRIC_DATASET_ALIASES: Record<string, string> = {
-  // Singular forms
-  error: "errors",
-  session: "sessions",
-  metric: "metrics",
-  span: "spans",
-  log: "logs",
-  // Dashboard terminology for the error dataset
-  "error-events": "errors",
-};
-
 /** Deprecated dataset names that now route to `spans` with `is_transaction:true`. */
 const TRANSACTION_DATASET_NAMES = new Set(["transaction", "transactions"]);
 
@@ -225,7 +189,7 @@ export function normalizeProjectList(
  */
 export function normalizeMetricDataset(dataset: string): string {
   const lower = dataset.trim().toLowerCase();
-  return METRIC_DATASET_ALIASES[lower] ?? lower;
+  return METRIC_ALERT_DATASET_ALIASES[lower] ?? lower;
 }
 
 /**
@@ -281,12 +245,11 @@ export function resolveMetricDataset(
 
 /** Validate that `dataset` is one of the allowed Sentry metric alert dataset values. */
 export function validateMetricDataset(dataset: string): void {
-  const normalized = normalizeMetricDataset(dataset);
-  if (METRIC_DATASET_VALUES.has(normalized)) {
+  if (metricAlertSource(normalizeMetricDataset(dataset))) {
     return;
   }
   throw new ValidationError(
-    `dataset must be one of: ${[...METRIC_DATASET_VALUES].join(", ")}.`,
+    `dataset must be one of: ${METRIC_ALERT_DATASET_NAMES.join(", ")}.`,
     "dataset",
   );
 }
@@ -300,95 +263,6 @@ export function validateMetricTimeWindow(timeWindow: number): void {
     `timeWindow must be one of: ${[...METRIC_TIME_WINDOWS].join(", ")} minutes.`,
     "timeWindow",
   );
-}
-
-const METRIC_TRIGGER_LABELS = new Set(["critical", "warning"]);
-
-/** Whether a trigger is a native detector condition rather than an `alertThreshold` trigger. */
-function isDetectorCondition(trigger: Record<string, unknown>): boolean {
-  return typeof trigger.type === "string";
-}
-
-/**
- * Validate one native detector condition (`{type, comparison, conditionResult}`).
- * The backend checks the operator and priority values; only presence is checked here.
- */
-function validateNativeMetricCondition(trigger: Record<string, unknown>): void {
-  if (
-    trigger.comparison === undefined ||
-    trigger.conditionResult === undefined
-  ) {
-    throw new ValidationError(
-      "Detector conditions with 'type' must include comparison and conditionResult.",
-      "trigger",
-    );
-  }
-}
-
-/** Validate one `alertThreshold`-style trigger. */
-function validateThresholdTrigger(trigger: Record<string, unknown>): void {
-  const threshold = trigger.alertThreshold;
-  if (
-    (typeof threshold !== "number" && typeof threshold !== "string") ||
-    !Number.isFinite(Number(threshold))
-  ) {
-    throw new ValidationError(
-      "Each trigger must include a numeric alertThreshold.",
-      "trigger",
-    );
-  }
-  if (
-    trigger.label !== undefined &&
-    !METRIC_TRIGGER_LABELS.has(String(trigger.label).toLowerCase())
-  ) {
-    throw new ValidationError(
-      `Trigger label must be 'critical' or 'warning' (got ${JSON.stringify(trigger.label)}).`,
-      "trigger",
-    );
-  }
-  if (Array.isArray(trigger.actions) && trigger.actions.length > 0) {
-    throw new ValidationError(
-      "Metric alerts no longer carry notification actions on triggers. " +
-        "Remove 'actions' and connect an existing alert with --workflow <id>.",
-      "trigger",
-    );
-  }
-}
-
-/**
- * Validate metric alert triggers.
- *
- * Each trigger is either a threshold (`alertThreshold`, optional `label`
- * critical|warning, `resolveThreshold`, `thresholdType` 0 above / 1 below) or
- * a native detector condition (`type`, `comparison`, `conditionResult`).
- * Notification actions are rejected: the detectors API does not accept them,
- * so they would otherwise be dropped silently.
- */
-export function validateMetricTriggers(
-  triggers: readonly Record<string, unknown>[] | undefined,
-): void {
-  if (!triggers || triggers.length === 0) {
-    throw new ValidationError(
-      "Pass at least one --trigger JSON object.",
-      "trigger",
-    );
-  }
-
-  const nativeCount = triggers.filter(isDetectorCondition).length;
-  if (nativeCount > 0 && nativeCount < triggers.length) {
-    throw new ValidationError(
-      "Do not mix detector conditions (with 'type') and alertThreshold triggers.",
-      "trigger",
-    );
-  }
-
-  for (const trigger of triggers) {
-    if (isDetectorCondition(trigger)) {
-      validateNativeMetricCondition(trigger);
-    } else {
-      validateThresholdTrigger(trigger);
-    }
-  }
 }
 
 /** Parse `--workflow` values (repeatable or comma-separated) into numeric workflow ids. */

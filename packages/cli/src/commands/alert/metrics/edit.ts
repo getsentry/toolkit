@@ -15,6 +15,10 @@ import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
 import {
+  METRIC_ALERT_DATASET_BRIEF,
+  parseMetricTriggers,
+} from "../../../types/metric-alert.js";
+import {
   normalizeMetricDataset,
   normalizeProjectList,
   parseJsonObjectList,
@@ -24,7 +28,6 @@ import {
   statusToMetricValue,
   validateMetricDataset,
   validateMetricTimeWindow,
-  validateMetricTriggers,
 } from "../mutation-utils.js";
 import { parseMetricRuleArg, resolveMetricAlertRule } from "./rule-resolve.js";
 import { metricAlertStatusLabel } from "./status.js";
@@ -121,7 +124,9 @@ function applyMetricOptionalFields(
   flags: EditFlags,
 ): Record<string, unknown> {
   if (flags.trigger !== undefined) {
-    body.triggers = parseJsonObjectList(flags.trigger, "trigger");
+    body.triggers = parseMetricTriggers(
+      parseJsonObjectList(flags.trigger, "trigger"),
+    );
   }
   if (flags.project !== undefined) {
     body.projects = normalizeProjectList(flags.project) ?? [];
@@ -143,11 +148,6 @@ function validateMetricBody(
   body: Record<string, unknown>,
   flags: EditFlags,
 ): void {
-  if (flags.trigger !== undefined) {
-    validateMetricTriggers(
-      body.triggers as Record<string, unknown>[] | undefined,
-    );
-  }
   if (flags.dataset !== undefined) {
     validateMetricDataset(normalizeMetricDataset(String(body.dataset)));
   }
@@ -227,8 +227,7 @@ export const editCommand = buildCommand({
         kind: "parsed",
         parse: String,
         optional: true,
-        brief:
-          "Dataset: errors (error-events), events, spans, logs, sessions, metrics (transaction(s) routes to spans)",
+        brief: METRIC_ALERT_DATASET_BRIEF,
       },
       "time-window": {
         kind: "parsed",

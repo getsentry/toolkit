@@ -13,13 +13,16 @@ import { CommandOutput } from "../../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../../lib/mutate-command.js";
 import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
 import {
+  METRIC_ALERT_DATASET_BRIEF,
+  parseMetricTriggers,
+} from "../../../types/metric-alert.js";
+import {
   normalizeProjectList,
   parseJsonObjectList,
   parseWorkflowIds,
   resolveMetricDataset,
   validateMetricDataset,
   validateMetricTimeWindow,
-  validateMetricTriggers,
 } from "../mutation-utils.js";
 import { metricAlertStatusLabel } from "./status.js";
 
@@ -126,8 +129,7 @@ export const createCommand = buildCommand({
       dataset: {
         kind: "parsed",
         parse: String,
-        brief:
-          "Dataset: errors (error-events), events, spans, logs, sessions, metrics (transaction(s) routes to spans)",
+        brief: METRIC_ALERT_DATASET_BRIEF,
       },
       "time-window": {
         kind: "parsed",
@@ -194,8 +196,9 @@ export const createCommand = buildCommand({
       this.stderr.write(`${warning(`Tip: ${datasetNotice}`)}\n`);
     }
 
-    const triggers = parseJsonObjectList(flags.trigger, "trigger");
-    validateMetricTriggers(triggers);
+    const triggers = parseMetricTriggers(
+      parseJsonObjectList(flags.trigger, "trigger"),
+    );
     const projects = normalizeProjectList(flags.project);
     if (!projects || projects.length === 0) {
       throw new ValidationError(

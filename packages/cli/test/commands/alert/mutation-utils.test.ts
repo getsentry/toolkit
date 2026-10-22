@@ -13,7 +13,6 @@ import {
   validateMetricDataset,
   validateMetricTimeWindow,
   parseWorkflowIds,
-  validateMetricTriggers,
 } from "../../../src/commands/alert/mutation-utils.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 
@@ -343,81 +342,6 @@ describe("validateMetricTimeWindow", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ValidationError);
     }
-  });
-});
-
-describe("validateMetricTriggers", () => {
-  test("throws for undefined triggers", () => {
-    try {
-      validateMetricTriggers(undefined);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
-  });
-
-  test("throws for empty triggers", () => {
-    try {
-      validateMetricTriggers([]);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
-  });
-
-  test("throws for missing alertThreshold", () => {
-    try {
-      validateMetricTriggers([{ actions: [{ id: "a" }] }]);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
-  });
-
-  test("passes for a threshold trigger without actions", () => {
-    expect(() =>
-      validateMetricTriggers([
-        { alertThreshold: 100, label: "warning", resolveThreshold: 50 },
-      ]),
-    ).not.toThrow();
-  });
-
-  test("rejects trigger actions, pointing at --workflow", () => {
-    expect(() =>
-      validateMetricTriggers([
-        { alertThreshold: 100, actions: [{ type: "email" }] },
-      ]),
-    ).toThrow(/--workflow/);
-  });
-
-  test("rejects an unknown label", () => {
-    expect(() =>
-      validateMetricTriggers([{ alertThreshold: 100, label: "info" }]),
-    ).toThrow(ValidationError);
-  });
-
-  test("passes native detector conditions", () => {
-    expect(() =>
-      validateMetricTriggers([
-        { type: "gt", comparison: 0, conditionResult: 75 },
-        { type: "lte", comparison: 0, conditionResult: 0 },
-      ]),
-    ).not.toThrow();
-  });
-
-  test("rejects native conditions missing comparison", () => {
-    expect(() =>
-      validateMetricTriggers([{ type: "gt", conditionResult: 75 }]),
-    ).toThrow(ValidationError);
-  });
-
-  test("rejects mixing native conditions and threshold triggers", () => {
-    expect(() =>
-      validateMetricTriggers([
-        { alertThreshold: 100 },
-        { type: "lte", comparison: 0, conditionResult: 0 },
-      ]),
-    ).toThrow(ValidationError);
   });
 });
 

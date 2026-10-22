@@ -1,3 +1,8 @@
+import {
+  METRIC_MONITOR_DATASETS,
+  METRIC_MONITOR_PRIORITY,
+  METRIC_MONITOR_THRESHOLD_TYPES,
+} from "@sentry/toolkit-core/metric-monitor";
 import { z } from "zod";
 import type { Detector, MetricMonitorUpdate } from "../../api-client/types";
 import { UserInputError } from "../../errors";
@@ -8,10 +13,15 @@ import {
 } from "./detector-details";
 
 const metricConditionSchema = conditionGroupSchema.shape.conditions.element;
+const { critical, warning, resolved } = METRIC_MONITOR_PRIORITY;
 const thresholdCondition = metricConditionSchema.extend({
-  type: z.enum(["gt", "lt", "gte", "lte"]),
+  type: z.enum(METRIC_MONITOR_THRESHOLD_TYPES),
   comparison: z.number(),
-  conditionResult: z.union([z.literal(75), z.literal(50), z.literal(0)]),
+  conditionResult: z.union([
+    z.literal(critical),
+    z.literal(warning),
+    z.literal(resolved),
+  ]),
 });
 const anomalyCondition = metricConditionSchema.extend({
   type: z.literal("anomaly_detection"),
@@ -20,17 +30,11 @@ const anomalyCondition = metricConditionSchema.extend({
     seasonality: z.literal("auto"),
     thresholdType: z.union([z.literal(0), z.literal(1), z.literal(2)]),
   }),
-  conditionResult: z.union([z.literal(75), z.literal(50)]),
+  conditionResult: z.union([z.literal(critical), z.literal(warning)]),
 });
 
 const metricMonitorQuerySchema = metricQueryDetailsSchema.extend({
-  dataset: z.enum([
-    "events",
-    "transactions",
-    "generic_metrics",
-    "metrics",
-    "events_analytics_platform",
-  ]),
+  dataset: z.enum(METRIC_MONITOR_DATASETS),
   aggregate: z.string().min(1),
   timeWindowSeconds: z.number().int().positive(),
 });

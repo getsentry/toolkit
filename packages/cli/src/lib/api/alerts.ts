@@ -16,6 +16,17 @@ import {
   updateOrganizationDetector,
   updateOrganizationWorkflow,
 } from "@sentry/api";
+import {
+  METRIC_MONITOR_PRIORITY,
+  METRIC_MONITOR_SOURCES,
+  type MetricMonitorSource,
+} from "@sentry/toolkit-core/metric-monitor";
+import {
+  isDetectorConditionList,
+  type MetricTriggers,
+  metricAlertDatasetName,
+  metricAlertSource,
+} from "../../types/metric-alert.js";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -205,9 +216,9 @@ function mapDetectorToMetricAlertRule(
     status: detector.enabled === false ? 1 : 0,
     query: pickDetectorString(nested.query),
     aggregate: pickDetectorString(nested.aggregate),
-    dataset: cliDatasetName(
+    dataset: metricAlertDatasetName(
       pickDetectorString(nested.dataset),
-      nested.eventTypes,
+      Array.isArray(nested.eventTypes) ? nested.eventTypes : [],
     ),
     timeWindow: timeWindowSeconds > 0 ? Math.round(timeWindowSeconds / 60) : 0,
     environment,
@@ -557,155 +568,67 @@ export async function createIssueAlertRule(
 // command layer unchanged while the transport moves off the retiring
 // `/alert-rules/` endpoint (getsentry/cli#1274, #1277).
 
-/**
- * How a CLI metric alert dataset maps onto a detector data source.
- *
- * The CLI keeps the friendly legacy dataset names (`errors`, `spans`, `logs`,
- * …), but the detector `SnubaQueryValidator` only accepts native `Dataset`
- * values and checks them against `queryType` and `eventTypes`: errors live in
- * `events` (type 0), spans and logs in `events_analytics_platform` (type 1)
- * distinguished by `eventTypes`, and crash-rate alerts in `metrics` (type 2).
- */
-type DetectorDatasetSource = {
+/** Native data source fields sent on a detector write. */
+type DetectorSourceFields = Omit<MetricMonitorSource, "dataset"> & {
   readonly dataset: string;
-  readonly queryType: 0 | 1 | 2;
-  readonly eventTypes: readonly string[];
-};
-
-const ERROR_SOURCE: DetectorDatasetSource = {
-  dataset: "events",
-  queryType: 0,
-  eventTypes: ["error", "default"],
-};
-const SPAN_SOURCE: DetectorDatasetSource = {
-  dataset: "events_analytics_platform",
-  queryType: 1,
-  eventTypes: ["trace_item_span"],
-};
-const LOG_SOURCE: DetectorDatasetSource = {
-  dataset: "events_analytics_platform",
-  queryType: 1,
-  eventTypes: ["trace_item_log"],
-};
-const CRASH_RATE_SOURCE: DetectorDatasetSource = {
-  dataset: "metrics",
-  queryType: 2,
-  eventTypes: [],
-};
-
-const DETECTOR_DATASET_SOURCES: Record<string, DetectorDatasetSource> = {
-  errors: ERROR_SOURCE,
-  events: ERROR_SOURCE,
-  spans: SPAN_SOURCE,
-  logs: LOG_SOURCE,
-  sessions: CRASH_RATE_SOURCE,
-  metrics: CRASH_RATE_SOURCE,
 };
 
 /**
- * Resolve the native detector dataset fields for a flat metric alert body.
+ * Resolve the native data source fields for a flat metric alert body.
  *
- * CLI dataset names use the mapping table. Other (native) datasets come from
- * an edit baseline, so they keep the stored `eventTypes`/`queryType`, falling
- * back to the span defaults only when the baseline carries none.
+ * CLI dataset names come from the shared dataset table. Any other (native)
+ * dataset comes from the edit baseline built by `getMetricAlertRuleDocument`,
+ * which carries the stored `eventTypes`/`queryType`; span defaults apply only
+ * when the baseline has none.
  */
-function detectorDatasetSource(
+function detectorSourceFields(
   body: Record<string, unknown>,
-): DetectorDatasetSource {
-  const dataset = typeof body.dataset === "string" ? body.dataset : "";
-  const modelled = DETECTOR_DATASET_SOURCES[dataset.trim().toLowerCase()];
-  if (modelled) {
-    return modelled;
+): DetectorSourceFields {
+  const dataset = String(body.dataset ?? "");
+  const named = metricAlertSource(dataset);
+  if (named) {
+    return named;
   }
+  const stored = body as Partial<DetectorSourceFields>;
   return {
+    queryType: stored.queryType ?? METRIC_MONITOR_SOURCES.spans.queryType,
+    eventTypes: stored.eventTypes ?? METRIC_MONITOR_SOURCES.spans.eventTypes,
     dataset,
-    queryType:
-      body.queryType === 0 || body.queryType === 1 || body.queryType === 2
-        ? body.queryType
-        : SPAN_SOURCE.queryType,
-    eventTypes: Array.isArray(body.eventTypes)
-      ? body.eventTypes.filter((t): t is string => typeof t === "string")
-      : SPAN_SOURCE.eventTypes,
   };
 }
 
 /**
- * Map a native detector dataset back onto the CLI dataset name.
+ * Translate parsed triggers into detector condition-group conditions.
  *
- * Inverse of {@link detectorDatasetSource}, so `view`/`list` show the same
- * names `create` accepts and an `edit` round-trip keeps log alerts on
- * `trace_item_log`. Unmodelled combinations are returned verbatim.
- */
-function cliDatasetName(dataset: string, eventTypes: unknown): string {
-  const types = Array.isArray(eventTypes) ? eventTypes : [];
-  if (dataset === "events") {
-    return "errors";
-  }
-  if (dataset === "events_analytics_platform") {
-    if (types.includes("trace_item_log")) {
-      return "logs";
-    }
-    if (types.includes("trace_item_span")) {
-      return "spans";
-    }
-  }
-  return dataset;
-}
-
-/** Detector priority levels used as metric condition results. */
-const PRIORITY_BY_LABEL: Record<string, number> = { critical: 75, warning: 50 };
-const PRIORITY_OK = 0;
-
-/** Trigger severity label, defaulting to `critical` like the legacy alert-rule API. */
-function triggerLabel(trigger: Record<string, unknown>): string {
-  return String(trigger.label ?? "critical").toLowerCase();
-}
-
-/** Whether a trigger is already a native detector condition (`{type, comparison, conditionResult}`). */
-function isNativeCondition(trigger: Record<string, unknown>): boolean {
-  return typeof trigger.type === "string";
-}
-
-/**
- * Translate CLI triggers into detector condition-group conditions.
- *
- * Legacy-shaped triggers (`alertThreshold`, optional `label`,
- * `resolveThreshold`, `thresholdType` 0 above / 1 below) become a threshold
- * condition per trigger plus the single resolution condition the
- * metric detector validator requires. Resolution uses the first
- * `resolveThreshold` given, else the critical (or first) alert threshold.
- * Native conditions (with a `type`) pass through untouched.
+ * Threshold triggers become one threshold condition each plus the single
+ * resolution condition the metric detector validator requires. Resolution uses
+ * the first `resolveThreshold` given, else the critical (or first) alert
+ * threshold. Native conditions pass through untouched.
  */
 function buildDetectorConditions(
-  triggers: readonly Record<string, unknown>[],
-): Record<string, unknown>[] {
-  // validateMetricTriggers rejects mixing the two shapes.
-  if (triggers.some(isNativeCondition)) {
-    return [...triggers];
+  triggers: MetricTriggers,
+): readonly Record<string, unknown>[] {
+  if (isDetectorConditionList(triggers)) {
+    return triggers;
   }
 
-  const below = triggers.some((trigger) => Number(trigger.thresholdType) === 1);
+  const below = triggers.some((trigger) => trigger.thresholdType === 1);
   const conditions: Record<string, unknown>[] = triggers.map((trigger) => ({
     type: below ? "lt" : "gt",
-    comparison: Number(trigger.alertThreshold),
-    conditionResult:
-      PRIORITY_BY_LABEL[triggerLabel(trigger)] ?? PRIORITY_BY_LABEL.critical,
+    comparison: trigger.alertThreshold,
+    conditionResult: METRIC_MONITOR_PRIORITY[trigger.label ?? "critical"],
   }));
 
-  const explicitResolve = triggers.find(
-    (trigger) =>
-      trigger.resolveThreshold !== undefined &&
-      trigger.resolveThreshold !== null,
-  );
   const critical =
-    triggers.find((trigger) => triggerLabel(trigger) === "critical") ??
+    triggers.find((trigger) => (trigger.label ?? "critical") === "critical") ??
     triggers[0];
+  const resolveThreshold =
+    triggers.find((trigger) => trigger.resolveThreshold != null)
+      ?.resolveThreshold ?? critical?.alertThreshold;
   conditions.push({
     type: below ? "gte" : "lte",
-    comparison: Number(
-      explicitResolve?.resolveThreshold ?? critical?.alertThreshold,
-    ),
-    conditionResult: PRIORITY_OK,
+    comparison: resolveThreshold,
+    conditionResult: METRIC_MONITOR_PRIORITY.resolved,
   });
   return conditions;
 }
@@ -720,7 +643,7 @@ function buildDetectorConditions(
 function buildDetectorDataSource(
   body: Record<string, unknown>,
 ): Record<string, unknown> {
-  const native = detectorDatasetSource(body);
+  const native = detectorSourceFields(body);
   const timeWindowMinutes =
     typeof body.timeWindow === "number" ? body.timeWindow : 0;
   const source: Record<string, unknown> = {
@@ -756,7 +679,8 @@ function buildDetectorBody(
     config: { detectionType: "static" },
   };
 
-  const triggers = Array.isArray(body.triggers) ? body.triggers : undefined;
+  // create/edit store triggers already parsed by parseMetricTriggers.
+  const triggers = body.triggers as MetricTriggers | undefined;
   if (triggers) {
     detectorBody.conditionGroup = {
       logicType: "any",
