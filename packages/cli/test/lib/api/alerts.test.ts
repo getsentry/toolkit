@@ -759,6 +759,56 @@ describe("metric alert edit round-trip of detector config", () => {
     expect(putConfig).toEqual(storedConfig);
   });
 
+  test.each([
+    ["percent", { detectionType: "percent", comparisonDelta: 3600 }],
+    ["dynamic", { detectionType: "dynamic" }],
+  ])(
+    "switches a %s detector to static for threshold triggers",
+    async (_label, storedConfig) => {
+      let putConfig: unknown;
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input!, init);
+        if (req.method === "PUT") {
+          const body = (await req.json()) as Record<string, unknown>;
+          putConfig = body.config;
+        }
+        return Response.json(metricDetector({ config: storedConfig }));
+      });
+
+      const doc = await getMetricAlertRuleDocument("test-org", "9");
+      await putMetricAlertRule("test-org", "9", {
+        ...doc,
+        triggers: [{ alertThreshold: 100 }],
+      });
+
+      expect(putConfig).toEqual({ detectionType: "static" });
+    },
+  );
+
+  test("keeps the stored config for native detector conditions", async () => {
+    const storedConfig = { detectionType: "percent", comparisonDelta: 3600 };
+    let putConfig: unknown;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.method === "PUT") {
+        const body = (await req.json()) as Record<string, unknown>;
+        putConfig = body.config;
+      }
+      return Response.json(metricDetector({ config: storedConfig }));
+    });
+
+    const doc = await getMetricAlertRuleDocument("test-org", "9");
+    await putMetricAlertRule("test-org", "9", {
+      ...doc,
+      triggers: [
+        { type: "gt", comparison: 110, conditionResult: 75 },
+        { type: "lte", comparison: 105, conditionResult: 0 },
+      ],
+    });
+
+    expect(putConfig).toEqual(storedConfig);
+  });
+
   test("defaults to static detection without a stored config", async () => {
     let putConfig: unknown;
     globalThis.fetch = mockFetch(async (input, init) => {

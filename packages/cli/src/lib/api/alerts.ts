@@ -679,19 +679,23 @@ function isDetectorConfig(value: unknown): value is Record<string, unknown> {
 function buildDetectorBody(
   body: Record<string, unknown>,
 ): Record<string, unknown> {
+  // create/edit store triggers already parsed by parseMetricTriggers.
+  const triggers = body.triggers as MetricTriggers | undefined;
+  // Threshold triggers are static thresholds. Otherwise edits carry the stored
+  // config so percent and dynamic detectors keep their detection mode, and
+  // creates default to static.
+  const keepStoredConfig =
+    isDetectorConfig(body.detectorConfig) &&
+    !(triggers && !isDetectorConditionList(triggers));
   const detectorBody: Record<string, unknown> = {
     name: typeof body.name === "string" ? body.name : "",
     type: "metric_issue",
     dataSources: [buildDetectorDataSource(body)],
-    // Edits carry the stored config so percent and dynamic detectors keep
-    // their detection mode; creates default to static thresholds.
-    config: isDetectorConfig(body.detectorConfig)
+    config: keepStoredConfig
       ? body.detectorConfig
       : { detectionType: "static" },
   };
 
-  // create/edit store triggers already parsed by parseMetricTriggers.
-  const triggers = body.triggers as MetricTriggers | undefined;
   if (triggers) {
     detectorBody.conditionGroup = {
       logicType: "any",
