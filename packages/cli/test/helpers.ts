@@ -236,16 +236,17 @@ export function extractFetchUrl(input: RequestInfo | URL): string {
 // ---------------------------------------------------------------------------
 
 /** A single route handler for the fetch mock. */
-/** Dynamic fetch route response; may return the body or a promise of it. */
-export type FetchRouteHandler = (url: string, init?: RequestInit) => unknown;
-
 export type FetchRoute = {
   /** URL pattern — string for `includes()` match, or RegExp */
   match: string | RegExp;
   /** HTTP method filter (default: any) */
   method?: string;
-  /** Response body (JSON-serialized) or a {@link FetchRouteHandler} */
-  response: unknown;
+  /* oxlint-disable typescript/no-redundant-type-constituents -- documents the accepted shapes */
+  /** Response body (JSON-serialized) or a handler function */
+  response:
+    | unknown
+    | ((url: string, init?: RequestInit) => unknown | Promise<unknown>);
+  /* oxlint-enable typescript/no-redundant-type-constituents */
   /** HTTP status code (default: 200) */
   status?: number;
   /** Response headers */
@@ -319,7 +320,7 @@ export function installFetchMock(
       const status = route.status ?? 200;
       const responseBody =
         typeof route.response === "function"
-          ? await (route.response as FetchRouteHandler)(url, init)
+          ? await route.response(url, init)
           : route.response;
 
       const headers: Record<string, string> = {

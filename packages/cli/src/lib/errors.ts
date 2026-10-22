@@ -783,12 +783,13 @@ export function stringifyUnknown(value: unknown): string {
   }
   if (value && typeof value === "object") {
     // JSON.stringify can throw on circular references or BigInt values.
-    // Fall back to the tag string (e.g. `[object Object]`), which is always safe.
+    // Fall back to String() which is always safe.
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       return JSON.stringify(value);
     } catch {
-      return Object.prototype.toString.call(value);
+      // oxlint-disable-next-line typescript/no-base-to-string -- keep custom toString() output when JSON fails
+      return String(value);
     }
   }
   return String(value);
