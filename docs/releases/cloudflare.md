@@ -169,7 +169,8 @@ The `production` GitHub environment allows only `main`. Store
 out of command arguments and logs. After a verified deployment, remove any
 repository-level copy of `CLOUDFLARE_API_TOKEN`.
 
-The MCP package pins Wrangler to 4.151.3. Since 4.136.1, Wrangler reads
+The workspace catalog pins Wrangler to 4.151.3 for MCP and CLI docs. Cloudflare
+plugins retain their own transitive Wrangler versions. Since 4.136.1, Wrangler reads
 `workers.dev` and version-preview URLs from the Worker resource. Older versions
 can upload successfully with a Worker-scoped token, then fail while reading the
 account-level subdomain. This upgrade requires Node 22 or newer. When changing
