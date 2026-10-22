@@ -19,33 +19,37 @@ import {
 } from "../../lib/time-range.js";
 import type { DroppedEventsResponse } from "../../types/index.js";
 
-const COMMAND_NAME = "event dropped";
+const COMMAND_NAME = "event analytics";
 
 const DATASETS = ["errors", "spans", "logs", "metrics"] as const;
 
-type DroppedFlags = {
+type AnalyticsFlags = {
   dataset: (typeof DATASETS)[number];
   period?: TimeRange;
   json?: boolean;
   fields?: string[];
 };
 
-export const droppedCommand = buildCommand({
+export const analyticsCommand = buildCommand({
   docs: {
-    brief: "Summarize events Sentry dropped",
+    brief: "Analytics for events Sentry dropped",
     fullDescription:
-      "Summarize events Sentry received but dropped before storage, grouped by " +
-      "outcome and reason, with each slice's share of total volume.\n\n" +
+      "Aggregate analytics for events Sentry received but dropped before " +
+      "storage (rate-limited, filtered, invalid, abuse, client-discarded, " +
+      "cardinality-limited), grouped by outcome and reason with each slice's " +
+      "share of total volume.\n\n" +
+      "Unlike 'event list', which returns individual stored events, this shows " +
+      "only aggregate counts — dropped events have no stored detail to list.\n\n" +
       "Drops are either intentional (user-configured, e.g. sampling or inbound " +
       "filters) or unintentional (e.g. quota, abuse) — shown in the Tags column " +
       "and the JSON `tags` field.\n\n" +
       "Target the project with <org>/<project>, or omit it to detect from your " +
       "config or a local DSN.\n\n" +
       "Examples:\n" +
-      "  sentry event dropped my-org/my-project\n" +
-      "  sentry event dropped my-org/my-project --dataset spans\n" +
-      "  sentry event dropped my-org/my-project --period 24h\n" +
-      "  sentry event dropped my-org/my-project --json",
+      "  sentry event analytics my-org/my-project\n" +
+      "  sentry event analytics my-org/my-project --dataset spans\n" +
+      "  sentry event analytics my-org/my-project --period 24h\n" +
+      "  sentry event analytics my-org/my-project --json",
   },
   output: {
     human: formatDroppedEvents,
@@ -79,7 +83,7 @@ export const droppedCommand = buildCommand({
     },
     aliases: { t: "period" },
   },
-  async *func(this: SentryContext, flags: DroppedFlags, target?: string) {
+  async *func(this: SentryContext, flags: AnalyticsFlags, target?: string) {
     const { org, project } = await resolveProjectBoundFromArg(
       target,
       this.cwd,

@@ -83,9 +83,9 @@ export function summarizeDroppedEvents(
         category: bucket.category,
         events: bucket.count,
         share: 0,
-        // Tags are per (outcome, reason), so they are stable across a reason's
-        // buckets — take them from the first bucket seen.
-        tags: bucket.tags ?? [],
+        // Tags are per (outcome, reason), stable across a reason's buckets, so
+        // take them from the first bucket seen.
+        tags: bucket.tags,
       });
     }
   }

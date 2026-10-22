@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { droppedCommand } from "../../../src/commands/event/dropped.js";
+import { analyticsCommand } from "../../../src/commands/event/analytics.js";
 import type { DroppedEventsResponse } from "../../../src/types/dropped-events.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -78,7 +78,7 @@ const RESPONSE: DroppedEventsResponse = {
   ],
 };
 
-describe("event dropped command func()", () => {
+describe("event analytics command func()", () => {
   let getDroppedEventsSpy: ReturnType<typeof vi.spyOn>;
   let getProjectSpy: ReturnType<typeof vi.spyOn>;
   let resolveSpy: ReturnType<typeof vi.spyOn>;
@@ -116,7 +116,7 @@ describe("event dropped command func()", () => {
 
   test("scopes the request to the resolved numeric project id", async () => {
     const { context } = createMockContext();
-    const func = await droppedCommand.loader();
+    const func = await analyticsCommand.loader();
     await func.call(
       context,
       { dataset: "errors", json: true },
@@ -131,7 +131,7 @@ describe("event dropped command func()", () => {
 
   test("JSON output carries outcomes, shares, and tags", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await droppedCommand.loader();
+    const func = await analyticsCommand.loader();
     await func.call(
       context,
       { dataset: "errors", json: true },
@@ -153,7 +153,7 @@ describe("event dropped command func()", () => {
 
   test("human output renders tables with a Tags column", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await droppedCommand.loader();
+    const func = await analyticsCommand.loader();
     await func.call(
       context,
       { dataset: "errors", json: false },
@@ -175,7 +175,7 @@ describe("event dropped command func()", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await droppedCommand.loader();
+    const func = await analyticsCommand.loader();
     await func.call(
       context,
       { dataset: "errors", json: false },

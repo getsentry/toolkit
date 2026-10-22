@@ -5,6 +5,7 @@ import {
   looseObject,
   number,
   object,
+  optional,
   pipe,
   string,
 } from "valibot";
@@ -27,9 +28,14 @@ export const DroppedEventsBucketSchema = pipe(
     start: pipe(number(), description("Bucket start (epoch ms)")),
     end: pipe(number(), description("Bucket end (epoch ms)")),
     count: pipe(number(), description("Events in this bucket")),
-    tags: pipe(
-      array(string()),
-      description("Drop classification tags: intentional or unintentional"),
+    // Optional with a [] default: the API omits tags on accepted buckets and
+    // may omit them on drops, which must not fail the whole response.
+    tags: optional(
+      pipe(
+        array(string()),
+        description("Drop classification tags: intentional or unintentional"),
+      ),
+      [],
     ),
   }),
   description("A dropped or accepted events bucket"),

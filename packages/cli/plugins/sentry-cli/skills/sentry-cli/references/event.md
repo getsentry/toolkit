@@ -136,9 +136,9 @@ sentry event list PROJ-ABC -c prev
 sentry event list PROJ-ABC --json
 ```
 
-### `sentry event dropped [<org/project>]`
+### `sentry event analytics [<org/project>]`
 
-Summarize events Sentry dropped
+Analytics for events Sentry dropped
 
 **Flags:**
 - `--dataset <value> - Dropped-data type: errors, spans, logs, or metrics - (default: "errors")`

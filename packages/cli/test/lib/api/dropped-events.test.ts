@@ -56,4 +56,37 @@ describe("getDroppedEvents", () => {
     expect(capturedUrl).toContain("dataset=spans");
     expect(capturedUrl).toContain("project=12345");
   });
+
+  test("defaults tags to [] when a bucket omits the field", async () => {
+    mockOk({
+      meta: { dataset: "errors", start: 0, end: 3600, interval: 3600 },
+      // No `tags` field — the API omits it on accepted buckets and may on drops.
+      droppedEvents: [
+        {
+          type: "error",
+          category: "error",
+          outcome: "rate_limited",
+          reason: "key_quota",
+          start: 0,
+          end: 3600,
+          count: 5,
+        },
+      ],
+      acceptedEvents: [
+        {
+          type: "error",
+          category: "error",
+          outcome: "accepted",
+          reason: "accepted",
+          start: 0,
+          end: 3600,
+          count: 10,
+        },
+      ],
+    });
+
+    const response = await getDroppedEvents("my-org");
+    expect(response.droppedEvents[0].tags).toEqual([]);
+    expect(response.acceptedEvents[0].tags).toEqual([]);
+  });
 });
