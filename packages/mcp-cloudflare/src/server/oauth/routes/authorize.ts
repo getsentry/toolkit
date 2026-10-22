@@ -74,6 +74,23 @@ export default new Hono<{ Bindings: Env }>()
    * This route initiates the OAuth flow when a user wants to log in.
    */
   .get("/", async (c) => {
+    const authUrl = new URL(c.req.url);
+    if (
+      authUrl.searchParams.get("client_id") &&
+      !authUrl.searchParams.get("redirect_uri")
+    ) {
+      // The provider looks up client metadata before checking redirect_uri.
+      // Reject incomplete links first so an upstream failure cannot mask them.
+      logWarn("OAuth authorization request rejected: missing redirect URI", {
+        loggerScope: ["cloudflare", "oauth", "authorize"],
+        extra: { code: "invalid_request", reason: "missing_redirect_uri" },
+      });
+      return c.text(
+        "The authorization link is incomplete. Restart authentication in your client and open the full link.",
+        400,
+      );
+    }
+
     let oauthReqInfo: AuthRequest;
     try {
       oauthReqInfo = await c.env.OAUTH_PROVIDER.parseAuthRequest(c.req.raw);
@@ -88,7 +105,6 @@ export default new Hono<{ Bindings: Env }>()
         if (errorMessage.includes("Invalid redirect URI")) {
           // parseAuthRequest threw before producing a request, so read the
           // attempted values directly from the query string.
-          const authUrl = new URL(c.req.url);
           const attemptedClientId = authUrl.searchParams.get("client_id");
           const attemptedRedirectUri = authUrl.searchParams.get("redirect_uri");
           let registeredUris: string[] | undefined;
