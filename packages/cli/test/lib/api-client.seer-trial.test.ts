@@ -12,7 +12,7 @@ import {
 } from "../../src/lib/api-client.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
-import { fetchInputUrl } from "../../src/lib/fetch-input.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("test-product-trial-api-");
@@ -200,7 +200,7 @@ describe("startProductTrial", () => {
 
     globalThis.fetch = mockFetch(
       async (input: RequestInfo | URL, init?: RequestInit) => {
-        capturedUrl = fetchInputUrl(input);
+        capturedUrl = extractInputUrl(input);
         capturedMethod = init?.method ?? "GET";
         return new Response(JSON.stringify({}), {
           status: 200,

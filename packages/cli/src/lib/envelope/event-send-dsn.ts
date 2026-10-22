@@ -12,6 +12,7 @@ import { getAuthConfig } from "../db/auth.js";
 import { ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveProjectBoundFromArg } from "../resolve-target.js";
+import { countChar } from "../utils.js";
 import { resolveIngestDsn } from "./transport.js";
 
 const log = logger.withTag("event.send");
@@ -100,7 +101,7 @@ function looksLikeFileArgument(value: string): boolean {
   if (value.startsWith(".") || isAbsolute(value)) {
     return true;
   }
-  const slashCount = value.split("/").length - 1;
+  const slashCount = countChar(value, "/");
   if (slashCount > 1) {
     return true;
   }

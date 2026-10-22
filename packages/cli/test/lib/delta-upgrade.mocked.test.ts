@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { fetchInputUrl } from "../../src/lib/fetch-input.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import { useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("delta-upgrade-mocked-");
@@ -144,7 +144,7 @@ describe("resolveStableDelta", () => {
     // All sizes stay 0 — this will produce an empty output
 
     mockFetch(async (url) => {
-      const urlStr = fetchInputUrl(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.startsWith("https://api.github.com/")) {
         return new Response(JSON.stringify(releases), { status: 200 });
       }
@@ -204,7 +204,7 @@ describe("resolveNightlyDelta", () => {
 
     // Mock GHCR: token exchange succeeds, nightly manifest has no .gz layer
     mockFetch(async (url) => {
-      const urlStr = fetchInputUrl(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "test-token" }), {
           status: 200,
@@ -260,7 +260,7 @@ describe("resolveNightlyDelta", () => {
 
     // Mock GHCR: nightly manifest has .gz layer, but no patch tags
     mockFetch(async (url) => {
-      const urlStr = fetchInputUrl(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "test-token" }), {
           status: 200,
@@ -387,7 +387,7 @@ describe("attemptDeltaUpgrade", () => {
 
     // Return garbage patch data
     mockFetch(async (url) => {
-      const urlStr = fetchInputUrl(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.startsWith("https://api.github.com/")) {
         return new Response(JSON.stringify(releases), { status: 200 });
       }
@@ -468,7 +468,7 @@ describe("attemptDeltaUpgrade", () => {
     ];
 
     mockFetch(async (url) => {
-      const urlStr = fetchInputUrl(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.startsWith("https://api.github.com/")) {
         return new Response(JSON.stringify(releases), { status: 200 });
       }

@@ -384,14 +384,6 @@ function formatAttrValue(value: unknown): string {
   if (value === null) {
     return "null";
   }
-  if (typeof value === "object") {
-    try {
-      return sanitize(JSON.stringify(value));
-    } catch (err) {
-      log.debug("Failed to JSON-encode attribute value", err);
-      return sanitize(Object.prototype.toString.call(value));
-    }
-  }
   return sanitize(stringifyUnknown(value));
 }
 
@@ -734,7 +726,9 @@ function jsonSafeIdentifier(value: unknown): string | undefined {
   }
 
   try {
-    const identifier = (value as { toString(): string }).toString();
+    // UUID objects override toString(); the base Object result is rejected below.
+    // oxlint-disable-next-line typescript/no-base-to-string
+    const identifier = value.toString();
     if (identifier === "[object Object]") {
       return;
     }

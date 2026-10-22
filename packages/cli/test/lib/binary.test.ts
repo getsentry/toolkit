@@ -40,7 +40,7 @@ import {
   UpgradeSourceNotFoundError,
 } from "../../src/lib/binary.js";
 import { UpgradeError } from "../../src/lib/errors.js";
-import { fetchInputUrl } from "../../src/lib/fetch-input.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 
 describe("getBinaryDownloadUrl", () => {
   test("builds correct URL for current platform", () => {
@@ -91,7 +91,7 @@ describe("resolveUpgradeSource", () => {
     const resolved = await resolveUpgradeSource({
       getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
       fetch: async (url) => {
-        requests.push(fetchInputUrl(url));
+        requests.push(extractInputUrl(url));
         return new Response(JSON.stringify({ tag_name: "cli@0.45.0" }), {
           status: 200,
         });
@@ -113,7 +113,7 @@ describe("resolveUpgradeSource", () => {
     const resolved = await resolveUpgradeSource({
       getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
       fetch: async (url) => {
-        requests.push(fetchInputUrl(url));
+        requests.push(extractInputUrl(url));
         return new Response(
           requests.length === 1
             ? "Not Found"
@@ -139,7 +139,7 @@ describe("resolveUpgradeSource", () => {
         resolveUpgradeSource({
           getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
           fetch: async (url) => {
-            requests.push(fetchInputUrl(url));
+            requests.push(extractInputUrl(url));
             return new Response("failure", { status });
           },
         }),
@@ -158,7 +158,7 @@ describe("resolveUpgradeSource", () => {
       resolveUpgradeSource({
         getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
         fetch: async (url) => {
-          requests.push(fetchInputUrl(url));
+          requests.push(extractInputUrl(url));
           throw new TypeError("fetch failed");
         },
       }),
@@ -175,7 +175,7 @@ describe("resolveUpgradeSource", () => {
     const error = await resolveUpgradeSource({
       getProbeUrl: (source) => getGitHubReleaseByTagUrl("0.45.0", source),
       fetch: async (url) => {
-        requests.push(fetchInputUrl(url));
+        requests.push(extractInputUrl(url));
         return new Response("Not Found", { status: 404 });
       },
     }).catch((reason: unknown) => reason);

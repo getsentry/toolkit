@@ -2329,7 +2329,7 @@ export class SentryApiService {
   ): Promise<string> {
     const query = new URLSearchParams({ alert_rule_id: String(alertRuleId) });
     const body = await this.requestJSON(
-      `${apiPath`/organizations/${organizationSlug}/alert-rule-detector/`}?${query.toString()}`,
+      `${apiPath`/organizations/${organizationSlug}/alert-rule-detector/`}?${query}`,
       undefined,
       opts,
     );
@@ -2442,7 +2442,7 @@ export class SentryApiService {
     if (query) search.set("query", query);
     if (cursor) search.set("cursor", cursor);
     const response = await this.request(
-      `${apiPath`/organizations/${organizationSlug}/detectors/`}?${search.toString()}`,
+      `${apiPath`/organizations/${organizationSlug}/detectors/`}?${search}`,
       undefined,
       opts,
     );
@@ -2474,7 +2474,7 @@ export class SentryApiService {
     }
     if (cursor) search.set("cursor", cursor);
     const response = await this.request(
-      `${apiPath`/organizations/${organizationSlug}/available-actions/`}?${search.toString()}`,
+      `${apiPath`/organizations/${organizationSlug}/available-actions/`}?${search}`,
       undefined,
       opts,
     );
@@ -2506,7 +2506,7 @@ export class SentryApiService {
     const search = new URLSearchParams({ group, per_page: String(limit) });
     if (cursor) search.set("cursor", cursor);
     const response = await this.request(
-      `${apiPath`/organizations/${organizationSlug}/data-conditions/`}?${search.toString()}`,
+      `${apiPath`/organizations/${organizationSlug}/data-conditions/`}?${search}`,
       undefined,
       opts,
     );

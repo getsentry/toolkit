@@ -260,7 +260,7 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
 
       // Get available tools from MCP server
       Object.assign(tools, await mcpClient.tools());
-      logInfo(`Connected to ${mcpUrl.href}`, {
+      logInfo(`Connected to ${mcpUrl}`, {
         loggerScope: ["cloudflare", "chat", "connection"],
         extra: {
           toolCount: Object.keys(tools).length,
@@ -295,7 +295,7 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
             });
 
             Object.assign(tools, await mcpClient.tools());
-            logInfo(`Connected to ${mcpUrl.href} (after refresh)`, {
+            logInfo(`Connected to ${mcpUrl} (after refresh)`, {
               loggerScope: ["cloudflare", "chat", "connection"],
               extra: {
                 toolCount: Object.keys(tools).length,

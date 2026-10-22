@@ -459,8 +459,10 @@ export async function findProjectsBySlug(
  * Uses native RegExp.escape if available (Node.js 23.6+, Bun), otherwise polyfills.
  */
 const escapeRegex: (str: string) => string =
-  RegExp.escape?.bind(RegExp) ??
-  ((str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  typeof RegExp.escape === "function"
+    ? // oxlint-disable-next-line typescript/unbound-method -- static method that never reads `this`
+      RegExp.escape
+    : (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * Check if two strings match with word-boundary semantics (bidirectional).

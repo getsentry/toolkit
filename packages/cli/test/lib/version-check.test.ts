@@ -17,7 +17,7 @@ import {
   ContextError,
   ValidationError,
 } from "../../src/lib/errors.js";
-import { fetchInputUrl } from "../../src/lib/fetch-input.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import {
   abortPendingVersionCheck,
   getErrorUpdateNotification,
@@ -517,7 +517,7 @@ describe("maybeCheckForUpdateInBackground", () => {
     const toolkitSource = UPGRADE_SOURCES[0]!;
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
-      const url = fetchInputUrl(input);
+      const url = extractInputUrl(input);
       requestedUrls.push(url);
       if (url.includes("getsentry/cli")) {
         throw new Error(`Unexpected legacy access: ${url}`);
@@ -549,7 +549,7 @@ describe("maybeCheckForUpdateInBackground", () => {
     const legacySource = UPGRADE_SOURCES[1]!;
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
-      const url = fetchInputUrl(input);
+      const url = extractInputUrl(input);
       requestedUrls.push(url);
       if (url.includes("getsentry/toolkit")) {
         return new Response("not found", { status: 404 });
@@ -587,7 +587,7 @@ describe("maybeCheckForUpdateInBackground", () => {
     const toolkitSource = UPGRADE_SOURCES[0]!;
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
-      const url = fetchInputUrl(input);
+      const url = extractInputUrl(input);
       requestedUrls.push(url);
       if (url.includes("getsentry/cli")) {
         throw new Error(`Unexpected legacy access: ${url}`);

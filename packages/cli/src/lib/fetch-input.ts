@@ -8,7 +8,7 @@
  * `String(request)` yields `"[object Request]"`, so `Request` inputs need
  * their `.url` read explicitly.
  */
-export function fetchInputUrl(input: Request | string | URL): string {
+export function extractInputUrl(input: Request | string | URL): string {
   if (typeof input === "string") {
     return input;
   }

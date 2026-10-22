@@ -35,7 +35,8 @@
     "typescript/restrict-template-expressions": [
       "error",
       {
-        "allowNever": true
+        "allowNever": true,
+        "allow": ["URL", "URLSearchParams"]
       }
     ],
     "jsx-a11y/interactive-supports-focus": "off"
