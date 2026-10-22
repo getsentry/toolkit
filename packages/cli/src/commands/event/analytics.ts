@@ -1,7 +1,6 @@
 import type { SentryContext } from "../../context.js";
 import { getDroppedEvents, getProject } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { muted } from "../../lib/formatters/colors.js";
 import {
   type DroppedEventsResult,
   DroppedEventsOutputSchema,
@@ -109,8 +108,10 @@ export const analyticsCommand = buildCommand({
     const result: DroppedEventsResult = summarizeDroppedEvents(response);
     yield new CommandOutput(result);
     if (result.outcomes.length === 0) {
+      // Plain string: buildCommand's writeFooter applies plainSafeMuted, which
+      // mutes on a TTY and stays plain under SENTRY_PLAIN_OUTPUT=1.
       return {
-        hint: muted(`No dropped events for ${org}/${project}.`),
+        hint: `No dropped events for ${org}/${project}.`,
       };
     }
     return undefined;
