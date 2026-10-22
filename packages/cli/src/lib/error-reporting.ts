@@ -76,9 +76,11 @@ export function classifySilenced(error: unknown): SilenceReason | null {
     return "output_error";
   }
   // A raw `TypeError: "fetch failed"` (CLI-16W) means the CLI could not reach
-  // Sentry at all (offline, DNS, connection refused/timeout). There is nothing
-  // actionable in a "user is offline" report, so drop it — same rationale as
-  // EPIPE/EBADF OS noise in `beforeSend`. Note: TLS cert errors are wrapped as
+  // Sentry at all (offline, DNS, connection refused/timeout); a raw
+  // `TypeError: "terminated"` (CLI-2AD) means the connection dropped while
+  // streaming the response body. There is nothing actionable in a "user is
+  // offline" report, so drop it — same rationale as EPIPE/EBADF OS noise in
+  // `beforeSend`. Note: TLS cert errors are wrapped as
   // ApiError(status 0), NOT matched here, so they stay captured/actionable.
   if (isNetworkError(error)) {
     return "network_error";
@@ -114,6 +116,13 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   // supplied does not exist on disk. Pure user-input noise, not a CLI bug —
   // the user sees a clear "File not found" message (CLI-1JY).
   if (error instanceof ValidationError && error.field === "input") {
+    return "user_input_error";
+  }
+  // A ValidationError with field "directory" means the sourcemap directory
+  // the user passed is missing, not a directory, or unreadable. Pure
+  // user-input noise, not a CLI bug — the user sees the path and the
+  // reason (CLI-1FN).
+  if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
   }
   // A ResolutionError means the user provided a value (event ID, project slug,
