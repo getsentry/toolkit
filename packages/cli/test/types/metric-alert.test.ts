@@ -27,6 +27,25 @@ describe("metric alert datasets", () => {
     }
   });
 
+  test("keeps EAP native when event types are missing or empty", () => {
+    expect(metricAlertDatasetName("events_analytics_platform", [])).toBe(
+      "events_analytics_platform",
+    );
+  });
+
+  test("resolves unambiguous datasets without event types", () => {
+    expect(metricAlertDatasetName("events", [])).toBe("errors");
+    expect(metricAlertDatasetName("metrics", [])).toBe("metrics");
+  });
+
+  test("keeps unmodelled EAP event types native", () => {
+    expect(
+      metricAlertDatasetName("events_analytics_platform", [
+        "trace_item_metric",
+      ]),
+    ).toBe("events_analytics_platform");
+  });
+
   test("ignores prototype keys", () => {
     expect(metricAlertSource("constructor")).toBeUndefined();
   });

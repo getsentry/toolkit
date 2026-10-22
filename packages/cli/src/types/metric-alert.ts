@@ -97,17 +97,27 @@ export function metricAlertSource(
 /**
  * CLI dataset name for a stored data source, or the native dataset when no
  * CLI name selects it (e.g. EAP `trace_item_metric`).
+ *
+ * Missing or empty event types only resolve to a CLI name when every CLI name
+ * on that native dataset selects the same source; EAP is shared by spans, logs,
+ * and trace metrics, so it stays native rather than being guessed as `spans`.
  */
 export function metricAlertDatasetName(
   dataset: string,
   eventTypes: readonly string[],
 ): string {
-  const match = METRIC_ALERT_DATASET_NAMES.find((name) => {
-    const source: MetricMonitorSource = METRIC_ALERT_DATASETS[name];
-    return (
-      source.dataset === dataset &&
-      eventTypes.every((type) => source.eventTypes.includes(type))
+  const candidates = METRIC_ALERT_DATASET_NAMES.filter(
+    (name) => METRIC_ALERT_DATASETS[name].dataset === dataset,
+  );
+  if (eventTypes.length === 0) {
+    const sources = new Set<MetricMonitorSource>(
+      candidates.map((name) => METRIC_ALERT_DATASETS[name]),
     );
+    return sources.size === 1 && candidates[0] ? candidates[0] : dataset;
+  }
+  const match = candidates.find((name) => {
+    const source: MetricMonitorSource = METRIC_ALERT_DATASETS[name];
+    return eventTypes.every((type) => source.eventTypes.includes(type));
   });
   return match ?? dataset;
 }

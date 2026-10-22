@@ -578,8 +578,9 @@ type DetectorSourceFields = Omit<MetricMonitorSource, "dataset"> & {
  *
  * CLI dataset names come from the shared dataset table. Any other (native)
  * dataset comes from the edit baseline built by `getMetricAlertRuleDocument`,
- * which carries the stored `eventTypes`/`queryType`; span defaults apply only
- * when the baseline has none.
+ * which carries the stored `eventTypes`/`queryType`. Missing event types stay
+ * empty rather than defaulting to spans, so an edit never re-targets an
+ * ambiguous EAP monitor onto `trace_item_span`.
  */
 function detectorSourceFields(
   body: Record<string, unknown>,
@@ -592,7 +593,7 @@ function detectorSourceFields(
   const stored = body as Partial<DetectorSourceFields>;
   return {
     queryType: stored.queryType ?? METRIC_MONITOR_SOURCES.spans.queryType,
-    eventTypes: stored.eventTypes ?? METRIC_MONITOR_SOURCES.spans.eventTypes,
+    eventTypes: stored.eventTypes ?? [],
     dataset,
   };
 }

@@ -248,6 +248,7 @@ describe("getMetricAlertRule", () => {
       ["trace_item_metric"],
       "events_analytics_platform",
     ],
+    ["events_analytics_platform", [], "events_analytics_platform"],
     ["metrics", [], "metrics"],
   ])(
     "maps native dataset %s with eventTypes %j to CLI dataset %s",
@@ -694,6 +695,49 @@ describe("metric alert edit round-trip", () => {
       queryType: 1,
     });
   });
+});
+
+describe("metric alert edit round-trip without event types", () => {
+  test.each([
+    ["empty", { eventTypes: [] }],
+    ["missing", {}],
+  ])(
+    "does not rewrite an EAP monitor with %s eventTypes onto spans",
+    async (_label, eventTypes) => {
+      const storedSource = {
+        type: "snuba_query_subscription",
+        queryObj: {
+          snubaQuery: {
+            aggregate: "count()",
+            dataset: "events_analytics_platform",
+            ...eventTypes,
+            queryType: 1,
+            query: "",
+            timeWindow: 300,
+          },
+        },
+      };
+      let putSource: Record<string, unknown> | undefined;
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input!, init);
+        if (req.method === "PUT") {
+          const body = (await req.json()) as Record<string, unknown>;
+          putSource = (body.dataSources as Record<string, unknown>[])[0];
+        }
+        return Response.json(metricDetector({ dataSources: [storedSource] }));
+      });
+
+      const doc = await getMetricAlertRuleDocument("test-org", "9");
+      expect(doc.dataset).toBe("events_analytics_platform");
+      await putMetricAlertRule("test-org", "9", { ...doc, name: "Renamed" });
+
+      expect(putSource).toMatchObject({
+        dataset: "events_analytics_platform",
+        eventTypes: [],
+        queryType: 1,
+      });
+    },
+  );
 });
 
 describe("putMetricAlertRule", () => {
