@@ -46,7 +46,11 @@ import {
   formatReplayResults,
   isValidReplaySort,
 } from "./replays";
-import { isSeerSearchDataset, translateWithSeer } from "./seer";
+import {
+  isSeerSearchDataset,
+  trackAssistedQueryOutcome,
+  translateWithSeer,
+} from "./seer";
 import {
   formatEventsValidationResults,
   isAggregateQuery,
@@ -870,6 +874,19 @@ export async function runSearchEvents(
   const withLeadingNote = (text: string): string =>
     leadingNote ? `${leadingNote}\n\n${text}` : text;
 
+  // Only Seer's translations are tracked, not the embedded agent's.
+  const trackSeerOutcome = (resultCount: number, error?: unknown): void => {
+    if (seerTranslation && isSeerSearchDataset(params.dataset)) {
+      trackAssistedQueryOutcome({
+        dataset: params.dataset,
+        organizationSlug,
+        translation: seerTranslation,
+        resultCount,
+        error,
+      });
+    }
+  };
+
   if (dataset === "replays") {
     const replaySort = sortParam || DEFAULT_REPLAY_SORT;
     if (!isValidReplaySort(replaySort)) {
@@ -950,15 +967,27 @@ export async function runSearchEvents(
     // request shape — fields + orderby — which is not what a timeseries
     // sends (yAxis + interval, no fields/sort). events-timeseries validates
     // the query server-side, so a bad query still surfaces as an API error.
-    const series = await apiService.getEventsTimeSeries({
-      organizationSlug,
-      query: timeSeriesQuery,
-      yAxis: timeSeries.yAxis,
-      interval: timeSeries.interval ?? undefined,
-      projectId,
-      dataset,
-      ...timeParams,
-    });
+    let series: Awaited<ReturnType<typeof apiService.getEventsTimeSeries>>;
+    try {
+      series = await apiService.getEventsTimeSeries({
+        organizationSlug,
+        query: timeSeriesQuery,
+        yAxis: timeSeries.yAxis,
+        interval: timeSeries.interval ?? undefined,
+        projectId,
+        dataset,
+        ...timeParams,
+      });
+    } catch (error) {
+      trackSeerOutcome(0, error);
+      throw error;
+    }
+    // A series always has buckets, so count the ones with data.
+    trackSeerOutcome(
+      series.timeSeries
+        .flatMap((s) => s.values)
+        .filter((point) => point.value != null && point.value !== 0).length,
+    );
     const statsUrl = apiService.getEventsExplorerUrl(
       organizationSlug,
       timeSeriesQuery,
@@ -1025,11 +1054,13 @@ export async function runSearchEvents(
 
   if (!lastValidation.valid) {
     const formatted = formatEventsValidationResults(lastValidation);
-    throw new UserInputError(
+    const error = new UserInputError(
       formatted
         ? `Search validation failed:\n${formatted}`
         : "Search validation failed.",
     );
+    trackSeerOutcome(0, error);
+    throw error;
   }
 
   const finalRequestFields = buildRequestFields(dataset, fields);
@@ -1039,17 +1070,23 @@ export async function runSearchEvents(
     environment,
   );
 
-  const eventsResponse = await apiService.searchEvents({
-    organizationSlug,
-    query: sentryQuery,
-    fields: finalRequestFields,
-    limit: params.limit,
-    projectId,
-    dataset,
-    sort: sortParam,
-    crossEventQueries: seerTranslation?.crossEventQueries,
-    ...timeParams,
-  });
+  let eventsResponse: Awaited<ReturnType<typeof apiService.searchEvents>>;
+  try {
+    eventsResponse = await apiService.searchEvents({
+      organizationSlug,
+      query: sentryQuery,
+      fields: finalRequestFields,
+      limit: params.limit,
+      projectId,
+      dataset,
+      sort: sortParam,
+      crossEventQueries: seerTranslation?.crossEventQueries,
+      ...timeParams,
+    });
+  } catch (error) {
+    trackSeerOutcome(0, error);
+    throw error;
+  }
 
   const aggregateFunctions = fields.filter(
     (field) => field.includes("(") && field.includes(")"),
@@ -1084,6 +1121,7 @@ export async function runSearchEvents(
     "gen_ai.tool.call.result.count",
     eventData.length,
   );
+  trackSeerOutcome(eventData.length);
 
   const conversationId = extractConversationIdFromSearchQuery(sentryQuery);
   const explorerUrl = conversationId

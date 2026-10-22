@@ -1,3 +1,4 @@
+import { metrics } from "@sentry/core";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { APICallError, generateText } from "ai";
 import { HttpResponse, http } from "msw";
@@ -12,6 +13,14 @@ vi.mock("@ai-sdk/openai", () => {
   return {
     openai: mockModel,
     createOpenAI: vi.fn(() => mockModel),
+  };
+});
+
+vi.mock("@sentry/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/core")>();
+  return {
+    ...actual,
+    metrics: { ...actual.metrics, distribution: vi.fn() },
   };
 });
 
@@ -3758,8 +3767,11 @@ describe("search_events", () => {
         () => HttpResponse.json({ session, sentry_run_id: "run-uuid" }),
       );
 
+    const mockDistribution = vi.mocked(metrics.distribution);
+
     beforeEach(() => {
       mockSeerStart.mockClear();
+      mockDistribution.mockClear();
       mswServer.use(
         mockProject,
         http.post(
@@ -4398,6 +4410,170 @@ describe("search_events", () => {
       await searchEvents.handler(seerParams, context);
 
       expect(mockGenerateText).toHaveBeenCalled();
+    });
+
+    describe("assisted query outcome", () => {
+      const mockSeerEvents = (
+        resolver: Parameters<typeof http.get>[1],
+      ): Parameters<typeof mswServer.use> => [
+        mockOrganization([
+          "mcp-search-events-seer-translate",
+          "seer-assisted-query-cross-event-explorer",
+        ]),
+        mockSeerState({
+          status: "completed",
+          final_response: { responses: [seerQuery], unsupported_reason: null },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          resolver,
+        ),
+      ];
+
+      it("should report has_results when the Seer query returns rows", async () => {
+        mswServer.use(
+          ...mockSeerEvents(() =>
+            HttpResponse.json({
+              data: [
+                { "span.description": "GET /a", "p95(span.duration)": 1 },
+                { "span.description": "GET /b", "p95(span.duration)": 2 },
+              ],
+            }),
+          ),
+        );
+
+        await searchEvents.handler(seerParams, context);
+
+        expect(mockDistribution).toHaveBeenCalledTimes(1);
+        expect(mockDistribution).toHaveBeenCalledWith(
+          "assisted_query.outcome",
+          2,
+          {
+            attributes: {
+              dataset: "spans",
+              mode: "aggregate",
+              org_slug: "test-org",
+              referrer: "assisted_query.mcp.traces",
+              run_id: "run-uuid",
+              conversation_url:
+                "https://sentry.io/organizations/sentry/explore/agents/conversations/run-uuid/",
+              outcome: "has_results",
+              code_mode: false,
+              cross_event_enabled: true,
+            },
+          },
+        );
+      });
+
+      it("should report empty_results when the Seer query returns no rows", async () => {
+        mswServer.use(...mockSeerEvents(() => HttpResponse.json({ data: [] })));
+
+        await searchEvents.handler(seerParams, context);
+
+        expect(mockDistribution).toHaveBeenCalledWith(
+          "assisted_query.outcome",
+          0,
+          {
+            attributes: expect.objectContaining({ outcome: "empty_results" }),
+          },
+        );
+      });
+
+      it("should report error_on_load when the Seer query fails", async () => {
+        mswServer.use(
+          ...mockSeerEvents(() =>
+            HttpResponse.json({ detail: "Invalid query" }, { status: 400 }),
+          ),
+        );
+
+        await expect(
+          searchEvents.handler(seerParams, context),
+        ).rejects.toThrow();
+
+        expect(mockDistribution).toHaveBeenCalledWith(
+          "assisted_query.outcome",
+          0,
+          {
+            attributes: expect.objectContaining({
+              outcome: "error_on_load",
+              error_reason: expect.stringContaining("Invalid query"),
+            }),
+          },
+        );
+      });
+
+      it("should count non-empty buckets for a Seer time series", async () => {
+        mswServer.use(
+          mockOrganization(["mcp-search-events-seer-translate"]),
+          mockSeerState({
+            status: "completed",
+            final_response: {
+              responses: [
+                {
+                  ...seerQuery,
+                  query: "",
+                  group_by: [],
+                  visualization: [
+                    { chart_type: 1, y_axes: ["count()"], interval: "1d" },
+                  ],
+                  sort: "-count()",
+                  stats_period: "7d",
+                },
+              ],
+              unsupported_reason: null,
+            },
+          }),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+            () =>
+              HttpResponse.json({
+                timeSeries: [
+                  {
+                    yAxis: "count()",
+                    values: [
+                      { timestamp: 1757548800000, value: 0, incomplete: false },
+                      { timestamp: 1757635200000, value: 8, incomplete: false },
+                      {
+                        timestamp: 1757721600000,
+                        value: null,
+                        incomplete: false,
+                      },
+                    ],
+                    meta: { interval: 86400000 },
+                  },
+                ],
+              }),
+          ),
+        );
+
+        await searchEvents.handler(seerParams, context);
+
+        expect(mockDistribution).toHaveBeenCalledWith(
+          "assisted_query.outcome",
+          1,
+          {
+            attributes: expect.objectContaining({ outcome: "has_results" }),
+          },
+        );
+      });
+
+      it("should not report when the embedded agent translates the query", async () => {
+        mockGenerateText.mockResolvedValueOnce(
+          mockAIResponse("spans", "span.op:http.client"),
+        );
+        mswServer.use(
+          mockOrganization([]),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events/",
+            () => HttpResponse.json({ data: [] }),
+          ),
+        );
+
+        await searchEvents.handler(seerParams, context);
+
+        expect(mockGenerateText).toHaveBeenCalled();
+        expect(mockDistribution).not.toHaveBeenCalled();
+      });
     });
   });
 });
