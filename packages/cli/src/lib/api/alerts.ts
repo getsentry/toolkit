@@ -587,7 +587,7 @@ type DetectorSourceFields = Omit<MetricMonitorSource, "dataset"> & {
 function detectorSourceFields(
   body: Record<string, unknown>,
 ): DetectorSourceFields {
-  const dataset = String(body.dataset ?? "");
+  const dataset = pickDetectorString(body.dataset);
   const named = metricAlertSource(dataset);
   if (named) {
     return named;
