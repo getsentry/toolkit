@@ -105,6 +105,40 @@ describe("applyFlagDefaults: boolean flags", () => {
 });
 
 // ---------------------------------------------------------------------------
+// applyFlagDefaults — variadic flags
+// ---------------------------------------------------------------------------
+
+describe("applyFlagDefaults: variadic flags", () => {
+  const flagDefs: Record<string, FlagDef> = {
+    field: { kind: "parsed", parse: String, variadic: true, optional: true },
+    environment: {
+      kind: "parsed",
+      parse: String,
+      variadic: ",",
+      optional: true,
+    },
+    dataset: { kind: "parsed", parse: String, optional: true },
+  };
+
+  test("wraps a scalar caller value in an array", () => {
+    // Stricli always hands variadic flags to the handler as arrays (CLI-28C).
+    const result = applyFlagDefaults(
+      { field: "title", environment: "prod", dataset: "spans" },
+      flagDefs,
+    );
+    expect(result.field).toEqual(["title"]);
+    expect(result.environment).toEqual(["prod"]);
+    expect(result.dataset).toBe("spans");
+  });
+
+  test("keeps caller arrays unchanged", () => {
+    const fields = ["title", "count()"];
+    const result = applyFlagDefaults({ field: fields }, flagDefs);
+    expect(result.field).toBe(fields);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // applyFlagDefaults — enum flags
 // ---------------------------------------------------------------------------
 
