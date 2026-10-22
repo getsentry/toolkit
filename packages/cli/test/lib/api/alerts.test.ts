@@ -740,6 +740,42 @@ describe("metric alert edit round-trip without event types", () => {
   );
 });
 
+describe("metric alert edit round-trip of detector config", () => {
+  test("keeps a percent detector's config on a rename", async () => {
+    const storedConfig = { detectionType: "percent", comparisonDelta: 3600 };
+    let putConfig: unknown;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.method === "PUT") {
+        const body = (await req.json()) as Record<string, unknown>;
+        putConfig = body.config;
+      }
+      return Response.json(metricDetector({ config: storedConfig }));
+    });
+
+    const doc = await getMetricAlertRuleDocument("test-org", "9");
+    await putMetricAlertRule("test-org", "9", { ...doc, name: "Renamed" });
+
+    expect(putConfig).toEqual(storedConfig);
+  });
+
+  test("defaults to static detection without a stored config", async () => {
+    let putConfig: unknown;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.method === "PUT") {
+        const body = (await req.json()) as Record<string, unknown>;
+        putConfig = body.config;
+      }
+      return Response.json(metricDetector({}));
+    });
+
+    await putMetricAlertRule("test-org", "9", { name: "Renamed" });
+
+    expect(putConfig).toEqual({ detectionType: "static" });
+  });
+});
+
 describe("putMetricAlertRule", () => {
   test("PUTs a nested detector body to the /detectors/{id}/ endpoint", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {

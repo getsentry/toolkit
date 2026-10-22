@@ -100,6 +100,8 @@ type MetricDetector = {
   owner?: { type: string; name?: string; id?: string } | string | null;
   dateCreated?: string;
   dataSources?: Record<string, unknown>[] | null;
+  /** Detection settings (`detectionType`, `comparisonDelta`, …), kept on edit. */
+  config?: Record<string, unknown> | null;
 };
 
 /**
@@ -661,6 +663,10 @@ function buildDetectorDataSource(
   return source;
 }
 
+function isDetectorConfig(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * Translate a flat metric alert body into the nested detector write payload.
  *
@@ -677,7 +683,11 @@ function buildDetectorBody(
     name: typeof body.name === "string" ? body.name : "",
     type: "metric_issue",
     dataSources: [buildDetectorDataSource(body)],
-    config: { detectionType: "static" },
+    // Edits carry the stored config so percent and dynamic detectors keep
+    // their detection mode; creates default to static thresholds.
+    config: isDetectorConfig(body.detectorConfig)
+      ? body.detectorConfig
+      : { detectionType: "static" },
   };
 
   // create/edit store triggers already parsed by parseMetricTriggers.
@@ -760,7 +770,9 @@ export async function deleteMetricAlertRule(
  * which translates it into the nested detector document. Returning the flat
  * shape (rather than the raw detector) keeps the command-side merge coherent.
  * The stored `eventTypes`/`queryType` ride along so an edit of a data source
- * the CLI does not model (e.g. `trace_item_metric`) keeps its signal.
+ * the CLI does not model (e.g. `trace_item_metric`) keeps its signal, and the
+ * stored detector `config` rides along as `detectorConfig` so an edit keeps a
+ * percent or dynamic detector's detection mode.
  */
 export async function getMetricAlertRuleDocument(
   orgSlug: string,
@@ -776,6 +788,9 @@ export async function getMetricAlertRuleDocument(
   }
   if (typeof source.queryType === "number") {
     document.queryType = source.queryType;
+  }
+  if (isDetectorConfig(detector.config)) {
+    document.detectorConfig = detector.config;
   }
   return document;
 }
