@@ -16,6 +16,7 @@ import {
   resetIdentityFingerprintCache,
 } from "../src/lib/db/auth.js";
 import { CONFIG_DIR_ENV_VAR, closeDatabase } from "../src/lib/db/index.js";
+import { ENV_VAR_AGENTS } from "../src/lib/detect-agent.js";
 import { resetTipsCache } from "../src/lib/tips.js";
 
 // re-exporting a single constant, not a barrel
@@ -348,4 +349,24 @@ export function installFetchMock(
       globalThis.fetch = originalFetch;
     },
   };
+}
+
+/** Env vars `detectAgent()` reads besides the {@link ENV_VAR_AGENTS} table. */
+const AGENT_ENV_VARS = [
+  "AI_AGENT",
+  "AGENT",
+  "CLAUDECODE",
+  "CLAUDE_CODE",
+  "CURSOR_EXTENSION_HOST_ROLE",
+];
+
+/**
+ * A copy of `process.env` without any variable that `detectAgent()` reads, so
+ * code under test behaves as if a human ran it even inside an agent session.
+ */
+export function envWithoutAgent(): NodeJS.ProcessEnv {
+  const agentKeys = new Set([...AGENT_ENV_VARS, ...ENV_VAR_AGENTS.keys()]);
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !agentKeys.has(key)),
+  );
 }
