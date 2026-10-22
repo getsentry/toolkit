@@ -302,7 +302,8 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
   const overview = Boolean(options.overview) && !detectAgent();
 
   const header: string[] = [];
-  let bannerRows = 0;
+  // Extra rows the sixel image occupies beyond its single line of text.
+  let sixelExtraRows = 0;
 
   // Skip banner for non-TTY to avoid wasting tokens in agent loops
   if (process.stdout.isTTY) {
@@ -316,7 +317,7 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
       header.push("");
       header.push(banner);
       header.push("");
-      bannerRows = sixel ? sixelBannerRows() : banner.split("\n").length;
+      sixelExtraRows = sixel ? sixelBannerRows() - 1 : 0;
     }
   }
 
@@ -356,9 +357,10 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
   lines.push("");
 
   // Commands (auto-generated from Stricli routes). The overview is trimmed to
-  // fit above the fold; the multi-row banner is a single entry in `header`.
+  // fit above the fold. Entries such as the flags and env-var sections span
+  // several lines, so count rendered lines rather than array entries.
   const reservedRows =
-    header.length + lines.length + Math.max(0, bannerRows - 1);
+    [...header, ...lines].join("\n").split("\n").length + sixelExtraRows;
   const commands = overview
     ? fitToTerminalHeight(generateOverviewCommands(loggedIn), reservedRows)
     : generateCommands();

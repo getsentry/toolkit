@@ -229,6 +229,12 @@ describe("printCustomHelp overview", () => {
       process.stdout.isTTY = true;
       process.stdout.rows = 200;
       expect(commandLines(humanHelp(true))).toHaveLength(5);
+      // Rows used by everything but the command list, counting each line of
+      // the multi-line flags and env-var sections.
+      const full = humanHelp(true);
+      const reserved = full.split("\n").length - commandLines(full).length;
+      process.stdout.rows = reserved + 4;
+      expect(commandLines(humanHelp(true))).toHaveLength(4);
       process.stdout.rows = 10;
       // Never fewer than three, even when nothing fits.
       expect(commandLines(humanHelp(true))).toHaveLength(3);
