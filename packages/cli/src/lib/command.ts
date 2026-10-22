@@ -37,6 +37,7 @@ import {
   numberParser as stricliNumberParser,
 } from "@stricli/core";
 import type { Writer } from "../types/index.js";
+import { enableAllowFailure } from "./allow-failure.js";
 import { appendCacheHint } from "./cache-hint.js";
 import { getAuthConfig, hasUsableStoredAccount } from "./db/auth.js";
 import { getEnv } from "./env.js";
@@ -291,6 +292,22 @@ const PROJECT_FLAG = {
   hidden: true as const,
 } as const;
 
+/**
+ * Hidden `--allow-failure` flag injected into every command by {@link buildCommand}.
+ *
+ * Backward-compatibility shim for sentry-cli v3. When set, the CLI still
+ * prints the error but exits `0`. Equivalent to `SENTRY_ALLOW_FAILURE=1`.
+ */
+const ALLOW_FAILURE_FLAG = {
+  kind: "boolean" as const,
+  brief: "Report errors but exit with status 0",
+  default: false,
+  hidden: true as const,
+} as const;
+
+/** The flag key for the injected --allow-failure flag */
+const ALLOW_FAILURE_KEY = "allow-failure";
+
 /** The flag key for the injected --log-level flag (always stripped) */
 const LOG_LEVEL_KEY = "log-level";
 
@@ -460,6 +477,7 @@ const GLOBAL_FLAG_DEFAULTS: Record<string, unknown> = {
   verbose: VERBOSE_FLAG,
   org: ORG_FLAG,
   project: PROJECT_FLAG,
+  [ALLOW_FAILURE_KEY]: ALLOW_FAILURE_FLAG,
 };
 
 /** Flags that are always stripped (command never sees them). */
@@ -718,6 +736,10 @@ export function buildCommand<
       commandOwnsOrg,
       commandOwnsProject,
     );
+
+    if (stripKeys.has(ALLOW_FAILURE_KEY) && flags[ALLOW_FAILURE_KEY]) {
+      enableAllowFailure();
+    }
 
     const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
     setFlagContext(cleanFlags);

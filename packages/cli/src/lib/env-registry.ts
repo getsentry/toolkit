@@ -238,6 +238,13 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
       "Force the output format for all commands. Currently only `json` is supported. This is primarily used by the [library API](../library-usage/) (`createSentrySDK()`) to get JSON output without passing `--json` flags.",
     example: "json",
   },
+  // -- Failure handling --
+  {
+    name: "SENTRY_ALLOW_FAILURE",
+    description:
+      "When set to a truthy value (`1`, `true`, `yes`, `on`), a failing command still prints its error but exits with status `0`. Use it for optional CI steps, such as uploading source maps, that should not fail the build. Equivalent to passing `--allow-failure` to any command.",
+    example: "1",
+  },
   // -- Logging & telemetry --
   {
     name: "SENTRY_LOG_LEVEL",

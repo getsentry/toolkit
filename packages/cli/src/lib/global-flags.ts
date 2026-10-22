@@ -52,6 +52,9 @@ export const GLOBAL_FLAGS: readonly GlobalFlagDef[] = [
   // No short aliases: -p conflicts with release create's -p (--project).
   { name: "org", short: null, kind: "value" },
   { name: "project", short: null, kind: "value" },
+  // sentry-cli v3 compat: `--allow-failure` reports errors
+  // but exits 0 (see `allow-failure.ts`).
+  { name: "allow-failure", short: null, kind: "boolean" },
 ];
 
 /**

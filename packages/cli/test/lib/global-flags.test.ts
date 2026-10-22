@@ -60,7 +60,15 @@ describe("buildTopLevelFlags", () => {
   test("matches the current GLOBAL_FLAGS definition", () => {
     const { booleanFlags, valueFlags } = buildTopLevelFlags();
     expect([...booleanFlags].sort()).toEqual(
-      ["--verbose", "-v", "--no-verbose", "--json", "--no-json"].sort(),
+      [
+        "--verbose",
+        "-v",
+        "--no-verbose",
+        "--json",
+        "--no-json",
+        "--allow-failure",
+        "--no-allow-failure",
+      ].sort(),
     );
     expect([...valueFlags].sort()).toEqual(
       ["--log-level", "--fields", "--org", "--project"].sort(),

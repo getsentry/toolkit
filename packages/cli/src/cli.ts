@@ -765,6 +765,18 @@ export async function startCli(): Promise<void> {
     });
   }
 
+  try {
+    await runStartup(args);
+  } finally {
+    // `--allow-failure` / `SENTRY_ALLOW_FAILURE`: the error is already on
+    // stderr; downgrade the exit status so optional CI steps don't fail.
+    const { applyAllowFailure } = await import("./lib/allow-failure.js");
+    applyAllowFailure();
+  }
+}
+
+/** Load project context and run the CLI, recording failures in `process.exitCode`. */
+async function runStartup(args: string[]): Promise<void> {
   // Walk up from CWD once to find project root AND .sentryclirc config.
   // Caches both so later findProjectRoot / loadSentryCliRc calls are hits.
   // Most failures here are non-fatal (unreadable rc file, missing project

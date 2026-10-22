@@ -801,6 +801,7 @@ All commands support the following global options:
 - `--version` - Show CLI version
 - `--log-level <level>` - Set log verbosity (`error`, `warn`, `log`, `info`, `debug`, `trace`). Overrides `SENTRY_LOG_LEVEL`
 - `--verbose` - Shorthand for `--log-level debug`
+- `--allow-failure` - Print errors but exit with status `0`. Same as `SENTRY_ALLOW_FAILURE=1`
 
 ## Output Formats
 
