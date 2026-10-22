@@ -43,6 +43,7 @@ import {
   MalformedAuthTokenError,
   TimeoutError,
 } from "./errors.js";
+import { extractInputUrl } from "./fetch-input.js";
 import { logger } from "./logger.js";
 import {
   clearLastCacheHitAge,
@@ -355,7 +356,7 @@ async function fetchWithTimeout({
     // extra property is harmless (Node honors NODE_EXTRA_CA_CERTS natively).
     const customTls = getCustomTlsOptions();
     if (customTls) {
-      warnIfSaasWithEnvCa(extractFullUrl(input));
+      warnIfSaasWithEnvCa(extractInputUrl(input));
     }
 
     const response = await fetch(input, {
@@ -467,20 +468,9 @@ function handleFetchError(
   return { action: "retry" };
 }
 
-/** Extract the full URL string from a fetch input */
-function extractFullUrl(input: Request | string | URL): string {
-  if (typeof input === "string") {
-    return input;
-  }
-  if (input instanceof URL) {
-    return input.href;
-  }
-  return input.url;
-}
-
 /** Extract the URL pathname for span naming */
 function extractUrlPath(input: Request | string | URL): string {
-  const raw = extractFullUrl(input);
+  const raw = extractInputUrl(input);
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return new URL(raw).pathname;
@@ -765,7 +755,7 @@ function createAuthenticatedFetch(
       `${method} ${urlPath}`,
       "http.client",
       async (span) => {
-        const fullUrl = extractFullUrl(input);
+        const fullUrl = extractInputUrl(input);
         const startTime = performance.now();
 
         // Check cache before auth/retry for GET requests.

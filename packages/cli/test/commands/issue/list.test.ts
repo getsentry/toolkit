@@ -94,7 +94,7 @@ let func: ListFunc;
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
   func = (await listCommand.loader()) as unknown as ListFunc;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   setDefaultOrganization("test-org");
   setDefaultProject("test-project");
@@ -1497,7 +1497,7 @@ describe("issue list: collapse parameter optimization", () => {
     resolveCursorMock.mockReset();
     advancePaginationStateMock.mockReset();
 
-    await setOrgRegion("my-org", DEFAULT_SENTRY_URL);
+    setOrgRegion("my-org", DEFAULT_SENTRY_URL);
   });
 
   // End-to-end guard for the headline feature: when --sort is omitted, the
@@ -1560,7 +1560,7 @@ describe("issue list: collapse parameter optimization", () => {
     test("uses date on a self-hosted instance", async () => {
       delete process.env.SENTRY_HOST;
       process.env.SENTRY_URL = "https://sentry.example.com";
-      await setOrgRegion("my-org", "https://sentry.example.com");
+      setOrgRegion("my-org", "https://sentry.example.com");
       const options = await runOrgAllWithoutSort();
       expect(listIssuesAllPagesMock).toHaveBeenCalled();
       expect(options.sort).toBe("date");

@@ -1,5 +1,6 @@
 /** Tail formatters for the local dev server. */
 
+import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { blue, bold, cyan, green, muted, red, yellow } from "./colors.js";
 import { stripAnsi } from "./plain-detect.js";
@@ -244,7 +245,7 @@ export function formatErrorItem(
   const first = exception?.values?.at(-1);
   const errorType = sanitize(String(first?.type ?? "Error"));
   const errorValue = sanitize(
-    String(first?.value ?? event.message ?? "Unknown error"),
+    stringifyUnknown(first?.value ?? event.message ?? "Unknown error"),
   );
 
   let msg = `${errorType}: ${errorValue}`;
@@ -383,15 +384,7 @@ function formatAttrValue(value: unknown): string {
   if (value === null) {
     return "null";
   }
-  if (typeof value === "object") {
-    try {
-      return sanitize(JSON.stringify(value));
-    } catch (err) {
-      log.debug("Failed to JSON-encode attribute value", err);
-      return sanitize(String(value));
-    }
-  }
-  return sanitize(String(value));
+  return sanitize(stringifyUnknown(value));
 }
 
 /**
@@ -733,6 +726,8 @@ function jsonSafeIdentifier(value: unknown): string | undefined {
   }
 
   try {
+    // UUID objects override toString(); the base Object result is rejected below.
+    // oxlint-disable-next-line typescript/no-base-to-string
     const identifier = value.toString();
     if (identifier === "[object Object]") {
       return;
@@ -861,7 +856,9 @@ function formatTransactionJson(
   const attrs = mergeTransactionAttributes(payload);
   const semantic = formatSemanticSpanDisplay(
     attrs,
-    String(payload.transaction ?? trace?.description ?? "Transaction"),
+    stringifyUnknown(
+      payload.transaction ?? trace?.description ?? "Transaction",
+    ),
   );
   const start = payload.start_timestamp as number | undefined;
   const end = payload.timestamp as number | undefined;

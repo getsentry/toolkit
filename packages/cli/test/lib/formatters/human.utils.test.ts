@@ -164,7 +164,7 @@ describe("maskToken", () => {
   test("property: masked token never reveals middle characters", async () => {
     const longTokenArb = stringMatching(/^[a-zA-Z0-9_]{13,50}$/);
 
-    await fcAssert(
+    fcAssert(
       property(longTokenArb, (token) => {
         const masked = maskToken(token);
         // Should show first 8, then ..., then last 4
@@ -179,7 +179,7 @@ describe("maskToken", () => {
   test("property: short tokens are completely masked", async () => {
     const shortTokenArb = stringMatching(/^[a-zA-Z0-9]{1,12}$/);
 
-    await fcAssert(
+    fcAssert(
       property(shortTokenArb, (token) => {
         expect(maskToken(token)).toBe("****");
       }),
@@ -261,7 +261,7 @@ describe("formatDuration", () => {
   });
 
   test("property: duration formatting always contains a time unit", async () => {
-    await fcAssert(
+    fcAssert(
       property(nat({ max: 86_400 * 60 }), (seconds) => {
         const result = formatDuration(seconds);
         expect(result).toMatch(/minute|hour|day|week/);
@@ -297,7 +297,7 @@ describe("formatExpiration", () => {
   });
 
   test("property: expired times always return 'Expired'", async () => {
-    await fcAssert(
+    fcAssert(
       property(integer({ min: 1, max: 1_000_000 }), (msAgo) => {
         const pastTime = Date.now() - msAgo;
         expect(formatExpiration(pastTime)).toBe("Expired");
@@ -307,7 +307,7 @@ describe("formatExpiration", () => {
   });
 
   test("property: future times always include 'remaining'", async () => {
-    await fcAssert(
+    fcAssert(
       property(integer({ min: 60_000, max: 86_400_000 }), (msAhead) => {
         const futureTime = Date.now() + msAhead;
         const result = formatExpiration(futureTime);

@@ -241,10 +241,12 @@ export type FetchRoute = {
   match: string | RegExp;
   /** HTTP method filter (default: any) */
   method?: string;
+  /* oxlint-disable typescript/no-redundant-type-constituents -- documents the accepted shapes */
   /** Response body (JSON-serialized) or a handler function */
   response:
     | unknown
     | ((url: string, init?: RequestInit) => unknown | Promise<unknown>);
+  /* oxlint-enable typescript/no-redundant-type-constituents */
   /** HTTP status code (default: 200) */
   status?: number;
   /** Response headers */

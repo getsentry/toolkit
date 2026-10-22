@@ -900,7 +900,7 @@ export class SentryApiService {
         return response;
       }
       const errorText = await response.text();
-      let parsed: unknown | undefined;
+      let parsed: unknown;
       try {
         parsed = JSON.parse(errorText);
       } catch (error) {
@@ -3502,7 +3502,7 @@ export class SentryApiService {
       method?: string;
       headers?: Array<[string, string]>;
       body?: string | null;
-      assertion?: unknown | null;
+      assertion?: unknown;
       status?: "active" | "disabled";
       owner?: string | null;
       environment?: string | null;
@@ -3585,7 +3585,7 @@ export class SentryApiService {
       method?: string;
       headers?: Array<[string, string]>;
       body?: string | null;
-      assertion?: unknown | null;
+      assertion?: unknown;
       status?: "active" | "disabled";
       owner?: string | null;
       environment?: string | null;

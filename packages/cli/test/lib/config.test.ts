@@ -64,54 +64,54 @@ afterEach(() => {
 
 describe("auth token management", () => {
   test("setAuthToken stores token", async () => {
-    await setAuthToken("test-token-123");
+    setAuthToken("test-token-123");
 
-    const token = await getAuthToken();
+    const token = getAuthToken();
     expect(token).toBe("test-token-123");
   });
 
   test("setAuthToken with expiration sets expiresAt", async () => {
     const before = Date.now();
-    await setAuthToken("expiring-token", 3600); // 1 hour
+    setAuthToken("expiring-token", 3600); // 1 hour
     const after = Date.now();
 
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     expect(auth?.expiresAt).toBeGreaterThanOrEqual(before + 3600 * 1000);
     expect(auth?.expiresAt).toBeLessThanOrEqual(after + 3600 * 1000);
   });
 
   test("setAuthToken stores refresh token", async () => {
-    await setAuthToken("access-token", 3600, "refresh-token");
+    setAuthToken("access-token", 3600, "refresh-token");
 
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     expect(auth?.refreshToken).toBe("refresh-token");
   });
 
   test("getAuthToken returns undefined for expired token", async () => {
     // Set a token that expires in the future, then we'll manipulate it
-    await setAuthToken("expired-token", -1); // Negative expires immediately
+    setAuthToken("expired-token", -1); // Negative expires immediately
 
-    const token = await getAuthToken();
+    const token = getAuthToken();
     expect(token).toBeUndefined();
   });
 
   test("getAuthToken returns token if not expired", async () => {
-    await setAuthToken("valid-token", 3600); // 1 hour
+    setAuthToken("valid-token", 3600); // 1 hour
 
-    const token = await getAuthToken();
+    const token = getAuthToken();
     expect(token).toBe("valid-token");
   });
 
   test("clearAuth removes auth data", async () => {
-    await setAuthToken("token-to-clear");
-    expect(await getAuthToken()).toBe("token-to-clear");
+    setAuthToken("token-to-clear");
+    expect(getAuthToken()).toBe("token-to-clear");
 
     await clearAuth();
-    expect(await getAuthToken()).toBeUndefined();
+    expect(getAuthToken()).toBeUndefined();
   });
 
   test("isAuthenticated returns true with valid token", async () => {
-    await setAuthToken("valid-token");
+    setAuthToken("valid-token");
     expect(isAuthenticated()).toBe(true);
   });
 
@@ -120,7 +120,7 @@ describe("auth token management", () => {
   });
 
   test("isAuthenticated returns false with expired token", async () => {
-    await setAuthToken("expired", -1); // Negative expires immediately
+    setAuthToken("expired", -1); // Negative expires immediately
     expect(isAuthenticated()).toBe(false);
   });
 });
@@ -171,7 +171,7 @@ describe("defaults management", () => {
 describe("refreshToken error handling", () => {
   test("network error during refresh does not clear auth", async () => {
     // Set up a token that needs refresh (expired but has refresh token)
-    await setAuthToken("still-valid-token", -1, "my-refresh-token"); // Expired
+    setAuthToken("still-valid-token", -1, "my-refresh-token"); // Expired
 
     // Set required env var for OAuth
     process.env.SENTRY_CLIENT_ID = "test-client-id";
@@ -194,14 +194,14 @@ describe("refreshToken error handling", () => {
     }
 
     // Auth should NOT be cleared on network error
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     expect(auth?.token).toBe("still-valid-token");
     expect(auth?.refreshToken).toBe("my-refresh-token");
   });
 
   test("auth error during refresh clears auth", async () => {
     // Set up a token that needs refresh
-    await setAuthToken("revoked-token", -1, "invalid-refresh-token"); // Expired
+    setAuthToken("revoked-token", -1, "invalid-refresh-token"); // Expired
 
     process.env.SENTRY_CLIENT_ID = "test-client-id";
 
@@ -226,7 +226,7 @@ describe("refreshToken error handling", () => {
     }
 
     // Auth SHOULD be cleared when server rejects refresh token
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     expect(auth).toBeUndefined();
   });
 });
@@ -648,10 +648,10 @@ describe("JSON to SQLite migration", () => {
     );
 
     // Access the database (triggers migration)
-    const token = await getAuthToken();
+    const token = getAuthToken();
     expect(token).toBe("migrated-token");
 
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     expect(auth?.refreshToken).toBe("migrated-refresh");
 
     const org = getDefaultOrganization();

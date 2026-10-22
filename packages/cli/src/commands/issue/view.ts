@@ -9,7 +9,7 @@ import { getLatestEvent, listReplayIdsForIssue } from "../../lib/api-client.js";
 import { spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { ContextError } from "../../lib/errors.js";
+import { ContextError, stringifyUnknown } from "../../lib/errors.js";
 import { plainSafeMuted } from "../../lib/formatters/human.js";
 import {
   formatIssueView,
@@ -187,7 +187,9 @@ export function fetchMultipleIssueViews(
     issueArgs,
     (issueArg) => buildSingleIssueViewData(issueArg, cwd, spans),
     (issueArg, reason) => {
-      log.warn(`Failed to fetch issue ${issueArg}: ${reason}`);
+      log.warn(
+        `Failed to fetch issue ${issueArg}: ${stringifyUnknown(reason)}`,
+      );
     },
   );
 }
@@ -222,7 +224,7 @@ async function openIssuesInBrowser(
       return issue;
     },
     (issueArg, reason) => {
-      log.warn(`Failed to open issue ${issueArg}: ${reason}`);
+      log.warn(`Failed to open issue ${issueArg}: ${stringifyUnknown(reason)}`);
     },
   );
 

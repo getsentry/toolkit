@@ -7,7 +7,7 @@
 import type { SentryContext } from "../../../context.js";
 import { createMetricAlertRule } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { ValidationError } from "../../../lib/errors.js";
+import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
 import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../../lib/mutate-command.js";
@@ -244,8 +244,8 @@ export const createCommand = buildCommand({
     const created = await createMetricAlertRule(orgSlug, body);
     yield new CommandOutput({
       org: orgSlug,
-      id: String(created.id ?? ""),
-      name: String(created.name ?? flags.name),
+      id: stringifyUnknown(created.id ?? ""),
+      name: stringifyUnknown(created.name ?? flags.name),
       status: metricAlertStatusLabel(created.status),
     } satisfies CreateResult);
   },

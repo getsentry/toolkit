@@ -32,7 +32,12 @@ import {
   type ParsedOrgProject,
   ProjectSpecificationType,
 } from "./arg-parsing.js";
-import { AuthError, ResolutionError, ValidationError } from "./errors.js";
+import {
+  AuthError,
+  ResolutionError,
+  stringifyUnknown,
+  ValidationError,
+} from "./errors.js";
 import type { HexEntityType } from "./hex-id.js";
 import {
   ALPHA_SEGMENT_RE,
@@ -460,7 +465,7 @@ const eventAdapter: FuzzyLookupAdapter = async (ctx) => {
     sort: "-timestamp",
     statsPeriod: ctx.period ?? SCAN_PERIODS.event,
   });
-  return data.data.map((row) => String(row.id ?? "")).filter(Boolean);
+  return data.data.map((row) => stringifyUnknown(row.id ?? "")).filter(Boolean);
 };
 
 const traceAdapter: FuzzyLookupAdapter = async (ctx) => {

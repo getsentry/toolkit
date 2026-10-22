@@ -108,7 +108,7 @@ export const proposeVersionCommand = buildCommand({
     }
 
     // Fall back to git HEAD SHA
-    const sha = await getHeadCommit(cwd);
+    const sha = getHeadCommit(cwd);
     yield new CommandOutput({ version: sha, source: "git" });
     return { hint: "Detected from git HEAD" };
   },

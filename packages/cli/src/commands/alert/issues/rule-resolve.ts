@@ -14,7 +14,7 @@ import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
 import { logger } from "../../../lib/logger.js";
 import type { ResolvedTarget } from "../../../lib/resolve-target.js";
-import { isAllDigits } from "../../../lib/utils.js";
+import { countChar, isAllDigits } from "../../../lib/utils.js";
 
 const log = logger.withTag("alert.issues");
 
@@ -42,7 +42,7 @@ export function parseIssueRuleArg(
     );
   }
 
-  const slashCount = [...trimmed].filter((c) => c === "/").length;
+  const slashCount = countChar(trimmed, "/");
   if (slashCount === 0) {
     return { ref: trimmed, targetArg: undefined };
   }

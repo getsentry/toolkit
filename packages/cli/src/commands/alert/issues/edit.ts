@@ -12,7 +12,11 @@ import {
 } from "../../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { ContextError, ValidationError } from "../../../lib/errors.js";
+import {
+  ContextError,
+  stringifyUnknown,
+  ValidationError,
+} from "../../../lib/errors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import {
@@ -284,10 +288,10 @@ export const editCommand = buildCommand({
       ...updated,
       org: target.org,
       project: target.project,
-      id: String(updated.id ?? rule.id),
+      id: stringifyUnknown(updated.id ?? rule.id),
       // The workflows endpoint returns `enabled` rather than `status`; map it
       // back to a status label so human/JSON output matches the create path.
-      status: String(
+      status: stringifyUnknown(
         updated.status ?? (updated.enabled === false ? "disabled" : "active"),
       ),
     } satisfies EditResult);

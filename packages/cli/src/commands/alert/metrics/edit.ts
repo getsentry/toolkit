@@ -10,7 +10,7 @@ import {
   putMetricAlertRule,
 } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { ValidationError } from "../../../lib/errors.js";
+import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
 import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
@@ -303,7 +303,7 @@ export const editCommand = buildCommand({
     yield new CommandOutput({
       ...updated,
       org: orgSlug,
-      id: String(updated.id ?? rule.id),
+      id: stringifyUnknown(updated.id ?? rule.id),
       status: metricAlertStatusLabel(updated.status),
     } satisfies EditResult);
   },
