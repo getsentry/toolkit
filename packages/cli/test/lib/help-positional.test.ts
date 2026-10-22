@@ -144,7 +144,7 @@ describe("help recovery on ResolutionError", () => {
   });
 
   test("sentry project view help → recovers through a parsed target positional", async () => {
-    // project view's positional reaches func as a TargetArg, not a string
+    // project view's positional reaches func parsed, not as a string
     const { stdout, stderr } = await runCommand(["project", "view", "help"]);
 
     expect(stdout).toContain("sentry project view");

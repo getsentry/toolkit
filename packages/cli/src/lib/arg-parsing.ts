@@ -7,6 +7,10 @@
  */
 
 import type { LogSortDirection } from "./api/logs.js";
+import {
+  ORG_PROJECT_TARGET,
+  withCompletionTarget,
+} from "./completion-target.js";
 import { ContextError, ValidationError, validationError } from "./errors.js";
 import { validateResourceId } from "./input-validation.js";
 
@@ -960,6 +964,22 @@ export function parseOrgProjectArg(
 
   return parsed;
 }
+
+/** What an omitted `[<org>/][<project>]` positional means. */
+export const AUTO_DETECT_TARGET: ParsedOrgProject = Object.freeze({
+  type: ProjectSpecificationType.AutoDetect,
+});
+
+/**
+ * Positional parser for `[<org>/][<project>]` targets. The command receives
+ * the {@link parseOrgProjectArg} result and completes like
+ * `parseOrgProjectTarget`. Use {@link AUTO_DETECT_TARGET} as the default
+ * for an optional positional.
+ */
+export const parseOrgProjectPositional = withCompletionTarget(
+  ORG_PROJECT_TARGET,
+  (input: string): ParsedOrgProject => parseOrgProjectArg(input),
+);
 
 /**
  * Parsed issue argument types - flattened for ergonomics.

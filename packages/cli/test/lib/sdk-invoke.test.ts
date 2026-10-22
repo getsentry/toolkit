@@ -14,7 +14,7 @@ import {
   type FlagDef,
   parseOutput,
 } from "../../src/lib/sdk-invoke.js";
-import { parseOrgProjectTargetArg } from "../../src/lib/target-arg.js";
+import { parseOrgProjectPositional } from "../../src/lib/arg-parsing.js";
 import { useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("sdk-invoke-");
@@ -240,11 +240,11 @@ describe("applyPositionalParsers", () => {
       ["acme/web", "checkout"],
       {
         kind: "tuple",
-        parameters: [{ parse: parseOrgProjectTargetArg }, { parse: String }],
+        parameters: [{ parse: parseOrgProjectPositional }, { parse: String }],
       },
       {},
     );
-    expect(target).toEqual(parseOrgProjectTargetArg("acme/web"));
+    expect(target).toEqual(parseOrgProjectPositional("acme/web"));
     expect(name).toBe("checkout");
   });
 

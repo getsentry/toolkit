@@ -65,7 +65,11 @@ import {
   parseLogLevel,
   setLogLevel,
 } from "./logger.js";
-import { rawPositional } from "./target-arg.js";
+import {
+  deferPositionalParsers,
+  rawPositional,
+  throwDeferredPositionalError,
+} from "./positional-parse.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
 import { applyTipsPreference } from "./tips.js";
 
@@ -557,10 +561,14 @@ export function buildCommand<
     }
   }
 
+  // Positional parsers run in Stricli's scanner, which would turn a thrown
+  // CliError into a generic argument error. Defer those errors to the
+  // wrapped func below so they surface like any other command error.
   const mergedParams = {
     ...existingParams,
     flags: mergedFlags,
     aliases: mergedAliases,
+    positional: deferPositionalParsers(existingParams.positional),
   };
 
   /**
@@ -789,6 +797,9 @@ export function buildCommand<
     // `sentry issue list help`). Without this, the auth prompt would fire
     // before the help-recovery path could show the command's help text.
     try {
+      // Invalid positional input fails before auth: it needs no account.
+      throwDeferredPositionalError(args);
+
       // A usable stored account defers the check: the command's target may
       // select it even when the account in effect is logged out.
       if (requiresAuth && !getAuthConfig() && !hasUsableStoredAccount()) {

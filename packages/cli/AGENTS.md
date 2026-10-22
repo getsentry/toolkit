@@ -240,14 +240,17 @@ const parsed = parseOrgProjectArg(targetArg);
 Reference: `span/list.ts`, `trace/view.ts`, `event/view.ts`
 
 **Parsed target positionals:** A single `[<org>/][<project>]` positional can
-use `parseOrgProjectTargetArg` from `src/lib/target-arg.ts`. `func` then
-receives a `TargetArg` and reads `parsedOrgProject(target)` instead of calling
-`parseOrgProjectArg` itself. Parsing runs on first access inside `func`, so
-invalid input still fails with the parser's `CliError` and exit code. Use
-`target.raw` (or `rawPositional`) for what the user typed. Tests that call
-`func` directly pass `parseOrgProjectTargetArg("org/project")`. The SDK invoke
-path runs positional parsers too (`applyPositionalParsers`). Positionals whose
-meaning depends on how many arguments were given, such as
+use `parseOrgProjectPositional` from `src/lib/arg-parsing.ts`. `func` then
+receives the `ParsedOrgProject` directly (default an optional positional to
+`AUTO_DETECT_TARGET`) and never calls `parseOrgProjectArg` itself.
+`buildCommand` wraps every positional parser (`src/lib/positional-parse.ts`)
+so a `CliError` it throws is rethrown by the command wrapper before `func`
+runs, keeping its exit code, telemetry, and `--json` output instead of
+Stricli's generic argument error. Use `rawPositional(value)` for what the user
+typed. Tests that call `func` directly load it with `loadCommandFunc(command)`
+from `test/helpers.ts` and pass raw strings; it runs the command's own
+positional parsers, as does the SDK invoke path (`applyPositionalParsers`).
+Positionals whose meaning depends on how many arguments were given, such as
 `[<org>/<project>/]<trace-id>`, keep parsing in `func`.
 
 **Shell completion:** Target positionals that take an org or project use a
@@ -255,7 +258,7 @@ completion-aware parser from `src/lib/completion-target.ts` instead of
 `String`: `parseOrgProjectTarget` completes `org/`, `org/project`, and project
 aliases; `parseOrgTarget` completes org slugs only. `LIST_TARGET_POSITIONAL`
 and `LIST_ORG_TARGET_POSITIONAL` already use them. A parser tagged with
-`withCompletionTarget`, such as `parseOrgProjectTargetArg`, completes the same
+`withCompletionTarget`, such as `parseOrgProjectPositional`, completes the same
 way.
 `pnpm run generate:completions` collects these into the gitignored
 `src/generated/completion-targets.json` that the `__complete` fast path reads.

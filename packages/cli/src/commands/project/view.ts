@@ -11,7 +11,12 @@ import {
   resolveOrgDisplayName,
   tryGetPrimaryDsn,
 } from "../../lib/api-client.js";
-import { ProjectSpecificationType } from "../../lib/arg-parsing.js";
+import {
+  ProjectSpecificationType,
+  AUTO_DETECT_TARGET,
+  type ParsedOrgProject,
+  parseOrgProjectPositional,
+} from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
 import { AuthError, ContextError, withAuthGuard } from "../../lib/errors.js";
@@ -30,11 +35,6 @@ import {
   resolveProjectBoundSlug,
 } from "../../lib/resolve-target.js";
 import { buildProjectUrl } from "../../lib/sentry-web-urls.js";
-import {
-  type OrgProjectTargetArg,
-  parsedOrgProject,
-  parseOrgProjectTargetArg,
-} from "../../lib/target-arg.js";
 import type { SentryProject } from "../../types/index.js";
 
 type ViewFlags = {
@@ -281,7 +281,7 @@ export const viewCommand = buildCommand({
         {
           placeholder: "org/project",
           brief: "<org>/<project>, <project> (search), or omit for auto-detect",
-          parse: parseOrgProjectTargetArg,
+          parse: parseOrgProjectPositional,
           optional: true,
         },
       ],
@@ -299,12 +299,10 @@ export const viewCommand = buildCommand({
   async *func(
     this: SentryContext,
     flags: ViewFlags,
-    target?: OrgProjectTargetArg,
+    parsed: ParsedOrgProject = AUTO_DETECT_TARGET,
   ) {
     applyFreshFlag(flags);
     const { cwd } = this;
-
-    const parsed = parsedOrgProject(target);
 
     let resolvedTargets: ResolvedTarget[];
     let footer: string | undefined;

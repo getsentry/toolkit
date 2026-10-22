@@ -20,6 +20,10 @@
 
 import type { SentryContext } from "../../context.js";
 import {
+  type ParsedOrgProject,
+  parseOrgProjectPositional,
+} from "../../lib/arg-parsing.js";
+import {
   deleteProject,
   getOrganization,
   getProject,
@@ -40,11 +44,6 @@ import {
 } from "../../lib/mutate-command.js";
 import { resolveProjectBoundTarget } from "../../lib/resolve-target.js";
 import { buildProjectUrl } from "../../lib/sentry-web-urls.js";
-import {
-  type OrgProjectTargetArg,
-  parsedOrgProject,
-  parseOrgProjectTargetArg,
-} from "../../lib/target-arg.js";
 
 const log = logger.withTag("project.delete");
 
@@ -172,7 +171,7 @@ export const deleteCommand = buildDeleteCommand({
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search across orgs)",
-          parse: parseOrgProjectTargetArg,
+          parse: parseOrgProjectPositional,
         },
       ],
     },
@@ -180,12 +179,11 @@ export const deleteCommand = buildDeleteCommand({
   async *func(
     this: SentryContext,
     flags: DeleteFlags,
-    target: OrgProjectTargetArg,
+    parsed: ParsedOrgProject,
   ) {
     const { cwd } = this;
 
     // Block auto-detect for safety — destructive commands require explicit targets
-    const parsed = parsedOrgProject(target);
     requireExplicitTarget(
       parsed,
       "Project target",

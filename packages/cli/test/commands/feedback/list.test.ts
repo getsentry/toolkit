@@ -5,7 +5,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { listCommand } from "../../../src/commands/feedback/list.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
-import { parseOrgProjectTargetArg } from "../../../src/lib/target-arg.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { SentryFeedback } from "../../../src/types/index.js";
 
@@ -50,6 +49,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommandFunc } from "../../helpers.js";
 
 function sampleFeedback(
   overrides: Partial<SentryFeedback> = {},
@@ -131,7 +131,7 @@ describe("feedback list", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommandFunc(listCommand);
     await func.call(
       context,
       {
@@ -141,7 +141,7 @@ describe("feedback list", () => {
         json: true,
         fresh: false,
       },
-      parseOrgProjectTargetArg("test-org/test-project"),
+      "test-org/test-project",
     );
 
     expect(listFeedbackSpy).toHaveBeenCalledWith("test-org", "test-project", {
@@ -173,7 +173,7 @@ describe("feedback list", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommandFunc(listCommand);
     await func.call(
       context,
       {
@@ -185,7 +185,7 @@ describe("feedback list", () => {
         json: false,
         fresh: false,
       },
-      parseOrgProjectTargetArg("test-org/"),
+      "test-org/",
     );
 
     expect(listFeedbackSpy).toHaveBeenCalledWith("test-org", "", {
@@ -218,7 +218,7 @@ describe("feedback list", () => {
     listFeedbackSpy.mockResolvedValue({ feedback: [sampleFeedback()] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommandFunc(listCommand);
     await func.call(context, {
       status: "all",
       limit: 25,
@@ -246,7 +246,7 @@ describe("feedback list", () => {
     listFeedbackSpy.mockResolvedValue({ feedback: [sampleFeedback()] });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommandFunc(listCommand);
     await func.call(
       context,
       {
@@ -256,7 +256,7 @@ describe("feedback list", () => {
         json: true,
         fresh: false,
       },
-      parseOrgProjectTargetArg("test-project"),
+      "test-project",
     );
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
@@ -277,7 +277,7 @@ describe("feedback list", () => {
     listFeedbackSpy.mockResolvedValue({ feedback: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommandFunc(listCommand);
     await func.call(context, {
       status: "unresolved",
       limit: 25,
@@ -298,7 +298,7 @@ describe("feedback list", () => {
     );
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommandFunc(listCommand);
     await expect(
       func.call(context, {
         status: "unresolved",

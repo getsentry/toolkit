@@ -7,6 +7,7 @@
 import { mkdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
+import type { Command, CommandContext } from "@stricli/core";
 import { afterEach, beforeEach } from "vitest";
 import {
   resetAccountSelection,
@@ -16,6 +17,8 @@ import {
   resetIdentityFingerprintCache,
 } from "../src/lib/db/auth.js";
 import { CONFIG_DIR_ENV_VAR, closeDatabase } from "../src/lib/db/index.js";
+import type { PositionalDef } from "../src/lib/positional-parse.js";
+import { applyPositionalParsers } from "../src/lib/sdk-invoke.js";
 import { resetTipsCache } from "../src/lib/tips.js";
 
 // re-exporting a single constant, not a barrel
@@ -345,5 +348,35 @@ export function installFetchMock(
     restore: () => {
       globalThis.fetch = originalFetch;
     },
+  };
+}
+
+/** A loaded command func that takes raw positional strings. */
+export type RawArgsCommandFunc<CONTEXT> = (
+  this: CONTEXT,
+  flags: object,
+  ...args: (string | undefined)[]
+) => Promise<void>;
+
+/**
+ * Load a command's func for direct calls with raw CLI strings.
+ *
+ * Each positional runs through the command's own parser first, as Stricli's
+ * scanner does, so a parsing positional (e.g. `parseOrgProjectPositional`)
+ * reaches the command as its parsed value. Pass `undefined` for an omitted
+ * optional positional.
+ */
+export async function loadCommandFunc<CONTEXT extends CommandContext>(
+  command: Command<CONTEXT>,
+): Promise<RawArgsCommandFunc<CONTEXT>> {
+  const loaded = await command.loader();
+  const func = typeof loaded === "function" ? loaded : loaded.default;
+  const positional = command.parameters.positional as PositionalDef | undefined;
+  return async function (this: CONTEXT, flags, ...args) {
+    await func.call(
+      this,
+      flags as never,
+      ...(applyPositionalParsers(args, positional, this) as never[]),
+    );
   };
 }

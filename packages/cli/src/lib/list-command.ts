@@ -44,8 +44,8 @@ import {
   type ListResult,
   type OrgListConfig,
 } from "./org-list.js";
+import { rawPositional } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
-import { rawPositional } from "./target-arg.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
 
@@ -619,7 +619,7 @@ export function buildListCommand<
     applyFreshFlag(flags as unknown as { readonly fresh: boolean });
 
     // The first positional arg is always the target (org/project pattern),
-    // either a raw string or a TargetArg. Intercept it to handle plural
+    // either a raw string or a parsed value. Intercept it to handle plural
     // alias confusion.
     const rawTarget = rawPositional(args[0]);
     if (typeof rawTarget === "string") {

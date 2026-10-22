@@ -19,6 +19,7 @@ import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
 import { withEnv } from "./env.js";
+import type { PositionalDef } from "./positional-parse.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 
 /** CLI flag names/aliases that trigger infinite streaming output. */
@@ -75,14 +76,6 @@ export type FlagDef = {
   parse?: (value: string) => unknown;
   variadic?: boolean;
 };
-
-/** One positional parameter — subset needed to run its parser. */
-type PositionalParamDef = { parse: (this: unknown, input: string) => unknown };
-
-/** Stricli positional definition shape — subset needed by {@link applyPositionalParsers}. */
-type PositionalDef =
-  | { kind: "tuple"; parameters: readonly PositionalParamDef[] }
-  | { kind: "array"; parameter: PositionalParamDef };
 
 /** Resolved command: handler function + parameter definitions. */
 type ResolvedCommand = {
@@ -147,14 +140,15 @@ async function resolveCommand(path: string[]): Promise<ResolvedCommand> {
  * Like flag defaults ({@link applyFlagDefaults}), positional parsing normally
  * happens in Stricli's argument scanner, which the SDK invoke path bypasses.
  * Without this, a command whose positional parses its own value (e.g.
- * `parseOrgProjectTargetArg`) would receive a bare string.
+ * `parseOrgProjectPositional`) would receive a bare string.
  *
- * @param args - Positional strings from the SDK caller
+ * @param args - Positional strings from the caller; `undefined` marks an
+ *   omitted optional positional and is passed through unparsed
  * @param positionalDef - The command's Stricli positional definition
  * @param context - `this` for each parser, as Stricli passes it
  */
 export function applyPositionalParsers(
-  args: readonly string[],
+  args: readonly (string | undefined)[],
   positionalDef: PositionalDef | undefined,
   context: unknown,
 ): unknown[] {
@@ -163,7 +157,7 @@ export function applyPositionalParsers(
       positionalDef?.kind === "array"
         ? positionalDef.parameter
         : positionalDef?.parameters[index];
-    return param ? param.parse.call(context, arg) : arg;
+    return param && arg !== undefined ? param.parse.call(context, arg) : arg;
   });
 }
 
