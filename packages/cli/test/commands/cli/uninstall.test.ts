@@ -165,6 +165,22 @@ describe("sentry cli uninstall", () => {
       expect(output).toContain("brew uninstall getsentry/tools/sentry");
       expect(output).not.toContain("sentry binary");
     });
+
+    test("Homebrew-installed Node does not mask an npm install", async () => {
+      setInstallInfo({
+        method: "npm",
+        path: "/opt/homebrew/lib/node_modules/sentry/bin/sentry",
+        version: "1.0.0",
+      });
+      Object.defineProperty(process, "execPath", {
+        value: "/opt/homebrew/Cellar/node/22.0.0/bin/node",
+        configurable: true,
+      });
+
+      const { output } = await runUninstall(["--yes"]);
+      expect(output).toContain("npm uninstall -g sentry");
+      expect(output).not.toContain("brew uninstall");
+    });
   });
 
   test("detects pnpm install and suggests pnpm remove", async () => {
