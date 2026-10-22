@@ -228,7 +228,6 @@ describe("resolveInitContext", () => {
       expect.objectContaining({
         org: "acme",
         project: "my-app",
-        team: "platform",
         authToken: "sntrys_test",
         existingProject: expect.objectContaining({
           orgSlug: "acme",
@@ -238,6 +237,9 @@ describe("resolveInitContext", () => {
     );
     expect(getProjectSpy).toHaveBeenCalledTimes(1);
     expect(tryGetPrimaryDsnSpy).toHaveBeenCalledTimes(1);
+    // Team only matters for new projects — never resolve it for an existing one.
+    expect(context?.team).toBeUndefined();
+    expect(listTeamsSpy).not.toHaveBeenCalled();
   });
 
   test("keeps a detected DSN project even when project enrichment fails", async () => {
@@ -317,7 +319,11 @@ describe("resolveInitContext", () => {
   });
 
   test("lets the user choose an existing bare-slug project", async () => {
-    const { ui, respond } = createMockUI();
+    const { ui, calls, respond } = createMockUI();
+    listTeamsSpy.mockResolvedValueOnce([
+      { id: "1", slug: "platform", name: "Platform", access: ["team:admin"] },
+      { id: "2", slug: "mobile", name: "Mobile", access: ["team:admin"] },
+    ] as any);
     respond.select("existing");
 
     const context = await resolveInitContext(
@@ -327,6 +333,8 @@ describe("resolveInitContext", () => {
 
     expect(context?.project).toBe("my-app");
     expect(context?.existingProject?.projectSlug).toBe("my-app");
+    expect(context?.team).toBeUndefined();
+    expect(calls.filter((call) => call.kind === "select")).toHaveLength(1);
   });
 
   test("keeps the bare slug when the existence lookup fails", async () => {
@@ -448,7 +456,7 @@ describe("resolveInitContext", () => {
     expect(selectCall?.options).toEqual(["mobile", "platform"]);
   });
 
-  test("selects the first alphabetical Team Admin team in --yes mode", async () => {
+  test("selects the oldest Team Admin team in --yes mode", async () => {
     listTeamsSpy.mockResolvedValueOnce([
       {
         id: "1",
@@ -456,6 +464,7 @@ describe("resolveInitContext", () => {
         name: "Platform",
         access: ["team:admin"],
         isMember: true,
+        dateCreated: "2022-01-01T00:00:00Z",
       } as any,
       {
         id: "2",
@@ -463,13 +472,14 @@ describe("resolveInitContext", () => {
         name: "Mobile",
         access: ["team:admin"],
         isMember: true,
+        dateCreated: "2024-01-01T00:00:00Z",
       } as any,
     ]);
 
     const { ui } = createMockUI();
     const context = await resolveInitContext(makeOptions({ yes: true }), ui);
 
-    expect(context?.team).toBe("mobile");
+    expect(context?.team).toBe("platform");
   });
 
   test("sorts organization options alphabetically by name", async () => {
