@@ -23,12 +23,14 @@ import {
   formatAttributeList,
   toAttributeListItem,
 } from "../../lib/formatters/attribute.js";
+import { parseFieldsList } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   buildListCommand,
   buildListLimitFlag,
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
+  LIST_PERIOD_FLAG,
   LIST_TARGET_POSITIONAL,
   PERIOD_ALIASES,
 } from "../../lib/list-command.js";
@@ -38,20 +40,13 @@ import {
 } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import { resolveOrgOptionalFromArg } from "../../lib/resolve-target.js";
-import {
-  PERIOD_BRIEF,
-  parsePeriod,
-  type TimeRange,
-  timeRangeToApiParams,
-} from "../../lib/time-range.js";
+import { type TimeRange, timeRangeToApiParams } from "../../lib/time-range.js";
+import { shellQuote } from "../../lib/utils.js";
 
 const COMMAND_NAME = "attribute list";
 
 /** Default dataset when `--dataset` is omitted */
 const DEFAULT_DATASET = "spans";
-
-/** Default window — matches the MCP server's attribute discovery. */
-const DEFAULT_PERIOD = "14d";
 
 /** User-facing dataset names (and aliases) that map to API dataset names. */
 const DATASET_ALIASES: Record<string, TraceItemAttributeDataset> = {
@@ -114,30 +109,6 @@ export function parseDataset(value: string): TraceItemAttributeDataset {
 const INVALID_WITH_KEY = /[\s"'()]/;
 
 /**
- * Split a comma-separated key list, keeping commas inside brackets so typed
- * keys like `tags[cart.total,number]` stay whole.
- */
-function splitKeyList(value: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let current = "";
-  for (const char of value) {
-    if (char === "[") {
-      depth += 1;
-    } else if (char === "]" && depth > 0) {
-      depth -= 1;
-    } else if (char === "," && depth === 0) {
-      parts.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  parts.push(current);
-  return parts;
-}
-
-/**
  * Normalize repeated and/or comma-separated `--with` values into a
  * deduplicated list of attribute keys.
  * @internal Exported for testing
@@ -149,14 +120,10 @@ export function parseWithKeys(
     return;
   }
   const keys = new Set<string>();
-  for (const raw of values.flatMap(splitKeyList)) {
-    const key = raw.trim();
-    if (!key) {
-      continue;
-    }
+  for (const key of values.flatMap(parseFieldsList)) {
     if (INVALID_WITH_KEY.test(key)) {
       throw new ValidationError(
-        `Invalid attribute key "${key}" for --with. Pass keys as listed by this command, e.g. http.method or tags[cart.total,number].`,
+        `Invalid attribute key "${key}" for --with. Pass keys as listed by this command, e.g. gen_ai.request.model.`,
         "with",
       );
     }
@@ -187,14 +154,11 @@ export function parseAttributeTypes(
     return;
   }
   const types = new Set<TraceItemAttributeValueType>();
-  for (const raw of values.flatMap((v) => v.split(","))) {
-    const value = raw.trim().toLowerCase();
-    if (!value) {
-      continue;
-    }
+  for (const raw of values.flatMap(parseFieldsList)) {
+    const value = raw.toLowerCase();
     if (!VALID_TYPES.includes(value as TraceItemAttributeValueType)) {
       throw new ValidationError(
-        `Invalid attribute type "${raw.trim()}". Must be one of: ${VALID_TYPES.join(", ")}`,
+        `Invalid attribute type "${raw}". Must be one of: ${VALID_TYPES.join(", ")}`,
         "type",
       );
     }
@@ -219,11 +183,6 @@ export function compareAttributes(
   );
 }
 
-/** Shell-quote a key for a copyable command (zsh globs `tags[...]`). */
-function shellKey(key: string): string {
-  return /^[\w.:-]+$/.test(key) ? key : `'${key}'`;
-}
-
 /**
  * Build a `Tip:` line showing how to use a attribute keys in other commands.
  * @internal Exported for testing
@@ -240,11 +199,12 @@ export function buildUsageTip(
   }
   const { key } = example;
   if (dataset === "tracemetrics") {
-    return `Tip: Group or filter metrics with 'sentry explore ${org}/ --dataset metrics' (-F to group, -q to filter)`;
+    const target = project ? `${org}/${project}` : `${org}/`;
+    return `Tip: Group metrics with: sentry explore ${target} --dataset metrics -m <metric> -F ${shellQuote(key)}`;
   }
-  const command = dataset === "logs" ? "log list" : "span list";
   const target = project ? `${org}/${project}` : `${org}/<project>`;
-  return `Tip: Filter or add to columns with: sentry ${command} ${target} -q "has:${key}" --fields ${shellKey(key)}`;
+  const command = dataset === "logs" ? "log list" : "span list";
+  return `Tip: Filter or add to columns with: sentry ${command} ${target} -q ${shellQuote(`has:${key}`)} --fields ${shellQuote(key)}`;
 }
 
 /**
@@ -273,17 +233,27 @@ export const listCommand = buildListCommand(
     docs: {
       brief: "List attribute keys for spans, logs, or metrics",
       fullDescription:
-        "List the attribute keys available on a trace item dataset\n" +
+        "List the attribute keys available on spans, logs, or metrics datasets.\n" +
+        "Attributes are typed key-value data attached to each span, log or metric sample.\n\n" +
+        "Columns:\n" +
+        "  KEY          Name identifier; can be used for other commands in -q/--fields\n" +
+        "               e.g. span list -q 'has:tags[cart.total,number]'\n" +
+        "  TYPE         Value type of: string, number, boolean, array\n" +
+        "  SOURCE       One of: sentry (built-in) or user (set by your SDK)\n" +
+        "  ALIASES      Other names the attribute can be queried by\n" +
+        "  DESCRIPTION  What the attribute means; deprecated keys name replacements (pass --context)\n" +
+        "  EXAMPLES     Sample values seen for the attribute (pass --context)\n\n" +
         "Target specification:\n" +
         "  sentry attribute list                      # auto-detect org from DSN or config\n" +
         "  sentry attribute list <org>/               # all projects in the organization\n" +
         "  sentry attribute list <org>/<project>      # one project\n" +
         "  sentry attribute list <project>            # find project across all orgs\n\n" +
         "Examples:\n" +
-        "  sentry attribute list --dataset logs --with http.method    # Attributes seen on logs with http.method\n" +
-        "  sentry attribute list --type string --search http          # Attributes containing http and are type string\n" +
+        "  sentry attribute list --dataset logs                       # Attributes on logs instead of spans\n" +
+        "  sentry attribute list --with gen_ai.request.model          # Attributes seen on spans with gen_ai.request.model\n" +
+        "  sentry attribute list --type string --search gen_ai        # Attributes containing gen_ai and are type string\n" +
         "  sentry attribute list --period 24h                         # Get attributes that appeared in the last 24 hours\n" +
-        "  sentry attribute list --context                            # Display attribute metadata information\n" +
+        "  sentry attribute list --context                            # Display description and examples for each attribute\n" +
         "  sentry attribute list --json --fields key,type             # Output in JSON format with specified fields\n\n" +
         "Alias: `sentry attributes` → `sentry attribute list`",
     },
@@ -324,12 +294,7 @@ export const listCommand = buildListCommand(
           variadic: true,
           optional: true,
         },
-        period: {
-          kind: "parsed",
-          parse: parsePeriod,
-          brief: PERIOD_BRIEF,
-          default: DEFAULT_PERIOD,
-        },
+        period: LIST_PERIOD_FLAG,
         limit: {
           ...buildListLimitFlag("attributes"),
           parse: (value: string) =>

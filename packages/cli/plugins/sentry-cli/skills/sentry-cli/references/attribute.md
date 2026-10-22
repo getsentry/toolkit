@@ -20,7 +20,7 @@ List attribute keys for spans, logs, or metrics
 - `--type <value>... - Find attributes of these types (string, number, boolean, array; repeatable, comma-separated)`
 - `-s, --search <value> - Find attribute keys containing this text (case-sensitive)`
 - `--with <value>... - Find attributes that appear on the same items as all of these keys (repeatable, comma-separated)`
-- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "14d")`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
 - `-n, --limit <value> - Maximum number of attributes to list - (default: "25")`
 - `--context - Include each attribute's description, examples, and deprecation info (experimental API)`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -34,14 +34,14 @@ sentry attribute list my-org/my-project
 # List log attribute keys across the whole organization
 sentry attribute list my-org/ --dataset logs
 
-# Find keys containing "http" that are also of type string
-sentry attribute list --search http --type string
+# Find keys containing "gen_ai" that are also of type string
+sentry attribute list --search gen_ai --type string
 
 # Attributes seen on the same spans as the specified attribute
 sentry attribute list --with gen_ai.request.model
 
 # Show descriptions, example values, and deprecation info
-sentry attribute list --search http --context
+sentry attribute list --context
 
 # Show more than the default 25
 sentry attribute list my-org/my-project -n 100

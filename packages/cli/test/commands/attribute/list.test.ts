@@ -111,7 +111,7 @@ function createMockContext() {
 function flags(overrides: Record<string, unknown> = {}) {
   return {
     dataset: "spans",
-    period: parsePeriod("14d"),
+    period: parsePeriod("7d"),
     context: false,
     limit: 25,
     json: false,
@@ -225,7 +225,7 @@ describe("buildUsageTip", () => {
   test("spans: suggests span list with a custom key, quoted for the shell", () => {
     const tip = buildUsageTip("spans", "my-org", "backend", items);
     expectTipWithCommand(tip, "sentry span list my-org/backend");
-    expect(tip).toContain('-q "has:tags[cart.total,number]"');
+    expect(tip).toContain("-q 'has:tags[cart.total,number]'");
     expect(tip).toContain("--fields 'tags[cart.total,number]'");
   });
 
@@ -234,14 +234,14 @@ describe("buildUsageTip", () => {
       toAttributeListItem(HTTP_METHOD),
     ]);
     expectTipWithCommand(tip, "sentry log list my-org/<project>");
-    expect(tip).toContain('-q "has:http.method"');
-    expect(tip).toContain("--fields http.method");
+    expect(tip).toContain("-q 'has:http.method'");
+    expect(tip).toContain("--fields 'http.method'");
   });
 
   test("metrics: points at explore", () => {
     expectTipWithCommand(
       buildUsageTip("tracemetrics", "my-org", undefined, items),
-      "sentry explore my-org/ --dataset metrics",
+      "sentry explore my-org/ --dataset metrics -m <metric> -F 'tags[cart.total,number]'",
     );
   });
 
@@ -300,7 +300,7 @@ describe("describeAttribute", () => {
 });
 
 describe("listCommand.func", () => {
-  test("lists span attributes for a project, 25 per page over 14d, sorted by name", async () => {
+  test("lists span attributes for a project, 25 per page over 7d, sorted by name", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org", project: "backend" });
     listSpy.mockResolvedValue({ data: ATTRIBUTES });
 
@@ -314,7 +314,7 @@ describe("listCommand.func", () => {
       query: undefined,
       context: false,
       perPage: 25,
-      statsPeriod: "14d",
+      statsPeriod: "7d",
     });
     expect(JSON.parse(output)).toEqual({
       data: [
