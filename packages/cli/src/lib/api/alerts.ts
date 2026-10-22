@@ -431,6 +431,14 @@ export async function getMetricAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<MetricAlertRule> {
+  return mapDetectorToMetricAlertRule(await getMetricDetector(orgSlug, ruleId));
+}
+
+/** Fetch a metric-issue detector, rejecting other detector kinds with a 404. */
+async function getMetricDetector(
+  orgSlug: string,
+  ruleId: string,
+): Promise<MetricDetector> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await getOrganizationDetector({
     ...config,
@@ -456,7 +464,7 @@ export async function getMetricAlertRule(
       `/organizations/${orgSlug}/detectors/${encodeURIComponent(ruleId)}/`,
     );
   }
-  return mapDetectorToMetricAlertRule(data);
+  return data;
 }
 
 // Issue alert write operations
@@ -595,18 +603,30 @@ const DETECTOR_DATASET_SOURCES: Record<string, DetectorDatasetSource> = {
 };
 
 /**
- * Resolve the native detector dataset fields for a CLI dataset name.
+ * Resolve the native detector dataset fields for a flat metric alert body.
  *
- * Unknown names fall back to the span source so an edit of a detector whose
- * dataset the CLI does not model keeps the previous behavior.
+ * CLI dataset names use the mapping table. Other (native) datasets come from
+ * an edit baseline, so they keep the stored `eventTypes`/`queryType`, falling
+ * back to the span defaults only when the baseline carries none.
  */
-function detectorDatasetSource(dataset: string): DetectorDatasetSource {
-  return (
-    DETECTOR_DATASET_SOURCES[dataset.trim().toLowerCase()] ?? {
-      ...SPAN_SOURCE,
-      dataset,
-    }
-  );
+function detectorDatasetSource(
+  body: Record<string, unknown>,
+): DetectorDatasetSource {
+  const dataset = typeof body.dataset === "string" ? body.dataset : "";
+  const modelled = DETECTOR_DATASET_SOURCES[dataset.trim().toLowerCase()];
+  if (modelled) {
+    return modelled;
+  }
+  return {
+    dataset,
+    queryType:
+      body.queryType === 0 || body.queryType === 1 || body.queryType === 2
+        ? body.queryType
+        : SPAN_SOURCE.queryType,
+    eventTypes: Array.isArray(body.eventTypes)
+      ? body.eventTypes.filter((t): t is string => typeof t === "string")
+      : SPAN_SOURCE.eventTypes,
+  };
 }
 
 /**
@@ -700,9 +720,7 @@ function buildDetectorConditions(
 function buildDetectorDataSource(
   body: Record<string, unknown>,
 ): Record<string, unknown> {
-  const native = detectorDatasetSource(
-    typeof body.dataset === "string" ? body.dataset : "",
-  );
+  const native = detectorDatasetSource(body);
   const timeWindowMinutes =
     typeof body.timeWindow === "number" ? body.timeWindow : 0;
   const source: Record<string, unknown> = {
@@ -816,13 +834,25 @@ export async function deleteMetricAlertRule(
  * `MetricAlertRule` shape, then hands the merged body to `putMetricAlertRule`,
  * which translates it into the nested detector document. Returning the flat
  * shape (rather than the raw detector) keeps the command-side merge coherent.
+ * The stored `eventTypes`/`queryType` ride along so an edit of a data source
+ * the CLI does not model (e.g. `trace_item_metric`) keeps its signal.
  */
 export async function getMetricAlertRuleDocument(
   orgSlug: string,
   ruleId: string,
 ): Promise<Record<string, unknown>> {
-  const rule = await getMetricAlertRule(orgSlug, ruleId);
-  return { ...rule };
+  const detector = await getMetricDetector(orgSlug, ruleId);
+  const source = resolveThresholdSource(detector.dataSources?.[0] ?? {});
+  const document: Record<string, unknown> = {
+    ...mapDetectorToMetricAlertRule(detector),
+  };
+  if (Array.isArray(source.eventTypes)) {
+    document.eventTypes = source.eventTypes;
+  }
+  if (typeof source.queryType === "number") {
+    document.queryType = source.queryType;
+  }
+  return document;
 }
 
 /**

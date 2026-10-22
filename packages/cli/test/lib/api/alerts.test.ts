@@ -660,6 +660,42 @@ describe("getMetricAlertRuleDocument", () => {
   });
 });
 
+describe("metric alert edit round-trip", () => {
+  test("keeps the stored eventTypes of an unmodelled EAP monitor", async () => {
+    const storedSource = {
+      type: "snuba_query_subscription",
+      queryObj: {
+        snubaQuery: {
+          aggregate: "sum(value,my.metric,counter,-)",
+          dataset: "events_analytics_platform",
+          eventTypes: ["trace_item_metric"],
+          queryType: 1,
+          query: "",
+          timeWindow: 300,
+        },
+      },
+    };
+    let putSource: Record<string, unknown> | undefined;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.method === "PUT") {
+        const body = (await req.json()) as Record<string, unknown>;
+        putSource = (body.dataSources as Record<string, unknown>[])[0];
+      }
+      return Response.json(metricDetector({ dataSources: [storedSource] }));
+    });
+
+    const doc = await getMetricAlertRuleDocument("test-org", "9");
+    await putMetricAlertRule("test-org", "9", { ...doc, name: "Renamed" });
+
+    expect(putSource).toMatchObject({
+      dataset: "events_analytics_platform",
+      eventTypes: ["trace_item_metric"],
+      queryType: 1,
+    });
+  });
+});
+
 describe("putMetricAlertRule", () => {
   test("PUTs a nested detector body to the /detectors/{id}/ endpoint", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
