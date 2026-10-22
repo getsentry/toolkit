@@ -59,10 +59,11 @@ export type IssueCollapseField = NonNullable<
 /**
  * Build the `collapse` parameter for issue list API calls.
  *
- * Always collapses `filtered` and `unhandled` — the CLI never consumes
- * these in issue list views. Conditionally collapses `stats` when the caller
- * confirms seen-stats fields aren't needed, and `lifetime` when the caller
- * confirms lifetime-dependent fields aren't needed.
+ * Always collapses `unhandled` — the CLI never consumes it in issue list
+ * views. Collapses `filtered` unless the caller needs query-scoped counts.
+ * Conditionally collapses `stats` when the caller confirms seen-stats fields
+ * aren't needed, and `lifetime` when the caller confirms lifetime-dependent
+ * fields aren't needed.
  *
  * **Important:** `collapse=stats` skips Snuba seen-stats queries entirely,
  * stripping top-level `count`, `userCount`, `firstSeen`, `lastSeen` and the
@@ -80,13 +81,22 @@ export type IssueCollapseField = NonNullable<
  *   Defaults to `false` because most output paths need `count`/`userCount`/
  *   `firstSeen`/`lastSeen`. Only set to `true` when `--json --fields` omits
  *   all lifetime-dependent fields.
+ * @param options.shouldCollapseFiltered - Whether the `filtered` block can be
+ *   skipped. Defaults to `true`. Set to `false` to receive counts scoped to
+ *   the query's event-level filters (e.g. `release:`), which the top-level
+ *   `count`/`userCount` ignore. The server only returns `filtered` when
+ *   `stats` is not collapsed.
  * @returns Array of fields to collapse
  */
 export function buildIssueListCollapse(options: {
   shouldCollapseStats: boolean;
   shouldCollapseLifetime?: boolean;
+  shouldCollapseFiltered?: boolean;
 }): IssueCollapseField[] {
-  const collapse: IssueCollapseField[] = ["filtered", "unhandled"];
+  const collapse: IssueCollapseField[] =
+    (options.shouldCollapseFiltered ?? true)
+      ? ["filtered", "unhandled"]
+      : ["unhandled"];
   if (options.shouldCollapseLifetime) {
     collapse.push("lifetime");
   }

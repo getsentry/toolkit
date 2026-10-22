@@ -53,8 +53,8 @@ const INVALID_INLIST_KEYS = new Set(["is", "has"]);
  * A query filtering on one of these returns the groups matching the filter,
  * but the displayed counts remain period-wide totals across every value of the
  * key — e.g. `release:"X"` restricts the result set yet the counts still cover
- * all releases. Callers must be told so they don't attribute the numbers to the
- * filter. See getsentry/cli#1518.
+ * all releases. `issue list` requests the endpoint's query-scoped `filtered`
+ * counts instead when one of these keys is present. See getsentry/toolkit#1583.
  */
 const COUNT_UNSCOPED_FILTER_KEYS = new Set(["release"]);
 
@@ -730,9 +730,9 @@ function collectUnscopedCountKeys(
  * but are NOT reflected in the issues-list endpoint's seen-stats
  * (`count`, `userCount`, `firstSeen`, `lastSeen`). See getsentry/cli#1518.
  *
- * Used to warn callers that a release-scoped `issue list` reports period-wide
- * counts, not counts matching the filter. Returns an empty array when the
- * query is absent, unparseable, or contains no such keys.
+ * Used by `issue list` to decide when to request query-scoped counts.
+ * Returns an empty array when the query is absent, unparseable, or contains
+ * no such keys.
  *
  * @param query - Raw `--query` value, or `undefined`
  * @returns Lower-cased matching keys (e.g. `["release"]`), deduplicated

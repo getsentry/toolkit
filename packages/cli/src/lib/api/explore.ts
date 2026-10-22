@@ -43,12 +43,6 @@ export type ExploreQueryOptions = {
   start?: string;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
   end?: string;
-  /**
-   * Numeric project IDs to scope the query to. Passed as repeated `project`
-   * params. Avoids the "project not actively selected" error when querying a
-   * specific project's events.
-   */
-  project?: string[];
 };
 
 /**
@@ -86,7 +80,6 @@ async function fetchEventsPage(
         start: options.start,
         end: options.end,
         cursor: options.cursor,
-        project: options.project,
       },
       schema: EventsTableResponseSchema,
     },
