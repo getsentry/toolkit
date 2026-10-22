@@ -155,25 +155,38 @@ Create a metric alert rule
 - `--name <value> - Rule name`
 - `--query <value> - Metric query filter string`
 - `--aggregate <value> - Aggregate expression (for example count(), p95(span.duration))`
-- `--dataset <value> - Dataset: errors (error-events), sessions, events, spans, metrics (transaction(s) routes to spans)`
+- `--dataset <value> - Dataset: errors (error-events), events, spans, logs, sessions, metrics (transaction(s) routes to spans)`
 - `--time-window <value> - Evaluation window in minutes`
 - `-t, --trigger <value>... - Trigger object JSON (repeatable, or pass one JSON array)`
 - `-p, --project <value>... - Project slug filter (repeatable or comma-separated)`
 - `--environment <value> - Environment filter`
 - `--owner <value> - Owner value accepted by Sentry API`
+- `--workflow <value>... - Alert (workflow) id to notify (repeatable or comma-separated)`
 - `-n, --dry-run - Show what would happen without making changes`
 
 **Examples:**
 
 ```bash
-# Create an organization metric alert rule
+# Alert when P95 span duration goes above 500ms
 sentry alert metrics create my-org \
   --name "P95 Latency" \
+  --project my-app \
   --query "environment:prod" \
   --aggregate "p95(span.duration)" \
   --dataset spans \
   --time-window 5 \
-  --trigger '{"alertThreshold":500,"actions":[{"id":"sentry.mail.actions.NotifyEmailAction","targetType":"Team","targetIdentifier":1}]}'
+  --trigger '{"alertThreshold":500}'
+
+# Alert on any matching log line and notify through an existing alert
+sentry alert metrics create my-org \
+  --name "AI chat failures" \
+  --project my-app \
+  --query "action:ai.chat result:error" \
+  --aggregate "count()" \
+  --dataset logs \
+  --time-window 5 \
+  --trigger '{"alertThreshold":0,"resolveThreshold":0}' \
+  --workflow 12345
 ```
 
 ### `sentry alert metrics delete <org/rule-id-or-name>`
@@ -201,12 +214,13 @@ Edit a metric alert rule
 - `--status <value> - active or disabled`
 - `--query <value> - Metric query filter`
 - `--aggregate <value> - Aggregate expression`
-- `--dataset <value> - Dataset: errors (error-events), sessions, events, spans, metrics (transaction(s) routes to spans)`
+- `--dataset <value> - Dataset: errors (error-events), events, spans, logs, sessions, metrics (transaction(s) routes to spans)`
 - `--time-window <value> - Evaluation window in minutes`
 - `-t, --trigger <value>... - Trigger object JSON (repeatable, or pass one JSON array)`
 - `-p, --project <value>... - Project slug filter (repeatable or comma-separated)`
 - `--environment <value> - Environment value (pass empty string to clear)`
 - `--owner <value> - Owner value (pass empty string to clear)`
+- `--workflow <value>... - Replace connected alert (workflow) ids (repeatable or comma-separated; empty string disconnects all)`
 
 **Examples:**
 

@@ -19,6 +19,7 @@ import {
   normalizeProjectList,
   parseJsonObjectList,
   parseStatusFlag,
+  parseWorkflowIds,
   resolveMetricDataset,
   statusToMetricValue,
   validateMetricDataset,
@@ -42,6 +43,7 @@ type EditFlags = {
   readonly project?: string[];
   readonly environment?: string;
   readonly owner?: string;
+  readonly workflow?: string[];
   readonly json: boolean;
   readonly fields?: string[];
 };
@@ -62,7 +64,8 @@ function hasMetricMutations(flags: EditFlags): boolean {
     flags.trigger !== undefined ||
     flags.project !== undefined ||
     flags.environment !== undefined ||
-    flags.owner !== undefined
+    flags.owner !== undefined ||
+    flags.workflow !== undefined
   );
 }
 
@@ -129,6 +132,9 @@ function applyMetricOptionalFields(
   }
   if (flags.owner !== undefined) {
     body.owner = flags.owner.trim() === "" ? null : flags.owner;
+  }
+  if (flags.workflow !== undefined) {
+    body.workflowIds = parseWorkflowIds(flags.workflow) ?? [];
   }
   return body;
 }
@@ -222,7 +228,7 @@ export const editCommand = buildCommand({
         parse: String,
         optional: true,
         brief:
-          "Dataset: errors (error-events), sessions, events, spans, metrics (transaction(s) routes to spans)",
+          "Dataset: errors (error-events), events, spans, logs, sessions, metrics (transaction(s) routes to spans)",
       },
       "time-window": {
         kind: "parsed",
@@ -255,6 +261,14 @@ export const editCommand = buildCommand({
         parse: String,
         optional: true,
         brief: "Owner value (pass empty string to clear)",
+      },
+      workflow: {
+        kind: "parsed",
+        parse: String,
+        variadic: true,
+        optional: true,
+        brief:
+          "Replace connected alert (workflow) ids (repeatable or comma-separated; empty string disconnects all)",
       },
     },
     aliases: {

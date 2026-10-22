@@ -15,6 +15,7 @@ import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
 import {
   normalizeProjectList,
   parseJsonObjectList,
+  parseWorkflowIds,
   resolveMetricDataset,
   validateMetricDataset,
   validateMetricTimeWindow,
@@ -32,6 +33,7 @@ type CreateFlags = {
   readonly project?: string[];
   readonly environment?: string;
   readonly owner?: string;
+  readonly workflow?: string[];
   readonly "dry-run": boolean;
   readonly json: boolean;
   readonly fields?: string[];
@@ -69,20 +71,26 @@ export const createCommand = buildCommand({
   docs: {
     brief: "Create a metric alert rule",
     fullDescription:
-      "Create an organization-scoped metric alert rule.\n\n" +
+      "Create a metric alert rule (a metric monitor in the detectors API).\n\n" +
       "Required fields:\n" +
       "  --name, --query, --aggregate, --dataset, --time-window, --trigger (>=1), --project\n\n" +
       "Optional fields:\n" +
-      "  --environment, --owner\n\n" +
+      "  --environment, --owner, --workflow\n\n" +
+      "Triggers:\n" +
+      '  {"alertThreshold":N, "label":"critical"|"warning", "resolveThreshold":N, "thresholdType":0|1}\n' +
+      "  thresholdType 0 alerts above the threshold (default), 1 below. Without resolveThreshold\n" +
+      "  the rule resolves at the critical threshold. Native detector conditions\n" +
+      '  ({"type":"gt","comparison":N,"conditionResult":75}) are passed through as-is.\n' +
+      "  Notifications are not part of triggers: pass --workflow with an existing alert id.\n\n" +
       "Examples:\n" +
       "  sentry alert metrics create my-org/ --name 'P95 latency' \\\n" +
       "    --query 'environment:prod' --aggregate 'p95(span.duration)' \\\n" +
-      "    --dataset spans --time-window 5 \\\n" +
-      '    --trigger \'{"alertThreshold":500,"actions":[{"id":"sentry.mail.actions.NotifyEmailAction","targetType":"Team","targetIdentifier":1}]}\'\n\n' +
-      "  sentry alert metrics create my-org/ --name 'Error volume' \\\n" +
-      "    --query 'event.type:error' --aggregate 'count()' --dataset errors \\\n" +
-      '    --time-window 15 --trigger \'[{"alertThreshold":100,"actions":[{"id":"sentry.mail.actions.NotifyEmailAction","targetType":"Team","targetIdentifier":1}]}]\' \\\n' +
-      "    --project my-app --dry-run",
+      "    --dataset spans --time-window 5 --project my-app \\\n" +
+      "    --trigger '{\"alertThreshold\":500}'\n\n" +
+      "  sentry alert metrics create my-org/ --name 'AI chat failures' \\\n" +
+      "    --query 'action:ai.chat result:error' --aggregate 'count()' --dataset logs \\\n" +
+      '    --time-window 5 --trigger \'{"alertThreshold":0,"resolveThreshold":0}\' \\\n' +
+      "    --project my-app --workflow 123 --dry-run",
   },
   output: {
     human: formatCreated,
@@ -119,7 +127,7 @@ export const createCommand = buildCommand({
         kind: "parsed",
         parse: String,
         brief:
-          "Dataset: errors (error-events), sessions, events, spans, metrics (transaction(s) routes to spans)",
+          "Dataset: errors (error-events), events, spans, logs, sessions, metrics (transaction(s) routes to spans)",
       },
       "time-window": {
         kind: "parsed",
@@ -151,6 +159,13 @@ export const createCommand = buildCommand({
         parse: String,
         optional: true,
         brief: "Owner value accepted by Sentry API",
+      },
+      workflow: {
+        kind: "parsed",
+        parse: String,
+        variadic: true,
+        optional: true,
+        brief: "Alert (workflow) id to notify (repeatable or comma-separated)",
       },
       "dry-run": DRY_RUN_FLAG,
     },
@@ -207,6 +222,10 @@ export const createCommand = buildCommand({
     }
     if (flags.owner !== undefined) {
       body.owner = flags.owner;
+    }
+    const workflowIds = parseWorkflowIds(flags.workflow);
+    if (workflowIds) {
+      body.workflowIds = workflowIds;
     }
 
     if (flags["dry-run"]) {

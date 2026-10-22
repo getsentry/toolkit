@@ -10,6 +10,7 @@ const METRIC_DATASET_VALUES = new Set([
   "sessions",
   "events",
   "spans",
+  "logs",
   "metrics",
 ]);
 
@@ -40,6 +41,7 @@ const METRIC_DATASET_ALIASES: Record<string, string> = {
   session: "sessions",
   metric: "metrics",
   span: "spans",
+  log: "logs",
   // Dashboard terminology for the error dataset
   "error-events": "errors",
 };
@@ -52,6 +54,8 @@ const IS_TRANSACTION_FILTER = "is_transaction:true";
 
 /** Splits a query string on runs of whitespace. */
 const QUERY_TOKEN_SEPARATOR = /\s+/;
+/** Workflow (alert) ids are numeric. */
+const WORKFLOW_ID_PATTERN = /^\d+$/;
 const METRIC_TIME_WINDOWS = new Set([
   1, 5, 10, 15, 30, 60, 120, 240, 360, 720, 1440,
 ]);
@@ -298,7 +302,68 @@ export function validateMetricTimeWindow(timeWindow: number): void {
   );
 }
 
-/** Validate that each trigger has an `alertThreshold` and a non-empty `actions` array. */
+const METRIC_TRIGGER_LABELS = new Set(["critical", "warning"]);
+
+/** Whether a trigger is a native detector condition rather than an `alertThreshold` trigger. */
+function isDetectorCondition(trigger: Record<string, unknown>): boolean {
+  return typeof trigger.type === "string";
+}
+
+/**
+ * Validate one native detector condition (`{type, comparison, conditionResult}`).
+ * The backend checks the operator and priority values; only presence is checked here.
+ */
+function validateNativeMetricCondition(trigger: Record<string, unknown>): void {
+  if (
+    trigger.comparison === undefined ||
+    trigger.conditionResult === undefined
+  ) {
+    throw new ValidationError(
+      "Detector conditions with 'type' must include comparison and conditionResult.",
+      "trigger",
+    );
+  }
+}
+
+/** Validate one `alertThreshold`-style trigger. */
+function validateThresholdTrigger(trigger: Record<string, unknown>): void {
+  const threshold = trigger.alertThreshold;
+  if (
+    (typeof threshold !== "number" && typeof threshold !== "string") ||
+    !Number.isFinite(Number(threshold))
+  ) {
+    throw new ValidationError(
+      "Each trigger must include a numeric alertThreshold.",
+      "trigger",
+    );
+  }
+  if (
+    trigger.label !== undefined &&
+    !METRIC_TRIGGER_LABELS.has(String(trigger.label).toLowerCase())
+  ) {
+    throw new ValidationError(
+      `Trigger label must be 'critical' or 'warning' (got ${JSON.stringify(trigger.label)}).`,
+      "trigger",
+    );
+  }
+  if (Array.isArray(trigger.actions) && trigger.actions.length > 0) {
+    throw new ValidationError(
+      "Metric alerts no longer carry notification actions on triggers. " +
+        "Remove 'actions' and connect an existing alert with --workflow <id>.",
+      "trigger",
+    );
+  }
+}
+
+/**
+ * Validate metric alert triggers.
+ *
+ * Each trigger is either a threshold (`alertThreshold`, optional `label`
+ * critical|warning, `resolveThreshold`, `thresholdType` 0 above / 1 below) or
+ * a native detector condition (`type`, `comparison`, `conditionResult`).
+ * Notification actions are rejected: the detectors API does not accept them,
+ * so they would otherwise be dropped silently.
+ */
 export function validateMetricTriggers(
   triggers: readonly Record<string, unknown>[] | undefined,
 ): void {
@@ -309,22 +374,40 @@ export function validateMetricTriggers(
     );
   }
 
+  const nativeCount = triggers.filter(isDetectorCondition).length;
+  if (nativeCount > 0 && nativeCount < triggers.length) {
+    throw new ValidationError(
+      "Do not mix detector conditions (with 'type') and alertThreshold triggers.",
+      "trigger",
+    );
+  }
+
   for (const trigger of triggers) {
-    const threshold = trigger.alertThreshold;
-    if (typeof threshold !== "number" && typeof threshold !== "string") {
-      throw new ValidationError(
-        "Each trigger must include alertThreshold.",
-        "trigger",
-      );
-    }
-    const actions = trigger.actions;
-    if (!Array.isArray(actions) || actions.length === 0) {
-      throw new ValidationError(
-        "Each trigger must include a non-empty actions array.",
-        "trigger",
-      );
+    if (isDetectorCondition(trigger)) {
+      validateNativeMetricCondition(trigger);
+    } else {
+      validateThresholdTrigger(trigger);
     }
   }
+}
+
+/** Parse `--workflow` values (repeatable or comma-separated) into numeric workflow ids. */
+export function parseWorkflowIds(
+  values: readonly string[] | undefined,
+): number[] | undefined {
+  const ids = normalizeProjectList(values);
+  if (!ids) {
+    return;
+  }
+  return ids.map((id) => {
+    if (!WORKFLOW_ID_PATTERN.test(id)) {
+      throw new ValidationError(
+        `Workflow id must be numeric (got ${JSON.stringify(id)}).`,
+        "workflow",
+      );
+    }
+    return Number(id);
+  });
 }
 
 /** Map a human-readable status string to the numeric value the metric alert API expects. */

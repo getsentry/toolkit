@@ -205,7 +205,10 @@ function mapDetectorToMetricAlertRule(
     status: detector.enabled === false ? 1 : 0,
     query: pickDetectorString(nested.query),
     aggregate: pickDetectorString(nested.aggregate),
-    dataset: pickDetectorString(nested.dataset),
+    dataset: cliDatasetName(
+      pickDetectorString(nested.dataset),
+      nested.eventTypes,
+    ),
     timeWindow: timeWindowSeconds > 0 ? Math.round(timeWindowSeconds / 60) : 0,
     environment,
     owner: pickDetectorOwner(detector.owner),
@@ -547,27 +550,144 @@ export async function createIssueAlertRule(
 // `/alert-rules/` endpoint (getsentry/cli#1274, #1277).
 
 /**
- * Datasets whose events flow through the error/transaction pipeline
- * (`queryType: 0`) rather than the trace-item pipeline (`queryType: 1`).
+ * How a CLI metric alert dataset maps onto a detector data source.
+ *
+ * The CLI keeps the friendly legacy dataset names (`errors`, `spans`, `logs`,
+ * …), but the detector `SnubaQueryValidator` only accepts native `Dataset`
+ * values and checks them against `queryType` and `eventTypes`: errors live in
+ * `events` (type 0), spans and logs in `events_analytics_platform` (type 1)
+ * distinguished by `eventTypes`, and crash-rate alerts in `metrics` (type 2).
  */
-const ERROR_LIKE_DATASETS = new Set(["errors", "events"]);
+type DetectorDatasetSource = {
+  readonly dataset: string;
+  readonly queryType: 0 | 1 | 2;
+  readonly eventTypes: readonly string[];
+};
 
-/** Detector `queryType` for a metric alert dataset. */
-function datasetQueryType(dataset: string): 0 | 1 {
-  return ERROR_LIKE_DATASETS.has(dataset.trim().toLowerCase()) ? 0 : 1;
+const ERROR_SOURCE: DetectorDatasetSource = {
+  dataset: "events",
+  queryType: 0,
+  eventTypes: ["error", "default"],
+};
+const SPAN_SOURCE: DetectorDatasetSource = {
+  dataset: "events_analytics_platform",
+  queryType: 1,
+  eventTypes: ["trace_item_span"],
+};
+const LOG_SOURCE: DetectorDatasetSource = {
+  dataset: "events_analytics_platform",
+  queryType: 1,
+  eventTypes: ["trace_item_log"],
+};
+const CRASH_RATE_SOURCE: DetectorDatasetSource = {
+  dataset: "metrics",
+  queryType: 2,
+  eventTypes: [],
+};
+
+const DETECTOR_DATASET_SOURCES: Record<string, DetectorDatasetSource> = {
+  errors: ERROR_SOURCE,
+  events: ERROR_SOURCE,
+  spans: SPAN_SOURCE,
+  logs: LOG_SOURCE,
+  sessions: CRASH_RATE_SOURCE,
+  metrics: CRASH_RATE_SOURCE,
+};
+
+/**
+ * Resolve the native detector dataset fields for a CLI dataset name.
+ *
+ * Unknown names fall back to the span source so an edit of a detector whose
+ * dataset the CLI does not model keeps the previous behavior.
+ */
+function detectorDatasetSource(dataset: string): DetectorDatasetSource {
+  return (
+    DETECTOR_DATASET_SOURCES[dataset.trim().toLowerCase()] ?? {
+      ...SPAN_SOURCE,
+      dataset,
+    }
+  );
 }
 
 /**
- * Default `eventTypes` for a metric alert dataset.
+ * Map a native detector dataset back onto the CLI dataset name.
  *
- * Error-like datasets track `error`/`default` events; everything else measures
- * spans. The backend accepts an explicit `eventTypes` on the data source and
- * derives the internal query type from `queryType`.
+ * Inverse of {@link detectorDatasetSource}, so `view`/`list` show the same
+ * names `create` accepts and an `edit` round-trip keeps log alerts on
+ * `trace_item_log`. Unmodelled combinations are returned verbatim.
  */
-function datasetEventTypes(dataset: string): string[] {
-  return ERROR_LIKE_DATASETS.has(dataset.trim().toLowerCase())
-    ? ["error", "default"]
-    : ["trace_item_span"];
+function cliDatasetName(dataset: string, eventTypes: unknown): string {
+  const types = Array.isArray(eventTypes) ? eventTypes : [];
+  if (dataset === "events") {
+    return "errors";
+  }
+  if (dataset === "events_analytics_platform") {
+    if (types.includes("trace_item_log")) {
+      return "logs";
+    }
+    if (types.includes("trace_item_span")) {
+      return "spans";
+    }
+  }
+  return dataset;
+}
+
+/** Detector priority levels used as metric condition results. */
+const PRIORITY_BY_LABEL: Record<string, number> = { critical: 75, warning: 50 };
+const PRIORITY_OK = 0;
+
+/** Trigger severity label, defaulting to `critical` like the legacy alert-rule API. */
+function triggerLabel(trigger: Record<string, unknown>): string {
+  return String(trigger.label ?? "critical").toLowerCase();
+}
+
+/** Whether a trigger is already a native detector condition (`{type, comparison, conditionResult}`). */
+function isNativeCondition(trigger: Record<string, unknown>): boolean {
+  return typeof trigger.type === "string";
+}
+
+/**
+ * Translate CLI triggers into detector condition-group conditions.
+ *
+ * Legacy-shaped triggers (`alertThreshold`, optional `label`,
+ * `resolveThreshold`, `thresholdType` 0 above / 1 below) become a threshold
+ * condition per trigger plus the single resolution condition the
+ * metric detector validator requires. Resolution uses the first
+ * `resolveThreshold` given, else the critical (or first) alert threshold.
+ * Native conditions (with a `type`) pass through untouched.
+ */
+function buildDetectorConditions(
+  triggers: readonly Record<string, unknown>[],
+): Record<string, unknown>[] {
+  // validateMetricTriggers rejects mixing the two shapes.
+  if (triggers.some(isNativeCondition)) {
+    return [...triggers];
+  }
+
+  const below = triggers.some((trigger) => Number(trigger.thresholdType) === 1);
+  const conditions: Record<string, unknown>[] = triggers.map((trigger) => ({
+    type: below ? "lt" : "gt",
+    comparison: Number(trigger.alertThreshold),
+    conditionResult:
+      PRIORITY_BY_LABEL[triggerLabel(trigger)] ?? PRIORITY_BY_LABEL.critical,
+  }));
+
+  const explicitResolve = triggers.find(
+    (trigger) =>
+      trigger.resolveThreshold !== undefined &&
+      trigger.resolveThreshold !== null,
+  );
+  const critical =
+    triggers.find((trigger) => triggerLabel(trigger) === "critical") ??
+    triggers[0];
+  conditions.push({
+    type: below ? "gte" : "lte",
+    comparison: Number(
+      explicitResolve?.resolveThreshold ?? critical?.alertThreshold,
+    ),
+    conditionResult: PRIORITY_OK,
+  });
+  return conditions;
 }
 
 /**
@@ -580,15 +700,17 @@ function datasetEventTypes(dataset: string): string[] {
 function buildDetectorDataSource(
   body: Record<string, unknown>,
 ): Record<string, unknown> {
-  const dataset = typeof body.dataset === "string" ? body.dataset : "";
+  const native = detectorDatasetSource(
+    typeof body.dataset === "string" ? body.dataset : "",
+  );
   const timeWindowMinutes =
     typeof body.timeWindow === "number" ? body.timeWindow : 0;
   const source: Record<string, unknown> = {
     aggregate: typeof body.aggregate === "string" ? body.aggregate : "",
-    dataset,
+    dataset: native.dataset,
     query: typeof body.query === "string" ? body.query : "",
-    queryType: datasetQueryType(dataset),
-    eventTypes: datasetEventTypes(dataset),
+    queryType: native.queryType,
+    eventTypes: [...native.eventTypes],
     timeWindow: timeWindowMinutes * 60,
   };
   if (typeof body.environment === "string" && body.environment !== "") {
@@ -601,10 +723,10 @@ function buildDetectorDataSource(
  * Translate a flat metric alert body into the nested detector write payload.
  *
  * The flat body is what the create/edit commands assemble (and the edit merge
- * baseline, which reuses the `MetricAlertRule` shape). Trigger objects are
- * passed through verbatim as the condition group's conditions — their
- * `alertThreshold`/`actions` shape is already validated command-side. `status`
- * (0 active / 1 disabled) maps onto the detector's `enabled` boolean.
+ * baseline, which reuses the `MetricAlertRule` shape). Triggers are translated
+ * into detector conditions by {@link buildDetectorConditions}; `workflowIds`
+ * connects existing alerts. `status` (0 active / 1 disabled) maps onto the
+ * detector's `enabled` boolean.
  */
 function buildDetectorBody(
   body: Record<string, unknown>,
@@ -620,8 +742,11 @@ function buildDetectorBody(
   if (triggers) {
     detectorBody.conditionGroup = {
       logicType: "any",
-      conditions: triggers,
+      conditions: buildDetectorConditions(triggers),
     };
+  }
+  if (Array.isArray(body.workflowIds)) {
+    detectorBody.workflowIds = body.workflowIds;
   }
 
   if (body.status !== undefined) {
