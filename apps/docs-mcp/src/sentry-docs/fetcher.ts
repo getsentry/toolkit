@@ -106,7 +106,7 @@ function cachedFetch(url: string, ttlSeconds: number): Promise<string> {
 export function normalizeDocPath(path: string): string {
   let p = path.trim();
   // Strip absolute URL prefix
-  if (p.startsWith(BASE_URL)) {
+  if (p === BASE_URL || p.startsWith(`${BASE_URL}/`)) {
     p = p.slice(BASE_URL.length);
   }
   // Strip trailing .md if a caller mistakenly included it
