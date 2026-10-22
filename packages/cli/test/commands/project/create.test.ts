@@ -317,60 +317,61 @@ describe("project create", () => {
     );
   });
 
-  test("errors when user is member of multiple teams without --team", async () => {
-    listTeamsSpy.mockResolvedValue([sampleTeam, sampleTeam2]);
+  test("defaults to the oldest member team when user belongs to several", async () => {
+    listTeamsSpy.mockResolvedValue([
+      { ...sampleTeam, dateCreated: "2024-05-01T00:00:00Z" },
+      { ...sampleTeam2, dateCreated: "2023-01-01T00:00:00Z" },
+    ]);
 
     const { context } = createMockContext();
     const func = await createCommand.loader();
+    await func.call(context, { json: false }, "my-app:node");
 
-    const err = await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e);
-    expect(err).toBeInstanceOf(ContextError);
-    expect(err.message).toContain("You belong to 2 teams");
-    expect(err.message).toContain("engineering");
-    expect(err.message).toContain("mobile");
-
-    expect(createProjectWithDsnSpy).not.toHaveBeenCalled();
+    expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
+      "acme-corp",
+      "mobile",
+      { name: "my-app", platform: "node" },
+    );
   });
 
-  test("shows only member teams in error, not all org teams", async () => {
-    const nonMemberTeam = {
-      id: "3",
-      slug: "infra",
-      name: "Infrastructure",
-      isMember: false,
-    };
-    listTeamsSpy.mockResolvedValue([sampleTeam, sampleTeam2, nonMemberTeam]);
+  test("prefers a member team the user administers", async () => {
+    const infra = { id: "3", slug: "infra", name: "Infra", isMember: false };
+    listTeamsSpy.mockResolvedValue([
+      { ...sampleTeam, dateCreated: "2023-01-01T00:00:00Z" },
+      {
+        ...sampleTeam2,
+        dateCreated: "2024-05-01T00:00:00Z",
+        access: ["team:admin"],
+      },
+      { ...infra, dateCreated: "2020-01-01T00:00:00Z", access: ["team:admin"] },
+    ]);
 
     const { context } = createMockContext();
     const func = await createCommand.loader();
+    await func.call(context, { json: false }, "my-app:node");
 
-    const err = await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e);
-    expect(err).toBeInstanceOf(ContextError);
-    expect(err.message).toContain("engineering");
-    expect(err.message).toContain("mobile");
-    // Non-member team should NOT appear
-    expect(err.message).not.toContain("infra");
+    // infra is older and admin, but the user is not a member of it
+    expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
+      "acme-corp",
+      "mobile",
+      { name: "my-app", platform: "node" },
+    );
   });
 
-  test("falls back to all teams when isMember is not available", async () => {
-    const teamNoMembership1 = { id: "1", slug: "alpha", name: "Alpha" };
-    const teamNoMembership2 = { id: "2", slug: "beta", name: "Beta" };
-    listTeamsSpy.mockResolvedValue([teamNoMembership1, teamNoMembership2]);
+  test("falls back to slug order when isMember and dateCreated are missing", async () => {
+    listTeamsSpy.mockResolvedValue([
+      { id: "2", slug: "beta", name: "Beta" },
+      { id: "1", slug: "alpha", name: "Alpha" },
+    ]);
 
     const { context } = createMockContext();
     const func = await createCommand.loader();
+    await func.call(context, { json: false }, "my-app:node");
 
-    const err = await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e);
-    expect(err).toBeInstanceOf(ContextError);
-    expect(err.message).toContain("Multiple teams found");
-    expect(err.message).toContain("alpha");
-    expect(err.message).toContain("beta");
+    expect(createProjectWithDsnSpy).toHaveBeenCalledWith("acme-corp", "alpha", {
+      name: "my-app",
+      platform: "node",
+    });
   });
 
   test("auto-creates team when org has no teams", async () => {
