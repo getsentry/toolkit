@@ -292,7 +292,7 @@ importers:
     dependencies:
       '@hono/mcp':
         specifier: ^0.2.3
-        version: 0.2.5(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.5.4))(hono-rate-limiter@0.4.2(hono@4.13.7))(hono@4.13.7)(zod@4.5.4)
+        version: 0.2.5(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.5.4))(hono-rate-limiter@0.4.2(hono@4.13.13))(hono@4.13.13)(zod@4.5.4)
       '@mastra/core':
         specifier: ^1.63.2
         version: 1.63.2(ai@5.0.216(zod@4.5.4))(express@5.3.0)(zod@4.5.4)
@@ -309,8 +309,8 @@ importers:
         specifier: ^5.0.0
         version: 5.0.216(zod@4.5.4)
       hono:
-        specifier: ^4.13.7
-        version: 4.13.7
+        specifier: ^4.13.11
+        version: 4.13.13
       zod:
         specifier: ^4.5.4
         version: 4.5.4
@@ -6902,10 +6902,6 @@ packages:
     resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
     engines: {node: '>=16.9.0'}
 
-  hono@4.13.7:
-    resolution: {integrity: sha512-c8/gF9ac8Y78/agExVocyLevgR+JlpNB444Py0FSX8pJoPdYUfUzRcXtYEYGwt6l19qIlVZPN5Mfsw9jFShmQQ==}
-    engines: {node: '>=16.9.0'}
-
   hono@4.13.8:
     resolution: {integrity: sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ==}
     engines: {node: '>=16.9.0'}
@@ -11467,11 +11463,11 @@ snapshots:
 
   '@fontsource/ibm-plex-mono@5.3.0': {}
 
-  '@hono/mcp@0.2.5(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.5.4))(hono-rate-limiter@0.4.2(hono@4.13.7))(hono@4.13.7)(zod@4.5.4)':
+  '@hono/mcp@0.2.5(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.5.4))(hono-rate-limiter@0.4.2(hono@4.13.13))(hono@4.13.13)(zod@4.5.4)':
     dependencies:
       '@modelcontextprotocol/sdk': 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.5.4)
-      hono: 4.13.7
-      hono-rate-limiter: 0.4.2(hono@4.13.7)
+      hono: 4.13.13
+      hono-rate-limiter: 0.4.2(hono@4.13.13)
       pkce-challenge: 5.0.1
       zod: 4.5.4
 
@@ -15850,17 +15846,11 @@ snapshots:
     dependencies:
       hono: 4.13.13
 
-  hono-rate-limiter@0.4.2(hono@4.13.7):
-    dependencies:
-      hono: 4.13.7
-
   hono-rate-limiter@0.4.2(hono@4.13.8):
     dependencies:
       hono: 4.13.8
 
   hono@4.13.13: {}
-
-  hono@4.13.7: {}
 
   hono@4.13.8: {}
 

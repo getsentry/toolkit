@@ -18,7 +18,7 @@
     "@openrouter/ai-sdk-provider": "^1.5.4",
     "@sentry/cloudflare": "^10.62.0",
     "ai": "^5.0.0",
-    "hono": "^4.13.7",
+    "hono": "^4.13.11",
     "zod": "^4.5.4"
   },
   "devDependencies": {
