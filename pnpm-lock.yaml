@@ -191,7 +191,7 @@ overrides:
 
 patchedDependencies:
   '@ai-sdk/provider-utils@2.2.8': 4649a74595006c4a262d453549e091db331ade06b4f4320957af1b2c659b8ee3
-  '@cloudflare/workers-oauth-provider@0.10.3': 34910b67929c1888b1492384c514d6baeedc4a439f66e21375dee5af404834f8
+  '@cloudflare/workers-oauth-provider@0.10.3': 5ae7b25fa331991a0de83fbf6c9fb42b6ffad3076ecbab027f33eabb13724573
   '@sentry/core@10.63.0': e663994979ff877a26ab6d4dea5968fbaee4ccdfdeb85623983535a572678940
   '@sentry/node-core@10.63.0': 0a5f08471bd72cb833a2b36220c96001d966e5c390d71aaf598fdef75b552640
   '@stricli/core@1.2.8': cbf047581d38be04108d3921321c14a778272c24004da8110d4498d4f2a6b2e1
@@ -571,7 +571,7 @@ importers:
         version: 3.0.232(react@19.2.8)(zod@4.4.3)
       '@cloudflare/workers-oauth-provider':
         specifier: 'catalog:'
-        version: 0.10.3(patch_hash=34910b67929c1888b1492384c514d6baeedc4a439f66e21375dee5af404834f8)
+        version: 0.10.3(patch_hash=5ae7b25fa331991a0de83fbf6c9fb42b6ffad3076ecbab027f33eabb13724573)
       '@modelcontextprotocol/sdk':
         specifier: 1.32.0
         version: 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
@@ -10277,7 +10277,7 @@ snapshots:
   '@cloudflare/workerd-windows-64@1.20261019.1':
     optional: true
 
-  '@cloudflare/workers-oauth-provider@0.10.3(patch_hash=34910b67929c1888b1492384c514d6baeedc4a439f66e21375dee5af404834f8)': {}
+  '@cloudflare/workers-oauth-provider@0.10.3(patch_hash=5ae7b25fa331991a0de83fbf6c9fb42b6ffad3076ecbab027f33eabb13724573)': {}
 
   '@cloudflare/workers-types@4.20260405.1': {}
 
