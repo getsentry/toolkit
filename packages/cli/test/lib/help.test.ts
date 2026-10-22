@@ -7,8 +7,9 @@
 
 import { describe, expect, test } from "vitest";
 import { bannerLinesForWidth, formatBanner } from "../../src/lib/banner.js";
+import { withEnv } from "../../src/lib/env.js";
 import { introspectAllCommands, printCustomHelp } from "../../src/lib/help.js";
-import { useTestConfigDir } from "../helpers.js";
+import { envWithoutAgent, useTestConfigDir } from "../helpers.js";
 
 /** Strip ANSI escape sequences for content assertions */
 // oxlint-disable-next-line no-control-regex -- ANSI escape codes use control chars by definition
@@ -148,6 +149,93 @@ describe("printCustomHelp", () => {
     expect(flagsIndex).toBeGreaterThan(-1);
     expect(envVarsIndex).toBeGreaterThan(-1);
     expect(flagsIndex).toBeLessThan(envVarsIndex);
+  });
+});
+
+/** Lines listing commands (`$ sentry ...`) in rendered help output. */
+function commandLines(output: string): string[] {
+  return stripAnsi(output)
+    .split("\n")
+    .filter((line) => line.trimStart().startsWith("$ sentry"));
+}
+
+describe("printCustomHelp overview", () => {
+  useTestConfigDir("help-overview-");
+
+  /** Render help for a logged-out human (no agent markers, no env token). */
+  function humanHelp(overview: boolean, token?: string): string {
+    const env = {
+      ...envWithoutAgent(),
+      SENTRY_AUTH_TOKEN: token,
+      SENTRY_TOKEN: undefined,
+    };
+    return withEnv(env, () => printCustomHelp({ overview }));
+  }
+
+  /** Overview usages without the padded descriptions. */
+  function overviewUsages(token?: string): string[] {
+    return commandLines(humanHelp(true, token)).map((line) =>
+      line.trim().replace(/\s{2,}.*$/, ""),
+    );
+  }
+
+  test("features relevant commands and subcommands for humans", () => {
+    expect(overviewUsages()).toEqual([
+      "$ sentry auth login | status | whoami",
+      "$ sentry issue list | view | explain | plan | resolve",
+      "$ sentry event list | view",
+      "$ sentry trace list | view | logs",
+      "$ sentry log list | view",
+    ]);
+  });
+
+  test("moves auth to the end once logged in", () => {
+    expect(overviewUsages("sntrys_test_token").at(-1)).toBe(
+      "$ sentry auth login | status | whoami",
+    );
+  });
+
+  test("points humans at the full command list", () => {
+    const output = stripAnsi(humanHelp(true));
+    expect(output).toContain("all commands: sentry help");
+    expect(output).not.toContain("sentry dashboard");
+  });
+
+  test("lists every command and subcommand for explicit help", () => {
+    const output = stripAnsi(humanHelp(false));
+    expect(output).toContain("sentry auth list | login | logout");
+    expect(output).toContain("sentry dashboard");
+    expect(output).not.toContain("all commands:");
+    expect(commandLines(output).length).toBeGreaterThan(
+      commandLines(humanHelp(true)).length,
+    );
+  });
+
+  test("keeps the full list for agents", () => {
+    const output = stripAnsi(
+      withEnv({ ...envWithoutAgent(), AI_AGENT: "claude" }, () =>
+        printCustomHelp({ overview: true }),
+      ),
+    );
+    expect(output).toContain("sentry auth list | login | logout");
+    expect(output).toContain("sentry dashboard");
+    expect(output).not.toContain("all commands:");
+  });
+
+  test("trims featured commands to fit short terminals", () => {
+    const savedTty = process.stdout.isTTY;
+    const savedRows = process.stdout.rows;
+    try {
+      process.stdout.isTTY = true;
+      process.stdout.rows = 200;
+      expect(commandLines(humanHelp(true))).toHaveLength(5);
+      process.stdout.rows = 10;
+      // Never fewer than three, even when nothing fits.
+      expect(commandLines(humanHelp(true))).toHaveLength(3);
+    } finally {
+      process.stdout.isTTY = savedTty;
+      process.stdout.rows = savedRows;
+    }
   });
 });
 
