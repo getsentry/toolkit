@@ -12,6 +12,7 @@ import {
   setCommitsWithRefs,
 } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { getDatabase } from "../../lib/db/index.js";
 import { clearMetadata, getMetadata, setMetadata } from "../../lib/db/utils.js";
 import {
@@ -167,7 +168,7 @@ async function setCommitsDefault(
 ): Promise<SentryRelease> {
   // Fast path: cached "no repos" — skip the API call entirely
   if (hasNoRepoIntegration(org)) {
-    return setCommitsFromLocal(org, version, cwd, { depth });
+    return await setCommitsFromLocal(org, version, cwd, { depth });
   }
 
   try {
@@ -191,14 +192,14 @@ async function setCommitsDefault(
         "Could not auto-discover commits (no repository integration). " +
           "Falling back to local git history.",
       );
-      return setCommitsFromLocal(org, version, cwd, { depth });
+      return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     if (error instanceof ValidationError && error.field === "repository") {
       log.warn(
         `Auto-discovery failed: ${error.message}. ` +
           "Falling back to local git history.",
       );
-      return setCommitsFromLocal(org, version, cwd, { depth });
+      return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     throw error;
   }
@@ -380,7 +381,7 @@ export const setCommitsCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },

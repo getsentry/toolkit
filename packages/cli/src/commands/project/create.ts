@@ -614,8 +614,9 @@ export const createCommand = buildCommand({
       "cannot contain whitespace.\n\n" +
       "Every project is a name:platform pair. Create several projects at once\n" +
       "by passing multiple pairs as separate arguments. All projects share one org.\n\n" +
-      "Projects are created under a team. If the org has one team, it is used\n" +
-      "automatically. If no teams exist, one is created. Otherwise, specify --team.\n\n" +
+      "Projects are created under a team. Without --team, a default team is\n" +
+      "chosen: your teams first, preferring ones you administer, then the oldest.\n" +
+      "If no teams exist, one is created.\n\n" +
       "Examples:\n" +
       "  sentry project create my-app:node\n" +
       "  sentry project create acme-corp/my-app:javascript-nextjs\n" +

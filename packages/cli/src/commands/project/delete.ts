@@ -25,6 +25,7 @@ import {
   getProject,
 } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { getCachedOrgRole } from "../../lib/db/regions.js";
 import { ApiError } from "../../lib/errors.js";
 import {
@@ -168,7 +169,7 @@ export const deleteCommand = buildDeleteCommand({
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search across orgs)",
-          parse: String,
+          parse: parseOrgProjectTarget,
         },
       ],
     },

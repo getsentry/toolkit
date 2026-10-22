@@ -62,7 +62,7 @@ export const queryCommand = buildCommand({
         rotatingMessages: DOCS_QUERY_PROGRESS_MESSAGES,
         rotationIntervalMs: 4000,
       },
-      async () => queryDocs(query, detectedContext),
+      async () => await queryDocs(query, detectedContext),
     );
     yield new CommandOutput<QueryOutput>({ ...result, detectedContext });
   },

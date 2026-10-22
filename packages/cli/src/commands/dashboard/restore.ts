@@ -8,6 +8,7 @@ import type { SentryContext } from "../../context.js";
 import { restoreDashboardRevision } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -16,7 +17,7 @@ import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { DashboardDetail } from "../../types/dashboard.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardPositionalArgs,
   resolveDashboardId,
   resolveOrgFromTarget,
@@ -73,7 +74,7 @@ export const restoreCommand = buildCommand({
       parameter: {
         placeholder: "org/dashboard",
         brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -106,15 +107,20 @@ export const restoreCommand = buildCommand({
     );
     const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
 
-    const dashboard = await withProgress(
-      { message: `Restoring revision ${flags.revision}...`, json: flags.json },
-      () => restoreDashboardRevision(orgSlug, dashboardId, flags.revision),
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    const dashboard = await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "update",
-      }),
+      },
+      () =>
+        withProgress(
+          {
+            message: `Restoring revision ${flags.revision}...`,
+            json: flags.json,
+          },
+          () => restoreDashboardRevision(orgSlug, dashboardId, flags.revision),
+        ),
     );
 
     const outputData: RestoreResult = {

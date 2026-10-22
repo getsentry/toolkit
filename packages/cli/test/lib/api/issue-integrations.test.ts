@@ -308,7 +308,7 @@ describe("native link API", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const request = new Request(input, init);
       requests.push(request);
-      return respond(request);
+      return await respond(request);
     });
     return requests;
   }

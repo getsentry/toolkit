@@ -23,6 +23,7 @@ import { rootCertificates } from "node:tls";
 const _require = createRequire(import.meta.url);
 import { getDefaultCaCert } from "./db/defaults.js";
 import { getEnv } from "./env.js";
+import { stringifyUnknown } from "./errors.js";
 import { logger } from "./logger.js";
 import { isSentrySaasUrl } from "./sentry-urls.js";
 
@@ -108,7 +109,9 @@ function injectIntoNodeTls(customPem: string): void {
     setDefaultCACertificates([...rootCertificates, customPem]);
     log.debug("Injected custom CA into Node.js TLS trust store");
   } catch (err) {
-    log.debug(`Failed to set Node.js default CA certificates: ${err}`);
+    log.debug(
+      `Failed to set Node.js default CA certificates: ${stringifyUnknown(err)}`,
+    );
   }
 }
 

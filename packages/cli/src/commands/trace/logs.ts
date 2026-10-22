@@ -13,6 +13,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { toSearchQueryError } from "../../lib/errors.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { formatLogTable } from "../../lib/formatters/log.js";
@@ -132,7 +133,7 @@ export const logsCommand = buildCommand({
         placeholder: "org/project/trace-id",
         brief:
           "[<org>/[<project>/]]<trace-id> - Optional org/project and required trace ID",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

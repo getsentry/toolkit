@@ -340,7 +340,7 @@ export function hasLanguageMarker(dir: string): Promise<boolean> {
     if (await anyExists(dir, LANGUAGE_MARKERS)) {
       return true;
     }
-    return anyGlobMatches(dir, LANGUAGE_MARKER_GLOBS);
+    return await anyGlobMatches(dir, LANGUAGE_MARKER_GLOBS);
   });
 }
 
@@ -351,8 +351,9 @@ export function hasLanguageMarker(dir: string): Promise<boolean> {
  * @returns True if any build system marker found
  */
 export function hasBuildSystemMarker(dir: string): Promise<boolean> {
-  return withFsSpan("hasBuildSystemMarker", async () =>
-    anyExists(dir, BUILD_SYSTEM_MARKERS),
+  return withFsSpan(
+    "hasBuildSystemMarker",
+    async () => await anyExists(dir, BUILD_SYSTEM_MARKERS),
   );
 }
 

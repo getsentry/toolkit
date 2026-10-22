@@ -19,6 +19,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -357,7 +358,7 @@ async function resolveTarget(
       throw new ContextError("Specific project", USAGE_HINT, []);
 
     case "auto-detect":
-      return resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
+      return await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
 
     default: {
       const _exhaustiveCheck: never = parsed;
@@ -586,7 +587,7 @@ export const viewCommand = buildCommand({
         placeholder: "org/project/log-id",
         brief:
           "[<org>/<project>] <log-id> [<log-id>...] - Target (optional) and one or more log IDs",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

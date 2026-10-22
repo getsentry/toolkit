@@ -18,6 +18,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ApiError,
   ContextError,
@@ -376,7 +377,7 @@ export const viewCommand = buildCommand({
       parameter: {
         placeholder: "replay-id-or-url",
         brief: "[<org>/<project>] <replay-id or trace-id> or <replay-url>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

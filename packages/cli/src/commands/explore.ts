@@ -559,7 +559,7 @@ function resolveDatasetConfig(params: {
     sort,
     query,
     fetch: async ({ cursor, limit, timeRange }) =>
-      queryEvents(org, {
+      await queryEvents(org, {
         fields,
         dataset: resolved.dataset,
         query,

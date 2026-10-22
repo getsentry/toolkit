@@ -17,6 +17,7 @@ import type {
   IssueEventDetailsResponse,
   DeployResponse as SdkDeployResponse,
   GetOrganizationIssueResponse as SdkIssueDetail,
+  ListOrganizationIssuesResponse as SdkIssueList,
   ListOrganizations as SdkOrganizationList,
   ProjectKey as SdkProjectKey,
   OrganizationProjectResponseDict as SdkProjectList,
@@ -191,6 +192,12 @@ export type SentryIssue = Omit<Partial<SdkIssueDetail>, "metadata"> &
      * `null` when Seer has not analyzed this issue; absent when the org has Seer disabled.
      */
     seerFixabilityScore?: number | null;
+    /**
+     * Seen-stats scoped to the query's event-level filters (e.g. `release:`).
+     * Returned by the issues-list endpoint only when `filtered` isn't
+     * collapsed; `null` when the query has no such filters.
+     */
+    filtered?: SdkIssueList[number]["filtered"];
   };
 
 /**
@@ -1056,7 +1063,13 @@ export type DetailedLogsResponse = InferOutput<
  */
 export const TraceItemAttributeSchema = variant("type", [
   object({ name: string(), type: literal("str"), value: string() }),
-  object({ name: string(), type: literal("int"), value: number() }),
+  // Sentry serializes int64 values as strings to avoid precision loss
+  // (e.g. project_id: "4508608809533441"); keep them as strings.
+  object({
+    name: string(),
+    type: literal("int"),
+    value: union([number(), string()]),
+  }),
   object({ name: string(), type: literal("float"), value: number() }),
   object({ name: string(), type: literal("bool"), value: boolean() }),
   // "array" is gated by organizations:trace-item-details-array-fields in Sentry backend

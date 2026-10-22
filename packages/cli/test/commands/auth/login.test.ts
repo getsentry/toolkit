@@ -83,7 +83,7 @@ vi.mock("../../../src/lib/logger.js", () => ({
 }));
 
 // Dynamic import: must run AFTER vi.mock() so login.ts picks up fakeLog.
-const { loginCommand, rcTokenHint } =
+const { loginCommand, parseLoginEmail, rcTokenHint, splitLoginTarget } =
   await import("../../../src/commands/auth/login.js");
 
 vi.mock("../../../src/lib/account-selection.js", async (importOriginal) => {
@@ -427,6 +427,58 @@ describe("loginCommand.func --token path", () => {
     } finally {
       pointDefaultUrlSpy.mockRestore();
     }
+  });
+
+  test("<email>:<server> logs in to that server, like --url", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
+    setUserInfoSpy.mockReturnValue(undefined);
+    const pointDefaultUrlSpy = vi
+      .spyOn(accountSelection, "pointDefaultUrlAtAccount")
+      .mockReturnValue(undefined);
+
+    try {
+      const { context } = createContext();
+      await func.call(
+        context,
+        { token: "new-token", force: false, timeout: 900 },
+        `${SAMPLE_USER.email}:other.example.com`,
+      );
+
+      expect(setAuthTokenSpy).toHaveBeenCalledWith(
+        "new-token",
+        undefined,
+        undefined,
+        expect.objectContaining({ host: "https://other.example.com" }),
+      );
+      expect(pointDefaultUrlSpy).toHaveBeenCalledWith(
+        "https://other.example.com",
+      );
+    } finally {
+      pointDefaultUrlSpy.mockRestore();
+    }
+  });
+
+  test("<email>:<server> with a different --url is refused before anything is saved", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+
+    const { context } = createContext();
+    await expect(
+      func.call(
+        context,
+        {
+          token: "new-token",
+          force: false,
+          timeout: 900,
+          url: "https://sentry.io",
+        },
+        `${SAMPLE_USER.email}:other.example.com`,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    expect(setAuthTokenSpy).not.toHaveBeenCalled();
   });
 
   test("already authenticated (env token SENTRY_AUTH_TOKEN): warns and proceeds to OAuth login", async () => {
@@ -920,6 +972,41 @@ describe("login re-authentication interactive prompt", () => {
       getCurrentUserSpy.mockRestore();
       setUserInfoSpy.mockRestore();
     }
+  });
+});
+
+describe("login email argument", () => {
+  test("accepts an email", () => {
+    expect(parseLoginEmail(" jane@acme.com ")).toBe("jane@acme.com");
+    expect(splitLoginTarget("jane@acme.com")).toEqual({
+      email: "jane@acme.com",
+    });
+  });
+
+  test("<email>:<server> also names the server, with or without a scheme or port", () => {
+    expect(splitLoginTarget("jane@acme.com:sentry.acme.com")).toEqual({
+      email: "jane@acme.com",
+      url: "https://sentry.acme.com",
+    });
+    expect(splitLoginTarget("jane@acme.com:sentry.acme.com:9000")).toEqual({
+      email: "jane@acme.com",
+      url: "https://sentry.acme.com:9000",
+    });
+    expect(splitLoginTarget("jane@acme.com:http://localhost:8000")).toEqual({
+      email: "jane@acme.com",
+      url: "http://localhost:8000",
+    });
+  });
+
+  test.each([
+    "jane",
+    "@acme.com",
+    "jane@",
+    "jane@:sentry.io",
+    "jane@acme.com:",
+    "jane@acme.com@sentry.io",
+  ])("rejects %s", (raw) => {
+    expect(() => parseLoginEmail(raw)).toThrow(ValidationError);
   });
 });
 

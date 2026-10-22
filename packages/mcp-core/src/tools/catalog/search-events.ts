@@ -21,6 +21,6 @@ export default defineTool({
   ].join("\n"),
   inputSchema: buildSearchEventsInputSchema(),
   async handler(params, context: ServerContext) {
-    return runSearchEvents(params, context);
+    return await runSearchEvents(params, context);
   },
 });

@@ -104,6 +104,10 @@ Today, runtime authorization for remote HTTP sessions is driven primarily by:
 
 `grantedScopes` still exists on tokens for backward compatibility with older
 clients, but it is transitional. Skills are the primary authorization model.
+Note that `grantedScopes` is derived from the selected skills, not from what
+Sentry granted. The scopes Sentry actually granted on the upstream token (from
+the `scope` field of Sentry's token response) are stored separately as
+`upstreamScopes`. Grants created before `upstreamScopes` existed do not have it.
 
 Direct `Sentry-Bearer` sessions default to all active skills and can be narrowed
 with `skills` or `disable-skills` query parameters. They do not get OAuth
@@ -182,7 +186,7 @@ interface ServerContext {
   userIpAddress?: string;
   clientId: string;
   accessToken: string;
-  grantedSkills: Set<Skill>;  // Primary authorization method
+  grantedSkills: Set<Skill>; // Primary authorization method
   // grantedScopes is deprecated and will be removed Jan 1, 2026
   constraints: Constraints;
   sentryHost: string;
@@ -240,7 +244,7 @@ Example protection in tools:
 
 ```typescript
 // URLs must be valid and from expected domains
-if (!issueUrl.includes('sentry.io')) {
+if (!issueUrl.includes("sentry.io")) {
   throw new UserInputError("Invalid Sentry URL");
 }
 
@@ -257,10 +261,10 @@ The OAuth `state` is a compact HMAC-signed payload with a 10‑minute expiry:
 type OAuthState = {
   clientId: string;
   redirectUri: string; // must be a valid URL
-  scope: string[];     // from OAuth provider parseAuthRequest
+  scope: string[]; // from OAuth provider parseAuthRequest
   permissions?: string[]; // user selections from approval
-  iat: number;         // issued at (ms)
-  exp: number;         // expires at (ms)
+  iat: number; // issued at (ms)
+  exp: number; // expires at (ms)
 };
 
 // Sign: `${hex(hmacSHA256(json))}.${btoa(json)}` using COOKIE_SECRET
@@ -285,11 +289,11 @@ All user inputs sanitized:
 // Signed cookie for approved clients
 const cookie = await signCookie(
   `approved_clients=${JSON.stringify(approvedClients)}`,
-  COOKIE_SECRET
+  COOKIE_SECRET,
 );
 
 // Cookie attributes
-"HttpOnly; Secure; SameSite=Lax; Max-Age=2592000" // 30 days
+("HttpOnly; Secure; SameSite=Lax; Max-Age=2592000"); // 30 days
 ```
 
 ## Error Handling
@@ -324,7 +328,7 @@ catch (error) {
 ```typescript
 // Verify organization access
 const { organizations } = await apiService.listOrganizations();
-if (!organizations.find(org => org.slug === requestedOrg)) {
+if (!organizations.find((org) => org.slug === requestedOrg)) {
   throw new UserInputError("No access to organization");
 }
 ```
@@ -335,7 +339,7 @@ Required for OAuth:
 
 ```bash
 SENTRY_CLIENT_ID=your_oauth_app_id
-SENTRY_CLIENT_SECRET=your_oauth_app_secret  
+SENTRY_CLIENT_SECRET=your_oauth_app_secret
 COOKIE_SECRET=random_32_char_string
 ```
 
@@ -343,10 +347,7 @@ COOKIE_SECRET=random_32_char_string
 
 ```typescript
 // Allowed origins for OAuth flow
-const ALLOWED_ORIGINS = [
-  "https://sentry.io",
-  "https://*.sentry.io"
-];
+const ALLOWED_ORIGINS = ["https://sentry.io", "https://*.sentry.io"];
 ```
 
 ## References

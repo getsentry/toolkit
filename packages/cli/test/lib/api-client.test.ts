@@ -44,7 +44,7 @@ beforeEach(async () => {
   originalFetch = globalThis.fetch;
 
   // Set up initial auth token with a refresh token so 401 retry can get a new token
-  await setAuthToken("initial-token", 3600, "test-refresh-token");
+  setAuthToken("initial-token", 3600, "test-refresh-token");
 });
 
 afterEach(() => {
@@ -82,7 +82,7 @@ function createMockFetch(
     // OAuth token refresh endpoint
     if (req.url.includes("/oauth/token/")) {
       if (options.oauthHandler) {
-        return options.oauthHandler(req);
+        return await options.oauthHandler(req);
       }
       return new Response(
         JSON.stringify({
@@ -100,7 +100,7 @@ function createMockFetch(
 
     // API requests - delegate to handler
     apiRequestCount += 1;
-    return apiRequestHandler(req, apiRequestCount);
+    return await apiRequestHandler(req, apiRequestCount);
   };
 }
 
@@ -242,7 +242,7 @@ describe("401 retry behavior", () => {
 
   test("does not retry for manual API tokens (no refresh token)", async () => {
     // Manual API tokens have no expiry and no refresh token
-    await setAuthToken("manual-api-token"); // No expiry, no refresh token
+    setAuthToken("manual-api-token"); // No expiry, no refresh token
 
     const requests: RequestLog[] = [];
 

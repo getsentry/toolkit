@@ -11,7 +11,11 @@ import {
 } from "../../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { ContextError, ValidationError } from "../../../lib/errors.js";
+import {
+  ContextError,
+  stringifyUnknown,
+  ValidationError,
+} from "../../../lib/errors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../../lib/mutate-command.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
@@ -244,9 +248,9 @@ export const createCommand = buildCommand({
     yield new CommandOutput({
       org: target.org,
       project: target.project,
-      id: String(created.id ?? ""),
-      name: String(created.name ?? flags.name),
-      status: String(
+      id: stringifyUnknown(created.id ?? ""),
+      name: stringifyUnknown(created.name ?? flags.name),
+      status: stringifyUnknown(
         created.status ?? (created.enabled === false ? "disabled" : "active"),
       ),
     } satisfies CreateResult);

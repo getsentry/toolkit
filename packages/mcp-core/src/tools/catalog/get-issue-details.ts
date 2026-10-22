@@ -715,7 +715,7 @@ async function maybeFetchAutofixState({
     return undefined;
   }
 
-  return apiService
+  return await apiService
     .getAutofixState({ organizationSlug, issueId: String(issue.id) })
     .catch(() => undefined);
 }

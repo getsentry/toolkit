@@ -27,6 +27,7 @@ import {
   parseIssueArg,
   splitNewlineArg,
 } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   clearCachedIssueOrg,
   getCachedIssueOrg,
@@ -70,7 +71,7 @@ export const issueIdPositional = {
       placeholder: "issue",
       brief:
         "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix",
-      parse: String,
+      parse: parseOrgProjectTarget,
     },
   ],
 } as const;
@@ -81,7 +82,7 @@ export const issueIdsPositional = {
   parameter: {
     placeholder: "issue",
     brief: "One or more issue IDs",
-    parse: String,
+    parse: parseOrgProjectTarget,
   },
 } as const;
 
@@ -479,7 +480,11 @@ async function resolveProjectSearch(
 
   // Fall back to findProjectsBySlug for precise error messages
   //    and retry the issue lookup (handles transient failures).
-  return resolveProjectSearchFallback(projectSlug, suffix, commandContext);
+  return await resolveProjectSearchFallback(
+    projectSlug,
+    suffix,
+    commandContext,
+  );
 }
 
 /**

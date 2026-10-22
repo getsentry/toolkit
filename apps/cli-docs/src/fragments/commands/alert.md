@@ -49,15 +49,32 @@ sentry alert issues delete my-org/my-project/12345 --dry-run
 ### Create a metric alert rule
 
 ```bash
-# Create an organization metric alert rule
+# Alert when P95 span duration goes above 500ms
 sentry alert metrics create my-org \
   --name "P95 Latency" \
+  --project my-app \
   --query "environment:prod" \
   --aggregate "p95(span.duration)" \
   --dataset spans \
   --time-window 5 \
-  --trigger '{"alertThreshold":500,"actions":[{"id":"sentry.mail.actions.NotifyEmailAction","targetType":"Team","targetIdentifier":1}]}'
+  --trigger '{"alertThreshold":500}'
+
+# Alert on any matching log line and notify through an existing alert
+sentry alert metrics create my-org \
+  --name "AI chat failures" \
+  --project my-app \
+  --query "action:ai.chat result:error" \
+  --aggregate "count()" \
+  --dataset logs \
+  --time-window 5 \
+  --trigger '{"alertThreshold":0,"resolveThreshold":0}' \
+  --workflow 12345
 ```
+
+Triggers take `alertThreshold`, an optional `label` (`critical` or `warning`),
+`resolveThreshold`, and `thresholdType` (`0` above, `1` below). Notification
+actions are not part of triggers; pass `--workflow` with the ID of an existing
+alert to notify.
 
 ### List metric alert rules
 

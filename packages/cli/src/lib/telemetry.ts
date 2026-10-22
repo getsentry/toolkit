@@ -183,7 +183,7 @@ export async function withTelemetry<T>(
   const enabled = isTelemetryEnabled();
   const client = initSentry(enabled, options);
   if (!client?.getOptions().enabled) {
-    return callback(undefined);
+    return await callback(undefined);
   }
 
   // Initialize user and instance context

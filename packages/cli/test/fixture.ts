@@ -165,7 +165,7 @@ export function createE2EContext(
       const prevDir = process.env[CONFIG_DIR_ENV_VAR];
       process.env[CONFIG_DIR_ENV_VAR] = configDir;
       try {
-        await dbSetAuthToken(token, undefined, undefined, { host: serverUrl });
+        dbSetAuthToken(token, undefined, undefined, { host: serverUrl });
         closeDatabase();
       } finally {
         if (prevDir !== undefined) {

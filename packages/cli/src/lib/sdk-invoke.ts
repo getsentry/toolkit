@@ -19,6 +19,7 @@ import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
 import { withEnv } from "./env.js";
+import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 
 /** CLI flag names/aliases that trigger infinite streaming output. */
@@ -217,7 +218,7 @@ function buildSdkError(
   const message =
     stderrStr.replace(ANSI_RE, "").trim() ||
     (thrown instanceof Error ? thrown.message : undefined) ||
-    (thrown !== undefined ? String(thrown) : undefined) ||
+    (thrown !== undefined ? stringifyUnknown(thrown) : undefined) ||
     `Command failed with exit code ${exitCode}`;
   return new SentryError(message, exitCode, stderrStr);
 }
@@ -409,7 +410,7 @@ async function executeWithCapture<T>(
       const { withTelemetry } = await import("./telemetry.js");
 
       try {
-        await withTelemetry(async (span) => executor(captureCtx, span), {
+        await withTelemetry(async (span) => await executor(captureCtx, span), {
           libraryMode: true,
         });
       } catch (thrown) {
@@ -495,7 +496,7 @@ function executeWithStream<T>(
         const { withTelemetry } = await import("./telemetry.js");
 
         // oxlint-disable-next-line typescript/no-non-null-assertion -- captureCtx is assigned on the line above
-        await withTelemetry(async (span) => executor(captureCtx!, span), {
+        await withTelemetry(async (span) => await executor(captureCtx!, span), {
           libraryMode: true,
         });
 

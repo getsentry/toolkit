@@ -12,6 +12,7 @@ import { getAuthConfig } from "../db/auth.js";
 import { ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveProjectBoundFromArg } from "../resolve-target.js";
+import { countChar } from "../utils.js";
 import { resolveIngestDsn } from "./transport.js";
 
 const log = logger.withTag("event.send");
@@ -78,7 +79,7 @@ export async function resolveEventSendDsn(
     return target.dsn.trim();
   }
   if (target?.kind === "project") {
-    return dsnFromProjectTarget(target.target, cwd);
+    return await dsnFromProjectTarget(target.target, cwd);
   }
   const scanned = await resolveIngestDsn({}, cwd);
   if (scanned) {
@@ -100,7 +101,7 @@ function looksLikeFileArgument(value: string): boolean {
   if (value.startsWith(".") || isAbsolute(value)) {
     return true;
   }
-  const slashCount = value.split("/").length - 1;
+  const slashCount = countChar(value, "/");
   if (slashCount > 1) {
     return true;
   }

@@ -12,6 +12,7 @@ import {
 } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -33,7 +34,7 @@ import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { DashboardRevision } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardPositionalArgs,
   resolveDashboardId,
   resolveOrgFromTarget,
@@ -136,7 +137,7 @@ export const revisionsCommand = buildCommand({
       parameter: {
         placeholder: "org/dashboard",
         brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -173,29 +174,31 @@ export const revisionsCommand = buildCommand({
     let cursor = rawCursor;
     let nextCursor: string | undefined;
 
-    await withProgress(
-      { message: "Fetching revisions...", json: flags.json },
-      async () => {
-        for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-          const { data, nextCursor: nc } =
-            await listDashboardRevisionsPaginated(orgSlug, dashboardId, {
-              perPage,
-              cursor,
-            });
-          results.push(...data);
-          nextCursor = nc;
-          if (results.length >= flags.limit || !nc) {
-            break;
-          }
-          cursor = nc;
-        }
-      },
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "view",
-      }),
+      },
+      () =>
+        withProgress(
+          { message: "Fetching revisions...", json: flags.json },
+          async () => {
+            for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
+              const { data, nextCursor: nc } =
+                await listDashboardRevisionsPaginated(orgSlug, dashboardId, {
+                  perPage,
+                  cursor,
+                });
+              results.push(...data);
+              nextCursor = nc;
+              if (results.length >= flags.limit || !nc) {
+                break;
+              }
+              cursor = nc;
+            }
+          },
+        ),
     );
 
     const trimmed = results.slice(0, flags.limit);

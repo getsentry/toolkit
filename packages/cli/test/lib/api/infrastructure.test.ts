@@ -711,7 +711,7 @@ describe("rawApiRequest binary handling", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
   });
 
   afterEach(() => {

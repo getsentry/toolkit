@@ -94,7 +94,7 @@ async function listRegisteredTools(server: ReturnType<typeof buildServer>) {
 }
 
 async function callRegisteredTool(
-  server: ReturnType<typeof buildServer>,
+  server: ReturnType<typeof buildServer> | ModernMcpServer,
   name: string,
   args: Record<string, unknown>,
 ) {
@@ -226,7 +226,7 @@ describe("buildServer", () => {
       tools: {
         v2_tool: createMockTool("v2_tool", {
           inputSchema: { value: z.string() },
-          handler: async ({ value }) => `v2:${value}`,
+          handler: async ({ value }) => `v2:${String(value)}`,
         }),
       },
       sdkVersion: "v2",
@@ -1357,6 +1357,49 @@ describe("buildServer", () => {
         `Tool "${call.name}" is not available in this session`,
       );
     });
+
+    it.each(["v1", "v2"] as const)(
+      "execute_sentry_tool rejects missing skills with unknown capabilities on SDK %s",
+      async (sdkVersion) => {
+        const upstreamRequest = vi.fn(() =>
+          HttpResponse.json(
+            { detail: "You do not have permission to perform this action." },
+            { status: 403 },
+          ),
+        );
+        mswServer.use(
+          http.get(
+            "https://us.sentry.io/api/0/projects/test-org/test-project/profiling/profiles/:profileId/",
+            upstreamRequest,
+          ),
+        );
+        const context: ServerContext = {
+          ...baseContext,
+          grantedSkills: new Set(["docs"]),
+          constraints: {
+            organizationSlug: "test-org",
+            projectSlug: "test-project",
+            regionUrl: "https://us.sentry.io",
+            projectCapabilities: null,
+          },
+        };
+        const server =
+          sdkVersion === "v2"
+            ? buildServer({ context, sdkVersion })
+            : buildServer({ context });
+
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name: "get_profile_details",
+          arguments: { profileId: "00000000000040008000000000000001" },
+        });
+
+        expect(result).toMatchObject({ isError: true });
+        expect(getTextContent(result)).toContain(
+          'Tool "get_profile_details" is not available in this session',
+        );
+        expect(upstreamRequest).not.toHaveBeenCalled();
+      },
+    );
 
     it("search_sentry_tools and execute_sentry_tool enforce project capabilities by default", async () => {
       const server = buildServer({

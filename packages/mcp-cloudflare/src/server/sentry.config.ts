@@ -27,26 +27,3 @@ export default function getSentryConfig(env: Env): CloudflareOptions {
     integrations: [Sentry.zodErrorsIntegration()],
   };
 }
-
-getSentryConfig.partial = (config: Partial<CloudflareOptions>) => {
-  return (env: Env) => {
-    const defaultConfig = getSentryConfig(env);
-    return {
-      ...defaultConfig,
-      ...config,
-      initialScope: {
-        ...defaultConfig.initialScope,
-        ...config.initialScope,
-        tags: {
-          // idk I can't typescript
-          ...((defaultConfig.initialScope ?? {}) as any).tags,
-          ...((config.initialScope ?? {}) as any).tags,
-        },
-        attributes: {
-          ...((defaultConfig.initialScope ?? {}) as any).attributes,
-          ...((config.initialScope ?? {}) as any).attributes,
-        },
-      },
-    };
-  };
-};

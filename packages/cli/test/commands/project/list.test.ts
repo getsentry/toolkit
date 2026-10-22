@@ -398,7 +398,7 @@ const sampleProjects: SentryProject[] = [
 describe("handleExplicit", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -472,7 +472,7 @@ describe("project list: comma-separated project slugs", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
     func = await listCommand.loader();
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -581,7 +581,7 @@ describe("project list: comma-separated project slugs", () => {
           status: 403,
         });
       }
-      return projectFetch(input, init);
+      return await projectFetch(input, init);
     }) as typeof globalThis.fetch;
     const { context } = createCommandContext();
 
@@ -635,7 +635,7 @@ describe("project list: comma-separated project slugs", () => {
 describe("handleOrgAll", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -891,7 +891,7 @@ describe("handleOrgAll", () => {
 describe("handleProjectSearch", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -1214,7 +1214,7 @@ describe("displayProjectTable", () => {
 describe("fetchOrgProjects", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("myorg", DEFAULT_SENTRY_URL);
   });
 
@@ -1244,7 +1244,7 @@ describe("fetchOrgProjects", () => {
 describe("fetchOrgProjectsSafe", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("myorg", DEFAULT_SENTRY_URL);
   });
 
@@ -1290,7 +1290,7 @@ describe("fetchOrgProjectsSafe", () => {
 describe("fetchAllOrgProjects", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -1364,7 +1364,7 @@ describe("fetchAllOrgProjects", () => {
 describe("handleAutoDetect", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 

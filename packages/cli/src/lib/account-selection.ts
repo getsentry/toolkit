@@ -48,7 +48,8 @@ function describeAccount(account: AccountSummary): string {
 
 /**
  * Resolve a user-supplied selector (account id, email, username, user id,
- * or `<who>@<server-hostname>`) to exactly one stored account. Without an
+ * `<who>:<server>`, or `<who>@<server-hostname>`) to exactly one stored
+ * account. Without an
  * exact match, similar accounts from the shared fuzzy matcher are suggested
  * (or, with `fuzzy`, a sole one is used).
  *
@@ -72,7 +73,7 @@ export function resolveAccountSelector(
       `${command} <account-id>`,
       [
         ...matches.map(describeAccount),
-        "Add --url <server> or use the account id to pick one",
+        "Pick one with <email>:<server>, --url <server>, or the account id",
       ],
     );
   }

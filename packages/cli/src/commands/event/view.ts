@@ -28,6 +28,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ApiError,
   AuthError,
@@ -747,7 +748,7 @@ async function fetchLatestEventData(
   project?: string,
 ): Promise<SingleEventViewData> {
   const event = await getLatestEvent(org, issueId);
-  return buildSingleEventViewData(org, event, spans, project);
+  return await buildSingleEventViewData(org, event, spans, project);
 }
 
 /**
@@ -902,7 +903,7 @@ async function resolveIssueShortIdEvent(
   spans: number,
 ): Promise<SingleEventViewData> {
   const issue = await getIssueByShortId(org, issueShortId);
-  return fetchLatestEventData(org, issue.id, spans, issue.project?.slug);
+  return await fetchLatestEventData(org, issue.id, spans, issue.project?.slug);
 }
 
 /** Result from an issue-based shortcut (URL or short ID) */
@@ -1190,7 +1191,7 @@ export const viewCommand = buildCommand({
         placeholder: "org/project/event-id",
         brief:
           "[<org>/<project>] <event-id> [<event-id>...] - Target (optional) and one or more event IDs",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

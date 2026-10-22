@@ -175,7 +175,10 @@ export async function getDetailedTrace(
       : undefined;
 
   if (timestamp !== undefined) {
-    return requestTrace(regionUrl, orgSlug, traceId, { ...shared, timestamp });
+    return await requestTrace(regionUrl, orgSlug, traceId, {
+      ...shared,
+      timestamp,
+    });
   }
 
   const spans = await requestTrace(regionUrl, orgSlug, traceId, {
@@ -189,7 +192,7 @@ export async function getDetailedTrace(
   log.debug(
     `No spans for trace ${traceId} in ${TRACE_LOOKUP_STATS_PERIOD}; retrying ${TRACE_LOOKUP_FALLBACK_STATS_PERIOD}`,
   );
-  return requestTrace(regionUrl, orgSlug, traceId, {
+  return await requestTrace(regionUrl, orgSlug, traceId, {
     ...shared,
     statsPeriod: TRACE_LOOKUP_FALLBACK_STATS_PERIOD,
   });
@@ -631,7 +634,7 @@ export async function listTransactions(
   options: ListTransactionsOptions = {},
 ): Promise<PaginatedResponse<TransactionListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  return paginate(options, (perPage, cursor) =>
+  return await paginate(options, (perPage, cursor) =>
     fetchTransactionsPage(
       regionUrl,
       orgSlug,
@@ -767,7 +770,7 @@ export async function listSpans(
   options: ListSpansOptions = {},
 ): Promise<PaginatedResponse<SpanListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  return paginate(options, (perPage, cursor) =>
+  return await paginate(options, (perPage, cursor) =>
     fetchSpansPage(
       regionUrl,
       orgSlug,

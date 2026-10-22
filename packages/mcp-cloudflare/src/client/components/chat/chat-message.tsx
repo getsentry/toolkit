@@ -128,7 +128,9 @@ const ToolPart = memo(function ToolPart({
 });
 
 // Helper to check if a part is an AI SDK 6 tool part (type starts with "tool-")
-const isToolPart = (part: { type: string }): part is {
+const isToolPart = (part: {
+  type: string;
+}): part is {
   type: `tool-${string}`;
 } & ChatToolInvocation => {
   return part.type.startsWith("tool-") && part.type !== "tool-invocation";
@@ -136,7 +138,9 @@ const isToolPart = (part: { type: string }): part is {
 
 // Helper to check if a part is a legacy tool-invocation part (AI SDK 4/5 format)
 // Legacy format: { type: "tool-invocation", toolInvocation: ChatToolInvocation }
-const isLegacyToolInvocation = (part: { type: string }): part is {
+const isLegacyToolInvocation = (part: {
+  type: string;
+}): part is {
   type: "tool-invocation";
   toolInvocation: ChatToolInvocation;
 } => {

@@ -357,7 +357,7 @@ describe("normalizeIpa", () => {
   /** Write IPA bytes to a temp file and normalize it, returning the wrapper. */
   async function normalizeIpaBytes(ipa: Uint8Array): Promise<Buffer> {
     const src = writeTmpFile("app.ipa", ipa);
-    return normalizeToBuffer((out) => normalizeIpa(src, out, null));
+    return await normalizeToBuffer((out) => normalizeIpa(src, out, null));
   }
 
   test("remaps Payload into an XCArchive layout with a generated Info.plist", async () => {

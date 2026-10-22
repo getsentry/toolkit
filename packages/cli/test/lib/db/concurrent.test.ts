@@ -110,7 +110,7 @@ async function spawnWorkersConcurrently(
     promises.push(spawnWorker(configDir, String(i), operation));
   }
 
-  return Promise.all(promises);
+  return await Promise.all(promises);
 }
 
 describe("concurrent database access", () => {

@@ -119,7 +119,7 @@ async function resolveMcpAccessTokenWithLogin(
       throw error;
     }
 
-    return resolveCliMcpAccessToken(config);
+    return await resolveCliMcpAccessToken(config);
   }
 }
 

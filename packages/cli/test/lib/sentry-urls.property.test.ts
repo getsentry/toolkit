@@ -122,7 +122,7 @@ describe("isSentrySaasUrl properties", () => {
   });
 
   test("*.sentry.io subdomains always return true", async () => {
-    await fcAssert(
+    fcAssert(
       property(sentryRegionArb, (region) => {
         const url = `https://${region}.sentry.io`;
         expect(isSentrySaasUrl(url)).toBe(true);
@@ -132,7 +132,7 @@ describe("isSentrySaasUrl properties", () => {
   });
 
   test("arbitrary subdomains of sentry.io return true", async () => {
-    await fcAssert(
+    fcAssert(
       property(subdomainPartArb, (subdomain) => {
         const url = `https://${subdomain}.sentry.io`;
         expect(isSentrySaasUrl(url)).toBe(true);
@@ -142,7 +142,7 @@ describe("isSentrySaasUrl properties", () => {
   });
 
   test("non-sentry.io domains always return false", async () => {
-    await fcAssert(
+    fcAssert(
       property(nonSentryDomainArb, (domain) => {
         const url = `https://${domain}`;
         expect(isSentrySaasUrl(url)).toBe(false);
@@ -187,7 +187,7 @@ describe("isSentrySaasUrl properties", () => {
   });
 
   test("deterministic: same input always produces same output", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         oneof(
           constantFrom("https://sentry.io", "https://us.sentry.io"),
@@ -206,7 +206,7 @@ describe("isSentrySaasUrl properties", () => {
 
 describe("buildOrgUrl properties", () => {
   test("output always starts with org base URL", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildOrgUrl(orgSlug);
         expect(result.startsWith(getOrgBaseUrl(orgSlug))).toBe(true);
@@ -216,7 +216,7 @@ describe("buildOrgUrl properties", () => {
   });
 
   test("output always contains the org slug", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildOrgUrl(orgSlug);
         expect(result).toContain(orgSlug);
@@ -226,7 +226,7 @@ describe("buildOrgUrl properties", () => {
   });
 
   test("output follows expected pattern", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildOrgUrl(orgSlug);
         expect(result).toBe(`${getOrgBaseUrl(orgSlug)}/`);
@@ -236,7 +236,7 @@ describe("buildOrgUrl properties", () => {
   });
 
   test("output is a valid URL", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildOrgUrl(orgSlug);
         expect(() => new URL(result)).not.toThrow();
@@ -248,7 +248,7 @@ describe("buildOrgUrl properties", () => {
 
 describe("buildProjectUrl properties", () => {
   test("output contains both org and project slugs", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, slugArb), ([orgSlug, projectSlug]) => {
         const result = buildProjectUrl(orgSlug, projectSlug);
         expect(result).toContain(orgSlug);
@@ -259,7 +259,7 @@ describe("buildProjectUrl properties", () => {
   });
 
   test("output follows expected pattern", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, slugArb), ([orgSlug, projectSlug]) => {
         const result = buildProjectUrl(orgSlug, projectSlug);
         expect(result).toBe(
@@ -271,7 +271,7 @@ describe("buildProjectUrl properties", () => {
   });
 
   test("output is a valid URL", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, slugArb), ([orgSlug, projectSlug]) => {
         const result = buildProjectUrl(orgSlug, projectSlug);
         expect(() => new URL(result)).not.toThrow();
@@ -283,7 +283,7 @@ describe("buildProjectUrl properties", () => {
 
 describe("buildEventSearchUrl properties", () => {
   test("output contains event ID in query string", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, eventIdArb), ([orgSlug, eventId]) => {
         const result = buildEventSearchUrl(orgSlug, eventId);
         expect(result).toContain(`event.id:${eventId}`);
@@ -293,7 +293,7 @@ describe("buildEventSearchUrl properties", () => {
   });
 
   test("output is a valid URL with query parameter", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, eventIdArb), ([orgSlug, eventId]) => {
         const result = buildEventSearchUrl(orgSlug, eventId);
         const url = new URL(result);
@@ -306,7 +306,7 @@ describe("buildEventSearchUrl properties", () => {
 
 describe("buildProjectIssuesUrl properties", () => {
   test("with a project ID, output filters the Issues stream by project", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, projectIdArb), ([orgSlug, projectId]) => {
         const result = buildProjectIssuesUrl(orgSlug, projectId);
         expect(result).toBe(
@@ -319,7 +319,7 @@ describe("buildProjectIssuesUrl properties", () => {
   });
 
   test("without a project ID, output is the org-wide Issues stream", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildProjectIssuesUrl(orgSlug);
         expect(result).toBe(`${getOrgBaseUrl(orgSlug)}/issues/`);
@@ -329,7 +329,7 @@ describe("buildProjectIssuesUrl properties", () => {
   });
 
   test("output is a valid URL that points at the Issues stream", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, projectIdArb), ([orgSlug, projectId]) => {
         const result = buildProjectIssuesUrl(orgSlug, projectId);
         expect(() => new URL(result)).not.toThrow();
@@ -342,7 +342,7 @@ describe("buildProjectIssuesUrl properties", () => {
 
 describe("parseOrgProjectFromSettingsUrl properties", () => {
   test("round-trips org and project through a settings URL (SaaS)", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, slugArb), ([orgSlug, projectSlug]) => {
         const url = buildProjectUrl(orgSlug, projectSlug);
         expect(parseOrgProjectFromSettingsUrl(url)).toEqual({
@@ -356,7 +356,7 @@ describe("parseOrgProjectFromSettingsUrl properties", () => {
 
   test("round-trips org and project through a settings URL (self-hosted)", async () => {
     process.env.SENTRY_URL = "https://sentry.example.com";
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, slugArb), ([orgSlug, projectSlug]) => {
         const url = buildProjectUrl(orgSlug, projectSlug);
         expect(parseOrgProjectFromSettingsUrl(url)).toEqual({
@@ -375,7 +375,7 @@ describe("parseOrgProjectFromSettingsUrl properties", () => {
 
 describe("buildOrgSettingsUrl properties", () => {
   test("without hash, output ends with trailing slash", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildOrgSettingsUrl(orgSlug);
         expect(result.endsWith("/")).toBe(true);
@@ -385,7 +385,7 @@ describe("buildOrgSettingsUrl properties", () => {
   });
 
   test("with hash, output contains hash fragment", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, hashArb), ([orgSlug, hash]) => {
         const result = buildOrgSettingsUrl(orgSlug, hash);
         expect(result).toContain(`#${hash}`);
@@ -395,7 +395,7 @@ describe("buildOrgSettingsUrl properties", () => {
   });
 
   test("hash is appended at the end", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, hashArb), ([orgSlug, hash]) => {
         const result = buildOrgSettingsUrl(orgSlug, hash);
         expect(result.endsWith(`#${hash}`)).toBe(true);
@@ -407,7 +407,7 @@ describe("buildOrgSettingsUrl properties", () => {
 
 describe("buildSeerSettingsUrl properties", () => {
   test("output contains /seer/ path", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildSeerSettingsUrl(orgSlug);
         expect(result).toContain("/seer/");
@@ -417,7 +417,7 @@ describe("buildSeerSettingsUrl properties", () => {
   });
 
   test("output is under settings path", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildSeerSettingsUrl(orgSlug);
         expect(result).toContain("/settings/seer/");
@@ -429,7 +429,7 @@ describe("buildSeerSettingsUrl properties", () => {
 
 describe("buildBillingUrl properties", () => {
   test("without product, output has no query string", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildBillingUrl(orgSlug);
         expect(result.includes("?")).toBe(false);
@@ -439,7 +439,7 @@ describe("buildBillingUrl properties", () => {
   });
 
   test("with product, output has product query parameter", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, productArb), ([orgSlug, product]) => {
         const result = buildBillingUrl(orgSlug, product);
         expect(result).toContain(`?product=${product}`);
@@ -449,7 +449,7 @@ describe("buildBillingUrl properties", () => {
   });
 
   test("output contains /billing/overview/ path", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildBillingUrl(orgSlug);
         expect(result).toContain("/billing/overview/");
@@ -461,7 +461,7 @@ describe("buildBillingUrl properties", () => {
 
 describe("buildLogsUrl properties", () => {
   test("without logId, output has no query string", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildLogsUrl(orgSlug);
         expect(result.includes("?")).toBe(false);
@@ -471,7 +471,7 @@ describe("buildLogsUrl properties", () => {
   });
 
   test("with logId, output contains query parameter with log ID", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, logIdArb), ([orgSlug, logId]) => {
         const result = buildLogsUrl(orgSlug, logId);
         expect(result).toContain(`?query=sentry.item_id:${logId}`);
@@ -481,7 +481,7 @@ describe("buildLogsUrl properties", () => {
   });
 
   test("output contains /explore/logs/ path", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildLogsUrl(orgSlug);
         expect(result).toContain("/explore/logs/");
@@ -491,7 +491,7 @@ describe("buildLogsUrl properties", () => {
   });
 
   test("output is a valid URL", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, logIdArb), ([orgSlug, logId]) => {
         expect(() => new URL(buildLogsUrl(orgSlug))).not.toThrow();
         expect(() => new URL(buildLogsUrl(orgSlug, logId))).not.toThrow();
@@ -503,7 +503,7 @@ describe("buildLogsUrl properties", () => {
 
 describe("buildTraceUrl properties", () => {
   test("output contains /explore/traces/trace/ path with trace ID", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, traceIdArb), ([orgSlug, traceId]) => {
         const result = buildTraceUrl(orgSlug, traceId);
         expect(result).toContain(`/explore/traces/trace/${traceId}/`);
@@ -513,7 +513,7 @@ describe("buildTraceUrl properties", () => {
   });
 
   test("output contains the org slug", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, traceIdArb), ([orgSlug, traceId]) => {
         const result = buildTraceUrl(orgSlug, traceId);
         expect(result).toContain(orgSlug);
@@ -523,7 +523,7 @@ describe("buildTraceUrl properties", () => {
   });
 
   test("output is a valid URL", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, traceIdArb), ([orgSlug, traceId]) => {
         const result = buildTraceUrl(orgSlug, traceId);
         expect(() => new URL(result)).not.toThrow();
@@ -533,7 +533,7 @@ describe("buildTraceUrl properties", () => {
   });
 
   test("output follows expected pattern", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, traceIdArb), ([orgSlug, traceId]) => {
         const result = buildTraceUrl(orgSlug, traceId);
         expect(result).toBe(
@@ -547,7 +547,7 @@ describe("buildTraceUrl properties", () => {
 
 describe("buildDashboardsListUrl properties", () => {
   test("output contains /dashboards/ path", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildDashboardsListUrl(orgSlug);
         expect(result).toContain("/dashboards/");
@@ -557,7 +557,7 @@ describe("buildDashboardsListUrl properties", () => {
   });
 
   test("output contains the org slug", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildDashboardsListUrl(orgSlug);
         expect(result).toContain(orgSlug);
@@ -567,7 +567,7 @@ describe("buildDashboardsListUrl properties", () => {
   });
 
   test("output is a valid URL", async () => {
-    await fcAssert(
+    fcAssert(
       property(slugArb, (orgSlug) => {
         const result = buildDashboardsListUrl(orgSlug);
         expect(() => new URL(result)).not.toThrow();
@@ -579,7 +579,7 @@ describe("buildDashboardsListUrl properties", () => {
 
 describe("buildDashboardUrl properties", () => {
   test("output contains /dashboard/{id}/ path", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, dashboardIdArb), ([orgSlug, dashboardId]) => {
         const result = buildDashboardUrl(orgSlug, dashboardId);
         expect(result).toContain(`/dashboard/${dashboardId}/`);
@@ -589,7 +589,7 @@ describe("buildDashboardUrl properties", () => {
   });
 
   test("output contains org slug and dashboard ID", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, dashboardIdArb), ([orgSlug, dashboardId]) => {
         const result = buildDashboardUrl(orgSlug, dashboardId);
         expect(result).toContain(orgSlug);
@@ -600,7 +600,7 @@ describe("buildDashboardUrl properties", () => {
   });
 
   test("output is a valid URL", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, dashboardIdArb), ([orgSlug, dashboardId]) => {
         const result = buildDashboardUrl(orgSlug, dashboardId);
         expect(() => new URL(result)).not.toThrow();
@@ -701,7 +701,7 @@ describe("self-hosted URLs", () => {
   });
 
   test("no URL builder prepends org as subdomain", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(slugArb, slugArb, eventIdArb),
         ([orgSlug, projectSlug, eventId]) => {
@@ -731,7 +731,7 @@ describe("self-hosted URLs", () => {
 
 describe("URL building cross-function properties", () => {
   test("all URL builders produce valid URLs", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(slugArb, slugArb, eventIdArb, hashArb, productArb),
         ([orgSlug, projectSlug, eventId, hash, product]) => {
@@ -758,7 +758,7 @@ describe("URL building cross-function properties", () => {
   });
 
   test("all URL builders are deterministic", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(slugArb, slugArb, eventIdArb, hashArb, productArb),
         ([orgSlug, projectSlug, eventId, hash, product]) => {

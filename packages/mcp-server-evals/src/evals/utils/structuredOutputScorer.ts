@@ -108,7 +108,9 @@ export function StructuredOutputScorer(
     } catch (error) {
       return {
         score: 0,
-        metadata: { rationale: `Failed to parse output as JSON: ${error}` },
+        metadata: {
+          rationale: `Failed to parse output as JSON: ${String(error)}`,
+        },
       };
     }
 

@@ -186,7 +186,7 @@ beforeEach(async () => {
     async () =>
       new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }),
   );
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   // Pre-populate region cache for orgs used in tests to avoid region resolution API calls
   setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   setOrgRegion("my-org", DEFAULT_SENTRY_URL);
@@ -2113,7 +2113,7 @@ describe("resolveIssue: numeric 404 error handling", () => {
 
   beforeEach(async () => {
     savedFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("my-org", DEFAULT_SENTRY_URL);
   });
 
@@ -2213,7 +2213,7 @@ describe("resolveIssue: project-search DSN shortcut", () => {
 
   beforeEach(async () => {
     dsnOriginalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("my-org", DEFAULT_SENTRY_URL);
     // Seed project cache so resolveFromDsn resolves without any API call.
     // orgId is "123" (DSN parser strips the "o" prefix from o123.ingest.*)

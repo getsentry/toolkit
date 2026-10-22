@@ -9,12 +9,13 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { markPersistedDefaultUrl } from "../../../src/lib/constants.js";
 import {
   getActiveAccountId,
   getAuthToken,
   getEffectiveAccountRow,
+  getEnvAccount,
   getReauthorizationAccountId,
   refreshToken,
   resetAccountSelection,
@@ -22,6 +23,7 @@ import {
   setActiveAccount,
   setAuthToken,
 } from "../../../src/lib/db/auth.js";
+import { hashIdentity } from "../../../src/lib/db/identity-hash.js";
 import { closeDatabase, getDatabase } from "../../../src/lib/db/index.js";
 import { getEnvTokenHost } from "../../../src/lib/env-token-host.js";
 import { AuthError } from "../../../src/lib/errors.js";
@@ -40,7 +42,12 @@ import {
   assertRcUrlTrusted,
   clearSentryCliRcCache,
 } from "../../../src/lib/sentryclirc.js";
-import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import {
+  mintSntrysToken,
+  resetHostScopingState,
+  useEnvSandbox,
+  useTestConfigDir,
+} from "../../helpers.js";
 
 useTestConfigDir("account-routing-");
 useEnvSandbox([
@@ -53,6 +60,8 @@ useEnvSandbox([
 
 const SAAS = "https://sentry.io";
 const ACME = "https://sentry.acme.com";
+/** An org auth token issued by ACME: its claim names its server. */
+const ACME_ORG_TOKEN = mintSntrysToken({ iat: 1, url: ACME, org: "ci" });
 
 function login(token: string, host: string, userId: string): string {
   const id = setAuthToken(token, undefined, undefined, {
@@ -282,6 +291,17 @@ describe("organization-based selection", () => {
     expect(getAuthToken()).toBe("env-token");
   });
 
+  test.each(["0", "false", "no", "off"])(
+    "SENTRY_FORCE_ENV_TOKEN=%s doesn't force the env token",
+    (value) => {
+      login("work-token", SAAS, "work");
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env.SENTRY_FORCE_ENV_TOKEN = value;
+
+      expect(getAuthToken()).toBe("work-token");
+    },
+  );
+
   test("skips accounts whose credentials were invalidated", () => {
     const work = login("work-token", SAAS, "work");
     seeOrg("work-org", SAAS);
@@ -352,8 +372,15 @@ describe("organization-based selection", () => {
     const peer = login("peer-token", ACME, "peer");
     seeOrg("acme-org", ACME);
     // More recently used on ACME, but has never seen the org.
-    login("other-token", ACME, "other");
+    const other = login("other-token", ACME, "other");
     const saas = login("saas-token", SAAS, "saas");
+    // Back-to-back logins can share a millisecond; pin the recency so the
+    // configured server deterministically picks `other`.
+    const setLastUsed = getDatabase().query(
+      "UPDATE accounts SET last_used_at = ? WHERE account_id = ?",
+    );
+    setLastUsed.run(1000, peer);
+    setLastUsed.run(2000, other);
     process.env.SENTRY_URL = ACME;
     expect(getAuthToken()).toBe("other-token");
 
@@ -412,6 +439,242 @@ describe("organization-based selection", () => {
 
     expect(getAuthToken()).toBe("personal-token");
     expect(personal).not.toBe(work);
+  });
+});
+
+describe("the env token as an account", () => {
+  // The env token's server is snapshotted once per env: start each case
+  // from a fresh boot.
+  beforeEach(resetHostScopingState);
+  afterEach(resetHostScopingState);
+
+  /** Cache `org` on `host` as seen by the env token `token`. */
+  function envSeesOrg(token: string, org: string, host: string): void {
+    setOrgRegion(org, host, host, host, hashIdentity("env", token));
+  }
+
+  test("is an account on SaaS when no server is configured", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+
+    expect(getEnvAccount()).toEqual({
+      envVar: "SENTRY_AUTH_TOKEN",
+      host: SAAS,
+      identity: hashIdentity("env", "env-token"),
+    });
+  });
+
+  test("is an account on its org auth token's server", () => {
+    process.env.SENTRY_TOKEN = ACME_ORG_TOKEN;
+    process.env.SENTRY_URL = ACME;
+
+    expect(getEnvAccount()?.host).toBe(ACME);
+    expect(getEnvAccount()?.envVar).toBe("SENTRY_TOKEN");
+  });
+
+  test("is no account on a self-hosted server only the env names", () => {
+    // In layered CI, SENTRY_URL can be injected without access to the
+    // token: it alone must not make the token an account sent there.
+    process.env.SENTRY_TOKEN = "env-token";
+    process.env.SENTRY_URL = ACME;
+
+    expect(getEnvAccount()).toBeUndefined();
+  });
+
+  test("is an account on a SaaS server named by the env", () => {
+    process.env.SENTRY_TOKEN = "env-token";
+    process.env.SENTRY_URL = "https://us.sentry.io";
+
+    expect(getEnvAccount()?.host).toBe("https://us.sentry.io");
+  });
+
+  test("is no account when the token appeared after boot, e.g. from .sentryclirc", () => {
+    login("saas-token", SAAS, "saas");
+    // The boot snapshot saw no env token.
+    getEnvTokenHost();
+    process.env.SENTRY_AUTH_TOKEN = "rc-token";
+    envSeesOrg("rc-token", "rc-org", SAAS);
+
+    selectAccountForOrg("rc-org");
+
+    expect(getEnvAccount()).toBeUndefined();
+    expect(getAuthToken()).toBe("saas-token");
+  });
+
+  test("wins over the active account for an org both know", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    const saas = login("saas-token", SAAS, "saas");
+    seeOrgList(SAAS, ["shared"]);
+    envSeesOrg("env-token", "shared", SAAS);
+
+    selectAccountForOrg("shared");
+
+    expect(getAuthToken()).toBe("env-token");
+    expect(getEffectiveAccountRow()).toBeUndefined();
+    expect(getActiveAccountId()).toBe(saas);
+  });
+
+  test("wins over another stored account that knows the org", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    login("work-token", SAAS, "work");
+    seeOrg("env-org", SAAS);
+    login("personal-token", SAAS, "personal");
+    envSeesOrg("env-token", "env-org", SAAS);
+
+    selectAccountForOrg("env-org");
+
+    expect(getAuthToken()).toBe("env-token");
+  });
+
+  test("matches DSN-style numeric org ids", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    login("saas-token", SAAS, "saas");
+    setOrgRegions([
+      {
+        slug: "env-org",
+        regionUrl: SAAS,
+        sourceOrigin: SAAS,
+        identity: hashIdentity("env", "env-token"),
+        orgId: "4242",
+        orgName: "Env Org",
+      },
+    ]);
+
+    selectAccountForOrg("o4242", "4242");
+
+    expect(getAuthToken()).toBe("env-token");
+  });
+
+  test("ignores orgs it saw while scoped to another server", () => {
+    process.env.SENTRY_AUTH_TOKEN = ACME_ORG_TOKEN;
+    process.env.SENTRY_URL = ACME;
+    login("acme-token", ACME, "acme");
+    seeOrg("shared", ACME);
+    // Cached under the same identity on SaaS: ACME's `shared` is a
+    // different org.
+    envSeesOrg(ACME_ORG_TOKEN, "shared", SAAS);
+
+    selectAccountForOrg("shared");
+
+    expect(getEnvAccount()?.host).toBe(ACME);
+    expect(getAuthToken()).toBe("acme-token");
+  });
+
+  test("matches orgs it saw on a SaaS region of its SaaS server", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    login("saas-token", SAAS, "saas");
+    envSeesOrg("env-token", "eu-org", "https://de.sentry.io");
+
+    selectAccountForOrg("eu-org");
+
+    expect(getAuthToken()).toBe("env-token");
+  });
+
+  test("ignores orgs it saw on look-alike SaaS servers", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    login("saas-token", SAAS, "saas");
+    envSeesOrg("env-token", "lookalike", "https://sentry.io.example.com");
+    envSeesOrg("env-token", "lookalike", "https://notsentry.io");
+    envSeesOrg("env-token", "lookalike", "http://us.sentry.io");
+
+    selectAccountForOrg("lookalike");
+
+    expect(getAuthToken()).toBe("saas-token");
+  });
+
+  test("leaves orgs it doesn't know to the stored login", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    login("saas-token", SAAS, "saas");
+    envSeesOrg("env-token", "env-org", SAAS);
+
+    selectAccountForOrg("other-org");
+
+    expect(getAuthToken()).toBe("saas-token");
+  });
+
+  test("an explicit server set after boot on another server rules it out", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    // Boot: the env token is scoped to SaaS before `--url` or
+    // `.sentryclirc` point the invocation at ACME.
+    getEnvTokenHost();
+    login("acme-token", ACME, "acme");
+    seeOrg("shared", ACME);
+    envSeesOrg("env-token", "shared", SAAS);
+    process.env.SENTRY_URL = ACME;
+
+    selectAccountForOrg("shared");
+
+    expect(getAuthToken()).toBe("acme-token");
+  });
+
+  test("brings its server along when the persisted default URL is another", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    // Boot: the persisted default URL is applied after the snapshot.
+    getEnvTokenHost();
+    login("acme-token", ACME, "acme");
+    envSeesOrg("env-token", "env-org", SAAS);
+    process.env.SENTRY_URL = ACME;
+    markPersistedDefaultUrl(ACME);
+
+    selectAccountForOrg("env-org");
+
+    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(getAuthToken()).toBe("env-token");
+  });
+
+  test("never mixes with a stored account within one invocation", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS);
+    login("personal-token", SAAS, "personal");
+    envSeesOrg("env-token", "env-org", SAAS);
+
+    selectAccountForOrg("env-org");
+    selectAccountForOrg("work-org");
+
+    expect(getAuthToken()).toBe("env-token");
+  });
+
+  test("a login during the invocation takes over from it", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    login("saas-token", SAAS, "saas");
+    envSeesOrg("env-token", "env-org", SAAS);
+    selectAccountForOrg("env-org");
+
+    setAuthToken("fresh-token", undefined, undefined, { host: SAAS });
+
+    expect(getAuthToken()).toBe("fresh-token");
+  });
+
+  test("serves its configured server when no stored account is on it", () => {
+    process.env.SENTRY_AUTH_TOKEN = ACME_ORG_TOKEN;
+    process.env.SENTRY_URL = ACME;
+    login("saas-token", SAAS, "saas");
+
+    expect(getAuthToken()).toBe(ACME_ORG_TOKEN);
+  });
+
+  test("never serves a self-hosted server only the env names", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env.SENTRY_URL = ACME;
+    login("saas-token", SAAS, "saas");
+
+    expect(getAuthToken()).not.toBe("env-token");
+  });
+
+  test("yields its configured server to a stored account on it", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env.SENTRY_URL = ACME;
+    login("acme-token", ACME, "acme");
+    login("saas-token", SAAS, "saas");
+
+    expect(getAuthToken()).toBe("acme-token");
+  });
+
+  test("still yields to the active stored login by default", () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    login("saas-token", SAAS, "saas");
+
+    expect(getAuthToken()).toBe("saas-token");
   });
 });
 

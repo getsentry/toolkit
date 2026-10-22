@@ -117,7 +117,7 @@ export async function listConversations(
   } = {},
 ): Promise<PaginatedResponse<ConversationListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  return paginate(options, (perPage, cursor) =>
+  return await paginate(options, (perPage, cursor) =>
     fetchConversationsPage(regionUrl, orgSlug, { ...options, cursor }, perPage),
   );
 }

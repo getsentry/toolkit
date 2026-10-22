@@ -141,7 +141,7 @@ export class HostScopeError extends CliError {
   constructor(
     sourceOrMessage: string,
     destinationUrl?: string,
-    tokenHost?: string | undefined,
+    tokenHost?: string,
   ) {
     if (destinationUrl === undefined) {
       super(sourceOrMessage, EXIT.AUTH_HOST_SCOPE);
@@ -788,6 +788,7 @@ export function stringifyUnknown(value: unknown): string {
     try {
       return JSON.stringify(value);
     } catch {
+      // oxlint-disable-next-line typescript/no-base-to-string -- keep custom toString() output when JSON fails
       return String(value);
     }
   }

@@ -13,6 +13,13 @@
  *      `--url`, a pasted Sentry URL, or `.sentryclirc`) when the active
  *      account is on a different one.
  *   3. The active account (`sentry auth login` / `sentry auth switch`).
+ *
+ * An env token (`SENTRY_AUTH_TOKEN`/`SENTRY_TOKEN`) whose server is known
+ * from a trusted source acts as one more, never stored, account (see
+ * {@link getEnvAccount}): it wins step 1 for organizations it knows, and
+ * step 2 when no stored account is on the configured server. Otherwise it
+ * is the fallback when no stored credential is usable, and with
+ * `SENTRY_FORCE_ENV_TOKEN` it is the only credential used.
  */
 
 import { normalizeAuthToken, trimAuthToken } from "../auth-header.js";
@@ -23,13 +30,15 @@ import {
   isPersistedDefaultUrlInEffect,
   markPersistedDefaultUrl,
 } from "../constants.js";
-import { getEnv } from "../env.js";
+import { getEnv, withEnv } from "../env.js";
 import {
   getBootConfiguredSentryUrl,
   getEnvTokenHost,
+  getTrustedEnvTokenHost,
 } from "../env-token-host.js";
 import { AuthError, ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
+import { parseBoolValue } from "../parse-bool.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { withDbSpan } from "../telemetry.js";
 import {
@@ -38,9 +47,11 @@ import {
   activateAccountRow,
   deleteAccountOrgRegions,
   deleteAccountRows,
+  ENV_ACCOUNT_ID_PREFIX,
   getAccountRow,
   getActiveAccountRow,
   getMostRecentAccountRow,
+  hasCachedOrgForIdentity,
   hasCachedOrgList,
   insertActiveAccountRow,
   isAccountOnServer,
@@ -108,9 +119,11 @@ function findUsableAccountOnServer(url: string): AuthRow | undefined {
 
 /**
  * Prefer an account on the configured server when the active account is
- * on another one. Without a configured server, or without a stored
- * account for it, the active account stays in effect (and the host trust
- * checks report the mismatch exactly as before).
+ * on another one, else the env token when it is scoped to that server
+ * (`undefined`: no stored row, so reads fall back to the env token).
+ * Without a configured server, or without a credential for it, the active
+ * account stays in effect (and the host trust checks report the mismatch
+ * exactly as before).
  */
 function selectAccountForConfiguredHost(
   active: AuthRow | undefined,
@@ -123,7 +136,17 @@ function selectAccountForConfiguredHost(
   if (active && (!active.host || isAccountOnServer(active, configured))) {
     return active;
   }
-  return findUsableAccountOnServer(configured) ?? active;
+  const onServer = findUsableAccountOnServer(configured);
+  if (onServer) {
+    return onServer;
+  }
+  // The env token is scoped to the configured server and no stored
+  // account is: no stored row, so credential reads fall back to it.
+  const envAccount = getEnvAccount();
+  if (envAccount && isSameServer(envAccount.host, configured)) {
+    return;
+  }
+  return active;
 }
 
 /**
@@ -132,7 +155,11 @@ function selectAccountForConfiguredHost(
  * Account management (switch, logout) uses the stored active row directly.
  */
 function getAuthRow(): AuthRow | undefined {
-  const defaultAccountId = getAccountScope().accountId;
+  const scope = getAccountScope();
+  if (scope.envToken) {
+    return;
+  }
+  const defaultAccountId = scope.accountId;
   if (defaultAccountId) {
     const row = getAccountRow(defaultAccountId);
     if (row) {
@@ -152,7 +179,8 @@ export function getEffectiveAccountRow(): AccountRow | undefined {
  * invocation's default account and configured server, so the memo must too.
  */
 function selectionKey(): string {
-  return `${getAccountScope().accountId ?? ""}\0${getConfiguredUrlOrUndefined() ?? ""}`;
+  const scope = getAccountScope();
+  return `${scope.envToken ? ENV_ACCOUNT_ID_PREFIX : (scope.accountId ?? "")}\0${getConfiguredUrlOrUndefined() ?? ""}`;
 }
 
 /**
@@ -285,13 +313,70 @@ export function getActiveEnvVarName(): string {
     : "SENTRY_AUTH_TOKEN";
 }
 
+/**
+ * Whether `SENTRY_FORCE_ENV_TOKEN` is set to an affirmative value (`1`,
+ * `true`, `yes`, `on`, ...). Negative or unrecognized values leave it off.
+ */
+export function isForceEnvTokenSet(): boolean {
+  return parseBoolValue(getEnv().SENTRY_FORCE_ENV_TOKEN ?? "") === true;
+}
+
+/** Whether `SENTRY_FORCE_ENV_TOKEN` makes a set env token the only credential. */
+export function isEnvTokenForced(): boolean {
+  return isForceEnvTokenSet() && getEnvToken() !== undefined;
+}
+
+/**
+ * The env token as a virtual account: never stored, read-only, and only
+ * ever sent to its own server.
+ */
+export type EnvAccount = Readonly<{
+  /** The variable providing the token. */
+  envVar: "SENTRY_AUTH_TOKEN" | "SENTRY_TOKEN";
+  /** Origin of the server the token is scoped to. */
+  host: string;
+  /** Credential fingerprint (see {@link getIdentityFingerprint}). */
+  identity: string;
+}>;
+
+/**
+ * The env token's virtual account, when its server is known from a trusted
+ * source: its `sntrys_` claim, or SaaS (see `getTrustedEnvTokenHost`). A
+ * self-hosted `SENTRY_HOST`/`SENTRY_URL` alone never qualifies, nor does
+ * `.sentryclirc` or a URL argument. `undefined` without an env token
+ * or a trusted server; the env token then keeps its fallback role only.
+ */
+export function getEnvAccount(): EnvAccount | undefined {
+  const envToken = getEnvToken();
+  if (!envToken) {
+    return;
+  }
+  let host: string | undefined;
+  try {
+    host = normalizeHttpOrigin(getTrustedEnvTokenHost());
+  } catch (error) {
+    log.debug("Could not resolve the env token's server", error);
+    return;
+  }
+  if (!host) {
+    return;
+  }
+  return {
+    envVar:
+      envToken.source === "env:SENTRY_TOKEN"
+        ? "SENTRY_TOKEN"
+        : "SENTRY_AUTH_TOKEN",
+    host,
+    identity: hashIdentity("env", envToken.token),
+  };
+}
+
 export function getAuthConfig(): AuthConfig | undefined {
   // When SENTRY_FORCE_ENV_TOKEN is set, check env first (old behavior).
   // Otherwise, check the DB first — stored OAuth takes priority over env tokens.
   // This is the core fix for #646: wizard-generated build tokens no longer
   // silently override the user's interactive login.
-  const forceEnv = getEnv().SENTRY_FORCE_ENV_TOKEN?.trim();
-  if (forceEnv) {
+  if (isForceEnvTokenSet()) {
     const envToken = getEnvToken();
     if (envToken) {
       return { token: envToken.token, source: envToken.source };
@@ -462,8 +547,7 @@ export function getAuthToken(): string | undefined {
 }
 
 function computeAuthToken(): string | undefined {
-  const forceEnv = getEnv().SENTRY_FORCE_ENV_TOKEN?.trim();
-  if (forceEnv) {
+  if (isForceEnvTokenSet()) {
     const envToken = getEnvToken();
     if (envToken) {
       return envToken.token;
@@ -587,7 +671,9 @@ export function setAuthToken(
     // A login, not a refresh: it targets the stored active account (or a
     // new one), never the account this invocation picked for its target
     // org, and the new credentials are what the rest of the invocation uses.
-    getAccountScope().accountId = undefined;
+    const scope = getAccountScope();
+    scope.accountId = undefined;
+    scope.envToken = undefined;
   }
   const accountId = withDbSpan("setAuthToken", () => {
     const db = getDatabase();
@@ -885,16 +971,22 @@ function followDefaultAccountHost(host: string): void {
  * never mixes identities. An explicit server (`SENTRY_HOST`/`SENTRY_URL`,
  * `--url`, `.sentryclirc`) limits candidates to accounts on it; when several
  * accounts qualify, the most recently used wins. Forced env tokens (`SENTRY_FORCE_ENV_TOKEN`) are never overridden.
+ *
+ * An env token that knows the org wins over every stored account, the
+ * active one included (see {@link getEnvAccount}).
  */
 export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
-  if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim() && getRawEnvToken()) {
+  if (isEnvTokenForced()) {
     return;
   }
   const scope = getAccountScope();
-  if (scope.accountId) {
+  if (scope.accountId || scope.envToken) {
     return;
   }
   try {
+    if (selectEnvAccountForOrg(orgSlug, orgId)) {
+      return;
+    }
     // Usable accounts that know the org, most recently used first.
     const owners = listUsableAccountRowsForOrg(orgSlug, orgId);
     if (owners.length === 0) {
@@ -937,6 +1029,130 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
 }
 
 /**
+ * Use the env token for the rest of this invocation when its org cache
+ * shows it knows the org on its current server, and that server is the
+ * explicit one, if any. The
+ * env token wins over stored accounts that know the org too.
+ *
+ * @returns whether the env token was chosen
+ */
+function selectEnvAccountForOrg(orgSlug: string, orgId?: string): boolean {
+  const envAccount = getEnvAccountInScope();
+  if (
+    !(
+      envAccount &&
+      hasCachedOrgForIdentity(
+        envAccount.identity,
+        envAccount.host,
+        orgSlug,
+        orgId,
+      )
+    )
+  ) {
+    return false;
+  }
+  getAccountScope().envToken = true;
+  followDefaultAccountHost(envAccount.host);
+  log.debug(
+    `Using ${envAccount.envVar} (${envAccount.host}) for organization '${orgSlug}'`,
+  );
+  return true;
+}
+
+/**
+ * The env token's virtual account when cross-account commands and org
+ * routing may use it next to stored accounts: not when a forced env token
+ * (`SENTRY_FORCE_ENV_TOKEN`) is already the only credential, and only on
+ * the explicit server (`SENTRY_HOST`/`SENTRY_URL`, `--url`, `.sentryclirc`)
+ * when one is set — the same rule as {@link listUsableAccountsInScope}.
+ */
+export function getEnvAccountInScope(): EnvAccount | undefined {
+  if (isEnvTokenForced()) {
+    return;
+  }
+  const envAccount = getEnvAccount();
+  const explicitHost = getExplicitServerUrl();
+  return envAccount &&
+    (!explicitHost || isSameServer(envAccount.host, explicitHost))
+    ? envAccount
+    : undefined;
+}
+
+/** A stored account a command can run as: its id and server. */
+export type StoredAccountRef = Readonly<{ id: string; host: string }>;
+
+/**
+ * Usable stored accounts a cross-account command (`sentry org list`)
+ * covers, most recently used first. An explicit server (`SENTRY_HOST`/
+ * `SENTRY_URL`, `.sentryclirc`) limits them to accounts on that server, the
+ * same rule as {@link selectAccountForOrg}. Empty when a forced env token
+ * (`SENTRY_FORCE_ENV_TOKEN`) overrides stored accounts.
+ */
+export function listUsableAccountsInScope(): AccountRow[] {
+  if (isEnvTokenForced()) {
+    return [];
+  }
+  const explicitHost = getExplicitServerUrl();
+  return withDbSpan("listUsableAccountsInScope", () =>
+    listUsableAccountRowsByRecency().filter((row) => {
+      const host = row.host ?? migrateNullHost(row);
+      return !explicitHost || isSameServer(host, explicitHost);
+    }),
+  );
+}
+
+/**
+ * Run `fn` as the stored `account`, on its own server, without touching the
+ * invocation's account selection or the stored active account.
+ *
+ * `fn` runs under a copy of the invocation env (see `withEnv`), so its
+ * account scope, memoized credentials, and configured server are its own:
+ * several accounts can be queried concurrently, and credential reads, token
+ * refreshes, and invalidation inside `fn` all target `account`. The URL is
+ * pinned to the account's server so its token is never sent to another, and
+ * env tokens are dropped so no other credential is sent to that server.
+ */
+export function withStoredAccount<T>(
+  account: StoredAccountRef,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const env: NodeJS.ProcessEnv = { ...getEnv() };
+  delete env.SENTRY_HOST;
+  env.SENTRY_URL = account.host;
+  // Only the account's own credentials: an env token (forced or as a
+  // fallback when the stored one is unusable) must never be sent to the
+  // account's server.
+  delete env.SENTRY_AUTH_TOKEN;
+  delete env.SENTRY_TOKEN;
+  delete env.SENTRY_FORCE_ENV_TOKEN;
+  return withEnv(env, () => {
+    getAccountScope().accountId = account.id;
+    return fn();
+  });
+}
+
+/**
+ * Run `fn` with only the env token, on its own server: the counterpart of
+ * {@link withStoredAccount} for the env token's virtual account.
+ *
+ * `fn` runs under a copy of the invocation env with the token forced
+ * (`SENTRY_FORCE_ENV_TOKEN`), so no stored credential is read or sent, and
+ * the URL pinned to `account.host`, the server the token is scoped to.
+ * Pinning also keeps the copy's env-token host snapshot on that server,
+ * whatever `.sentryclirc` or a pasted URL set in the invocation env.
+ */
+export function withEnvAccount<T>(
+  account: EnvAccount,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const env: NodeJS.ProcessEnv = { ...getEnv() };
+  delete env.SENTRY_HOST;
+  env.SENTRY_URL = account.host;
+  env.SENTRY_FORCE_ENV_TOKEN = "1";
+  return withEnv(env, fn);
+}
+
+/**
  * The stored account whose credentials hash to `identity` (following
  * in-process refresh-token rotations), so cached org data can record which
  * account it belongs to. `undefined` for env tokens and unknown identities.
@@ -965,11 +1181,6 @@ export function getAccountIdForIdentity(identity: string): string | undefined {
   }
 }
 
-/**
- * Whether a usable stored account is on `url`'s server. Lets a pasted
- * Sentry URL for another login's server select that login instead of
- * failing the host check against the active account.
- */
 /**
  * Whether a usable stored account is on `url`'s server. Lets a pasted
  * Sentry URL for another login's server select that login instead of
@@ -1061,7 +1272,7 @@ export function resetIdentityFingerprintCache(): void {
 
 function computeIdentityFingerprint(): string {
   // Forced env-token: matches what `refreshToken()` will actually send.
-  if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim()) {
+  if (isForceEnvTokenSet()) {
     const envToken = getRawEnvToken();
     if (envToken) {
       return hashIdentity("env", envToken);
@@ -1111,7 +1322,7 @@ function envCredentialContext(): CredentialContext | undefined {
 }
 
 export function getCredentialContext(): CredentialContext | undefined {
-  if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim()) {
+  if (isForceEnvTokenSet()) {
     const forced = envCredentialContext();
     if (forced) {
       return forced;
@@ -1423,7 +1634,7 @@ export async function refreshToken(
   options: RefreshTokenOptions = {},
 ): Promise<RefreshTokenResult> {
   // With SENTRY_FORCE_ENV_TOKEN, env token takes priority (no refresh needed).
-  const forced = getEnv().SENTRY_FORCE_ENV_TOKEN?.trim()
+  const forced = isForceEnvTokenSet()
     ? getEnvRefreshResult(options.expectedCredential)
     : undefined;
   if (forced) {

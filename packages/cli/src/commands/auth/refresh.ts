@@ -179,7 +179,7 @@ Examples:
     }
 
     // Standard token refresh path (no scope change).
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     if (!auth?.refreshToken && auth?.token) {
       throw new AuthError(
         "invalid",

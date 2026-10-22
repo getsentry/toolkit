@@ -61,8 +61,8 @@ const pageSizeArb = integer({
 });
 
 describe("property: autoPaginate multi-page contract", () => {
-  test("never returns more than limit items", () => {
-    fcAssert(
+  test("never returns more than limit items", async () => {
+    await fcAssert(
       asyncProperty(
         nat(API_MAX_PER_PAGE * 5),
         multiPageLimit,
@@ -79,8 +79,8 @@ describe("property: autoPaginate multi-page contract", () => {
     );
   });
 
-  test("drops nextCursor on overshoot, but keeps a page-aligned boundary cursor", () => {
-    fcAssert(
+  test("drops nextCursor on overshoot, but keeps a page-aligned boundary cursor", async () => {
+    await fcAssert(
       asyncProperty(
         nat(API_MAX_PER_PAGE * 5),
         multiPageLimit,
@@ -125,8 +125,8 @@ describe("property: autoPaginate multi-page contract", () => {
     );
   });
 
-  test("accumulated rows are contiguous from offset 0 (no skips/dupes)", () => {
-    fcAssert(
+  test("accumulated rows are contiguous from offset 0 (no skips/dupes)", async () => {
+    await fcAssert(
       asyncProperty(
         nat(API_MAX_PER_PAGE * 5),
         multiPageLimit,

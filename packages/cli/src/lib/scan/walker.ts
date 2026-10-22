@@ -620,7 +620,7 @@ async function processEntry(
       return null;
     }
   }
-  return tryYieldFile(
+  return await tryYieldFile(
     { absPath: abs, relPath: rel, fileDepth },
     cfg,
     ctx.stats,

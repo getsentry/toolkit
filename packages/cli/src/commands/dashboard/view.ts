@@ -10,6 +10,7 @@ import { getDashboard, queryAllWidgets } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import type { DashboardViewData } from "../../lib/formatters/dashboard.js";
 import { createDashboardViewRenderer } from "../../lib/formatters/dashboard.js";
 import { ClearScreen, CommandOutput } from "../../lib/formatters/output.js";
@@ -36,7 +37,7 @@ import type {
   WidgetDataResult,
 } from "../../types/dashboard.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardPositionalArgs,
   resolveDashboardId,
   resolveOrgFromTarget,
@@ -191,7 +192,7 @@ export const viewCommand = buildCommand({
       parameter: {
         placeholder: "org/project/dashboard",
         brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -255,15 +256,17 @@ export const viewCommand = buildCommand({
     }
 
     // Fetch the dashboard definition (widget structure)
-    const dashboard = await withProgress(
-      { message: "Fetching dashboard...", json: flags.json },
-      () => getDashboard(orgSlug, dashboardId),
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    const dashboard = await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "view",
-      }),
+      },
+      () =>
+        withProgress(
+          { message: "Fetching dashboard...", json: flags.json },
+          () => getDashboard(orgSlug, dashboardId),
+        ),
     );
 
     const regionUrl = await resolveOrgRegion(orgSlug);

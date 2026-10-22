@@ -102,7 +102,7 @@ function linkHeader(cursor: string, hasResults: boolean): string {
 
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", "https://us.sentry.io");
 });
 

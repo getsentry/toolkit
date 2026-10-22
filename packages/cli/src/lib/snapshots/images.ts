@@ -9,7 +9,7 @@
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { ValidationError } from "../errors.js";
+import { stringifyUnknown, ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 import { walkFiles } from "../scan/walker.js";
 
@@ -202,7 +202,9 @@ export async function collectImages(dir: string): Promise<CollectedImage[]> {
       width = size.width;
       height = size.height;
     } catch (err) {
-      log.warn(`Could not read dimensions from ${entry.relativePath}: ${err}`);
+      log.warn(
+        `Could not read dimensions from ${entry.relativePath}: ${stringifyUnknown(err)}`,
+      );
       continue;
     }
     if (!(width && height)) {

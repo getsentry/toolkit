@@ -8,6 +8,7 @@
  * for numeric fields.
  */
 
+import { stringifyUnknown } from "../errors.js";
 import { escapeMarkdownCell } from "./markdown.js";
 import { appendUnitSuffix, formatNumber } from "./numbers.js";
 import type { Column } from "./table.js";
@@ -47,7 +48,7 @@ export function formatCellValue(
     }
     return formatNumber(value);
   }
-  return escapeMarkdownCell(String(value));
+  return escapeMarkdownCell(stringifyUnknown(value));
 }
 
 /**

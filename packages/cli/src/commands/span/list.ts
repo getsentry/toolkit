@@ -14,6 +14,7 @@ import type { SentryContext } from "../../context.js";
 import type { SpanSortValue } from "../../lib/api/traces.js";
 import { listSpans } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -575,7 +576,7 @@ export const listCommand = buildListCommand("span", {
       parameter: {
         placeholder: "org/project/trace-id",
         brief: "[<org>/<project>] or [<org>/<project>/]<trace-id>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

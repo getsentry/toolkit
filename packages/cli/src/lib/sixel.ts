@@ -408,3 +408,14 @@ export function sixelBanner(
     ? BANNER_SIXEL.data
     : undefined;
 }
+
+/**
+ * Terminal rows occupied by the {@link sixelBanner} image, using the reported
+ * cell height or {@link DEFAULT_CELL_HEIGHT} when the terminal did not report it.
+ */
+export function sixelBannerRows(): number {
+  const { cellHeight } = detectSixelCaps();
+  const rowHeight =
+    cellHeight && cellHeight > 0 ? cellHeight : DEFAULT_CELL_HEIGHT;
+  return Math.ceil(BANNER_SIXEL.height / rowHeight);
+}

@@ -2,6 +2,9 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "jsx-a11y"],
   "jsPlugins": ["./packages/cli/lint-rules/cli-oxlint-plugin.js"],
+  "options": {
+    "typeAware": true
+  },
   "categories": {
     "correctness": "error"
   },
@@ -11,13 +14,40 @@
     "**/tsconfig*.json",
     "packages/toolkit-core/src/generated/**",
     "packages/toolkit-core/test/fixtures/**",
-    "packages/mcp-server-mocks/src/fixtures/**"
+    "packages/mcp-server-mocks/src/fixtures/**",
+    "packages/cli/test/init-eval/templates/sveltekit-app/**"
   ],
   "rules": {
     "no-unused-vars": "off",
+    "typescript/return-await": ["error", "always"],
+    "typescript/no-floating-promises": [
+      "error",
+      {
+        "allowForKnownSafeCalls": [
+          {
+            "from": "package",
+            "package": "node:test",
+            "name": ["test", "it", "describe", "suite"]
+          }
+        ]
+      }
+    ],
+    "typescript/restrict-template-expressions": [
+      "error",
+      {
+        "allowNever": true,
+        "allow": ["URL", "URLSearchParams"]
+      }
+    ],
     "jsx-a11y/interactive-supports-focus": "off"
   },
   "overrides": [
+    {
+      "files": ["**/*.test.{ts,tsx,mjs}", "**/test/**/*.{ts,tsx}"],
+      "rules": {
+        "typescript/unbound-method": "off"
+      }
+    },
     {
       "files": ["packages/mcp-cloudflare/src/client/**/*.tsx"],
       "rules": {
