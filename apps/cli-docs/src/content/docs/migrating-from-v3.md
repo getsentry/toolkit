@@ -163,7 +163,7 @@ sentry-cli() {
   # flags untouched (notably `--url`, which `release create`/`deploy` use for
   # the release/deploy URL, not the Sentry host). Other still-valid v4 globals
   # are collected into `lead` and re-applied before the command.
-  local envs=() lead=() headers="" login_url="" login_args=()
+  local envs=() lead=() headers="" allow_failure="" login_url="" login_args=()
   while [ "$#" -gt 0 ]; do
     case "${1:-}" in
       --auth-token)   envs+=("SENTRY_AUTH_TOKEN=$2" "SENTRY_FORCE_ENV_TOKEN=1"); shift 2 2>/dev/null || shift ;;
@@ -176,12 +176,15 @@ sentry-cli() {
       # Still-valid v4 globals: keep them (value-taking ones consume a value).
       --org|--project|--log-level|--fields) lead+=("$1" "$2"); shift 2 2>/dev/null || shift ;;
       --org=*|--project=*|--log-level=*|--fields=*) lead+=("$1"); shift ;;
-      -v|--verbose|--json|--allow-failure) lead+=("$1"); shift ;;
+      -v|--verbose|--json) lead+=("$1"); shift ;;
+      # v3 `--allow-failure` (and SENTRY_ALLOW_FAILURE) is gone in v4 and would
+      # be rejected as unknown. Strip it and emulate its "never fail" behavior.
+      --allow-failure) allow_failure=1; shift ;;
       *)              break ;;
     esac
   done
 
-  # v3 accepts auth and headers after the command too. Keep
+  # v3 accepts auth, headers and allow-failure after the command too. Keep
   # --url on releases/deploys: there it can name the release or deploy URL.
   local command="${1:-}" remaining=()
   if [ -n "$login_url" ]; then
@@ -198,6 +201,7 @@ sentry-cli() {
         [ "$#" -ge 2 ] || { remaining+=("$1"); shift; continue; }
         headers="${headers:+$headers; }$2"; shift 2 ;;
       --header=*) headers="${headers:+$headers; }${1#*=}"; shift ;;
+      --allow-failure) allow_failure=1; shift ;;
       --url)
         if [ "$command" = login ] || [ "$command" = releases ] || [ "$command" = deploys ] || [ "$#" -lt 2 ]; then
           remaining+=("$1"); shift
@@ -215,6 +219,8 @@ sentry-cli() {
     esac
   done
   set -- "${remaining[@]}"
+  # Same values v3 accepted for SENTRY_ALLOW_FAILURE.
+  case "${SENTRY_ALLOW_FAILURE:-}" in 1|true) allow_failure=1 ;; esac
   [ -n "$headers" ] && envs+=("SENTRY_CUSTOM_HEADERS=$headers")
 
   # `env` runs the real `sentry` (bypassing this function → no recursion),
@@ -274,7 +280,7 @@ sentry-cli() {
         --org|--project|--log-level|--fields)
           [ "$#" -ge 2 ] || break
           run+=("$1" "$2"); shift 2 ;;
-        --org=*|--project=*|--log-level=*|--fields=*|-v|--verbose|--json|--allow-failure)
+        --org=*|--project=*|--log-level=*|--fields=*|-v|--verbose|--json)
           run+=("$1"); shift ;;
         --url)
           [ "$#" -ge 2 ] || break
@@ -326,7 +332,13 @@ sentry-cli() {
   esac
   }
 
-  _scli_dispatch "$@"
+  # v3's `--allow-failure`/`SENTRY_ALLOW_FAILURE` made any command exit 0. v4
+  # dropped it, so emulate here: swallow a non-zero status when it was set.
+  if [ -n "$allow_failure" ]; then
+    _scli_dispatch "$@" || { printf 'sentry-cli: command failed, but --allow-failure/SENTRY_ALLOW_FAILURE was set — exiting 0\n' >&2; return 0; }
+  else
+    _scli_dispatch "$@"
+  fi
 }
 ```
 
@@ -350,7 +362,6 @@ biggest migration gotcha is flags that silently no longer exist.
 | `--org <slug>` | `--org` (accepted; also `SENTRY_ORG`) |
 | `--project <slug>` | `--project` (accepted; also `SENTRY_PROJECT`, or `org/project` combo) |
 | `--log-level <level>` | `--log-level` |
-| `--allow-failure` | `--allow-failure` (accepted; also `SENTRY_ALLOW_FAILURE`) |
 | — | `-v` / `--verbose` |
 | — | `--json`, `--fields` (new — structured output) |
 
@@ -372,6 +383,15 @@ credentials as it did in v3.
 
 - `--quiet` (and its `--silent` alias) has no direct replacement — pipe the
   output (non-TTY is plain) or use `--log-level error`.
+- `--allow-failure` (and the `SENTRY_ALLOW_FAILURE` env var), which made any
+  command exit `0` even on error, is **not implemented in v4**. `sentry`
+  rejects the flag as unknown and ignores the env var. To keep optional CI
+  steps from failing the build, either:
+  - call `sentry-cli` through the [shim](#drop-in-compatibility-shim) above. It
+    strips `--allow-failure` wherever it appears and honors
+    `SENTRY_ALLOW_FAILURE=1` (or `true`, as in v3): the error is still printed,
+    but the call returns `0`.
+  - or handle the failure yourself, e.g. `sentry sourcemap upload ./dist || true`.
 - `SENTRY_API_KEY` (the v3 `apiKey` option) and `SENTRY_VCS_REMOTE` (the
   `vcsRemote` option) are no longer honored — use `SENTRY_AUTH_TOKEN` for auth.
 - `SENTRY_CUSTOM_HEADERS` only applies to self-hosted Sentry; custom headers are

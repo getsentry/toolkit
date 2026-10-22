@@ -48,8 +48,6 @@ for (const [name, args, expected] of [
   ["issue resolution after --org", ["issues", "--org", "acme", "resolve", "ISSUE-1"], ["--org", "acme", "issue", "resolve", "ISSUE-1"]],
   ["bare project list after --project", ["projects", "--project", "demo"], ["--project", "demo", "project", "list"]],
   ["release creation without group flags", ["releases", "new", "1.0.0"], ["release", "new", "1.0.0"]],
-  ["leading --allow-failure", ["--allow-failure", "releases", "new", "1.0.0"], ["--allow-failure", "release", "new", "1.0.0"]],
-  ["--allow-failure between group and subcommand", ["releases", "--allow-failure", "new", "1.0.0"], ["--allow-failure", "release", "new", "1.0.0"]],
 ]) {
   test(name, () => {
     const result = runShim(args);
@@ -58,19 +56,33 @@ for (const [name, args, expected] of [
   });
 }
 
-test("translates trailing auth and headers and forwards allow-failure", () => {
+test("translates trailing auth and headers and honors allow-failure", () => {
   const result = runShim(
     ["releases", "new", "1.0.0", "--auth-token", "example-token", "--header", "X-Test: 1", "--allow-failure"],
-    { SENTRY_TEST_SHIM_ENV: "1" },
+    { SENTRY_TEST_SHIM_ENV: "1", SENTRY_TEST_SHIM_EXIT: "23" },
   );
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.stdout.trim().split("\n"), [
-    "release", "new", "1.0.0", "--allow-failure", "auth=example-token", "headers=X-Test: 1", "host=",
+    "release", "new", "1.0.0", "auth=example-token", "headers=X-Test: 1", "host=",
   ]);
 });
 
-test("leaves the exit status to sentry, which handles --allow-failure itself", () => {
-  const result = runShim(["releases", "new", "1.0.0", "--allow-failure"], { SENTRY_TEST_SHIM_EXIT: "23" });
+for (const value of ["1", "true"]) {
+  test(`SENTRY_ALLOW_FAILURE=${value} turns a failure into exit 0`, () => {
+    const result = runShim(["releases", "new", "1.0.0"], {
+      SENTRY_ALLOW_FAILURE: value,
+      SENTRY_TEST_SHIM_EXIT: "23",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /exiting 0/);
+  });
+}
+
+test("other SENTRY_ALLOW_FAILURE values keep the exit status", () => {
+  const result = runShim(["releases", "new", "1.0.0"], {
+    SENTRY_ALLOW_FAILURE: "0",
+    SENTRY_TEST_SHIM_EXIT: "23",
+  });
   assert.equal(result.status, 23, result.stderr);
 });
 
