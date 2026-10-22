@@ -6,7 +6,14 @@
  */
 
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "@stricli/core";
@@ -101,6 +108,63 @@ describe("sentry cli uninstall", () => {
 
     const { output } = await runUninstall(["--yes"]);
     expect(output).toContain("brew uninstall getsentry/tools/sentry");
+  });
+
+  describe("Homebrew Cellar detection", () => {
+    let originalExecPath: string;
+    let tempDir: string | undefined;
+
+    beforeEach(() => {
+      originalExecPath = process.execPath;
+    });
+
+    afterEach(async () => {
+      Object.defineProperty(process, "execPath", {
+        value: originalExecPath,
+        configurable: true,
+      });
+      if (tempDir) {
+        await rm(tempDir, { recursive: true, force: true });
+        tempDir = undefined;
+      }
+    });
+
+    test("detects brew from a symlinked Cellar binary with no install info", async () => {
+      // Mirror Homebrew's layout: <prefix>/bin/sentry -> <prefix>/Cellar/...
+      tempDir = await mkdtemp(join(tmpdir(), "uninstall-brew-"));
+      const cellarBin = join(tempDir, "Cellar", "sentry", "1.0.0", "bin");
+      await mkdir(cellarBin, { recursive: true });
+      await writeFile(join(cellarBin, "sentry"), "");
+      await mkdir(join(tempDir, "bin"));
+      const linkPath = join(tempDir, "bin", "sentry");
+      await symlink(join(cellarBin, "sentry"), linkPath);
+      Object.defineProperty(process, "execPath", {
+        value: linkPath,
+        configurable: true,
+      });
+
+      const { output } = await runUninstall(["--yes"]);
+      expect(output).toContain("brew uninstall getsentry/tools/sentry");
+      expect(output).not.toContain("Removed");
+      expect(existsSync(join(cellarBin, "sentry"))).toBe(true);
+      expect(existsSync(getConfigDir())).toBe(true);
+    });
+
+    test("Cellar path wins over stale curl install info", async () => {
+      setInstallInfo({
+        method: "curl",
+        path: "/home/user/.local/bin/sentry",
+        version: "1.0.0",
+      });
+      Object.defineProperty(process, "execPath", {
+        value: "/opt/homebrew/Cellar/sentry/1.0.0/bin/sentry",
+        configurable: true,
+      });
+
+      const { output } = await runUninstall(["--dry-run"]);
+      expect(output).toContain("brew uninstall getsentry/tools/sentry");
+      expect(output).not.toContain("sentry binary");
+    });
   });
 
   test("detects pnpm install and suggests pnpm remove", async () => {

@@ -10,6 +10,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   unlinkSync,
   writeFileSync,
@@ -87,6 +88,30 @@ export const samePath: (a: string, b: string) => boolean =
  */
 export function getLegacyInstallDirs(homeDir: string): string[] {
   return LEGACY_INSTALL_SUBDIRS.map((dir) => join(homeDir, dir));
+}
+
+/**
+ * Detect if the CLI binary is running from a Homebrew Cellar.
+ *
+ * Homebrew places the real binary deep in the Cellar
+ * (e.g. `/opt/homebrew/Cellar/sentry/1.2.3/bin/sentry`) and exposes it
+ * via a symlink at the prefix bin dir (e.g. `/opt/homebrew/bin/sentry`).
+ * `process.execPath` typically reflects the symlink, not the realpath, so
+ * we resolve symlinks first before checking for `/Cellar/`. Falls back to
+ * the unresolved path if `realpathSync` throws (e.g. binary was deleted).
+ *
+ * Synchronous and subprocess-free, so it is safe to call from both
+ * `cli upgrade` and `cli uninstall`.
+ */
+export function isHomebrewInstall(): boolean {
+  let execPath = process.execPath;
+  try {
+    execPath = realpathSync(execPath);
+  } catch (error) {
+    // Binary may have been deleted or moved; use the original path
+    logger.debug("realpath of execPath failed, using unresolved path", error);
+  }
+  return execPath.includes("/Cellar/");
 }
 
 /**
