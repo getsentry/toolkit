@@ -51,6 +51,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { parseOrgProjectTargetArg } from "../../../src/lib/target-arg.js";
 import type { ProjectKey, SentryProject } from "../../../src/types/sentry.js";
 
 const sampleProject: SentryProject = {
@@ -111,7 +112,11 @@ describe("viewCommand.func", () => {
 
     const { context, stdoutWrite } = createMockContext();
     const func = await viewCommand.loader();
-    await func.call(context, { json: true, web: false }, "my-org/test-project");
+    await func.call(
+      context,
+      { json: true, web: false },
+      parseOrgProjectTargetArg("my-org/test-project"),
+    );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
@@ -132,7 +137,7 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: false, web: false },
-      "my-org/test-project",
+      parseOrgProjectTargetArg("my-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -145,7 +150,11 @@ describe("viewCommand.func", () => {
 
     const { context } = createMockContext();
     const func = await viewCommand.loader();
-    await func.call(context, { json: false, web: true }, "my-org/test-project");
+    await func.call(
+      context,
+      { json: false, web: true },
+      parseOrgProjectTargetArg("my-org/test-project"),
+    );
 
     expect(openInBrowserSpy).toHaveBeenCalled();
     // Should NOT fetch project details when using --web
@@ -195,7 +204,11 @@ describe("viewCommand.func", () => {
 
     const { context, stdoutWrite } = createMockContext();
     const func = await viewCommand.loader();
-    await func.call(context, { json: true, web: false }, "frontend");
+    await func.call(
+      context,
+      { json: true, web: false },
+      parseOrgProjectTargetArg("frontend"),
+    );
 
     expect(resolveProjectBoundSlugSpy).toHaveBeenCalledWith(
       "frontend",
@@ -214,7 +227,11 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     try {
-      await func.call(context, { json: false, web: false }, "my-org/");
+      await func.call(
+        context,
+        { json: false, web: false },
+        parseOrgProjectTargetArg("my-org/"),
+      );
       expect.unreachable("Should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ContextError);
@@ -301,7 +318,11 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false }, "my-org/bad-project"),
+      func.call(
+        context,
+        { json: false, web: false },
+        parseOrgProjectTargetArg("my-org/bad-project"),
+      ),
     ).rejects.toThrow("404 Not Found");
 
     expect(getProjectSpy).toHaveBeenCalledWith("my-org", "bad-project");
@@ -322,7 +343,11 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false }, "frontend"),
+      func.call(
+        context,
+        { json: false, web: false },
+        parseOrgProjectTargetArg("frontend"),
+      ),
     ).rejects.toThrow("403 Forbidden");
   });
 
@@ -365,7 +390,11 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false }, "my-org/test-project"),
+      func.call(
+        context,
+        { json: false, web: false },
+        parseOrgProjectTargetArg("my-org/test-project"),
+      ),
     ).rejects.toThrow(AuthError);
   });
 
@@ -383,7 +412,11 @@ describe("viewCommand.func", () => {
 
     const { context, stdoutWrite } = createMockContext();
     const func = await viewCommand.loader();
-    await func.call(context, { json: true, web: false }, "my-org/test-project");
+    await func.call(
+      context,
+      { json: true, web: false },
+      parseOrgProjectTargetArg("my-org/test-project"),
+    );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
@@ -405,7 +438,11 @@ describe("viewCommand.func", () => {
 
     const { context, stdoutWrite } = createMockContext();
     const func = await viewCommand.loader();
-    await func.call(context, { json: true, web: false }, "my-org/test-project");
+    await func.call(
+      context,
+      { json: true, web: false },
+      parseOrgProjectTargetArg("my-org/test-project"),
+    );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
@@ -420,7 +457,11 @@ describe("viewCommand.func", () => {
 
     const { context, stdoutWrite } = createMockContext();
     const func = await viewCommand.loader();
-    await func.call(context, { json: true, web: false }, "my-org/test-project");
+    await func.call(
+      context,
+      { json: true, web: false },
+      parseOrgProjectTargetArg("my-org/test-project"),
+    );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
@@ -447,7 +488,7 @@ describe("viewCommand.func", () => {
         web: false,
         fields: ["slug", "organization.slug"],
       },
-      "my-org/test-project",
+      parseOrgProjectTargetArg("my-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

@@ -7,7 +7,6 @@
 import type { SentryContext } from "../../context.js";
 import { listTransactions } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -32,9 +31,14 @@ import {
 import { withProgress } from "../../lib/polling.js";
 import {
   resolveLogProjectId,
-  resolveProjectBoundFromArg,
+  resolveProjectBoundTarget,
 } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
+import {
+  type OrgProjectTargetArg,
+  parsedOrgProject,
+  parseOrgProjectTargetArg,
+} from "../../lib/target-arg.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -225,7 +229,7 @@ export const listCommand = buildListCommand("trace", {
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search)",
-          parse: parseOrgProjectTarget,
+          parse: parseOrgProjectTargetArg,
           optional: true,
         },
       ],
@@ -258,14 +262,18 @@ export const listCommand = buildListCommand("trace", {
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target?: OrgProjectTargetArg,
+  ) {
     const { cwd } = this;
     const timeRange = flags.period;
     const { query } = flags;
 
     // Resolve org/project from positional arg, config, or DSN auto-detection
-    const { org, project } = await resolveProjectBoundFromArg(
-      target,
+    const { org, project } = await resolveProjectBoundTarget(
+      parsedOrgProject(target),
       cwd,
       COMMAND_NAME,
     );

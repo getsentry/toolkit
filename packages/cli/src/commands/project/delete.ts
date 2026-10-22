@@ -24,8 +24,6 @@ import {
   getOrganization,
   getProject,
 } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { getCachedOrgRole } from "../../lib/db/regions.js";
 import { ApiError } from "../../lib/errors.js";
 import {
@@ -42,6 +40,11 @@ import {
 } from "../../lib/mutate-command.js";
 import { resolveProjectBoundTarget } from "../../lib/resolve-target.js";
 import { buildProjectUrl } from "../../lib/sentry-web-urls.js";
+import {
+  type OrgProjectTargetArg,
+  parsedOrgProject,
+  parseOrgProjectTargetArg,
+} from "../../lib/target-arg.js";
 
 const log = logger.withTag("project.delete");
 
@@ -169,16 +172,20 @@ export const deleteCommand = buildDeleteCommand({
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search across orgs)",
-          parse: parseOrgProjectTarget,
+          parse: parseOrgProjectTargetArg,
         },
       ],
     },
   },
-  async *func(this: SentryContext, flags: DeleteFlags, target: string) {
+  async *func(
+    this: SentryContext,
+    flags: DeleteFlags,
+    target: OrgProjectTargetArg,
+  ) {
     const { cwd } = this;
 
     // Block auto-detect for safety — destructive commands require explicit targets
-    const parsed = parseOrgProjectArg(target);
+    const parsed = parsedOrgProject(target);
     requireExplicitTarget(
       parsed,
       "Project target",

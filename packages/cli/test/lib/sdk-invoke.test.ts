@@ -1,16 +1,23 @@
 /**
  * Unit tests for the SDK invoke layer.
  *
- * Focuses on `applyFlagDefaults` which replicates Stricli's default
- * application for the SDK direct-invoke path (bypasses Stricli parsing).
+ * Focuses on `applyFlagDefaults` and `applyPositionalParsers`, which
+ * replicate Stricli's default application and positional parsing for the SDK
+ * direct-invoke path (bypasses Stricli parsing).
  */
 
 import { describe, expect, test } from "vitest";
 import {
   applyFlagDefaults,
+  applyPositionalParsers,
+  buildInvoker,
   type FlagDef,
   parseOutput,
 } from "../../src/lib/sdk-invoke.js";
+import { parseOrgProjectTargetArg } from "../../src/lib/target-arg.js";
+import { useTestConfigDir } from "../helpers.js";
+
+useTestConfigDir("sdk-invoke-");
 
 // ---------------------------------------------------------------------------
 // applyFlagDefaults — parsed flags with defaults
@@ -220,5 +227,70 @@ describe("parseOutput: binary output", () => {
   test("prefers captured object over stdout chunks", () => {
     const obj = { id: 1 };
     expect(parseOutput(obj, ["ignored"])).toBe(obj);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyPositionalParsers
+// ---------------------------------------------------------------------------
+
+describe("applyPositionalParsers", () => {
+  test("runs tuple parsers by position", () => {
+    const [target, name] = applyPositionalParsers(
+      ["acme/web", "checkout"],
+      {
+        kind: "tuple",
+        parameters: [{ parse: parseOrgProjectTargetArg }, { parse: String }],
+      },
+      {},
+    );
+    expect(target).toEqual(parseOrgProjectTargetArg("acme/web"));
+    expect(name).toBe("checkout");
+  });
+
+  test("runs the array parser on every value", () => {
+    const parsed = applyPositionalParsers(
+      ["1", "2"],
+      { kind: "array", parameter: { parse: Number } },
+      {},
+    );
+    expect(parsed).toEqual([1, 2]);
+  });
+
+  test("passes the context as `this`, like Stricli", () => {
+    const context = { name: "ctx" };
+    const [seen] = applyPositionalParsers(
+      ["x"],
+      {
+        kind: "tuple",
+        parameters: [
+          {
+            parse(this: unknown) {
+              return this;
+            },
+          },
+        ],
+      },
+      context,
+    );
+    expect(seen).toBe(context);
+  });
+
+  test("leaves values without a parameter definition unchanged", () => {
+    expect(applyPositionalParsers(["a"], undefined, {})).toEqual(["a"]);
+    expect(
+      applyPositionalParsers(["a", "b"], { kind: "tuple", parameters: [] }, {}),
+    ).toEqual(["a", "b"]);
+  });
+});
+
+describe("buildInvoker: positional parsing", () => {
+  test("a command's target positional is parsed and validated", async () => {
+    // Without positional parsing, project view would get the bare string
+    // and silently fall back to auto-detection instead of rejecting it.
+    const invoke = buildInvoker({ token: "sntrys_test" });
+    await expect(
+      invoke(["project", "view"], {}, ["@latest"]) as Promise<unknown>,
+    ).rejects.toThrow("is an issue selector");
   });
 });

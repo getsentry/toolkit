@@ -57,6 +57,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { parseOrgProjectTargetArg } from "../../../src/lib/target-arg.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TransactionListItem } from "../../../src/types/sentry.js";
 
@@ -333,7 +334,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -353,7 +354,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -372,7 +373,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -387,7 +388,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -409,7 +410,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 2, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -425,7 +426,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 100, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -441,7 +442,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -463,7 +464,7 @@ describe("listCommand.func", () => {
         query: "transaction:GET",
         period: parsePeriod("7d"),
       },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     expect(listTransactionsSpy).toHaveBeenCalledWith(
@@ -491,7 +492,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -514,7 +515,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "duration", json: false, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -531,7 +532,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const callArgs = listTransactionsSpy.mock.calls[0];
@@ -549,7 +550,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -574,7 +575,7 @@ describe("listCommand.func", () => {
         query: 'transaction:"POST /checkout"',
         period: parsePeriod("7d"),
       },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -590,7 +591,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -608,7 +609,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("24h") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     expect(listTransactionsSpy).toHaveBeenCalledWith(
@@ -631,7 +632,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("30d") },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

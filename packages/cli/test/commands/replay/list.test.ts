@@ -48,6 +48,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { parseOrgProjectTargetArg } from "../../../src/lib/target-arg.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import {
   REPLAY_LIST_FIELDS,
@@ -106,7 +107,7 @@ describe("listCommand.func", () => {
 
   beforeEach(() => {
     listReplaysSpy = vi.spyOn(apiClient, "listReplays");
-    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalFromArg");
+    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
     resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
       cursor: undefined,
       direction: "next" as const,
@@ -139,7 +140,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 25, json: true, period: parsePeriod("7d"), sort: "-started_at" },
-      "test-org/cli",
+      parseOrgProjectTargetArg("test-org/cli"),
     );
 
     expect(listReplaysSpy).toHaveBeenCalledWith("test-org", {
@@ -181,7 +182,7 @@ describe("listCommand.func", () => {
           sort: "-started_at",
           query: "bad:::query",
         },
-        "test-org/cli",
+        parseOrgProjectTargetArg("test-org/cli"),
       ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
@@ -203,7 +204,7 @@ describe("listCommand.func", () => {
           period: parsePeriod("7d"),
           sort: "-started_at",
         },
-        "test-org/cli",
+        parseOrgProjectTargetArg("test-org/cli"),
       ),
     ).rejects.toBeInstanceOf(ApiError);
   });
@@ -226,7 +227,7 @@ describe("listCommand.func", () => {
         period: parsePeriod("7d"),
         sort: "-started_at",
       },
-      "test-org/cli",
+      parseOrgProjectTargetArg("test-org/cli"),
     );
 
     expect(listReplaysSpy).toHaveBeenCalledWith("test-org", {
@@ -255,7 +256,7 @@ describe("listCommand.func", () => {
         period: parsePeriod("7d"),
         sort: "-started_at",
       },
-      "test-org/cli",
+      parseOrgProjectTargetArg("test-org/cli"),
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -282,7 +283,7 @@ describe("listCommand.func", () => {
         period: parsePeriod(LIST_PERIOD_FLAG.default),
         sort: "-started_at",
       },
-      "test-org/cli",
+      parseOrgProjectTargetArg("test-org/cli"),
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");

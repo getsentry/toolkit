@@ -45,6 +45,7 @@ import {
   type OrgListConfig,
 } from "./org-list.js";
 import { disableResponseCache } from "./response-cache.js";
+import { rawPositional } from "./target-arg.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
 
@@ -617,19 +618,16 @@ export function buildListCommand<
     // Auto-apply fresh flag before command runs
     applyFreshFlag(flags as unknown as { readonly fresh: boolean });
 
-    // The first positional arg is always the target (org/project pattern).
-    // Intercept it to handle plural alias confusion.
-    if (
-      args.length > 0 &&
-      (typeof args[0] === "string" || args[0] === undefined)
-    ) {
+    // The first positional arg is always the target (org/project pattern),
+    // either a raw string or a TargetArg. Intercept it to handle plural
+    // alias confusion.
+    const rawTarget = rawPositional(args[0]);
+    if (typeof rawTarget === "string") {
       // All list commands use SentryContext which has stderr at top level
       const ctx = this as unknown as { stderr: { write(s: string): void } };
-      args[0] = interceptSubcommand(
-        args[0] as string | undefined,
-        ctx.stderr,
-        routeName,
-      );
+      if (interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined) {
+        args[0] = undefined;
+      }
     }
     return originalFunc.call(this, flags, ...(args as unknown as ARGS));
   } as typeof originalFunc;

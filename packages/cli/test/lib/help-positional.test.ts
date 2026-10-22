@@ -142,6 +142,14 @@ describe("help recovery on ResolutionError", () => {
 
     expect(stderr).toContain("sentry issue list --help");
   });
+
+  test("sentry project view help → recovers through a parsed target positional", async () => {
+    // project view's positional reaches func as a TargetArg, not a string
+    const { stdout, stderr } = await runCommand(["project", "view", "help"]);
+
+    expect(stdout).toContain("sentry project view");
+    expect(stderr).toContain("sentry project view --help");
+  });
 });
 
 describe("help recovery on ValidationError", () => {

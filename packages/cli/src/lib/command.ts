@@ -65,6 +65,7 @@ import {
   parseLogLevel,
   setLogLevel,
 } from "./logger.js";
+import { rawPositional } from "./target-arg.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
 import { applyTipsPreference } from "./tips.js";
 
@@ -674,7 +675,10 @@ export function buildCommand<
     }
     if (
       args.length === 0 ||
-      !args.some((a) => a === "help" || a === "--h" || a === "-help")
+      !args.some((a) => {
+        const raw = rawPositional(a);
+        return raw === "help" || raw === "--h" || raw === "-help";
+      })
     ) {
       return false;
     }
@@ -722,7 +726,7 @@ export function buildCommand<
     const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
     setFlagContext(cleanFlags);
     if (args.length > 0) {
-      setArgsContext(args);
+      setArgsContext(args.map(rawPositional));
     }
 
     // Environment-based JSON mode (used by library entry point)

@@ -76,16 +76,29 @@ export type FlagDef = {
   variadic?: boolean;
 };
 
-/** Resolved command: handler function + flag definitions for default application. */
+/** One positional parameter — subset needed to run its parser. */
+type PositionalParamDef = { parse: (this: unknown, input: string) => unknown };
+
+/** Stricli positional definition shape — subset needed by {@link applyPositionalParsers}. */
+type PositionalDef =
+  | { kind: "tuple"; parameters: readonly PositionalParamDef[] }
+  | { kind: "array"; parameter: PositionalParamDef };
+
+/** Resolved command: handler function + parameter definitions. */
 type ResolvedCommand = {
   handler: CommandHandler;
   flagDefs: Record<string, FlagDef>;
+  positionalDef?: PositionalDef;
 };
 
 /** Cached command entries, keyed by joined path (e.g., "org.list"). */
 const commandCache = new Map<
   string,
-  { loader: () => Promise<CommandHandler>; flagDefs: Record<string, FlagDef> }
+  {
+    loader: () => Promise<CommandHandler>;
+    flagDefs: Record<string, FlagDef>;
+    positionalDef?: PositionalDef;
+  }
 >();
 
 /**
@@ -117,10 +130,41 @@ async function resolveCommand(path: string[]): Promise<ResolvedCommand> {
           (m: any) => (typeof m === "function" ? m : m.default),
         ),
       flagDefs,
+      positionalDef: command.parameters?.positional,
     };
     commandCache.set(key, cached);
   }
-  return { handler: await cached.loader(), flagDefs: cached.flagDefs };
+  return {
+    handler: await cached.loader(),
+    flagDefs: cached.flagDefs,
+    positionalDef: cached.positionalDef,
+  };
+}
+
+/**
+ * Run a command's positional parsers on SDK-provided strings.
+ *
+ * Like flag defaults ({@link applyFlagDefaults}), positional parsing normally
+ * happens in Stricli's argument scanner, which the SDK invoke path bypasses.
+ * Without this, a command whose positional parses its own value (e.g.
+ * `parseOrgProjectTargetArg`) would receive a bare string.
+ *
+ * @param args - Positional strings from the SDK caller
+ * @param positionalDef - The command's Stricli positional definition
+ * @param context - `this` for each parser, as Stricli passes it
+ */
+export function applyPositionalParsers(
+  args: readonly string[],
+  positionalDef: PositionalDef | undefined,
+  context: unknown,
+): unknown[] {
+  return args.map((arg, index) => {
+    const param =
+      positionalDef?.kind === "array"
+        ? positionalDef.parameter
+        : positionalDef?.parameters[index];
+    return param ? param.parse.call(context, arg) : arg;
+  });
 }
 
 /**
@@ -559,7 +603,8 @@ export function buildInvoker(options?: SentryOptions) {
   ): Promise<T> | AsyncIterable<T> {
     if (meta?.streaming) {
       return executeWithStream<T>(options, async (ctx, span) => {
-        const { handler, flagDefs } = await resolveCommand(commandPath);
+        const { handler, flagDefs, positionalDef } =
+          await resolveCommand(commandPath);
         if (span) {
           const { setCommandSpanName } = await import("./telemetry.js");
           setCommandSpanName(span, commandPath.join("."));
@@ -568,13 +613,14 @@ export function buildInvoker(options?: SentryOptions) {
         await handler.call(
           ctx.context,
           { ...resolvedFlags, json: true },
-          ...positionalArgs,
+          ...applyPositionalParsers(positionalArgs, positionalDef, ctx.context),
         );
       });
     }
 
     return executeWithCapture<T>(options, async (ctx, span) => {
-      const { handler, flagDefs } = await resolveCommand(commandPath);
+      const { handler, flagDefs, positionalDef } =
+        await resolveCommand(commandPath);
       if (span) {
         const { setCommandSpanName } = await import("./telemetry.js");
         setCommandSpanName(span, commandPath.join("."));
@@ -583,7 +629,7 @@ export function buildInvoker(options?: SentryOptions) {
       await handler.call(
         ctx.context,
         { ...resolvedFlags, json: true },
-        ...positionalArgs,
+        ...applyPositionalParsers(positionalArgs, positionalDef, ctx.context),
       );
     });
   };

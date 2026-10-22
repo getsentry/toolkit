@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { listCommand } from "../../../src/commands/feedback/list.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
+import { parseOrgProjectTargetArg } from "../../../src/lib/target-arg.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { SentryFeedback } from "../../../src/types/index.js";
 
@@ -101,7 +102,7 @@ describe("feedback list", () => {
       slug: "test-project",
       name: "Test Project",
     });
-    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalFromArg");
+    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
     resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
       cursor: undefined,
       direction: "next",
@@ -140,7 +141,7 @@ describe("feedback list", () => {
         json: true,
         fresh: false,
       },
-      "test-org/test-project",
+      parseOrgProjectTargetArg("test-org/test-project"),
     );
 
     expect(listFeedbackSpy).toHaveBeenCalledWith("test-org", "test-project", {
@@ -184,7 +185,7 @@ describe("feedback list", () => {
         json: false,
         fresh: false,
       },
-      "test-org/",
+      parseOrgProjectTargetArg("test-org/"),
     );
 
     expect(listFeedbackSpy).toHaveBeenCalledWith("test-org", "", {
@@ -230,7 +231,7 @@ describe("feedback list", () => {
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
     expect(JSON.parse(output).data).toEqual([{ shortId: "TEST-PROJECT-2SDJ" }]);
     expect(resolveTargetSpy).toHaveBeenCalledWith(
-      undefined,
+      { type: "auto-detect" },
       "/tmp",
       "feedback list",
     );
@@ -255,11 +256,11 @@ describe("feedback list", () => {
         json: true,
         fresh: false,
       },
-      "test-project",
+      parseOrgProjectTargetArg("test-project"),
     );
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
-      "test-project",
+      { type: "project-search", projectSlug: "test-project" },
       "/tmp",
       "feedback list",
     );

@@ -112,6 +112,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { parseOrgProjectTargetArg } from "../../../src/lib/target-arg.js";
 import type { SentryProject } from "../../../src/types/index.js";
 
 const sampleProject: SentryProject = {
@@ -178,7 +179,11 @@ describe("project delete", () => {
   test("deletes project with explicit org/project and --yes", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await deleteCommand.loader();
-    await func.call(context, defaultFlags, "acme-corp/my-app");
+    await func.call(
+      context,
+      defaultFlags,
+      parseOrgProjectTargetArg("acme-corp/my-app"),
+    );
 
     expect(getProjectSpy).toHaveBeenCalledWith("acme-corp", "my-app");
     expect(deleteProjectSpy).toHaveBeenCalledWith("acme-corp", "my-app");
@@ -192,7 +197,11 @@ describe("project delete", () => {
   test("delegates to resolveProjectBoundTarget for resolution", async () => {
     const { context } = createMockContext();
     const func = await deleteCommand.loader();
-    await func.call(context, defaultFlags, "acme-corp/my-app");
+    await func.call(
+      context,
+      defaultFlags,
+      parseOrgProjectTargetArg("acme-corp/my-app"),
+    );
 
     expect(resolveProjectBoundTargetSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -208,7 +217,7 @@ describe("project delete", () => {
   test("resolves bare slug via resolveProjectBoundTarget", async () => {
     const { context } = createMockContext();
     const func = await deleteCommand.loader();
-    await func.call(context, defaultFlags, "my-app");
+    await func.call(context, defaultFlags, parseOrgProjectTargetArg("my-app"));
 
     expect(resolveProjectBoundTargetSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -227,7 +236,11 @@ describe("project delete", () => {
 
     // isatty(0) returns false in test environments (non-TTY)
     await expect(
-      func.call(context, { ...defaultFlags, yes: false }, "acme-corp/my-app"),
+      func.call(
+        context,
+        { ...defaultFlags, yes: false },
+        parseOrgProjectTargetArg("acme-corp/my-app"),
+      ),
     ).rejects.toThrow("non-interactive mode");
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -242,7 +255,11 @@ describe("project delete", () => {
     const func = await deleteCommand.loader();
 
     await expect(
-      func.call(context, defaultFlags, "acme-corp/my-app"),
+      func.call(
+        context,
+        defaultFlags,
+        parseOrgProjectTargetArg("acme-corp/my-app"),
+      ),
     ).rejects.toThrow(ApiError);
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -263,7 +280,11 @@ describe("project delete", () => {
     const func = await deleteCommand.loader();
 
     try {
-      await func.call(context, defaultFlags, "acme-corp/my-app");
+      await func.call(
+        context,
+        defaultFlags,
+        parseOrgProjectTargetArg("acme-corp/my-app"),
+      );
       expect.unreachable("should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
@@ -290,7 +311,11 @@ describe("project delete", () => {
     const func = await deleteCommand.loader();
 
     try {
-      await func.call(context, defaultFlags, "acme-corp/my-app");
+      await func.call(
+        context,
+        defaultFlags,
+        parseOrgProjectTargetArg("acme-corp/my-app"),
+      );
       expect.unreachable("should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
@@ -312,7 +337,11 @@ describe("project delete", () => {
     const func = await deleteCommand.loader();
 
     try {
-      await func.call(context, defaultFlags, "acme-corp/my-app");
+      await func.call(
+        context,
+        defaultFlags,
+        parseOrgProjectTargetArg("acme-corp/my-app"),
+      );
       expect.unreachable("should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
@@ -327,7 +356,11 @@ describe("project delete", () => {
   test("verifies project exists before attempting delete", async () => {
     const { context } = createMockContext();
     const func = await deleteCommand.loader();
-    await func.call(context, defaultFlags, "acme-corp/my-app");
+    await func.call(
+      context,
+      defaultFlags,
+      parseOrgProjectTargetArg("acme-corp/my-app"),
+    );
 
     // getProject must be called before deleteProject
     const getProjectOrder = getProjectSpy.mock.invocationCallOrder[0];
@@ -343,7 +376,7 @@ describe("project delete", () => {
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true },
-      "acme-corp/my-app",
+      parseOrgProjectTargetArg("acme-corp/my-app"),
     );
 
     expect(getProjectSpy).toHaveBeenCalledWith("acme-corp", "my-app");
@@ -361,7 +394,7 @@ describe("project delete", () => {
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true, json: true },
-      "acme-corp/my-app",
+      parseOrgProjectTargetArg("acme-corp/my-app"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -381,7 +414,7 @@ describe("project delete", () => {
     await func.call(
       context,
       { ...defaultFlags, json: true },
-      "acme-corp/my-app",
+      parseOrgProjectTargetArg("acme-corp/my-app"),
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -398,9 +431,9 @@ describe("project delete", () => {
     const func = await deleteCommand.loader();
 
     // Empty string triggers auto-detect in parseOrgProjectArg
-    await expect(func.call(context, defaultFlags, "")).rejects.toThrow(
-      ContextError,
-    );
+    await expect(
+      func.call(context, defaultFlags, parseOrgProjectTargetArg("")),
+    ).rejects.toThrow(ContextError);
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
   });
@@ -465,7 +498,7 @@ describe("project delete — interactive confirmation", () => {
     await func.call(
       context,
       { yes: false, "dry-run": false },
-      "acme-corp/my-app",
+      parseOrgProjectTargetArg("acme-corp/my-app"),
     );
 
     expect(deleteProjectSpy).toHaveBeenCalledWith("acme-corp", "my-app");
@@ -481,7 +514,7 @@ describe("project delete — interactive confirmation", () => {
     await func.call(
       context,
       { yes: false, "dry-run": false },
-      "acme-corp/my-app",
+      parseOrgProjectTargetArg("acme-corp/my-app"),
     );
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -497,7 +530,7 @@ describe("project delete — interactive confirmation", () => {
     await func.call(
       context,
       { yes: false, "dry-run": false },
-      "acme-corp/my-app",
+      parseOrgProjectTargetArg("acme-corp/my-app"),
     );
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -512,7 +545,7 @@ describe("project delete — interactive confirmation", () => {
     await func.call(
       context,
       { yes: false, "dry-run": false },
-      "acme-corp/my-app",
+      parseOrgProjectTargetArg("acme-corp/my-app"),
     );
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -526,7 +559,7 @@ describe("project delete — interactive confirmation", () => {
     await func.call(
       context,
       { yes: false, "dry-run": false },
-      "acme-corp/my-app",
+      parseOrgProjectTargetArg("acme-corp/my-app"),
     );
 
     expect(mockPrompt).toHaveBeenCalledWith(
