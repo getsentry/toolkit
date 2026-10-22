@@ -24,7 +24,7 @@
   "devDependencies": {
     "@types/node": "^22",
     "typescript": "^5.9.3",
-    "wrangler": "^4.106.0",
+    "wrangler": "catalog:",
     "vitest": "catalog:"
   }
 }

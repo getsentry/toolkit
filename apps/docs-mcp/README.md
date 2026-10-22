@@ -72,6 +72,7 @@ pnpm --filter docs-mcp build
 Toolkit's workspace CI discovers the app's build, typecheck, and `test:ci`
 scripts automatically. Keep the app's AI SDK 5 and Sentry 10 dependencies
 separate from Toolkit's newer catalogs until a dedicated upgrade is validated.
+Wrangler follows the shared workspace catalog used by MCP and CLI docs.
 The `execa` alias excludes Mastra's unsupported local-process execution path from
 the Worker bundle.
 
@@ -88,10 +89,14 @@ When a production cutover is scheduled:
    access configuration, and `OPENROUTER_API_KEY` runtime secret.
 2. Disconnect the old repository under the existing Worker's **Settings →
    Builds**. Ensure no old build remains in flight before enabling a new deploy.
-3. Connect that same Worker to `getsentry/toolkit`. Configure the workspace
-   installation and the `apps/docs-mcp` build/deploy commands, with watch paths
-   covering this app, the root lockfile/workspace configuration, and its patches.
-   Review preview settings so the private service is not exposed publicly.
+3. Connect that same Worker to `getsentry/toolkit`, with the repository root as
+   its root directory. Set build variables `NODE_VERSION=22.23.4`,
+   `PNPM_VERSION=11.8.0`, and `SKIP_DEPENDENCY_INSTALL=1`. Use
+   `pnpm install --frozen-lockfile && pnpm --filter docs-mcp run build` as the
+   build command and `pnpm --filter docs-mcp run deploy` as the deploy command.
+   Watch paths must cover this app, the root `package.json`, lockfile/workspace
+   configuration, and patches. Review preview settings so the private service
+   is not exposed publicly.
 4. Deploy the tested revision and verify its active version and service-binding
    calls before removing the source repository's copy.
 
