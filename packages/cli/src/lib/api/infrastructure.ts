@@ -495,9 +495,9 @@ const FIRST_PAGE_CURSOR = "0:0:0";
 const PAGE_NUMBER_CURSOR_RE = /^(\d+):\d+:[01]$/;
 
 /**
- * Prefix of cursors that carry the page size and skip outside the Sentry
- * cursor. Only used when the server cursor is not a Sentry cursor, and read
- * for cursors saved by nightly builds that always used it.
+ * Prefix of `cli1~<perPage>~<skip>~<server cursor>` cursors, which nightly
+ * builds returned. Read so their saved history still resumes; never written,
+ * because older CLIs send cursors to the API unchanged.
  */
 const CLI_CURSOR_PREFIX = "cli1~";
 
@@ -512,16 +512,15 @@ type PagePosition = {
   skip: number;
 };
 
-function encodePageCursor({ cursor, perPage, skip }: PagePosition): string {
+/**
+ * Encode where a walk resumes as a Sentry cursor. A server cursor that is not
+ * a Sentry next-page cursor cannot carry the skip, so it is returned as is and
+ * resuming returns that page's rows again rather than missing any.
+ */
+function encodePageCursor(cursor: string | undefined, skip: number): string {
   const server = cursor ?? FIRST_PAGE_CURSOR;
-  if (skip === 0) {
-    return server;
-  }
-  const next = NEXT_CURSOR_RE.exec(server);
-  if (next) {
-    return `${next[1]}:${"0".repeat(skip + 1)}`;
-  }
-  return `${CLI_CURSOR_PREFIX}${perPage}~${skip}~${server}`;
+  const next = skip > 0 ? NEXT_CURSOR_RE.exec(server) : null;
+  return next ? `${next[1]}:${"0".repeat(skip + 1)}` : server;
 }
 
 /**
@@ -660,11 +659,7 @@ export async function paginate<T>(
       rows.push(...unseen.slice(0, remaining));
       return {
         data: rows,
-        nextCursor: encodePageCursor({
-          cursor,
-          perPage,
-          skip: skip + remaining,
-        }),
+        nextCursor: encodePageCursor(cursor, skip + remaining),
       };
     }
     rows.push(...unseen);
@@ -687,7 +682,7 @@ export async function paginate<T>(
   }
   return {
     data: rows,
-    nextCursor: encodePageCursor({ cursor, perPage, skip }),
+    nextCursor: encodePageCursor(cursor, skip),
   };
 }
 

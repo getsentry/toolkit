@@ -1013,14 +1013,17 @@ describe("paginate", () => {
     },
   );
 
-  test("keeps the page size and skip outside cursors Sentry did not issue", async () => {
-    const spy = vi.fn().mockResolvedValue({
-      data: [1, 2, 3],
-      nextCursor: "opaque",
-    });
-    const first = await paginate({ limit: 2, cursor: "token" }, spy);
-    expect(first.nextCursor).toBe("cli1~2~2~token");
-  });
+  // Every CLI version must be able to send a returned cursor to the API.
+  test.each(["token", "100:3:1"])(
+    "refetches the page of the cursor %s, which cannot carry a skip",
+    async (cursor) => {
+      const spy = vi
+        .fn()
+        .mockResolvedValue({ data: [1, 2, 3], nextCursor: "x" });
+      const first = await paginate({ limit: 2, cursor }, spy);
+      expect(first.nextCursor).toBe(cursor);
+    },
+  );
 
   // Nightly builds returned cli1~<perPage>~<skip>~<server cursor> cursors.
   test("resumes a nightly cli1~ cursor", async () => {
