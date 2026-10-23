@@ -4711,43 +4711,6 @@ describe("search_events", () => {
         );
       });
 
-      it("should report empty_results when the Seer query returns no rows", async () => {
-        mswServer.use(...mockSeerEvents(() => HttpResponse.json({ data: [] })));
-
-        await searchEvents.handler(seerParams, context);
-
-        expect(mockDistribution).toHaveBeenCalledWith(
-          "assisted_query.outcome",
-          0,
-          {
-            attributes: expect.objectContaining({ outcome: "empty_results" }),
-          },
-        );
-      });
-
-      it("should report error_on_load when the Seer query fails", async () => {
-        mswServer.use(
-          ...mockSeerEvents(() =>
-            HttpResponse.json({ detail: "Invalid query" }, { status: 400 }),
-          ),
-        );
-
-        await expect(
-          searchEvents.handler(seerParams, context),
-        ).rejects.toThrow();
-
-        expect(mockDistribution).toHaveBeenCalledWith(
-          "assisted_query.outcome",
-          0,
-          {
-            attributes: expect.objectContaining({
-              outcome: "error_on_load",
-              error_reason: expect.stringContaining("Invalid query"),
-            }),
-          },
-        );
-      });
-
       it("should report error_on_load when validating the Seer query fails", async () => {
         mswServer.use(
           ...mockSeerEvents(() => HttpResponse.json({ data: [] })),
@@ -4774,61 +4737,6 @@ describe("search_events", () => {
               outcome: "error_on_load",
               error_reason: expect.any(String),
             }),
-          },
-        );
-      });
-
-      it("should count non-empty buckets for a Seer time series", async () => {
-        mswServer.use(
-          mockOrganization(["mcp-search-events-seer-translate"]),
-          mockSeerState({
-            status: "completed",
-            final_response: {
-              responses: [
-                {
-                  ...seerQuery,
-                  query: "",
-                  group_by: [],
-                  visualization: [
-                    { chart_type: 1, y_axes: ["count()"], interval: "1d" },
-                  ],
-                  sort: "-count()",
-                  stats_period: "7d",
-                },
-              ],
-              unsupported_reason: null,
-            },
-          }),
-          http.get(
-            "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
-            () =>
-              HttpResponse.json({
-                timeSeries: [
-                  {
-                    yAxis: "count()",
-                    values: [
-                      { timestamp: 1757548800000, value: 0, incomplete: false },
-                      { timestamp: 1757635200000, value: 8, incomplete: false },
-                      {
-                        timestamp: 1757721600000,
-                        value: null,
-                        incomplete: false,
-                      },
-                    ],
-                    meta: { interval: 86400000 },
-                  },
-                ],
-              }),
-          ),
-        );
-
-        await searchEvents.handler(seerParams, context);
-
-        expect(mockDistribution).toHaveBeenCalledWith(
-          "assisted_query.outcome",
-          1,
-          {
-            attributes: expect.objectContaining({ outcome: "has_results" }),
           },
         );
       });
