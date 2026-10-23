@@ -141,12 +141,20 @@ export function filterFields<T>(data: T, fields: string[]): Partial<T> {
 }
 
 /**
+ * Regex to match comma-separated field items.
+ * For nested square-brackets, the comma inside is ignored. This is for handling
+ * typed fields, like some attributes, which use the syntax `tags[name,type]`.
+ */
+const FIELD_ITEM_RE = /(?:\[[^\]]*\]|[^,])+/g;
+
+/**
  * Parse a comma-separated fields string into a trimmed, deduplicated array.
  *
  * Handles whitespace around commas and filters out empty segments:
  * ```ts
- * parseFieldsList("id, title , status")  // → ["id", "title", "status"]
- * parseFieldsList("id,,title")           // → ["id", "title"]
+ * parseFieldsList("id, title , status")              // → ["id", "title", "status"]
+ * parseFieldsList("id,,title")                       // → ["id", "title"]
+ * parseFieldsList("id,tags[cart.total,number]")      // → ["id", "tags[cart.total,number]"]
  * ```
  *
  * @param input - Raw `--fields` flag value
@@ -155,10 +163,7 @@ export function filterFields<T>(data: T, fields: string[]): Partial<T> {
 export function parseFieldsList(input: string): string[] {
   return [
     ...new Set(
-      input
-        .split(",")
-        .map((f) => f.trim())
-        .filter(Boolean),
+      (input.match(FIELD_ITEM_RE) ?? []).map((f) => f.trim()).filter(Boolean),
     ),
   ];
 }

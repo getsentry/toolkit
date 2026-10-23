@@ -129,6 +129,14 @@ describe("parseFieldsList", () => {
   test("returns empty array for empty string", () => {
     expect(parseFieldsList("")).toEqual([]);
   });
+
+  test("keeps commas inside brackets (typed attribute keys)", () => {
+    expect(parseFieldsList("id,tags[cart.total,number],title")).toEqual([
+      "id",
+      "tags[cart.total,number]",
+      "title",
+    ]);
+  });
 });
 
 describe("writeJson with fields", () => {
