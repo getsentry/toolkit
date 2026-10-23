@@ -58,6 +58,7 @@ import {
   appendQueryHint,
   buildListCommand,
   buildListLimitFlag,
+  CURSOR_KEYWORDS,
   LIST_BASE_ALIASES,
   LIST_MAX_LIMIT,
   LIST_TARGET_POSITIONAL,
@@ -719,7 +720,7 @@ function trimWithProjectGuarantee(
   );
 }
 
-/** Re-run the failed search with an explicit target and the same parsed flags. */
+/** Re-run the failed search with an explicit target, preserving search and output flags. */
 function contextRecoveryCommand(target: string, flags: ListFlags): string {
   const parts = [
     `sentry issue list ${shellQuote(target)}`,
@@ -727,11 +728,11 @@ function contextRecoveryCommand(target: string, flags: ListFlags): string {
     `--sort ${flags.sort}`,
     `--period ${shellQuote(formatTimeRangeFlag(flags.period))}`,
   ];
-  if (flags.query !== undefined) {
-    parts.push(`--query ${shellQuote(flags.query)}`);
-  }
+  appendQueryHint(parts, flags.query);
   if (flags.cursor !== undefined) {
-    parts.push(`--cursor ${shellQuote(flags.cursor)}`);
+    // Navigation state belongs to a resolved target; a candidate may have none.
+    const cursor = CURSOR_KEYWORDS.has(flags.cursor) ? "first" : flags.cursor;
+    parts.push(`--cursor ${shellQuote(cursor)}`);
   }
   if (flags.json) {
     parts.push("--json");
