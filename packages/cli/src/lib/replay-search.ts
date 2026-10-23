@@ -129,6 +129,7 @@ const REPLAY_FIELD_RESOLVERS: Record<string, ReplayFieldResolver> = {
   url: (replay) => firstValue(replay.urls),
   urls: (replay) => replay.urls,
   user: (replay) => getReplayUserLabel(replay),
+  "user.display": (replay) => getReplayUserLabel(replay),
   "user.email": (replay) => replay.user?.email,
   "user.geo.city": (replay) => replay.user?.geo?.city,
   "user.geo.country_code": (replay) => replay.user?.geo?.country_code,
@@ -176,6 +177,7 @@ function replayRequestRoot(field: string): string {
     case "trace":
     case "trace_id":
       return "trace_ids";
+    case "user.display":
     case "user.email":
     case "user.geo.city":
     case "user.geo.country_code":
