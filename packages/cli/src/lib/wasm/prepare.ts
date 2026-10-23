@@ -519,12 +519,13 @@ async function reportSkip(
   if (!warning) {
     return null;
   }
-  const buildId = await ensureBuildIdOnDisk(
-    path,
-    bytes,
-    inspection.buildId,
-    options,
-  );
+  // A module pointing at an external companion is left unstamped: a random id
+  // could never be reconciled with that companion once it turns up, so the
+  // next run would no longer qualify it for `repairUnpairedCompanion`.
+  const buildId =
+    inspection.quality === "external-debug-info"
+      ? inspection.buildId
+      : await ensureBuildIdOnDisk(path, bytes, inspection.buildId, options);
   const recommendation = skipRecommendation(inspection.quality);
   return {
     path,

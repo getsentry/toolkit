@@ -516,6 +516,21 @@ describe("prepareWasmFile: pairs split by another tool", () => {
     expect(result.quality).toBe("external-debug-info");
   });
 
+  test("leaves the module repairable when its companion appears later", async () => {
+    const module = await writeModule("app.wasm", unstampedModule("late.wasm"));
+
+    const first = await prepareWasmFile(module);
+    expect(first.action).toBe("skipped");
+    // Stamping a random id now would make the pair unreconcilable later.
+    expect(inspectWasm(await readFile(module)).buildId).toBeNull();
+
+    await writeModule("late.wasm", companionModule());
+    const second = await prepareWasmFile(module);
+
+    expect(second.action).toBe("already-prepared");
+    expect(second.companion).toBe(join(dir, "late.wasm"));
+  });
+
   test("skips when the companion carries no DWARF", async () => {
     const module = await writeModule("app.wasm", unstampedModule("bare.wasm"));
     await writeModule("bare.wasm", emptyModule());

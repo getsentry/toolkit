@@ -9,7 +9,7 @@
  * emits no stray tag markup.
  */
 
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import chalk from "chalk";
@@ -18,10 +18,19 @@ import {
   lacksDwarf,
   wasmUploadCommand,
 } from "../../../src/commands/debug-files/wasm-upload.js";
-import { ValidationError } from "../../../src/lib/errors.js";
+import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 import { COLORS } from "../../../src/lib/formatters/colors.js";
 import { formatPrepareResult } from "../../../src/lib/formatters/wasm-prepare.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { PrepareResult } from "../../../src/lib/wasm/prepare.js";
+import {
+  CODE_SECTION_ID,
+  customSection,
+  fromHex,
+  section,
+  wasmModule,
+} from "../../lib/wasm/helpers.js";
 
 /** A split module with every optional field populated. */
 const splitModule: PrepareResult = {
@@ -260,5 +269,44 @@ describe("--build-id", () => {
     const { module } = await moduleDir();
 
     await expect(runWithBuildId(module)).resolves.toBeUndefined();
+  });
+});
+
+describe("upload target", () => {
+  test("is resolved before any module is modified", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wasm-upload-target-"));
+    const module = join(dir, "app.wasm");
+    const original = wasmModule([
+      section(CODE_SECTION_ID, fromHex("00")),
+      customSection(".debug_info", fromHex("0102")),
+    ]);
+    await writeFile(module, original);
+    const spy = vi
+      .spyOn(resolveTarget, "resolveOrgAndProject")
+      .mockResolvedValue(null);
+
+    const func = (await wasmUploadCommand.loader()) as unknown as (
+      this: unknown,
+      flags: Record<string, unknown>,
+      ...rest: string[]
+    ) => Promise<unknown>;
+    const context = {
+      stdout: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn(() => true) },
+      cwd: dir,
+      env: {} as NodeJS.ProcessEnv,
+      process: { ...process, exitCode: undefined } as typeof process,
+    };
+
+    try {
+      await expect(func.call(context, {}, module)).rejects.toThrow(
+        ContextError,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    // Neither stripped in place nor split into a companion.
+    expect(new Uint8Array(await readFile(module))).toEqual(original);
+    expect(await readdir(dir)).toEqual(["app.wasm"]);
   });
 });

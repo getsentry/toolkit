@@ -54,6 +54,30 @@ const log = logger.withTag("debug-files.wasm-upload");
 
 const USAGE_HINT = "sentry debug-files wasm-upload <path>...";
 
+/** Where an upload goes: the org/project pair and its chunk-upload options. */
+type UploadTarget = {
+  org: string;
+  project: string;
+  serverOptions: ChunkServerOptions;
+};
+
+/**
+ * Resolve the org/project and chunk-upload options for an upload.
+ *
+ * @throws {ContextError} If no org/project can be resolved.
+ */
+async function resolveUploadTarget(cwd: string): Promise<UploadTarget> {
+  const resolved = await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
+  if (!resolved) {
+    throw new ContextError("Organization and project", USAGE_HINT);
+  }
+  return {
+    org: resolved.org,
+    project: resolved.project,
+    serverOptions: await getChunkUploadOptions(resolved.org),
+  };
+}
+
 /** Flags accepted by the wasm-upload command. */
 type PrepareFlags = WaitFlags & {
   "dry-run"?: boolean;
@@ -480,6 +504,12 @@ export const wasmUploadCommand = buildCommand({
       return false;
     });
 
+    // Resolve the upload target before touching any module: preparing strips
+    // deployables in place, so a missing org/project or auth failure found
+    // afterwards would leave stripped modules with companions never uploaded.
+    const target =
+      dryRun || flags["no-upload"] ? null : await resolveUploadTarget(this.cwd);
+
     const results: PrepareResult[] = [];
     for (const path of modules) {
       results.push(
@@ -526,22 +556,17 @@ export const wasmUploadCommand = buildCommand({
       });
     }
 
-    const resolved = await resolveOrgAndProject({
-      cwd: this.cwd,
-      usageHint: USAGE_HINT,
-    });
-    if (!resolved) {
+    if (!target) {
+      // Unreachable: the target is resolved whenever an upload will run.
       throw new ContextError("Organization and project", USAGE_HINT);
     }
 
     return yield* reportUpload(setExitCode, {
-      org: resolved.org,
-      project: resolved.project,
+      ...target,
       difs,
       results,
       wait,
       maxWaitMs,
-      serverOptions: await getChunkUploadOptions(resolved.org),
     });
   },
 });
