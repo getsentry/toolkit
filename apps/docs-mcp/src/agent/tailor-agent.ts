@@ -274,7 +274,6 @@ Produce the tailored integration guide.`;
         trackAgentTokens(fbInputTokens, fbOutputTokens);
 
         if (!fallback.text || fallback.text.trim().length === 0) {
-          trackAgentCall(false);
           throw new Error(
             "Agent returned empty output even after fallback synthesis pass.",
           );
