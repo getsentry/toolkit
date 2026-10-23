@@ -6,6 +6,8 @@
 
 import {
   type ListOrganizationTraceItemAttributesData,
+  type ListOrganizationTraceItemAttributesQueryAttributeType,
+  type ListOrganizationTraceItemAttributesQueryDataset,
   type ListOrganizationTraceItemAttributesResponse,
   listOrganizationTraceItemAttributes,
 } from "@sentry/api";
@@ -262,14 +264,12 @@ type TraceItemAttributesQuery = NonNullable<
 >;
 
 /** Trace item dataset accepted by the attributes endpoint (e.g. "spans", "logs"). */
-export type TraceItemAttributeDataset = NonNullable<
-  TraceItemAttributesQuery["dataset"]
->;
+export type TraceItemAttributeDataset =
+  ListOrganizationTraceItemAttributesQueryDataset;
 
 /** Attribute value type the attributes endpoint can filter on. */
-export type TraceItemAttributeValueType = NonNullable<
-  TraceItemAttributesQuery["attributeType"]
->[number];
+export type TraceItemAttributeValueType =
+  ListOrganizationTraceItemAttributesQueryAttributeType;
 
 /**
  * An attribute key available on a trace item dataset (name, type, and whether
