@@ -42,12 +42,22 @@ function formatIssueAlertView(data: IssueRuleResolution): string {
 export const viewCommand = buildCommand({
   docs: {
     brief: "View an issue alert rule",
-    fullDescription:
-      "View a single issue alert rule by ID or name.\n\n" +
-      "Examples:\n" +
-      "  sentry alert issues view 12345\n" +
-      "  sentry alert issues view my-org/my-project/12345\n" +
-      "  sentry alert issues view my-org/my-project/'Error Spike'",
+    fullDescription: "View a single issue alert rule by ID or name.",
+    examples: [
+      {
+        description:
+          "View an issue alert rule by ID (organization and project auto-detected)",
+        command: "sentry alert issues view 12345",
+      },
+      {
+        description: "View by ID in an explicit project",
+        command: "sentry alert issues view my-org/my-project/12345",
+      },
+      {
+        description: "View by name",
+        command: "sentry alert issues view my-org/my-project/'Error Spike'",
+      },
+    ],
   },
   output: {
     human: formatIssueAlertView,

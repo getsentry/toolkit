@@ -669,11 +669,15 @@ export const fixCommand = buildCommand({
       "deletes data.\n\n" +
       "If files are owned by root (e.g. after `sudo brew install`), run with sudo\n" +
       "to transfer ownership back to the current user:\n\n" +
-      "  sudo sentry cli fix\n\n" +
-      "Examples:\n" +
-      "  sentry cli fix              # Fix database issues\n" +
-      "  sudo sentry cli fix         # Fix root-owned files\n" +
-      "  sentry cli fix --dry-run    # Show what would be fixed without making changes",
+      "  sudo sentry cli fix",
+    examples: [
+      { description: "Fix database issues", command: "sentry cli fix" },
+      { description: "Fix root-owned files", command: "sudo sentry cli fix" },
+      {
+        description: "Show what would be fixed without making changes",
+        command: "sentry cli fix --dry-run",
+      },
+    ],
   },
   output: { human: formatFixResult },
   parameters: {

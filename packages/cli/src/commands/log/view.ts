@@ -570,6 +570,21 @@ export const viewCommand = buildCommand({
       "Multiple log IDs can be passed as separate arguments or newline-separated\n" +
       "within a single argument (handy when piping from other commands).\n\n" +
       "The log ID is the 32-character hexadecimal identifier shown in log listings.",
+    examples: [
+      {
+        description: "View a log entry",
+        command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01",
+      },
+      {
+        description: "Specify the project explicitly",
+        command:
+          "sentry log view my-org/backend 968c763c740cfda8b6728f27fb9e9b01",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01 -w",
+      },
+    ],
   },
   output: {
     human: formatLogViewHuman,

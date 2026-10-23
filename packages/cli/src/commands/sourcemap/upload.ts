@@ -222,6 +222,24 @@ export const uploadCommand = buildCommand({
       "  sentry sourcemap upload ./dist --no-rewrite\n" +
       "  sentry sourcemap upload ./dist --ext .js,.mjs\n" +
       "  sentry sourcemap upload ./maybe-empty --allow-empty",
+    examples: [
+      {
+        description: "Upload sourcemaps from dist/",
+        command: "sentry sourcemap upload ./dist",
+      },
+      {
+        description: "Associate with a release",
+        command: "sentry sourcemap upload ./dist --release 1.0.0",
+      },
+      {
+        description: "Set a custom URL prefix",
+        command: "sentry sourcemap upload ./dist --url-prefix '~/static/js/'",
+      },
+      {
+        description: "Don't fail when no sourcemaps are found",
+        command: "sentry sourcemap upload ./dist --allow-empty",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,

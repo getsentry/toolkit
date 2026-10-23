@@ -1,8 +1,6 @@
 
 
-## Examples
-
-### Inject debug IDs
+## Debug ID injection
 
 `sentry sourcemap inject` is a purely local file operation — it does not make any API calls and does not require authentication. You can run it in CI before authenticating.
 
@@ -13,46 +11,13 @@ register their ID are left unchanged. `sourcemap upload` applies the same
 injection by default, unless `--no-rewrite` is passed.
 Binary bundles with an existing debug ID in their sourcemap are left unchanged.
 
-```bash
-# Inject debug IDs into all JS files in dist/
-sentry sourcemap inject ./dist
-
-# Preview changes without writing
-sentry sourcemap inject ./dist --dry-run
-
-# Only process specific extensions
-sentry sourcemap inject ./build --ext .js,.mjs
-```
-
-### Upload sourcemaps
-
-```bash
-# Upload sourcemaps from dist/
-sentry sourcemap upload ./dist
-
-# Associate with a release
-sentry sourcemap upload ./dist --release 1.0.0
-
-# Set a custom URL prefix
-sentry sourcemap upload ./dist --url-prefix '~/static/js/'
-```
-
-### Resolve sourcemap linkage
-
-```bash
-# Report how each JS file's sourcemap resolves and whether a debug ID
-# has been injected (read-only — never modifies files)
-sentry sourcemap resolve ./dist
-
-# Machine-readable output
-sentry sourcemap resolve ./dist --json
-```
+## Resolving sourcemap linkage
 
 Use `sentry sourcemap resolve` to debug why `sentry sourcemap upload` may
-not find the expected sourcemaps. It reports, for each JavaScript file,
-whether the companion `.map` was located (by convention or via a
-`sourceMappingURL` directive), whether the map is inline (`data:` URL) or
-remote, and whether a Sentry debug ID is present.
+not find the expected sourcemaps. It is read-only and never modifies files.
+For each JavaScript file, it reports whether the companion `.map` was located
+(by convention or via a `sourceMappingURL` directive), whether the map is inline
+(`data:` URL) or remote, and whether a Sentry debug ID is present.
 
 ## Error handling
 

@@ -177,11 +177,27 @@ export const editCommand = buildCommand({
     brief: "Edit a metric alert rule",
     fullDescription:
       "Update a metric alert rule. Pass at least one of --name or --status. " +
-      "Status 'active' enables the rule; 'disabled' sets it to disabled (API status 1).\n\n" +
-      "Examples:\n" +
-      "  sentry alert metrics edit my-org/9 --name 'Error budget'\n" +
-      "  sentry alert metrics edit my-org/9 --status disabled\n" +
-      "  sentry alert metrics edit my-org/9 --time-window 15 --dataset spans",
+      "Status 'active' enables the rule; 'disabled' sets it to disabled (API status 1).",
+    examples: [
+      {
+        description: "Rename a metric alert rule",
+        command: "sentry alert metrics edit my-org/12345 --name 'Error budget'",
+      },
+      {
+        description: "Disable a rule",
+        command: "sentry alert metrics edit my-org/12345 --status disabled",
+      },
+      {
+        description: "Change the query and time window",
+        command:
+          'sentry alert metrics edit my-org/12345 --query "environment:prod event.type:error" --time-window 15',
+      },
+      {
+        description: "Switch the dataset",
+        command:
+          "sentry alert metrics edit my-org/12345 --time-window 15 --dataset spans",
+      },
+    ],
   },
   output: {
     human: formatEdited,

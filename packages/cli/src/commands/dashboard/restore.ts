@@ -58,12 +58,25 @@ export const restoreCommand = buildCommand({
     brief: "Restore a dashboard revision",
     fullDescription:
       "Restore a Sentry dashboard to a previous revision.\n\n" +
-      "Use `sentry dashboard revisions` to list available revisions first.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard restore 12345 --revision 42\n" +
-      "  sentry dashboard restore my-org 12345 --revision 42\n" +
-      "  sentry dashboard restore 'My Dashboard' --revision 42\n" +
-      "  sentry dashboard restore 12345 --revision 42 --json",
+      "Use `sentry dashboard revisions` to list available revisions first.",
+    examples: [
+      {
+        description: "Restore by dashboard title and revision number",
+        command: "sentry dashboard restore 'Frontend Performance' --revision 3",
+      },
+      {
+        description: "Restore by dashboard ID",
+        command: "sentry dashboard restore 12345 --revision 42",
+      },
+      {
+        description: "Pass the organization explicitly",
+        command: "sentry dashboard restore my-org 12345 --revision 42",
+      },
+      {
+        description: "Output the restored dashboard as JSON",
+        command: "sentry dashboard restore 12345 --revision 42 --json",
+      },
+    ],
   },
   output: {
     human: formatRestoreHuman,

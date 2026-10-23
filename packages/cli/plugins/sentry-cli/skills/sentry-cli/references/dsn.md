@@ -32,8 +32,10 @@ sentry dsn list my-org/my-project
 # List DSNs across all accessible projects in an organization
 sentry dsn list my-org/
 
-# Navigate between pages
+# Fetch the next page
 sentry dsn list my-org/ --limit 10 -c next
+
+# Fetch the previous page
 sentry dsn list my-org/ --limit 10 -c prev
 
 # Select public DSN fields as JSON

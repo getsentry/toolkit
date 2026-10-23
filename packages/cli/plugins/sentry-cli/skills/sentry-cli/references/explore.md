@@ -34,62 +34,47 @@ Query aggregate event data (Explore)
 # Top errors in the last 24 hours, scoped to a project
 sentry explore my-org/cli
 
-# All projects in an org
+# All projects in an organization
 sentry explore my-org/
 
-# Bare project slug (searches across orgs)
+# Bare project slug (searches across organizations)
 sentry explore cli
 
-# Auto-detect from DSN/config
+# Auto-detect the project from DSN/config
 sentry explore
 
 # Errors with user impact for a specific UTC window
-sentry explore my-org/cli -F title -F "count()" -F "count_unique(user)" \
-  --period "2024-01-15T00:00:00Z/2024-01-16T00:00:00Z"
+sentry explore my-org/cli -F title -F "count()" -F "count_unique(user)" --period "2024-01-15T00:00:00Z..2024-01-16T00:00:00Z"
 
-# Filter by specific error type (combines with auto-injected project filter)
-sentry explore my-org/cli -F title -F "count()" \
-  -q "error.type:TypeError" --period 1h
+# Filter by error type (combined with the project filter)
+sentry explore my-org/cli -F title -F "count()" -q "error.type:TypeError" --period 1h
 
-# Span operation latency by route
-sentry explore my-org/cli -F span.op -F "p50(span.duration)" \
-  -F "p95(span.duration)" --dataset spans --period 1h
+# Span operation latency
+sentry explore my-org/cli -F span.op -F "p50(span.duration)" -F "p95(span.duration)" --dataset spans --period 1h
 
 # Top spans by count
-sentry explore my-org/cli -F span.op -F "count()" \
-  --dataset spans --sort "-count()"
+sentry explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"
 
-# Sum a custom metric (e.g., LLM token usage) across an org
+# Sum a custom metric (e.g., LLM token usage) across an organization
 sentry explore my-org/ -m llm.token_usage --dataset metrics --period 7d
 
-# Break down by a tag column (e.g., model name)
-sentry explore my-org/seer -F gen_ai.request.model \
-  -m llm.token_usage --dataset metrics --period 7d
+# Break a metric down by a tag column
+sentry explore my-org/seer -F gen_ai.request.model -m llm.token_usage --dataset metrics --period 7d
 
-# Use a different aggregation (default is sum)
+# Use a different metric aggregation (default is sum)
 sentry explore my-org/ -m cache.hit_rate --agg avg --dataset metrics
 
-sentry explore my-org/ \
-  -F "sum(value,llm.token_usage,distribution,none)" \
-  --dataset metrics --period 7d
-
-# List recent replays
-sentry explore my-org/cli --dataset replays --period 24h
+# Use the raw tracemetrics format
+sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics --period 7d
 
 # Filter replays by activity level
-sentry explore my-org/cli --dataset replays -F activity -F duration \
-  -F "count_errors" --period 7d
+sentry explore my-org/cli --dataset replays -F activity -F duration -F count_errors --period 7d
 
 # Log severity counts in the last hour
-sentry explore my-org/cli -F severity -F "count()" \
-  --dataset logs --period 1h
+sentry explore my-org/cli -F severity -F "count()" --dataset logs --period 1h
 
-# Pipe to jq for filtering
+# Pipe JSON to jq
 sentry explore my-org/cli -F title -F "count()" --json | jq '.data[:5]'
-
-# Get raw data for analysis
-sentry explore my-org/cli -F title -F "count()" -F "count_unique(user)" \
-  --json --limit 100
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

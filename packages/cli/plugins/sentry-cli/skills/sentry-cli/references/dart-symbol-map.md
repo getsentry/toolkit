@@ -22,7 +22,7 @@ Upload a Dart/Flutter symbol map to Sentry
 **Examples:**
 
 ```bash
-# Upload a dart symbol map with a debug ID
+# Upload a Dart symbol map with a debug ID
 sentry dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json
 
 # Validate without uploading

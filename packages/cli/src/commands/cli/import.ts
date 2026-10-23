@@ -271,12 +271,29 @@ export const importCommand = buildCommand({
       "  - Organization -> default organization\n" +
       "  - Project -> default project\n\n" +
       "Security: token and URL must come from the same file to be trusted.\n" +
-      "Cross-file URL requires explicit --url confirmation.\n\n" +
-      "Examples:\n" +
-      "  sentry cli import               # Scan and import interactively\n" +
-      "  sentry cli import --yes         # Auto-confirm (CI-safe)\n" +
-      "  sentry cli import --dry-run     # Preview without changes\n" +
-      "  sentry cli import --url <url>   # Trust a specific URL",
+      "Cross-file URL requires explicit --url confirmation.",
+    examples: [
+      {
+        description: "Scan for .sentryclirc files and import interactively",
+        command: "sentry cli import",
+      },
+      {
+        description: "Preview what would be imported",
+        command: "sentry cli import --dry-run",
+      },
+      {
+        description: "Skip the confirmation prompt (CI-safe)",
+        command: "sentry cli import --yes",
+      },
+      {
+        description: "Explicitly trust a self-hosted URL",
+        command: "sentry cli import --url https://sentry.example.com",
+      },
+      {
+        description: "Skip API validation of the imported token",
+        command: "sentry cli import --skip-validation",
+      },
+    ],
   },
   parameters: {
     flags: {

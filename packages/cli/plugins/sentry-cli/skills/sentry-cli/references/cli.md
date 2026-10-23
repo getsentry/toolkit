@@ -21,9 +21,13 @@ Print the shell completion script
 # Print completions for your current shell (auto-detected from $SHELL)
 sentry cli completion
 
-# Generate for a specific shell
+# Install zsh completions
 sentry cli completion zsh > ~/.local/share/zsh/site-functions/_sentry
+
+# Load bash completions into the current shell
 eval "$(sentry cli completion bash)"
+
+# Install fish completions
 sentry cli completion fish > ~/.config/fish/completions/sentry.fish
 ```
 
@@ -42,13 +46,16 @@ View and manage default settings
 # Show all current defaults
 sentry cli defaults
 
-# Set default organization
+# Same as above (aliases: ls, show)
+sentry cli defaults list
+
+# Set the default organization
 sentry cli defaults org my-org
 
-# Set default project
+# Set the default project
 sentry cli defaults project my-project
 
-# Set default Sentry URL (self-hosted)
+# Set the default Sentry URL (self-hosted)
 sentry cli defaults url https://sentry.example.com
 
 # Set custom HTTP headers (self-hosted, e.g. for IAP/proxies)
@@ -60,14 +67,20 @@ sentry cli defaults ca-cert /path/to/ca.pem
 # Disable telemetry
 sentry cli defaults telemetry off
 
+# Stop installing agent skills on upgrade
+sentry cli defaults agent-skills off
+
+# Disable inline terminal images
+sentry cli defaults graphics off
+
 # Hide Tip: hints in command output
 sentry cli defaults tips off
 
 # Clear a single default
 sentry cli defaults org --clear
 
-# Clear all defaults
-sentry cli defaults --clear
+# Clear all defaults without prompting
+sentry cli defaults --clear --yes
 ```
 
 ### `sentry cli feedback <message...>`
@@ -94,7 +107,14 @@ Diagnose and repair CLI database issues
 **Examples:**
 
 ```bash
+# Fix database issues
 sentry cli fix
+
+# Fix root-owned files
+sudo sentry cli fix
+
+# Show what would be fixed without making changes
+sentry cli fix --dry-run
 ```
 
 ### `sentry cli import`
@@ -110,13 +130,13 @@ Import settings from legacy .sentryclirc files
 **Examples:**
 
 ```bash
-# Auto-detect and import .sentryclirc
+# Scan for .sentryclirc files and import interactively
 sentry cli import
 
 # Preview what would be imported
 sentry cli import --dry-run
 
-# Skip confirmation prompt
+# Skip the confirmation prompt (CI-safe)
 sentry cli import --yes
 
 # Explicitly trust a self-hosted URL
@@ -145,11 +165,20 @@ Configure shell integration
 # Run full setup (PATH, completions, agent skills)
 sentry cli setup
 
+# Record the install method
+sentry cli setup --method curl
+
+# Place the binary and configure the shell
+sentry cli setup --install
+
+# Skip PATH modification
+sentry cli setup --no-modify-path
+
+# Skip shell completions
+sentry cli setup --no-completions
+
 # Skip agent skill installation
 sentry cli setup --no-agent-skills
-
-# Skip PATH and completion modifications
-sentry cli setup --no-modify-path --no-completions
 ```
 
 ### `sentry cli uninstall`
@@ -165,10 +194,10 @@ Uninstall Sentry CLI
 **Examples:**
 
 ```bash
-# Show what would be removed (dry run)
+# Show what would be removed
 sentry cli uninstall --dry-run
 
-# Uninstall, keeping config directory
+# Uninstall, keeping the config directory
 sentry cli uninstall --yes --keep-config
 
 # Full uninstall with confirmation
@@ -189,22 +218,32 @@ Update the Sentry CLI to the latest version
 **Examples:**
 
 ```bash
-sentry cli upgrade --check
-
-# Upgrade to latest stable
+# Update to the latest version on the persisted channel
 sentry cli upgrade
 
-# Upgrade to a specific version
-sentry cli upgrade 0.5.0
+# Check for updates without installing
+sentry cli upgrade --check
 
-# Force re-download
-sentry cli upgrade --force
-
-# Switch to nightly builds
+# Switch to the nightly channel and update
 sentry cli upgrade nightly
 
-# Switch back to stable
+# Switch back to the stable channel and update
 sentry cli upgrade stable
+
+# Install a specific stable version
+sentry cli upgrade 0.5.0
+
+# Force re-download even if up to date
+sentry cli upgrade --force
+
+# Force using npm to upgrade
+sentry cli upgrade --method npm
+
+# Upgrade from cached patches (no network)
+sentry cli upgrade --offline
+
+# Skip reinstalling agent skills
+sentry cli upgrade --no-agent-skills
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

@@ -202,13 +202,27 @@ export const listCommand = buildListCommand("trace", {
       "  sentry trace list <org>/<proj>  # explicit org and project\n" +
       "  sentry trace list <project>     # find project across all orgs\n\n" +
       `${TARGET_PATTERN_NOTE}\n\n` +
-      "Examples:\n" +
-      "  sentry trace list                     # List last 10 traces\n" +
-      "  sentry trace list --limit 50          # Show more traces\n" +
-      "  sentry trace list --sort duration     # Sort by slowest first\n" +
-      "  sentry trace list --period 24h        # Last 24 hours only\n" +
-      '  sentry trace list -q "transaction:GET /api/users"  # Filter by transaction\n\n' +
       "Alias: `sentry traces` → `sentry trace list`",
+    examples: [
+      { description: "List recent traces", command: "sentry trace list" },
+      {
+        description: "Show more traces",
+        command: "sentry trace list --limit 50",
+      },
+      {
+        description: "Sort by slowest first",
+        command: "sentry trace list --sort duration",
+      },
+      {
+        description: "Filter by transaction name in the last 24 hours",
+        command:
+          'sentry trace list -q "transaction:GET /api/users" --period 24h',
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry trace list my-org/backend -c next",
+      },
+    ],
   },
   output: {
     human: formatTraceListHuman,

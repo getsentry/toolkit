@@ -1,12 +1,6 @@
 
 
-## Examples
-
-### OAuth login (recommended)
-
-```bash
-sentry auth
-```
+## OAuth login
 
 Bare `sentry auth` logs in when you're logged out and shows status when you're
 already authenticated. `sentry auth login` always starts the login flow.
@@ -18,49 +12,19 @@ already authenticated. `sentry auth login` always starts the login flow.
 5. The CLI stores the OAuth credentials and, when the server provides a refresh
    token, automatically refreshes the access token
 
-### Token login
+Use `--read-only` to request only read-only scopes — useful for tokens handed
+to AI agents or CI jobs that should not mutate Sentry state. Use `--scope` to
+request specific scopes (repeatable, comma-separated).
 
-```bash
-sentry auth --token YOUR_SENTRY_API_TOKEN
-```
-
-### Read-only OAuth login
-
-Request only read-only scopes — useful for tokens handed to AI agents or
-CI jobs that should not mutate Sentry state:
-
-```bash
-sentry auth --read-only
-```
-
-### Custom OAuth scopes
-
-Request specific scopes (repeatable, comma-separated):
-
-```bash
-sentry auth --scope project:read --scope org:read
-sentry auth --scope project:read,event:read
-```
-
-### Self-hosted Sentry
+## Self-hosted Sentry
 
 Pass `--url` to log in to a self-hosted instance. Setting `SENTRY_HOST` or
 `SENTRY_URL` alone is not enough: the CLI refuses to log in to a self-hosted
 host unless `--url` confirms it.
 
-```bash
-sentry auth --url https://sentry.example.com
-```
-
-For token-based auth with self-hosted:
-
-```bash
-sentry auth --token YOUR_TOKEN --url https://sentry.example.com
-```
-
 See [Self-Hosted Sentry](../../self-hosted/) for details.
 
-### Multiple accounts
+## Multiple accounts
 
 The CLI can store several accounts at once — for example a work and a personal
 account, or a SaaS and a self-hosted login. When you're already logged in,
@@ -70,19 +34,8 @@ credentials instead of adding a duplicate. `--force` skips the prompt and
 replaces the stored login for that server instead (or adds one when that
 server has none); accounts on other servers are never replaced.
 
-```bash
-# Add (or log in again to) a specific account without prompting
-sentry auth login jane@example.com
-sentry auth login jane@example.com --url https://sentry.example.com
-sentry auth login jane@example.com:sentry.example.com   # same as --url
-
-# Show stored accounts; * marks the active one
-sentry auth list
-
-# Switch the account commands use (pick from a searchable list without an argument)
-sentry auth switch jane@example.com
-sentry auth switch
-```
+Use `sentry auth list` to show stored accounts and `sentry auth switch` to
+change the active one.
 
 Sentry approves a device-flow login as whoever is signed in to the browser, so
 `sentry auth login <email>` checks the approved account and refuses (saving
@@ -138,62 +91,6 @@ Switching also points the default URL (`sentry cli defaults url`) at the
 account's server. `SENTRY_HOST`/`SENTRY_URL` and `SENTRY_AUTH_TOKEN` (with
 `SENTRY_FORCE_ENV_TOKEN=1`) still take precedence over the active account.
 Default organization and project settings are shared by all accounts.
-
-### Logout
-
-```bash
-# Log out of the active account (the most recently used other account becomes active)
-sentry auth logout
-
-# Log out of specific accounts (space- or comma-separated)
-sentry auth logout jane@example.com
-sentry auth logout jane@example.com,jane@personal.dev
-
-# Pick the account on one server when the same email is stored twice
-sentry auth logout jane@example.com --url https://sentry.example.com
-
-# Log out of every stored account
-sentry auth logout all
-```
-
-### Refresh the OAuth access token
-
-```bash
-sentry auth refresh
-
-# Refresh with read-only scopes
-sentry auth refresh --read-only
-
-# Refresh with specific scopes
-sentry auth refresh --scope project:read --scope org:read
-```
-
-### Print stored token
-
-```bash
-sentry auth token
-```
-
-### Check auth status
-
-```bash
-sentry auth status
-```
-
-```
-✓ Authenticated
-User: username
-Access token expires: in 4 weeks
-Automatic refresh: enabled
-```
-
-```bash
-# Show the raw token
-sentry auth status --show-token
-
-# View current user
-sentry auth whoami
-```
 
 ## Credential Storage
 

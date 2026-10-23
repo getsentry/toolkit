@@ -173,6 +173,23 @@ sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC --
 \`\`\`
 
 The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
+    examples: [
+      {
+        description: "Wrap a command with cron monitor check-ins (DSN-based)",
+        command:
+          "SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 sentry monitor run nightly-job -- python manage.py cron",
+      },
+      {
+        description:
+          "The -- separator is optional when the command has no flags",
+        command: "sentry monitor run nightly-job npm run task",
+      },
+      {
+        description: "Create or update the monitor on the first check-in",
+        command:
+          'sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh',
+      },
+    ],
   },
   auth: "dsn",
   parameters: {

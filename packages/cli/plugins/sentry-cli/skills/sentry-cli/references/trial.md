@@ -26,6 +26,19 @@ List product trials
 | `isStarted` | boolean | Whether the trial has started |
 | `lengthDays` | number \| null | Trial duration in days |
 
+**Examples:**
+
+```bash
+# List all trials for the current organization
+sentry trial list
+
+# List trials for a specific organization
+sentry trial list my-org
+
+# Output as JSON
+sentry trial list --json
+```
+
 ### `sentry trial start <name> [<org>]`
 
 Start a product trial
@@ -33,20 +46,17 @@ Start a product trial
 **Examples:**
 
 ```bash
-# List all trials for the current org
-sentry trial list
-
-# List trials for a specific org
-sentry trial list my-org
-
 # Start a Seer trial
 sentry trial start seer
 
-# Start a trial for a specific org
+# Start a trial for a specific organization
 sentry trial start replays my-org
 
-# Start a Business plan trial (opens browser)
+# Start a Business plan trial (opens the browser)
 sentry trial start plan
+
+# Output the result as JSON
+sentry trial start --json seer
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
