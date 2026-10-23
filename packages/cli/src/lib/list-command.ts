@@ -105,7 +105,8 @@ export const LIST_ORG_TARGET_POSITIONAL = {
 
 /**
  * Optional name filter after the target (`sentry team list <org>/ back*`),
- * matched with `filterByName` from `list-filter.ts`.
+ * matched with `filterByName` from `list-filter.ts`. A glob can also join
+ * the target (`<org>/back*`); see `splitListTargetAndFilter`.
  */
 export const LIST_NAME_FILTER_PARAMETER = {
   placeholder: "filter",

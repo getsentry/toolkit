@@ -50,6 +50,7 @@ const repoListConfig: OrgListConfig<SentryRepository, RepositoryWithOrg> = {
   listPaginated: (org, opts) => listRepositoriesPaginated(org, opts),
   withOrg: (repo, orgSlug) => ({ ...repo, orgSlug }),
   namesOf: (repo) => [repo.name],
+  searchesNames: true,
   displayTable: (repos: RepositoryWithOrg[]) =>
     formatTable(repos, REPO_COLUMNS),
   schema: SentryRepositorySchema,
@@ -62,12 +63,9 @@ const docs: OrgListCommandDocs = {
     "Target specification:\n" +
     "  sentry repo list               # auto-detect from DSN or config\n" +
     "  sentry repo list <org>/        # list all repos in org (paginated)\n" +
-    "  sentry repo list <org>/<proj>  # list repos in org (project context)\n" +
+    "  sentry repo list <org>/<name>  # repos whose name matches <name>\n" +
     "  sentry repo list <org>         # list repos in org\n\n" +
-    "Name filter (searches every page, so it can't be paginated):\n" +
-    "  sentry repo list <org>/ sentry         # fuzzy match on the name\n" +
-    "  sentry repo list <org>/ 'getsentry/*'  # glob on the name\n" +
-    "  sentry repo list '*-sdk'               # a lone glob filters the auto-detected org(s)\n\n" +
+    "`<name>` is a glob (`<org>/getsentry/*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
     "Pagination:\n" +
     "  sentry repo list <org>/ -c next  # fetch next page\n" +
     "  sentry repo list <org>/ -c prev  # fetch previous page\n\n" +
@@ -87,7 +85,12 @@ const docs: OrgListCommandDocs = {
     },
     {
       description: "Only repositories whose name matches a glob",
-      command: "sentry repo list my-org/ 'getsentry/*'",
+      command: "sentry repo list 'my-org/getsentry/*'",
+    },
+    {
+      description:
+        "Repositories named like 'sentry-python' (fuzzy when nothing matches exactly)",
+      command: "sentry repo list my-org/sentry-pyhton",
     },
     { description: "Output as JSON", command: "sentry repo list --json" },
   ],

@@ -346,7 +346,16 @@ function mockProjectFetch(
       } else {
         linkParts.push(`<${url}>; rel="next"; results="false"; cursor="0:0:0"`);
       }
-      return new Response(JSON.stringify(projects), {
+      // Like Sentry: `?query=` keeps slugs or names containing it.
+      const query = new URL(url).searchParams.get("query")?.toLowerCase();
+      const page = query
+        ? projects.filter(
+            ({ slug, name }) =>
+              slug.toLowerCase().includes(query) ||
+              name.toLowerCase().includes(query),
+          )
+        : projects;
+      return new Response(JSON.stringify(page), {
         status: 200,
         headers: {
           "Content-Type": "application/json",
@@ -433,6 +442,39 @@ describe("handleExplicit", () => {
     expect(result.hint).toContain("No project");
     expect(result.hint).toContain("nonexistent");
     expect(result.hint).toContain("Tip:");
+  });
+
+  test("no direct match falls back to fuzzy name matching", async () => {
+    const requests: string[] = [];
+    const fetch = mockProjectFetch(sampleProjects);
+    globalThis.fetch = (input, init) => {
+      requests.push(new Request(input, init).url);
+      return fetch(input, init);
+    };
+
+    const result = (await handleExplicit("test-org", "frontnd", {
+      limit: 30,
+      json: false,
+      fresh: false,
+    })) as Awaited<ReturnType<typeof handleExplicit>> & { title?: string };
+
+    expect(result.items.map((p) => p.slug)).toEqual(["frontend"]);
+    expect(result.title).toContain("No project 'frontnd'");
+    // The server's substring search finds nothing, so every project is read.
+    expect(requests.some((url) => url.includes("query=frontnd"))).toBe(true);
+  });
+
+  test("no direct or fuzzy match keeps the not-found hint", async () => {
+    globalThis.fetch = mockProjectFetch(sampleProjects);
+
+    const result = await handleExplicit("test-org", "zzzzzz", {
+      limit: 30,
+      json: false,
+      fresh: false,
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.hint).toContain("No project 'zzzzzz' found");
   });
 
   test("platform filter with no match returns empty with hint", async () => {
@@ -1532,7 +1574,7 @@ describe("handleAutoDetect", () => {
 
     expect(result.hasMore).toBe(true);
     const jsonHint = (result.jsonExtra as Record<string, unknown>)?.hint;
-    expect(jsonHint).toBe("sentry project list test-org/ 'web-*' --json");
+    expect(jsonHint).toBe("sentry project list 'test-org/web-*' --json");
   });
 
   test("fast path: non-auth API errors return empty results instead of throwing", async () => {
@@ -1674,6 +1716,24 @@ describe("project list: name filter", () => {
   test("a lone <org>/<glob> splits into target and filter", async () => {
     globalThis.fetch = mockProjectFetch(projects);
     expect(slugs(await run({}, "test-org/web-*"))).toEqual(["web-checkout"]);
+  });
+
+  test("the server narrows a glob by its literal text", async () => {
+    const urls: string[] = [];
+    const fetch = mockProjectFetch(projects);
+    globalThis.fetch = (input, init) => {
+      urls.push(new Request(input, init).url);
+      return fetch(input, init);
+    };
+    expect(slugs(await run({}, "test-org/web-*"))).toEqual(["web-checkout"]);
+    const listed = urls.filter((url) => url.includes("/organizations/"));
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.every((url) => url.includes("query=web-"))).toBe(true);
+  });
+
+  test("<org>/<text> with no such project matches names fuzzily", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(slugs(await run({}, "test-org/frontnd"))).toEqual(["frontend"]);
   });
 
   test("combines with --platform", async () => {

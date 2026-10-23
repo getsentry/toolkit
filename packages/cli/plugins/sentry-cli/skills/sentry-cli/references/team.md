@@ -45,7 +45,10 @@ sentry team list my-org/
 sentry team list my-org/ -c next
 
 # Only teams whose slug or name matches a glob
-sentry team list my-org/ 'back*'
+sentry team list 'my-org/back*'
+
+# Teams named like 'backend' when no such project exists (fuzzy)
+sentry team list my-org/backnd
 
 # Output as JSON
 sentry team list --json

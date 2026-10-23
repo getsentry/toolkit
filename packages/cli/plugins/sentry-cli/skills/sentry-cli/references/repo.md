@@ -47,7 +47,10 @@ sentry repo list my-org/
 sentry repo list my-org/ -c next
 
 # Only repositories whose name matches a glob
-sentry repo list my-org/ 'getsentry/*'
+sentry repo list 'my-org/getsentry/*'
+
+# Repositories named like 'sentry-python' (fuzzy when nothing matches exactly)
+sentry repo list my-org/sentry-pyhton
 
 # Output as JSON
 sentry repo list --json

@@ -62,12 +62,9 @@ const docs: OrgListCommandDocs = {
     "Target specification:\n" +
     "  sentry integration list               # auto-detect from DSN or config\n" +
     "  sentry integration list <org>/        # list all integrations in org (paginated)\n" +
-    "  sentry integration list <org>/<proj>  # list integrations in org (project context)\n" +
+    "  sentry integration list <org>/<name>  # integrations whose name matches <name>\n" +
     "  sentry integration list <org>         # list integrations in org\n\n" +
-    "Name filter (searches every page, so it can't be paginated):\n" +
-    "  sentry integration list <org>/ github  # fuzzy match on the name\n" +
-    "  sentry integration list <org>/ 'git*'  # glob on the name\n" +
-    "  sentry integration list 'git*'         # a lone glob filters the auto-detected org(s)\n\n" +
+    "`<name>` is a glob (`<org>/git*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
     "Pagination:\n" +
     "  sentry integration list <org>/ -c next  # fetch next page\n" +
     "  sentry integration list <org>/ -c prev  # fetch previous page\n\n" +
@@ -87,7 +84,12 @@ const docs: OrgListCommandDocs = {
     },
     {
       description: "Only integrations whose name matches a glob",
-      command: "sentry integration list my-org/ 'git*'",
+      command: "sentry integration list 'my-org/git*'",
+    },
+    {
+      description:
+        "Integrations named like 'GitHub' (fuzzy when nothing matches exactly)",
+      command: "sentry integration list my-org/githb",
     },
     {
       description: "Output as JSON",

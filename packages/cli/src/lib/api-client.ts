@@ -145,6 +145,7 @@ export {
   type ProjectSearchResult,
   type ProjectWithOrg,
   resolveOrgDisplayName,
+  searchProjects,
   tryGetPrimaryDsn,
 } from "./api/projects.js";
 export {

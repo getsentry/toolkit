@@ -73,7 +73,10 @@ sentry monitor list my-org/
 sentry monitor list my-org/ -c next
 
 # Only monitors whose slug or name matches a glob
-sentry monitor list my-org/ 'nightly-*'
+sentry monitor list 'my-org/nightly-*'
+
+# Monitors named like 'nightly' (fuzzy when nothing matches exactly)
+sentry monitor list my-org/nigthly
 
 # Output as JSON
 sentry monitor list --json

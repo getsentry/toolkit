@@ -36,7 +36,11 @@ import {
   MAX_PAGINATION_PAGES,
   paginate,
 } from "./api/infrastructure.js";
-import { listOrganizations, type PaginatedResponse } from "./api-client.js";
+import {
+  isNotFoundApiError,
+  listOrganizations,
+  type PaginatedResponse,
+} from "./api-client.js";
 import { explicitProjectSlugs, type ParsedOrgProject } from "./arg-parsing.js";
 import {
   advancePaginationState,
@@ -53,7 +57,7 @@ import {
 } from "./errors.js";
 import { filterFields } from "./formatters/json.js";
 import { paginationHint } from "./list-command.js";
-import { filterByName } from "./list-filter.js";
+import { fetchByName, filterByName, orgFilterTarget } from "./list-filter.js";
 import { logger } from "./logger.js";
 import { withProgress } from "./polling.js";
 import { resolveEffectiveOrg } from "./region.js";
@@ -64,7 +68,6 @@ import {
   resolveOrgsForListing,
 } from "./resolve-target.js";
 import { setOrgProjectContext } from "./telemetry.js";
-import { shellQuote } from "./utils.js";
 
 const log = logger.withTag("org-list");
 
@@ -401,7 +404,7 @@ export type OrgListConfig<TEntity, TWithOrg> = ListCommandMeta & {
    */
   listPaginated: (
     orgSlug: string,
-    opts: { cursor?: string; perPage: number },
+    opts: { cursor?: string; perPage: number; query?: string },
   ) => Promise<PaginatedResponse<TEntity[]>>;
 
   /**
@@ -446,6 +449,14 @@ export type OrgListConfig<TEntity, TWithOrg> = ListCommandMeta & {
    * default handlers keep only matching entities (see {@link filterByName}).
    */
   namesOf?: (entity: TEntity) => readonly string[];
+
+  /**
+   * Whether `listPaginated` honors `query` (Sentry's `?query=`) as a
+   * case-insensitive substring match on the names from {@link namesOf}.
+   * When true, a name filter lets the server narrow the list instead of
+   * reading every page (see {@link fetchByName}).
+   */
+  searchesNames?: boolean;
 };
 
 /** Extract a specific variant from the {@link ParsedOrgProject} union by its `type` discriminant. */
@@ -739,9 +750,8 @@ export async function handleAutoDetect<TEntity, TWithOrg>(
   }
 
   if (limited.length > 0) {
-    const filterArg = filter === undefined ? "" : ` ${shellQuote(filter)}`;
     hintParts.push(
-      `Tip: Use '${config.commandPrefix} <org>/${filterArg}' to filter by organization`,
+      `Tip: Use '${config.commandPrefix} ${orgFilterTarget("<org>", filter)}' to filter by organization`,
     );
   }
 
@@ -1057,24 +1067,26 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
 }
 
 /**
- * Every entity in `org`, walking all pages of `listPaginated`. Some
- * `listForOrg` implementations return only the first page, which a name
- * filter can't rely on. Errors propagate.
+ * Every entity in `org` (or every one matching the server-side `query`),
+ * walking all pages of `listPaginated`. Some `listForOrg` implementations
+ * return only the first page, which a name filter can't rely on. Errors
+ * propagate.
  */
 async function listEveryPage<TEntity, TWithOrg>(
   config: OrgListConfig<TEntity, TWithOrg>,
   org: string,
+  query?: string,
 ): Promise<TEntity[]> {
   const { data } = await autoPaginate(
     (cursor) =>
-      config.listPaginated(org, { cursor, perPage: API_MAX_PER_PAGE }),
+      config.listPaginated(org, { cursor, perPage: API_MAX_PER_PAGE, query }),
     MAX_PAGINATION_PAGES * API_MAX_PER_PAGE,
   );
   return data;
 }
 
 /**
- * Org-all mode with a name filter (`sentry team list <org>/ back*`): every
+ * Org-all mode with a name filter (`sentry team list <org>/back*`): every
  * page instead of one cursor page, since matching and fuzzy ranking need the
  * whole set; `--limit` applies to the matches. Like unfiltered org-all, API
  * errors propagate rather than reading as "no matches". `config` comes from
@@ -1098,6 +1110,53 @@ async function handleOrgAllFiltered<TEntity, TWithOrg>(
 }
 
 /**
+ * Explicit `<org>/<name>` for a config with {@link OrgListConfig.namesOf}.
+ *
+ * With `listForProject` (teams), `<name>` is a project first, as before; when
+ * no such project exists, it falls back to matching entity names. Without it
+ * (repos, monitors, integrations), there is no project to scope to, so
+ * `<name>` matches entity names first; when nothing matches, it is treated
+ * as an ignored project, as before, and the whole org is listed. Matching
+ * is direct first (the server's substring search where available), then
+ * fuzzy (see {@link fetchByName}).
+ */
+async function handleExplicitByName<TEntity, TWithOrg>(
+  config: OrgListConfig<TEntity, TWithOrg>,
+  parsed: Extract<ParsedOrgProject, { type: "explicit" }>,
+  flags: BaseListFlags,
+): Promise<ListResult<TWithOrg>> {
+  const { org, project: name } = parsed;
+  if (!config.listForProject) {
+    const matches = await handleOrgAllFiltered(
+      withNameFilter(config, name),
+      org,
+      flags,
+    );
+    // Nothing named like it: most likely an `<org>/<project>` target, which
+    // these org-scoped entities ignore, so list the whole org as before.
+    if (matches.items.length > 0) {
+      return matches;
+    }
+    return await handleExplicitOrg({ config, org, flags, noteOrgScoped: true });
+  }
+  try {
+    return await handleExplicitProject({ config, org, project: name, flags });
+  } catch (error) {
+    if (!isNotFoundApiError(error)) {
+      throw error;
+    }
+  }
+  const result = await handleOrgAllFiltered(
+    withNameFilter(config, name),
+    org,
+    flags,
+  );
+  const note = `No project '${name}' in '${org}'. Matching ${config.entityPlural} by name instead.`;
+  result.header = result.header ? `${note}\n${result.header}` : note;
+  return result;
+}
+
+/**
  * `config` narrowed to entities whose names match `filter`. Its fetchers
  * read every page and filter (and rank) the set, and `entityPlural` names the
  * filter (`teams matching 'back*'`) so progress, empty, and count messages
@@ -1117,7 +1176,15 @@ function withNameFilter<TEntity, TWithOrg>(
   return {
     ...config,
     entityPlural: `${config.entityPlural} matching '${filter}'`,
-    listForOrg: async (org) => keep(await listEveryPage(config, org)),
+    listForOrg: (org) =>
+      fetchByName({
+        filter,
+        namesOf,
+        fetchAll: () => listEveryPage(config, org),
+        search: config.searchesNames
+          ? (query) => listEveryPage(config, org, query)
+          : undefined,
+      }),
     ...(listForProject && {
       listForProject: async (org: string, project: string) =>
         keep(await listForProject(org, project)),
@@ -1170,6 +1237,9 @@ function buildDefaultHandlers<TEntity, TWithOrg>(
       handleAutoDetect(config, ctx.cwd, ctx.flags, filter),
 
     explicit: (ctx) => {
+      if (!filtered && isOrgListConfig(fullConfig) && fullConfig.namesOf) {
+        return handleExplicitByName(fullConfig, ctx.parsed, ctx.flags);
+      }
       if (config.listForProject) {
         return handleExplicitProject({
           config,

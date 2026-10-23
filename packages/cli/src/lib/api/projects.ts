@@ -115,12 +115,13 @@ export async function listProjects(orgSlug: string): Promise<SentryProject[]> {
  * returns 400 for larger values instead of silently truncating.
  *
  * @param orgSlug - Organization slug
- * @param options - Pagination options
+ * @param options - Pagination options; `query` keeps only projects whose
+ *   slug or name contains it (case-insensitive, matched by the server)
  * @returns Single page of projects with cursor metadata
  */
 export async function listProjectsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {},
+  options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryProject[]>> {
   const config = await getOrgSdkConfig(orgSlug);
   const perPage = Math.min(
@@ -134,13 +135,40 @@ export async function listProjectsPaginated(
     query: {
       cursor: options.cursor,
       per_page: perPage,
-    } as { cursor?: string; per_page?: number },
+      query: options.query,
+    } as { cursor?: string; per_page?: number; query?: string },
   });
 
   return unwrapPaginatedResult<SentryProject[]>(
     result,
     "Failed to list projects",
   );
+}
+
+/**
+ * Every project in an organization whose slug or name contains `query`
+ * (case-insensitive, matched by the server's `?query=`), across all pages.
+ * Unlike {@link listProjects}, it leaves the completion cache alone, since
+ * the result is only part of the org.
+ *
+ * @param orgSlug - Organization slug
+ * @param query - Text the slug or name must contain
+ * @returns Matching projects
+ */
+export async function searchProjects(
+  orgSlug: string,
+  query: string,
+): Promise<SentryProject[]> {
+  const { data } = await autoPaginate(
+    (cursor) =>
+      listProjectsPaginated(orgSlug, {
+        cursor,
+        perPage: API_MAX_PER_PAGE,
+        query,
+      }),
+    MAX_PAGINATION_PAGES * API_MAX_PER_PAGE,
+  );
+  return data;
 }
 
 /**

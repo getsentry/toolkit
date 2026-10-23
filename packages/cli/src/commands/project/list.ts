@@ -17,6 +17,7 @@ import {
   listProjects,
   listProjectsAllPages,
   type PaginatedResponse,
+  searchProjects,
 } from "../../lib/api-client.js";
 import {
   explicitProjectSlugs,
@@ -48,7 +49,9 @@ import {
   targetPatternExplanation,
 } from "../../lib/list-command.js";
 import {
+  fetchByName,
   filterByName,
+  orgFilterTarget,
   splitListTargetAndFilter,
 } from "../../lib/list-filter.js";
 
@@ -122,6 +125,25 @@ export async function fetchOrgProjectsSafe(
 ): Promise<ProjectWithOrg[]> {
   const result = await withAuthGuard(() => fetchOrgProjects(orgSlug));
   return result.ok ? result.value : [];
+}
+
+/**
+ * Projects in one org whose slug or name matches the name `filter`. The
+ * server's `?query=` narrows the list first; text it finds nothing for
+ * falls back to fuzzy matching over every project (see {@link fetchByName}).
+ * Errors propagate.
+ */
+export async function fetchOrgProjectsByName(
+  orgSlug: string,
+  filter: string,
+): Promise<ProjectWithOrg[]> {
+  const projects = await fetchByName({
+    filter,
+    namesOf: projectNamesOf,
+    fetchAll: () => listProjects(orgSlug),
+    search: (query) => searchProjects(orgSlug, query),
+  });
+  return projects.map((p) => ({ ...p, orgSlug }));
 }
 
 /**
@@ -329,7 +351,18 @@ async function fetchAutoDetectProjects(
     return await fetchPaginatedSafe(orgs[0] as string, flags.limit);
   }
   if (orgs.length > 0) {
-    const results = await Promise.all(orgs.map(fetchOrgProjectsSafe));
+    const { filter } = flags;
+    const results = await Promise.all(
+      orgs.map(async (org) => {
+        if (!filter) {
+          return await fetchOrgProjectsSafe(org);
+        }
+        const result = await withAuthGuard(() =>
+          fetchOrgProjectsByName(org, filter),
+        );
+        return result.ok ? result.value : [];
+      }),
+    );
     return { projects: results.flat() };
   }
   return { projects: await fetchAllOrgProjects() };
@@ -337,9 +370,8 @@ async function fetchAutoDetectProjects(
 
 /** Build a pagination hint for auto-detect JSON output. */
 function autoDetectPaginationHint(orgs: string[], filter?: string): string {
-  const target = orgs.length === 1 ? `${orgs[0]}/` : "<org>/";
-  const filterArg = filter === undefined ? "" : ` ${shellQuote(filter)}`;
-  return `sentry project list ${target}${filterArg} --json`;
+  const org = orgs.length === 1 ? (orgs[0] as string) : "<org>";
+  return `sentry project list ${orgFilterTarget(org, filter, shellQuote)} --json`;
 }
 
 /** Build the truncation header for auto-detect mode. */
@@ -454,6 +486,17 @@ export async function handleExplicit(
     () => withAuthGuard(() => getProject(org, projectSlug)),
   );
   if (!projectResult.ok) {
+    // `<org>/frontnd`: no direct match, so match names (fuzzily) instead.
+    if (!flags.filter) {
+      const fallback = await handleOrgAllFiltered(org, {
+        ...flags,
+        filter: projectSlug,
+      });
+      if (fallback.items.length > 0) {
+        const note = `No project '${projectSlug}' in '${org}'. Showing projects matching '${projectSlug}'.`;
+        return { ...fallback, title: note } as ProjectListResult;
+      }
+    }
     return {
       items: [],
       hint:
@@ -644,7 +687,7 @@ export async function handleOrgAll(
 }
 
 /**
- * Org-all mode with a name filter (`sentry project list <org>/ web-*`).
+ * Org-all mode with a name filter (`sentry project list <org>/web-*`).
  * Matching (and fuzzy ranking) needs every project, so this fetches all
  * pages instead of one cursor page; `--limit` applies to the matches.
  */
@@ -657,7 +700,10 @@ async function handleOrgAllFiltered(
       message: `Fetching projects${matchingFilter(flags)}...`,
       json: flags.json,
     },
-    () => fetchOrgProjects(org),
+    () =>
+      flags.filter
+        ? fetchOrgProjectsByName(org, flags.filter)
+        : fetchOrgProjects(org),
   );
   const matches = filterProjects(projects, flags);
   const items = matches.slice(0, flags.limit);
@@ -805,10 +851,10 @@ export const listCommand = buildListCommand("project", {
       "  sentry project list <org>/ -c next      # next page\n" +
       "  sentry project list <org>/ -c prev      # previous page\n" +
       "  sentry project list <org>/ -c <cursor>  # resume at specific cursor\n\n" +
-      "Name filter (a glob, or text matched fuzzily; searches every page):\n" +
-      "  sentry project list <org>/ 'web-*'    # slug or name matches the glob\n" +
-      "  sentry project list <org>/ frontnd    # fuzzy: finds 'frontend'\n" +
-      "  sentry project list 'web-*'           # a lone glob filters auto-detected orgs\n\n" +
+      "A glob after the slash (`<org>/web-*`) lists projects whose slug or name matches. " +
+      "When `<org>/<proj>` names no project, it matches project names instead: " +
+      "exact or partial matches first, then close (fuzzy) matches. " +
+      "Name filters can't be combined with --cursor.\n\n" +
       "Filtering and output:\n" +
       "  sentry project list --platform javascript  # filter by platform\n" +
       "  sentry project list --limit 50              # show more results\n" +
@@ -829,7 +875,12 @@ export const listCommand = buildListCommand("project", {
       },
       {
         description: "Only projects whose slug or name matches a glob",
-        command: "sentry project list my-org/ 'web-*'",
+        command: "sentry project list 'my-org/web-*'",
+      },
+      {
+        description:
+          "Projects named like 'frontend' (fuzzy when nothing matches exactly)",
+        command: "sentry project list my-org/frontnd",
       },
     ],
   },

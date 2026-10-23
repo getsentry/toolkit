@@ -1320,7 +1320,7 @@ describe("dispatchOrgScopedList name filter", () => {
         "web-frontend",
         "web-backend",
       ]);
-      expect(result.hint).toContain("sentry widget list <org>/ 'web-*'");
+      expect(result.hint).toContain("sentry widget list <org>/web-*'");
     } finally {
       defaultOrgSpy.mockRestore();
     }
