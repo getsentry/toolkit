@@ -346,6 +346,16 @@ describe("prepareWasmFile", () => {
     expect(inspectWasm(await readFile(path)).buildId).not.toBeNull();
   });
 
+  test("out-dir is created when it does not exist yet", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "wasm-out-"));
+    const outDir = join(parent, "symbols", "nested");
+    const path = await writeModule("app.wasm", dwarfModule());
+    const result = await prepareWasmFile(path, { outDir });
+
+    expect(result.action).toBe("split");
+    expect(existsSync(result.companion as string)).toBe(true);
+  });
+
   test("out-dir leaves a pointer the module can resolve", async () => {
     const outDir = await mkdtemp(join(tmpdir(), "wasm-out-"));
     const path = await writeModule("app.wasm", dwarfModule());

@@ -14,7 +14,13 @@
  * tool are interchangeable in Sentry.
  */
 
-import { type FileHandle, open, readFile, writeFile } from "node:fs/promises";
+import {
+  type FileHandle,
+  mkdir,
+  open,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import {
   basename,
   dirname,
@@ -737,6 +743,8 @@ export async function prepareWasmFile(
   // Write the companion first: if the process dies between the two writes, an
   // orphan companion is recoverable, whereas a stripped module whose DWARF was
   // never saved anywhere is not.
+  // `--out-dir` may name a directory that does not exist yet.
+  await mkdir(dirname(companion), { recursive: true });
   await writeFile(companion, split.companion as Uint8Array);
   await writeFile(path, split.module);
 
