@@ -31,6 +31,7 @@ Many commands take an optional `<org>/<project>` target as their first positiona
 
 Most list and view commands support `--json` flag for JSON output, making it easy to integrate with other tools:
 
+<!-- allow-commands: global flag shown on a representative command -->
 ```bash
 sentry org list --json | jq '.[] | .slug'
 ```
@@ -39,6 +40,7 @@ sentry org list --json | jq '.[] | .slug'
 
 View commands support `-w` or `--web` flag to open the resource in your browser:
 
+<!-- allow-commands: global flag shown on a representative command -->
 ```bash
 sentry issue view PROJ-123 -w
 ```

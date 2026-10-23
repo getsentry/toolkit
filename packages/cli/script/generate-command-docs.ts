@@ -9,7 +9,7 @@
  *
  * Each generated page combines:
  *   1. Auto-generated reference — from CLI metadata or env registry
- *   2. Hand-written fragment — examples, guides, tips (from docs/src/fragments/)
+ *   2. Hand-written fragment — guides, tips (from docs/src/fragments/)
  *
  * The generated output is gitignored. Fragment files are the committed
  * source of truth for custom content.
@@ -29,6 +29,7 @@ import {
   formatCommandArguments,
   formatCommandExamples,
 } from "./generate-skill-markdown.js";
+import { stripAllowCommandMarkers } from "./fragment-commands.js";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
 
 // Ensure src/generated/skill-content.ts exists before importing the route tree.
@@ -347,12 +348,15 @@ function generateConfigurationPage(registry: readonly EnvVarEntry[]): string {
 /**
  * Read hand-written custom content from a command fragment file.
  * Fragment files live in docs/src/fragments/commands/ and contain only
- * the custom sections (examples, guides) — no frontmatter or generated content.
+ * the custom sections (guides, caveats) — no frontmatter or generated content.
+ * `check:fragments` opt-out markers are stripped from the result.
  * Returns empty string if the fragment file doesn't exist.
  */
 async function readCustomContent(fragmentName: string): Promise<string> {
   try {
-    return await readFile(`${FRAGMENTS_DIR}/${fragmentName}.md`, "utf-8");
+    return stripAllowCommandMarkers(
+      await readFile(`${FRAGMENTS_DIR}/${fragmentName}.md`, "utf-8"),
+    );
   } catch {
     return "";
   }

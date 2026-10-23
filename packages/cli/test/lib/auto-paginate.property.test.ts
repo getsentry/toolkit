@@ -5,9 +5,8 @@
  *
  * - Fast path (`limit <= API_MAX_PER_PAGE`): returns a single page verbatim,
  *   WITHOUT trimming — so a page that overshoots `limit` is returned as-is with
- *   its nextCursor. Callers whose endpoint can overshoot a single page (e.g.
- *   `listIssueEvents`, which has no per-page param) must trim-and-drop-cursor
- *   themselves; that behavior is covered by `events-overshoot.test.ts`.
+ *   its nextCursor. Limit-bounded lists use `paginate()` instead, which trims
+ *   and drops the cursor (see `paginate.property.test.ts`).
  * - Multi-page path (`limit > API_MAX_PER_PAGE`): accumulates across pages up to
  *   `limit`. On true overshoot (a page pushes the total strictly past `limit`),
  *   it trims to `limit` AND drops nextCursor, so cursor navigation never skips

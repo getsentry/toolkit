@@ -414,12 +414,12 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
 
     const { context, stdoutWrite } = createMockContext();
     const func = await listCommand.loader();
-    await func.call(context, { limit: 25, json: true }, "my-org/");
+    await func.call(context, { limit: 2, json: true }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
     expect(parsed).toHaveProperty("hasMore", true);
-    expect(parsed).toHaveProperty("nextCursor", "cursor:abc:123");
+    expect(parsed.nextCursor).toContain("cursor:abc:123");
     expect(advancePaginationStateSpy).toHaveBeenCalled();
   });
 

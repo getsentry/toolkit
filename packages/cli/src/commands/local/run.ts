@@ -404,6 +404,16 @@ export const runCommand = buildCommand({
         description: "Run a Django dev server with the local server enabled",
         command: "sentry local run -- python manage.py runserver",
       },
+      {
+        description: "Run your app and open the Sentry Local UI",
+        command: "sentry local run --open -- npm run dev",
+      },
+      {
+        description:
+          "Stream agent-relevant NDJSON without SDK housekeeping envelopes",
+        command:
+          "sentry local run --format json -f error -f transaction -f log -f ai -- npm run dev",
+      },
     ],
   },
   parameters: {

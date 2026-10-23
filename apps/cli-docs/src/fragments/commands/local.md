@@ -39,15 +39,7 @@ Sentry.init({ spotlight: process.env.NEXT_PUBLIC_SENTRY_SPOTLIGHT ?? false });
 
 ## Browser UI
 
-Use `--open` to launch the Sentry Local UI ([local.sentry.dev](https://local.sentry.dev)) in your browser. The UI connects to the local receiver via the loopback stream endpoint and provides a visual workspace for browsing errors, traces, logs, and AI spans captured during the session.
-
-```bash
-# Start the server and open the UI
-sentry local --open
-
-# Run your app with the UI
-sentry local run --open -- npm run dev
-```
+Use `--open` with `sentry local` or `sentry local run` to launch the Sentry Local UI ([local.sentry.dev](https://local.sentry.dev)) in your browser. The UI connects to the local receiver via the loopback stream endpoint and provides a visual workspace for browsing errors, traces, logs, and AI spans captured during the session.
 
 The `--open` flag requires a loopback `--host` (localhost, 127.0.0.1, or ::1). The hosted UI reads the SSE stream without changing retained receiver data. A loopback-served viewer can clear a receiver and reset or close a scoped daemon session. Session data stays in memory for the duration of the server; nothing is sent to sentry.io unless a DSN is configured.
 
@@ -72,11 +64,8 @@ By default, incoming envelopes are pretty-printed to the terminal:
 
 Errors show the exception type, message, and top stack frame. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes.
 
-Use `--filter` / `-f` to narrow the output to specific event types (repeatable):
-
-```bash
-sentry local -f error -f log    # only errors and logs
-```
+Use `--filter` / `-f` to narrow the output to specific event types. The flag is
+repeatable, so `-f error -f log` shows only errors and logs.
 
 Use `--quiet` to suppress tail output entirely if you only need the SSE stream.
 
@@ -93,30 +82,17 @@ Use `--quiet` to suppress tail output entirely if you only need the SSE stream.
 
 GenAI operations show the model name, MCP tool calls show the tool being invoked, and database queries show the system and query summary. This works automatically when your Sentry SDK is configured with AI/LLM integrations.
 
-To watch only agent activity, filter to the `ai` item type:
-
-```bash
-sentry local -f ai          # only AI/agent spans
-sentry local -f ai -f error # agent spans and errors
-```
+To watch only agent activity, filter to the `ai` item type with `-f ai`, and add
+`-f error` to keep errors alongside agent spans.
 
 ## JSON output
 
-Use `--format json` (or `-F json`) for machine-readable NDJSON output, one JSON object per envelope item:
-
-```bash
-sentry local --format json
-```
+Use `--format json` (or `-F json`) for machine-readable NDJSON output, one JSON object per envelope item.
 
 `local run` supports the same JSON, attribute, and filter options while it
 starts your app and injects the receiver URL. For an agent-friendly stream
-without SDK housekeeping envelopes, use:
-
-```bash
-sentry local run --format json \
-  --filter error --filter transaction --filter log --filter ai \
-  -- npm run dev
-```
+without SDK housekeeping envelopes, filter to `error`, `transaction`, `log`, and
+`ai` items. Each JSON line looks like this:
 
 ```json
 {"type":"transaction","timestamp":1700000001,"op":"gen_ai","label":"chat anthropic/claude-4-sonnet","duration_ms":1200,"span_count":5,"source":"server"}
@@ -142,6 +118,7 @@ local server unless you explicitly set `SENTRY_DSN`.
 
 In one terminal, start the local receiver:
 
+<!-- allow-commands: step of a multi-terminal fixture walkthrough -->
 ```bash
 sentry local serve --format json --attributes
 ```
@@ -173,6 +150,7 @@ after your foreground command exits. Sessions keep up to 500 envelopes for three
 hours after closing and subsequent ingestion. Stopping or restarting the daemon
 clears all sessions.
 
+<!-- allow-commands: session lifecycle walkthrough across local subcommands -->
 ```bash
 sentry local run --session web -- npm run dev
 sentry local serve --session worker

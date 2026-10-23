@@ -20,6 +20,7 @@ and `--account` to a single account. The stored active account never changes.
 With `--json`, each entry's `account` carries that notation as `name`, with its
 parts alongside: `email` (or `username`) and `server`.
 
+<!-- allow-commands: sample output with the ACCOUNT column -->
 ```
 $ sentry org list
 SLUG             NAME               ACCOUNT

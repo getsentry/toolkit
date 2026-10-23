@@ -349,36 +349,6 @@ describe("issues.ts", () => {
       expect(callCount).toBe(2);
     });
 
-    test("trims when overshooting limit (no nextCursor)", async () => {
-      // Return 5 items but we only want 3
-      globalThis.fetch = mockFetch(
-        async () =>
-          new Response(
-            JSON.stringify([
-              mockIssue({ id: "1" }),
-              mockIssue({ id: "2" }),
-              mockIssue({ id: "3" }),
-              mockIssue({ id: "4" }),
-              mockIssue({ id: "5" }),
-            ]),
-            {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json",
-                Link: linkHeader("next", true),
-              },
-            },
-          ),
-      );
-
-      const result = await listIssuesAllPages("test-org", "test-project", {
-        limit: 3,
-      });
-      expect(result.issues).toHaveLength(3);
-      // Trimmed — no nextCursor to prevent skipping
-      expect(result.nextCursor).toBeUndefined();
-    });
-
     test("throws when limit < 1", async () => {
       await expect(
         listIssuesAllPages("test-org", "test-project", { limit: 0 }),
@@ -411,61 +381,6 @@ describe("issues.ts", () => {
 
       expect(onPageCalls).toHaveLength(1);
       expect(onPageCalls[0]).toEqual([2, 10]);
-    });
-
-    test("returns nextCursor when last page has more results but limit reached", async () => {
-      // Return exactly limit items with a next cursor
-      globalThis.fetch = mockFetch(
-        async () =>
-          new Response(
-            JSON.stringify([mockIssue({ id: "1" }), mockIssue({ id: "2" })]),
-            {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json",
-                Link: linkHeader("has-more", true),
-              },
-            },
-          ),
-      );
-
-      const result = await listIssuesAllPages("test-org", "test-project", {
-        limit: 2,
-      });
-      expect(result.issues).toHaveLength(2);
-      // Exactly at limit with more pages → keep nextCursor
-      expect(result.nextCursor).toBe("has-more");
-    });
-
-    test("uses the remaining limit on the final page and preserves its cursor", async () => {
-      const requestedLimits: string[] = [];
-      let callCount = 0;
-
-      globalThis.fetch = mockFetch(async (input, init) => {
-        callCount += 1;
-        const req = new Request(input!, init);
-        const url = new URL(req.url);
-        requestedLimits.push(url.searchParams.get("limit") ?? "");
-        const count = callCount === 3 ? 50 : 100;
-        const issues = Array.from({ length: count }, (_, index) =>
-          mockIssue({ id: `${callCount}-${index}` }),
-        );
-        return new Response(JSON.stringify(issues), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            Link: linkHeader(`cursor-${callCount + 1}`, true),
-          },
-        });
-      });
-
-      const result = await listIssuesAllPages("test-org", "test-project", {
-        limit: 250,
-      });
-
-      expect(result.issues).toHaveLength(250);
-      expect(requestedLimits).toEqual(["100", "100", "50"]);
-      expect(result.nextCursor).toBe("cursor-4");
     });
 
     test("accepts startCursor option", async () => {
@@ -1832,10 +1747,12 @@ describe("traces.ts (transactions)", () => {
         });
       });
 
-      const result = await listTransactions("test-org", "test-project");
+      const result = await listTransactions("test-org", "test-project", {
+        limit: 1,
+      });
       expect(result.data).toHaveLength(1);
       expect(result.data[0]!.transaction).toBe("GET /api/users");
-      expect(result.nextCursor).toBe("txn-next");
+      expect(result.nextCursor).toContain("txn-next");
     });
 
     test("uses numeric project ID via project param", async () => {
