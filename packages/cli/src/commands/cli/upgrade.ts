@@ -30,13 +30,19 @@ import {
 } from "../../lib/binary.js";
 import { buildCommand } from "../../lib/command.js";
 import { CLI_VERSION } from "../../lib/constants.js";
+import { getDbPath, getRawDatabase } from "../../lib/db/index.js";
 import {
   getReleaseChannel,
   type ReleaseChannel,
   setReleaseChannel,
 } from "../../lib/db/release-channel.js";
+import { prepareDatabaseForDowngrade } from "../../lib/db/schema.js";
 import { getVersionCheckInfo } from "../../lib/db/version-check.js";
-import { UpgradeError, UpgradeTransportError } from "../../lib/errors.js";
+import {
+  stringifyUnknown,
+  UpgradeError,
+  UpgradeTransportError,
+} from "../../lib/errors.js";
 import { formatUpgradeResult } from "../../lib/formatters/human.js";
 import { formatBytes } from "../../lib/formatters/numbers.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -64,6 +70,21 @@ import {
 import { whichSync } from "../../lib/which.js";
 
 const log = logger.withTag("cli.upgrade");
+
+/**
+ * Leave the local database readable by the older CLI being installed (#1611).
+ * A failure must not block the downgrade itself.
+ */
+function prepareLocalDatabaseForDowngrade(): void {
+  try {
+    prepareDatabaseForDowngrade(getRawDatabase());
+  } catch (error) {
+    log.warn(
+      `Could not prepare the local database for an older CLI: ${stringifyUnknown(error)}. ` +
+        `If the older CLI fails, delete ${getDbPath()} and run \`sentry auth login\`.`,
+    );
+  }
+}
 
 /** Special version strings that select a channel rather than a specific release. */
 const CHANNEL_VERSIONS = new Set(["nightly", "stable"]);
@@ -1080,6 +1101,10 @@ export const upgradeCommand = buildCommand({
     }
     const downgrade = isDowngrade(CLI_VERSION, target);
     log.debug(`${downgrade ? "Downgrading" : "Upgrading"} to ${target}`);
+    // Before installing: the older binary runs `cli setup` during the upgrade.
+    if (downgrade) {
+      prepareLocalDatabaseForDowngrade();
+    }
 
     // Perform the actual upgrade
     let warnings: string[] | undefined;
