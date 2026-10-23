@@ -87,6 +87,7 @@ function createContext() {
         }),
       },
       cwd: "/tmp/test-explore",
+      commandPrefix: ["sentry", "explore"],
     },
     getStdout: () => stdoutChunks.join(""),
   };
@@ -150,8 +151,8 @@ beforeEach(async () => {
     nextCursor: undefined,
   });
 
-  // Default: resolveOrgOptionalFromArg returns org-only (auto-detect)
-  resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalFromArg");
+  // Default: resolveOrgOptionalTarget returns org-only (auto-detect)
+  resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
   resolveTargetSpy.mockResolvedValue({ org: "test-org" });
 
   resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
@@ -209,7 +210,7 @@ describe("sentry explore", () => {
       await func.call(context, DEFAULT_FLAGS, "my-org/");
 
       expect(resolveTargetSpy).toHaveBeenCalledWith(
-        "my-org/",
+        { type: "org-all", org: "my-org" },
         "/tmp/test-explore",
         "explore",
       );
@@ -257,7 +258,7 @@ describe("sentry explore", () => {
       await func.call(context, DEFAULT_FLAGS, "cli");
 
       expect(resolveTargetSpy).toHaveBeenCalledWith(
-        "cli",
+        { type: "project-search", projectSlug: "cli" },
         "/tmp/test-explore",
         "explore",
       );
@@ -274,7 +275,7 @@ describe("sentry explore", () => {
       await func.call(context, DEFAULT_FLAGS);
 
       expect(resolveTargetSpy).toHaveBeenCalledWith(
-        undefined,
+        { type: "auto-detect" },
         "/tmp/test-explore",
         "explore",
       );
