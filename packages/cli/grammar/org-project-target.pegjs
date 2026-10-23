@@ -1,4 +1,7 @@
 // Grammar for the `[<org>/][<project>[,<project>...]]` target positional.
+// `pnpm run generate:grammar` compiles it, with the types in
+// org-project-target.d.ts, into the gitignored src/generated/; the build,
+// typecheck, and test scripts run it.
 //
 // `parseOrgProjectArg()` (src/lib/arg-parsing.ts) runs this parser after it
 // keeps the first non-blank line and handles the omitted and URL forms. The

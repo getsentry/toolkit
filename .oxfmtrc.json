@@ -19,7 +19,6 @@
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json",
     "packages/toolkit-core/src/generated/**",
-    "packages/cli/src/generated/**",
     "packages/toolkit-core/test/fixtures/**"
   ]
 }

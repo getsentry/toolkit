@@ -13,7 +13,6 @@
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json",
     "packages/toolkit-core/src/generated/**",
-    "packages/cli/src/generated/**",
     "packages/toolkit-core/test/fixtures/**",
     "packages/mcp-server-mocks/src/fixtures/**",
     "packages/cli/test/init-eval/templates/sveltekit-app/**"

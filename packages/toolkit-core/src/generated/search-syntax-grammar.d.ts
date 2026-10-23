@@ -3,7 +3,7 @@
 /**
  * Options the search grammar reads from `options`. The grammar builds every
  * token through `TokenConverter`, so callers decide the token shapes and the
- * key-type predicates. See `../search-syntax.ts` for the default converter.
+ * key-type predicates. See `src/search-syntax.ts` for the default converter.
  */
 export type SearchGrammarOptions = {
   /** Constructed with `{ text, location, config }` once per parse. */

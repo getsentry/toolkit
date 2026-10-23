@@ -27,17 +27,15 @@ const GENERATED_TASKS = [
     ],
   },
   {
-    name: "grammar parsers",
+    name: "toolkit-core grammar parsers",
     command: ["pnpm", "run", "generate:parsers"],
     inputs: [
-      /^packages\/(toolkit-core|cli)\/grammar\/.*\.pegjs$/,
+      /^packages\/toolkit-core\/grammar\//,
       /^scripts\/generate-parsers\.mjs$/,
     ],
     outputs: [
       "packages/toolkit-core/src/generated/search-syntax-grammar.js",
       "packages/toolkit-core/src/generated/search-syntax-grammar.d.ts",
-      "packages/cli/src/generated/org-project-target-grammar.js",
-      "packages/cli/src/generated/org-project-target-grammar.d.ts",
     ],
   },
 ];
