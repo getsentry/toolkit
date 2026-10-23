@@ -86,6 +86,7 @@ toolkit/
 │       │   │   ├── span/        # list, view
 │       │   │   ├── status/      # show
 │       │   │   ├── team/        # list
+│       │   │   ├── token/       # create, delete, list
 │       │   │   ├── trace/       # list, logs, view
 │       │   │   ├── trial/       # list, start
 │       │   │   ├── api.ts       # Make an authenticated API request

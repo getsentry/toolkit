@@ -1304,6 +1304,43 @@ export const SentryIntegrationSchema = pipe(
 
 export type SentryIntegration = InferOutput<typeof SentryIntegrationSchema>;
 
+// Org Auth Token
+
+/**
+ * Organization auth token from `/organizations/{org}/org-auth-tokens/`.
+ *
+ * The full `token` value is only present in the create response; Sentry
+ * stores a hash and can't return it again.
+ */
+export const OrgAuthTokenSchema = pipe(
+  looseObject({
+    id: pipe(string(), description("Token ID")),
+    name: pipe(string(), description("Token name")),
+    scopes: pipe(array(string()), description("Scopes granted to the token")),
+    tokenLastCharacters: pipe(
+      nullable(string()),
+      description("Last 4 characters of the token"),
+    ),
+    dateCreated: pipe(string(), description("Creation timestamp")),
+    dateLastUsed: pipe(
+      nullable(string()),
+      description("Last time the token was used, if ever"),
+    ),
+    projectLastUsedId: optional(
+      pipe(
+        nullable(string()),
+        description("ID of the project the token was last used for"),
+      ),
+    ),
+    token: optional(
+      pipe(string(), description("Full token value (create response only)")),
+    ),
+  }),
+  description("Organization auth token"),
+);
+
+export type OrgAuthToken = InferOutput<typeof OrgAuthTokenSchema>;
+
 // Cron Monitor
 
 /**
