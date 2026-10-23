@@ -82,13 +82,21 @@ type DeleteFlags = {
 export const deleteCommand = buildDeleteCommand({
   docs: {
     brief: "Delete a release",
-    fullDescription:
-      "Permanently delete a Sentry release.\n\n" +
-      "Examples:\n" +
-      "  sentry release delete 1.0.0\n" +
-      "  sentry release delete my-org/1.0.0\n" +
-      "  sentry release delete 1.0.0 --yes\n" +
-      "  sentry release delete 1.0.0 --dry-run",
+    fullDescription: "Permanently delete a Sentry release.",
+    examples: [
+      {
+        description: "Delete a release (prompts for confirmation)",
+        command: "sentry release delete my-org/1.0.0",
+      },
+      {
+        description: "Skip confirmation",
+        command: "sentry release delete my-org/1.0.0 --yes",
+      },
+      {
+        description: "Preview without deleting",
+        command: "sentry release delete my-org/1.0.0 --dry-run",
+      },
+    ],
   },
   output: {
     human: formatReleaseDeleted,

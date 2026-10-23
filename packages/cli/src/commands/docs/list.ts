@@ -36,8 +36,21 @@ export const listCommand = buildCommand({
   docs: {
     brief: "Find Sentry documentation pages by keyword",
     fullDescription:
-      "Search the Sentry documentation index without synthesizing an answer. Returns ranked page titles, descriptions, and URLs.\n\n" +
-      'Examples:\n  sentry docs list "nextjs tracing"\n  sentry docs list "session replay privacy" --limit 5\n  sentry docs list "source maps" --json',
+      "Search the Sentry documentation index without synthesizing an answer. Returns ranked page titles, descriptions, and URLs.",
+    examples: [
+      {
+        description: "Search the documentation index",
+        command: 'sentry docs list "source maps"',
+      },
+      {
+        description: "Limit the number of results",
+        command: 'sentry docs list "session replay privacy" --limit 5',
+      },
+      {
+        description: "Output as JSON",
+        command: 'sentry docs list "source maps" --json',
+      },
+    ],
   },
   output: { human: formatListHuman },
   parameters: {

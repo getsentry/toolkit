@@ -536,6 +536,16 @@ export const listCommand = buildListCommand("alert issues", {
       `${targetPatternExplanation()}\n\n` +
       "In monorepos with multiple Sentry projects, shows alert rules from all detected projects.\n\n" +
       "Use --cursor / -c next / -c prev to paginate through larger result sets.",
+    examples: [
+      {
+        description: "List issue alert rules for a project",
+        command: "sentry alert issues list my-org/my-project",
+      },
+      {
+        description: "Filter rules by name",
+        command: 'sentry alert issues list my-org/my-project --query "spike"',
+      },
+    ],
   },
   output: {
     human: formatIssueAlertListHuman,

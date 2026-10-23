@@ -628,14 +628,33 @@ export const setupCommand = buildCommand({
       "With --install, also handles binary placement from a temporary\n" +
       "download location (used by the install script and upgrade command).\n\n" +
       "This command is called automatically by the install script,\n" +
-      "but can also be run manually after downloading the binary.\n\n" +
-      "Examples:\n" +
-      "  sentry cli setup                    # Auto-detect and configure\n" +
-      "  sentry cli setup --method curl      # Record install method\n" +
-      "  sentry cli setup --install          # Place binary and configure\n" +
-      "  sentry cli setup --no-modify-path   # Skip PATH modification\n" +
-      "  sentry cli setup --no-completions   # Skip shell completions\n" +
-      "  sentry cli setup --no-agent-skills  # Skip agent skill installation",
+      "but can also be run manually after downloading the binary.",
+    examples: [
+      {
+        description: "Run full setup (PATH, completions, agent skills)",
+        command: "sentry cli setup",
+      },
+      {
+        description: "Record the install method",
+        command: "sentry cli setup --method curl",
+      },
+      {
+        description: "Place the binary and configure the shell",
+        command: "sentry cli setup --install",
+      },
+      {
+        description: "Skip PATH modification",
+        command: "sentry cli setup --no-modify-path",
+      },
+      {
+        description: "Skip shell completions",
+        command: "sentry cli setup --no-completions",
+      },
+      {
+        description: "Skip agent skill installation",
+        command: "sentry cli setup --no-agent-skills",
+      },
+    ],
   },
   parameters: {
     flags: {

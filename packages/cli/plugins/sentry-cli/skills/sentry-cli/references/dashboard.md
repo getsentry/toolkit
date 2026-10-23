@@ -24,13 +24,31 @@ List dashboards
 **Examples:**
 
 ```bash
-# List all dashboards
+# List dashboards (organization auto-detected)
 sentry dashboard list
 
-# Filter by name pattern
-sentry dashboard list "Backend*"
+# List dashboards in an explicit organization
+sentry dashboard list my-org/
 
-# Open dashboard list in browser
+# Use the organization of an explicit project
+sentry dashboard list my-org/my-project
+
+# Filter by title glob
+sentry dashboard list 'Backend*'
+
+# Filter within an organization
+sentry dashboard list my-org/ '*API*'
+
+# Fetch the next page
+sentry dashboard list -c next
+
+# Fetch the previous page
+sentry dashboard list -c prev
+
+# Output JSON with the pagination envelope
+sentry dashboard list --json
+
+# Open the dashboard list in the browser
 sentry dashboard list -w
 ```
 
@@ -49,10 +67,10 @@ View a dashboard
 **Examples:**
 
 ```bash
-# View by title
+# View a dashboard by title
 sentry dashboard view 'Frontend Performance'
 
-# View by ID
+# View a dashboard by ID
 sentry dashboard view 12345
 
 # View by ID in an explicit organization
@@ -61,10 +79,22 @@ sentry dashboard view my-org/12345
 # Include project context in the same argument
 sentry dashboard view my-org/my-project/12345
 
-# Auto-refresh every 30 seconds
-sentry dashboard view "Backend Performance" --refresh 30
+# Pass the organization separately, e.g. for titles that contain a slash
+sentry dashboard view my-org/ "incidents/2026"
 
-# Open in browser
+# Override the time period
+sentry dashboard view 12345 --period 7d
+
+# Render charts with sixel graphics
+sentry dashboard view 12345 --renderer sixel
+
+# Auto-refresh every 30 seconds
+sentry dashboard view 'Backend Performance' --refresh 30
+
+# Output as JSON
+sentry dashboard view 12345 --json
+
+# Open in the browser
 sentry dashboard view 12345 -w
 ```
 
@@ -75,7 +105,14 @@ Create a dashboard
 **Examples:**
 
 ```bash
+# Create a dashboard (organization auto-detected)
 sentry dashboard create 'Frontend Performance'
+
+# Create a dashboard in an explicit organization
+sentry dashboard create my-org/ 'My Dashboard'
+
+# Use the organization of an explicit project
+sentry dashboard create my-org/my-project 'My Dashboard'
 ```
 
 ### `sentry dashboard widget add <org/project/dashboard/title...>`
@@ -99,30 +136,20 @@ Add a widget to a dashboard
 **Examples:**
 
 ```bash
-# Simple counter widget
-sentry dashboard widget add 'My Dashboard' "Error Count" \
-  --display big_number --query count
+# Add a counter widget
+sentry dashboard widget add 'My Dashboard' "Error Count" --display big_number --query count
 
-# Use an ID in an explicit organization
-sentry dashboard widget add my-org/12345 "Error Count" \
-  --display big_number --query count
+# Use a dashboard ID in an explicit organization
+sentry dashboard widget add my-org/12345 "Error Count" --display big_number --query count
 
 # Line chart with group-by
-sentry dashboard widget add 'My Dashboard' "Errors by Browser" \
-  --display line --query count --group-by browser.name
+sentry dashboard widget add 'My Dashboard' "Errors by Browser" --display line --query count --group-by browser.name
 
 # Table with multiple aggregates, sorted descending
-sentry dashboard widget add 'My Dashboard' "Top Endpoints" \
-  --display table \
-  --query count --query p95:span.duration \
-  --group-by transaction \
-  --sort -count --limit 10
+sentry dashboard widget add 'My Dashboard' "Top Endpoints" --display table --query count --query p95:span.duration --group-by transaction --sort -count --limit 10
 
-# With search filter
-sentry dashboard widget add 'My Dashboard' "Slow Requests" \
-  --display bar --query p95:span.duration \
-  --where "span.op:http.client" \
-  --group-by span.description
+# Bar chart with a search filter
+sentry dashboard widget add 'My Dashboard' "Slow Requests" --display bar --query p95:span.duration --where "span.op:http.client" --group-by span.description
 ```
 
 ### `sentry dashboard widget edit <org/project/dashboard...>`
@@ -148,14 +175,17 @@ Edit a widget in a dashboard
 **Examples:**
 
 ```bash
-# Change display type
-sentry dashboard widget edit 12345 --title 'Error Count' --display bar
+# Change a widget's display type
+sentry dashboard widget edit 12345 --title 'Error Rate' --display bar
+
+# Change the query of a widget selected by index
+sentry dashboard widget edit 'My Dashboard' --index 0 --query p95:span.duration
 
 # Rename a widget
-sentry dashboard widget edit 'My Dashboard' --index 0 --new-title 'Total Errors'
+sentry dashboard widget edit 12345 --title 'Old Name' --new-title 'New Name'
 
-# Change the query
-sentry dashboard widget edit 12345 --title 'Error Rate' --query p95:span.duration
+# Move and resize a widget
+sentry dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 2
 ```
 
 ### `sentry dashboard widget delete <org/project/dashboard...>`
@@ -172,11 +202,14 @@ Delete a widget from a dashboard
 **Examples:**
 
 ```bash
-# Delete by title
-sentry dashboard widget delete 'My Dashboard' --title 'Error Count'
+# Delete a widget by title
+sentry dashboard widget delete 'My Dashboard' --title 'Error Rate'
 
-# Delete by index
-sentry dashboard widget delete 12345 --index 2
+# Delete a widget by index
+sentry dashboard widget delete 12345 --index 0
+
+# Preview the deletion
+sentry dashboard widget delete 12345 --index 0 --dry-run
 ```
 
 ### `sentry dashboard revisions <org/dashboard...>`
@@ -196,8 +229,14 @@ sentry dashboard revisions 'Frontend Performance'
 # List revisions by dashboard ID
 sentry dashboard revisions 12345
 
-# With explicit org
+# Pass the organization explicitly
 sentry dashboard revisions my-org/ 12345
+
+# Fetch the next page
+sentry dashboard revisions my-org/ 12345 -c next
+
+# Output as JSON
+sentry dashboard revisions my-org/ 12345 --json
 ```
 
 ### `sentry dashboard restore <org/dashboard...>`
@@ -214,10 +253,13 @@ Restore a dashboard revision
 sentry dashboard restore 'Frontend Performance' --revision 3
 
 # Restore by dashboard ID
-sentry dashboard restore 12345 --revision 1
+sentry dashboard restore 12345 --revision 42
 
-# With explicit org
-sentry dashboard restore my-org/ 12345 --revision 1
+# Pass the organization explicitly
+sentry dashboard restore my-org/ 12345 --revision 42
+
+# Output the restored dashboard as JSON
+sentry dashboard restore 12345 --revision 42 --json
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

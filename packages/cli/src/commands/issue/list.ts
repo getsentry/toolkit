@@ -1651,6 +1651,51 @@ export const listCommand = buildListCommand("issue", {
       "  Dates:    age:-24h (last 24h), firstSeen:+7d (older than 7d)\n" +
       "  Docs:     https://docs.sentry.io/concepts/search/\n\n" +
       "Alias: `sentry issues` → `sentry issue list`",
+    examples: [
+      {
+        description: "List issues in a specific project",
+        command: "sentry issue list my-org/frontend",
+      },
+      {
+        description: "Several projects in the same organization",
+        command: "sentry issue list my-org/frontend,backend,worker",
+      },
+      {
+        description: "All projects in an organization",
+        command: "sentry issue list my-org/",
+      },
+      {
+        description: "Search for a project across organizations",
+        command: "sentry issue list frontend",
+      },
+      {
+        description: "Show only unresolved issues",
+        command: 'sentry issue list my-org/frontend --query "is:unresolved"',
+      },
+      {
+        description: "Sort by frequency",
+        command: "sentry issue list my-org/frontend --sort freq --limit 20",
+      },
+      {
+        description: "Sort by Sentry's recommended relevance ranking",
+        command: "sentry issue list my-org/frontend --sort recommended",
+      },
+      {
+        description:
+          "Multiple filters (space-separated terms are combined with AND)",
+        command:
+          'sentry issue list --query "is:unresolved level:error assigned:me"',
+      },
+      {
+        description: "Negation and wildcards",
+        command:
+          'sentry issue list --query "!browser:Chrome message:*timeout*"',
+      },
+      {
+        description: "Match multiple values for one key",
+        command: 'sentry issue list --query "browser:[Chrome,Firefox]"',
+      },
+    ],
   },
   output: issueListOutput,
   parameters: {

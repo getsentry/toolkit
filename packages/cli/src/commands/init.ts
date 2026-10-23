@@ -299,14 +299,43 @@ export const initCommand = buildCommand<
       "install the SDK, and configure Sentry.\n\n" +
       "Supports org/project syntax and a directory positional. Path-like\n" +
       "arguments (starting with . / ~) are treated as the directory;\n" +
-      "everything else is treated as the target.\n\n" +
-      "Examples:\n" +
-      "  sentry init\n" +
-      "  sentry init acme/\n" +
-      "  sentry init acme/my-app\n" +
-      "  sentry init my-app\n" +
-      "  sentry init acme/my-app ./my-project\n" +
-      "  sentry init ./my-project",
+      "everything else is treated as the target.",
+    examples: [
+      { description: "Interactive setup", command: "sentry init" },
+      {
+        description: "Non-interactive agent/CI setup",
+        command: "sentry init --yes --features errors,tracing,replay",
+      },
+      {
+        description: "Dry run to preview changes",
+        command: "sentry init --dry-run",
+      },
+      { description: "Target a subdirectory", command: "sentry init ./my-app" },
+      {
+        description: "Use a specific organization (auto-detect project)",
+        command: "sentry init acme/",
+      },
+      {
+        description: "Use a specific organization and project",
+        command: "sentry init acme/my-app",
+      },
+      {
+        description: "Search for a project across organizations",
+        command: "sentry init my-app",
+      },
+      {
+        description: "Use a specific project in a subdirectory",
+        command: "sentry init acme/my-app ./my-project",
+      },
+      {
+        description: "Assign a team when creating a new project",
+        command: "sentry init acme/ --team backend",
+      },
+      {
+        description: "Enable specific features",
+        command: "sentry init --features profiling,replay",
+      },
+    ],
   },
   parameters: {
     positional: {

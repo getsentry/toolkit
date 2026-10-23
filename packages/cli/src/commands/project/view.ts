@@ -338,6 +338,16 @@ export const viewCommand = buildCommand({
       "  sentry project view <project>             # find project across all orgs\n\n" +
       `${TARGET_PATTERN_NOTE}\n\n` +
       "In monorepos with multiple Sentry projects, shows details for all detected projects.",
+    examples: [
+      {
+        description: "View project details",
+        command: "sentry project view my-org/frontend",
+      },
+      {
+        description: "Open the project in the browser",
+        command: "sentry project view my-org/frontend -w",
+      },
+    ],
   },
   output: {
     human: formatProjectViewHuman,

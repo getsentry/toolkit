@@ -535,6 +535,12 @@ export const listCommand = buildListCommand("alert metrics", {
       `${targetPatternExplanation()}\n\n` +
       "Metric alert rules are org-scoped; the project part is ignored when provided.\n\n" +
       "Use --cursor / -c next / -c prev to paginate through larger result sets.",
+    examples: [
+      {
+        description: "List metric alert rules for an organization",
+        command: "sentry alert metrics list my-org/",
+      },
+    ],
   },
   output: {
     human: formatMetricAlertListHuman,

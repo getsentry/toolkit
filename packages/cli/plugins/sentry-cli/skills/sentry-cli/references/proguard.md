@@ -29,10 +29,10 @@ sentry proguard upload ./app/build/outputs/mapping/release/mapping.txt
 # Upload multiple mapping files
 sentry proguard upload mapping-release.txt mapping-debug.txt
 
-# Validate without uploading (dry-run)
+# Validate without uploading
 sentry proguard upload mapping.txt --no-upload
 
-# Fail if no mapping files are provided (useful in CI)
+# Fail if no mapping files are found (useful in CI)
 sentry proguard upload ./mapping/ --require-one
 ```
 

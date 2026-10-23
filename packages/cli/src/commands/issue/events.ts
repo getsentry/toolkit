@@ -76,13 +76,37 @@ export const eventsCommand = buildListCommand("issue", {
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7\n" +
       "  <project>-suffix - Project + suffix: cli-G\n" +
       "  ID               - Short ID: CLI-G\n" +
-      "  numeric          - Numeric ID: 123456789\n\n" +
-      "Examples:\n" +
-      "  sentry issue events CLI-G\n" +
-      "  sentry issue events @latest --limit 50\n" +
-      "  sentry issue events 123456789 --full\n" +
-      '  sentry issue events CLI-G -q "user.email:foo@bar.com"\n' +
-      "  sentry issue events CLI-G --json",
+      "  numeric          - Numeric ID: 123456789",
+    examples: [
+      {
+        description: "List recent events for an issue",
+        command: "sentry issue events FRONT-ABC",
+      },
+      {
+        description: "List events for the most recent issue",
+        command: "sentry issue events @latest --limit 50",
+      },
+      {
+        description: "Filter events by search query",
+        command: 'sentry issue events FRONT-ABC --query "browser:Chrome"',
+      },
+      {
+        description: "Show full event details",
+        command: "sentry issue events FRONT-ABC --full",
+      },
+      {
+        description: "Limit results and filter by time period",
+        command: "sentry issue events FRONT-ABC --limit 50 --period 24h",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry issue events FRONT-ABC -c next",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry issue events FRONT-ABC --json",
+      },
+    ],
   },
   output: {
     human: formatEventsHuman,

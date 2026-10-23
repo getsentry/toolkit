@@ -423,15 +423,35 @@ export const schemaCommand = buildCommand({
     brief: "Browse the Sentry API schema",
     fullDescription:
       "Browse and search the Sentry API schema. Shows available resources, " +
-      "operations, and endpoint details. Use with --json for machine-readable output.\n\n" +
-      "Examples:\n" +
-      "  sentry schema                      List all API resources\n" +
-      "  sentry schema issues                Show endpoints for a resource\n" +
-      "  sentry schema issues list            Show details for one endpoint\n" +
-      "  sentry schema listOrganizationEvents Show details by operation ID\n" +
-      '  sentry schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"\n' +
-      "  sentry schema --all                 Flat list of all endpoints\n" +
-      "  sentry schema --search monitor      Search endpoints by keyword",
+      "operations, and endpoint details. Use with --json for machine-readable output.",
+    examples: [
+      { description: "List all API resources", command: "sentry schema" },
+      {
+        description: "Browse issue endpoints",
+        command: "sentry schema issues",
+      },
+      {
+        description: "View details for a specific operation",
+        command: "sentry schema issues list",
+      },
+      {
+        description: "Look up an endpoint by its exact operation ID",
+        command: "sentry schema listOrganizationEvents",
+      },
+      {
+        description: "Look up an endpoint by HTTP method and path",
+        command:
+          'sentry schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"',
+      },
+      {
+        description: "Search for monitoring-related endpoints",
+        command: "sentry schema --search monitor",
+      },
+      {
+        description: "Flat list of every endpoint",
+        command: "sentry schema --all",
+      },
+    ],
   },
   output: {
     human: formatSchemaHuman,

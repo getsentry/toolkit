@@ -130,6 +130,19 @@ export const gradleCommand = buildCommand({
       "Use `--wait`/`--wait-for` to block until the server finishes processing " +
       "the upload. Indexed/file RAM bundles (a pre-Hermes format) are not " +
       "supported; use a plain or Hermes bundle.",
+    examples: [
+      {
+        description:
+          "Upload a bundle and sourcemap by debug ID (called by the Gradle plugin)",
+        command:
+          "sentry react-native gradle --bundle index.android.bundle --sourcemap index.android.bundle.map",
+      },
+      {
+        description: "Also associate with a release and distribution",
+        command:
+          "sentry react-native gradle --bundle index.android.bundle --sourcemap index.android.bundle.map --release com.example.app@1.0.0 --dist 1000",
+      },
+    ],
   },
   output: {
     human: formatGradleResult,

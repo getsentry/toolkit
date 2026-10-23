@@ -998,6 +998,21 @@ export const serverCommand = buildCommand({
       "as an SSE consumer and tails events from it. Otherwise it starts\n" +
       "its own server. Use --open to launch the Sentry Local UI.\n\n" +
       "Press Ctrl-C to stop.",
+    examples: [
+      {
+        description: "Start the server and tail events",
+        command: "sentry local",
+      },
+      { description: "Use a custom port", command: "sentry local --port 9000" },
+      {
+        description: "Only show errors and logs (filter out transactions)",
+        command: "sentry local -f error -f log",
+      },
+      {
+        description: "Suppress per-envelope tail output",
+        command: "sentry local --quiet",
+      },
+    ],
   },
   parameters: {
     flags: {

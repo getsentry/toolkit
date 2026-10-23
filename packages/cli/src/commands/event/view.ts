@@ -1178,6 +1178,16 @@ export const viewCommand = buildCommand({
       "Attachment metadata (id, name, size, mimetype, download URL) is included when available.\n" +
       "Download bytes with:\n" +
       '  sentry api "<attachments[].download>" > file',
+    examples: [
+      {
+        description: "View an event",
+        command: "sentry event view abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry event view abc123def456abc123def456abc12345 -w",
+      },
+    ],
   },
   output: {
     human: formatEventView,

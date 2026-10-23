@@ -555,15 +555,43 @@ export const listCommand = buildListCommand("span", {
       "  sentry span list -c next                # fetch next page (project mode)\n" +
       "  sentry span list -c prev                # fetch previous page\n" +
       "  sentry span list <trace-id> -c next     # fetch next page (trace mode)\n\n" +
-      "Examples:\n" +
-      "  sentry span list                        # List recent spans in project\n" +
-      '  sentry span list -q "op:db"             # Find all DB spans\n' +
-      '  sentry span list -q "duration:>100ms"   # Slow spans\n' +
-      "  sentry span list --period 24h           # Last 24 hours only\n" +
-      "  sentry span list --sort duration        # Sort by slowest first\n" +
-      "  sentry span list <trace-id>             # Spans in a specific trace\n" +
-      '  sentry span list <trace-id> -q "op:db"  # DB spans in a trace\n\n' +
       "Alias: `sentry spans` → `sentry span list`",
+    examples: [
+      {
+        description: "List recent spans in the current project",
+        command: "sentry span list",
+      },
+      {
+        description: "Find all DB spans",
+        command: 'sentry span list -q "op:db"',
+      },
+      {
+        description: "Slow spans in the last 24 hours",
+        command: 'sentry span list -q "duration:>100ms" --period 24h',
+      },
+      {
+        description: "Sort by slowest first",
+        command: "sentry span list --sort duration",
+      },
+      {
+        description: "List spans within a specific trace",
+        command: "sentry span list abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Show only spans from one project within a trace",
+        command:
+          "sentry span list my-org/cli-server/abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Filter a trace's spans to several projects",
+        command:
+          'sentry span list abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry span list -c next",
+      },
+    ],
   },
   output: {
     human: formatSpanListHuman,

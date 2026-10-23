@@ -541,12 +541,48 @@ export const loginCommand = buildCommand({
       "are kept). Pass an email (or <email>:<server>, as 'sentry org list'\n" +
       "shows it) to add or log in again to that account without prompting:\n" +
       "Sentry approves the request as whoever is signed in to the browser,\n" +
-      "so a login approved as another user is refused and nothing is saved.\n\n" +
-      "Examples:\n" +
-      "  sentry auth login\n" +
-      "  sentry auth login jane@acme.com\n" +
-      "  sentry auth login jane@acme.com --url https://sentry.acme.com\n" +
-      "  sentry auth login jane@acme.com:sentry.acme.com",
+      "so a login approved as another user is refused and nothing is saved.",
+    examples: [
+      {
+        description: "Log in with OAuth (device flow)",
+        command: "sentry auth login",
+      },
+      {
+        description: "Log in with an API token",
+        command: "sentry auth login --token YOUR_SENTRY_API_TOKEN",
+      },
+      {
+        description: "Request only read-only scopes",
+        command: "sentry auth login --read-only",
+      },
+      {
+        description: "Request specific scopes (repeatable or comma-separated)",
+        command: "sentry auth login --scope project:read --scope org:read",
+      },
+      {
+        description: "Log in to a self-hosted instance",
+        command: "sentry auth login --url https://sentry.example.com",
+      },
+      {
+        description: "Log in to a self-hosted instance with a token",
+        command:
+          "sentry auth login --token YOUR_TOKEN --url https://sentry.example.com",
+      },
+      {
+        description:
+          "Add (or log in again to) a specific account without prompting",
+        command: "sentry auth login jane@example.com",
+      },
+      {
+        description: "Add an account on a specific server",
+        command:
+          "sentry auth login jane@example.com --url https://sentry.example.com",
+      },
+      {
+        description: "Same as --url, using the account notation",
+        command: "sentry auth login jane@example.com:sentry.example.com",
+      },
+    ],
   },
   parameters: {
     flags: {

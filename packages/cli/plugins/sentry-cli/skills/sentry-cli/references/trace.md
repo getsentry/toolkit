@@ -37,16 +37,19 @@ List recent traces in a project
 **Examples:**
 
 ```bash
-# List last 20 traces (default)
+# List recent traces
 sentry trace list
+
+# Show more traces
+sentry trace list --limit 50
 
 # Sort by slowest first
 sentry trace list --sort duration
 
-# Filter by transaction name, last 24 hours
+# Filter by transaction name in the last 24 hours
 sentry trace list -q "transaction:GET /api/users" --period 24h
 
-# Paginate through results
+# Fetch the next page
 sentry trace list my-org/backend -c next
 ```
 
@@ -63,26 +66,20 @@ View details of a specific trace
 **Examples:**
 
 ```bash
-# View trace details with span tree
+# View trace details with the span tree
 sentry trace view abc123def456abc123def456abc12345
 
-# Open trace in browser
-sentry trace view abc123def456abc123def456abc12345 -w
-
-# Auto-recover from an issue short ID
-sentry trace view PROJ-123
-
-# Filter trace view to one project's spans
-sentry trace view my-org/cli-server/abc123def456abc123def456abc12345
-
-# Full trace across all projects (default)
+# Show the full trace across all projects
 sentry trace view my-org/abc123def456abc123def456abc12345
 
-# Filter trace logs by project
-sentry trace logs my-org/cli-server/abc123def456abc123def456abc12345
+# Filter the span tree to one project
+sentry trace view my-org/cli-server/abc123def456abc123def456abc12345
 
-# Multiple projects via --query
-sentry trace logs abc123def456abc123def456abc12345 -q "project:[cli-server,api]"
+# Recover the trace from an issue short ID
+sentry trace view PROJ-123
+
+# Open the trace in the browser
+sentry trace view abc123def456abc123def456abc12345 -w
 ```
 
 ### `sentry trace logs <org/project/trace-id...>`
@@ -103,11 +100,20 @@ View logs associated with a trace
 # View logs for a trace
 sentry trace logs abc123def456abc123def456abc12345
 
+# Filter trace logs to one project
+sentry trace logs my-org/cli-server/abc123def456abc123def456abc12345
+
+# Filter trace logs to several projects
+sentry trace logs abc123def456abc123def456abc12345 -q "project:[cli-server,api]"
+
 # Search with a longer time window
 sentry trace logs --period 30d abc123def456abc123def456abc12345
 
-# Filter logs within a trace
+# Only error logs
 sentry trace logs -q 'severity:error' abc123def456abc123def456abc12345
+
+# Output as JSON
+sentry trace logs --json abc123def456abc123def456abc12345
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

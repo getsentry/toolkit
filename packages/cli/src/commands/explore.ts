@@ -606,18 +606,84 @@ export const exploreCommand = buildListCommand("explore", {
       "  <org>/           All projects in org\n" +
       "  <project>        Bare slug — searches across orgs\n" +
       "  (omitted)        Auto-detect from DSN/config\n\n" +
-      "Examples:\n" +
-      '  sentry explore my-org/cli -F title -F "count()"\n' +
-      '  sentry explore my-org/ -F title -F "count()" -F "count_unique(user)" --period 1h\n' +
-      '  sentry explore my-org/cli -F span.op -F "p50(span.duration)" ' +
-      "--dataset spans\n" +
-      "  sentry explore my-org/cli --dataset replays -F id -F user.email -F count_errors\n" +
-      '  sentry explore -F span.op -F "count()" --dataset spans --period 1h\n' +
-      "  sentry explore --json\n\n" +
       "Metrics (auto mode — resolves type/unit automatically):\n" +
       "  sentry explore my-org/ -m llm.token_usage --dataset metrics\n" +
       "  sentry explore my-org/seer -F gen_ai.request.model -m llm.token_usage --dataset metrics --period 7d\n" +
       "  sentry explore my-org/ -m cache.hit_rate --agg avg --dataset metrics",
+    examples: [
+      {
+        description: "Top errors in the last 24 hours, scoped to a project",
+        command: "sentry explore my-org/cli",
+      },
+      {
+        description: "All projects in an organization",
+        command: "sentry explore my-org/",
+      },
+      {
+        description: "Bare project slug (searches across organizations)",
+        command: "sentry explore cli",
+      },
+      {
+        description: "Auto-detect the project from DSN/config",
+        command: "sentry explore",
+      },
+      {
+        description: "Errors with user impact for a specific UTC window",
+        command:
+          'sentry explore my-org/cli -F title -F "count()" -F "count_unique(user)" --period "2024-01-15T00:00:00Z..2024-01-16T00:00:00Z"',
+      },
+      {
+        description: "Filter by error type (combined with the project filter)",
+        command:
+          'sentry explore my-org/cli -F title -F "count()" -q "error.type:TypeError" --period 1h',
+      },
+      {
+        description: "Span operation latency",
+        command:
+          'sentry explore my-org/cli -F span.op -F "p50(span.duration)" -F "p95(span.duration)" --dataset spans --period 1h',
+      },
+      {
+        description: "Top spans by count",
+        command:
+          'sentry explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"',
+      },
+      {
+        description:
+          "Sum a custom metric (e.g., LLM token usage) across an organization",
+        command:
+          "sentry explore my-org/ -m llm.token_usage --dataset metrics --period 7d",
+      },
+      {
+        description: "Break a metric down by a tag column",
+        command:
+          "sentry explore my-org/seer -F gen_ai.request.model -m llm.token_usage --dataset metrics --period 7d",
+      },
+      {
+        description: "Use a different metric aggregation (default is sum)",
+        command:
+          "sentry explore my-org/ -m cache.hit_rate --agg avg --dataset metrics",
+      },
+      {
+        description: "Use the raw tracemetrics format",
+        command:
+          'sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics --period 7d',
+      },
+      {
+        description: "Filter replays by activity level",
+        command:
+          "sentry explore my-org/cli --dataset replays -F activity -F duration -F count_errors --period 7d",
+      },
+      {
+        description: "Log severity counts in the last hour",
+        command:
+          'sentry explore my-org/cli -F severity -F "count()" --dataset logs --period 1h',
+      },
+      {
+        description: "Pipe JSON to jq",
+        command:
+          "sentry explore my-org/cli -F title -F \"count()\" --json | jq '.data[:5]'",
+      },
+    ],
   },
   output: {
     human: formatExploreHuman,

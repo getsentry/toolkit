@@ -36,6 +36,16 @@ export const viewCommand = buildCommand({
       "  1. Positional argument <org-slug>\n" +
       "  2. Config defaults\n" +
       "  3. SENTRY_DSN environment variable or source code detection",
+    examples: [
+      {
+        description: "View organization details",
+        command: "sentry org view my-org",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry org view my-org -w",
+      },
+    ],
   },
   output: { human: formatOrgDetails },
   parameters: {

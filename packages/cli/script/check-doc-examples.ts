@@ -31,6 +31,7 @@ import type {
   RouteMap,
   RouteTarget,
 } from "../src/lib/introspect.js";
+import { blankCodeBlocks, markdownCodeBlocks } from "./markdown.js";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-docs-sections.ts)
@@ -76,7 +77,6 @@ const ORG_PLACEHOLDER_RE = /^(?:my-org|acme)$/;
 /** Placeholders of positionals parsed with `parseOrgProjectArg()`. */
 const TARGET_PLACEHOLDER_RE = /^(?:target|org\/.+)$/;
 
-const FENCE_RE = /^(`{3,}|~{3,})\s*([\w-]*)[^\n]*\n([\s\S]*?)\n\1\s*$/gm;
 const SHELL_LANGS = new Set(["", "bash", "sh", "shell", "zsh", "console"]);
 const INLINE_CODE_RE = /(?<!`)`(sentry [^`\n]+)`(?!`)/g;
 const COMMAND_SPLIT_RE = /\s*(?:\|\||&&|\||;)\s*/;
@@ -84,6 +84,7 @@ const PROMPT_RE = /^\$\s+/;
 const CONTINUATION_RE = /\\\n\s*/g;
 const PLACEHOLDER_RE = /[<>[\]{}]|\.\.\.|…|^\$/;
 const SHORT_ALIAS_RE = /^-([a-zA-Z])$/;
+const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 type Finding = { file: string; example: string; problem: string };
 
@@ -135,11 +136,11 @@ function tokenize(command: string): string[] {
 /** Collect `sentry …` invocations from one Markdown file. */
 function extractInvocations(markdown: string): string[] {
   const invocations: string[] = [];
-  for (const [, , lang = "", body = ""] of markdown.matchAll(FENCE_RE)) {
+  for (const { code, lang } of markdownCodeBlocks(markdown)) {
     if (!SHELL_LANGS.has(lang)) {
       continue;
     }
-    for (const rawLine of body.replace(CONTINUATION_RE, " ").split("\n")) {
+    for (const rawLine of code.replace(CONTINUATION_RE, " ").split("\n")) {
       const line = rawLine.trim().replace(PROMPT_RE, "");
       if (line.startsWith("#")) {
         continue;
@@ -151,7 +152,7 @@ function extractInvocations(markdown: string): string[] {
       }
     }
   }
-  const prose = markdown.replace(FENCE_RE, "");
+  const prose = blankCodeBlocks(markdown);
   for (const [, code = ""] of prose.matchAll(INLINE_CODE_RE)) {
     invocations.push(code);
   }
@@ -222,7 +223,15 @@ function isTargetParam(param: PositionalParam | undefined): boolean {
 
 /** Problems with one `sentry …` invocation. */
 function checkInvocation(invocation: string): string[] {
-  const tokens = tokenize(invocation).slice(1);
+  const words = tokenize(invocation);
+  // Skip a `sudo` or `NAME=value` prefix, e.g. `SENTRY_DSN=… sentry monitor run`
+  const start = words.findIndex(
+    (word) => word !== "sudo" && !ENV_ASSIGNMENT_RE.test(word),
+  );
+  if (words[start] !== "sentry") {
+    return [];
+  }
+  const tokens = words.slice(start + 1);
   const resolved = resolve(tokens);
   if (!resolved) {
     return [];
