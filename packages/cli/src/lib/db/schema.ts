@@ -47,6 +47,11 @@ export type TableSchema = {
    * should NOT also set `primaryKey: true`.
    */
   compositePrimaryKey?: string[];
+  /**
+   * The table only holds data the CLI can fetch or detect again, so repair
+   * may drop and recreate it when its shape is wrong or a newer CLI wrote it.
+   */
+  rebuildable?: boolean;
 };
 
 /**
@@ -107,6 +112,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
   },
 
   project_cache: {
+    rebuildable: true,
     columns: {
       cache_key: { type: "TEXT", primaryKey: true },
       org_slug: { type: "TEXT", notNull: true },
@@ -127,6 +133,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   dsn_cache: {
+    rebuildable: true,
     columns: {
       directory: { type: "TEXT", primaryKey: true },
       dsn: { type: "TEXT", notNull: true },
@@ -157,6 +164,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   project_aliases: {
+    rebuildable: true,
     columns: {
       alias: { type: "TEXT", primaryKey: true },
       org_slug: { type: "TEXT", notNull: true },
@@ -175,6 +183,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   pagination_cursors: {
+    rebuildable: true,
     columns: {
       command_key: { type: "TEXT", notNull: true },
       context: { type: "TEXT", notNull: true },
@@ -191,6 +200,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   org_regions: {
+    rebuildable: true,
     columns: {
       org_slug: { type: "TEXT", notNull: true },
       org_id: { type: "TEXT", addedInVersion: 8 },
@@ -221,6 +231,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   repo_cache: {
+    rebuildable: true,
     columns: {
       // Composite PK (org_slug) — one row per org caches the full repo list
       org_slug: { type: "TEXT", primaryKey: true },
@@ -251,6 +262,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
    * permissions).
    */
   issue_org_cache: {
+    rebuildable: true,
     columns: {
       // Numeric issue group ID (e.g., "7413562541"). TEXT to sidestep the
       // 2^53 JavaScript number limit if Sentry's group IDs ever exceed it.
@@ -264,6 +276,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   project_root_cache: {
+    rebuildable: true,
     columns: {
       cwd: { type: "TEXT", primaryKey: true },
       project_root: { type: "TEXT", notNull: true },
@@ -416,29 +429,37 @@ export function hasColumn(
   return result.count > 0;
 }
 
+/** Primary key columns a table schema declares, in key order. */
+function declaredPrimaryKey(schema: TableSchema): string[] {
+  return (
+    schema.compositePrimaryKey ??
+    Object.entries(schema.columns)
+      .filter(([, col]) => col.primaryKey)
+      .map(([name]) => name)
+  );
+}
+
 /**
- * Check if a table has the expected composite primary key.
+ * Check if a table's primary key is exactly `expectedColumns`, in order.
  *
- * Inspects the CREATE TABLE DDL stored in sqlite_master to verify
- * the table has a table-level PRIMARY KEY constraint matching the
- * expected columns. Returns false if the table uses per-column
- * PRIMARY KEY instead (e.g., `command_key TEXT PRIMARY KEY`).
+ * Reads `pragma_table_info`, so single-column and composite keys compare the
+ * same way. A table written by another CLI version can have a different key
+ * with the same columns, which makes `ON CONFLICT` upserts fail.
  */
-function hasCompositePrimaryKey(
+function hasPrimaryKey(
   db: Database,
   table: string,
   expectedColumns: string[],
 ): boolean {
-  const row = db
-    .query("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")
-    .get(table) as { sql: string } | undefined;
-
-  if (!row) {
-    return false;
-  }
-
-  const expectedPK = `PRIMARY KEY (${expectedColumns.join(", ")})`;
-  return row.sql.includes(expectedPK);
+  const rows = db
+    .query(
+      `SELECT name FROM pragma_table_info('${table}') WHERE pk > 0 ORDER BY pk`,
+    )
+    .all() as { name: string }[];
+  return (
+    rows.length === expectedColumns.length &&
+    rows.every((row, i) => row.name === expectedColumns[i])
+  );
 }
 
 /** Add a column to a table if it doesn't exist */
@@ -457,7 +478,8 @@ function addColumnIfMissing(
 export type SchemaIssue =
   | { type: "missing_table"; table: string }
   | { type: "missing_column"; table: string; column: string }
-  | { type: "wrong_primary_key"; table: string };
+  | { type: "wrong_primary_key"; table: string }
+  | { type: "newer_schema"; version: number };
 
 function findMissingColumns(db: Database, tableName: string): SchemaIssue[] {
   const columns = EXPECTED_COLUMNS[tableName];
@@ -475,10 +497,7 @@ function findMissingColumns(db: Database, tableName: string): SchemaIssue[] {
 
 function findPrimaryKeyIssues(db: Database, tableName: string): SchemaIssue[] {
   const schema = TABLE_SCHEMAS[tableName];
-  if (
-    schema?.compositePrimaryKey &&
-    !hasCompositePrimaryKey(db, tableName, schema.compositePrimaryKey)
-  ) {
+  if (schema && !hasPrimaryKey(db, tableName, declaredPrimaryKey(schema))) {
     return [{ type: "wrong_primary_key", table: tableName }];
   }
   return [];
@@ -490,6 +509,11 @@ function findPrimaryKeyIssues(db: Database, tableName: string): SchemaIssue[] {
  */
 export function getSchemaIssues(db: Database): SchemaIssue[] {
   const issues: SchemaIssue[] = [];
+
+  const storedVersion = getSchemaVersion(db);
+  if (storedVersion > CURRENT_SCHEMA_VERSION) {
+    issues.push({ type: "newer_schema", version: storedVersion });
+  }
 
   for (const tableName of Object.keys(EXPECTED_TABLES)) {
     if (!tableExists(db, tableName)) {
@@ -548,24 +572,26 @@ function repairMissingColumns(db: Database, result: RepairResult): void {
 }
 
 /**
- * Drop and recreate tables that have incorrect primary key constraints.
+ * Drop and recreate rebuildable tables that have the wrong primary key.
  *
- * This fixes the CLI-72 bug where pagination_cursors was created with a
- * single-column PK (`command_key TEXT PRIMARY KEY`) instead of the expected
- * composite PK (`PRIMARY KEY (command_key, context)`). SQLite does not
- * support ALTER TABLE to change primary keys, so the table must be dropped
- * and recreated. The data loss is acceptable since pagination cursors are
- * ephemeral (5-minute TTL).
+ * SQLite cannot ALTER a primary key, so the table must be recreated. This
+ * covers CLI-72 (pagination_cursors created with a single-column PK) and a
+ * table whose key changed in another CLI version (#1611: `org_regions` from
+ * a newer CLI). Tables holding data the CLI cannot rebuild are reported
+ * instead of dropped.
  */
 function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
   for (const [tableName, schema] of Object.entries(TABLE_SCHEMAS)) {
-    if (!schema.compositePrimaryKey) {
-      continue;
-    }
     if (!tableExists(db, tableName)) {
       continue;
     }
-    if (hasCompositePrimaryKey(db, tableName, schema.compositePrimaryKey)) {
+    if (hasPrimaryKey(db, tableName, declaredPrimaryKey(schema))) {
+      continue;
+    }
+    if (!schema.rebuildable) {
+      result.failed.push(
+        `Table ${tableName} has an unexpected primary key and holds data that cannot be rebuilt`,
+      );
       continue;
     }
     try {
@@ -581,9 +607,48 @@ function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
   }
 }
 
+/** Names of tables that only hold data the CLI can fetch or detect again. */
+const REBUILDABLE_TABLES = Object.entries(TABLE_SCHEMAS)
+  .filter(([, schema]) => schema.rebuildable)
+  .map(([name]) => name);
+
+/**
+ * Rebuild every cache table when a newer CLI last wrote the database.
+ *
+ * A newer CLI can change what cached rows mean without changing their
+ * shape, so this version cannot trust them. Caches refill on demand.
+ */
+function rebuildCachesFromNewerSchema(
+  db: Database,
+  result: RepairResult,
+): void {
+  const storedVersion = getSchemaVersion(db);
+  if (storedVersion <= CURRENT_SCHEMA_VERSION) {
+    return;
+  }
+  try {
+    db.transaction(() => {
+      for (const tableName of REBUILDABLE_TABLES) {
+        db.exec(`DROP TABLE IF EXISTS ${tableName}`);
+        db.exec(EXPECTED_TABLES[tableName] as string);
+      }
+    })();
+    result.fixed.push(
+      `Rebuilt cached data written by a newer CLI (schema ${storedVersion})`,
+    );
+  } catch (e) {
+    const msg = stringifyUnknown(e);
+    result.failed.push(`Failed to rebuild cache tables: ${msg}`);
+  }
+}
+
 /**
  * Repair schema issues by creating missing tables, adding missing columns,
- * and recreating tables with incorrect primary key constraints.
+ * and recreating tables with incorrect primary key constraints. When a newer
+ * CLI last wrote the database, every cache table is rebuilt first.
+ *
+ * Any fix sets the stored version to {@link CURRENT_SCHEMA_VERSION}, so a
+ * newer CLI re-runs its later migrations against what this version wrote.
  *
  * @param db - The raw database connection (not the traced wrapper)
  * @returns Lists of fixed and failed repairs
@@ -591,6 +656,7 @@ function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
 export function repairSchema(db: Database): RepairResult {
   const result: RepairResult = { fixed: [], failed: [] };
 
+  rebuildCachesFromNewerSchema(db, result);
   repairMissingTables(db, result);
   repairMissingColumns(db, result);
   repairWrongPrimaryKeys(db, result);
@@ -744,6 +810,9 @@ export function initSchema(db: Database): void {
 }
 
 function getSchemaVersion(db: Database): number {
+  if (!tableExists(db, "schema_version")) {
+    return 0;
+  }
   const row = db.query("SELECT version FROM schema_version LIMIT 1").get() as {
     version: number;
   } | null;
@@ -821,31 +890,178 @@ function migrateSingleAuthToAccounts(db: Database): void {
 
   if (auth?.token) {
     const now = Date.now();
+    // A newer CLI hands its active login back through `auth` before a
+    // downgrade (see prepareDatabaseForDowngrade), so on the way back up the
+    // login may already exist. Refresh that row instead of duplicating it.
+    const existing = db
+      .query(
+        `SELECT account_id FROM accounts
+         WHERE token = ? OR (user_id IS NOT NULL AND user_id = ? AND host IS ?)
+         LIMIT 1`,
+      )
+      .get(auth.token, user?.user_id ?? null, auth.host) as
+      | { account_id: string }
+      | undefined;
     db.query("UPDATE accounts SET is_active = 0").run();
-    db.query(
-      `INSERT INTO accounts (account_id, host, user_id, email, username, name,
+    if (existing) {
+      db.query(
+        `UPDATE accounts SET token = ?, refresh_token = ?, expires_at = ?,
+          issued_at = ?, is_active = 1, updated_at = ?, last_used_at = ?
+         WHERE account_id = ?`,
+      ).run(
+        auth.token,
+        auth.refresh_token,
+        auth.expires_at,
+        auth.issued_at,
+        auth.updated_at ?? now,
+        now,
+        existing.account_id,
+      );
+    } else {
+      db.query(
+        `INSERT INTO accounts (account_id, host, user_id, email, username, name,
         token, refresh_token, expires_at, issued_at, is_active, created_at, updated_at,
         last_used_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-    ).run(
-      uuidv7(),
-      auth.host,
-      user?.user_id ?? null,
-      user?.email ?? null,
-      user?.username ?? null,
-      user?.name ?? null,
-      auth.token,
-      auth.refresh_token,
-      auth.expires_at,
-      auth.issued_at,
-      now,
-      auth.updated_at ?? now,
-      now,
-    );
+      ).run(
+        uuidv7(),
+        auth.host,
+        user?.user_id ?? null,
+        user?.email ?? null,
+        user?.username ?? null,
+        user?.name ?? null,
+        auth.token,
+        auth.refresh_token,
+        auth.expires_at,
+        auth.issued_at,
+        now,
+        auth.updated_at ?? now,
+        now,
+      );
+    }
   }
 
   db.exec("DROP TABLE IF EXISTS auth");
   db.exec("DROP TABLE IF EXISTS user_info");
+}
+
+/**
+ * Newest schema an older CLI can read without knowing about `accounts` or
+ * org-region provenance: v17 rebuilt `org_regions` with a new key and v18
+ * moved the login out of `auth`.
+ */
+const PRE_ACCOUNTS_SCHEMA_VERSION = 16;
+
+/** `auth` and `user_info` as CLI versions before schema v18 read them. */
+const LEGACY_AUTH_DDL = `CREATE TABLE auth (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    token TEXT,
+    refresh_token TEXT,
+    expires_at INTEGER,
+    issued_at INTEGER,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    host TEXT
+  )`;
+const LEGACY_USER_INFO_DDL = `CREATE TABLE user_info (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    user_id TEXT NOT NULL,
+    email TEXT,
+    username TEXT,
+    name TEXT,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+  )`;
+
+/** Copy the active account into the single-row tables older CLIs read. */
+function exportActiveAccountToLegacyTables(db: Database): void {
+  db.exec("DROP TABLE IF EXISTS auth");
+  db.exec("DROP TABLE IF EXISTS user_info");
+  db.exec(LEGACY_AUTH_DDL);
+  db.exec(LEGACY_USER_INFO_DDL);
+
+  const account = db
+    .query(
+      `SELECT host, user_id, email, username, name, token, refresh_token,
+        expires_at, issued_at, updated_at
+       FROM accounts WHERE is_active = 1 LIMIT 1`,
+    )
+    .get() as (LegacyAuthRow & LegacyUserRow) | undefined;
+  if (!account?.token) {
+    return;
+  }
+
+  db.query(
+    `INSERT INTO auth (id, token, refresh_token, expires_at, issued_at, updated_at, host)
+     VALUES (1, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    account.token,
+    account.refresh_token,
+    account.expires_at,
+    account.issued_at,
+    account.updated_at ?? Date.now(),
+    account.host,
+  );
+  if (account.user_id) {
+    db.query(
+      "INSERT INTO user_info (id, user_id, email, username, name) VALUES (1, ?, ?, ?, ?)",
+    ).run(account.user_id, account.email, account.username, account.name);
+  }
+}
+
+/**
+ * Leave the database readable by an older CLI before `sentry cli upgrade`
+ * installs one (#1611).
+ *
+ * Older CLIs only migrate forward and create missing tables with
+ * `CREATE TABLE IF NOT EXISTS`, so this:
+ * - drops every cache table, letting the older CLI recreate them in its own
+ *   shape (v17 changed the `org_regions` key, which breaks older upserts);
+ * - copies the active login into the pre-v18 `auth`/`user_info` tables, so
+ *   the older CLI stays logged in;
+ * - sets the stored version to {@link PRE_ACCOUNTS_SCHEMA_VERSION}, so this
+ *   CLI re-runs its later migrations when it comes back and picks up any
+ *   login or token refresh the older CLI wrote to `auth`.
+ *
+ * Every migration after that version must therefore be safe to re-run.
+ */
+export function prepareDatabaseForDowngrade(db: Database): void {
+  db.transaction(() => {
+    for (const tableName of REBUILDABLE_TABLES) {
+      db.exec(`DROP TABLE IF EXISTS ${tableName}`);
+    }
+    if (tableExists(db, "accounts")) {
+      exportActiveAccountToLegacyTables(db);
+    }
+    db.query("UPDATE schema_version SET version = ?").run(
+      PRE_ACCOUNTS_SCHEMA_VERSION,
+    );
+  })();
+}
+
+/**
+ * Make a database last written by a newer CLI usable by this version.
+ *
+ * Older CLIs never ran this check, so a downgrade left upserts failing
+ * against tables whose key had changed (#1611). Repair rebuilds the caches
+ * and records this version, so the newer CLI re-migrates when it returns.
+ */
+function adaptNewerSchema(db: Database, storedVersion: number): void {
+  const versions = `schema ${storedVersion}; this CLI uses ${CURRENT_SCHEMA_VERSION}`;
+  if (getEnv()[NO_AUTO_REPAIR_ENV] === "1") {
+    logger.warn(
+      `The local database was written by a newer Sentry CLI (${versions}). Run \`sentry cli fix\` to adapt it.`,
+    );
+    return;
+  }
+  const { failed } = repairSchema(db);
+  if (failed.length > 0) {
+    logger.warn(
+      `Could not adapt the local database written by a newer Sentry CLI (${versions}): ${failed.join("; ")}. Run \`sentry cli fix\`.`,
+    );
+    return;
+  }
+  logger.info(
+    `The local database was written by a newer Sentry CLI (${versions}). Cleared cached data so this version can use it.`,
+  );
 }
 
 /**
@@ -860,6 +1076,11 @@ function migrateSingleAuthToAccounts(db: Database): void {
 // sequential migration steps are inherently linear
 export function runMigrations(db: Database): void {
   const currentVersion = getSchemaVersion(db);
+
+  if (currentVersion > CURRENT_SCHEMA_VERSION) {
+    adaptNewerSchema(db, currentVersion);
+    return;
+  }
 
   // Migration 1 -> 2: Add org_regions and instance_info tables. The
   // `user_info` table this step also created was folded into `accounts` in v18.
@@ -899,10 +1120,7 @@ export function runMigrations(db: Database): void {
   if (
     currentVersion < 6 &&
     tableExists(db, "pagination_cursors") &&
-    !hasCompositePrimaryKey(db, "pagination_cursors", [
-      "command_key",
-      "context",
-    ])
+    !hasPrimaryKey(db, "pagination_cursors", ["command_key", "context"])
   ) {
     db.exec("DROP TABLE pagination_cursors");
     db.exec(EXPECTED_TABLES.pagination_cursors as string);
