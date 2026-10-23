@@ -1,5 +1,5 @@
 diff --git a/dist/oauth-provider.d.ts b/dist/oauth-provider.d.ts
-index 01141b6b4e708a7f40b32667ed8dd9cf33592888..33c099916cedc3666a5330675f1b3dc88d60a5c1 100644
+index 01141b6b4e708a7f40b32667ed8dd9cf33592888..8778203e3cfdf4c996c3155c67babcfd1956527b 100644
 --- a/dist/oauth-provider.d.ts
 +++ b/dist/oauth-provider.d.ts
 @@ -684,6 +684,12 @@ interface OAuthProviderOptions<Env = Cloudflare.Env> {
@@ -16,7 +16,7 @@ index 01141b6b4e708a7f40b32667ed8dd9cf33592888..33c099916cedc3666a5330675f1b3dc8
     * When true, requested-vs-granted resource validation compares origins only
     * (scheme + host + port) instead of exact URIs. This allows an origin-only
 diff --git a/dist/oauth-provider.js b/dist/oauth-provider.js
-index c15348c226f1064f6c277f45f10740b9266219e9..43b4d2bc3fca7aa844722c57c895c68951b76d55 100644
+index c15348c226f1064f6c277f45f10740b9266219e9..9182e6421c801f03b0b93d543afab5d733e4b2e7 100644
 --- a/dist/oauth-provider.js
 +++ b/dist/oauth-provider.js
 @@ -2806,6 +2806,11 @@ var OAuthProviderImpl = class {
@@ -31,3 +31,18 @@ index c15348c226f1064f6c277f45f10740b9266219e9..43b4d2bc3fca7aa844722c57c895c689
  				return await fetchClientIdMetadataDocument(clientId, this.serverCapabilities);
  			} catch (error) {
  				console.warn(`CIMD fetch failed for ${clientId}:`, error instanceof Error ? error.message : error);
+@@ -3491,6 +3496,14 @@ var OAuthHelpersImpl = class {
+ 		const resourceParams = url.searchParams.getAll("resource");
+ 		const resourceParam = resourceParams.length > 0 ? resourceParams.length === 1 ? resourceParams[0] : resourceParams : void 0;
+ 		if (!clientId) throw new AuthorizationError("invalid_request", { description: "client_id is required" });
++		if (this.provider.options.clientIdMetadataDocumentEnabled && this.provider.isClientMetadataUrl(clientId)) {
++			// Invalid identifiers are request errors, not metadata resolution failures.
++			try {
++				validateClientIdentifierUrl(clientId);
++			} catch {
++				throw new AuthorizationError("invalid_request", { description: "Invalid client_id" });
++			}
++		}
+ 		const clientInfo = await this.lookupClient(clientId);
+ 		if (!clientInfo) throw new AuthorizationError("invalid_request", { description: "Invalid client_id" });
+ 		try {

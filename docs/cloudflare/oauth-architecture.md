@@ -215,6 +215,14 @@ upstream option, and run
 The regression exercises the production provider with blocked metadata, token
 exchange and refresh, and checks that OAuth validation remains enforced.
 
+The patch also validates CIMD client ID syntax before authorization looks up
+metadata, using the provider's existing validator. Invalid identifiers produce
+`AuthorizationError` and a local `400` without redirecting. Fetch failures and
+invalid metadata for syntactically valid URLs still propagate as `CimdFetchError`.
+Dynamic client registration and the token endpoint retain their existing behavior.
+Run `src/server/oauth/client-id-validation.integration.test.ts` with the command
+above when changing this patch.
+
 ### 2. API Handler
 
 The `apiHandler` is a protected endpoint that requires valid OAuth tokens:
