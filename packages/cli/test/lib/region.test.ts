@@ -240,6 +240,40 @@ describe("resolveOrgRegion", () => {
     }
   });
 
+  test("falls back to baseUrl when API returns an empty regionUrl (CLI-2DE)", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      if (req.url.includes("/organizations/empty-region-org/")) {
+        return new Response(
+          JSON.stringify({
+            id: "791",
+            slug: "empty-region-org",
+            name: "Self-hosted Org 3",
+            links: {
+              organizationUrl: "/organizations/empty-region-org/",
+              regionUrl: "",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+      return new Response(JSON.stringify({ detail: "Not found" }), {
+        status: 404,
+      });
+    };
+
+    try {
+      const regionUrl = await resolveOrgRegion("empty-region-org");
+      expect(regionUrl).toBe("https://sentry.io");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("falls back to baseUrl when API returns a malformed regionUrl", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {

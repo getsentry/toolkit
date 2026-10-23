@@ -39,6 +39,7 @@ import {
 } from "./db/auth.js";
 import {
   ApiError,
+  ConfigError,
   HostScopeError,
   MalformedAuthTokenError,
   TimeoutError,
@@ -1117,6 +1118,15 @@ export function getSdkConfig(
   const normalizedBase = regionUrl.endsWith("/")
     ? regionUrl.slice(0, -1)
     : regionUrl;
+
+  // A relative/empty base makes SDK requests use a bare `/api/0/...` path,
+  // which undici rejects with an opaque "Failed to parse URL" (CLI-2DE).
+  if (!normalizeHttpOrigin(normalizedBase)) {
+    throw new ConfigError(
+      `Invalid Sentry API base URL: '${regionUrl}' is not an absolute HTTP(S) URL.`,
+      "Set SENTRY_URL to your Sentry instance (e.g. https://sentry.example.com) and retry.",
+    );
+  }
 
   return {
     // SDK functions already include /api/0/ in their URL paths,

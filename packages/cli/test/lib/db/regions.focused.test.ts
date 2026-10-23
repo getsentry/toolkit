@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
+import { getDatabase } from "../../../src/lib/db/index.js";
 import {
+  getOrgByNumericId,
   getOrgRegion,
   isTrustedRegionOrigin,
   resetTrustedRegionUrlsForTesting,
@@ -62,4 +64,19 @@ describe("credential and origin scoped organization regions", () => {
       setOrgRegion("invalid", regionUrl, SOURCE_A, SOURCE_A, IDENTITY_A),
     ).toThrow();
   });
+
+  test.each(["", "/", "/sentry"])(
+    "treats a legacy non-absolute cached region URL %j as a cache miss (CLI-2DE)",
+    (regionUrl) => {
+      getDatabase()
+        .query(
+          "INSERT INTO org_regions (org_slug, org_id, region_url, credential_identity, source_origin, response_origin, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run("legacy", "4242", regionUrl, IDENTITY_A, SOURCE_A, SOURCE_A, 0);
+      expect(getOrgRegion("legacy", SOURCE_A, IDENTITY_A)).toBeUndefined();
+      expect(
+        getOrgByNumericId("4242", SOURCE_A, IDENTITY_A),
+      ).toBeUndefined();
+    },
+  );
 });

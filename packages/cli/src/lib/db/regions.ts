@@ -268,8 +268,33 @@ export function getOrgRegion(
     | Pick<OrgRegionRow, "region_url">
     | undefined;
 
-  recordCacheHit("region", !!row);
-  return row?.region_url;
+  const regionUrl = usableRegionUrl(row?.region_url, orgSlug);
+  recordCacheHit("region", !!regionUrl);
+  return regionUrl;
+}
+
+/**
+ * Reject cached region URLs that are not absolute HTTP(S) URLs.
+ *
+ * Older CLI releases persisted a self-hosted org's raw `links.regionUrl`
+ * (e.g. "" or "/"). Returning such a value makes SDK requests use a bare
+ * path like `/api/0/...`, which `new Request()` rejects (CLI-2DE). Treating
+ * it as a cache miss forces a fresh lookup that resolves an absolute URL.
+ */
+function usableRegionUrl(
+  regionUrl: string | undefined,
+  orgSlug: string,
+): string | undefined {
+  if (!regionUrl) {
+    return;
+  }
+  if (!normalizeHttpOrigin(regionUrl)) {
+    log.debug(
+      `Ignoring cached non-absolute region URL for '${orgSlug}': '${regionUrl}'`,
+    );
+    return;
+  }
+  return regionUrl;
 }
 
 /**
@@ -299,10 +324,11 @@ export function getOrgByNumericId(
     | Pick<OrgRegionRow, "org_slug" | "region_url">
     | undefined;
 
-  if (!row) {
+  const regionUrl = usableRegionUrl(row?.region_url, row?.org_slug ?? "");
+  if (!(row && regionUrl)) {
     return;
   }
-  return { slug: row.org_slug, regionUrl: row.region_url };
+  return { slug: row.org_slug, regionUrl };
 }
 
 /**

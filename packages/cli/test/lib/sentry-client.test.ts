@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { setAuthToken } from "../../src/lib/db/auth.js";
-import { TimeoutError } from "../../src/lib/errors.js";
+import { ConfigError, TimeoutError } from "../../src/lib/errors.js";
 import {
   __injectTimeoutOverrideForTests,
   __resolveRequestTimeoutMsForTests,
@@ -34,6 +34,19 @@ afterEach(() => {
 function getAuthenticatedFetch(): typeof fetch {
   return getSdkConfig(REGION_URL).fetch as typeof fetch;
 }
+
+describe("getSdkConfig base URL validation", () => {
+  test.each(["", "/", "/sentry/"])(
+    "rejects non-absolute base URL %j with ConfigError (CLI-2DE)",
+    (base) => {
+      expect(() => getSdkConfig(base)).toThrow(ConfigError);
+    },
+  );
+
+  test("strips a trailing slash from an absolute base URL", () => {
+    expect(getSdkConfig(`${REGION_URL}/`).baseUrl).toBe(REGION_URL);
+  });
+});
 
 describe("fetchWithRetry / buildAttemptFactory", () => {
   test("retries a POST with a string body without re-consuming the body", async () => {
