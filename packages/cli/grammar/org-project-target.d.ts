@@ -1,0 +1,33 @@
+// Types of the parser generated from org-project-target.pegjs. The generator
+// copies this file to src/generated/org-project-target-grammar.d.ts and
+// rewrites relative imports to resolve from there.
+
+import type { ParsedOrgProject } from "../src/lib/arg-parsing.js";
+
+/**
+ * Hooks the target grammar calls for character-level validation, so its
+ * errors match the rest of the CLI. See `parseOrgProjectArg()`.
+ */
+export type OrgProjectTargetGrammarOptions = {
+  /** Accept `<org>/<project>,<project>` lists. */
+  multi?: boolean;
+  /** Throw when `value` is not a valid slug. */
+  checkSlug: (value: string, label: string) => void;
+  /** Throw when `value` starts with `@`. */
+  rejectAt: (value: string, label: string) => void;
+  /** Throw a validation error. */
+  invalid: (message: string, field?: string) => never;
+  startRule?: "target";
+};
+
+export declare class SyntaxError extends Error {
+  expected: unknown;
+  found: string | null;
+  location: unknown;
+}
+
+/** Parse a non-empty target that is not a URL. */
+export declare function parse(
+  input: string,
+  options: OrgProjectTargetGrammarOptions,
+): Exclude<ParsedOrgProject, { type: "auto-detect" }>;

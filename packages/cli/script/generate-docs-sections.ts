@@ -13,7 +13,8 @@
  *   - getting-started.mdx: platform support table
  *   - agent-guidance.md: destructive commands (from `destructive` commands)
  *   - agentic-usage.md: detected agents (from AGENT_DISPLAY_NAMES)
- *   - commands/index.md fragment, CONTRIBUTING.md: target syntax (TARGET_FORMS)
+ *   - commands/index.md fragment, CONTRIBUTING.md: target syntax (from the
+ *     `@form` lines in grammar/org-project-target.pegjs)
  *   - plugins/README.md: skill file layout (paths checked on disk)
  *
  * Unlike generate-command-docs.ts (which produces gitignored files from scratch),
@@ -26,6 +27,7 @@
 
 import { existsSync, mkdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
+import peggy from "peggy";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-command-docs.ts)
@@ -42,7 +44,6 @@ if (!skillContentExists) {
 }
 
 import type { EnvVarEntry } from "../src/lib/env-registry.js";
-import type { TargetForm } from "../src/lib/target-syntax.js";
 import type { RouteInfo, RouteMap } from "../src/lib/introspect.js";
 
 const { routes } = await import("../src/app.js");
@@ -50,9 +51,9 @@ const { extractAllRoutes } = await import("../src/lib/introspect.js");
 const { OAUTH_SCOPES } = await import("../src/lib/oauth.js");
 const { ENV_VAR_REGISTRY } = await import("../src/lib/env-registry.js");
 const { AGENT_DISPLAY_NAMES } = await import("../src/lib/detect-agent.js");
-const { TARGET_FORMS } = await import("../src/lib/target-syntax.js");
-const { parseOrgProjectArg } = await import("../src/lib/arg-parsing.js");
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
+const TARGET_GRAMMAR = "grammar/org-project-target.pegjs";
+const targetGrammar = await readFile(TARGET_GRAMMAR, "utf-8");
 const workspace = JSON.parse(await readFile("../../package.json", "utf-8"));
 
 const isCheck = process.argv.includes("--check");
@@ -605,25 +606,88 @@ function generateDetectedAgents(): string {
 // Section: Target Syntax (commands/index.md fragment, CONTRIBUTING.md)
 // ---------------------------------------------------------------------------
 
-/**
- * Generate the target syntax table from TARGET_FORMS. Each example goes
- * through the real parser, so generation fails when the docs and the parser
- * disagree about what a form means.
- */
-function generateTargetSyntax(): string {
-  const lines = ["| Target | Meaning |", "|--------|---------|"];
-  for (const [type, forms] of Object.entries(TARGET_FORMS)) {
-    for (const form of forms as readonly TargetForm[]) {
-      const parsed = parseOrgProjectArg(form.example, { multi: form.multi });
-      if (parsed.type !== type) {
-        throw new Error(
-          `TARGET_FORMS: ${form.syntax} example ${JSON.stringify(form.example)} parses as "${parsed.type}", not "${type}"`,
-        );
-      }
-      lines.push(`| ${form.syntax} | ${form.meaning} |`);
+/** `// @form <syntax> — <meaning>` or `// @invalid`. */
+const TARGET_ANNOTATION_RE = /^\s*\/\/ @(form|invalid)\b ?(.*)$/;
+/** An indented `//` line continuing the annotation above it. */
+const TARGET_CONTINUATION_RE = /^\s*\/\/ {3}(\S.*)$/;
+const COMMENT_LINE_RE = /^\s*\/\//;
+
+/** One annotation; `start` and `end` are 1-based line numbers. */
+type TargetAnnotation = {
+  start: number;
+  end: number;
+  kind: string;
+  text: string;
+};
+
+/** Collect the `@form` and `@invalid` annotations of a grammar. */
+function readTargetAnnotations(lines: string[]): TargetAnnotation[] {
+  const annotations: TargetAnnotation[] = [];
+  for (const [index, line] of lines.entries()) {
+    const annotation = TARGET_ANNOTATION_RE.exec(line);
+    const continuation = TARGET_CONTINUATION_RE.exec(line);
+    const previous = annotations.at(-1);
+    if (annotation) {
+      annotations.push({
+        start: index + 1,
+        end: index + 1,
+        kind: annotation[1] ?? "",
+        text: annotation[2] ?? "",
+      });
+    } else if (continuation && previous?.end === index) {
+      previous.text += ` ${continuation[1]}`;
+      previous.end = index + 1;
     }
   }
-  return lines.join("\n");
+  return annotations;
+}
+
+/**
+ * Generate the target syntax table from the `@form` lines in the target
+ * grammar. Generation fails when an alternative of the `target` rule has no
+ * `@form` or `@invalid` line in the comments right above it, so a new form
+ * cannot ship undocumented.
+ */
+function generateTargetSyntax(): string {
+  // Checkouts with CRLF line endings (Windows) must parse the same.
+  const lines = targetGrammar.split(/\r?\n/);
+  const annotations = readTargetAnnotations(lines);
+
+  const target = peggy.parser
+    .parse(targetGrammar, { grammarSource: TARGET_GRAMMAR })
+    .rules.find((rule) => rule.name === "target");
+  if (target?.expression.type !== "choice") {
+    throw new Error(
+      `${TARGET_GRAMMAR}: expected a "target" rule with alternatives`,
+    );
+  }
+  for (const alternative of target.expression.alternatives) {
+    const line = alternative.location.start.line;
+    let first = line;
+    while (first > 1 && COMMENT_LINE_RE.test(lines[first - 2] ?? "")) {
+      first -= 1;
+    }
+    if (!annotations.some((a) => a.start >= first && a.start < line)) {
+      throw new Error(
+        `${TARGET_GRAMMAR}:${line}: target alternative has no @form or @invalid line`,
+      );
+    }
+  }
+
+  const rows = ["| Target | Meaning |", "|--------|---------|"];
+  for (const { start, kind, text } of annotations) {
+    if (kind !== "form") {
+      continue;
+    }
+    const [syntax, meaning] = text.split(" — ");
+    if (!(syntax && meaning)) {
+      throw new Error(
+        `${TARGET_GRAMMAR}:${start}: expected "@form <syntax> — <meaning>"`,
+      );
+    }
+    rows.push(`| ${syntax} | ${meaning} |`);
+  }
+  return rows.join("\n");
 }
 
 // ---------------------------------------------------------------------------
