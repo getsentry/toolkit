@@ -241,17 +241,16 @@ Reference: `span/list.ts`, `trace/view.ts`, `event/view.ts`
 
 **Parsed target positionals:** A single `[<org>/][<project>]` positional can
 use `parseOrgProjectPositional` from `src/lib/arg-parsing.ts`. `func` then
-receives the `ParsedOrgProject` directly (default an optional positional to
-`AUTO_DETECT_TARGET`) and never calls `parseOrgProjectArg` itself.
-`buildCommand` wraps every positional parser (`src/lib/positional-parse.ts`)
-so a `CliError` it throws is rethrown by the command wrapper before `func`
-runs, keeping its exit code, telemetry, and `--json` output instead of
-Stricli's generic argument error. Use `rawPositional(value)` for what the user
-typed. Tests that call `func` directly load it with `loadCommandFunc(command)`
-from `test/helpers.ts` and pass raw strings; it runs the command's own
-positional parsers, as does the SDK invoke path (`applyPositionalParsers`).
-Positionals whose meaning depends on how many arguments were given, such as
-`[<org>/<project>/]<trace-id>`, keep parsing in `func`.
+takes a `ParsedOrgProject` (default an optional positional to
+`AUTO_DETECT_TARGET`) and never calls `parseOrgProjectArg` itself. The value
+parses on first property access (`lazyPositional` in
+`src/lib/positional-parse.ts`), so invalid input still throws the parser's
+`CliError` from inside `func`, after the auth guard, with its exit code. Use
+`rawPositional(value)` for what the user typed; it never parses.
+`buildCommand` runs these parsers on positionals that arrive as strings, so the
+SDK invoke path and tests that call `command.loader()` directly keep passing
+raw strings. Positionals whose meaning depends on how many arguments were
+given, such as `[<org>/<project>/]<trace-id>`, keep parsing in `func`.
 
 **Shell completion:** Target positionals that take an org or project use a
 completion-aware parser from `src/lib/completion-target.ts` instead of

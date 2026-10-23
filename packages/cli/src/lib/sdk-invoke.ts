@@ -20,7 +20,6 @@ import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
 import { withEnv } from "./env.js";
 import { stringifyUnknown } from "./errors.js";
-import type { PositionalDef } from "./positional-parse.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 
 /** CLI flag names/aliases that trigger infinite streaming output. */
@@ -79,21 +78,16 @@ export type FlagDef = {
   variadic?: boolean | string;
 };
 
-/** Resolved command: handler function + parameter definitions. */
+/** Resolved command: handler function + flag definitions for default application. */
 type ResolvedCommand = {
   handler: CommandHandler;
   flagDefs: Record<string, FlagDef>;
-  positionalDef?: PositionalDef;
 };
 
 /** Cached command entries, keyed by joined path (e.g., "org.list"). */
 const commandCache = new Map<
   string,
-  {
-    loader: () => Promise<CommandHandler>;
-    flagDefs: Record<string, FlagDef>;
-    positionalDef?: PositionalDef;
-  }
+  { loader: () => Promise<CommandHandler>; flagDefs: Record<string, FlagDef> }
 >();
 
 /**
@@ -125,42 +119,10 @@ async function resolveCommand(path: string[]): Promise<ResolvedCommand> {
           (m: any) => (typeof m === "function" ? m : m.default),
         ),
       flagDefs,
-      positionalDef: command.parameters?.positional,
     };
     commandCache.set(key, cached);
   }
-  return {
-    handler: await cached.loader(),
-    flagDefs: cached.flagDefs,
-    positionalDef: cached.positionalDef,
-  };
-}
-
-/**
- * Run a command's positional parsers on SDK-provided strings.
- *
- * Like flag defaults ({@link applyFlagDefaults}), positional parsing normally
- * happens in Stricli's argument scanner, which the SDK invoke path bypasses.
- * Without this, a command whose positional parses its own value (e.g.
- * `parseOrgProjectPositional`) would receive a bare string.
- *
- * @param args - Positional strings from the caller; `undefined` marks an
- *   omitted optional positional and is passed through unparsed
- * @param positionalDef - The command's Stricli positional definition
- * @param context - `this` for each parser, as Stricli passes it
- */
-export function applyPositionalParsers(
-  args: readonly (string | undefined)[],
-  positionalDef: PositionalDef | undefined,
-  context: unknown,
-): unknown[] {
-  return args.map((arg, index) => {
-    const param =
-      positionalDef?.kind === "array"
-        ? positionalDef.parameter
-        : positionalDef?.parameters[index];
-    return param && arg !== undefined ? param.parse.call(context, arg) : arg;
-  });
+  return { handler: await cached.loader(), flagDefs: cached.flagDefs };
 }
 
 /**
@@ -604,8 +566,7 @@ export function buildInvoker(options?: SentryOptions) {
   ): Promise<T> | AsyncIterable<T> {
     if (meta?.streaming) {
       return executeWithStream<T>(options, async (ctx, span) => {
-        const { handler, flagDefs, positionalDef } =
-          await resolveCommand(commandPath);
+        const { handler, flagDefs } = await resolveCommand(commandPath);
         if (span) {
           const { setCommandSpanName } = await import("./telemetry.js");
           setCommandSpanName(span, commandPath.join("."));
@@ -614,14 +575,13 @@ export function buildInvoker(options?: SentryOptions) {
         await handler.call(
           ctx.context,
           { ...resolvedFlags, json: true },
-          ...applyPositionalParsers(positionalArgs, positionalDef, ctx.context),
+          ...positionalArgs,
         );
       });
     }
 
     return executeWithCapture<T>(options, async (ctx, span) => {
-      const { handler, flagDefs, positionalDef } =
-        await resolveCommand(commandPath);
+      const { handler, flagDefs } = await resolveCommand(commandPath);
       if (span) {
         const { setCommandSpanName } = await import("./telemetry.js");
         setCommandSpanName(span, commandPath.join("."));
@@ -630,7 +590,7 @@ export function buildInvoker(options?: SentryOptions) {
       await handler.call(
         ctx.context,
         { ...resolvedFlags, json: true },
-        ...applyPositionalParsers(positionalArgs, positionalDef, ctx.context),
+        ...positionalArgs,
       );
     });
   };

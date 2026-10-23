@@ -1,126 +1,126 @@
 /**
- * Positional parsers that throw CliErrors.
+ * Positionals whose value parses lazily.
  *
- * Stricli runs positional parsers in its argument scanner and reports a
- * thrown error as a generic "Failed to parse" argument error (exit -4),
- * bypassing our CliError formatting, exit codes, and telemetry.
- * `buildCommand` wraps every positional parser with
- * {@link deferPositionalErrors}: a {@link CliError} becomes a
- * {@link DeferredPositionalError} value, which the command wrapper throws
- * before `func` runs, so the error surfaces like any other command error.
+ * A parser made with {@link lazyPositional} gives the command a stand-in
+ * for the parsed value. The stand-in has the parsed value's type, so `func`
+ * reads it like any other value (`target.type`, `target.org`), but the parse
+ * only runs on the first property access inside `func`. Until then nothing
+ * can fail and nothing runs early:
  *
- * The wrapper also remembers the raw input of object results, so code that
- * needs what the user typed (plural alias interception, `help` recovery,
- * telemetry) can read it with {@link rawPositional}.
+ * - Stricli's argument scanner never sees an error, so invalid input still
+ *   throws the parser's `CliError` from the command, with its exit code,
+ *   telemetry, and `--json` error output, instead of Stricli's generic
+ *   "Failed to parse" (exit -4).
+ * - Parser side effects, such as `parseOrgProjectArg` applying the host of a
+ *   pasted Sentry URL, run after the auth guard and rc URL check, as they did
+ *   when `func` called the parser itself.
+ *
+ * `buildCommand` also runs these parsers on positionals that reach the
+ * command as plain strings (the SDK invoke path and tests calling the loaded
+ * func), so every caller can keep passing what the user typed.
+ *
+ * Code that needs the raw input (plural alias interception, `help` recovery,
+ * telemetry) reads it with {@link rawPositional}, which never parses.
  */
 
 import {
-  getCompletionTarget,
+  type CompletionTarget,
   withCompletionTarget,
 } from "./completion-target.js";
-import { CliError } from "./errors.js";
 
-/** A positional whose parser threw a {@link CliError}. */
-export class DeferredPositionalError {
-  readonly raw: string;
-  readonly error: CliError;
-
-  constructor(raw: string, error: CliError) {
-    this.raw = raw;
-    this.error = error;
-  }
-}
-
-/** Raw input of each object a wrapped positional parser returned. */
+/** Raw input behind each stand-in. */
 const rawInputs = new WeakMap<object, string>();
 
-/** A Stricli positional parser. */
-type PositionalParser = (this: unknown, input: string) => unknown;
+/** Parsers made by {@link lazyPositional}. */
+const lazyParsers = new WeakSet<object>();
 
 /**
- * Wrap a positional parser so a {@link CliError} it throws is returned as a
- * {@link DeferredPositionalError} instead. Other errors still propagate.
- * Keeps the parser's completion target.
+ * A stand-in for `parse(raw)` that parses on first property access.
+ *
+ * `then` reads as `undefined` without parsing: Stricli awaits parser
+ * results, and a promise checks whether a resolved value is thenable.
  */
-export function deferPositionalErrors(
-  parse: PositionalParser,
-): PositionalParser {
-  const wrapped = function (this: unknown, input: string): unknown {
-    let value: unknown;
-    try {
-      value = parse.call(this, input);
-    } catch (error) {
-      if (error instanceof CliError) {
-        return new DeferredPositionalError(input, error);
-      }
-      throw error;
-    }
-    if (typeof value === "object" && value !== null) {
-      rawInputs.set(value, input);
-    }
-    return value;
+function lazyValue<T extends object>(
+  raw: string,
+  parse: (raw: string) => T,
+): T {
+  let parsed: { value: T } | undefined;
+  const value = (): T => {
+    parsed ??= { value: parse(raw) };
+    return parsed.value;
   };
-  const kind = getCompletionTarget(parse);
-  return kind ? withCompletionTarget(kind, wrapped) : wrapped;
+  const standIn = new Proxy({} as T, {
+    get: (_target, key) =>
+      key === "then" ? undefined : Reflect.get(value(), key),
+    set: (_target, key, newValue) => Reflect.set(value(), key, newValue),
+    has: (_target, key) => Reflect.has(value(), key),
+    ownKeys: () => Reflect.ownKeys(value()),
+    getOwnPropertyDescriptor: (_target, key) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(value(), key);
+      // The empty proxy target lacks the key, so it must report configurable
+      return descriptor && { ...descriptor, configurable: true };
+    },
+  });
+  rawInputs.set(standIn, raw);
+  return standIn;
 }
 
-/** A Stricli positional definition — subset that carries the parsers. */
-export type PositionalDef =
-  | { kind: "tuple"; parameters: readonly { parse: PositionalParser }[] }
-  | { kind: "array"; parameter: { parse: PositionalParser } };
+/**
+ * Build a positional parser that hands the command a lazily parsed value.
+ *
+ * @param kind - Shell completion kind for the positional
+ * @param parse - Parses the raw input; may throw a `CliError`
+ */
+export function lazyPositional<T extends object>(
+  kind: CompletionTarget,
+  parse: (raw: string) => T,
+): (input: string) => T {
+  const parser = withCompletionTarget(kind, (input: string) =>
+    lazyValue(input, parse),
+  );
+  lazyParsers.add(parser);
+  return parser;
+}
+
+/** A Stricli positional definition — the subset that carries the parsers. */
+type PositionalDef =
+  | { kind: "tuple"; parameters: readonly { parse?: unknown }[] }
+  | { kind: "array"; parameter: { parse?: unknown } };
 
 /**
- * Wrap every parser of a command's positional definition with
- * {@link deferPositionalErrors}.
+ * Run {@link lazyPositional} parsers on positionals that are still strings.
  *
- * @returns A copy of `positional` with wrapped parsers, or `positional`
- *   itself when the command takes no positionals
+ * Stricli already ran them; callers that skip its scanner (the SDK invoke
+ * path, tests calling the loaded func) pass raw strings. Lazy parsers never
+ * throw and have no side effects, so this is safe to run up front. Other
+ * positionals are left as they are.
  */
-export function deferPositionalParsers<P>(positional: P): P {
+export function applyLazyPositionals(
+  args: unknown[],
+  positional: unknown,
+): unknown[] {
   const def = positional as PositionalDef | undefined;
   if (!def) {
-    return positional;
+    return args;
   }
-  if (def.kind === "array") {
-    return {
-      ...def,
-      parameter: {
-        ...def.parameter,
-        parse: deferPositionalErrors(def.parameter.parse),
-      },
-    } as P;
-  }
-  return {
-    ...def,
-    parameters: def.parameters.map((param) => ({
-      ...param,
-      parse: deferPositionalErrors(param.parse),
-    })),
-  } as P;
-}
-
-/**
- * Throw the first {@link DeferredPositionalError} among a command's
- * positional values.
- */
-export function throwDeferredPositionalError(args: readonly unknown[]): void {
-  for (const arg of args) {
-    if (arg instanceof DeferredPositionalError) {
-      throw arg.error;
+  return args.map((arg, index) => {
+    const parse =
+      def.kind === "array" ? def.parameter.parse : def.parameters[index]?.parse;
+    if (typeof arg !== "string" || typeof parse !== "function") {
+      return arg;
     }
-  }
+    return lazyParsers.has(parse)
+      ? (parse as (input: string) => unknown)(arg)
+      : arg;
+  });
 }
 
 /**
- * What the user typed for a positional value.
+ * What the user typed for a positional value. Never triggers a parse.
  *
- * @returns The raw input of a parsed object or deferred error, otherwise
- *   `value` itself
+ * @returns The raw input behind a lazily parsed value, otherwise `value`
  */
 export function rawPositional(value: unknown): unknown {
-  if (value instanceof DeferredPositionalError) {
-    return value.raw;
-  }
   if (typeof value === "object" && value !== null) {
     return rawInputs.get(value) ?? value;
   }

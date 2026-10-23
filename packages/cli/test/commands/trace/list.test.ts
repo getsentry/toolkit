@@ -59,7 +59,6 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TransactionListItem } from "../../../src/types/sentry.js";
-import { loadCommandFunc } from "../../helpers.js";
 
 // Reference paginationDb early to prevent import stripping by auto-organize
 const _paginationDbRef = paginationDb;
@@ -330,7 +329,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: sampleTraces });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
@@ -350,7 +349,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
@@ -369,7 +368,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
@@ -384,7 +383,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: sampleTraces });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
@@ -406,7 +405,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 2, sort: "date", json: false, period: parsePeriod("7d") },
@@ -422,7 +421,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: sampleTraces });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 100, sort: "date", json: false, period: parsePeriod("7d") },
@@ -438,7 +437,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [sampleTraces[0]] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
@@ -454,7 +453,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       {
@@ -488,7 +487,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
@@ -511,7 +510,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "duration", json: false, period: parsePeriod("7d") },
@@ -528,7 +527,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
@@ -546,7 +545,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
@@ -565,7 +564,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       {
@@ -587,7 +586,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: sampleTraces });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
@@ -605,7 +604,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("24h") },
@@ -628,7 +627,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("30d") },

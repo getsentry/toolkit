@@ -1,5 +1,5 @@
 /**
- * Positional parsers that throw CliErrors (src/lib/positional-parse.ts).
+ * Lazily parsed positionals (src/lib/positional-parse.ts).
  *
  * Runs a test command through Stricli's `run()` so the positional parser,
  * the command wrapper, and exit-code handling are exercised together.
@@ -18,11 +18,7 @@ import {
   ORG_PROJECT_TARGET,
 } from "../../src/lib/completion-target.js";
 import { EXIT, getExitCode, ValidationError } from "../../src/lib/errors.js";
-import {
-  DeferredPositionalError,
-  deferPositionalErrors,
-  rawPositional,
-} from "../../src/lib/positional-parse.js";
+import { rawPositional } from "../../src/lib/positional-parse.js";
 import { buildRouteMap } from "../../src/lib/route-map.js";
 
 type TestContext = CommandContext & {
@@ -59,7 +55,8 @@ async function runWithTarget(args: string[]): Promise<{
     },
     // oxlint-disable-next-line require-yield -- test command only records the parsed target
     async *func(_flags, target = AUTO_DETECT_TARGET) {
-      parsed.push(target);
+      // Copying reads every property, which runs the lazy parse
+      parsed.push({ ...target });
     },
   });
   const app = buildApplication(
@@ -96,7 +93,7 @@ describe("parseOrgProjectPositional", () => {
     expect(parsed).toEqual([{ type: "auto-detect" }]);
   });
 
-  test("invalid input fails with the CliError exit code, not Stricli's", async () => {
+  test("invalid input fails inside the command with the CliError exit code", async () => {
     const { parsed, stderr, exitCode } = await runWithTarget(["@latest"]);
     expect(parsed).toEqual([]);
     expect(exitCode).toBe(EXIT.VALIDATION);
@@ -112,35 +109,34 @@ describe("parseOrgProjectPositional", () => {
   });
 });
 
-describe("deferPositionalErrors", () => {
-  const parse = deferPositionalErrors(parseOrgProjectPositional);
-
-  test("returns a CliError as a deferred value", () => {
-    const value = parse("@latest");
-    expect(value).toBeInstanceOf(DeferredPositionalError);
-    expect((value as DeferredPositionalError).error).toBeInstanceOf(
-      ValidationError,
-    );
+describe("lazy parsing", () => {
+  test("parses on first property access", () => {
+    const target = parseOrgProjectPositional("@latest");
+    expect(() => target.type).toThrow(ValidationError);
   });
 
-  test("lets other errors propagate", () => {
-    const failing = deferPositionalErrors(() => {
-      throw new TypeError("boom");
+  test("reads like the parsed value", () => {
+    const target = parseOrgProjectPositional("acme/web");
+    expect(target).toEqual({ type: "explicit", org: "acme", project: "web" });
+    expect({ ...target }).toEqual({
+      type: "explicit",
+      org: "acme",
+      project: "web",
     });
-    expect(() => failing("x")).toThrow(TypeError);
+    expect("org" in target).toBe(true);
   });
 
-  test("keeps the completion target", () => {
-    expect(getCompletionTarget(parse)).toBe(ORG_PROJECT_TARGET);
+  test("is not a thenable, so awaiting it does not parse", async () => {
+    // Stricli awaits parser results; a parse here would fail in its scanner.
+    const target = parseOrgProjectPositional("@latest");
+    await expect(Promise.resolve(target)).resolves.toBe(target);
   });
 });
 
 describe("rawPositional", () => {
-  const parse = deferPositionalErrors(parseOrgProjectPositional);
-
-  test("returns what the user typed", () => {
-    expect(rawPositional(parse("acme/"))).toBe("acme/");
-    expect(rawPositional(parse("@latest"))).toBe("@latest");
+  test("returns what the user typed without parsing", () => {
+    expect(rawPositional(parseOrgProjectPositional("acme/"))).toBe("acme/");
+    expect(rawPositional(parseOrgProjectPositional("@latest"))).toBe("@latest");
     expect(rawPositional("plain")).toBe("plain");
     expect(rawPositional(undefined)).toBeUndefined();
   });

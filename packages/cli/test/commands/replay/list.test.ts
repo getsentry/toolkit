@@ -53,7 +53,6 @@ import {
   REPLAY_LIST_FIELDS,
   type ReplayListItem,
 } from "../../../src/types/index.js";
-import { loadCommandFunc } from "../../helpers.js";
 
 describe("parseSort", () => {
   test("accepts supported sort values", () => {
@@ -136,7 +135,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       { limit: 25, json: true, period: parsePeriod("7d"), sort: "-started_at" },
@@ -171,7 +170,7 @@ describe("listCommand.func", () => {
     );
 
     const { context } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await expect(
       func.call(
         context,
@@ -194,7 +193,7 @@ describe("listCommand.func", () => {
     );
 
     const { context } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await expect(
       func.call(
         context,
@@ -217,7 +216,7 @@ describe("listCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       {
@@ -247,7 +246,7 @@ describe("listCommand.func", () => {
     listReplaysSpy.mockResolvedValue({ data: sampleReplays });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       {
@@ -274,7 +273,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await loadCommandFunc(listCommand);
+    const func = await listCommand.loader();
     await func.call(
       context,
       {

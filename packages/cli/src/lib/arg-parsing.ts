@@ -7,12 +7,10 @@
  */
 
 import type { LogSortDirection } from "./api/logs.js";
-import {
-  ORG_PROJECT_TARGET,
-  withCompletionTarget,
-} from "./completion-target.js";
+import { ORG_PROJECT_TARGET } from "./completion-target.js";
 import { ContextError, ValidationError, validationError } from "./errors.js";
 import { validateResourceId } from "./input-validation.js";
+import { lazyPositional } from "./positional-parse.js";
 
 import type { ParsedSentryUrl } from "./sentry-url-parser.js";
 import { applySentryUrlContext, parseSentryUrl } from "./sentry-url-parser.js";
@@ -972,13 +970,14 @@ export const AUTO_DETECT_TARGET: ParsedOrgProject = Object.freeze({
 
 /**
  * Positional parser for `[<org>/][<project>]` targets. The command receives
- * the {@link parseOrgProjectArg} result and completes like
- * `parseOrgProjectTarget`. Use {@link AUTO_DETECT_TARGET} as the default
- * for an optional positional.
+ * a {@link ParsedOrgProject} that runs {@link parseOrgProjectArg} on first
+ * property access (see `lazyPositional`), and the positional completes like
+ * `parseOrgProjectTarget`. Use {@link AUTO_DETECT_TARGET} as the default for
+ * an optional positional.
  */
-export const parseOrgProjectPositional = withCompletionTarget(
+export const parseOrgProjectPositional = lazyPositional(
   ORG_PROJECT_TARGET,
-  (input: string): ParsedOrgProject => parseOrgProjectArg(input),
+  (raw): ParsedOrgProject => parseOrgProjectArg(raw),
 );
 
 /**
