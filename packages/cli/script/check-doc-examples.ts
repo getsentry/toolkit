@@ -31,6 +31,7 @@ import type {
   RouteMap,
   RouteTarget,
 } from "../src/lib/introspect.js";
+import { blankCodeBlocks, markdownCodeBlocks } from "./markdown.js";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-docs-sections.ts)
@@ -76,7 +77,6 @@ const ORG_PLACEHOLDER_RE = /^(?:my-org|acme)$/;
 /** Placeholders of positionals parsed with `parseOrgProjectArg()`. */
 const TARGET_PLACEHOLDER_RE = /^(?:target|org\/.+)$/;
 
-const FENCE_RE = /^(`{3,}|~{3,})\s*([\w-]*)[^\n]*\n([\s\S]*?)\n\1\s*$/gm;
 const SHELL_LANGS = new Set(["", "bash", "sh", "shell", "zsh", "console"]);
 const INLINE_CODE_RE = /(?<!`)`(sentry [^`\n]+)`(?!`)/g;
 const COMMAND_SPLIT_RE = /\s*(?:\|\||&&|\||;)\s*/;
@@ -136,11 +136,11 @@ function tokenize(command: string): string[] {
 /** Collect `sentry …` invocations from one Markdown file. */
 function extractInvocations(markdown: string): string[] {
   const invocations: string[] = [];
-  for (const [, , lang = "", body = ""] of markdown.matchAll(FENCE_RE)) {
+  for (const { code, lang } of markdownCodeBlocks(markdown)) {
     if (!SHELL_LANGS.has(lang)) {
       continue;
     }
-    for (const rawLine of body.replace(CONTINUATION_RE, " ").split("\n")) {
+    for (const rawLine of code.replace(CONTINUATION_RE, " ").split("\n")) {
       const line = rawLine.trim().replace(PROMPT_RE, "");
       if (line.startsWith("#")) {
         continue;
@@ -152,7 +152,7 @@ function extractInvocations(markdown: string): string[] {
       }
     }
   }
-  const prose = markdown.replace(FENCE_RE, "");
+  const prose = blankCodeBlocks(markdown);
   for (const [, code = ""] of prose.matchAll(INLINE_CODE_RE)) {
     invocations.push(code);
   }
