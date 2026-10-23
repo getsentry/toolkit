@@ -284,7 +284,8 @@ function readAccounts(db: Database): AccountRows | undefined {
 
 /**
  * Replace the accounts in `restored` with `current`'s, so the undo keeps
- * the logins and refreshed tokens made since the backup.
+ * the logins and refreshed tokens made since the backup, and logins
+ * removed since then stay removed.
  *
  * @returns A warning when they could not be carried over.
  */
@@ -293,12 +294,19 @@ function carryOverAccounts(
   current: AccountRows | undefined,
   backup: DatabaseBackup,
 ): string | undefined {
-  if (!current || current.rows.length === 0) {
+  if (!current) {
     return;
   }
   const loginHint = `Your logins are as they were in ${backup.version}; run \`sentry auth login\` if you need another.`;
   if (!tableExists(restored, "accounts")) {
-    return `${backup.version} stores logins in an older format, so your current logins could not be kept. ${loginHint}`;
+    if (current.rows.length > 0) {
+      return `${backup.version} stores logins in an older format, so your current logins could not be kept. ${loginHint}`;
+    }
+    // Logged out since the backup: don't bring the older login back.
+    if (tableExists(restored, "auth")) {
+      restored.query("DELETE FROM auth").run();
+    }
+    return;
   }
   const restoredColumns = new Set(columnNames(restored, "accounts"));
   const shared = current.columns.filter((c) => restoredColumns.has(c));

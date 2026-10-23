@@ -205,6 +205,9 @@ sentry cli upgrade nightly
 
 # Switch back to stable
 sentry cli upgrade stable
+
+# Return to the version before the last `sentry cli upgrade`
+sentry cli upgrade undo
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

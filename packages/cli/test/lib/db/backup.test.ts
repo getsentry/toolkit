@@ -194,6 +194,19 @@ describe("restoreDatabaseBackup", () => {
     ]);
   });
 
+  test("keeps the user logged out when they logged out since the backup", () => {
+    addAccount("a", "token", true);
+    const backup = backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    getRawDatabase().query("DELETE FROM accounts").run();
+
+    const warnings = restoreDatabaseBackup(getRawDatabase(), backup);
+
+    expect(warnings.join("\n")).not.toContain("logins");
+    expect(
+      readFile((db) => db.query("SELECT account_id FROM accounts").all()),
+    ).toEqual([]);
+  });
+
   test("leaves the restored file alone for the rest of the process", () => {
     setMarker("saved");
     const backup = backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");

@@ -353,6 +353,7 @@ function validateMethod(
   method: InstallationMethod,
   versionArg: string | undefined,
   offline: boolean,
+  undo: boolean,
 ): void {
   if (method === "unknown") {
     throw new UpgradeError("unknown_method");
@@ -363,6 +364,14 @@ function validateMethod(
     ? undefined
     : versionArg?.replace(VERSION_PREFIX_REGEX, "");
   if (method === "brew" && pinnedVersion && !isNightlyVersion(pinnedVersion)) {
+    if (undo) {
+      throw new UpgradeError(
+        "unsupported_operation",
+        `Homebrew can't install an earlier version, so undo can't return to ${pinnedVersion} through it. ` +
+          "Run `sentry cli upgrade undo --method curl` to return to it as a standalone install; " +
+          "the Homebrew one may still come first in PATH.",
+      );
+    }
     throw new UpgradeError(
       "unsupported_operation",
       "Homebrew does not support installing a specific version. Run 'brew upgrade getsentry/tools/sentry' to upgrade to the latest formula version.",
@@ -989,6 +998,7 @@ async function migrateToStandaloneForNightly(opts: {
 async function resolveContext(
   version: string | undefined,
   flags: UpgradeFlags,
+  undo: boolean,
 ): Promise<{
   channel: ReleaseChannel;
   versionArg: string | undefined;
@@ -1000,7 +1010,7 @@ async function resolveContext(
   const channelChanged = channel !== currentChannel;
 
   const method = flags.method ?? (await detectInstallationMethod());
-  validateMethod(method, versionArg, flags.offline);
+  validateMethod(method, versionArg, flags.offline, undo);
   return { channel, versionArg, channelChanged, method };
 }
 
@@ -1147,6 +1157,7 @@ export const upgradeCommand = buildCommand({
     const resolvedContext = await resolveContext(
       undo ? undo.version : version,
       flags,
+      undo !== undefined,
     );
     const { versionArg, method } = resolvedContext;
     // Undo reinstalls the earlier version on its own channel. Its restored

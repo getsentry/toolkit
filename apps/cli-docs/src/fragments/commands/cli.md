@@ -56,7 +56,7 @@ sentry cli upgrade undo
 
 Before switching versions, `sentry cli upgrade` saves a copy of the local database for the version it replaces, in `backups/` under the config directory. `sentry cli upgrade undo` reinstalls that version and restores its database. The logins you have now are kept when that version stores them the same way; otherwise the command says so, and you may need to run `sentry auth login`. Other changes since the upgrade, such as defaults, are undone.
 
-One backup is kept per version, up to the five most recent. They contain your credentials, so only your user can read them. Undo only covers version changes made with `sentry cli upgrade`, not ones made through npm or Homebrew directly.
+One backup is kept per version, up to the five most recent. They contain your credentials, so only your user can read them. Undo only covers version changes made with `sentry cli upgrade`, not ones made through npm or Homebrew directly. Homebrew can't install an earlier version, so on a Homebrew install run `sentry cli upgrade undo --method curl` to return to it as a standalone binary.
 
 ### Installation Detection
 
