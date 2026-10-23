@@ -509,6 +509,42 @@ describe("search_issues", () => {
     expect(result).toContain("No issues found");
   });
 
+  it("uses the resolved project ID, not the slug, in the result link", async () => {
+    process.env.OPENAI_API_KEY = "";
+    process.env.ANTHROPIC_API_KEY = "";
+    process.env.OPENROUTER_API_KEY = "";
+
+    mswServer.use(
+      http.get("https://sentry.io/api/0/projects/*/*/", () =>
+        HttpResponse.json({
+          id: "789",
+          slug: "MyProject",
+          name: "My Project",
+        }),
+      ),
+      http.get("https://sentry.io/api/0/organizations/*/issues/", () =>
+        HttpResponse.json([{ ...issueFixture, shortId: "WEB-123" }]),
+      ),
+    );
+
+    const result = await searchIssues.handler(
+      {
+        organizationSlug: "MyOrg",
+        query: "is:unresolved",
+        sort: "date",
+        projectSlugOrId: "MyProject",
+        regionUrl: null,
+        limit: 10,
+        period: "30d",
+        includeExplanation: false,
+      },
+      mockContext,
+    );
+
+    expect(result).toContain("project=789");
+    expect(result).not.toContain("project=MyProject");
+  });
+
   it("should handle numeric project ID", async () => {
     mockGenerateText.mockResolvedValue(mockAIResponse("", "date"));
 
@@ -519,12 +555,12 @@ describe("search_issues", () => {
           const url = new URL(request.url);
           expect(url.searchParams.get("project")).toBe("123456");
           expect(url.searchParams.get("statsPeriod")).toBe("30d");
-          return HttpResponse.json([]);
+          return HttpResponse.json([{ ...issueFixture, shortId: "WEB-123" }]);
         },
       ),
     );
 
-    await searchIssues.handler(
+    const result = await searchIssues.handler(
       {
         organizationSlug: "test-org",
         query: "all issues",
@@ -537,6 +573,8 @@ describe("search_issues", () => {
       },
       mockContext,
     );
+
+    expect(result).toContain("project=123456");
   });
 
   it("should pass sort parameter to API", async () => {
