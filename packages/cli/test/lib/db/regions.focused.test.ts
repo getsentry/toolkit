@@ -74,9 +74,7 @@ describe("credential and origin scoped organization regions", () => {
         )
         .run("legacy", "4242", regionUrl, IDENTITY_A, SOURCE_A, SOURCE_A, 0);
       expect(getOrgRegion("legacy", SOURCE_A, IDENTITY_A)).toBeUndefined();
-      expect(
-        getOrgByNumericId("4242", SOURCE_A, IDENTITY_A),
-      ).toBeUndefined();
+      expect(getOrgByNumericId("4242", SOURCE_A, IDENTITY_A)).toBeUndefined();
     },
   );
 });
