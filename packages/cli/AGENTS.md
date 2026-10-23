@@ -467,14 +467,25 @@ const { data, nextCursor } = await paginate(
 
 Pass `perPage` to the request unchanged. Sentry's page-number paginators
 (`OffsetPaginator`, used by projects, teams, members, repositories, and
-dashboard revisions) encode the page size in the cursor, so a cursor is only
-valid with the `per_page` that produced it. `paginate()` therefore returns
-opaque CLI cursors (`cli1~<perPage>~<skip>~<server cursor>`) that record the
-walk's page size and how many rows of the current page were already returned.
-A later `-c next` reuses that page size even when `--limit` changes, and
-resumes mid-page by refetching the page and skipping returned rows. Always
-pass these cursors back through `paginate()`; never send them to an API
-request directly. Test pagination changes against the paginator models in
+dashboard revisions) encode the page size in the cursor
+(`<per_page>:<page>:<is_prev>`), so a cursor is only valid with the
+`per_page` that produced it. `paginate()` reads that page size back from the
+cursor, so a later `-c next` reuses it even when `--limit` changes. A fresh
+walk splits `--limit` evenly over the fewest requests (201 → 3 × 67).
+
+The cursors `paginate()` returns are Sentry cursors, so every CLI version and
+the API accept them, and stored `-c next` history works across upgrades and
+downgrades. When a call stops inside a page, the cursor points at that page
+and records how many of its rows were already returned in `is_prev`, in
+binary with `_0` for 1 and `0` for 0 after a leading `0` (`84:2:0_00_000_00`
+skips 82 = `0b1010010` rows). Sentry parses `is_prev` with Python's `int()`,
+which reads any zeros joined by single underscores as 0, so it is still a
+next-page cursor. `encodeSkip()` in `src/lib/api/infrastructure.ts` documents
+the format.
+`paginate()` refetches the page and skips them; anything else that sends the
+cursor (with the page size it encodes, if any) gets those rows again, never
+fewer. Keep returned cursors valid Sentry
+cursors. Test pagination changes against the paginator models in
 `test/lib/paginate.property.test.ts`.
 
 Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/revisions.ts`
