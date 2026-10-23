@@ -375,7 +375,7 @@ export default new Hono<{ Bindings: Env }>()
       },
     });
 
-    return redirectToUpstream(
+    return await redirectToUpstream(
       c.env,
       c.req.raw,
       oauthReqWithSkills,

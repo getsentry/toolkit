@@ -29,9 +29,9 @@ import {
   getActiveEnvVarName,
   getRawEnvToken,
   hasStoredAuthCredentials,
+  isForceEnvTokenSet,
 } from "./db/auth.js";
 import { getUserInfo } from "./db/user.js";
-import { getEnv } from "./env.js";
 import { logger } from "./logger.js";
 import { getRcInjectedTokenSource } from "./sentryclirc.js";
 
@@ -60,7 +60,7 @@ export function maybeWarnEnvTokenIgnored(): void {
   }
 
   // Fast path: user opted into the env token explicitly.
-  if (getEnv().SENTRY_FORCE_ENV_TOKEN?.trim()) {
+  if (isForceEnvTokenSet()) {
     return;
   }
 

@@ -54,7 +54,7 @@ List and search User Feedback
 **Examples:**
 
 ```bash
-# Auto-detect the organization from the current project
+# List Feedback (organization auto-detected)
 sentry feedback list
 
 # List Feedback for one project
@@ -66,9 +66,16 @@ sentry feedback list my-org/
 # Search for a project across accessible organizations
 sentry feedback list frontend
 
+# Show resolved Feedback
 sentry feedback list my-org/frontend --status resolved
+
+# Show the spam mailbox
 sentry feedback list my-org/frontend --status spam
+
+# Show every status over the last 90 days
 sentry feedback list my-org/frontend --status all --period 90d
+
+# Search Feedback messages
 sentry feedback list my-org/frontend --query "message:*checkout*"
 ```
 
@@ -115,20 +122,23 @@ View a User Feedback item
 **Examples:**
 
 ```bash
-# Most recent unresolved Feedback, with detected or explicit organization
+# View the most recent unresolved Feedback
 sentry feedback view @latest
+
+# Most recent unresolved Feedback in an explicit organization
 sentry feedback view my-org/@latest
 
-# Short ID or numeric ID
+# View by short ID
 sentry feedback view FRONTEND-2SDJ
+
+# View by numeric ID
 sentry feedback view 5146636313
 
-# Explicit organization
+# View in an explicit organization
 sentry feedback view my-org/FRONTEND-2SDJ
 
-# `view` is the default command; `show` is an alias
+# `view` is the default command
 sentry feedback my-org/FRONTEND-2SDJ
-sentry feedback show my-org/FRONTEND-2SDJ
 
 # Open the Feedback item in Sentry
 sentry feedback view my-org/FRONTEND-2SDJ --web
@@ -169,13 +179,16 @@ Mark User Feedback as resolved
 **Examples:**
 
 ```bash
-# Resolve a Feedback item immediately
+# Resolve a Feedback item (organization auto-detected)
+sentry feedback resolve FRONTEND-2SDJ
+
+# Resolve a Feedback item in an explicit organization
 sentry feedback resolve my-org/FRONTEND-2SDJ
 
 # Resolve the most recently active unresolved Feedback
 sentry feedback resolve my-org/@latest
 
-# Return the updated Feedback, or select specific fields
+# Return selected fields from the updated Feedback
 sentry feedback resolve my-org/FRONTEND-2SDJ --json --fields id,shortId,status
 ```
 
@@ -214,25 +227,20 @@ Return User Feedback to the inbox
 **Examples:**
 
 ```bash
-# Find resolved Feedback
-sentry feedback list --status resolved
-
-# Reopen a Feedback item using its short ID or numeric ID
+# Reopen a Feedback item, or return it from spam to the inbox
 sentry feedback unresolve FRONTEND-2SDJ
+
+# Reopen by numeric ID
 sentry feedback unresolve 5146636313
 
 # `reopen` is an alias for `unresolve`
 sentry feedback reopen FRONTEND-2SDJ
 
-# Specify an organization explicitly when needed
+# Specify an organization explicitly
 sentry feedback unresolve my-org/FRONTEND-2SDJ
 
 # Return selected fields from the updated Feedback
 sentry feedback unresolve FRONTEND-2SDJ --json --fields id,shortId,status
-
-# Find spam and return a Feedback item to the unresolved inbox
-sentry feedback list --status spam
-sentry feedback unresolve FRONTEND-2SDJ
 ```
 
 ### `sentry feedback spam <feedback>`
@@ -272,9 +280,11 @@ Mark User Feedback as spam
 ```bash
 # Move a Feedback item to the spam mailbox
 sentry feedback spam FRONTEND-2SDJ
+
+# Mark as spam by numeric ID
 sentry feedback spam 5146636313
 
-# Specify an organization explicitly when needed
+# Specify an organization explicitly
 sentry feedback spam my-org/FRONTEND-2SDJ
 
 # Return selected fields from the updated Feedback

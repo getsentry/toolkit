@@ -19,6 +19,7 @@ import type {
   TimeseriesResult,
   WidgetDataResult,
 } from "../../types/dashboard.js";
+import { stringifyUnknown } from "../errors.js";
 import { encodeImageToKitty } from "../kitty-image.js";
 import { logger } from "../logger.js";
 import {
@@ -871,7 +872,7 @@ function renderTableContent(data: TableResult, innerWidth: number): string[] {
       if (typeof val === "number") {
         return formatWithUnit(val, col.unit);
       }
-      return String(val);
+      return stringifyUnknown(val);
     }),
   );
 

@@ -48,7 +48,12 @@ import {
   formatReplayResults,
   isValidReplaySort,
 } from "./replays";
-import { isSeerSearchDataset, translateWithSeer } from "./seer";
+import {
+  isSeerSearchDataset,
+  type SeerSearchTranslation,
+  trackAiQueryOutcome,
+  translateWithSeer,
+} from "./seer";
 import {
   formatEventsValidationResults,
   isAggregateQuery,
@@ -596,10 +601,65 @@ export function logSearchEventsError(
 /**
  * Shared handler for search_events and the dataset-specific search tools.
  */
+interface SeerOutcomeState {
+  translation: SeerSearchTranslation | null;
+  tracked: boolean;
+}
+
+// Only Seer's translations are tracked, not the embedded agent's, and at most
+// once per run.
+function trackSeerOutcome(
+  state: SeerOutcomeState,
+  params: SearchEventsParams,
+  resultCount: number,
+  error: unknown = false,
+): void {
+  if (
+    !state.translation ||
+    state.tracked ||
+    !isSeerSearchDataset(params.dataset)
+  ) {
+    return;
+  }
+  state.tracked = true;
+  trackAiQueryOutcome({
+    dataset: normalizeEventsDataset(params.dataset),
+    mode: state.translation.mode,
+    organization: {
+      slug: params.organizationSlug,
+      features: state.translation.organizationFeatures,
+    },
+    resultCount,
+    runId: state.translation.runId,
+    error:
+      typeof error === "boolean" ||
+      typeof error === "string" ||
+      error instanceof Error
+        ? error
+        : true,
+  });
+}
+
 export async function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
   options: RunSearchEventsOptions = {},
+): Promise<string> {
+  // Any failure after Seer translates the query counts as `error_on_load`.
+  const seerOutcome: SeerOutcomeState = { translation: null, tracked: false };
+  try {
+    return await executeSearchEvents(params, context, options, seerOutcome);
+  } catch (error) {
+    trackSeerOutcome(seerOutcome, params, 0, error);
+    throw error;
+  }
+}
+
+async function executeSearchEvents(
+  params: SearchEventsParams,
+  context: ServerContext,
+  options: RunSearchEventsOptions,
+  seerOutcome: SeerOutcomeState,
 ): Promise<string> {
   const lockDataset = options.lockDataset === true;
   const apiService = apiServiceFromContext(context, {
@@ -676,6 +736,7 @@ export async function runSearchEvents(
           query: params.query,
         })
       : null;
+  seerOutcome.translation = seerTranslation;
   if (seerTranslation && !projectId) {
     projectId = "-1";
   }
@@ -948,6 +1009,14 @@ export async function runSearchEvents(
       dataset,
       ...timeParams,
     });
+    // A series always has buckets, so count the ones with data.
+    trackSeerOutcome(
+      seerOutcome,
+      params,
+      series.timeSeries
+        .flatMap((s) => s.values)
+        .filter((point) => point.value != null && point.value !== 0).length,
+    );
     const statsUrl = apiService.getEventsExplorerUrl(
       organizationSlug,
       timeSeriesQuery,
@@ -1064,6 +1133,7 @@ export async function runSearchEvents(
     "gen_ai.tool.call.result.count",
     eventData.length,
   );
+  trackSeerOutcome(seerOutcome, params, eventData.length);
 
   const conversationId = extractConversationIdFromSearchQuery(sentryQuery);
   const explorerUrl = conversationId

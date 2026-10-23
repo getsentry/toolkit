@@ -168,7 +168,7 @@ async function setCommitsDefault(
 ): Promise<SentryRelease> {
   // Fast path: cached "no repos" — skip the API call entirely
   if (hasNoRepoIntegration(org)) {
-    return setCommitsFromLocal(org, version, cwd, { depth });
+    return await setCommitsFromLocal(org, version, cwd, { depth });
   }
 
   try {
@@ -192,14 +192,14 @@ async function setCommitsDefault(
         "Could not auto-discover commits (no repository integration). " +
           "Falling back to local git history.",
       );
-      return setCommitsFromLocal(org, version, cwd, { depth });
+      return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     if (error instanceof ValidationError && error.field === "repository") {
       log.warn(
         `Auto-discovery failed: ${error.message}. ` +
           "Falling back to local git history.",
       );
-      return setCommitsFromLocal(org, version, cwd, { depth });
+      return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     throw error;
   }
@@ -360,16 +360,39 @@ export const setCommitsCommand = buildCommand({
       "whole range (--initial-depth does not apply), and combines with --path to\n" +
       "scope a monorepo release to the files that changed since the last release.\n" +
       "Like --path, it cannot be combined with --auto or --commit. Requires a\n" +
-      "full (non-shallow) checkout spanning the range.\n\n" +
-      "Examples:\n" +
-      "  sentry release set-commits 1.0.0 --auto\n" +
-      "  sentry release set-commits my-org/1.0.0 --local\n" +
-      "  sentry release set-commits 1.0.0 --local --initial-depth 50\n" +
-      "  sentry release set-commits 1.0.0 --path apps/mobile,packages/shared-ui\n" +
-      "  sentry release set-commits 1.0.0 --from v0.9.0\n" +
-      "  sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile,apps/shared\n" +
-      "  sentry release set-commits 1.0.0 --commit owner/repo@abc123..def456\n" +
-      "  sentry release set-commits 1.0.0 --clear",
+      "full (non-shallow) checkout spanning the range.",
+    examples: [
+      {
+        description: "Associate commits using the repository integration",
+        command: "sentry release set-commits 1.0.0 --auto",
+      },
+      {
+        description: "Set commits from local git history",
+        command: "sentry release set-commits my-org/1.0.0 --local",
+      },
+      {
+        description: "Read up to 50 local commits",
+        command: "sentry release set-commits 1.0.0 --local --initial-depth 50",
+      },
+      {
+        description: "Only include commits that touch specific paths",
+        command:
+          "sentry release set-commits 1.0.0 --path apps/mobile,packages/shared-ui",
+      },
+      {
+        description: "Read local commits since a previous release tag",
+        command: "sentry release set-commits 1.0.0 --from v0.9.0",
+      },
+      {
+        description: "Set an explicit commit range",
+        command:
+          "sentry release set-commits 1.0.0 --commit owner/repo@abc123..def456",
+      },
+      {
+        description: "Clear the release's commits",
+        command: "sentry release set-commits 1.0.0 --clear",
+      },
+    ],
   },
   output: {
     human: formatCommitsSet,

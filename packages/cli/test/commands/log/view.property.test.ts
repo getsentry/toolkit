@@ -25,7 +25,7 @@ const slugArb = stringMatching(/^[a-z][a-z0-9-]{1,20}[a-z0-9]$/);
 
 describe("parsePositionalArgs properties", () => {
   test("single valid log ID: returns it in rawLogIds with undefined targetArg", async () => {
-    await fcAssert(
+    fcAssert(
       property(logIdArb, (input) => {
         const result = parsePositionalArgs([input]);
         expect(result.rawLogIds).toEqual([input]);
@@ -36,7 +36,7 @@ describe("parsePositionalArgs properties", () => {
   });
 
   test("single arg org/project/logId: splits into target and rawLogIds", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, slugArb, logIdArb), ([org, project, logId]) => {
         const combined = `${org}/${project}/${logId}`;
         const result = parsePositionalArgs([combined]);
@@ -48,7 +48,7 @@ describe("parsePositionalArgs properties", () => {
   });
 
   test("single arg with one slash: throws ContextError (missing log ID)", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, slugArb), ([org, project]) => {
         expect(() => parsePositionalArgs([`${org}/${project}`])).toThrow(
           ContextError,
@@ -59,7 +59,7 @@ describe("parsePositionalArgs properties", () => {
   });
 
   test("two args (target + logId): first is targetArg, second is in rawLogIds", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, logIdArb), ([slug, logId]) => {
         const result = parsePositionalArgs([slug, logId]);
         expect(result.targetArg).toBe(slug);
@@ -70,7 +70,7 @@ describe("parsePositionalArgs properties", () => {
   });
 
   test("org/project target + logId: correctly splits target and rawLogIds", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, slugArb, logIdArb), ([org, project, logId]) => {
         const target = `${org}/${project}`;
         const result = parsePositionalArgs([target, logId]);
@@ -83,7 +83,7 @@ describe("parsePositionalArgs properties", () => {
   });
 
   test("multiple log IDs: all IDs present in result", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(slugArb, array(logIdArb, { minLength: 1, maxLength: 5 })),
         ([slug, ids]) => {
@@ -99,7 +99,7 @@ describe("parsePositionalArgs properties", () => {
   });
 
   test("newline-joined IDs in single arg: split correctly", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(slugArb, array(logIdArb, { minLength: 2, maxLength: 5 })),
         ([slug, ids]) => {
@@ -115,7 +115,7 @@ describe("parsePositionalArgs properties", () => {
   });
 
   test("parsing is deterministic: same input always produces same output", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, logIdArb), ([slug, logId]) => {
         const result1 = parsePositionalArgs([slug, logId]);
         const result2 = parsePositionalArgs([slug, logId]);
@@ -130,7 +130,7 @@ describe("parsePositionalArgs properties", () => {
   });
 
   test("result always has non-empty rawLogIds array", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, logIdArb), ([slug, logId]) => {
         const result = parsePositionalArgs([slug, logId]);
         expect(result.rawLogIds.length).toBeGreaterThan(0);
@@ -144,7 +144,7 @@ describe("parsePositionalArgs properties", () => {
 
   test("result targetArg is undefined for single ID, defined for target + ID", async () => {
     // Single arg case
-    await fcAssert(
+    fcAssert(
       property(logIdArb, (input) => {
         const result = parsePositionalArgs([input]);
         expect(result.targetArg).toBeUndefined();
@@ -153,7 +153,7 @@ describe("parsePositionalArgs properties", () => {
     );
 
     // Two+ args case
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, logIdArb), ([slug, logId]) => {
         const result = parsePositionalArgs([slug, logId]);
         expect(result.targetArg).toBeDefined();

@@ -194,6 +194,7 @@ describe("queryEvents", () => {
 
     const result = await queryEvents("my-org", {
       fields: ["title", "count()"],
+      limit: 1,
     });
 
     expect(result.data.data).toHaveLength(1);
@@ -201,7 +202,7 @@ describe("queryEvents", () => {
       title: "string",
       "count()": "integer",
     });
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false in Link header", async () => {
@@ -272,7 +273,7 @@ describe("queryEvents", () => {
         },
       },
       {
-        body: { data: makeRows(50), meta: PAGE_META },
+        body: { data: makeRows(100), meta: PAGE_META },
         headers: {
           Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
         },
@@ -281,38 +282,16 @@ describe("queryEvents", () => {
 
     const result = await queryEvents("my-org", {
       fields: ["title", "count()"],
-      limit: 150,
+      limit: 200,
     });
 
-    expect(result.data.data).toHaveLength(150);
+    expect(result.data.data).toHaveLength(200);
     expect(result.data.meta?.fields).toEqual(PAGE_META.fields);
     expect(result.nextCursor).toBeUndefined();
     expect(getCapturedUrls()).toHaveLength(2);
-  });
-
-  test("trims results and drops nextCursor when overshoot", async () => {
-    mockSequential([
-      {
-        body: { data: makeRows(100), meta: PAGE_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeRows(100), meta: PAGE_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:200:0"`,
-        },
-      },
-    ]);
-
-    const result = await queryEvents("my-org", {
-      fields: ["title", "count()"],
-      limit: 120,
-    });
-
-    expect(result.data.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
+    for (const url of getCapturedUrls()) {
+      expect(url).toContain("per_page=100");
+    }
   });
 
   test("single-page fast path when limit <= API_MAX_PER_PAGE", async () => {

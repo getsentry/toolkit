@@ -281,7 +281,7 @@ async function fetchAutoDetectProjects(
   flags: ListFlags,
 ): Promise<{ projects: ProjectWithOrg[]; nextCursor?: string }> {
   if (orgs.length === 1 && !flags.platform) {
-    return fetchPaginatedSafe(orgs[0] as string, flags.limit);
+    return await fetchPaginatedSafe(orgs[0] as string, flags.limit);
   }
   if (orgs.length > 0) {
     const results = await Promise.all(orgs.map(fetchOrgProjectsSafe));
@@ -714,6 +714,20 @@ export const listCommand = buildListCommand("project", {
       "  sentry project list --limit 50              # show more results\n" +
       "  sentry project list --json                  # output as JSON\n\n" +
       "Alias: `sentry projects` → `sentry project list`",
+    examples: [
+      {
+        description: "List all projects in an organization",
+        command: "sentry project list my-org/",
+      },
+      {
+        description: "Several projects in the same organization",
+        command: "sentry project list my-org/frontend,backend",
+      },
+      {
+        description: "Filter by platform",
+        command: "sentry project list my-org/ --platform javascript",
+      },
+    ],
   },
   output: {
     human: (data: ListResult<ProjectWithOrg>) => {

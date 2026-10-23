@@ -22,5 +22,17 @@
   {
     "key": "environment",
     "name": "environment"
+  },
+  {
+    "key": "http.method",
+    "name": "http.method"
+  },
+  {
+    "key": "fleet.region",
+    "name": "fleet.region"
+  },
+  {
+    "key": "fleet.deployment_region",
+    "name": "fleet.deployment_region"
   }
 ]

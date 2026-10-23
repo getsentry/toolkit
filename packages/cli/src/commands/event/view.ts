@@ -748,7 +748,7 @@ async function fetchLatestEventData(
   project?: string,
 ): Promise<SingleEventViewData> {
   const event = await getLatestEvent(org, issueId);
-  return buildSingleEventViewData(org, event, spans, project);
+  return await buildSingleEventViewData(org, event, spans, project);
 }
 
 /**
@@ -903,7 +903,7 @@ async function resolveIssueShortIdEvent(
   spans: number,
 ): Promise<SingleEventViewData> {
   const issue = await getIssueByShortId(org, issueShortId);
-  return fetchLatestEventData(org, issue.id, spans, issue.project?.slug);
+  return await fetchLatestEventData(org, issue.id, spans, issue.project?.slug);
 }
 
 /** Result from an issue-based shortcut (URL or short ID) */
@@ -1178,6 +1178,22 @@ export const viewCommand = buildCommand({
       "Attachment metadata (id, name, size, mimetype, download URL) is included when available.\n" +
       "Download bytes with:\n" +
       '  sentry api "<attachments[].download>" > file',
+    examples: [
+      {
+        description: "View an event",
+        command: "sentry event view abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry event view abc123def456abc123def456abc12345 -w",
+      },
+      {
+        description:
+          "Download an attachment listed by --json (with sentry api)",
+        command:
+          "sentry api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png",
+      },
+    ],
   },
   output: {
     human: formatEventView,

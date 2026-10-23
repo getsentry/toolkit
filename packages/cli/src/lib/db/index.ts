@@ -27,6 +27,9 @@ const LEGACY_CONFIG_DIR_NAME = ".sentry";
 /** Sub-directory used under the XDG config base directory. */
 const XDG_CONFIG_SUBDIR = "sentry";
 
+/** Default config directory as shown to users (help text, docs). */
+export const DEFAULT_CONFIG_DIR_DISPLAY = `~/.config/${XDG_CONFIG_SUBDIR}`;
+
 const DB_FILENAME = "cli.db";
 
 /** 7-day TTL for cache entries (milliseconds) */

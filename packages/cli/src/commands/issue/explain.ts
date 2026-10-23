@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
-import { ApiError, ContextError } from "../../lib/errors.js";
+import { ApiError, ContextError, stringifyUnknown } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   formatIssueExplain,
@@ -101,15 +101,38 @@ export const explainCommand = buildCommand({
       "Full short IDs use SENTRY_ORG, .sentryclirc, or 'sentry cli defaults' for the org.\n" +
       "Without a configured org, the CLI uses a matching DSN or searches accessible orgs.\n\n" +
       "Multiple issue IDs can be passed as separate arguments or newline-separated\n" +
-      "within a single argument.\n\n" +
-      "Examples:\n" +
-      "  sentry issue explain @latest\n" +
-      "  sentry issue explain 123456789\n" +
-      "  sentry issue explain sentry/EXTENSION-7\n" +
-      "  sentry issue explain cli-G\n" +
-      "  sentry issue explain CLI-G BACK-2\n" +
-      "  sentry issue explain 123456789 --json\n" +
-      "  sentry issue explain 123456789 --force",
+      "within a single argument.",
+    examples: [
+      {
+        description:
+          "Analyze the root cause of an issue (may take a few minutes for new issues)",
+        command: "sentry issue explain 123456789",
+      },
+      {
+        description: "Explain the most recent issue",
+        command: "sentry issue explain @latest",
+      },
+      {
+        description: "Explain the most frequently occurring issue",
+        command: "sentry issue explain @most_frequent",
+      },
+      {
+        description: "Use a short ID with an organization prefix",
+        command: "sentry issue explain my-org/MYPROJECT-ABC",
+      },
+      {
+        description: "Analyze multiple issues in one invocation",
+        command: "sentry issue explain FRONT-ABC BACK-2",
+      },
+      {
+        description: "Force a fresh analysis",
+        command: "sentry issue explain 123456789 --force",
+      },
+      {
+        description: "Output root causes as JSON",
+        command: "sentry issue explain 123456789 --json",
+      },
+    ],
   },
   output: {
     human: formatIssueExplain,
@@ -145,7 +168,9 @@ export const explainCommand = buildCommand({
       issueArgs,
       (issueArg) => analyzeIssue(issueArg, cwd, flags, flags.json || isBatch),
       (issueArg, reason) => {
-        log.warn(`Failed to analyze issue ${issueArg}: ${reason}`);
+        log.warn(
+          `Failed to analyze issue ${issueArg}: ${stringifyUnknown(reason)}`,
+        );
       },
     );
 

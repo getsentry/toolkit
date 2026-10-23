@@ -99,23 +99,30 @@ When --scope or --read-only is passed, re-authenticates via the OAuth
 device flow with the requested scopes instead of refreshing the existing
 token. This is the preferred way to add or change scopes on an existing
 session (similar to \`gh auth refresh -s <scope>\`).
-
-Examples:
-  $ sentry auth refresh
-  ✓ Access token refreshed successfully. Access token valid for 59 minutes.
-
-  $ sentry auth refresh --force
-  ✓ Access token refreshed successfully. Access token valid for 1 hour.
-
-  $ sentry auth refresh --scope event:read --scope org:read
-  Re-authenticating with scopes: event:read, org:read...
-
-  $ sentry auth refresh --read-only
-  Re-authenticating with read-only scopes...
-
-  $ sentry auth refresh --json
-  {"success":true,"refreshed":true,"expiresIn":3600,"expiresAt":"..."}
-    `.trim(),
+`.trim(),
+    examples: [
+      {
+        description:
+          "Refresh the OAuth access token when it is close to expiring",
+        command: "sentry auth refresh",
+      },
+      {
+        description: "Refresh even if the token is still valid",
+        command: "sentry auth refresh --force",
+      },
+      {
+        description: "Re-authenticate with specific scopes",
+        command: "sentry auth refresh --scope project:read --scope org:read",
+      },
+      {
+        description: "Re-authenticate with read-only scopes",
+        command: "sentry auth refresh --read-only",
+      },
+      {
+        description: "Output the refresh result as JSON",
+        command: "sentry auth refresh --json",
+      },
+    ],
   },
   output: { human: formatRefreshResult },
   parameters: {
@@ -179,7 +186,7 @@ Examples:
     }
 
     // Standard token refresh path (no scope change).
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     if (!auth?.refreshToken && auth?.token) {
       throw new AuthError(
         "invalid",

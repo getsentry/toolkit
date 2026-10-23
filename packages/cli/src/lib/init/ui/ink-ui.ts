@@ -49,6 +49,7 @@
 import { spawn } from "node:child_process";
 import { openSync } from "node:fs";
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import { ReadStream } from "node:tty";
 
 const _require = createRequire(import.meta.url);
@@ -285,7 +286,6 @@ async function loadInkApp(): Promise<typeof import("./ink-app.js")> {
     // oxlint-disable-next-line typescript/no-explicit-any -- node:sea types not yet in @types/node
     const sea = _require("node:sea") as any;
     const { writeFileSync, mkdtempSync } = await import("node:fs");
-    const { join } = await import("node:path");
     const { tmpdir } = await import("node:os");
     const tmpDir = mkdtempSync(join(tmpdir(), "sentry-ink-"));
     const tmpFile = join(tmpDir, "ink-app.js");

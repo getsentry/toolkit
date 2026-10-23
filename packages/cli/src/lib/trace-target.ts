@@ -516,7 +516,7 @@ export async function resolveTraceOrgOptionalProject(
     );
     return { traceId: parsed.traceId, ...resolved };
   }
-  return resolveTraceOrgProject(parsed, cwd, usageHint);
+  return await resolveTraceOrgProject(parsed, cwd, usageHint);
 }
 
 /**
@@ -544,7 +544,7 @@ export async function resolveTraceOrgProject(
 
     case "project-search":
       // resolveProjectBoundTarget (called inside) sets telemetry context.
-      return resolveProjectSearchTarget(parsed, cwd, usageHint);
+      return await resolveProjectSearchTarget(parsed, cwd, usageHint);
 
     case "org-scoped":
       throw new ContextError("Specific project", usageHint, [

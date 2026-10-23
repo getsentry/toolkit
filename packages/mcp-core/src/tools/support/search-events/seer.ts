@@ -1,16 +1,20 @@
+import { logger, metrics } from "@sentry/core";
 import { isAggregateFieldOrEquation } from "@sentry/toolkit-core/events-fields";
 import { getSortField } from "@sentry/toolkit-core/events-sort";
 import type { z } from "zod";
 import type { CrossEventQueries, SentryApiService } from "../../../api-client";
 import {
   ApiAuthenticationError,
+  ApiError,
   type SearchAgentQuerySchema,
 } from "../../../api-client/index";
 import { logWarn } from "../../../telem/logging";
 import {
+  type EventsApiDataset,
   normalizeEventsDataset,
   type PublicEventsDataset,
 } from "../../../utils/events-datasets";
+import type { ExploreMode } from "../../../utils/url-utils";
 import { RECOMMENDED_FIELDS } from "./config";
 
 export const SEER_SEARCH_AGENT_POLLING_INTERVAL = 1000; // 1 second
@@ -50,28 +54,102 @@ export interface SeerSearchTranslation {
   explanation: string;
   // Correctness warnings must be shown even when explanations are disabled.
   warning?: string;
+  // Identifies the run in the assisted query outcome metric.
+  runId: string;
+  mode: ExploreMode;
+  organizationFeatures: string[];
 }
 
-async function hasSeerSearchAgentAccess(
+function extractErrorReason(err: Error): string {
+  if (err instanceof ApiError && err.detail) {
+    return err.detail;
+  }
+  return err.message;
+}
+
+// Seer doesn't return results, so the caller reports whether the translated
+// query found anything. Mirrors `trackAiQueryOutcome` in Sentry's frontend
+// (`static/app/components/searchQueryBuilder/askSeerCombobox/utils.ts`), which
+// reports the same metric with an `assisted_query.search_bar.*` referrer.
+export function trackAiQueryOutcome({
+  dataset,
+  mode,
+  organization,
+  resultCount,
+  runId,
+  error = false,
+}: {
+  dataset: EventsApiDataset;
+  mode: ExploreMode;
+  organization: { slug: string; features: string[] };
+  resultCount: number;
+  runId: string;
+  error?: string | boolean | Error;
+}): void {
+  const outcome = error
+    ? "error_on_load"
+    : resultCount > 0
+      ? "has_results"
+      : "empty_results";
+  const errorReason =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+        ? extractErrorReason(error)
+        : undefined;
+
+  const referrer = `assisted_query.mcp.${dataset === "spans" ? "traces" : dataset}`;
+  // Seer runs are stored as conversations in the `sentry` org.
+  const conversationUrl = `https://sentry.io/organizations/sentry/explore/agents/conversations/${encodeURIComponent(runId)}/`;
+  const codeMode = organization.features.includes(
+    "seer-assisted-query-codemode",
+  );
+  const crossEventEnabled = organization.features.includes(
+    "seer-assisted-query-cross-event-explorer",
+  );
+
+  const attributes = {
+    dataset,
+    mode,
+    org_slug: organization.slug,
+    referrer,
+    run_id: runId,
+    conversation_url: conversationUrl,
+    outcome,
+    error_reason: errorReason,
+    code_mode: codeMode,
+    cross_event_enabled: crossEventEnabled,
+  };
+
+  logger.info("assisted_query.outcome", {
+    ...attributes,
+    result_count: resultCount,
+  });
+  metrics.distribution("assisted_query.outcome", resultCount, { attributes });
+}
+
+// Returns the org's features when Seer translation is enabled, otherwise null.
+async function getSeerSearchAgentFeatures(
   apiService: SentryApiService,
   organizationSlug: string,
-): Promise<boolean> {
+): Promise<string[] | null> {
   // Sentry omits `features` unless explicitly requested.
   const organization = await apiService.getOrganization(organizationSlug, {
     includeFeatureFlags: true,
     detailed: false,
   });
   if (organization.hideAiFeatures) {
-    return false;
+    return null;
   }
   const features = organization.features ?? [];
-  return features.includes(SEER_TRANSLATE_FEATURE);
+  return features.includes(SEER_TRANSLATE_FEATURE) ? features : null;
 }
 
 function toSearchTranslation(
   result: z.output<typeof SearchAgentQuerySchema>,
   dataset: SeerSearchDataset,
   suggestedProjectIds: number[],
+  run: { runId: string; organizationFeatures: string[] },
 ): SeerSearchTranslation {
   const aggregates = result.visualization.flatMap((chart) => chart.y_axes);
   const fields =
@@ -160,6 +238,9 @@ function toSearchTranslation(
     suggestedProjectIds,
     explanation,
     warning,
+    runId: run.runId,
+    mode: result.mode === "aggregates" ? "aggregate" : "samples",
+    organizationFeatures: run.organizationFeatures,
   };
 }
 
@@ -184,7 +265,11 @@ export async function translateWithSeer({
   query: string;
 }): Promise<SeerSearchTranslation | null> {
   try {
-    if (!(await hasSeerSearchAgentAccess(apiService, organizationSlug))) {
+    const organizationFeatures = await getSeerSearchAgentFeatures(
+      apiService,
+      organizationSlug,
+    );
+    if (!organizationFeatures) {
       return null;
     }
 
@@ -215,7 +300,10 @@ export async function translateWithSeer({
               (id) => id !== Number(projectId),
             )
           : [];
-        return toSearchTranslation(result, dataset, suggestedProjectIds);
+        return toSearchTranslation(result, dataset, suggestedProjectIds, {
+          runId: run.sentry_run_id,
+          organizationFeatures,
+        });
       }
       if (session?.status === "error") {
         return null;

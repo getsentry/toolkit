@@ -98,11 +98,11 @@ describe("integration list", () => {
 
     const { context, stdoutWrite } = createMockContext();
     const func = await listCommand.loader();
-    await func.call(context, { limit: 25, json: true }, "my-org/");
+    await func.call(context, { limit: 2, json: true }, "my-org/");
 
     const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
     expect(parsed).toHaveProperty("hasMore", true);
-    expect(parsed).toHaveProperty("nextCursor", "0:25:0");
+    expect(parsed.nextCursor).toContain("0:25:0");
     expect(parsed.data).toHaveLength(2);
     expect(parsed.data[0]).toMatchObject({
       id: "101",

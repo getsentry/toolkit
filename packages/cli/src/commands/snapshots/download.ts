@@ -159,6 +159,22 @@ export const downloadCommand = buildCommand({
       "  sentry snapshots download --snapshot-id 1234567890\n" +
       "  sentry snapshots download --app-id my-app --branch main\n" +
       "  sentry snapshots download --app-id my-app --output ./baseline/",
+    examples: [
+      {
+        description: "Download a specific baseline snapshot by ID",
+        command: "sentry snapshots download --snapshot-id 1234567890",
+      },
+      {
+        description:
+          "Download the latest baseline for an app, filtered by branch",
+        command: "sentry snapshots download --app-id my-app --branch main",
+      },
+      {
+        description: "Extract images to a specific directory",
+        command:
+          "sentry snapshots download --app-id my-app --output ./baseline/",
+      },
+    ],
   },
   output: {
     human: formatDownloadResult,

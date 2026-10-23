@@ -208,7 +208,7 @@ async function performRequest(
     headers["content-encoding"] = encodingApplied;
   }
 
-  return new Promise<TransportMakeRequestResponse>((resolve, reject) => {
+  return await new Promise<TransportMakeRequestResponse>((resolve, reject) => {
     const req = httpModule.request(
       {
         method: "POST",

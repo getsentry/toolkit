@@ -1,12 +1,16 @@
 /**
  * Completion-aware positional parsers.
  *
- * Target positionals use these instead of `String` so shell completion can
- * read the target kind straight from the command's `parameters`. Every
- * parser returns its input unchanged; the kind is identified by which
- * function a positional uses. `script/generate-completion-targets.ts`
+ * Target positionals use a parser tagged with {@link withCompletionTarget}
+ * instead of `String` so shell completion can read the target kind straight
+ * from the command's `parameters`. `script/generate-completion-targets.ts`
  * collects them at build time because the `__complete` fast path cannot boot
  * Stricli to walk the route tree.
+ *
+ * {@link parseOrgTarget}, {@link parseOrgProjectTarget},
+ * {@link parseIssueTarget}, and {@link parseDashboardTarget} return their
+ * input unchanged and only mark the kind. Parsers that also parse the value,
+ * such as those in `target-positional.ts`, use the same tag.
  */
 
 /** Completes organization slugs only (e.g. `org`, `org/version`, `org/id`). */
@@ -35,41 +39,58 @@ export const COMPLETION_TARGETS = [
 /** Which cached values shell completion suggests for a target positional. */
 export type CompletionTarget = (typeof COMPLETION_TARGETS)[number];
 
-/** Parser for positionals whose leading segment is an organization slug. */
-export function parseOrgTarget(input: string): string {
-  return input;
+const COMPLETION_TARGET_KEY = Symbol("completionTarget");
+
+/**
+ * Tag a positional parser with the completion kind it accepts.
+ *
+ * @returns `parse` itself, so the tag travels with the function
+ */
+export function withCompletionTarget<P extends (input: string) => unknown>(
+  kind: CompletionTarget,
+  parse: P,
+): P {
+  Object.defineProperty(parse, COMPLETION_TARGET_KEY, { value: kind });
+  return parse;
 }
+
+/** Parser for positionals whose leading segment is an organization slug. */
+export const parseOrgTarget = withCompletionTarget(
+  ORG_TARGET,
+  (input: string): string => input,
+);
 
 /** Parser for positionals that start with `org/project`, a project, or an alias. */
-export function parseOrgProjectTarget(input: string): string {
-  return input;
-}
+export const parseOrgProjectTarget = withCompletionTarget(
+  ORG_PROJECT_TARGET,
+  (input: string): string => input,
+);
 
 /** Parser for positionals that name an issue (short ID, `org/ID`, ...). */
-export function parseIssueTarget(input: string): string {
-  return input;
-}
+export const parseIssueTarget = withCompletionTarget(
+  ISSUE_TARGET,
+  (input: string): string => input,
+);
 
 /** Parser for `[<org/project>] <dashboard-id-or-title>` positionals. */
-export function parseDashboardTarget(input: string): string {
-  return input;
-}
-
-const PARSER_TARGETS = new Map<unknown, CompletionTarget>([
-  [parseOrgTarget, ORG_TARGET],
-  [parseOrgProjectTarget, ORG_PROJECT_TARGET],
-  [parseIssueTarget, ISSUE_TARGET],
-  [parseDashboardTarget, DASHBOARD_TARGET],
-]);
+export const parseDashboardTarget = withCompletionTarget(
+  DASHBOARD_TARGET,
+  (input: string): string => input,
+);
 
 /**
  * Read the completion kind from a positional's `parse` function.
  *
- * @returns The kind for one of the parsers above, or `undefined` for any
- *   other parser
+ * @returns The kind a parser was tagged with by {@link withCompletionTarget},
+ *   or `undefined` for any other parser
  */
 export function getCompletionTarget(
   parse: unknown,
 ): CompletionTarget | undefined {
-  return PARSER_TARGETS.get(parse);
+  if (typeof parse !== "function") {
+    return;
+  }
+  return (parse as { [COMPLETION_TARGET_KEY]?: CompletionTarget })[
+    COMPLETION_TARGET_KEY
+  ];
 }

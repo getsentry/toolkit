@@ -692,7 +692,14 @@ async function executeStandardUpgrade(opts: {
   const downloadResult = await withProgress(
     { message: `Downloading ${target}...`, json },
     async (setMessage) =>
-      executeUpgrade(method, target, downloadTag, offline, setMessage, source),
+      await executeUpgrade(
+        method,
+        target,
+        downloadTag,
+        offline,
+        setMessage,
+        source,
+      ),
   );
 
   if (downloadResult?.patchBytes) {
@@ -780,7 +787,7 @@ async function migrateToStandaloneForNightly(opts: {
   const downloadResult = await withProgress(
     { message: `Downloading ${target}...`, json },
     async (setMessage) =>
-      executeUpgrade(
+      await executeUpgrade(
         "curl",
         target,
         downloadTag,
@@ -937,17 +944,45 @@ export const upgradeCommand = buildCommand({
       "  stable  (default) Latest stable release\n" +
       "  nightly           Built from main, updated on every commit\n\n" +
       "The channel is persisted so that subsequent bare `sentry cli upgrade` calls\n" +
-      "use the same channel.\n\n" +
-      "Examples:\n" +
-      "  sentry cli upgrade              # Update to latest (using persisted channel)\n" +
-      "  sentry cli upgrade nightly      # Switch to nightly channel and update\n" +
-      "  sentry cli upgrade stable       # Switch back to stable channel and update\n" +
-      "  sentry cli upgrade 0.5.0        # Install a specific stable version\n" +
-      "  sentry cli upgrade --check      # Check for updates without installing\n" +
-      "  sentry cli upgrade --force      # Force re-download even if up to date\n" +
-      "  sentry cli upgrade --method npm # Force using npm to upgrade\n" +
-      "  sentry cli upgrade --offline    # Upgrade from cached patches (no network)\n" +
-      "  sentry cli upgrade --no-agent-skills # Skip reinstalling agent skills",
+      "use the same channel.",
+    examples: [
+      {
+        description: "Update to the latest version on the persisted channel",
+        command: "sentry cli upgrade",
+      },
+      {
+        description: "Check for updates without installing",
+        command: "sentry cli upgrade --check",
+      },
+      {
+        description: "Switch to the nightly channel and update",
+        command: "sentry cli upgrade nightly",
+      },
+      {
+        description: "Switch back to the stable channel and update",
+        command: "sentry cli upgrade stable",
+      },
+      {
+        description: "Install a specific stable version",
+        command: "sentry cli upgrade 0.5.0",
+      },
+      {
+        description: "Force re-download even if up to date",
+        command: "sentry cli upgrade --force",
+      },
+      {
+        description: "Force using npm to upgrade",
+        command: "sentry cli upgrade --method npm",
+      },
+      {
+        description: "Upgrade from cached patches (no network)",
+        command: "sentry cli upgrade --offline",
+      },
+      {
+        description: "Skip reinstalling agent skills",
+        command: "sentry cli upgrade --no-agent-skills",
+      },
+    ],
   },
   output: { human: formatUpgradeResult },
   parameters: {
@@ -1004,7 +1039,7 @@ export const upgradeCommand = buildCommand({
     const resolved = await withProgress(
       { message: "Checking for updates...", json: flags.json },
       async () =>
-        resolveTargetWithFallback({
+        await resolveTargetWithFallback({
           resolveOpts: { method, channel, versionArg, channelChanged, flags },
           versionArg,
           offline: flags.offline,

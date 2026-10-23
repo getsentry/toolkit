@@ -11,14 +11,17 @@ import { describe, expect, test } from "vitest";
 import {
   ANON_IDENTITY,
   clearAuth,
+  DEFAULT_TOKEN_LIFETIME_MS,
   getActiveEnvVarName,
   getAuthConfig,
   getAuthToken,
   getIdentityFingerprint,
   getRawEnvToken,
+  getRemainingLifetimeRatio,
   hasStoredAuthCredentials,
   isAuthenticated,
   isEnvTokenActive,
+  REFRESH_THRESHOLD,
   refreshToken,
   resetAuthTokenCache,
   resetHasStoredCredsCache,
@@ -233,7 +236,7 @@ describe("clearAuth: integration with per-account caches", () => {
       await import("../../../src/lib/db/issue-org-cache.js");
 
     // Seed a mapping as if a previous session resolved this issue.
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setCachedIssueOrg("12345", "previous-account-org");
     expect(getCachedIssueOrg("12345")).toBe("previous-account-org");
 
@@ -251,7 +254,7 @@ describe("clearAuth: integration with per-account caches", () => {
       ISSUE_ENTITY,
     } = await import("../../../src/lib/db/completion-cache.js");
 
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     cacheCompletionEntities(ISSUE_ENTITY, "previous-account-org", [
       { value: "CLI-1", label: "Private issue title" },
     ]);
@@ -456,6 +459,19 @@ describe("refreshToken row-read memoization", () => {
   });
 });
 
+describe("refreshToken: corrupt issued_at", () => {
+  test("proactively refreshes when issued_at equals expires_at", async () => {
+    // 2 minutes left is under 10% of the default 1h lifetime. A zero stored
+    // lifetime used to read as an Infinity ratio and skip the refresh path.
+    setAuthToken("corrupt_access", 120);
+    getDatabase().query("UPDATE accounts SET issued_at = expires_at").run();
+    process.env.SENTRY_AUTH_TOKEN = "env_token";
+
+    const result = await refreshToken();
+    expect(result.token).toBe("env_token");
+  });
+});
+
 describe("hasStoredAuthCredentials memoization", () => {
   test("returns false and caches when no stored token", () => {
     expect(hasStoredAuthCredentials()).toBe(false);
@@ -496,5 +512,43 @@ describe("hasStoredAuthCredentials memoization", () => {
     // Manual reset forces re-read
     resetHasStoredCredsCache();
     expect(hasStoredAuthCredentials()).toBe(true);
+  });
+});
+
+describe("getRemainingLifetimeRatio", () => {
+  const now = 1_000_000_000;
+
+  test("uses the stored lifetime when issuedAt precedes expiresAt", () => {
+    expect(getRemainingLifetimeRatio(now + 500, now - 500, now)).toBe(0.5);
+  });
+
+  test("falls back to the default lifetime when issuedAt is missing", () => {
+    const expiresAt = now + DEFAULT_TOKEN_LIFETIME_MS / 4;
+    expect(getRemainingLifetimeRatio(expiresAt, null, now)).toBe(0.25);
+    expect(getRemainingLifetimeRatio(expiresAt, undefined, now)).toBe(0.25);
+  });
+
+  test.each([
+    ["issued_at equals expires_at", 0],
+    ["issued_at after expires_at", 1000],
+  ])(
+    "falls back to the default lifetime when %s",
+    (_label, issuedAfterExpiry) => {
+      // 5% of the default lifetime remains, so a sane lifetime must trigger
+      // proactive refresh instead of reading as Infinity or a huge ratio.
+      const expiresAt = now + DEFAULT_TOKEN_LIFETIME_MS * 0.05;
+      const ratio = getRemainingLifetimeRatio(
+        expiresAt,
+        expiresAt + issuedAfterExpiry,
+        now,
+      );
+      expect(ratio).toBeCloseTo(0.05);
+      expect(ratio).toBeLessThanOrEqual(REFRESH_THRESHOLD);
+    },
+  );
+
+  test("is non-positive once the token has expired", () => {
+    expect(getRemainingLifetimeRatio(now, now, now)).toBe(0);
+    expect(getRemainingLifetimeRatio(now - 1, now - 1, now)).toBeLessThan(0);
   });
 });

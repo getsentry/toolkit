@@ -37,7 +37,7 @@ import type {
   WidgetDataResult,
 } from "../../types/dashboard.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardPositionalArgs,
   resolveDashboardId,
   resolveOrgFromTarget,
@@ -168,19 +168,50 @@ export const viewCommand = buildCommand({
       "View a Sentry dashboard with rendered widget data.\n\n" +
       "Fetches actual data for each widget and displays sparkline charts,\n" +
       "tables, and big numbers in the terminal.\n\n" +
-      "The dashboard can be specified by numeric ID or title.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard view 12345\n" +
-      "  sentry dashboard view 'My Dashboard'\n" +
-      "  sentry dashboard view my-org 12345\n" +
-      "  sentry dashboard view my-org 'My Dashboard'\n" +
-      "  sentry dashboard view my-org/my-project 12345\n" +
-      "  sentry dashboard view 12345 --json\n" +
-      "  sentry dashboard view 12345 --period 7d\n" +
-      "  sentry dashboard view 12345 --renderer sixel\n" +
-      "  sentry dashboard view 12345 -r\n" +
-      "  sentry dashboard view 12345 -r 30\n" +
-      "  sentry dashboard view 12345 --web",
+      "The dashboard can be specified by numeric ID or title.",
+    examples: [
+      {
+        description: "View a dashboard by title",
+        command: "sentry dashboard view 'Frontend Performance'",
+      },
+      {
+        description: "View a dashboard by ID",
+        command: "sentry dashboard view 12345",
+      },
+      {
+        description: "View by ID in an explicit organization",
+        command: "sentry dashboard view my-org/12345",
+      },
+      {
+        description: "Include project context in the same argument",
+        command: "sentry dashboard view my-org/my-project/12345",
+      },
+      {
+        description:
+          "Pass the organization separately, e.g. for titles that contain a slash",
+        command: 'sentry dashboard view my-org/ "incidents/2026"',
+      },
+      {
+        description: "Override the time period",
+        command: "sentry dashboard view 12345 --period 7d",
+      },
+      {
+        description: "Render charts with sixel graphics",
+        command: "sentry dashboard view 12345 --renderer sixel",
+      },
+      {
+        description: "Auto-refresh every 30 seconds",
+        command: "sentry dashboard view 'Backend Performance' --refresh 30",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry dashboard view 12345 --json",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry dashboard view 12345 -w",
+      },
+    ],
   },
   output: {
     human: createDashboardViewRenderer,
@@ -256,15 +287,17 @@ export const viewCommand = buildCommand({
     }
 
     // Fetch the dashboard definition (widget structure)
-    const dashboard = await withProgress(
-      { message: "Fetching dashboard...", json: flags.json },
-      () => getDashboard(orgSlug, dashboardId),
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    const dashboard = await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "view",
-      }),
+      },
+      () =>
+        withProgress(
+          { message: "Fetching dashboard...", json: flags.json },
+          () => getDashboard(orgSlug, dashboardId),
+        ),
     );
 
     const regionUrl = await resolveOrgRegion(orgSlug);

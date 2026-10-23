@@ -151,6 +151,18 @@ export async function getChunkUploadOptions(
     `organizations/${orgSlug}/chunk-upload/`,
     { schema: ChunkServerOptionsSchema },
   );
+
+  // Self-hosted Sentry instances may return a chunk-upload URL that embeds
+  // DSN credentials (e.g. https://<token>@host/...). Node.js 25+ rejects
+  // constructing a fetch Request from such a URL per the Fetch spec. Strip
+  // them here — auth is already handled by the authFetch wrapper.
+  const parsedUrl = new URL(data.url);
+  if (parsedUrl.username || parsedUrl.password) {
+    parsedUrl.username = "";
+    parsedUrl.password = "";
+    return { ...data, url: parsedUrl.href };
+  }
+
   return data;
 }
 

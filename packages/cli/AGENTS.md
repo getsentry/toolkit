@@ -39,7 +39,7 @@ Before working on this codebase, read the Cursor rules:
 # Development
 pnpm install                             # Install dependencies (from repo root)
 pnpm run dev                             # Run CLI in dev mode
-pnpm run cli -- <args>                   # Run the CLI with arguments
+pnpm run cli <args>                      # Run the CLI with arguments
 
 # Build
 pnpm run build                           # Build for current platform
@@ -239,13 +239,44 @@ const parsed = parseOrgProjectArg(targetArg);
 
 Reference: `span/list.ts`, `trace/view.ts`, `event/view.ts`
 
+**Target positionals:** A single `[<org>/][<project>]` positional uses a
+parser from `src/lib/target-positional.ts`, which binds the resolver:
+`orgOptionalTarget` (org, optional project), `projectBoundTarget` (one org and
+project), or `orgProjectTarget(resolve)` for a command-specific resolver (see
+`project view`). `func` takes the matching type (`OrgOptionalTarget`,
+`ProjectBoundTarget`, `OrgProjectTarget<R>`), reads the parsed form as
+`target.parsed` (e.g. `target.parsed.type`), and gets the org and project
+with `await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
+itself, and an omitted target arrives as auto-detect. The
+`sentry-cli/require-target-resolution` lint rule fails a function that takes
+one of these types and never reads `.resolved`.
+
+Resolvers need no command name: they read it from `this.commandPrefix`, which
+Stricli's `forCommand` and the SDK invoker set (test mock contexts set it
+too). In a destructive command (`buildDeleteCommand`, or `buildCommand` with
+`destructive: true`), the target refuses to auto-detect, so those commands
+don't call `requireExplicitTarget` for it.
+
+Both steps are lazy (`lazyPositional` in `src/lib/positional-parse.ts`): the
+parse runs on the first `parsed` read and the resolver on the first
+`resolved` read, both inside `func` after the auth guard. Invalid input still
+throws the parser's `CliError` with its exit code. `target.raw` is what the
+user typed; shared code that handles any positional uses
+`rawPositional(value)`. `buildCommand` runs these parsers on
+positionals that arrive as strings or are omitted, so the SDK invoke path and
+tests that call `command.loader()` keep passing raw strings. Positionals whose
+meaning depends on how many arguments were given, such as
+`[<org>/<project>/]<trace-id>`, keep parsing in `func`.
+
 **Shell completion:** Target positionals that take an org, project, issue, or
 dashboard use a completion-aware parser from `src/lib/completion-target.ts`
 instead of `String`: `parseOrgProjectTarget` completes `org/`, `org/project`,
 and project aliases; `parseOrgTarget` completes org slugs only;
 `parseIssueTarget` adds cached issue short IDs; `parseDashboardTarget`
 completes cached dashboards. `LIST_TARGET_POSITIONAL`,
-`LIST_ORG_TARGET_POSITIONAL`, and `issueIdPositional` already use them.
+`LIST_ORG_TARGET_POSITIONAL`, and `issueIdPositional` already use them. A
+parser tagged with `withCompletionTarget`, such as the `target-positional.ts`
+parsers, completes the same way.
 Issue and dashboard suggestions come from the `completion_cache` table, which
 the API layer seeds through `src/lib/api/completion-seed.ts` whenever issues or
 dashboards are listed or fetched. To complete a new entity type, add a kind in
@@ -290,6 +321,16 @@ All non-trivial human output must use the markdown rendering pipeline:
 - `isPlainOutput()` lives in `src/lib/formatters/plain-detect.ts` (re-exported from `markdown.ts` for compat)
 
 Reference: `formatters/trace.ts` (`formatAncestorChain`), `formatters/human.ts` (`plainSafeMuted`)
+
+### Parsing Markdown
+
+Never parse markdown structure (headings, code fences, lists) with regexes. Use the `marked` lexer, which is already a dependency:
+
+- Scripts: use the helpers in `script/markdown.ts` (`markdownHeadings()`, `blankCodeBlocks()`), or `marked.lexer()` directly for other token types.
+- Runtime code: follow `src/lib/formatters/markdown.ts` and `src/lib/release-notes.ts`.
+- Regexes are fine on the plain text of a parsed token, such as matching heading text.
+
+The `sentry-cli/no-regex-markdown-parsing` lint rule flags regexes that match headings or code fences in `src/` and `script/`.
 
 ### Create & Delete Command Standards
 
@@ -418,24 +459,43 @@ that fits your use case):
 **Auto-pagination for large limits:**
 
 When `--limit` exceeds `API_MAX_PER_PAGE` (100), list commands MUST transparently
-fetch multiple pages to fill the requested limit. Cap `perPage` at
-`Math.min(flags.limit, API_MAX_PER_PAGE)` and loop until `results.length >= limit`
-or pages are exhausted. This matches the `listIssuesAllPages` pattern.
+fetch multiple pages to fill the requested limit. Always do this with
+`paginate()` from `src/lib/api/infrastructure.ts`; never write the cursor loop
+yourself. The `sentry-cli/no-manual-pagination` lint rule rejects loops that
+follow cursors and count toward a limit.
 
 ```typescript
-const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
-for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-  const { data, nextCursor } = await listPaginated(org, { perPage, cursor });
-  results.push(...data);
-  if (results.length >= flags.limit || !nextCursor) break;
-  cursor = nextCursor;
-}
+const { data, nextCursor } = await paginate(
+  { limit: flags.limit, cursor },
+  (perPage, pageCursor) =>
+    listPaginated(org, { perPage, cursor: pageCursor }),
+);
 ```
 
-Never pass a `per_page` value larger than `API_MAX_PER_PAGE` to the API — the
-server silently caps it, causing the command to return fewer items than requested.
+Pass `perPage` to the request unchanged. Sentry's page-number paginators
+(`OffsetPaginator`, used by projects, teams, members, repositories, and
+dashboard revisions) encode the page size in the cursor
+(`<per_page>:<page>:<is_prev>`), so a cursor is only valid with the
+`per_page` that produced it. `paginate()` reads that page size back from the
+cursor, so a later `-c next` reuses it even when `--limit` changes. A fresh
+walk splits `--limit` evenly over the fewest requests (201 → 3 × 67).
 
-Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/list.ts`
+The cursors `paginate()` returns are Sentry cursors, so every CLI version and
+the API accept them, and stored `-c next` history works across upgrades and
+downgrades. When a call stops inside a page, the cursor points at that page
+and records how many of its rows were already returned in `is_prev`, in
+binary with `_0` for 1 and `0` for 0 after a leading `0` (`84:2:0_00_000_00`
+skips 82 = `0b1010010` rows). Sentry parses `is_prev` with Python's `int()`,
+which reads any zeros joined by single underscores as 0, so it is still a
+next-page cursor. `encodeSkip()` in `src/lib/api/infrastructure.ts` documents
+the format.
+`paginate()` refetches the page and skips them; anything else that sends the
+cursor (with the page size it encodes, if any) gets those rows again, never
+fewer. Keep returned cursors valid Sentry
+cursors. Test pagination changes against the paginator models in
+`test/lib/paginate.property.test.ts`.
+
+Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/revisions.ts`
 
 ### ID Validation
 
@@ -456,8 +516,9 @@ All command docs and skill files are generated via `pnpm run generate:docs` (whi
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
-- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write an `Examples:` block in `fullDescription` or a `## Examples` section in a fragment for new commands.
+- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write an `Examples:` block in `fullDescription` or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
 - Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
+- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. For a real workflow, sample output, or cross-command guide, put `<!-- allow-commands: <reason> -->` on the line directly above the block.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.
 

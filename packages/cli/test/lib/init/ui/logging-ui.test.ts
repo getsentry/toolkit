@@ -177,7 +177,7 @@ describe("LoggingUI spinner", () => {
 describe("LoggingUI prompts throw", () => {
   test("select rejects with LoggingUIPromptError", async () => {
     const { ui } = createUI();
-    expect(
+    await expect(
       ui.select({
         message: "Pick one",
         options: [{ value: "a", label: "A" }],
@@ -187,7 +187,7 @@ describe("LoggingUI prompts throw", () => {
 
   test("multiselect rejects with LoggingUIPromptError", async () => {
     const { ui } = createUI();
-    expect(
+    await expect(
       ui.multiselect({
         message: "Pick many",
         options: [{ value: "a", label: "A" }],
@@ -197,7 +197,7 @@ describe("LoggingUI prompts throw", () => {
 
   test("confirm rejects with LoggingUIPromptError", async () => {
     const { ui } = createUI();
-    expect(ui.confirm({ message: "Sure?" })).rejects.toBeInstanceOf(
+    await expect(ui.confirm({ message: "Sure?" })).rejects.toBeInstanceOf(
       LoggingUIPromptError,
     );
   });

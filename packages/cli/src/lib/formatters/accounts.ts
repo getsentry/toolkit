@@ -7,17 +7,26 @@ import { type AccountSummary, hostnameOf } from "../db/accounts.js";
 import { colorTag, escapeMarkdownInline, renderMarkdown } from "./markdown.js";
 import { formatTable } from "./table.js";
 
-/** Short human label for an account, e.g. `Jane <jane@acme.com>`. */
+/**
+ * Short human label for an account, e.g. `Jane <jane@acme.com>`. The env
+ * token's account names its variable, after its user when known:
+ * `Jane <jane@acme.com> via SENTRY_AUTH_TOKEN`.
+ */
 export function formatAccountIdentity(account: AccountSummary): string {
   const displayName = account.name ?? account.username;
+  let who: string | undefined;
   if (displayName && account.email) {
-    return `${displayName} <${account.email}>`;
+    who = `${displayName} <${account.email}>`;
+  } else {
+    who =
+      displayName ??
+      account.email ??
+      (account.userId ? `user ${account.userId}` : undefined);
   }
-  return (
-    displayName ??
-    account.email ??
-    (account.userId ? `user ${account.userId}` : "unknown user")
-  );
+  if (account.envVar) {
+    return who ? `${who} via ${account.envVar}` : account.envVar;
+  }
+  return who ?? "unknown user";
 }
 
 /** Label including the server, e.g. `jane@acme.com on sentry.io`. */
@@ -28,6 +37,9 @@ export function formatAccountLabel(account: AccountSummary): string {
 }
 
 function accountStatus(account: AccountSummary): string {
+  if (account.envVar) {
+    return "env token";
+  }
   if (!account.usable) {
     return colorTag("red", "logged out");
   }

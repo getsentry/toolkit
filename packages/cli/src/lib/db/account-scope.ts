@@ -33,6 +33,12 @@ import { getEnv } from "../env.js";
 type AccountScope = {
   /** Default account for the rest of this invocation, chosen from its target. */
   accountId?: string;
+  /**
+   * The env token (`SENTRY_AUTH_TOKEN`/`SENTRY_TOKEN`) was chosen for the
+   * rest of this invocation instead of a stored account, because it knows
+   * the targeted organization. Exclusive with `accountId`.
+   */
+  envToken?: boolean;
 };
 
 /** One scope per invocation env; see the module comment for why. */

@@ -77,7 +77,7 @@ async function getJson(url, headers) {
   if (!response.ok) {
     throw new Error(`GET ${url} returned ${response.status}`);
   }
-  return response.json();
+  return await response.json();
 }
 
 async function readNightlyVersion(repository) {

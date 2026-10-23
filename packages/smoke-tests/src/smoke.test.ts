@@ -31,6 +31,22 @@ const IS_LOCAL_DEV =
 // User-Agent for smoke tests - identifies these as automated smoke tests
 const SMOKE_TEST_USER_AGENT = `sentry-mcp-smoke-tests/${pkg.version}`;
 
+/**
+ * Merge caller headers over the smoke-test User-Agent, then apply the
+ * Cloudflare version override. `HeadersInit` may be a `Headers` instance or
+ * an array of tuples, so it can't be object-spread.
+ */
+function buildSmokeTestHeaders(init?: HeadersInit): Headers {
+  const headers = new Headers({ "User-Agent": SMOKE_TEST_USER_AGENT });
+  for (const [key, value] of new Headers(init)) {
+    headers.set(key, value);
+  }
+  for (const [key, value] of Object.entries(VERSION_HEADER)) {
+    headers.set(key, value);
+  }
+  return headers;
+}
+
 // Skip all smoke tests if PREVIEW_URL is not set
 const describeIfPreviewUrl = PREVIEW_URL ? describe : describe.skip;
 
@@ -76,11 +92,7 @@ async function safeFetch(
   try {
     response = await fetch(url, {
       ...fetchOptions,
-      headers: {
-        "User-Agent": SMOKE_TEST_USER_AGENT,
-        ...fetchOptions.headers,
-        ...VERSION_HEADER,
-      },
+      headers: buildSmokeTestHeaders(fetchOptions.headers),
       signal,
     });
 

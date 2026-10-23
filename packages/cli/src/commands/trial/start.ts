@@ -77,18 +77,28 @@ function parseTrialStartArgs(
 }
 
 export const startCommand = buildCommand({
+  destructive: true,
   docs: {
     brief: "Start a product trial",
     fullDescription:
       "Start a product trial for an organization.\n\n" +
       `Valid trial names: ${NAMES_LIST}\n\n` +
-      "Use 'plan' to start a Business plan trial (opens billing page).\n\n" +
-      "Examples:\n" +
-      "  sentry trial start seer\n" +
-      "  sentry trial start seer my-org\n" +
-      "  sentry trial start replays\n" +
-      "  sentry trial start plan\n" +
-      "  sentry trial start --json seer",
+      "Use 'plan' to start a Business plan trial (opens billing page).",
+    examples: [
+      { description: "Start a Seer trial", command: "sentry trial start seer" },
+      {
+        description: "Start a trial for a specific organization",
+        command: "sentry trial start replays my-org",
+      },
+      {
+        description: "Start a Business plan trial (opens the browser)",
+        command: "sentry trial start plan",
+      },
+      {
+        description: "Output the result as JSON",
+        command: "sentry trial start --json seer",
+      },
+    ],
   },
   output: { human: formatStartResult },
   parameters: {

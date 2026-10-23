@@ -54,10 +54,10 @@ List issues in a project
 # List issues in a specific project
 sentry issue list my-org/frontend
 
-# Several projects in the same org
+# Several projects in the same organization
 sentry issue list my-org/frontend,backend,worker
 
-# All projects in an org
+# All projects in an organization
 sentry issue list my-org/
 
 # Search for a project across organizations
@@ -66,24 +66,19 @@ sentry issue list frontend
 # Show only unresolved issues
 sentry issue list my-org/frontend --query "is:unresolved"
 
-# Show resolved issues
-sentry issue list my-org/frontend --query "is:resolved"
-
 # Sort by frequency
 sentry issue list my-org/frontend --sort freq --limit 20
 
-# Sort by Sentry's "recommended" relevance ranking (the default on sentry.io;
-# self-hosted instances default to "date" and require a recent Sentry version
-# to accept --sort recommended)
+# Sort by Sentry's recommended relevance ranking
 sentry issue list my-org/frontend --sort recommended
 
-# Multiple filters (space-separated = implicit AND)
+# Multiple filters (space-separated terms are combined with AND)
 sentry issue list --query "is:unresolved level:error assigned:me"
 
 # Negation and wildcards
 sentry issue list --query "!browser:Chrome message:*timeout*"
 
-# Match multiple values for one key (in-list syntax)
+# Match multiple values for one key
 sentry issue list --query "browser:[Chrome,Firefox]"
 ```
 
@@ -125,6 +120,9 @@ List events for a specific issue
 # List recent events for an issue
 sentry issue events FRONT-ABC
 
+# List events for the most recent issue
+sentry issue events @latest --limit 50
+
 # Filter events by search query
 sentry issue events FRONT-ABC --query "browser:Chrome"
 
@@ -134,8 +132,11 @@ sentry issue events FRONT-ABC --full
 # Limit results and filter by time period
 sentry issue events FRONT-ABC --limit 50 --period 24h
 
-# Paginate through results
+# Fetch the next page
 sentry issue events FRONT-ABC -c next
+
+# Output as JSON
+sentry issue events FRONT-ABC --json
 ```
 
 ### `sentry issue explain <issue...>`
@@ -149,19 +150,16 @@ Analyze one or more issues using Seer AI
 **Examples:**
 
 ```bash
-# View the most recent issue
-sentry issue view @latest
+# Analyze the root cause of an issue (may take a few minutes for new issues)
+sentry issue explain 123456789
+
+# Explain the most recent issue
+sentry issue explain @latest
 
 # Explain the most frequently occurring issue
 sentry issue explain @most_frequent
 
-# Generate a fix plan for the latest issue
-sentry issue plan @latest
-
-# Analyze root cause (may take a few minutes for new issues)
-sentry issue explain 123456789
-
-# By short ID with org prefix
+# Use a short ID with an organization prefix
 sentry issue explain my-org/MYPROJECT-ABC
 
 # Analyze multiple issues in one invocation
@@ -169,6 +167,9 @@ sentry issue explain FRONT-ABC BACK-2
 
 # Force a fresh analysis
 sentry issue explain 123456789 --force
+
+# Output root causes as JSON
+sentry issue explain 123456789 --json
 ```
 
 ### `sentry issue plan <issue>`
@@ -182,8 +183,14 @@ Generate a solution plan using Seer AI
 **Examples:**
 
 ```bash
-# Generate a fix plan (automatically runs explain if needed)
+# Generate a fix plan (runs explain first if needed)
 sentry issue plan 123456789
+
+# Generate a fix plan for the most recent issue
+sentry issue plan @latest
+
+# Use a short ID with an organization prefix
+sentry issue plan my-org/MYPROJECT-ABC
 
 # Force a fresh plan even if one already exists
 sentry issue plan 123456789 --force
@@ -230,47 +237,40 @@ View details of one or more issues
 **Examples:**
 
 ```bash
+# View an issue
 sentry issue view FRONT-ABC
 
-# Multiple issues in one invocation (space-separated, not commas)
+# View the most recent issue
+sentry issue view @latest
+
+# View several issues (space-separated, not commas)
 sentry issue view FRONT-ABC BACK-2
 
+# Select an organization explicitly
 sentry issue view my-org/FRONT-ABC
 
-# Open one or more issues in the browser (up to 5 tabs by default)
+# Use a GitHub-style identifier (the "#" replaces the final slash)
+sentry issue view my-org/my-project#FRONT-ABC
+
+# Open issues in the browser (up to 5 tabs by default)
 sentry issue view FRONT-ABC BACK-2 -w
 
-# Explicitly allow more than 5 tabs
+# Allow more than 5 browser tabs
 sentry issue view FRONT-ABC BACK-2 API-3 WEB-4 IOS-5 OPS-6 -w --force
-
-# GitHub-style identifiers work too (the "#" replaces the final slash)
-sentry issue view my-org/my-project#FRONT-ABC
-sentry issue view my-project#FRONT-ABC
 
 # Full JSON (issue fields + latest event + trace/replay context)
 sentry issue view FRONT-ABC --json
 
-# Multiple issues: JSON is an array of the same objects
-sentry issue view FRONT-ABC BACK-2 --json
-
-# Select specific top-level fields to keep output small
+# Select top-level fields to keep output small
 sentry issue view FRONT-ABC --json --fields shortId,title,culprit,count,userCount,permalink
 
-# Pull named fields off the latest event instead of the whole `event` object —
-# the event's `request` entry can include live session data (cookies, headers,
-# body), so extract only what you need
+# Select fields from the latest event instead of the whole event
 sentry issue view FRONT-ABC --json --fields event.id,event.title,event.dateCreated
 
-# Issue summary
-sentry issue view FRONT-ABC --json | jq '{shortId, title, count, userCount, permalink}'
-
-# Latest event id + culprit
-sentry issue view FRONT-ABC --json | jq '{event: .event.id, culprit}'
-
-# Just the request URL and method (avoids the full request/session blob)
+# Extract the request URL and method from the latest event
 sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == "request") | .data | {url, method}'
 
-# Exception type and value from the latest event
+# Extract the exception type and value from the latest event
 sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == "exception") | .data.values[0] | {type, value}'
 ```
 
@@ -281,6 +281,31 @@ Mark an issue as resolved
 **Flags:**
 - `-i, --in <value> - Resolve in a release, next release, or commit ('<version>' | '@next' | '@commit' | '@commit:<repo>@<sha>')`
 
+**Examples:**
+
+```bash
+# Resolve immediately (no regression tracking)
+sentry issue resolve CLI-G5
+
+# Resolve in a specific release (newer releases flag regressions)
+sentry issue resolve CLI-G5 --in 0.26.1
+
+# Monorepo-style release versions work too
+sentry issue resolve CLI-G5 --in spotlight@1.2.3
+
+# Resolve in the next release
+sentry issue resolve CLI-G5 --in @next
+
+# Resolve in the current git HEAD (auto-detects the Sentry repo from your origin remote)
+sentry issue resolve CLI-G5 --in @commit
+
+# Resolve in an explicit commit and repo (no git inspection)
+sentry issue resolve CLI-G5 --in @commit:getsentry/cli@abc123def
+
+# Resolve an issue in an explicit organization
+sentry issue resolve my-org/CLI-G5
+```
+
 ### `sentry issue unresolve <issue>`
 
 Reopen a resolved issue
@@ -288,30 +313,14 @@ Reopen a resolved issue
 **Examples:**
 
 ```bash
-# Resolve immediately (no regression tracking)
-sentry issue resolve CLI-G5
-
-# Resolve in a specific release — future events on newer releases are
-# regression-flagged
-sentry issue resolve CLI-G5 --in 0.26.1
-
-# Monorepo-style releases work too (no special parsing)
-sentry issue resolve CLI-G5 --in spotlight@1.2.3
-
-# Resolve in the next release (tied to current HEAD)
-sentry issue resolve CLI-G5 --in @next
-sentry issue resolve CLI-G5 -i @next
-
-# Resolve in the current git HEAD — auto-detects the Sentry repo from
-# your git origin remote (hard-errors if it can't)
-sentry issue resolve CLI-G5 --in @commit
-
-# Explicit commit + repo (no git inspection; repo must be registered in Sentry)
-sentry issue resolve CLI-G5 --in @commit:getsentry/cli@abc123def
-
 # Reopen a resolved issue
 sentry issue unresolve CLI-G5
-sentry issue reopen CLI-G5   # alias
+
+# `reopen` is an alias for `unresolve`
+sentry issue reopen CLI-G5
+
+# Reopen an issue in an explicit organization
+sentry issue unresolve my-org/CLI-G5
 ```
 
 ### `sentry issue archive <issue>`
@@ -327,28 +336,34 @@ Archive (ignore) an issue
 # Archive forever (fully silenced)
 sentry issue archive CLI-G5
 
-# Smart detection — unarchives when Sentry detects a spike in event frequency
+# Unarchive when Sentry detects a spike in event frequency
 sentry issue archive CLI-G5 --until auto
 
-# Duration-based
-sentry issue archive CLI-G5 --until 1h    # 1 hour
-sentry issue archive CLI-G5 --until 7d    # 7 days
-sentry issue archive CLI-G5 --until 2026-12-31  # specific date
+# Archive for 1 hour
+sentry issue archive CLI-G5 --until 1h
 
-# Count-based — unarchive after N more events
+# Archive for 7 days
+sentry issue archive CLI-G5 --until 7d
+
+# Archive until a specific date
+sentry issue archive CLI-G5 --until 2026-12-31
+
+# Unarchive after 100 more events
 sentry issue archive CLI-G5 --until 100x
 
-# User-based — unarchive after N more users affected
+# Unarchive after 10 more users are affected
 sentry issue archive CLI-G5 --until 10u
 
-# Compound — count within a time window
-sentry issue archive CLI-G5 --until 100x/1h   # 100 events within 1 hour
-sentry issue archive CLI-G5 --until 10u/1d    # 10 users within 1 day
+# Unarchive after 100 events within 1 hour
+sentry issue archive CLI-G5 --until 100x/1h
 
-# Verbose forms also work
+# Unarchive after 10 users within 1 day
+sentry issue archive CLI-G5 --until 10u/1d
+
+# Use the verbose condition form
 sentry issue archive CLI-G5 --until 10events/2hours
 
-# 'ignore' is an alias for 'archive'
+# `ignore` is an alias for `archive`
 sentry issue ignore CLI-G5 --until auto
 ```
 
@@ -356,23 +371,25 @@ sentry issue ignore CLI-G5 --until auto
 
 Merge 2+ issues into a single canonical group
 
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Confirm with the user before running it.
+
 **Flags:**
 - `-i, --into <value> - Prefer this issue as the canonical parent (included in the merge if not already listed)`
 
 **Examples:**
 
 ```bash
-# Let Sentry auto-pick the parent (typically the largest by event count)
+# Let Sentry pick the parent (typically the largest by event count)
 sentry issue merge CLI-K9 CLI-15H CLI-15N
 
-# Pin the canonical parent explicitly — accepts the same formats as
-# positional args, including org-qualified and project-alias forms
+# Pin the canonical parent explicitly
 sentry issue merge CLI-K9 CLI-15H CLI-15N --into CLI-K9
-sentry issue merge my-org/CLI-K9 my-org/CLI-15H --into my-org/CLI-K9
-sentry issue merge cli-k9 cli-15h --into cli-k9    # alias form
 
-# Cross-org merges are rejected — all issues must share an organization
-# Non-error issue types (performance, info, etc.) cannot be merged
+# Use organization-qualified IDs
+sentry issue merge my-org/CLI-K9 my-org/CLI-15H --into my-org/CLI-K9
+
+# Use project-alias IDs
+sentry issue merge cli-k9 cli-15h --into cli-k9
 ```
 
 ### `sentry issue link <issue> <url>`
@@ -388,18 +405,30 @@ Link an existing external issue
 **Examples:**
 
 ```bash
+# Link a GitHub issue
 sentry issue link FRONT-123 https://github.com/example/app/issues/42
+
+# Link a GitHub pull request
 sentry issue link FRONT-123 https://github.com/example/app/pull/43
-sentry issue link FRONT-123 https://example.atlassian.net/browse/APP-42
+
+# Link a Jira issue in an explicit organization
+sentry issue link my-org/FRONT-123 https://example.atlassian.net/browse/APP-42
+
+# Link a Linear issue
 sentry issue link FRONT-123 https://linear.app/example/issue/APP-42/fix-error
 
+# Prepare the link without submitting it
 sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --dry-run
+
+# Output the result as JSON
 sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --json
 ```
 
 ### `sentry issue unlink <issue> <url>`
 
 Unlink an external issue
+
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
 
 **Flags:**
 - `--integration <value> - Native integration ID, when multiple installations match`
@@ -411,9 +440,16 @@ Unlink an external issue
 **Examples:**
 
 ```bash
+# Unlink a GitHub issue (prompts for confirmation)
 sentry issue unlink FRONT-123 https://github.com/example/app/issues/42
+
+# Unlink a GitHub pull request without prompting
 sentry issue unlink FRONT-123 https://github.com/example/app/pull/43 --yes
+
+# Unlink a Jira issue in an explicit organization
 sentry issue unlink my-org/FRONT-123 https://example.atlassian.net/browse/APP-42 --yes
+
+# Check whether a link exists without removing it
 sentry issue unlink FRONT-123 https://linear.app/example/issue/APP-42/fix-error --dry-run
 ```
 

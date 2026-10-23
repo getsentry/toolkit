@@ -1524,7 +1524,7 @@ export async function resolveAllTargets(
       }
 
       span.setAttribute("resolve.method", "dsn");
-      return resolveDetectedDsns(detection);
+      return await resolveDetectedDsns(detection);
     },
     { "resolve.mode": "multi" },
   );
@@ -1821,7 +1821,7 @@ async function promptSelect(
     return sole.value;
   }
   const { selectWithFilter } = await import("./init/ui/ink-ui.js");
-  return selectWithFilter({ message, options });
+  return await selectWithFilter({ message, options });
 }
 
 /**
@@ -2125,7 +2125,11 @@ export async function resolveProjectBoundSlug(
   }
 
   if (resolution.kind === "fuzzy-project") {
-    return resolveFuzzyProjectBoundSlug(resolution, projectSlug, usageHint);
+    return await resolveFuzzyProjectBoundSlug(
+      resolution,
+      projectSlug,
+      usageHint,
+    );
   }
 
   if (resolution.kind === "not-found") {
@@ -2709,14 +2713,16 @@ export async function resolveOrgOptionalTarget(
       );
       return withTelemetryContext({ org: resolution.org });
     }
-    return resolveProjectBoundTarget(parsed, cwd, commandName, {
+    return await resolveProjectBoundTarget(parsed, cwd, commandName, {
       projectSearchResolution: resolution,
       usageHint,
     });
   }
 
   // explicit, scoped search, and display names
-  return resolveProjectBoundTarget(parsed, cwd, commandName, { usageHint });
+  return await resolveProjectBoundTarget(parsed, cwd, commandName, {
+    usageHint,
+  });
 }
 
 /**

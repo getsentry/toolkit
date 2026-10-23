@@ -87,13 +87,30 @@ export const deployCommand = buildCommand({
   docs: {
     brief: "Create a deploy for a release",
     fullDescription:
-      "Create a deploy record for a release in a specific environment.\n\n" +
-      "Examples:\n" +
-      "  sentry release deploy 1.0.0 production\n" +
-      '  sentry release deploy my-org/1.0.0 staging "Deploy #42"\n' +
-      "  sentry release deploy 1.0.0 production --url https://example.com\n" +
-      "  sentry release deploy 1.0.0 production --time 120\n" +
-      "  sentry release deploy 1.0.0 production --dry-run",
+      "Create a deploy record for a release in a specific environment.",
+    examples: [
+      {
+        description: "Create a deploy",
+        command: "sentry release deploy 1.0.0 production",
+      },
+      {
+        description: "Create a named deploy in an explicit organization",
+        command: 'sentry release deploy my-org/1.0.0 staging "Deploy #42"',
+      },
+      {
+        description: "Attach a deploy URL",
+        command:
+          "sentry release deploy 1.0.0 production --url https://example.com",
+      },
+      {
+        description: "Record a deploy duration in seconds",
+        command: "sentry release deploy 1.0.0 production --time 120",
+      },
+      {
+        description: "Preview without creating",
+        command: "sentry release deploy 1.0.0 production --dry-run",
+      },
+    ],
   },
   output: {
     human: formatDeployCreated,

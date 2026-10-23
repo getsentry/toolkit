@@ -1,39 +1,21 @@
-/** Tests for generated command-heading and example association parsing. */
+/** Tests for command metadata rendered into generated docs and skills. */
 
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 import {
-  extractCommandPathFromHeading,
   formatCommandArguments,
   formatCommandExamples,
-  matchExampleToCommand,
+  formatDestructiveNotice,
 } from "../../script/generate-skill-markdown.js";
 import { listCommand } from "../../src/commands/agent-conversation/list.js";
 import { viewCommand } from "../../src/commands/agent-conversation/view.js";
 import { sendCommand } from "../../src/commands/event/send.js";
 import { mergeCommand } from "../../src/commands/issue/merge.js";
 import { createCommand } from "../../src/commands/project/create.js";
+import { deleteCommand } from "../../src/commands/project/delete.js";
 import { buildCommandInfo } from "../../src/lib/introspect.js";
 
-describe("extractCommandPathFromHeading", () => {
-  test.each([
-    ["`sentry issue view <issue-id>`", "sentry issue view"],
-    ["`sentry issue view <issue...>`", "sentry issue view"],
-    [
-      "`sentry project create [<org>/]<name>:<platform>...`",
-      "sentry project create",
-    ],
-    ["`sentry auth status`", "sentry auth status"],
-  ])("extracts the command path from %s", (heading, expected) => {
-    expect(extractCommandPathFromHeading(heading)).toBe(expected);
-  });
-
-  test("ignores descriptive headings", () => {
-    expect(extractCommandPathFromHeading("Create a project")).toBeUndefined();
-  });
-});
-
-describe("matchExampleToCommand", () => {
+describe("command metadata in generated references", () => {
   test("derives conversation signatures and examples from command metadata", () => {
     const list = buildCommandInfo(
       listCommand as never,
@@ -116,41 +98,36 @@ describe("matchExampleToCommand", () => {
     );
   });
 
-  test("associates a project create block with its command", () => {
-    const code = [
-      "# Create projects",
-      "sentry project create web:javascript api:python-django",
-    ].join("\n");
-
+  test("flags destructive commands from their metadata", async () => {
+    const info = (cmd: unknown, path: string) =>
+      buildCommandInfo(cmd as never, path);
     expect(
-      matchExampleToCommand(
-        code,
-        ["sentry project create", "sentry project delete"],
-        "sentry project",
-      ),
-    ).toBe("sentry project create");
-  });
-
-  test("maps bare group examples to the default subcommand", () => {
+      formatDestructiveNotice(info(deleteCommand, "sentry project delete")),
+    ).toContain("Use `--dry-run` to preview");
+    // Marked destructive without a --dry-run flag
+    const merge = formatDestructiveNotice(
+      info(mergeCommand, "sentry issue merge"),
+    );
+    expect(merge).toContain("can't easily be undone");
+    expect(merge).not.toContain("--dry-run");
     expect(
-      matchExampleToCommand(
-        "sentry auth\nsentry auth --token YOUR_SENTRY_API_TOKEN",
-        ["sentry auth login", "sentry auth logout", "sentry auth status"],
-        "sentry auth",
-        "sentry auth login",
-      ),
-    ).toBe("sentry auth login");
-  });
+      formatDestructiveNotice(info(createCommand, "sentry project create")),
+    ).toBe("");
 
-  test("prefers longer command paths over shorter prefixes", () => {
-    expect(
-      matchExampleToCommand(
-        "sentry auth login --token TOKEN",
-        ["sentry auth login", "sentry auth status"],
-        "sentry auth",
-        "sentry auth login",
+    const [docs, skill] = await Promise.all([
+      readFile(
+        "../../apps/cli-docs/src/content/docs/commands/project.md",
+        "utf8",
       ),
-    ).toBe("sentry auth login");
+      readFile(
+        "plugins/sentry-cli/skills/sentry-cli/references/project.md",
+        "utf8",
+      ),
+    ]);
+    expect(docs).toContain(":::caution[Destructive]");
+    expect(skill).toContain("**Destructive:**");
+    // Only the delete section carries the notice
+    expect(docs.match(/:::caution\[Destructive\]/g)).toHaveLength(1);
   });
 
   test("the generated project reference retains create examples", async () => {

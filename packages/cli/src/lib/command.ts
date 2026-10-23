@@ -65,6 +65,11 @@ import {
   parseLogLevel,
   setLogLevel,
 } from "./logger.js";
+import {
+  applyLazyPositionals,
+  markDestructive,
+  rawPositional,
+} from "./positional-parse.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
 import { applyTipsPreference } from "./tips.js";
 
@@ -192,6 +197,18 @@ type LocalCommandBuilderArguments<
    * repo-local `.sentryclirc` URL mismatches the current token.
    */
   readonly skipRcUrlCheck?: boolean;
+  /**
+   * Mark the command as destructive or irreversible. Defaults to `false`.
+   *
+   * Destructive commands are listed in the agent Safety Rules (generated from
+   * this flag), so agents ask the user before running them, and their lazy
+   * target positionals refuse an auto-detected target.
+   * `buildDeleteCommand` sets this automatically, and `check:destructive`
+   * fails CI when a command that sends an HTTP DELETE lacks it. Set it
+   * explicitly for irreversible operations that use other verbs (e.g.
+   * `issue merge`, `trial start`).
+   */
+  readonly destructive?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -666,7 +683,11 @@ export function buildCommand<
   async function maybeRecoverWithHelp(
     err: unknown,
     stdout: Writer,
-    ctx: { commandPrefix?: readonly string[]; stderr: Writer },
+    ctx: {
+      commandPrefix?: readonly string[];
+      directInvoke?: boolean;
+      stderr: Writer;
+    },
     args: unknown[],
   ): Promise<boolean> {
     if (!(err instanceof CliError) || err instanceof OutputError) {
@@ -674,11 +695,14 @@ export function buildCommand<
     }
     if (
       args.length === 0 ||
-      !args.some((a) => a === "help" || a === "--h" || a === "-help")
+      !args.some((a) => {
+        const raw = rawPositional(a);
+        return raw === "help" || raw === "--h" || raw === "-help";
+      })
     ) {
       return false;
     }
-    if (!ctx.commandPrefix) {
+    if (!ctx.commandPrefix || ctx.directInvoke) {
       return false;
     }
     const pathSegments = ctx.commandPrefix.slice(1); // strip "sentry" prefix
@@ -703,8 +727,21 @@ export function buildCommand<
   const wrappedFunc = async function (
     this: CONTEXT,
     flags: Record<string, unknown>,
-    ...args: unknown[]
+    ...positionalArgs: unknown[]
   ) {
+    // Callers that skip Stricli's scanner (SDK invoke, tests) pass raw
+    // strings, and omitted optional positionals are undefined; give lazily
+    // parsed positionals the value Stricli would.
+    const args = applyLazyPositionals(
+      positionalArgs,
+      existingParams.positional,
+      this,
+    );
+    // Lazy target positionals of destructive commands refuse to auto-detect
+    if (builderArgs.destructive) {
+      markDestructive(args);
+    }
+
     applyLoggingFlags(
       flags[LOG_LEVEL_KEY] as LogLevelName | undefined,
       flags.verbose as boolean,
@@ -722,7 +759,7 @@ export function buildCommand<
     const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
     setFlagContext(cleanFlags);
     if (args.length > 0) {
-      setArgsContext(args);
+      setArgsContext(args.map(rawPositional));
     }
 
     // Environment-based JSON mode (used by library entry point)
@@ -881,6 +918,9 @@ export function buildCommand<
   if (builderArgs.docs.examples?.length) {
     (cmd as unknown as Record<string, unknown>).__examples =
       builderArgs.docs.examples;
+  }
+  if (builderArgs.destructive) {
+    (cmd as unknown as Record<string, unknown>).__destructive = true;
   }
 
   // Attach the JSON schema to the built command as a non-standard property.

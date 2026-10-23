@@ -74,8 +74,15 @@ export function cacheCompletionEntities(
   }
 
   const db = getDatabase();
-  const now = Date.now();
   db.transaction(() => {
+    // Rank this batch above everything already stored, even when two writes
+    // land in the same millisecond, so the newest batch always sorts first.
+    const latest = db
+      .query(
+        "SELECT MAX(last_seen) AS latest FROM completion_cache WHERE kind = ? AND org_slug = ?",
+      )
+      .get(kind, orgSlug) as { latest: number | null } | undefined;
+    const now = Math.max(Date.now(), (latest?.latest ?? 0) + valid.length);
     valid.forEach((entity, index) => {
       runUpsert(
         db,

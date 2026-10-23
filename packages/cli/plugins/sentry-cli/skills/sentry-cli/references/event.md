@@ -69,13 +69,14 @@ View details of one or more events
 **Examples:**
 
 ```bash
+# View an event
 sentry event view abc123def456abc123def456abc12345
 
-# Open in browser
+# Open in the browser
 sentry event view abc123def456abc123def456abc12345 -w
 
-# Download an attachment listed by `sentry event view --json`
-sentry api "https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1" > screenshot.png
+# Download an attachment listed by --json (with sentry api)
+sentry api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png
 ```
 
 ### `sentry event list <issue>`
@@ -113,11 +114,14 @@ List events for an issue
 **Examples:**
 
 ```bash
-# List events for an issue (using short ID)
+# List events for an issue (short ID)
 sentry event list PROJ-ABC
 
-# List events for an issue (using numeric ID)
+# List events for an issue (numeric ID)
 sentry event list 123456789
+
+# List events for the most recent issue
+sentry event list @latest --limit 50
 
 # Filter by search query
 sentry event list PROJ-ABC --query "browser:Chrome"
@@ -128,8 +132,10 @@ sentry event list PROJ-ABC --full
 # Limit results and time range
 sentry event list PROJ-ABC --limit 50 --period 24h
 
-# Paginate through results
+# Fetch the next page
 sentry event list PROJ-ABC -c next
+
+# Fetch the previous page
 sentry event list PROJ-ABC -c prev
 
 # Output as JSON
@@ -179,27 +185,20 @@ sentry event send -m "DB timeout" --fingerprint db-timeout --fingerprint {{ defa
 # Send a serialized Sentry Event object
 sentry event send ./crash.json
 
-# Send without re-parsing (raw mode — also supports pre-built envelopes)
+# Send without re-parsing (raw mode)
 sentry event send --raw ./crash.json
+
+# Send a pre-built envelope
 sentry event send --raw ./captured.envelope
 
-# Explicit DSN
+# Send with an explicit DSN
 sentry event send "https://key@o123.ingest.us.sentry.io/456" -m "Test"
 
-# Via environment variable
-export SENTRY_DSN="https://key@o123.ingest.us.sentry.io/456"
-sentry event send -m "Test"
+# Send to a project (logged-in session; the CLI fetches its sole active DSN)
+sentry event send my-project -m "Test"
 
-# Project target (logged-in session; CLI fetches its sole active DSN)
-sentry event send cli -m "Test"
-
-# Org/project target
-sentry event send sentry/cli -m "Test"
-
-# Auto-detect from the current project
-sentry event send -m "Test"
-
-sentry send-event    # same as: sentry event send
+# Send to an org/project target
+sentry event send my-org/my-project -m "Test"
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

@@ -27,8 +27,8 @@ import {
   apiRequest,
   apiRequestToRegion,
   getOrgSdkConfig,
-  MAX_PAGINATION_PAGES,
   type PaginatedResponse,
+  paginate,
   unwrapPaginatedResult,
 } from "./infrastructure.js";
 
@@ -60,10 +60,11 @@ export type IssueCollapseField = NonNullable<
 /**
  * Build the `collapse` parameter for issue list API calls.
  *
- * Always collapses `filtered` and `unhandled` — the CLI never consumes
- * these in issue list views. Conditionally collapses `stats` when the caller
- * confirms seen-stats fields aren't needed, and `lifetime` when the caller
- * confirms lifetime-dependent fields aren't needed.
+ * Always collapses `unhandled` — the CLI never consumes it in issue list
+ * views. Collapses `filtered` unless the caller needs query-scoped counts.
+ * Conditionally collapses `stats` when the caller confirms seen-stats fields
+ * aren't needed, and `lifetime` when the caller confirms lifetime-dependent
+ * fields aren't needed.
  *
  * **Important:** `collapse=stats` skips Snuba seen-stats queries entirely,
  * stripping top-level `count`, `userCount`, `firstSeen`, `lastSeen` and the
@@ -81,13 +82,22 @@ export type IssueCollapseField = NonNullable<
  *   Defaults to `false` because most output paths need `count`/`userCount`/
  *   `firstSeen`/`lastSeen`. Only set to `true` when `--json --fields` omits
  *   all lifetime-dependent fields.
+ * @param options.shouldCollapseFiltered - Whether the `filtered` block can be
+ *   skipped. Defaults to `true`. Set to `false` to receive counts scoped to
+ *   the query's event-level filters (e.g. `release:`), which the top-level
+ *   `count`/`userCount` ignore. The server only returns `filtered` when
+ *   `stats` is not collapsed.
  * @returns Array of fields to collapse
  */
 export function buildIssueListCollapse(options: {
   shouldCollapseStats: boolean;
   shouldCollapseLifetime?: boolean;
+  shouldCollapseFiltered?: boolean;
 }): IssueCollapseField[] {
-  const collapse: IssueCollapseField[] = ["filtered", "unhandled"];
+  const collapse: IssueCollapseField[] =
+    (options.shouldCollapseFiltered ?? true)
+      ? ["filtered", "unhandled"]
+      : ["unhandled"];
   if (options.shouldCollapseLifetime) {
     collapse.push("lifetime");
   }
@@ -209,10 +219,8 @@ export type IssuesPage = {
  * Auto-paginate through issues up to the requested limit.
  *
  * The Sentry API caps `per_page` at {@link API_MAX_PER_PAGE} server-side. When the caller
- * requests more than that, this function transparently fetches multiple
- * pages using cursor-based pagination and returns the combined result.
- *
- * Safety-bounded by {@link MAX_PAGINATION_PAGES} to prevent runaway requests.
+ * requests more than that, {@link paginate} transparently fetches multiple
+ * pages and returns the combined result.
  *
  * @param orgSlug - Organization slug
  * @param projectSlug - Single-slug fallback used when `options.projects` is
@@ -251,45 +259,28 @@ export async function listIssuesAllPages(
     );
   }
 
-  const allResults: SentryIssue[] = [];
-  let cursor: string | undefined = options.startCursor;
-
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-    const remaining = options.limit - allResults.length;
-    const perPage = Math.min(remaining, API_MAX_PER_PAGE);
-    const response = await listIssuesPaginated(orgSlug, projectSlug, {
-      query: options.query,
-      cursor,
-      perPage,
-      sort: options.sort,
-      statsPeriod: options.statsPeriod,
-      start: options.start,
-      end: options.end,
-      projects: options.projects,
-      groupStatsPeriod: options.groupStatsPeriod,
-      collapse: options.collapse,
-    });
-
-    allResults.push(...response.data);
-    options.onPage?.(Math.min(allResults.length, options.limit), options.limit);
-
-    // Request only the remaining number of items on each page. A conforming
-    // API therefore reaches the limit exactly and its cursor remains usable.
-    // Keep the defensive overshoot branch for servers that ignore `limit`.
-    if (allResults.length >= options.limit || !response.nextCursor) {
-      if (allResults.length > options.limit) {
-        // The cursor resumes after the oversized page; exposing it would skip
-        // the trimmed items that the caller has not received.
-        return { issues: allResults.slice(0, options.limit) };
-      }
-      return { issues: allResults, nextCursor: response.nextCursor };
-    }
-
-    cursor = response.nextCursor;
-  }
-
-  // Safety limit reached — return what we have, no nextCursor
-  return { issues: allResults.slice(0, options.limit) };
+  let fetched = 0;
+  const { data: issues, nextCursor } = await paginate(
+    { limit: options.limit, cursor: options.startCursor },
+    async (perPage, cursor) => {
+      const response = await listIssuesPaginated(orgSlug, projectSlug, {
+        query: options.query,
+        cursor,
+        perPage,
+        sort: options.sort,
+        statsPeriod: options.statsPeriod,
+        start: options.start,
+        end: options.end,
+        projects: options.projects,
+        groupStatsPeriod: options.groupStatsPeriod,
+        collapse: options.collapse,
+      });
+      fetched += response.data.length;
+      options.onPage?.(Math.min(fetched, options.limit), options.limit);
+      return response;
+    },
+  );
+  return { issues, nextCursor };
 }
 
 /**
@@ -622,10 +613,13 @@ export async function updateIssueStatus(
   }
 
   // Legacy global endpoint — works without org but not region-aware.
-  return apiRequest<SentryIssue>(`/issues/${encodeURIComponent(issueId)}/`, {
-    method: "PUT",
-    body,
-  });
+  return await apiRequest<SentryIssue>(
+    `/issues/${encodeURIComponent(issueId)}/`,
+    {
+      method: "PUT",
+      body,
+    },
+  );
 }
 
 /** Result of a successful issue-merge operation. */

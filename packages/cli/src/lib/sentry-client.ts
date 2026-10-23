@@ -32,8 +32,8 @@ import {
 import { applyCustomHeaders } from "./custom-headers.js";
 import {
   type CredentialContext,
-  DEFAULT_TOKEN_LIFETIME_MS,
   getCredentialContext,
+  getRemainingLifetimeRatio,
   REFRESH_THRESHOLD,
   refreshToken,
 } from "./db/auth.js";
@@ -43,6 +43,7 @@ import {
   MalformedAuthTokenError,
   TimeoutError,
 } from "./errors.js";
+import { extractInputUrl } from "./fetch-input.js";
 import { logger } from "./logger.js";
 import {
   clearLastCacheHitAge,
@@ -355,7 +356,7 @@ async function fetchWithTimeout({
     // extra property is harmless (Node honors NODE_EXTRA_CA_CERTS natively).
     const customTls = getCustomTlsOptions();
     if (customTls) {
-      warnIfSaasWithEnvCa(extractFullUrl(input));
+      warnIfSaasWithEnvCa(extractInputUrl(input));
     }
 
     const response = await fetch(input, {
@@ -467,20 +468,9 @@ function handleFetchError(
   return { action: "retry" };
 }
 
-/** Extract the full URL string from a fetch input */
-function extractFullUrl(input: Request | string | URL): string {
-  if (typeof input === "string") {
-    return input;
-  }
-  if (input instanceof URL) {
-    return input.href;
-  }
-  return input.url;
-}
-
 /** Extract the URL pathname for span naming */
 function extractUrlPath(input: Request | string | URL): string {
-  const raw = extractFullUrl(input);
+  const raw = extractInputUrl(input);
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return new URL(raw).pathname;
@@ -641,19 +631,14 @@ async function fetchWithRetry({
   validatedRedirects,
   responseBodyMode,
 }: RetryContext): Promise<Response> {
-  const issuedAt =
-    credential.issuedAt ??
-    (credential.expiresAt
-      ? credential.expiresAt - DEFAULT_TOKEN_LIFETIME_MS
-      : undefined);
   const shouldRefresh = Boolean(
     credential.refreshable &&
     credential.expiresAt &&
-    (Date.now() >= credential.expiresAt ||
-      (issuedAt &&
-        (credential.expiresAt - Date.now()) /
-          (credential.expiresAt - issuedAt) <=
-          REFRESH_THRESHOLD)),
+    getRemainingLifetimeRatio(
+      credential.expiresAt,
+      credential.issuedAt,
+      Date.now(),
+    ) <= REFRESH_THRESHOLD,
   );
   const refreshed = shouldRefresh
     ? await refreshToken({ expectedCredential: credential })
@@ -765,7 +750,7 @@ function createAuthenticatedFetch(
       `${method} ${urlPath}`,
       "http.client",
       async (span) => {
-        const fullUrl = extractFullUrl(input);
+        const fullUrl = extractInputUrl(input);
         const startTime = performance.now();
 
         // Check cache before auth/retry for GET requests.
@@ -1036,8 +1021,9 @@ async function executeAttempt({
       : input instanceof Request
         ? input.signal
         : undefined;
+  let response: Response;
   try {
-    const response = validatedRedirects
+    response = validatedRedirects
       ? await fetchFollowingValidatedRedirects({
           input,
           init,
@@ -1054,10 +1040,12 @@ async function executeAttempt({
           timeoutMs,
           responseBodyMode,
         });
-    return handleResponse(response, headers, credential, isLastAttempt);
   } catch (error) {
     return handleFetchError(error, signal, isLastAttempt);
   }
+  // Outside the try: response handling errors must not be treated as fetch
+  // failures (and retried).
+  return await handleResponse(response, headers, credential, isLastAttempt);
 }
 
 /** Singleton authenticated fetch instance - reused across all requests */

@@ -8,7 +8,12 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { isAllDigits, parseHttpUrl, slugify } from "../../src/lib/utils.js";
+import {
+  countChar,
+  isAllDigits,
+  parseHttpUrl,
+  slugify,
+} from "../../src/lib/utils.js";
 
 describe("slugify", () => {
   describe("JSDoc examples (canonical alignment)", () => {
@@ -92,6 +97,18 @@ describe("slugify", () => {
     test("collapses runs of slashes/spaces/hyphens", () => {
       expect(slugify("foo // bar -- baz")).toBe("foo-bar-baz");
     });
+  });
+});
+
+describe("countChar", () => {
+  test("counts every occurrence", () => {
+    expect(countChar("org/project/rule", "/")).toBe(2);
+    expect(countChar("//a//", "/")).toBe(4);
+  });
+
+  test("returns 0 when the character is absent", () => {
+    expect(countChar("rule-name", "/")).toBe(0);
+    expect(countChar("", "/")).toBe(0);
   });
 });
 

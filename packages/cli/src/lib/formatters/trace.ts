@@ -12,6 +12,7 @@ import type {
 } from "../../types/index.js";
 import type { TraceItemDetail } from "../api/traces.js";
 import { REDUNDANT_DETAIL_ATTRS } from "../api/traces.js";
+import { stringifyUnknown } from "../errors.js";
 import {
   colorTag,
   escapeMarkdownCell,
@@ -470,7 +471,7 @@ function buildExtraColumns(extraColumns: string[]): Column<FlatSpan>[] {
       if (v === undefined || v === null) {
         return "—";
       }
-      return escapeMarkdownCell(String(v));
+      return escapeMarkdownCell(stringifyUnknown(v));
     },
   }));
 }

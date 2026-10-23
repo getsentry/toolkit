@@ -1,15 +1,4 @@
-## Examples
 
-```bash
-# Print the resolved config and verify authentication
-sentry info
-
-# Verify only authentication (don't require a default org/project)
-sentry info --no-defaults
-
-# Machine-readable status for external tooling (always exits 0)
-sentry info --config-status-json
-```
 
 ## Important Notes
 

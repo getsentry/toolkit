@@ -11,7 +11,11 @@ import * as Sentry from "@sentry/node-core/light";
 import type { SentryContext } from "../context.js";
 import { appendSearchParams, rawApiRequest } from "../lib/api-client.js";
 import { buildCommand } from "../lib/command.js";
-import { OutputError, ValidationError } from "../lib/errors.js";
+import {
+  OutputError,
+  stringifyUnknown,
+  ValidationError,
+} from "../lib/errors.js";
 import { filterFields } from "../lib/formatters/json.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { validateEndpoint } from "../lib/input-validation.js";
@@ -1071,7 +1075,7 @@ export function formatApiResponse(data: unknown): string {
   if (typeof data === "object") {
     return JSON.stringify(data, null, 2);
   }
-  return String(data);
+  return stringifyUnknown(data);
 }
 
 /**
@@ -1533,13 +1537,68 @@ export const apiCommand = buildCommand({
       "  key[sub]=value     Nested object: {key: {sub: value}}\n" +
       "  key[]=value        Array append: {key: [value]}\n" +
       "  key[]              Empty array: {key: []}\n\n" +
-      "Use --raw-field/-f to send values as strings without JSON parsing.\n\n" +
-      "Examples:\n" +
-      "  sentry api organizations/\n" +
-      "  sentry api issues/123/ -X PUT -F status=resolved\n" +
-      '  sentry api issues/123/ -X PUT -d \'{"status":"resolved"}\'\n' +
-      "  sentry api projects/my-org/my-project/ -F options[sampleRate]=0.5\n" +
-      "  sentry api teams/my-org/my-team/members/ -F user[email]=user@example.com",
+      "Use --raw-field/-f to send values as strings without JSON parsing.",
+    examples: [
+      {
+        description: "List organizations",
+        command: "sentry api organizations/",
+      },
+      {
+        description: "Get a specific issue",
+        command: "sentry api issues/123456789/",
+      },
+      {
+        description: "Create a release",
+        command:
+          "sentry api organizations/my-org/releases/ -X POST -F version=1.0.0",
+      },
+      {
+        description: "Update an issue status",
+        command: "sentry api issues/123456789/ -X PUT -F status=resolved",
+      },
+      {
+        description: "Send an inline JSON body",
+        command:
+          'sentry api issues/123456789/ -X PUT -d \'{"status":"resolved"}\'',
+      },
+      {
+        description: "Set a nested field",
+        command:
+          "sentry api projects/my-org/my-project/ -X PUT -F options[sampleRate]=0.5",
+      },
+      {
+        description: "Assign an issue",
+        command:
+          'sentry api issues/123456789/ -X PUT --field assignedTo="user@example.com"',
+      },
+      {
+        description: "Delete a project",
+        command: "sentry api projects/my-org/my-project/ -X DELETE",
+      },
+      {
+        description: "Add custom headers",
+        command: 'sentry api organizations/ -H "X-Custom: value"',
+      },
+      {
+        description: "Read the request body from a file",
+        command:
+          "sentry api projects/my-org/my-project/releases/ -X POST --input release.json",
+      },
+      {
+        description: "Show the full HTTP request and response",
+        command: "sentry api organizations/ --verbose",
+      },
+      {
+        description: "Preview the request without sending it",
+        command: "sentry api organizations/ --dry-run",
+      },
+      {
+        description:
+          "Save a binary response, such as an event attachment, to a file",
+        command:
+          'sentry api "https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1" > screenshot.png',
+      },
+    ],
   },
   parameters: {
     positional: {

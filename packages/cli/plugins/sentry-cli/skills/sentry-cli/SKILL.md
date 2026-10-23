@@ -46,7 +46,7 @@ The `sentry` CLI follows conventions from well-known tools — if you're familia
 
 ### Safety Rules
 
-- Always confirm with the user before running destructive commands: `project delete`, `trial start`
+- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `trial start`
 - For mutations, verify the org/project context looks correct in the command output before proceeding with further changes
 - Never store or log authentication tokens — the CLI manages credentials automatically
 - If the CLI reports the wrong org/project, override with explicit `<org>/<project>` arguments
@@ -222,7 +222,7 @@ sentry release deploy my-org/1.0.0 production
 sentry agent-conversation list
 
 # Explicit org, last 24 hours
-sentry agent-conversation list my-org --period 24h
+sentry agent-conversation list my-org/ --period 24h
 
 # View a conversation transcript
 sentry agent-conversation view my-org/conv-123
@@ -359,6 +359,21 @@ The CLI must be installed and authenticated before use.
 ```bash
 curl https://cli.sentry.dev/install -fsS | bash
 curl https://cli.sentry.dev/install -fsS | bash -s -- --version nightly
+# Pin to a specific stable version
+curl https://cli.sentry.dev/install -fsS | SENTRY_VERSION=0.42.2 bash
+
+# Pin to nightly
+curl https://cli.sentry.dev/install -fsS | SENTRY_VERSION=nightly bash
+# Skip shell config modifications (~/.zshrc, ~/.bashrc, etc.)
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-modify-path
+
+# Skip shell completion installation
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-completions
+
+# Skip AI agent skill installation
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-agent-skills
+curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
+curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
 
 # Or install via npm/pnpm/bun
 npm install -g sentry

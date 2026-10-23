@@ -46,7 +46,44 @@ export type AccountSummary = {
   /** Whether the stored credential can still be used (or refreshed). */
   usable: boolean;
   expiresAt: number | undefined;
+  /**
+   * Set for the virtual account of an env token (`SENTRY_AUTH_TOKEN` or
+   * `SENTRY_TOKEN`), which is never stored: the variable providing it.
+   */
+  envVar?: string;
 };
+
+/** Prefix of an env token's virtual account id, e.g. `env:SENTRY_AUTH_TOKEN`. */
+export const ENV_ACCOUNT_ID_PREFIX = "env:";
+
+/**
+ * Secret-free summary of an env token's virtual account on `host`, with the
+ * token's user when known (from `/auth/`). Never active: `sentry auth
+ * switch` only selects stored accounts.
+ */
+export function toEnvAccountSummary(
+  envVar: string,
+  host: string,
+  user?: {
+    id?: string;
+    email?: string | null;
+    username?: string | null;
+    name?: string | null;
+  },
+): AccountSummary {
+  return {
+    id: `${ENV_ACCOUNT_ID_PREFIX}${envVar}`,
+    active: false,
+    host,
+    userId: user?.id || undefined,
+    email: user?.email || undefined,
+    username: user?.username || undefined,
+    name: user?.name || undefined,
+    usable: true,
+    expiresAt: undefined,
+    envVar,
+  };
+}
 
 /** Read the active account row. Returns `undefined` when none is active. */
 export function getActiveAccountRow(): AccountRow | undefined {
@@ -217,9 +254,13 @@ export function splitAccountSelector(
  * The `<who>:<server>` selector naming an account, e.g.
  * `jane@acme.com:sentry.acme.com`: what `--account` and
  * `sentry auth login` accept. Uses the email, else the username, else the
- * account id; the server part is omitted when no host is recorded.
+ * account id; the server part is omitted when no host is recorded. An env
+ * token's account is named by its id (`env:SENTRY_AUTH_TOKEN`).
  */
 export function accountSelectorOf(account: AccountSummary): string {
+  if (account.envVar) {
+    return account.id;
+  }
   const who = account.email ?? account.username ?? account.id;
   const server = accountServerOf(account);
   return server ? `${who}:${server}` : who;
@@ -465,5 +506,47 @@ export function hasCachedOrgList(accountId: string): boolean {
     | { found: number }
     | null
     | undefined;
+  return Boolean(row);
+}
+
+/**
+ * Whether the org cache shows `identity` (a credential fingerprint, see
+ * `getIdentityFingerprint`) has seen an organization on `host`'s server, by
+ * slug or numeric id. Mirrors {@link listUsableAccountRowsForOrg} for a
+ * credential that is not a stored account: the env token. Its fingerprint
+ * doesn't depend on the server, so rows cached while it was scoped to
+ * another server (a different `SENTRY_URL`) must not count: that server's
+ * org with the same slug is a different org.
+ */
+export function hasCachedOrgForIdentity(
+  identity: string,
+  host: string,
+  orgSlug: string,
+  orgId?: string,
+): boolean {
+  const server = serverKey(host);
+  if (!server) {
+    return false;
+  }
+  // `source_origin` holds normalized origins: every SaaS origin is one
+  // server (as in `serverKey`), anything else must match exactly.
+  const saas = server === SAAS_SERVER_KEY;
+  const sameServer = saas
+    ? "(r.source_origin = 'https://sentry.io' OR r.source_origin LIKE 'https://%.sentry.io')"
+    : "r.source_origin = ?";
+  const id = orgId ?? null;
+  const row = getDatabase()
+    .query(
+      `SELECT 1 FROM org_regions r
+       WHERE r.credential_identity = ? AND ${sameServer} AND (
+         r.org_slug = ? OR r.org_id = ? OR EXISTS (
+           SELECT 1 FROM org_regions m
+           WHERE m.org_id = ? AND m.org_slug = r.org_slug
+             AND m.source_origin = r.source_origin
+         )
+       )
+       LIMIT 1`,
+    )
+    .get(identity, ...(saas ? [] : [server]), orgSlug, id, id);
   return Boolean(row);
 }

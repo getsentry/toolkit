@@ -32,6 +32,8 @@ import teamFixture from "./fixtures/team.json" with { type: "json" };
 import traceEventFixture from "./fixtures/trace-event.json" with { type: "json" };
 import traceItemsAttributesLogsNumberFixture from "./fixtures/trace-items-attributes-logs-number.json" with { type: "json" };
 import traceItemsAttributesLogsStringFixture from "./fixtures/trace-items-attributes-logs-string.json" with { type: "json" };
+import traceItemsAttributesLogsNumberWithContextFixture from "./fixtures/trace-items-attributes-logs-number-with-context.json" with { type: "json" };
+import traceItemsAttributesLogsStringWithContextFixture from "./fixtures/trace-items-attributes-logs-string-with-context.json" with { type: "json" };
 import traceItemsAttributesSpansNumberFixture from "./fixtures/trace-items-attributes-spans-number.json" with { type: "json" };
 import traceItemsAttributesSpansStringFixture from "./fixtures/trace-items-attributes-spans-string.json" with { type: "json" };
 import traceItemsAttributesSpansNumberWithContextFixture from "./fixtures/trace-items-attributes-spans-number-with-context.json" with { type: "json" };
@@ -87,6 +89,8 @@ export {
   traceItemsAttributesSpansStringWithContextFixture,
   traceItemsAttributesLogsStringFixture,
   traceItemsAttributesLogsNumberFixture,
+  traceItemsAttributesLogsNumberWithContextFixture,
+  traceItemsAttributesLogsStringWithContextFixture,
   traceMetaFixture,
   traceMetaWithNullsFixture,
   traceFixture,

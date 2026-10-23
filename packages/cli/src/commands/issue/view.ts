@@ -9,7 +9,7 @@ import { getLatestEvent, listReplayIdsForIssue } from "../../lib/api-client.js";
 import { spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { ContextError } from "../../lib/errors.js";
+import { ContextError, stringifyUnknown } from "../../lib/errors.js";
 import { plainSafeMuted } from "../../lib/formatters/human.js";
 import {
   formatIssueView,
@@ -187,7 +187,9 @@ export function fetchMultipleIssueViews(
     issueArgs,
     (issueArg) => buildSingleIssueViewData(issueArg, cwd, spans),
     (issueArg, reason) => {
-      log.warn(`Failed to fetch issue ${issueArg}: ${reason}`);
+      log.warn(
+        `Failed to fetch issue ${issueArg}: ${stringifyUnknown(reason)}`,
+      );
     },
   );
 }
@@ -222,7 +224,7 @@ async function openIssuesInBrowser(
       return issue;
     },
     (issueArg, reason) => {
-      log.warn(`Failed to open issue ${issueArg}: ${reason}`);
+      log.warn(`Failed to open issue ${issueArg}: ${stringifyUnknown(reason)}`);
     },
   );
 
@@ -254,6 +256,62 @@ export const viewCommand = buildCommand({
       `With --web, up to ${MAX_WEB_ISSUES} issues open by default; pass --force to open all.\n\n` +
       "In multi-project mode (after 'issue list'), use alias-suffix format (e.g., 'f-g' " +
       "where 'f' is the project alias shown in the list).",
+    examples: [
+      { description: "View an issue", command: "sentry issue view FRONT-ABC" },
+      {
+        description: "View the most recent issue",
+        command: "sentry issue view @latest",
+      },
+      {
+        description: "View several issues (space-separated, not commas)",
+        command: "sentry issue view FRONT-ABC BACK-2",
+      },
+      {
+        description: "Select an organization explicitly",
+        command: "sentry issue view my-org/FRONT-ABC",
+      },
+      {
+        description:
+          'Use a GitHub-style identifier (the "#" replaces the final slash)',
+        command: "sentry issue view my-org/my-project#FRONT-ABC",
+      },
+      {
+        description: "Open issues in the browser (up to 5 tabs by default)",
+        command: "sentry issue view FRONT-ABC BACK-2 -w",
+      },
+      {
+        description: "Allow more than 5 browser tabs",
+        command:
+          "sentry issue view FRONT-ABC BACK-2 API-3 WEB-4 IOS-5 OPS-6 -w --force",
+      },
+      {
+        description:
+          "Full JSON (issue fields + latest event + trace/replay context)",
+        command: "sentry issue view FRONT-ABC --json",
+      },
+      {
+        description: "Select top-level fields to keep output small",
+        command:
+          "sentry issue view FRONT-ABC --json --fields shortId,title,culprit,count,userCount,permalink",
+      },
+      {
+        description:
+          "Select fields from the latest event instead of the whole event",
+        command:
+          "sentry issue view FRONT-ABC --json --fields event.id,event.title,event.dateCreated",
+      },
+      {
+        description: "Extract the request URL and method from the latest event",
+        command:
+          "sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"request\") | .data | {url, method}'",
+      },
+      {
+        description:
+          "Extract the exception type and value from the latest event",
+        command:
+          "sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"exception\") | .data.values[0] | {type, value}'",
+      },
+    ],
   },
   output: {
     human: formatIssueView,

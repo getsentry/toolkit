@@ -52,11 +52,22 @@ export const archiveCommand = buildCommand({
     fullDescription:
       "Mark a release as archived. Archived releases are hidden from the " +
       "default `sentry release list` but are retained and can be restored " +
-      "with `sentry release restore`.\n\n" +
-      "Examples:\n" +
-      "  sentry release archive 1.0.0\n" +
-      "  sentry release archive my-org/1.0.0\n" +
-      "  sentry release archive 1.0.0 --dry-run",
+      "with `sentry release restore`.",
+    examples: [
+      {
+        description:
+          "Archive a release (hide it from the default list, but keep it)",
+        command: "sentry release archive 1.0.0",
+      },
+      {
+        description: "Archive a release in an explicit organization",
+        command: "sentry release archive my-org/1.0.0",
+      },
+      {
+        description: "Preview without archiving",
+        command: "sentry release archive my-org/1.0.0 --dry-run",
+      },
+    ],
   },
   output: {
     human: formatReleaseArchived,

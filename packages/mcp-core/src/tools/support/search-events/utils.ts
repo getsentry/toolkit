@@ -748,7 +748,11 @@ export function formatEventValue(
     return formatObjectValue(value, maxLength);
   }
 
-  return truncateString(sanitizeWhitespace(String(value)), maxLength);
+  if (typeof value === "bigint") {
+    return String(value);
+  }
+
+  return `<${typeof value}>`;
 }
 
 // Helper function to fetch custom attributes for a dataset
@@ -1050,7 +1054,7 @@ export async function validateEventsSearch(
     end?: string;
   },
 ): Promise<EventsValidationResult> {
-  return apiService.validateEvents({
+  return await apiService.validateEvents({
     organizationSlug,
     dataset,
     fields,
@@ -1273,6 +1277,7 @@ export function createDatasetAttributesTool(options: {
             attributeTypes,
             substringMatch,
             query,
+            context: true,
           },
         );
 

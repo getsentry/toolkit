@@ -41,7 +41,7 @@ async function importKey(secret: string): Promise<CryptoKey> {
     );
   }
   const enc = new TextEncoder();
-  return crypto.subtle.importKey(
+  return await crypto.subtle.importKey(
     "raw",
     enc.encode(secret),
     { name: "HMAC", hash: "SHA-256" },
@@ -205,7 +205,9 @@ async function getApprovedClientsFromCookie(
     }
     return approvedClients as string[];
   } catch (e) {
-    logIssue(new Error(`Error parsing cookie payload: ${e}`, { cause: e }));
+    logIssue(
+      new Error(`Error parsing cookie payload: ${String(e)}`, { cause: e }),
+    );
     return null; // JSON parsing failed
   }
 }

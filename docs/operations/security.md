@@ -104,6 +104,10 @@ Today, runtime authorization for remote HTTP sessions is driven primarily by:
 
 `grantedScopes` still exists on tokens for backward compatibility with older
 clients, but it is transitional. Skills are the primary authorization model.
+Note that `grantedScopes` is derived from the selected skills, not from what
+Sentry granted. The scopes Sentry actually granted on the upstream token (from
+the `scope` field of Sentry's token response) are stored separately as
+`upstreamScopes`. Grants created before `upstreamScopes` existed do not have it.
 
 Direct `Sentry-Bearer` sessions default to all active skills and can be narrowed
 with `skills` or `disable-skills` query parameters. They do not get OAuth

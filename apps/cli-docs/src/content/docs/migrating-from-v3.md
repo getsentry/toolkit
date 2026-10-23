@@ -219,7 +219,8 @@ sentry-cli() {
     esac
   done
   set -- "${remaining[@]}"
-  [ "${SENTRY_ALLOW_FAILURE:-}" = "1" ] && allow_failure=1
+  # Same values v3 accepted for SENTRY_ALLOW_FAILURE.
+  case "${SENTRY_ALLOW_FAILURE:-}" in 1|true) allow_failure=1 ;; esac
   [ -n "$headers" ] && envs+=("SENTRY_CUSTOM_HEADERS=$headers")
 
   # `env` runs the real `sentry` (bypassing this function → no recursion),
@@ -383,10 +384,14 @@ credentials as it did in v3.
 - `--quiet` (and its `--silent` alias) has no direct replacement — pipe the
   output (non-TTY is plain) or use `--log-level error`.
 - `--allow-failure` (and the `SENTRY_ALLOW_FAILURE` env var), which made any
-  command exit `0` even on error, is **not implemented in v4** and will be
-  rejected as an unknown flag. Handle failures in your own script (e.g.
-  `sentry … || true`); the [shim](#drop-in-compatibility-shim) above emulates
-  the old behavior when it sees the flag or env var.
+  command exit `0` even on error, is **not implemented in v4**. `sentry`
+  rejects the flag as unknown and ignores the env var. To keep optional CI
+  steps from failing the build, either:
+  - call `sentry-cli` through the [shim](#drop-in-compatibility-shim) above. It
+    strips `--allow-failure` wherever it appears and honors
+    `SENTRY_ALLOW_FAILURE=1` (or `true`, as in v3): the error is still printed,
+    but the call returns `0`.
+  - or handle the failure yourself, e.g. `sentry sourcemap upload ./dist || true`.
 - `SENTRY_API_KEY` (the v3 `apiKey` option) and `SENTRY_VCS_REMOTE` (the
   `vcsRemote` option) are no longer honored — use `SENTRY_AUTH_TOKEN` for auth.
 - `SENTRY_CUSTOM_HEADERS` only applies to self-hosted Sentry; custom headers are

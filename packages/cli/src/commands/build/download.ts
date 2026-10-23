@@ -59,6 +59,20 @@ export const downloadCommand = buildCommand({
       "Usage:\n" +
       "  sentry build download 1234567890\n" +
       "  sentry build download 1234567890 --output ./app.ipa",
+    examples: [
+      {
+        description: "Download a build artifact by ID",
+        command: "sentry build download 1234567890",
+      },
+      {
+        description: "Download to a specific path",
+        command: "sentry build download 1234567890 --output ./app.ipa",
+      },
+      {
+        description: "Output the result as JSON",
+        command: "sentry build download 1234567890 --json",
+      },
+    ],
   },
   output: {
     human: formatDownloadResult,

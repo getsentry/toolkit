@@ -3,19 +3,24 @@
  * test database.
  */
 
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { listCommand } from "../../../src/commands/auth/list.js";
 import { switchCommand } from "../../../src/commands/auth/switch.js";
 import { listAccounts } from "../../../src/lib/db/accounts.js";
 import { getAuthToken, setAuthToken } from "../../../src/lib/db/auth.js";
 import { getDefaultUrl, setDefaultUrl } from "../../../src/lib/db/defaults.js";
 import { setUserInfo } from "../../../src/lib/db/user.js";
+import { getEnvTokenHost } from "../../../src/lib/env-token-host.js";
 import {
   AuthError,
   ContextError,
   ResolutionError,
 } from "../../../src/lib/errors.js";
-import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import {
+  resetHostScopingState,
+  useEnvSandbox,
+  useTestConfigDir,
+} from "../../helpers.js";
 
 type ListFunc = (this: unknown, flags: { json?: boolean }) => Promise<void>;
 type SwitchFunc = (
@@ -126,6 +131,88 @@ describe("auth list", () => {
     await func.call(context, { json: false });
 
     expect(getOutput()).toContain("No stored accounts");
+  });
+
+  describe("with an env token", () => {
+    let originalFetch: typeof globalThis.fetch;
+    /** `<origin> <token>` of every `/auth/` request. */
+    let requests: string[];
+
+    beforeEach(async () => {
+      await resetHostScopingState();
+      requests = [];
+      originalFetch = globalThis.fetch;
+      globalThis.fetch = (async (
+        input: RequestInfo | URL,
+        init?: RequestInit,
+      ) => {
+        const req = new Request(input, init);
+        const url = new URL(req.url);
+        const token = req.headers.get("Authorization")?.replace(/^Bearer /, "");
+        requests.push(`${url.origin} ${token}`);
+        if (url.pathname === "/api/0/auth/" && token === "env-token") {
+          return Response.json({
+            id: "7",
+            email: "ci@example.com",
+            name: "CI Bot",
+          });
+        }
+        return Response.json({ detail: "Invalid token" }, { status: 401 });
+      }) as typeof globalThis.fetch;
+    });
+
+    afterEach(async () => {
+      globalThis.fetch = originalFetch;
+      await resetHostScopingState();
+    });
+
+    test("lists it after the stored accounts, with its user", async () => {
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      seedTwoAccounts();
+      const func = (await listCommand.loader()) as unknown as ListFunc;
+      const { context, getOutput } = createContext();
+
+      await func.call(context, { json: true });
+
+      const parsed = JSON.parse(getOutput()) as Array<Record<string, unknown>>;
+      expect(parsed.at(-1)).toEqual({
+        id: "env:SENTRY_AUTH_TOKEN",
+        active: false,
+        host: "https://sentry.io",
+        userId: "7",
+        email: "ci@example.com",
+        name: "CI Bot",
+        usable: true,
+        envVar: "SENTRY_AUTH_TOKEN",
+      });
+      expect(getOutput()).not.toContain("env-token");
+      expect(requests).toEqual(["https://sentry.io env-token"]);
+    });
+
+    test("labels it by its variable when the server doesn't say whose it is", async () => {
+      process.env.SENTRY_TOKEN = "other-token";
+      const func = (await listCommand.loader()) as unknown as ListFunc;
+      const { context, getOutput } = createContext();
+
+      await func.call(context, { json: false });
+
+      expect(getOutput()).toContain("SENTRY_TOKEN");
+      expect(getOutput()).toContain("env token");
+    });
+
+    test("leaves out a token set after boot, e.g. from .sentryclirc", async () => {
+      getEnvTokenHost();
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      seedTwoAccounts();
+      const func = (await listCommand.loader()) as unknown as ListFunc;
+      const { context, getOutput } = createContext();
+
+      await func.call(context, { json: true });
+
+      const parsed = JSON.parse(getOutput()) as Array<Record<string, unknown>>;
+      expect(parsed).toHaveLength(2);
+      expect(requests).toEqual([]);
+    });
   });
 });
 

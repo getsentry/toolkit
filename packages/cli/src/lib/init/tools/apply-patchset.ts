@@ -42,7 +42,7 @@ export async function applyPatchset(
   if (!prepared.ok) {
     return failedPreparation(prepared.failure);
   }
-  return applyPreparedFileChanges(prepared.changes, context.dryRun);
+  return await applyPreparedFileChanges(prepared.changes, context.dryRun);
 }
 
 /**

@@ -104,14 +104,41 @@ export const resolveCommand = buildCommand({
       "  (omitted)                    Resolve immediately (no regression tracking)\n\n" +
       "@commit auto-detection requires a git repository whose 'origin' remote\n" +
       "maps to a Sentry-registered repo. The command errors out clearly if any\n" +
-      "part of the detection fails — use the explicit form to override.\n\n" +
-      "Examples:\n" +
-      "  sentry issue resolve CLI-12Z\n" +
-      "  sentry issue resolve CLI-12Z --in 0.26.1\n" +
-      "  sentry issue resolve CLI-196 --in @next\n" +
-      "  sentry issue resolve CLI-XX --in @commit\n" +
-      "  sentry issue resolve CLI-XX -i @commit:getsentry/cli@abc123\n" +
-      "  sentry issue resolve my-org/CLI-AB",
+      "part of the detection fails — use the explicit form to override.",
+    examples: [
+      {
+        description: "Resolve immediately (no regression tracking)",
+        command: "sentry issue resolve CLI-G5",
+      },
+      {
+        description:
+          "Resolve in a specific release (newer releases flag regressions)",
+        command: "sentry issue resolve CLI-G5 --in 0.26.1",
+      },
+      {
+        description: "Monorepo-style release versions work too",
+        command: "sentry issue resolve CLI-G5 --in spotlight@1.2.3",
+      },
+      {
+        description: "Resolve in the next release",
+        command: "sentry issue resolve CLI-G5 --in @next",
+      },
+      {
+        description:
+          "Resolve in the current git HEAD (auto-detects the Sentry repo from your origin remote)",
+        command: "sentry issue resolve CLI-G5 --in @commit",
+      },
+      {
+        description:
+          "Resolve in an explicit commit and repo (no git inspection)",
+        command:
+          "sentry issue resolve CLI-G5 --in @commit:getsentry/cli@abc123def",
+      },
+      {
+        description: "Resolve an issue in an explicit organization",
+        command: "sentry issue resolve my-org/CLI-G5",
+      },
+    ],
   },
   output: {
     human: formatResolved,

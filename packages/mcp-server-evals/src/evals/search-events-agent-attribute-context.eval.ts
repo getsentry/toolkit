@@ -6,12 +6,11 @@ import { StructuredOutputScorer } from "./utils/structuredOutputScorer";
 import "../setup-env";
 
 // Compares the attribute the agent picks when the trace-items attributes
-// endpoint is called with and without `expand=context`. The with-context span
+// endpoint is called with and without `expand=context`. The with-context
 // fixtures list the replacement for each deprecated attribute (e.g.
 // user.geo.region for geo.region), so only that path should use it.
 //
-// The datasetAttributes tool does not request context itself, so this service
-// forces it on or off for every attributes request.
+// This service forces the context on or off for every attributes request.
 class AttributeContextApiService extends SentryApiService {
   constructor(private readonly attributeContext: boolean) {
     super({ accessToken: "test-token" });
@@ -128,6 +127,90 @@ describeEval("search-events-agent-attributes-without-context", {
             Array.isArray(value) &&
             value.includes("kiosk.firmware_revision") &&
             !value.includes("kiosk.firmware"),
+        },
+      },
+      {
+        // Without context the logs attributes only list code.filepath
+        input:
+          "Count error logs grouped by source code file path over the last 24 hours",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "logs",
+            },
+          },
+        ],
+        expected: {
+          dataset: "logs",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("code.filepath") &&
+            !value.includes("code.file.path"),
+        },
+      },
+      {
+        // Without context the metrics attributes only list http.method
+        input:
+          "In metrics, show p95 http.request.duration grouped by HTTP method over the last 24 hours",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "metrics",
+            },
+          },
+        ],
+        expected: {
+          dataset: "metrics",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("http.method") &&
+            !value.includes("http.request.method"),
+        },
+      },
+      {
+        // worker.queue_wait and worker.queue_wait_time are made-up attributes.
+        // Without briefs the agent can only match on the name, and
+        // worker.queue_wait_time matches "worker queue wait time"
+        input:
+          "From logs, what is the average worker queue wait time jobs actually experienced over the last 24 hours?",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "logs",
+            },
+          },
+        ],
+        expected: {
+          dataset: "logs",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("avg(worker.queue_wait_time)") &&
+            !value.includes("avg(worker.queue_wait)"),
+        },
+      },
+      {
+        // fleet.region and fleet.deployment_region are made-up attributes.
+        // Without briefs the agent can only match on the name, and
+        // fleet.deployment_region matches "fleet deployment region"
+        input:
+          "In metrics, show p95 http.request.duration grouped by the fleet deployment region each server is currently running in over the last 24 hours",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "metrics",
+            },
+          },
+        ],
+        expected: {
+          dataset: "metrics",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("fleet.deployment_region") &&
+            !value.includes("fleet.region"),
         },
       },
     ];
@@ -292,6 +375,91 @@ describeEval("search-events-agent-attributes-with-context", {
             Array.isArray(value) &&
             value.includes("kiosk.firmware") &&
             !value.includes("kiosk.firmware_revision"),
+        },
+      },
+      {
+        // Context marks code.filepath as deprecated in favor of code.file.path
+        input:
+          "Count error logs grouped by source code file path over the last 24 hours",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "logs",
+            },
+          },
+        ],
+        expected: {
+          dataset: "logs",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("code.file.path") &&
+            !value.includes("code.filepath"),
+        },
+      },
+      {
+        // Context marks http.method as deprecated in favor of
+        // http.request.method
+        input:
+          "In metrics, show p95 http.request.duration grouped by HTTP method over the last 24 hours",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "metrics",
+            },
+          },
+        ],
+        expected: {
+          dataset: "metrics",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("http.request.method") &&
+            !value.includes("http.method"),
+        },
+      },
+      {
+        // worker.queue_wait_time matches "worker queue wait time" by name, but
+        // its brief says it is a configured limit. Only worker.queue_wait's
+        // brief describes the measured wait
+        input:
+          "From logs, what is the average worker queue wait time jobs actually experienced over the last 24 hours?",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "logs",
+            },
+          },
+        ],
+        expected: {
+          dataset: "logs",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("avg(worker.queue_wait)") &&
+            !value.includes("avg(worker.queue_wait_time)"),
+        },
+      },
+      {
+        // fleet.deployment_region matches "fleet deployment region" by name,
+        // but its brief says it is the region the server moves to next. Only
+        // fleet.region's brief describes where the server runs now
+        input:
+          "In metrics, show p95 http.request.duration grouped by the fleet deployment region each server is currently running in over the last 24 hours",
+        expectedTools: [
+          {
+            name: "datasetAttributes",
+            arguments: {
+              dataset: "metrics",
+            },
+          },
+        ],
+        expected: {
+          dataset: "metrics",
+          fields: (value: unknown) =>
+            Array.isArray(value) &&
+            value.includes("fleet.region") &&
+            !value.includes("fleet.deployment_region"),
         },
       },
     ];

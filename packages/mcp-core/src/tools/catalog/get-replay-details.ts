@@ -400,7 +400,7 @@ async function fetchReplayIssues({
 }): Promise<RelatedReplayIssue[]> {
   const ids = errorIds.slice(0, MAX_RELATED_ERRORS);
 
-  return Promise.all(
+  return await Promise.all(
     ids.map(async (eventId) => {
       try {
         const [issue] = await apiService.listIssues({
@@ -427,7 +427,7 @@ async function fetchReplayTraces({
 }): Promise<RelatedReplayTrace[]> {
   const ids = traceIds.slice(0, MAX_RELATED_TRACES);
 
-  return Promise.all(
+  return await Promise.all(
     ids.map(async (traceId) => {
       try {
         const traceMeta = await apiService.getTraceMeta({
@@ -579,9 +579,9 @@ function summarizeObject(
 
   const entries = Object.entries(value)
     .filter(
-      ([key, nested]) =>
-        !excludedKeys.has(key) &&
-        (typeof nested === "string" || typeof nested === "number"),
+      (entry): entry is [string, string | number] =>
+        !excludedKeys.has(entry[0]) &&
+        (typeof entry[1] === "string" || typeof entry[1] === "number"),
     )
     .slice(0, 3)
     .map(([key, nested]) => `${key}=${nested}`);

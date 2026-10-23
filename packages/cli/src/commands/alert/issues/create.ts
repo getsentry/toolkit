@@ -11,7 +11,11 @@ import {
 } from "../../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { ContextError, ValidationError } from "../../../lib/errors.js";
+import {
+  ContextError,
+  stringifyUnknown,
+  ValidationError,
+} from "../../../lib/errors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../../lib/mutate-command.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
@@ -75,15 +79,20 @@ export const createCommand = buildCommand({
       "  --filter     an action-filter condition (same shape as --condition)\n\n" +
       "Match mode: --filter-match all|any controls how the action-filter\n" +
       "conditions combine. Issue-alert triggers always evaluate as 'any-short'\n" +
-      "(they fire on a single error detector), so there is no trigger match flag.\n\n" +
-      "Examples:\n" +
-      "  sentry alert issues create my-org/my-app --name 'New Issues' \\\n" +
-      '    --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\' \\\n' +
-      '    --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'\n\n' +
-      "  sentry alert issues create my-org/my-app --name 'High Priority' \\\n" +
-      '    --condition \'{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}\' \\\n' +
-      '    --action \'{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}\' \\\n' +
-      "    --frequency 30 --dry-run",
+      "(they fire on a single error detector), so there is no trigger match flag.",
+    examples: [
+      {
+        description: "Alert on new issues and email a team",
+        command:
+          'sentry alert issues create my-org/my-project --name \'New Issues\' --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
+      },
+      {
+        description:
+          "Preview a high-priority alert that emails a user at most every 30 minutes",
+        command:
+          'sentry alert issues create my-org/my-project --name \'High Priority\' --condition \'{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}\' --frequency 30 --dry-run',
+      },
+    ],
   },
   output: {
     human: formatCreated,
@@ -244,9 +253,9 @@ export const createCommand = buildCommand({
     yield new CommandOutput({
       org: target.org,
       project: target.project,
-      id: String(created.id ?? ""),
-      name: String(created.name ?? flags.name),
-      status: String(
+      id: stringifyUnknown(created.id ?? ""),
+      name: stringifyUnknown(created.name ?? flags.name),
+      status: stringifyUnknown(
         created.status ?? (created.enabled === false ? "disabled" : "active"),
       ),
     } satisfies CreateResult);

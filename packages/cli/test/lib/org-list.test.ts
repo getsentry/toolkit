@@ -312,14 +312,15 @@ describe("handleOrgAll", () => {
     const result = await handleOrgAll({
       config,
       org: "my-org",
-      flags: { limit: 10, json: true },
+      flags: { limit: 1, json: true },
       contextKey: "key",
       cursor: undefined,
       direction: "next",
     });
 
     expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBe("next:123");
+    // paginate() wraps the server cursor with the walk's page size.
+    expect(result.nextCursor).toContain("next:123");
     expect(result.items).toHaveLength(1);
     expect(result.items[0]!.orgSlug).toBe("my-org");
   });
@@ -453,7 +454,7 @@ describe("handleOrgAll", () => {
       "test-list",
       "ctx",
       "next",
-      "cursor:abc",
+      expect.stringContaining("cursor:abc"),
     );
   });
 
@@ -488,14 +489,18 @@ describe("handleOrgAll", () => {
     const listPaginated = vi.fn(
       (_org: string, opts: { cursor?: string; perPage: number }) => {
         expect(opts.perPage).toBeLessThanOrEqual(100);
-        const offset = opts.cursor ? Number(opts.cursor) : 0;
+        // OffsetPaginator cursors: <per_page>:<page>:<is_prev>.
+        const [size = 0, page = 0] = (opts.cursor ?? "0:0:0")
+          .split(":")
+          .map(Number);
+        const offset = size * page;
         const data = Array.from({ length: opts.perPage }, (_, i) => ({
           id: String(offset + i),
           name: `W${offset + i}`,
         }));
         return Promise.resolve({
           data,
-          nextCursor: String(offset + opts.perPage),
+          nextCursor: `${opts.perPage}:${offset / opts.perPage + 1}:0`,
         });
       },
     );
@@ -511,16 +516,34 @@ describe("handleOrgAll", () => {
     });
 
     expect(result.items).toHaveLength(250);
-    expect(listPaginated).toHaveBeenCalledTimes(3);
-    // Each request uses only the remaining item budget, capped at API_MAX_PER_PAGE,
-    // so the final page requests only the remaining 50 items (250 - 100 - 100).
+    // The fewest requests, split evenly instead of overfetching on the last
+    // one; the cursor carries the page size because team and repo lists use
+    // page-number cursors.
     expect(listPaginated.mock.calls.map((call) => call[1].perPage)).toEqual([
-      100, 100, 50,
+      84, 84, 84,
     ]);
     // The mock always returns a nextCursor, so hasMore is true and
     // the cursor points to the first item beyond the fetched 250.
     expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBe("250");
+
+    // `-c next` with another --limit keeps the walk's page size and refetches
+    // the third page, skipping the 82 rows already returned.
+    listPaginated.mockClear();
+    const next = await handleOrgAll({
+      config,
+      org: "my-org",
+      flags: { limit: 30, json: true },
+      contextKey: "key",
+      cursor: result.nextCursor,
+      direction: "next",
+    });
+    expect(next.items.map((item) => item.id)).toEqual(
+      Array.from({ length: 30 }, (_, i) => String(250 + i)),
+    );
+    expect(listPaginated.mock.calls.map((call) => call[1])).toEqual([
+      { cursor: "84:2:0", perPage: 84 },
+      { cursor: "84:3:0", perPage: 84 },
+    ]);
   });
 });
 

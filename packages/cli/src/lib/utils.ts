@@ -22,6 +22,20 @@ export function isAllDigits(str: string): boolean {
 }
 
 /**
+ * Count occurrences of a single character in a string without allocating.
+ *
+ * @example
+ * countChar("org/project/rule", "/") // 2
+ */
+export function countChar(str: string, char: string): number {
+  let count = 0;
+  for (let i = str.indexOf(char); i !== -1; i = str.indexOf(char, i + 1)) {
+    count += 1;
+  }
+  return count;
+}
+
+/**
  * Parse an absolute HTTP(S) URL without embedded credentials.
  *
  * @param value - Untrusted URL string

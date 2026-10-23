@@ -712,14 +712,47 @@ export const listCommand = buildListCommand(
         "Trace filtering:\n" +
         "  sentry log list <trace-id>           # Filter by trace (auto-detect org)\n" +
         "  sentry log list <org>/<trace-id>     # Filter by trace (explicit org)\n\n" +
-        "Examples:\n" +
-        "  sentry log list                    # List last 100 logs\n" +
-        "  sentry log list -f                 # Stream logs (2s poll interval)\n" +
-        "  sentry log list -f 5               # Stream logs (5s poll interval)\n" +
-        "  sentry log list --limit 50         # Show last 50 logs\n" +
-        "  sentry log list -q 'severity:error' # Filter to errors only\n" +
-        "  sentry log list abc123def456abc123def456abc123de  # Filter by trace\n\n" +
         "Alias: `sentry logs` → `sentry log list`",
+      examples: [
+        { description: "List the last 100 logs", command: "sentry log list" },
+        {
+          description: "Show only error logs",
+          command: "sentry log list -q 'severity:error'",
+        },
+        {
+          description: "Filter by message content",
+          command: "sentry log list -q 'database'",
+        },
+        {
+          description: "Match a regular expression (key://pattern//)",
+          command: "sentry log list -q 'message://^Timeout after \\d+ms//'",
+        },
+        {
+          description: "Show the last 50 logs",
+          command: "sentry log list --limit 50",
+        },
+        {
+          description: "List logs for a trace",
+          command: "sentry log list abc123def456abc123def456abc12345",
+        },
+        {
+          description: "Stream logs (2-second poll interval)",
+          command: "sentry log list -f",
+        },
+        {
+          description: "Stream logs (5-second poll interval)",
+          command: "sentry log list -f 5",
+        },
+        {
+          description: "Stream error logs from a specific project",
+          command: "sentry log list my-org/backend -f -q 'severity:error'",
+        },
+        {
+          description: "Filter JSON output with jq",
+          command:
+            "sentry log list --json | jq '.data[] | select(.severity == \"error\")'",
+        },
+      ],
     },
     output: {
       human: createLogRenderer,

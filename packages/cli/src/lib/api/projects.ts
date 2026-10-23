@@ -460,7 +460,8 @@ export async function findProjectsBySlug(
  */
 const escapeRegex: (str: string) => string =
   typeof RegExp.escape === "function"
-    ? RegExp.escape
+    ? // oxlint-disable-next-line typescript/unbound-method -- static method that never reads `this`
+      RegExp.escape
     : (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
@@ -686,7 +687,7 @@ export async function listProjectDsns(
 ): Promise<PaginatedResponse<ProjectDsn[]>> {
   const config = await getOrgSdkConfig(orgSlug);
 
-  return paginate(options, async (perPage, cursor) => {
+  return await paginate(options, async (perPage, cursor) => {
     // The SDK omits the shared per_page parameter supported by this endpoint.
     const query = { cursor, per_page: perPage };
     const result = await listProjectKeys({
@@ -722,7 +723,7 @@ export async function listOrganizationDsns(
   const projectLookups = new Map<number, Promise<string>>();
   const limitProjectLookups = pLimit(ORG_FANOUT_CONCURRENCY);
 
-  return paginate(options, async (perPage, cursor) => {
+  return await paginate(options, async (perPage, cursor) => {
     // These shared query parameters are supported by the backend but absent
     // from the SDK type. -1 includes accessible projects outside the user's teams.
     const query = { cursor, per_page: perPage, project: -1 };

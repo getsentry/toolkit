@@ -95,7 +95,12 @@ export async function resolveFeedback(
 ): Promise<ResolvedFeedback> {
   const parsed = parseIssueArg(feedbackArg);
   if (parsed.type === "selector") {
-    return resolveFeedbackSelector(parsed.selector, parsed.org, cwd, command);
+    return await resolveFeedbackSelector(
+      parsed.selector,
+      parsed.org,
+      cwd,
+      command,
+    );
   }
 
   let resolved: Awaited<ReturnType<typeof resolveIssue>>;

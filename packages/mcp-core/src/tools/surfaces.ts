@@ -41,9 +41,7 @@ const catalogInfrastructureToolNames = new Set<string>(
   CATALOG_INFRASTRUCTURE_TOOL_NAMES,
 );
 
-export type TopLevelToolName =
-  | (typeof TOP_LEVEL_TOOL_NAMES)[number]
-  | (typeof EXPERIMENTAL_TOP_LEVEL_TOOL_NAMES)[number];
+export type TopLevelToolName = (typeof TOP_LEVEL_TOOL_NAMES)[number];
 
 export function isOutsideCatalogToolName(toolName: string): boolean {
   return (

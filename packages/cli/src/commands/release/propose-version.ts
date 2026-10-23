@@ -83,10 +83,17 @@ export const proposeVersionCommand = buildCommand({
       "  14. TRAVIS_COMMIT (Travis CI)\n" +
       "  15. Git HEAD SHA (fallback)\n\n" +
       "Useful in CI scripts:\n" +
-      "  sentry release create $(sentry release propose-version)\n\n" +
-      "Examples:\n" +
-      "  sentry release propose-version\n" +
-      "  sentry release propose-version --json",
+      "  sentry release create $(sentry release propose-version)",
+    examples: [
+      {
+        description: "Propose a version from git HEAD",
+        command: "sentry release propose-version",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry release propose-version --json",
+      },
+    ],
   },
   output: {
     human: formatProposedVersion,
@@ -108,7 +115,7 @@ export const proposeVersionCommand = buildCommand({
     }
 
     // Fall back to git HEAD SHA
-    const sha = await getHeadCommit(cwd);
+    const sha = getHeadCommit(cwd);
     yield new CommandOutput({ version: sha, source: "git" });
     return { hint: "Detected from git HEAD" };
   },

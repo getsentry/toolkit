@@ -39,7 +39,7 @@ import {
 import type { DashboardListItem } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardListArgs,
   resolveOrgFromTarget,
 } from "./resolve.js";
@@ -293,6 +293,9 @@ async function fetchDashboards(
   const allTitles: string[] = [];
   let cursorToStore: string | undefined;
 
+  // Filters titles client-side, so it cannot count rows with paginate(). It
+  // always uses one page size and resumes mid-page via afterId bookmarks.
+  // oxlint-disable-next-line sentry-cli/no-manual-pagination
   for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
     const { data, nextCursor } = await listDashboardsPaginated(orgSlug, {
       perPage: opts.perPage,
@@ -370,18 +373,45 @@ export const listCommand = buildListCommand("dashboard", {
     fullDescription:
       "List dashboards in a Sentry organization.\n\n" +
       "The optional name argument supports glob patterns for filtering by title.\n" +
-      "Glob matching is case-insensitive. Quote patterns to prevent shell expansion.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard list                     # auto-detect org\n" +
-      "  sentry dashboard list my-org/             # explicit org\n" +
-      "  sentry dashboard list my-org/my-project   # org from explicit project\n" +
-      "  sentry dashboard list 'Error*'            # filter by title glob\n" +
-      "  sentry dashboard list my-org '*API*'      # bare org + filter\n" +
-      "  sentry dashboard list my-org/ '*API*'     # org/ + filter\n" +
-      "  sentry dashboard list -c next             # next page\n" +
-      "  sentry dashboard list -c prev             # previous page\n" +
-      "  sentry dashboard list --json              # JSON with pagination envelope\n" +
-      "  sentry dashboard list --web",
+      "Glob matching is case-insensitive. Quote patterns to prevent shell expansion.",
+    examples: [
+      {
+        description: "List dashboards (organization auto-detected)",
+        command: "sentry dashboard list",
+      },
+      {
+        description: "List dashboards in an explicit organization",
+        command: "sentry dashboard list my-org/",
+      },
+      {
+        description: "Use the organization of an explicit project",
+        command: "sentry dashboard list my-org/my-project",
+      },
+      {
+        description: "Filter by title glob",
+        command: "sentry dashboard list 'Backend*'",
+      },
+      {
+        description: "Filter within an organization",
+        command: "sentry dashboard list my-org/ '*API*'",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry dashboard list -c next",
+      },
+      {
+        description: "Fetch the previous page",
+        command: "sentry dashboard list -c prev",
+      },
+      {
+        description: "Output JSON with the pagination envelope",
+        command: "sentry dashboard list --json",
+      },
+      {
+        description: "Open the dashboard list in the browser",
+        command: "sentry dashboard list -w",
+      },
+    ],
   },
   output: {
     human: formatDashboardListHuman,
@@ -439,31 +469,30 @@ export const listCommand = buildListCommand("dashboard", {
       ? picomatch(titleFilter.toLowerCase(), { dot: true })
       : undefined;
 
-    // When filtering, fetch max-size pages to minimize round trips.
-    // When not filtering, cap at the smaller of limit and API max.
-    const perPage = glob
-      ? API_MAX_PER_PAGE
-      : Math.min(flags.limit, API_MAX_PER_PAGE);
+    // Dashboards use a page-number paginator whose cursor is only valid with
+    // the page size that produced it, so every call uses the same size, even
+    // when `-c next` changes --limit. afterId bookmarks resume mid-page.
+    const perPage = API_MAX_PER_PAGE;
 
     const {
       dashboards: results,
       cursorToStore,
       allTitles,
-    } = await withProgress(
-      {
-        message: `Fetching dashboards${titleFilter ? ` matching '${titleFilter}'` : ""} (up to ${flags.limit})...`,
-        json: flags.json,
-      },
-      () =>
-        fetchDashboards(orgSlug, {
-          limit: flags.limit,
-          perPage,
-          serverCursor,
-          afterId,
-          glob,
-        }),
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "list" }),
+    } = await withDashboardErrors({ orgSlug, operation: "list" }, () =>
+      withProgress(
+        {
+          message: `Fetching dashboards${titleFilter ? ` matching '${titleFilter}'` : ""} (up to ${flags.limit})...`,
+          json: flags.json,
+        },
+        () =>
+          fetchDashboards(orgSlug, {
+            limit: flags.limit,
+            perPage,
+            serverCursor,
+            afterId,
+            glob,
+          }),
+      ),
     );
 
     // Advance the pagination cursor stack

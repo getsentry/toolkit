@@ -374,11 +374,24 @@ export const viewCommand = buildCommand({
       "  sentry span view <trace-id> <span-id>                        # auto-detect\n" +
       "  sentry span view <org>/<project>/<trace-id> <span-id>        # explicit\n\n" +
       "The first argument is the trace ID (optionally prefixed with org/project),\n" +
-      "followed by one or more span IDs.\n\n" +
-      "Examples:\n" +
-      "  sentry span view <trace-id> a1b2c3d4e5f67890\n" +
-      "  sentry span view <trace-id> a1b2c3d4e5f67890 b2c3d4e5f6789012\n" +
-      "  sentry span view sentry/my-project/<trace-id> a1b2c3d4e5f67890",
+      "followed by one or more span IDs.",
+    examples: [
+      {
+        description: "View a single span",
+        command:
+          "sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
+      },
+      {
+        description: "View multiple spans at once",
+        command:
+          "sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890 b2c3d4e5f6789012",
+      },
+      {
+        description: "Specify the organization and project explicitly",
+        command:
+          "sentry span view my-org/backend/abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
+      },
+    ],
   },
   output: {
     human: formatSpanViewHuman,

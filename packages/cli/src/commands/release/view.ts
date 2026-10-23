@@ -162,12 +162,25 @@ export const viewCommand = buildCommand({
     brief: "View release details with health metrics",
     fullDescription:
       "Show detailed information about a Sentry release, including\n" +
-      "per-project adoption and crash-free metrics.\n\n" +
-      "Examples:\n" +
-      "  sentry release view 1.0.0\n" +
-      "  sentry release view my-org/1.0.0\n" +
-      '  sentry release view "sentry-cli@0.24.0"\n' +
-      "  sentry release view 1.0.0 --json",
+      "per-project adoption and crash-free metrics.",
+    examples: [
+      {
+        description: "View release details",
+        command: "sentry release view 1.0.0",
+      },
+      {
+        description: "View a release in an explicit organization",
+        command: "sentry release view my-org/1.0.0",
+      },
+      {
+        description: "View a release whose version contains a package name",
+        command: 'sentry release view "sentry-cli@0.24.0"',
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry release view 1.0.0 --json",
+      },
+    ],
   },
   output: {
     human: formatReleaseDetails,

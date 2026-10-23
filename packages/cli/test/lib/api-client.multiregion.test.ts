@@ -41,7 +41,7 @@ beforeEach(async () => {
   delete process.env.SENTRY_TOKEN;
 
   // Set up auth token (manual token, no refresh)
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
 
   // Clear any existing region cache
   clearOrgRegions();
@@ -80,18 +80,18 @@ function createMultiRegionMockFetch(handlers: {
       url.hostname === "127.0.0.1"
     ) {
       if (handlers.controlSilo) {
-        return handlers.controlSilo(req);
+        return await handlers.controlSilo(req);
       }
     } else if (url.hostname === "us.sentry.io") {
       if (handlers.usRegion) {
-        return handlers.usRegion(req);
+        return await handlers.usRegion(req);
       }
     } else if (url.hostname === "de.sentry.io" && handlers.euRegion) {
-      return handlers.euRegion(req);
+      return await handlers.euRegion(req);
     }
 
     if (handlers.default) {
-      return handlers.default(req);
+      return await handlers.default(req);
     }
 
     return new Response(JSON.stringify({ detail: "Not found" }), {

@@ -30,6 +30,7 @@ import type {
   TraceSpan,
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
+import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
   findMostRelevantInAppFrame,
@@ -882,7 +883,14 @@ function formatVariableValue(value: unknown, maxLength = 80): string {
       }
       return stringified;
     }
-    return String(value);
+    if (
+      typeof value === "number" ||
+      typeof value === "boolean" ||
+      typeof value === "bigint"
+    ) {
+      return String(value);
+    }
+    return `<${typeof value}>`;
   } catch {
     // Handle circular references or other stringify errors
     return `<${typeof value}>`;
@@ -1729,7 +1737,7 @@ function formatMetricAlertCondition(
       return type === "lte" ? "at or below" : "below";
     }
     if (type != null) {
-      return String(type);
+      return formatUnknown(type);
     }
     return undefined;
   })();
@@ -1762,19 +1770,23 @@ function formatMetricAlertDetails(
   const snubaQuery = getMetricAlertSnubaQuery(evidenceData);
   if (snubaQuery) {
     if (snubaQuery.dataset != null) {
-      parts.push(`**Dataset**: ${String(snubaQuery.dataset)}`);
+      parts.push(`**Dataset**: ${formatUnknown(snubaQuery.dataset)}`);
     }
     if (snubaQuery.aggregate != null) {
-      parts.push(`**Aggregate**: ${String(snubaQuery.aggregate)}`);
+      parts.push(`**Aggregate**: ${formatUnknown(snubaQuery.aggregate)}`);
     }
-    if (snubaQuery.query != null && String(snubaQuery.query).length > 0) {
-      parts.push(`**Query**: \`${String(snubaQuery.query)}\``);
+    const query =
+      snubaQuery.query != null ? formatUnknown(snubaQuery.query) : "";
+    if (query.length > 0) {
+      parts.push(`**Query**: \`${query}\``);
     }
     if (snubaQuery.time_window != null) {
-      parts.push(`**Interval**: ${String(snubaQuery.time_window)} second(s)`);
+      parts.push(
+        `**Interval**: ${formatUnknown(snubaQuery.time_window)} second(s)`,
+      );
     }
     if (snubaQuery.environment != null) {
-      parts.push(`**Environment**: ${String(snubaQuery.environment)}`);
+      parts.push(`**Environment**: ${formatUnknown(snubaQuery.environment)}`);
     }
     parts.push("");
   }
@@ -1796,7 +1808,7 @@ function formatMetricAlertDetails(
   }
 
   if (evidenceData.alert_id != null) {
-    parts.push(`**Alert Rule ID**: ${String(evidenceData.alert_id)}`);
+    parts.push(`**Alert Rule ID**: ${formatUnknown(evidenceData.alert_id)}`);
   }
 
   parts.push("");
@@ -2164,7 +2176,7 @@ export function formatIssueOutput({
   }
 
   output += `**Event ID**: ${event.id}\n`;
-  output += `**Type**: ${event.type}\n`;
+  output += `**Type**: ${formatUnknown(event.type)}\n`;
   // default: error without exception data, generic: performance/metric issue, csp: CSP violation
   if (
     event.type === "error" ||
@@ -2176,7 +2188,7 @@ export function formatIssueOutput({
       | z.infer<typeof ErrorEventSchema>
       | z.infer<typeof DefaultEventSchema>
       | z.infer<typeof GenericEventSchema>
-      | any; // CSP events don't have a schema yet
+      | { dateCreated?: string | null }; // CSP events don't have a schema yet
     if (typedEvent.dateCreated) {
       const d = new Date(typedEvent.dateCreated);
       if (!isNaN(d.getTime())) {

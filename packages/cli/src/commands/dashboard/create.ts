@@ -25,7 +25,7 @@ import {
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import type { DashboardDetail } from "../../types/dashboard.js";
-import { enrichDashboardError } from "./resolve.js";
+import { withDashboardErrors } from "./resolve.js";
 
 type CreateFlags = {
   readonly json: boolean;
@@ -143,12 +143,22 @@ export const createCommand = buildCommand({
     brief: "Create a dashboard",
     fullDescription:
       "Create a new Sentry dashboard.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard create 'My Dashboard'\n" +
-      "  sentry dashboard create my-org/ 'My Dashboard'\n" +
-      "  sentry dashboard create my-org/my-project 'My Dashboard'\n\n" +
       "Add widgets after creation with:\n" +
       '  sentry dashboard widget add <dashboard> "My Widget" --display line --query count',
+    examples: [
+      {
+        description: "Create a dashboard (organization auto-detected)",
+        command: "sentry dashboard create 'Frontend Performance'",
+      },
+      {
+        description: "Create a dashboard in an explicit organization",
+        command: "sentry dashboard create my-org/ 'My Dashboard'",
+      },
+      {
+        description: "Use the organization of an explicit project",
+        command: "sentry dashboard create my-org/my-project 'My Dashboard'",
+      },
+    ],
   },
   output: {
     human: formatDashboardCreated,
@@ -171,12 +181,14 @@ export const createCommand = buildCommand({
     const parsed = parseOrgProjectArg(targetArg);
     const { orgSlug, projectIds } = await resolveDashboardTarget(parsed, cwd);
 
-    const dashboard = await createDashboard(orgSlug, {
-      title,
-      widgets: [],
-      projects: projectIds.length > 0 ? projectIds : undefined,
-    }).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "create" }),
+    const dashboard = await withDashboardErrors(
+      { orgSlug, operation: "create" },
+      () =>
+        createDashboard(orgSlug, {
+          title,
+          widgets: [],
+          projects: projectIds.length > 0 ? projectIds : undefined,
+        }),
     );
     const url = buildDashboardUrl(orgSlug, dashboard.id);
 
