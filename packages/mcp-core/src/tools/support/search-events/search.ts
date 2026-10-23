@@ -47,7 +47,6 @@ import {
   isValidReplaySort,
 } from "./replays";
 import {
-  AI_QUERY_DATASETS,
   isSeerSearchDataset,
   type SeerSearchTranslation,
   trackAiQueryOutcome,
@@ -635,7 +634,7 @@ function trackSeerOutcome(
   }
   state.tracked = true;
   trackAiQueryOutcome({
-    dataset: AI_QUERY_DATASETS[params.dataset],
+    dataset: normalizeEventsDataset(params.dataset),
     mode: state.translation.mode,
     organization: {
       slug: params.organizationSlug,

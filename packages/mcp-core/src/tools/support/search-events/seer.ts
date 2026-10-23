@@ -8,9 +8,11 @@ import {
 } from "../../../api-client/index";
 import { logWarn } from "../../../telem/logging";
 import {
+  type EventsApiDataset,
   normalizeEventsDataset,
   type PublicEventsDataset,
 } from "../../../utils/events-datasets";
+import type { ExploreMode } from "../../../utils/url-utils";
 import { RECOMMENDED_FIELDS } from "./config";
 
 export const SEER_SEARCH_AGENT_POLLING_INTERVAL = 1000; // 1 second
@@ -52,21 +54,9 @@ export interface SeerSearchTranslation {
   warning?: string;
   // Identifies the run in the assisted query outcome metric.
   runId: string;
-  mode: AiQueryMode;
+  mode: ExploreMode;
   organizationFeatures: string[];
 }
-
-export type AiQueryMode = "samples" | "aggregate";
-
-export type AiQueryDataset = "spans" | "errors" | "logs" | "tracemetrics";
-
-// The dataset names Sentry's frontend reports for each Seer dataset.
-export const AI_QUERY_DATASETS = {
-  errors: "errors",
-  logs: "logs",
-  spans: "spans",
-  metrics: "tracemetrics",
-} as const satisfies Record<SeerSearchDataset, AiQueryDataset>;
 
 function extractErrorReason(err: Error): string {
   if (err instanceof ApiError && err.detail) {
@@ -87,8 +77,8 @@ export function trackAiQueryOutcome({
   runId,
   error = false,
 }: {
-  dataset: AiQueryDataset;
-  mode: AiQueryMode;
+  dataset: EventsApiDataset;
+  mode: ExploreMode;
   organization: { slug: string; features: string[] };
   resultCount: number;
   runId: string;

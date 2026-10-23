@@ -11,6 +11,9 @@ export function isPublicSentryHost(host: string): boolean {
   return isSentryHost(host) && !host.endsWith(".my.sentry.io");
 }
 
+// The Explore page's `mode` URL parameter.
+export type ExploreMode = "aggregate" | "samples";
+
 export interface TraceMetricIdentifier {
   name: string;
   type: string;
@@ -152,7 +155,7 @@ function dedupeTraceMetrics(
 function buildMetricQueryState(params: {
   metric: TraceMetricIdentifier;
   query: string;
-  mode: "aggregate" | "samples";
+  mode: ExploreMode;
   yAxes: string[];
   groupByFields?: string[];
   aggregateSortBys?: Array<{ field: string; kind: "asc" | "desc" }>;
