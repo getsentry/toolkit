@@ -44,6 +44,23 @@ Upload debug information files to Sentry
 - `--wait - Wait for server-side processing and report any errors`
 - `--wait-for <value> - Wait up to this many seconds for server-side processing`
 
+### `sentry debug-files wasm-upload <path...>`
+
+Split WebAssembly debug info and upload it to Sentry
+
+**Flags:**
+- `--dry-run - Classify modules without writing or uploading anything`
+- `--no-upload - Split modules but do not upload the companions`
+- `--require-dwarf - Fail if any scanned module lacks DWARF debug info`
+- `--out-dir <value> - Directory for *.debug.wasm companions (modules are stripped in place)`
+- `--strip-names - Also drop the name section from split modules (companion keeps it)`
+- `--build-id <value> - Use this UUID as the build id instead of a random one (one .wasm file only)`
+- `--include-sources - Also upload a source bundle for each companion`
+- `--ignore <value>... - Skip files and folders matching this glob (repeatable)`
+- `--ignore-file <value> - Skip files and folders listed in this ignore file`
+- `--wait - Wait for server-side processing and report any errors`
+- `--wait-for <value> - Wait up to this many seconds for server-side processing`
+
 ### `sentry debug-files print-sources <path>`
 
 List the source files a debug file references
@@ -112,6 +129,21 @@ sentry debug-files upload ./build --il2cpp-mapping --include-sources
 
 # Preview what would be uploaded without uploading (no credentials needed)
 sentry debug-files upload ./build --no-upload
+
+# Split WebAssembly debug info and upload it (scans directories recursively)
+sentry debug-files wasm-upload ./dist
+
+# Preview the split without writing or uploading anything
+sentry debug-files wasm-upload ./dist --dry-run
+
+# Split only, keeping the companions local
+sentry debug-files wasm-upload ./dist --no-upload
+
+# Write companions elsewhere; modules are still stripped in place
+sentry debug-files wasm-upload ./dist --out-dir ./symbols
+
+# Fail the build if any module was compiled without DWARF
+sentry debug-files wasm-upload ./dist --require-dwarf
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

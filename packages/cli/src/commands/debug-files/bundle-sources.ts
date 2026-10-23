@@ -14,7 +14,6 @@
  * bundled `symbolic` WASM module (see `src/lib/dif/`).
  */
 
-import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
@@ -28,7 +27,7 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
-import { readDebugFile } from "./read-file.js";
+import { readDebugFile, readSourceFile } from "./read-file.js";
 
 const log = logger.withTag("debug-files.bundle-sources");
 
@@ -119,17 +118,7 @@ export const bundleSourcesCommand = buildCommand({
       result = createSourceBundle(
         new Uint8Array(content),
         basename(path),
-        (sourcePath) => {
-          try {
-            return readFileSync(sourcePath);
-          } catch (err) {
-            log.debug(
-              `Source file not available, skipping: ${sourcePath}`,
-              err,
-            );
-            return null;
-          }
-        },
+        readSourceFile,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

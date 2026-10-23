@@ -45,7 +45,49 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import ignore, { type Ignore } from "ignore";
 import { handleFileError } from "../dsn/fs-utils.js";
+import { ValidationError } from "../errors.js";
 import type { IgnoreMatcher } from "./types.js";
+
+/**
+ * Build an `ignore` matcher from user-supplied `--ignore` patterns and/or an
+ * `--ignore-file` path. Returns `undefined` when neither is set, so callers can
+ * skip the per-file check entirely.
+ *
+ * Patterns follow gitignore semantics (negations, anchoring, directory-only
+ * `dir/` entries) rather than plain glob matching, and the ignore file is
+ * parsed by the `ignore` package — blank lines and `#` comments are dropped.
+ *
+ * @throws {ValidationError} If `ignoreFilePath` is set but does not exist.
+ */
+export async function buildIgnoreMatcher(
+  patterns?: readonly string[],
+  ignoreFilePath?: string,
+): Promise<Ignore | undefined> {
+  const hasPatterns = patterns !== undefined && patterns.length > 0;
+  if (!(hasPatterns || ignoreFilePath)) {
+    return;
+  }
+  const ig = ignore();
+  if (hasPatterns) {
+    ig.add([...patterns]);
+  }
+  if (ignoreFilePath) {
+    try {
+      const content = await readFile(ignoreFilePath, "utf-8");
+      ig.add(content);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        throw new ValidationError(
+          `Ignore file '${ignoreFilePath}' does not exist.`,
+          "ignore-file",
+        );
+      }
+      throw err;
+    }
+  }
+  return ig;
+}
 
 /** Options for constructing an `IgnoreStack`. */
 export type IgnoreStackOptions = {

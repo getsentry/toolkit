@@ -7,12 +7,12 @@
 
 import { open, readFile, stat } from "node:fs/promises";
 import { dirname, relative, resolve as resolvePath, sep } from "node:path";
-import ignore from "ignore";
+import type ignore from "ignore";
 import { NODE_MODULES_DIRNAME } from "../constants.js";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 import { isLikelyBinary } from "../scan/binary.js";
-import { walkFiles } from "../scan/index.js";
+import { buildIgnoreMatcher, walkFiles } from "../scan/index.js";
 import {
   hasDebugIdRegistration,
   injectDebugId,
@@ -523,40 +523,6 @@ async function findCompanionMap(
  *   exact bundles users care about most.
  */
 const SOURCEMAP_SKIP_DIRS: readonly string[] = [NODE_MODULES_DIRNAME];
-
-/**
- * Build an `ignore` matcher from user-provided patterns and/or an
- * ignore-file path. Returns `undefined` when no patterns are active.
- */
-export async function buildIgnoreMatcher(
-  patterns?: string[],
-  ignoreFilePath?: string,
-): Promise<ReturnType<typeof ignore> | undefined> {
-  const hasPatterns = patterns && patterns.length > 0;
-  if (!(hasPatterns || ignoreFilePath)) {
-    return;
-  }
-  const ig = ignore();
-  if (hasPatterns) {
-    ig.add(patterns);
-  }
-  if (ignoreFilePath) {
-    try {
-      const content = await readFile(ignoreFilePath, "utf-8");
-      ig.add(content);
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === "ENOENT") {
-        throw new ValidationError(
-          `Ignore file '${ignoreFilePath}' does not exist.`,
-          "ignore-file",
-        );
-      }
-      throw err;
-    }
-  }
-  return ig;
-}
 
 /**
  * Read-only discovery pass — returns the list of JS + sourcemap pairs
