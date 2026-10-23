@@ -136,6 +136,20 @@ sentry event list PROJ-ABC -c prev
 sentry event list PROJ-ABC --json
 ```
 
+### `sentry event analytics [<org/project>]`
+
+Analytics for events Sentry dropped
+
+**Flags:**
+- `--dataset <value> - Dropped-data type: errors, spans, logs, or metrics - (default: "errors")`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01"`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outcomes` | array |  |
+
 ### `sentry event send <target-or-file...>`
 
 Send a Sentry event
