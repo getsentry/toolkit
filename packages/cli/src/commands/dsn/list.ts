@@ -302,14 +302,36 @@ export const listCommand = buildListCommand("dsn", {
       "Use <org>/ to list DSNs across all accessible projects in an organization.\n" +
       "Omit the target to detect projects from your config or DSNs, including monorepos.\n" +
       `${targetPatternExplanation()}\n\n` +
-      "Examples:\n" +
-      "  sentry dsn list\n" +
-      "  sentry dsn list my-org/my-project\n" +
-      "  sentry dsn list my-org/\n" +
-      "  sentry dsn list my-org/ -c next\n" +
-      "  sentry dsn list my-org/my-project -c next\n" +
-      "  sentry dsn list my-org/my-project --json\n\n" +
       "JSON fields: org, project, name, dsn, isActive, dateCreated.",
+    examples: [
+      {
+        description:
+          "List client keys for detected projects, including monorepos",
+        command: "sentry dsn list",
+      },
+      {
+        description: "List enabled and disabled DSNs for one project",
+        command: "sentry dsn list my-org/my-project",
+      },
+      {
+        description:
+          "List DSNs across all accessible projects in an organization",
+        command: "sentry dsn list my-org/",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry dsn list my-org/ --limit 10 -c next",
+      },
+      {
+        description: "Fetch the previous page",
+        command: "sentry dsn list my-org/ --limit 10 -c prev",
+      },
+      {
+        description: "Select public DSN fields as JSON",
+        command:
+          "sentry dsn list my-org/my-project --json --fields name,dsn,isActive",
+      },
+    ],
   },
   output: {
     human: formatDsnList,

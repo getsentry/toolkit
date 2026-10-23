@@ -81,6 +81,7 @@ function createMockContext() {
       stdout: { write: stdoutWrite },
       stderr: { write: vi.fn(() => true) },
       cwd: "/tmp",
+      commandPrefix: ["sentry", "feedback", "list"],
     },
     stdoutWrite,
   };
@@ -101,7 +102,7 @@ describe("feedback list", () => {
       slug: "test-project",
       name: "Test Project",
     });
-    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalFromArg");
+    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
     resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
       cursor: undefined,
       direction: "next",
@@ -230,7 +231,7 @@ describe("feedback list", () => {
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
     expect(JSON.parse(output).data).toEqual([{ shortId: "TEST-PROJECT-2SDJ" }]);
     expect(resolveTargetSpy).toHaveBeenCalledWith(
-      undefined,
+      { type: "auto-detect" },
       "/tmp",
       "feedback list",
     );
@@ -259,7 +260,7 @@ describe("feedback list", () => {
     );
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
-      "test-project",
+      { type: "project-search", projectSlug: "test-project" },
       "/tmp",
       "feedback list",
     );

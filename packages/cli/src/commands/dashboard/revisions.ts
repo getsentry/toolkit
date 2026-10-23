@@ -119,13 +119,29 @@ export const revisionsCommand = buildCommand({
     fullDescription:
       "List revision history for a Sentry dashboard.\n\n" +
       "Shows saved revisions with their IDs, titles, authors, and timestamps.\n" +
-      "Use `sentry dashboard restore` to revert to a previous revision.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard revisions 12345\n" +
-      "  sentry dashboard revisions 'My Dashboard'\n" +
-      "  sentry dashboard revisions my-org 12345\n" +
-      "  sentry dashboard revisions my-org 12345 --json\n" +
-      "  sentry dashboard revisions my-org 12345 -c next",
+      "Use `sentry dashboard restore` to revert to a previous revision.",
+    examples: [
+      {
+        description: "List revisions by dashboard title",
+        command: "sentry dashboard revisions 'Frontend Performance'",
+      },
+      {
+        description: "List revisions by dashboard ID",
+        command: "sentry dashboard revisions 12345",
+      },
+      {
+        description: "Pass the organization explicitly",
+        command: "sentry dashboard revisions my-org 12345",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry dashboard revisions my-org 12345 -c next",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry dashboard revisions my-org 12345 --json",
+      },
+    ],
   },
   output: {
     human: formatRevisionsHuman,
@@ -169,7 +185,6 @@ export const revisionsCommand = buildCommand({
       contextKey,
     );
 
-    const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
     const results: DashboardRevision[] = [];
     let cursor = rawCursor;
     let nextCursor: string | undefined;
@@ -187,7 +202,12 @@ export const revisionsCommand = buildCommand({
             for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
               const { data, nextCursor: nc } =
                 await listDashboardRevisionsPaginated(orgSlug, dashboardId, {
-                  perPage,
+                  // Ask only for the remaining budget so the last page's
+                  // cursor points at the first row we did not return.
+                  perPage: Math.min(
+                    flags.limit - results.length,
+                    API_MAX_PER_PAGE,
+                  ),
                   cursor,
                 });
               results.push(...data);
@@ -202,8 +222,10 @@ export const revisionsCommand = buildCommand({
     );
 
     const trimmed = results.slice(0, flags.limit);
-    const hasMore = results.length > flags.limit || !!nextCursor;
-    const cursorToStore = hasMore ? nextCursor : undefined;
+    // A page larger than requested would make the server cursor skip the
+    // trimmed rows, so drop it (same as autoPaginate).
+    const cursorToStore = results.length > flags.limit ? undefined : nextCursor;
+    const hasMore = cursorToStore !== undefined;
 
     advancePaginationState(
       PAGINATION_KEY,

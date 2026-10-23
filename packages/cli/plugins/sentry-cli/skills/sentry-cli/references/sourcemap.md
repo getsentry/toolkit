@@ -63,6 +63,7 @@ sentry sourcemap upload ./dist --release 1.0.0
 # Set a custom URL prefix
 sentry sourcemap upload ./dist --url-prefix '~/static/js/'
 
+# Don't fail when no sourcemaps are found
 sentry sourcemap upload ./dist --allow-empty
 ```
 
@@ -78,11 +79,10 @@ Resolve and report sourcemap linkage for JavaScript files
 **Examples:**
 
 ```bash
-# Report how each JS file's sourcemap resolves and whether a debug ID
-# has been injected (read-only — never modifies files)
+# Report how each JS file's sourcemap resolves and whether a debug ID is injected
 sentry sourcemap resolve ./dist
 
-# Machine-readable output
+# Output as JSON
 sentry sourcemap resolve ./dist --json
 ```
 

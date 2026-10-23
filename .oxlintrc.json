@@ -69,9 +69,12 @@
         "sentry-cli/no-inline-touch-cache": "error",
         "sentry-cli/no-args-join-in-release": "error",
         "sentry-cli/no-direct-target-resolution": "error",
+        "sentry-cli/require-target-resolution": "error",
         "sentry-cli/no-generic-is-record": "error",
         "sentry-cli/prefer-paginate-helper": "error",
         "sentry-cli/no-namespace-import": "error",
+        "sentry-cli/no-examples-in-full-description": "error",
+        "sentry-cli/no-regex-markdown-parsing": "error",
         "no-restricted-imports": [
           "error",
           {
@@ -87,6 +90,12 @@
         "no-bitwise": "error",
         "max-params": ["error", 5],
         "sentry-cli/no-skipped-tests": "error"
+      }
+    },
+    {
+      "files": ["packages/cli/script/**/*.ts"],
+      "rules": {
+        "sentry-cli/no-regex-markdown-parsing": "error"
       }
     },
     {

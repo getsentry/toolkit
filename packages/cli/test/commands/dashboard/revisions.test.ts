@@ -294,6 +294,55 @@ describe("dashboard revisions command", () => {
     expect(parsed.hasMore).toBe(false);
   });
 
+  test("auto-pagination: later pages request only the remaining budget", async () => {
+    listDashboardRevisionsPaginatedSpy
+      .mockResolvedValueOnce({
+        data: [REVISION_A, REVISION_B],
+        nextCursor: "cursor-page-2",
+      })
+      .mockResolvedValueOnce({
+        data: [REVISION_C],
+        nextCursor: "cursor-page-3",
+      });
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await revisionsCommand.loader();
+    await func.call(context, defaultFlags({ json: true, limit: 3 }), "123");
+
+    expect(listDashboardRevisionsPaginatedSpy).toHaveBeenLastCalledWith(
+      "test-org",
+      "123",
+      { perPage: 1, cursor: "cursor-page-2" },
+    );
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    expect(parsed.data).toHaveLength(3);
+    expect(parsed.hasMore).toBe(true);
+    expect(parsed.nextCursor).toBe("cursor-page-3");
+  });
+
+  test("auto-pagination: drops the cursor when a page overshoots the limit", async () => {
+    // An endpoint that ignores per_page returns more rows than asked for; its
+    // cursor would skip the trimmed rows on `-c next`.
+    listDashboardRevisionsPaginatedSpy
+      .mockResolvedValueOnce({
+        data: [REVISION_A, REVISION_B],
+        nextCursor: "cursor-page-2",
+      })
+      .mockResolvedValueOnce({
+        data: [REVISION_C, REVISION_A],
+        nextCursor: "cursor-page-3",
+      });
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await revisionsCommand.loader();
+    await func.call(context, defaultFlags({ json: true, limit: 3 }), "123");
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    expect(parsed.data).toHaveLength(3);
+    expect(parsed.hasMore).toBe(false);
+    expect(parsed.nextCursor).toBeUndefined();
+  });
+
   // -------------------------------------------------------------------------
   // Org/dashboard argument parsing
   // -------------------------------------------------------------------------

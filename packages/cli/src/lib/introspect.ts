@@ -296,13 +296,8 @@ export function extractFlags(
  *
  * @param cmd - The Stricli command to introspect
  * @param path - Full command path (e.g. "sentry issue list")
- * @param examples - Optional usage examples
  */
-export function buildCommandInfo(
-  cmd: Command,
-  path: string,
-  examples: string[] = [],
-): CommandInfo {
+export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
   const jsonFields = cmd.__jsonSchema
     ? extractSchemaFields(cmd.__jsonSchema)
     : undefined;
@@ -321,11 +316,9 @@ export function buildCommandInfo(
       cmd.__primaryUsage ?? getPositionalString(cmd.parameters.positional),
     positionals,
     aliases: cmd.parameters.aliases ?? {},
-    examples: cmd.__examples?.length
-      ? cmd.__examples.map(
-          ({ description, command }) => `# ${description}\n${command}`,
-        )
-      : examples,
+    examples: (cmd.__examples ?? []).map(
+      ({ description, command }) => `# ${description}\n${command}`,
+    ),
     jsonFields: jsonFields?.length ? jsonFields : undefined,
   };
 }
@@ -335,12 +328,10 @@ export function buildCommandInfo(
  *
  * @param routeMap - The route map to introspect
  * @param routeName - Parent route name (e.g. "issue")
- * @param docExamples - Optional examples loaded from documentation
  */
 export function extractRouteGroupCommands(
   routeMap: RouteMap,
   routeName: string,
-  docExamples: Map<string, string[]> = new Map(),
 ): CommandInfo[] {
   const commands: CommandInfo[] = [];
 
@@ -352,13 +343,10 @@ export function extractRouteGroupCommands(
     const subTarget = subEntry.target;
     if (isCommand(subTarget)) {
       const path = `sentry ${routeName} ${subEntry.name.original}`;
-      const examples = docExamples.get(path) ?? [];
-      commands.push(buildCommandInfo(subTarget, path, examples));
+      commands.push(buildCommandInfo(subTarget, path));
     } else if (isRouteMap(subTarget)) {
       const nestedPrefix = `${routeName} ${subEntry.name.original}`;
-      commands.push(
-        ...extractRouteGroupCommands(subTarget, nestedPrefix, docExamples),
-      );
+      commands.push(...extractRouteGroupCommands(subTarget, nestedPrefix));
     }
   }
 
@@ -367,8 +355,6 @@ export function extractRouteGroupCommands(
 
 /**
  * Walk the entire route tree and extract metadata for all visible routes.
- * This is a synchronous version that doesn't load documentation examples
- * (unlike the async version in generate-skill.ts).
  *
  * @param routeMap - Top-level Stricli route map
  * @returns Array of route info for each visible top-level entry

@@ -9,6 +9,11 @@ patchedDependencies:
   "@sentry/node-core@10.63.0": packages/cli/patches/@sentry%2Fnode-core@10.63.0.patch
   "@stricli/core@1.2.8": packages/cli/patches/@stricli%2Fcore@1.2.8.patch
 
+packageExtensions:
+  "@openrouter/ai-sdk-provider@1.5.4":
+    dependencies:
+      "@ai-sdk/provider": 2.0.3
+
 allowBuilds:
   "@ast-grep/cli": true
   "@sentry/cli": false
@@ -24,6 +29,9 @@ allowBuilds:
   workerd: true
 
 overrides:
+  "ajv@8.20.0>fast-uri": 3.1.8
+  "express-rate-limit@8>ip-address": 10.7.4
+  "js-yaml@3.15.2>argparse": 2.0.1
   "@modelcontextprotocol/sdk": 1.32.0
   fast-xml-parser: 5.7.2
   "picomatch@2.3.1": 2.3.2
@@ -91,7 +99,7 @@ catalog:
   vitest: ^4.1.11
   vitest-evals: ^0.4.0
   workers-mcp: 0.1.0-3
-  wrangler: 4.80.0
+  wrangler: 4.151.3
   zod: ^4.4.3
 
 minimumReleaseAgeExclude:

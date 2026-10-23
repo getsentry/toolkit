@@ -633,11 +633,14 @@ for (const { path, command } of allCommands) {
       return `${camelCase(name)}: ${flag?.tsType ?? "string"}`;
     });
     const streamingConstraint = streamingFlagTypes.join("; ");
+    const streamingRest = hasVariadicPositional
+      ? ", ...positional: string[]"
+      : "";
 
     typeDecl = [
       `${indent}    /** ${brief} */`,
       `${indent}    ${methodName}: {`,
-      `${indent}      (params: ${params?.name ?? "Record<string, never>"} & { ${streamingConstraint} }): AsyncIterable<unknown>;`,
+      `${indent}      (params: ${params?.name ?? "Record<string, never>"} & { ${streamingConstraint} }${streamingRest}): AsyncIterable<unknown>;`,
       `${indent}      ${sig}: Promise<${returnType}>;`,
       `${indent}    };`,
     ].join("\n");

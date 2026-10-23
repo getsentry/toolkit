@@ -262,11 +262,27 @@ export const mergeCommand = buildCommand({
       "choice has fewer events, Sentry may still pick a different parent,\n" +
       "in which case a warning is printed to stderr.\n\n" +
       "All issues must belong to the same organization. Only error-type\n" +
-      "issues can be merged (the API rejects performance/info issues).\n\n" +
-      "Examples:\n" +
-      "  sentry issue merge CLI-K9 CLI-15H CLI-15N\n" +
-      "  sentry issue merge CLI-K9 CLI-15H --into CLI-K9\n" +
-      "  sentry issue merge my-org/CLI-AB my-org/CLI-CD",
+      "issues can be merged (the API rejects performance/info issues).",
+    examples: [
+      {
+        description:
+          "Let Sentry pick the parent (typically the largest by event count)",
+        command: "sentry issue merge CLI-K9 CLI-15H CLI-15N",
+      },
+      {
+        description: "Pin the canonical parent explicitly",
+        command: "sentry issue merge CLI-K9 CLI-15H CLI-15N --into CLI-K9",
+      },
+      {
+        description: "Use organization-qualified IDs",
+        command:
+          "sentry issue merge my-org/CLI-K9 my-org/CLI-15H --into my-org/CLI-K9",
+      },
+      {
+        description: "Use project-alias IDs",
+        command: "sentry issue merge cli-k9 cli-15h --into cli-k9",
+      },
+    ],
   },
   output: {
     human: formatMerged,

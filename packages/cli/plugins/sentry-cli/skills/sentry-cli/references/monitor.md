@@ -25,6 +25,19 @@ Wrap a command with cron monitor check-ins
 - `--failure-issue-threshold <value> - Consecutive failures before an issue is created (requires --schedule)`
 - `--recovery-threshold <value> - Consecutive successes before an issue is resolved (requires --schedule)`
 
+**Examples:**
+
+```bash
+# Wrap a command with cron monitor check-ins (DSN-based)
+SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 sentry monitor run nightly-job -- python manage.py cron
+
+# The -- separator is optional when the command has no flags
+sentry monitor run nightly-job npm run task
+
+# Create or update the monitor on the first check-in
+sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh
+```
+
 ### `sentry monitor list [<org/project>]`
 
 List cron monitors
@@ -50,20 +63,13 @@ List cron monitors
 **Examples:**
 
 ```bash
-# Wrap a command with cron monitor check-ins (DSN-based)
-SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 \
-  sentry monitor run nightly-job -- python manage.py cron
+# List monitors (organization auto-detected)
+sentry monitor list
 
-# The -- separator is optional when the command has no flags
-sentry monitor run nightly-job npm run task
-
-# Create/update the monitor on the first check-in via --schedule (crontab)
-sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh
-
-# List cron monitors in an org
+# List cron monitors in an organization
 sentry monitor list my-org/
 
-# Paginate through monitors
+# Fetch the next page
 sentry monitor list my-org/ -c next
 
 # Output as JSON

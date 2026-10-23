@@ -11,7 +11,6 @@ import {
   type ReplaySortValue,
 } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -45,8 +44,11 @@ import {
   getReplayUserLabel,
   parseReplayEnvironmentFilter,
 } from "../../lib/replay-search.js";
-import { resolveOrgOptionalFromArg } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
+import {
+  type OrgOptionalTarget,
+  orgOptionalTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -93,7 +95,6 @@ const SORT_MAP: Record<ReplaySortKey, ReplaySortValue> = {
 const DEFAULT_PERIOD = LIST_PERIOD_FLAG.default;
 const DEFAULT_SORT: ReplaySortValue = SORT_MAP.date;
 const PAGINATION_KEY = "replay-list";
-const COMMAND_NAME = "replay list";
 
 function parseLimit(value: string): number {
   return validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT);
@@ -259,15 +260,51 @@ export const listCommand = buildListCommand("replay", {
       "  sentry replay list <org>/<proj> # list replays for one project\n" +
       "  sentry replay list <project>    # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
-      "Examples:\n" +
-      "  sentry replay list\n" +
-      "  sentry replay list sentry/\n" +
-      "  sentry replay list sentry/cli --limit 50\n" +
-      "  sentry replay list sentry/cli --sort duration\n" +
-      '  sentry replay list sentry/cli -q "user.email:foo@example.com"\n' +
-      "  sentry replay list sentry/cli -e production -e canary\n" +
-      "  sentry replay list sentry/cli --period 24h\n\n" +
       "Alias: `sentry replays` → `sentry replay list`",
+    examples: [
+      {
+        description: "List recent replays (project auto-detected)",
+        command: "sentry replay list",
+      },
+      {
+        description: "List recent replays for a project",
+        command: "sentry replay list my-org/frontend",
+      },
+      {
+        description: "Search across all projects in an organization",
+        command: 'sentry replay list my-org/ --query "environment:production"',
+      },
+      {
+        description: "Change the time window and sort",
+        command:
+          "sentry replay list my-org/frontend --period 24h --sort errors",
+      },
+      {
+        description: "Find replays for a user",
+        command:
+          'sentry replay list my-org/frontend -q "user.email:foo@example.com"',
+      },
+      {
+        description: "Filter by environments",
+        command: "sentry replay list my-org/frontend -e production -e canary",
+      },
+      {
+        description: "Show more results",
+        command: "sentry replay list my-org/frontend --limit 50",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry replay list my-org/frontend -c next",
+      },
+      {
+        description: "Fetch the previous page",
+        command: "sentry replay list my-org/frontend -c prev",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry replay list my-org/frontend --json",
+      },
+    ],
   },
   output: {
     human: formatReplayListHuman,
@@ -281,7 +318,7 @@ export const listCommand = buildListCommand("replay", {
         {
           placeholder: "org/project",
           brief: "<org>/, <org>/<project>, or <project> (search)",
-          parse: parseOrgProjectTarget,
+          parse: orgOptionalTarget,
           optional: true,
         },
       ],
@@ -323,13 +360,16 @@ export const listCommand = buildListCommand("replay", {
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
-    const { cwd } = this;
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: OrgOptionalTarget,
+  ) {
     const timeRange = flags.period;
     const environment = parseReplayEnvironmentFilter(flags.environment);
     const { query } = flags;
 
-    const resolved = await resolveOrgOptionalFromArg(target, cwd, COMMAND_NAME);
+    const resolved = await target.resolved;
 
     const contextKey = buildPaginationContextKey(
       "replay",

@@ -8,9 +8,13 @@
 import { describe, expect, test } from "vitest";
 import {
   applyFlagDefaults,
+  buildInvoker,
   type FlagDef,
   parseOutput,
 } from "../../src/lib/sdk-invoke.js";
+import { useTestConfigDir } from "../helpers.js";
+
+useTestConfigDir("sdk-invoke-");
 
 // ---------------------------------------------------------------------------
 // applyFlagDefaults — parsed flags with defaults
@@ -101,6 +105,40 @@ describe("applyFlagDefaults: boolean flags", () => {
     };
     const result = applyFlagDefaults({ fresh: true }, flagDefs);
     expect(result.fresh).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyFlagDefaults — variadic flags
+// ---------------------------------------------------------------------------
+
+describe("applyFlagDefaults: variadic flags", () => {
+  const flagDefs: Record<string, FlagDef> = {
+    field: { kind: "parsed", parse: String, variadic: true, optional: true },
+    environment: {
+      kind: "parsed",
+      parse: String,
+      variadic: ",",
+      optional: true,
+    },
+    dataset: { kind: "parsed", parse: String, optional: true },
+  };
+
+  test("wraps a scalar caller value in an array", () => {
+    // Stricli always hands variadic flags to the handler as arrays (CLI-28C).
+    const result = applyFlagDefaults(
+      { field: "title", environment: "prod", dataset: "spans" },
+      flagDefs,
+    );
+    expect(result.field).toEqual(["title"]);
+    expect(result.environment).toEqual(["prod"]);
+    expect(result.dataset).toBe("spans");
+  });
+
+  test("keeps caller arrays unchanged", () => {
+    const fields = ["title", "count()"];
+    const result = applyFlagDefaults({ field: fields }, flagDefs);
+    expect(result.field).toBe(fields);
   });
 });
 
@@ -220,5 +258,25 @@ describe("parseOutput: binary output", () => {
   test("prefers captured object over stdout chunks", () => {
     const obj = { id: 1 };
     expect(parseOutput(obj, ["ignored"])).toBe(obj);
+  });
+});
+
+describe("buildInvoker: lazily parsed positionals", () => {
+  test("a command's target positional is parsed and validated", async () => {
+    // The SDK passes raw strings; the command wrapper parses the target, so
+    // project view rejects it instead of falling back to auto-detection.
+    const invoke = buildInvoker({ token: "sntrys_test" });
+    await expect(
+      invoke(["project", "view"], {}, ["@latest"]) as Promise<unknown>,
+    ).rejects.toThrow("is an issue selector");
+  });
+
+  test("resolution sees the command path and the destructive guard", async () => {
+    // The usage hint names the command from the SDK's command path, and
+    // project delete refuses to auto-detect an omitted target.
+    const invoke = buildInvoker({ token: "sntrys_test" });
+    await expect(
+      invoke(["project", "delete"], { yes: true }, []) as Promise<unknown>,
+    ).rejects.toThrow("sentry project delete <org>/<project>");
   });
 });

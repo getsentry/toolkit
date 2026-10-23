@@ -140,6 +140,58 @@ built entirely from the file contents.
 | \`--logfile\` | Attach last 100 log lines as breadcrumbs |
 | \`--with-categories\` | Parse 'CATEGORY: message' from logfile lines |
 `,
+    examples: [
+      {
+        description: "Send an error event (default level)",
+        command: 'sentry event send -m "Something went wrong"',
+      },
+      {
+        description: "Specify level, release, and environment",
+        command:
+          'sentry event send -m "Deploy check" -l info -r 1.0.0 -E production',
+      },
+      {
+        description: "Add tags and extra data",
+        command:
+          'sentry event send -m "Payment failed" --tag env:prod --tag region:us-east --extra amount:99.99',
+      },
+      {
+        description: "Set user context",
+        command:
+          'sentry event send -m "Login error" --user id:42 --user email:alice@example.com',
+      },
+      {
+        description: "Custom fingerprint to group related events together",
+        command:
+          'sentry event send -m "DB timeout" --fingerprint db-timeout --fingerprint {{ default }}',
+      },
+      {
+        description: "Send a serialized Sentry Event object",
+        command: "sentry event send ./crash.json",
+      },
+      {
+        description: "Send without re-parsing (raw mode)",
+        command: "sentry event send --raw ./crash.json",
+      },
+      {
+        description: "Send a pre-built envelope",
+        command: "sentry event send --raw ./captured.envelope",
+      },
+      {
+        description: "Send with an explicit DSN",
+        command:
+          'sentry event send "https://key@o123.ingest.us.sentry.io/456" -m "Test"',
+      },
+      {
+        description:
+          "Send to a project (logged-in session; the CLI fetches its sole active DSN)",
+        command: 'sentry event send my-project -m "Test"',
+      },
+      {
+        description: "Send to an org/project target",
+        command: 'sentry event send my-org/my-project -m "Test"',
+      },
+    ],
   },
   auth: "dsn",
   output: {

@@ -256,6 +256,13 @@ describe("classifySilenced", () => {
     );
   });
 
+  test("silences a raw 'terminated' TypeError (mid-body connection drop)", () => {
+    const err = new TypeError("terminated", {
+      cause: new Error("read ETIMEDOUT"),
+    });
+    expect(classifySilenced(err)).toBe("network_error");
+  });
+
   test("does NOT silence a TLS cert error wrapped as ApiError(0)", () => {
     // status 0 is shared by network failures and TLS cert errors; the latter
     // are actionable (missing CA) and must stay captured.
@@ -329,6 +336,18 @@ describe("classifySilenced", () => {
         new ValidationError(
           "File not found: /tmp/does-not-exist.json",
           "input",
+        ),
+      ),
+    ).toBe("user_input_error");
+  });
+
+  test("silences ValidationError with field 'directory' (bad sourcemap directory)", () => {
+    // A missing sourcemap upload/inject directory is user-input noise (CLI-1FN).
+    expect(
+      classifySilenced(
+        new ValidationError(
+          "Directory '/app/.next/static/chunks' does not exist.",
+          "directory",
         ),
       ),
     ).toBe("user_input_error");

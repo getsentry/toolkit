@@ -22,18 +22,20 @@ Create one or more projects
 **Examples:**
 
 ```bash
-# Every project is a name:platform pair; project names cannot contain whitespace
-# Create a new project
+# Create a project (every project is a name:platform pair)
 sentry project create my-new-app:javascript-nextjs
 
 # Create several projects with their own platforms
 sentry project create web:javascript api:python-django worker:node
 
-# Create under a specific org and team
+# Create under a specific organization and team
 sentry project create my-org/my-new-app:python --team backend-team
 
 # Preview without creating
 sentry project create my-new-app:node --dry-run
+
+# Output the created project as JSON
+sentry project create my-app:go --json
 ```
 
 ### `sentry project delete <org/project>`
@@ -48,11 +50,14 @@ Delete a project
 **Examples:**
 
 ```bash
-# Delete a project (will prompt for confirmation)
+# Delete a project (prompts for confirmation)
 sentry project delete my-org/old-project
 
 # Delete without confirmation
 sentry project delete my-org/old-project --yes
+
+# Preview the deletion
+sentry project delete my-org/old-project --dry-run
 ```
 
 ### `sentry project list [<org/project>]`
@@ -65,6 +70,19 @@ List projects
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
+**Examples:**
+
+```bash
+# List all projects in an organization
+sentry project list my-org/
+
+# Several projects in the same organization
+sentry project list my-org/frontend,backend
+
+# Filter by platform
+sentry project list my-org/ --platform javascript
+```
+
 ### `sentry project view [<org/project>]`
 
 View details of a project
@@ -76,19 +94,10 @@ View details of a project
 **Examples:**
 
 ```bash
-# List all projects in an org
-sentry project list my-org/
-
-# Several projects in the same org
-sentry project list my-org/frontend,backend
-
-# Filter by platform
-sentry project list my-org/ --platform javascript
-
 # View project details
 sentry project view my-org/frontend
 
-# Open project in browser
+# Open the project in the browser
 sentry project view my-org/frontend -w
 ```
 

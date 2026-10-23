@@ -163,6 +163,25 @@ export const uploadCommand = buildCommand({
       "  sentry proguard upload mapping.txt --uuid 5db7294d-87fc-5726-a5c0-4a90679657a5\n" +
       "  sentry proguard upload mapping.txt --no-upload\n" +
       "  sentry proguard upload mapping.txt --json",
+    examples: [
+      {
+        description: "Upload a ProGuard/R8 mapping file",
+        command:
+          "sentry proguard upload ./app/build/outputs/mapping/release/mapping.txt",
+      },
+      {
+        description: "Upload multiple mapping files",
+        command: "sentry proguard upload mapping-release.txt mapping-debug.txt",
+      },
+      {
+        description: "Validate without uploading",
+        command: "sentry proguard upload mapping.txt --no-upload",
+      },
+      {
+        description: "Fail if no mapping files are found (useful in CI)",
+        command: "sentry proguard upload ./mapping/ --require-one",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,

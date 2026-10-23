@@ -25,10 +25,10 @@ Upload code mappings for stack trace linking
 # Upload code mappings from a JSON file
 sentry code-mappings upload mappings.json
 
-# Specify repository explicitly
+# Specify the repository explicitly
 sentry code-mappings upload mappings.json --repo owner/repo
 
-# Specify repository and default branch
+# Specify the repository and default branch
 sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop
 
 # Output as JSON

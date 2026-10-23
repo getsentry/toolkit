@@ -82,14 +82,6 @@ export const addCommand = buildCommand({
     fullDescription:
       "Add a widget to an existing Sentry dashboard.\n\n" +
       "The dashboard can be specified by numeric ID or title.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard widget add 'My Dashboard' \"Error Count\" \\\n" +
-      "    --display big_number --query count\n\n" +
-      "  sentry dashboard widget add 'My Dashboard' \"Errors by Browser\" \\\n" +
-      "    --display line --query count --group-by browser.name\n\n" +
-      "  sentry dashboard widget add 'My Dashboard' \"Top Endpoints\" \\\n" +
-      "    --display table --query count --query p95:span.duration \\\n" +
-      "    --group-by transaction --sort -count --limit 10\n\n" +
       "Query shorthand (--query flag):\n" +
       "  count          → count()         (bare name = no-arg aggregate)\n" +
       "  p95:span.duration → p95(span.duration)  (colon = function with arg)\n" +
@@ -99,6 +91,33 @@ export const addCommand = buildCommand({
       "  -count         → -count()        (descending)\n\n" +
       "Layout flags (--col/-x, --row/-y, --width, --height) control widget position\n" +
       "and size in the 6-column dashboard grid. Omitted values use auto-layout.",
+    examples: [
+      {
+        description: "Add a counter widget",
+        command:
+          "sentry dashboard widget add 'My Dashboard' \"Error Count\" --display big_number --query count",
+      },
+      {
+        description: "Use a dashboard ID in an explicit organization",
+        command:
+          'sentry dashboard widget add my-org/12345 "Error Count" --display big_number --query count',
+      },
+      {
+        description: "Line chart with group-by",
+        command:
+          "sentry dashboard widget add 'My Dashboard' \"Errors by Browser\" --display line --query count --group-by browser.name",
+      },
+      {
+        description: "Table with multiple aggregates, sorted descending",
+        command:
+          "sentry dashboard widget add 'My Dashboard' \"Top Endpoints\" --display table --query count --query p95:span.duration --group-by transaction --sort -count --limit 10",
+      },
+      {
+        description: "Bar chart with a search filter",
+        command:
+          'sentry dashboard widget add \'My Dashboard\' "Slow Requests" --display bar --query p95:span.duration --where "span.op:http.client" --group-by span.description',
+      },
+    ],
   },
   output: {
     human: formatWidgetAdded,

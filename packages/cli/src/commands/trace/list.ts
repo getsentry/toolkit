@@ -7,7 +7,6 @@
 import type { SentryContext } from "../../context.js";
 import { listTransactions } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -30,11 +29,12 @@ import {
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
-import {
-  resolveLogProjectId,
-  resolveProjectBoundFromArg,
-} from "../../lib/resolve-target.js";
+import { resolveLogProjectId } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
+import {
+  type ProjectBoundTarget,
+  projectBoundTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -82,9 +82,6 @@ type TraceListResult = {
 
 /** Accepted values for the --sort flag */
 const VALID_SORT_VALUES: SortValue[] = ["date", "duration"];
-
-/** Command name used in resolver error messages */
-const COMMAND_NAME = "trace list";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "trace-list";
@@ -205,13 +202,27 @@ export const listCommand = buildListCommand("trace", {
       "  sentry trace list <org>/<proj>  # explicit org and project\n" +
       "  sentry trace list <project>     # find project across all orgs\n\n" +
       `${TARGET_PATTERN_NOTE}\n\n` +
-      "Examples:\n" +
-      "  sentry trace list                     # List last 10 traces\n" +
-      "  sentry trace list --limit 50          # Show more traces\n" +
-      "  sentry trace list --sort duration     # Sort by slowest first\n" +
-      "  sentry trace list --period 24h        # Last 24 hours only\n" +
-      '  sentry trace list -q "transaction:GET /api/users"  # Filter by transaction\n\n' +
       "Alias: `sentry traces` → `sentry trace list`",
+    examples: [
+      { description: "List recent traces", command: "sentry trace list" },
+      {
+        description: "Show more traces",
+        command: "sentry trace list --limit 50",
+      },
+      {
+        description: "Sort by slowest first",
+        command: "sentry trace list --sort duration",
+      },
+      {
+        description: "Filter by transaction name in the last 24 hours",
+        command:
+          'sentry trace list -q "transaction:GET /api/users" --period 24h',
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry trace list my-org/backend -c next",
+      },
+    ],
   },
   output: {
     human: formatTraceListHuman,
@@ -225,7 +236,7 @@ export const listCommand = buildListCommand("trace", {
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search)",
-          parse: parseOrgProjectTarget,
+          parse: projectBoundTarget,
           optional: true,
         },
       ],
@@ -258,17 +269,16 @@ export const listCommand = buildListCommand("trace", {
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
-    const { cwd } = this;
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ProjectBoundTarget,
+  ) {
     const timeRange = flags.period;
     const { query } = flags;
 
     // Resolve org/project from positional arg, config, or DSN auto-detection
-    const { org, project } = await resolveProjectBoundFromArg(
-      target,
-      cwd,
-      COMMAND_NAME,
-    );
+    const { org, project } = await target.resolved;
     // Resolve slug → numeric ID so the Events query scopes via the `project`
     // param. `project:<slug>` only matches actively-selected projects and can
     // otherwise 400 with "not actively selected" (#1317).

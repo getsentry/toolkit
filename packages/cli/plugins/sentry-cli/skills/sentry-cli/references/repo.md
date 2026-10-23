@@ -37,10 +37,13 @@ List repositories
 **Examples:**
 
 ```bash
-# List repositories (auto-detect org)
+# List repositories (organization auto-detected)
 sentry repo list
 
-# List repos in a specific org with pagination
+# List repositories in an organization
+sentry repo list my-org/
+
+# Fetch the next page
 sentry repo list my-org/ -c next
 
 # Output as JSON

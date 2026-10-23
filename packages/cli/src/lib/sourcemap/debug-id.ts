@@ -21,6 +21,7 @@
 
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 import { isLikelyBinary } from "../scan/binary.js";
 import {
@@ -266,7 +267,16 @@ export async function injectDebugId(
     return { debugId: jsDebugId, wasInjected: false };
   }
 
-  const map = JSON.parse(mapContent) as SourcemapJson;
+  let map: SourcemapJson;
+  try {
+    map = JSON.parse(mapContent) as SourcemapJson;
+  } catch (error) {
+    log.debug(`Failed to parse sourcemap ${mapPath}`, error);
+    throw new ValidationError(
+      `Sourcemap '${mapPath}' is not valid JSON.`,
+      "sourcemap",
+    );
+  }
   const existingId = jsDebugId ?? readSourcemapDebugId(map);
   if (
     existingId &&

@@ -714,6 +714,20 @@ export const listCommand = buildListCommand("project", {
       "  sentry project list --limit 50              # show more results\n" +
       "  sentry project list --json                  # output as JSON\n\n" +
       "Alias: `sentry projects` → `sentry project list`",
+    examples: [
+      {
+        description: "List all projects in an organization",
+        command: "sentry project list my-org/",
+      },
+      {
+        description: "Several projects in the same organization",
+        command: "sentry project list my-org/frontend,backend",
+      },
+      {
+        description: "Filter by platform",
+        command: "sentry project list my-org/ --platform javascript",
+      },
+    ],
   },
   output: {
     human: (data: ListResult<ProjectWithOrg>) => {

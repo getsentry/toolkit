@@ -56,6 +56,23 @@ export const bundleJvmCommand = buildCommand({
       "Groovy, or Clojure source files. The bundle is a ZIP archive that " +
       "can be uploaded to Sentry for source context in JVM stack traces.\n\n" +
       "This command is local-only — it makes no network requests.",
+    examples: [
+      {
+        description: "Bundle JVM sources with a debug ID",
+        command:
+          "sentry debug-files bundle-jvm --output ./out --debug-id <uuid> ./src",
+      },
+      {
+        description: "Exclude additional directories",
+        command:
+          "sentry debug-files bundle-jvm --output ./out --debug-id <uuid> --exclude generated --exclude build-tools ./src",
+      },
+      {
+        description: "Output as JSON",
+        command:
+          "sentry debug-files bundle-jvm --output ./out --debug-id <uuid> --json ./src",
+      },
+    ],
   },
   output: {
     human: formatBundleResult,

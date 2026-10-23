@@ -359,6 +359,21 @@ The CLI must be installed and authenticated before use.
 ```bash
 curl https://cli.sentry.dev/install -fsS | bash
 curl https://cli.sentry.dev/install -fsS | bash -s -- --version nightly
+# Pin to a specific stable version
+curl https://cli.sentry.dev/install -fsS | SENTRY_VERSION=0.42.2 bash
+
+# Pin to nightly
+curl https://cli.sentry.dev/install -fsS | SENTRY_VERSION=nightly bash
+# Skip shell config modifications (~/.zshrc, ~/.bashrc, etc.)
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-modify-path
+
+# Skip shell completion installation
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-completions
+
+# Skip AI agent skill installation
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-agent-skills
+curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
+curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
 
 # Or install via npm/pnpm/bun
 npm install -g sentry

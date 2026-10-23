@@ -58,6 +58,9 @@ export const whoamiCommand = buildCommand({
       "For user-scoped tokens (OAuth, personal access tokens), this fetches " +
       "the user from the Sentry API. For organization auth tokens (`sntrys_`), " +
       "it shows which organization the token belongs to.",
+    examples: [
+      { description: "Show the current user", command: "sentry auth whoami" },
+    ],
   },
   output: {
     human: formatWhoami,

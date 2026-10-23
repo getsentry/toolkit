@@ -23,6 +23,7 @@
 
 import { readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { blankCodeBlocks } from "./markdown.js";
 import { DOCS_CONTENT } from "./paths.js";
 
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
@@ -100,17 +101,6 @@ function getScriptFiles(): string[] {
 const FILES_TO_SCAN = [...DOC_FILES, ...getScriptFiles()];
 
 // ---------------------------------------------------------------------------
-// Code block stripping (avoid false positives on user install examples)
-// ---------------------------------------------------------------------------
-
-const FENCED_CODE_BLOCK_RE = /^(`{3,}|~{3,}).*\n[\s\S]*?\n\1\s*$/gm;
-
-/** Strip fenced code blocks from markdown content to avoid false positives. */
-function stripCodeBlocks(content: string): string {
-  return content.replace(FENCED_CODE_BLOCK_RE, "");
-}
-
-// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -132,47 +122,25 @@ for (const filePath of FILES_TO_SCAN) {
     continue;
   }
 
-  // For markdown files, strip code blocks to avoid matching user install examples
+  // For markdown files, blank code blocks to avoid matching user install
+  // examples. Blanking keeps line numbers aligned with the original file.
   const isMarkdown = filePath.endsWith(".md") || filePath.endsWith(".mdx");
-  const scannable = isMarkdown ? stripCodeBlocks(content) : content;
+  const scannable = isMarkdown ? blankCodeBlocks(content) : content;
 
   const lines = scannable.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     for (const { pattern, reason } of PATTERNS) {
       if (pattern.test(line)) {
-        // Find the original line number in the un-stripped content
-        // For scripts (no stripping), i is the actual line number
-        const originalLine = isMarkdown
-          ? findOriginalLineNumber(content, line)
-          : i + 1;
         findings.push({
           file: filePath,
-          line: originalLine,
+          line: i + 1,
           text: line.trim(),
           reason,
         });
       }
     }
   }
-}
-
-/**
- * Find the 1-indexed line number of a text line in the original content.
- * Falls back to 0 if not found (shouldn't happen in practice).
- */
-function findOriginalLineNumber(
-  original: string,
-  strippedLine: string,
-): number {
-  const trimmed = strippedLine.trim();
-  const lines = original.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() === trimmed) {
-      return i + 1;
-    }
-  }
-  return 0;
 }
 
 if (findings.length === 0) {

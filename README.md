@@ -5,6 +5,9 @@ packages. For the CLI, see the [CLI guide](docs/cli/README.md) and the published
 documentation at <https://cli.sentry.dev/>. The [documentation index](docs/README.md)
 covers both products and shared contributor guidance.
 
+The independent [Docs MCP Worker](apps/docs-mcp/README.md) provides documentation
+search and AI-generated answers backed by `docs.sentry.io`.
+
 ## Sentry MCP
 
 Sentry's MCP service is primarily designed for human-in-the-loop coding agents. Our tool selection and priorities are focused on developer workflows and debugging use cases, rather than providing a general-purpose MCP server for all Sentry functionality.

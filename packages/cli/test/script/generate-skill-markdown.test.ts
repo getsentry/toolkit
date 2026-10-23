@@ -1,12 +1,10 @@
-/** Tests for generated command-heading and example association parsing. */
+/** Tests for command metadata rendered into generated docs and skills. */
 
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 import {
-  extractCommandPathFromHeading,
   formatCommandArguments,
   formatCommandExamples,
-  matchExampleToCommand,
 } from "../../script/generate-skill-markdown.js";
 import { listCommand } from "../../src/commands/agent-conversation/list.js";
 import { viewCommand } from "../../src/commands/agent-conversation/view.js";
@@ -15,25 +13,7 @@ import { mergeCommand } from "../../src/commands/issue/merge.js";
 import { createCommand } from "../../src/commands/project/create.js";
 import { buildCommandInfo } from "../../src/lib/introspect.js";
 
-describe("extractCommandPathFromHeading", () => {
-  test.each([
-    ["`sentry issue view <issue-id>`", "sentry issue view"],
-    ["`sentry issue view <issue...>`", "sentry issue view"],
-    [
-      "`sentry project create [<org>/]<name>:<platform>...`",
-      "sentry project create",
-    ],
-    ["`sentry auth status`", "sentry auth status"],
-  ])("extracts the command path from %s", (heading, expected) => {
-    expect(extractCommandPathFromHeading(heading)).toBe(expected);
-  });
-
-  test("ignores descriptive headings", () => {
-    expect(extractCommandPathFromHeading("Create a project")).toBeUndefined();
-  });
-});
-
-describe("matchExampleToCommand", () => {
+describe("command metadata in generated references", () => {
   test("derives conversation signatures and examples from command metadata", () => {
     const list = buildCommandInfo(
       listCommand as never,
@@ -114,43 +94,6 @@ describe("matchExampleToCommand", () => {
     expect(docs).toContain(
       "| `[<org>/]<conversation-id>` | Organization slug (optional) and conversation ID |",
     );
-  });
-
-  test("associates a project create block with its command", () => {
-    const code = [
-      "# Create projects",
-      "sentry project create web:javascript api:python-django",
-    ].join("\n");
-
-    expect(
-      matchExampleToCommand(
-        code,
-        ["sentry project create", "sentry project delete"],
-        "sentry project",
-      ),
-    ).toBe("sentry project create");
-  });
-
-  test("maps bare group examples to the default subcommand", () => {
-    expect(
-      matchExampleToCommand(
-        "sentry auth\nsentry auth --token YOUR_SENTRY_API_TOKEN",
-        ["sentry auth login", "sentry auth logout", "sentry auth status"],
-        "sentry auth",
-        "sentry auth login",
-      ),
-    ).toBe("sentry auth login");
-  });
-
-  test("prefers longer command paths over shorter prefixes", () => {
-    expect(
-      matchExampleToCommand(
-        "sentry auth login --token TOKEN",
-        ["sentry auth login", "sentry auth status"],
-        "sentry auth",
-        "sentry auth login",
-      ),
-    ).toBe("sentry auth login");
   });
 
   test("the generated project reference retains create examples", async () => {
