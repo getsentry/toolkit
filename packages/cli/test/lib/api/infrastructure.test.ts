@@ -14,7 +14,11 @@ import {
   unwrapResult,
 } from "../../../src/lib/api/infrastructure.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
-import { ApiError, HostScopeError } from "../../../src/lib/errors.js";
+import {
+  ApiError,
+  HostScopeError,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 describe("SDK error compatibility", () => {
@@ -889,51 +893,73 @@ describe("paginate", () => {
     expect(spy).toHaveBeenCalledWith(5, undefined);
   });
 
-  test("keeps one page size that divides the limit", async () => {
-    const spy = vi.fn((perPage: number, cursor: string | undefined) => {
+  /** Serves rows by offset; the cursor is the next offset. */
+  function offsetServer() {
+    return vi.fn((perPage: number, cursor: string | undefined) => {
       const offset = cursor ? Number(cursor) : 0;
       const data = Array.from({ length: perPage }, (_, i) => offset + i);
-      return Promise.resolve({
-        data,
-        nextCursor: String(offset + perPage),
-      });
+      return Promise.resolve({ data, nextCursor: String(offset + perPage) });
+    });
+  }
+
+  test("keeps the walk's page size when -c next changes the limit", async () => {
+    const spy = offsetServer();
+
+    const first = await paginate({ limit: 150 }, spy);
+    expect(first.data).toEqual(Array.from({ length: 150 }, (_, i) => i));
+    const second = await paginate({ limit: 10, cursor: first.nextCursor }, spy);
+    expect(second.data).toEqual(Array.from({ length: 10 }, (_, i) => 150 + i));
+
+    expect(spy.mock.calls).toEqual([
+      [75, undefined],
+      [75, "75"],
+      [75, "150"],
+    ]);
+  });
+
+  test("resumes inside a page it could not return in full", async () => {
+    const spy = offsetServer();
+
+    const first = await paginate({ limit: 101 }, spy);
+    expect(first.data).toEqual(Array.from({ length: 101 }, (_, i) => i));
+    const second = await paginate({ limit: 5, cursor: first.nextCursor }, spy);
+    expect(second.data).toEqual([101, 102, 103, 104, 105]);
+
+    expect(spy.mock.calls).toEqual([
+      [100, undefined],
+      [100, "100"],
+      [100, "100"],
+    ]);
+  });
+
+  test("resumes after the last returned row when the server ignores per_page", async () => {
+    const spy = vi.fn((_perPage: number, cursor: string | undefined) => {
+      const offset = cursor ? Number(cursor) : 0;
+      const data = Array.from({ length: 100 }, (_, i) => offset + i);
+      return Promise.resolve({ data, nextCursor: String(offset + 100) });
     });
 
-    const result = await paginate({ limit: 150 }, spy);
-    expect(result.data).toEqual(Array.from({ length: 150 }, (_, i) => i));
-    expect(spy.mock.calls.map(([perPage]) => perPage)).toEqual([75, 75]);
-    expect(result.nextCursor).toBe("150");
+    const first = await paginate({ limit: 150 }, spy);
+    expect(first.data).toHaveLength(150);
+    const second = await paginate({ limit: 3, cursor: first.nextCursor }, spy);
+    expect(second.data).toEqual([150, 151, 152]);
   });
 
-  test("stops a page early instead of trimming when no page size divides the limit", async () => {
-    const spy = vi.fn().mockResolvedValue({
-      data: Array.from({ length: 100 }, (_, i) => i),
-      nextCursor: "c1",
-    });
-
-    const result = await paginate({ limit: 101 }, spy);
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith(API_MAX_PER_PAGE, undefined);
-    expect(result.data).toHaveLength(100);
-    expect(result.nextCursor).toBe("c1");
+  test("returns no cursor once the server is exhausted", async () => {
+    const spy = vi.fn().mockResolvedValue({ data: [1, 2] });
+    expect(await paginate({ limit: 5 }, spy)).toEqual({ data: [1, 2] });
   });
 
-  test("drops nextCursor when the server ignores per_page", async () => {
-    const spy = vi
-      .fn()
-      .mockResolvedValueOnce({
-        data: Array.from({ length: 75 }, (_, i) => i),
-        nextCursor: "c1",
-      })
-      .mockResolvedValueOnce({
-        data: Array.from({ length: 100 }, (_, i) => 75 + i),
-        nextCursor: "c2",
-      });
-
-    const result = await paginate({ limit: 150 }, spy);
-    expect(result.data).toHaveLength(150);
-    expect(result.nextCursor).toBeUndefined();
-  });
+  test.each(["cli1~0~0~abc", "cli1~101~0~abc", "cli1~10~-1~abc", "cli1~x~0~"])(
+    "rejects the malformed CLI cursor %s",
+    async (cursor) => {
+      const spy = vi.fn().mockResolvedValue({ data: [] });
+      await expect(paginate({ limit: 5, cursor }, spy)).rejects.toThrow(
+        ValidationError,
+      );
+      expect(spy).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("pageSizeForLimit", () => {

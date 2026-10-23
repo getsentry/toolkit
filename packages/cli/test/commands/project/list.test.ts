@@ -668,14 +668,14 @@ describe("handleOrgAll", () => {
 
     const result = await handleOrgAll({
       org: "test-org",
-      flags: { limit: 30, json: true, fresh: false },
+      flags: { limit: 2, json: true, fresh: false },
       contextKey: "type:org:test-org",
       cursor: undefined,
       direction: "next",
     });
 
     expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBe("1735689600000:100:0");
+    expect(result.nextCursor).toContain("1735689600000:100:0");
     expect(result.items).toHaveLength(2);
   });
 
@@ -702,7 +702,7 @@ describe("handleOrgAll", () => {
 
     await handleOrgAll({
       org: "test-org",
-      flags: { limit: 30, json: false, fresh: false },
+      flags: { limit: 2, json: false, fresh: false },
       contextKey: "type:org:test-org",
       cursor: undefined,
       direction: "next",
@@ -710,7 +710,7 @@ describe("handleOrgAll", () => {
 
     const state = getPaginationState(PAGINATION_KEY, "type:org:test-org");
     expect(state).toBeDefined();
-    expect(state!.stack).toContain("1735689600000:100:0");
+    expect(state!.stack.at(-1)).toContain("1735689600000:100:0");
   });
 
   test("no hasMore truncates pagination stack", async () => {
@@ -1485,7 +1485,7 @@ describe("handleAutoDetect", () => {
     });
 
     const result = await handleAutoDetect("/tmp/test-project", {
-      limit: 30,
+      limit: 2,
       json: false,
       fresh: false,
     });
@@ -1503,7 +1503,7 @@ describe("handleAutoDetect", () => {
     });
 
     const result = await handleAutoDetect("/tmp/test-project", {
-      limit: 30,
+      limit: 2,
       json: true,
       fresh: false,
     });

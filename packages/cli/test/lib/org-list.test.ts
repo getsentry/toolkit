@@ -312,14 +312,15 @@ describe("handleOrgAll", () => {
     const result = await handleOrgAll({
       config,
       org: "my-org",
-      flags: { limit: 10, json: true },
+      flags: { limit: 1, json: true },
       contextKey: "key",
       cursor: undefined,
       direction: "next",
     });
 
     expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBe("next:123");
+    // paginate() wraps the server cursor with the walk's page size.
+    expect(result.nextCursor).toContain("next:123");
     expect(result.items).toHaveLength(1);
     expect(result.items[0]!.orgSlug).toBe("my-org");
   });
@@ -453,7 +454,7 @@ describe("handleOrgAll", () => {
       "test-list",
       "ctx",
       "next",
-      "cursor:abc",
+      expect.stringContaining("cursor:abc"),
     );
   });
 
@@ -519,7 +520,23 @@ describe("handleOrgAll", () => {
     // The mock always returns a nextCursor, so hasMore is true and
     // the cursor points to the first item beyond the fetched 250.
     expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBe("250");
+
+    // `-c next` with another --limit keeps the walk's page size.
+    listPaginated.mockClear();
+    const next = await handleOrgAll({
+      config,
+      org: "my-org",
+      flags: { limit: 30, json: true },
+      contextKey: "key",
+      cursor: result.nextCursor,
+      direction: "next",
+    });
+    expect(next.items.map((item) => item.id)).toEqual(
+      Array.from({ length: 30 }, (_, i) => String(250 + i)),
+    );
+    expect(listPaginated.mock.calls.map((call) => call[1])).toEqual([
+      { cursor: "250", perPage: 50 },
+    ]);
   });
 });
 

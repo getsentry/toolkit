@@ -424,13 +424,17 @@ const { data, nextCursor } = await paginate(
 );
 ```
 
-Pass `perPage` to the request unchanged. `paginate()` keeps one page size for
-the whole walk because Sentry's page-number paginators (`OffsetPaginator`,
-used by projects, teams, members, repositories, and dashboard revisions)
-encode the page size in the cursor; asking for "the remaining budget" on the
-last page makes them skip rows. It also only returns a cursor that resumes at
-the first row the caller has not received. Test pagination changes against
-the paginator models in `test/lib/paginate.property.test.ts`.
+Pass `perPage` to the request unchanged. Sentry's page-number paginators
+(`OffsetPaginator`, used by projects, teams, members, repositories, and
+dashboard revisions) encode the page size in the cursor, so a cursor is only
+valid with the `per_page` that produced it. `paginate()` therefore returns
+opaque CLI cursors (`cli1~<perPage>~<skip>~<server cursor>`) that record the
+walk's page size and how many rows of the current page were already returned.
+A later `-c next` reuses that page size even when `--limit` changes, and
+resumes mid-page by refetching the page and skipping returned rows. Always
+pass these cursors back through `paginate()`; never send them to an API
+request directly. Test pagination changes against the paginator models in
+`test/lib/paginate.property.test.ts`.
 
 Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/revisions.ts`
 

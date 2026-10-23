@@ -222,7 +222,7 @@ describe("listTransactions", () => {
     expect(getCapturedUrls()).toHaveLength(2);
   });
 
-  test("trims results and drops nextCursor when overshoot", async () => {
+  test("trims results and resumes inside the overshooting page", async () => {
     mockSequential([
       {
         body: { data: makeTxnRows(60), meta: TX_META },
@@ -243,7 +243,8 @@ describe("listTransactions", () => {
     });
 
     expect(result.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
+    // Refetches the second page (cursor 0:60:0) and skips its returned rows.
+    expect(result.nextCursor).toContain("0:60:0");
   });
 
   test("single-page fast path for limit <= 100", async () => {
@@ -309,7 +310,7 @@ describe("listTransactions", () => {
       limit: 10,
     });
 
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false", async () => {
@@ -509,7 +510,7 @@ describe("listSpans", () => {
     expect(getCapturedUrls()).toHaveLength(2);
   });
 
-  test("trims results when overshoot", async () => {
+  test("trims results and resumes inside the overshooting page", async () => {
     mockSequential([
       {
         body: { data: makeSpanRows(60), meta: SPAN_META },
@@ -528,7 +529,8 @@ describe("listSpans", () => {
     const result = await listSpans("my-org", "my-project", { limit: 120 });
 
     expect(result.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
+    // Refetches the second page (cursor 0:60:0) and skips its returned rows.
+    expect(result.nextCursor).toContain("0:60:0");
   });
 
   test("single-page fast path for limit <= 100", async () => {
@@ -639,7 +641,7 @@ describe("listSpans", () => {
 
     const result = await listSpans("my-org", "my-project", { limit: 10 });
 
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false", async () => {

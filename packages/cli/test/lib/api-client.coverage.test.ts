@@ -349,7 +349,7 @@ describe("issues.ts", () => {
       expect(callCount).toBe(2);
     });
 
-    test("trims when overshooting limit (no nextCursor)", async () => {
+    test("resumes inside a page that overshoots the limit", async () => {
       // Return 5 items but we only want 3
       globalThis.fetch = mockFetch(
         async () =>
@@ -375,8 +375,12 @@ describe("issues.ts", () => {
         limit: 3,
       });
       expect(result.issues).toHaveLength(3);
-      // Trimmed — no nextCursor to prevent skipping
-      expect(result.nextCursor).toBeUndefined();
+      // The cursor refetches the page and skips the 3 returned issues.
+      const next = await listIssuesAllPages("test-org", "test-project", {
+        limit: 2,
+        startCursor: result.nextCursor,
+      });
+      expect(next.issues.map((issue) => issue.id)).toEqual(["4", "5"]);
     });
 
     test("throws when limit < 1", async () => {
@@ -434,7 +438,7 @@ describe("issues.ts", () => {
       });
       expect(result.issues).toHaveLength(2);
       // Exactly at limit with more pages → keep nextCursor
-      expect(result.nextCursor).toBe("has-more");
+      expect(result.nextCursor).toContain("has-more");
     });
 
     test("keeps one page size that divides the limit and preserves the last cursor", async () => {
@@ -464,7 +468,7 @@ describe("issues.ts", () => {
 
       expect(result.issues).toHaveLength(250);
       expect(requestedLimits).toEqual(["50", "50", "50", "50", "50"]);
-      expect(result.nextCursor).toBe("cursor-6");
+      expect(result.nextCursor).toContain("cursor-6");
     });
 
     test("accepts startCursor option", async () => {
@@ -1831,10 +1835,12 @@ describe("traces.ts (transactions)", () => {
         });
       });
 
-      const result = await listTransactions("test-org", "test-project");
+      const result = await listTransactions("test-org", "test-project", {
+        limit: 1,
+      });
       expect(result.data).toHaveLength(1);
       expect(result.data[0]!.transaction).toBe("GET /api/users");
-      expect(result.nextCursor).toBe("txn-next");
+      expect(result.nextCursor).toContain("txn-next");
     });
 
     test("uses numeric project ID via project param", async () => {

@@ -5,11 +5,18 @@
  * which hid a skip bug: Sentry's page-number paginators put the page size in
  * the cursor, so changing `per_page` mid-walk reads the wrong rows. These
  * models port the cursor math from `src/sentry/api/paginator.py`, and the
- * properties walk `-c next` the way the CLI does, asserting that every row is
- * returned exactly once, in order.
+ * properties walk `-c next` the way the CLI does — with a different
+ * `--limit` on every call — asserting that every row is returned exactly
+ * once, in order.
  */
 
-import { asyncProperty, assert as fcAssert, integer, nat } from "fast-check";
+import {
+  array,
+  asyncProperty,
+  assert as fcAssert,
+  integer,
+  nat,
+} from "fast-check";
 import { describe, expect, test } from "vitest";
 import {
   API_MAX_PER_PAGE,
@@ -65,19 +72,34 @@ function offsetPaginator(total: number): FetchPage {
   };
 }
 
+/** A server that ignores `per_page` and always serves pages of 30 rows. */
+function fixedPageServer(total: number): FetchPage {
+  return (_perPage, cursor) => genericOffsetPaginator(total)(30, cursor);
+}
+
 const paginators = [
   { name: "GenericOffsetPaginator", make: genericOffsetPaginator },
   { name: "OffsetPaginator", make: offsetPaginator },
+  { name: "a server that ignores per_page", make: fixedPageServer },
 ];
 
-/** Follow `-c next` until the cursor runs out, like repeated CLI calls. */
-async function walk(fetchPage: FetchPage, total: number, limit: number) {
+/**
+ * Follow `-c next` until the cursor runs out, like repeated CLI calls, using
+ * the next limit from `limits` (cycled) on each call.
+ */
+async function walk(fetchPage: FetchPage, total: number, limits: number[]) {
   const seen: number[] = [];
   let cursor: string | undefined;
   // Each call returns at least one row while rows remain.
   for (let call = 0; call <= total; call += 1) {
+    const limit = limits[call % limits.length] ?? 1;
     const result = await paginate({ limit, cursor }, fetchPage);
+    // A resumed walk keeps its first page size, so a much larger later limit
+    // can stop at MAX_PAGINATION_PAGES; it must still make progress.
     expect(result.data.length).toBeLessThanOrEqual(limit);
+    if (seen.length < total) {
+      expect(result.data.length).toBeGreaterThan(0);
+    }
     seen.push(...result.data);
     if (!result.nextCursor) {
       return seen;
@@ -88,26 +110,29 @@ async function walk(fetchPage: FetchPage, total: number, limit: number) {
 }
 
 const totalArb = nat(API_MAX_PER_PAGE * 5);
-const limitArb = integer({ min: 1, max: API_MAX_PER_PAGE * 4 });
+const limitsArb = array(integer({ min: 1, max: API_MAX_PER_PAGE * 4 }), {
+  minLength: 1,
+  maxLength: 4,
+});
 
 describe.each(paginators)("property: paginate over $name", ({ make }) => {
-  test("returns every row exactly once, in order, across -c next", async () => {
+  test("fills the limit on a fresh walk", async () => {
     await fcAssert(
-      asyncProperty(totalArb, limitArb, async (total, limit) => {
-        const seen = await walk(make(total), total, limit);
-        expect(seen).toEqual(Array.from({ length: total }, (_, i) => i));
+      asyncProperty(totalArb, limitsArb, async (total, [limit = 1]) => {
+        const result = await paginate({ limit }, make(total));
+        expect(result.data).toEqual(
+          Array.from({ length: Math.min(limit, total) }, (_, i) => i),
+        );
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
-  test("fills the limit whenever a page size divides it", async () => {
+  test("returns every row exactly once, in order, across -c next", async () => {
     await fcAssert(
-      asyncProperty(totalArb, limitArb, async (total, limit) => {
-        const result = await paginate({ limit }, make(total));
-        if (limit <= API_MAX_PER_PAGE || limit % API_MAX_PER_PAGE === 0) {
-          expect(result.data).toHaveLength(Math.min(total, limit));
-        }
+      asyncProperty(totalArb, limitsArb, async (total, limits) => {
+        const seen = await walk(make(total), total, limits);
+        expect(seen).toEqual(Array.from({ length: total }, (_, i) => i));
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );

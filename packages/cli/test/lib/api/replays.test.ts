@@ -69,7 +69,8 @@ describe("listReplays", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const req = new Request(input!, init);
       capturedUrl = req.url;
-      return new Response(JSON.stringify({ data: [replayRow()] }), {
+      const data = Array.from({ length: 25 }, () => replayRow());
+      return new Response(JSON.stringify({ data }), {
         status: 200,
         headers: {
           "Content-Type": "application/json",
@@ -95,8 +96,8 @@ describe("listReplays", () => {
     expect(url.searchParams.get("per_page")).toBe("25");
     expect(url.searchParams.getAll("field")).toContain("id");
     expect(url.searchParams.getAll("field")).toContain("user");
-    expect(result.data).toHaveLength(1);
-    expect(result.nextCursor).toBe("0:25:0");
+    expect(result.data).toHaveLength(25);
+    expect(result.nextCursor).toContain("0:25:0");
   });
 
   test("passes replay environment filters and custom field selection", async () => {

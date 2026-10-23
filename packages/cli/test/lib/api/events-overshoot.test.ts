@@ -72,7 +72,7 @@ describe("listIssueEvents pagination", () => {
     expect(new URL(capturedUrl).searchParams.get("per_page")).toBe("100");
   });
 
-  test("trims to limit and drops nextCursor when a page overshoots", async () => {
+  test("trims to limit and resumes inside a page that overshoots", async () => {
     // Server ignores per_page and returns 5 with a next cursor; caller wants 2.
     globalThis.fetch = mockFetch(
       async () =>
@@ -90,8 +90,17 @@ describe("listIssueEvents pagination", () => {
     expect(result.data).toHaveLength(2);
     expect(result.data[0]?.id).toBe("evt-0");
     expect(result.data[1]?.id).toBe("evt-1");
-    // The server cursor resumes after its 5-row page and would skip evt-2..4.
-    expect(result.nextCursor).toBeUndefined();
+    // The server cursor would skip evt-2..4, so the CLI cursor refetches the
+    // page and skips the two returned events.
+    const next = await listIssueEvents("test-org", "123", {
+      limit: 3,
+      cursor: result.nextCursor,
+    });
+    expect(next.data.map((event) => event.id)).toEqual([
+      "evt-2",
+      "evt-3",
+      "evt-4",
+    ]);
   });
 
   test("preserves nextCursor when the page exactly fills the limit", async () => {
@@ -109,7 +118,7 @@ describe("listIssueEvents pagination", () => {
     const result = await listIssueEvents("test-org", "123", { limit: 2 });
 
     expect(result.data).toHaveLength(2);
-    expect(result.nextCursor).toBe("page2");
+    expect(result.nextCursor).toContain("page2");
   });
 
   test("returns all events with no cursor when under the limit", async () => {

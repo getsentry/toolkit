@@ -194,6 +194,7 @@ describe("queryEvents", () => {
 
     const result = await queryEvents("my-org", {
       fields: ["title", "count()"],
+      limit: 1,
     });
 
     expect(result.data.data).toHaveLength(1);
@@ -201,7 +202,7 @@ describe("queryEvents", () => {
       title: "string",
       "count()": "integer",
     });
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false in Link header", async () => {
@@ -293,7 +294,7 @@ describe("queryEvents", () => {
     }
   });
 
-  test("trims results and drops nextCursor when overshoot", async () => {
+  test("trims results and resumes inside the overshooting page", async () => {
     mockSequential([
       {
         body: { data: makeRows(60), meta: PAGE_META },
@@ -316,7 +317,8 @@ describe("queryEvents", () => {
     });
 
     expect(result.data.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
+    // Refetches the second page (cursor 0:60:0) and skips its returned rows.
+    expect(result.nextCursor).toContain("0:60:0");
   });
 
   test("single-page fast path when limit <= API_MAX_PER_PAGE", async () => {

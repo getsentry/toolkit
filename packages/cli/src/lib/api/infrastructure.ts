@@ -25,7 +25,12 @@ import {
   isEnvTokenActive,
 } from "../db/auth.js";
 import { getEnv } from "../env.js";
-import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
+import {
+  ApiError,
+  AuthError,
+  stringifyUnknown,
+  ValidationError,
+} from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -478,20 +483,19 @@ export async function autoPaginate<T>(
 }
 
 /**
- * Choose the single `per_page` used for every request of a {@link paginate} walk.
+ * Choose the `per_page` for a {@link paginate} walk that starts fresh.
  *
  * Sentry's page-number paginators (`OffsetPaginator`, `ChainPaginator`,
  * `CallbackPaginator`, used by projects, teams, members, repositories, and
  * dashboard revisions) put the page size in the cursor
  * (`<per_page>:<page>:<is_prev>`). A request that pairs that cursor with a
  * different `per_page` reads the wrong window; `OffsetPaginator` returns the
- * end of the old-sized page and silently skips rows. So the page size must
- * not change during a walk, and asking for "the remaining budget" on the last
- * page is unsafe.
+ * end of the old-sized page and silently skips rows. So a walk keeps one page
+ * size from its first request through every `-c next`, and {@link paginate}
+ * records it in the cursors it returns.
  *
- * A page size that divides `limit` lets the walk end exactly on `limit`.
- * Otherwise {@link paginate} stops one page early, returning fewer rows but a
- * cursor that still resumes at the first unreturned row.
+ * A page size that divides `limit` lets each call end on a page boundary, so
+ * the next call does not have to refetch a partly returned page.
  *
  * @param limit - Total number of items the caller wants
  * @returns Page size between 1 and {@link API_MAX_PER_PAGE}
@@ -510,22 +514,78 @@ export function pageSizeForLimit(limit: number): number {
   return API_MAX_PER_PAGE;
 }
 
+/** Marks cursors produced by {@link paginate}; Sentry cursors never use it. */
+const PAGE_CURSOR_PREFIX = "cli1~";
+
+/**
+ * Where a {@link paginate} walk resumes: the server cursor that fetches the
+ * page, the page size it must be fetched with, and how many of that page's
+ * rows were already returned.
+ */
+type PagePosition = {
+  cursor: string | undefined;
+  perPage: number;
+  skip: number;
+};
+
+function encodePageCursor({ cursor, perPage, skip }: PagePosition): string {
+  return `${PAGE_CURSOR_PREFIX}${perPage}~${skip}~${cursor ?? ""}`;
+}
+
+/**
+ * Decode a cursor from {@link paginate}, or treat anything else as a raw
+ * server cursor (older stored cursors, or one pasted from an API response).
+ */
+function decodePageCursor(
+  raw: string | undefined,
+): Partial<PagePosition> & { cursor: string | undefined } {
+  if (!raw?.startsWith(PAGE_CURSOR_PREFIX)) {
+    return { cursor: raw };
+  }
+  const [perPage, skip, ...server] = raw
+    .slice(PAGE_CURSOR_PREFIX.length)
+    .split("~");
+  const position = {
+    perPage: Number(perPage),
+    skip: Number(skip),
+    cursor: server.join("~") || undefined,
+  };
+  if (
+    !Number.isInteger(position.perPage) ||
+    position.perPage < 1 ||
+    position.perPage > API_MAX_PER_PAGE ||
+    !Number.isInteger(position.skip) ||
+    position.skip < 0
+  ) {
+    throw new ValidationError(`Invalid pagination cursor '${raw}'.`, "cursor");
+  }
+  return position;
+}
+
 /**
  * Fetch up to `limit` rows and a cursor that resumes after the last one.
  *
  * This is the only supported way to build a limit-bounded list; the
  * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops. It
- * owns the two decisions those loops kept getting wrong (#1458, #1608): the
- * `per_page` of every request ({@link pageSizeForLimit}) and when a server
- * cursor may be returned. The returned `nextCursor` always points at the first
- * row the caller has not received; it is dropped only if the server ignored
- * `per_page` and the rows had to be trimmed.
+ * owns the decisions those loops kept getting wrong (#1458, #1608):
+ *
+ * - Every request of a walk, including later `-c next` calls with a different
+ *   `--limit`, uses the same `per_page`, because page-number cursors are only
+ *   valid with the page size that produced them ({@link pageSizeForLimit}).
+ * - The returned cursor always resumes at the first row the caller has not
+ *   received. When a call stops inside a page (a smaller `--limit`, or a
+ *   server that ignored `per_page`), the cursor refetches that page and skips
+ *   the rows already returned.
+ *
+ * Returned cursors are opaque CLI cursors; pass them back through this
+ * function, never directly to an API request. Raw server cursors are accepted
+ * as a starting point.
  *
  * Callers own region resolution and query building inside `fetchPage`, and
  * must send `perPage` as the request's `per_page` unchanged.
  *
  * @param options - Caller list options; `limit` bounds total rows, `cursor` is the start cursor
- * @param fetchPage - Fetches one page given the page size and a page cursor
+ * @param fetchPage - Fetches one page given the page size and a server cursor
  * @param defaultLimit - Applied when `options.limit` is undefined
  * @returns Up to `limit` items with optional nextCursor
  */
@@ -538,31 +598,49 @@ export async function paginate<T>(
   defaultLimit = 10,
 ): Promise<PaginatedResponse<T[]>> {
   const limit = options.limit ?? defaultLimit;
-  const perPage = pageSizeForLimit(limit);
+  const start = decodePageCursor(options.cursor);
+  const perPage = start.perPage ?? pageSizeForLimit(limit);
+  let cursor = start.cursor;
+  let skip = start.skip ?? 0;
   const rows: T[] = [];
-  let cursor = options.cursor;
 
   for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
     const { data, nextCursor } = await fetchPage(perPage, cursor);
-    rows.push(...data);
+    const unseen = data.slice(skip);
+    const remaining = limit - rows.length;
 
-    if (rows.length > limit) {
-      // The server ignored `per_page`; its cursor would skip the trimmed rows.
-      return { data: rows.slice(0, limit) };
+    if (unseen.length > remaining) {
+      rows.push(...unseen.slice(0, remaining));
+      return {
+        data: rows,
+        nextCursor: encodePageCursor({
+          cursor,
+          perPage,
+          skip: skip + remaining,
+        }),
+      };
     }
-    // Stop before a page that cannot fit: trimming it would leave no cursor
-    // that resumes at the first row the caller has not received.
-    if (!nextCursor || rows.length + perPage > limit) {
-      return { data: rows, nextCursor };
+    rows.push(...unseen);
+    if (!nextCursor) {
+      return { data: rows };
     }
     cursor = nextCursor;
+    skip = 0;
+    if (rows.length === limit) {
+      break;
+    }
   }
 
-  logger.warn(
-    `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${rows.length} items). ` +
-      "Use the returned cursor to continue.",
-  );
-  return { data: rows, nextCursor: cursor };
+  if (rows.length < limit) {
+    logger.warn(
+      `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${rows.length} items). ` +
+        "Use the returned cursor to continue.",
+    );
+  }
+  return {
+    data: rows,
+    nextCursor: encodePageCursor({ cursor, perPage, skip: 0 }),
+  };
 }
 
 /**

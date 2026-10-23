@@ -289,29 +289,35 @@ describe("dashboard revisions command", () => {
     const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
     expect(parsed.data).toHaveLength(150);
     expect(parsed.hasMore).toBe(true);
-    expect(parsed.nextCursor).toBe("75:2:0");
+    expect(parsed.nextCursor).toContain("75:2:0");
   });
 
-  test("auto-pagination: a short page keeps its cursor instead of changing per_page", async () => {
-    listDashboardRevisionsPaginatedSpy.mockResolvedValueOnce({
-      data: [REVISION_A, REVISION_B],
-      nextCursor: "cursor-page-2",
-    });
+  test("auto-pagination: a short page is followed without changing per_page", async () => {
+    listDashboardRevisionsPaginatedSpy
+      .mockResolvedValueOnce({
+        data: [REVISION_A, REVISION_B],
+        nextCursor: "cursor-page-2",
+      })
+      .mockResolvedValueOnce({ data: [REVISION_C], nextCursor: undefined });
 
     const { context, stdoutWrite } = createMockContext();
     const func = await revisionsCommand.loader();
     await func.call(context, defaultFlags({ json: true, limit: 3 }), "123");
 
-    expect(listDashboardRevisionsPaginatedSpy).toHaveBeenCalledTimes(1);
+    expect(
+      listDashboardRevisionsPaginatedSpy.mock.calls.map((call) => call[2]),
+    ).toEqual([
+      { perPage: 3, cursor: undefined },
+      { perPage: 3, cursor: "cursor-page-2" },
+    ]);
     const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
-    expect(parsed.data).toHaveLength(2);
-    expect(parsed.hasMore).toBe(true);
-    expect(parsed.nextCursor).toBe("cursor-page-2");
+    expect(parsed.data).toHaveLength(3);
+    expect(parsed.hasMore).toBe(false);
   });
 
-  test("auto-pagination: drops the cursor when a page overshoots the limit", async () => {
+  test("auto-pagination: resumes inside a page that overshoots the limit", async () => {
     // An endpoint that ignores per_page returns more rows than asked for; its
-    // cursor would skip the trimmed rows on `-c next`.
+    // cursor would skip the trimmed rows, so `-c next` refetches the page.
     listDashboardRevisionsPaginatedSpy.mockResolvedValueOnce({
       data: [REVISION_A, REVISION_B, REVISION_C, REVISION_A],
       nextCursor: "cursor-page-2",
@@ -323,8 +329,32 @@ describe("dashboard revisions command", () => {
 
     const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
     expect(parsed.data).toHaveLength(3);
-    expect(parsed.hasMore).toBe(false);
-    expect(parsed.nextCursor).toBeUndefined();
+    expect(parsed.hasMore).toBe(true);
+
+    resolveCursorSpy.mockReturnValue({
+      cursor: parsed.nextCursor,
+      direction: "next",
+    });
+    listDashboardRevisionsPaginatedSpy.mockResolvedValueOnce({
+      data: [REVISION_A, REVISION_B, REVISION_C, REVISION_A],
+      nextCursor: "cursor-page-2",
+    });
+    stdoutWrite.mockClear();
+    await func.call(
+      context,
+      defaultFlags({ json: true, limit: 1, cursor: "next" }),
+      "123",
+    );
+    expect(listDashboardRevisionsPaginatedSpy).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "123",
+      { perPage: 3, cursor: undefined },
+    );
+    const resumed = JSON.parse(
+      stdoutWrite.mock.calls.map((c) => c[0]).join(""),
+    );
+    expect(resumed.data).toEqual([REVISION_A]);
+    expect(resumed.nextCursor).toContain("cursor-page-2");
   });
 
   // -------------------------------------------------------------------------

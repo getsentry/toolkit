@@ -294,7 +294,7 @@ async function fetchDashboards(
   let cursorToStore: string | undefined;
 
   // Filters titles client-side, so it cannot count rows with paginate(). It
-  // keeps one page size per walk and resumes mid-page via afterId bookmarks.
+  // always uses one page size and resumes mid-page via afterId bookmarks.
   // oxlint-disable-next-line sentry-cli/no-manual-pagination
   for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
     const { data, nextCursor } = await listDashboardsPaginated(orgSlug, {
@@ -442,11 +442,10 @@ export const listCommand = buildListCommand("dashboard", {
       ? picomatch(titleFilter.toLowerCase(), { dot: true })
       : undefined;
 
-    // When filtering, fetch max-size pages to minimize round trips.
-    // When not filtering, cap at the smaller of limit and API max.
-    const perPage = glob
-      ? API_MAX_PER_PAGE
-      : Math.min(flags.limit, API_MAX_PER_PAGE);
+    // Dashboards use a page-number paginator whose cursor is only valid with
+    // the page size that produced it, so every call uses the same size, even
+    // when `-c next` changes --limit. afterId bookmarks resume mid-page.
+    const perPage = API_MAX_PER_PAGE;
 
     const {
       dashboards: results,
