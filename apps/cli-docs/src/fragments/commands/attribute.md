@@ -23,6 +23,9 @@ sentry attribute list --context
 # Show more than the default 25
 sentry attribute list my-org/my-project -n 100
 
+# Show the next page of the previous listing (same flags)
+sentry attribute list my-org/my-project -n 100 -c next
+
 # Select fields as JSON
 sentry attribute list --json --fields key,type,source
 ```

@@ -2,8 +2,8 @@
  * Attribute List Command Tests
  *
  * Tests for `sentry attribute list` in src/commands/attribute/list.ts:
- * flag parsing, the API call it makes, JSON/human output, display names,
- * --limit trimming, --context, and footer hints.
+ * flag parsing, the per-type API calls it makes, JSON/human output, display
+ * names, --limit trimming, -c next/prev, --context, and footer hints.
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -11,11 +11,10 @@ import {
   buildUsageTip,
   buildWithQuery,
   compareAttributes,
-  dropLookAheadRows,
   listCommand,
   parseAttributeTypes,
-  parseDataset,
   parseWithKeys,
+  selectAcrossTypes,
 } from "../../../src/commands/attribute/list.js";
 import {
   describeAttribute,
@@ -140,22 +139,27 @@ async function run(
 const listSpy = vi.mocked(apiClient.listTraceItemAttributes);
 const resolveSpy = vi.mocked(resolveTarget.resolveOrgOptionalFromArg);
 
+/**
+ * Serve `data` the way Sentry's attributes endpoint does: one type per
+ * request, offset cursors, and the look-ahead row (perPage + 1) left in.
+ */
+function mockAttributes(data: Attr[]) {
+  listSpy.mockImplementation(async (_org, options) => {
+    const ofType = data.filter((a) =>
+      options.attributeTypes?.includes(a.attributeType),
+    );
+    const offset = Number(options.cursor?.split(":")[1] ?? 0);
+    const perPage = options.perPage ?? 100;
+    const rows = ofType.slice(offset, offset + perPage + 1);
+    return rows.length > perPage
+      ? { data: rows, nextCursor: `0:${offset + perPage}:0` }
+      : { data: rows };
+  });
+}
+
 afterEach(() => {
   listSpy.mockReset();
   resolveSpy.mockReset();
-});
-
-describe("parseDataset", () => {
-  test("maps user-facing names and aliases to API datasets", () => {
-    expect(parseDataset("spans")).toBe("spans");
-    expect(parseDataset("span")).toBe("spans");
-    expect(parseDataset("LOGS")).toBe("logs");
-    expect(parseDataset("metrics")).toBe("tracemetrics");
-  });
-
-  test("rejects unknown datasets", () => {
-    expect(() => parseDataset("errors")).toThrow(ValidationError);
-  });
 });
 
 describe("parseAttributeTypes", () => {
@@ -250,21 +254,24 @@ describe("buildUsageTip", () => {
   });
 });
 
-describe("dropLookAheadRows", () => {
-  test("keeps at most `limit` rows per type, in server order", () => {
-    const data = [
-      attr("s1"),
-      attr("s2"),
-      attr("s3"), // look-ahead row for strings
-      attr("n1", "number", "user"),
-      attr("n2", "number", "user"),
-    ];
-    expect(dropLookAheadRows(data, 2).map((a) => a.name)).toEqual([
-      "s1",
-      "s2",
-      "n1",
-      "n2",
-    ]);
+describe("selectAcrossTypes", () => {
+  // Server order (by usage), not by name
+  const strings = {
+    type: "string" as const,
+    data: [attr("zeta"), attr("alpha"), attr("mid")],
+  };
+  const numbers = {
+    type: "number" as const,
+    data: [attr("beta", "number", "user")],
+  };
+
+  test("takes each type's rows in server order, then sorts for display", () => {
+    // "alpha" sorts first but comes after "zeta" for its type, so it waits:
+    // the rows shown of each type stay a prefix of what the server returned.
+    expect(selectAcrossTypes([strings, numbers], 2).map((a) => a.name)).toEqual(
+      ["beta", "zeta"],
+    );
+    expect(selectAcrossTypes([strings, numbers], 10)).toHaveLength(4);
   });
 });
 
@@ -302,18 +309,21 @@ describe("describeAttribute", () => {
 describe("listCommand.func", () => {
   test("lists span attributes for a project, 25 per page over 7d, sorted by name", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org", project: "backend" });
-    listSpy.mockResolvedValue({ data: ATTRIBUTES });
+    mockAttributes(ATTRIBUTES);
 
     const output = await run({ json: true }, "my-org/backend");
 
+    // One request per attribute type, each paginated on its own
+    expect(listSpy).toHaveBeenCalledTimes(4);
     expect(listSpy).toHaveBeenCalledWith("my-org", {
       dataset: "spans",
       project: ["backend"],
-      attributeTypes: undefined,
+      attributeTypes: ["string"],
       substringMatch: undefined,
       query: undefined,
       context: false,
       perPage: 25,
+      cursor: undefined,
       statsPeriod: "7d",
     });
     expect(JSON.parse(output)).toEqual({
@@ -339,7 +349,7 @@ describe("listCommand.func", () => {
 
   test("passes dataset, types, search, --with, and limit through for an org-wide listing", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
-    listSpy.mockResolvedValue({ data: [] });
+    mockAttributes([]);
 
     await run(
       {
@@ -354,21 +364,25 @@ describe("listCommand.func", () => {
       "my-org/",
     );
 
-    expect(listSpy).toHaveBeenCalledWith("my-org", {
-      dataset: "logs",
-      project: undefined,
-      attributeTypes: ["string", "boolean"],
-      substringMatch: "http",
-      query: "has:gen_ai.request.model has:http.method",
-      context: false,
-      perPage: 50,
-      statsPeriod: "24h",
-    });
+    expect(listSpy).toHaveBeenCalledTimes(2);
+    for (const type of ["boolean", "string"]) {
+      expect(listSpy).toHaveBeenCalledWith("my-org", {
+        dataset: "logs",
+        project: undefined,
+        attributeTypes: [type],
+        substringMatch: "http",
+        query: "has:gen_ai.request.model has:http.method",
+        context: false,
+        perPage: 50,
+        cursor: undefined,
+        statsPeriod: "24h",
+      });
+    }
   });
 
   test("shows the exact key in the table, including typed tags[...] keys", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
-    listSpy.mockResolvedValue({ data: ATTRIBUTES });
+    mockAttributes(ATTRIBUTES);
 
     const output = await run({}, "my-org/");
     // Check the table rows only, not the Tip: line, which also prints a key.
@@ -384,7 +398,7 @@ describe("listCommand.func", () => {
 
   test("--fields selects flattened keys in JSON output", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
-    listSpy.mockResolvedValue({ data: ATTRIBUTES });
+    mockAttributes(ATTRIBUTES);
 
     const output = await run(
       { json: true, fields: ["name", "type"] },
@@ -397,28 +411,30 @@ describe("listCommand.func", () => {
     ]);
   });
 
-  test("renders a table and points at -n when the server has more", async () => {
+  test("renders a table and points at -c next with the same flags when the server has more", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
-    listSpy.mockResolvedValue({ data: ATTRIBUTES, nextCursor: "0:100:0" });
+    mockAttributes([HTTP_METHOD, attr("http.route"), attr("http.status")]);
 
     const output = await run(
-      { dataset: "logs", search: "http", type: ["string"], limit: 10 },
+      { dataset: "logs", search: "http", type: ["string"], limit: 2 },
       "my-org/",
     );
 
     expect(output).toContain("TYPE");
     expect(output).toContain("SOURCE");
     expect(output).toContain("http.method");
-    expect(output).toContain("-n 20");
+    expect(output).toContain(
+      "Showing 2 logs attributes in my-org/; more are available.",
+    );
+    expect(output).toContain(
+      "Next: sentry attribute list my-org/ -c next --dataset logs --type string --search 'http' -n 2",
+    );
   });
 
   test("drops the server's look-ahead row for a single type", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
     // Sentry returns limit + 1 rows when more exist.
-    listSpy.mockResolvedValue({
-      data: [attr("a"), attr("b"), attr("c")],
-      nextCursor: "0:2:0",
-    });
+    mockAttributes([attr("a"), attr("b"), attr("c")]);
 
     const json = JSON.parse(
       await run({ json: true, limit: 2, type: ["string"] }, "my-org/"),
@@ -427,26 +443,49 @@ describe("listCommand.func", () => {
     expect(json.hasMore).toBe(true);
   });
 
-  test("trims a page over --limit, keeps hasMore, and suggests -n or narrowing", async () => {
+  test("trims across types to --limit, then -c next resumes the rows it cut", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
-    listSpy.mockResolvedValue({
-      data: [attr("c"), attr("a", "number", "user"), attr("b")],
-      nextCursor: "0:2:0",
-    });
+    // Server order for strings is c, b: only c fits on the first page.
+    mockAttributes([attr("c"), attr("a", "number", "user"), attr("b")]);
 
-    const json = JSON.parse(await run({ json: true, limit: 2 }, "my-org/"));
-    expect(json.data.map((a: { name: string }) => a.name)).toEqual(["a", "b"]);
-    expect(json.hasMore).toBe(true);
+    const first = JSON.parse(await run({ json: true, limit: 2 }, "my-org/"));
+    expect(first.data.map((a: { name: string }) => a.name)).toEqual(["a", "c"]);
+    expect(first.hasMore).toBe(true);
+    // Types sorted: array|boolean|number|string; only strings remain.
+    expect(first.nextCursor).toBe("|||0:1:0");
 
-    const output = await run({ limit: 2 }, "my-org/");
-    expect(output).toContain(
-      "Showing 2 of 3+ spans attributes in my-org/. Use -n 4 for more, or narrow with --type or --search.",
+    listSpy.mockClear();
+    const second = JSON.parse(
+      await run({ json: true, limit: 2, cursor: "next" }, "my-org/"),
+    );
+    expect(second.data.map((a: { name: string }) => a.name)).toEqual(["b"]);
+    expect(second.hasMore).toBe(false);
+    expect(second.hasPrev).toBe(true);
+    // Exhausted types aren't requested again.
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy).toHaveBeenCalledWith(
+      "my-org",
+      expect.objectContaining({ attributeTypes: ["string"], cursor: "0:1:0" }),
+    );
+
+    const back = JSON.parse(
+      await run({ json: true, limit: 2, cursor: "prev" }, "my-org/"),
+    );
+    expect(back.data.map((a: { name: string }) => a.name)).toEqual(["a", "c"]);
+  });
+
+  test("-c next without a previous listing explains how to start", async () => {
+    resolveSpy.mockResolvedValue({ org: "my-org" });
+    mockAttributes(ATTRIBUTES);
+
+    await expect(run({ cursor: "next" }, "my-org/")).rejects.toThrow(
+      ValidationError,
     );
   });
 
   test("prints a usage tip on its own line after the count", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org", project: "backend" });
-    listSpy.mockResolvedValue({ data: ATTRIBUTES });
+    mockAttributes(ATTRIBUTES);
 
     const output = await run({}, "my-org/backend");
 
@@ -464,7 +503,7 @@ describe("listCommand.func", () => {
 
   test("says so when no attributes match", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
-    listSpy.mockResolvedValue({ data: [] });
+    mockAttributes([]);
 
     const output = await run({}, "my-org/");
 
@@ -473,9 +512,7 @@ describe("listCommand.func", () => {
 
   test("--context requests metadata and includes it in JSON", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
-    listSpy.mockResolvedValue({
-      data: [{ ...CART_TOTAL, context: {} }, CONTEXT_ATTRIBUTE],
-    });
+    mockAttributes([{ ...CART_TOTAL, context: {} }, CONTEXT_ATTRIBUTE]);
 
     const output = await run({ json: true, context: true }, "my-org/");
 
@@ -490,7 +527,7 @@ describe("listCommand.func", () => {
 
   test("omits context from JSON without --context", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
-    listSpy.mockResolvedValue({ data: ATTRIBUTES });
+    mockAttributes(ATTRIBUTES);
 
     const output = await run({ json: true }, "my-org/");
 
@@ -501,10 +538,7 @@ describe("listCommand.func", () => {
 
   test("--context adds description and example columns to the table", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
-    listSpy.mockResolvedValue({
-      data: [CONTEXT_ATTRIBUTE],
-      nextCursor: "0:100:0",
-    });
+    mockAttributes([CONTEXT_ATTRIBUTE]);
     const context = CONTEXT_ATTRIBUTE.context!;
     const examples = context.examples!.map(String);
 

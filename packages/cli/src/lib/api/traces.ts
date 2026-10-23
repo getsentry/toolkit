@@ -317,6 +317,8 @@ export type ListTraceItemAttributesOptions = {
    * deprecation)
    */
   context?: boolean;
+  /** Pagination cursor from a previous page's `nextCursor` */
+  cursor?: string;
 };
 
 /**
@@ -353,6 +355,7 @@ export async function listTraceItemAttributes(
     end: options.end,
     expand: options.context ? ["context"] : undefined,
     per_page: options.perPage,
+    cursor: options.cursor,
   };
   const result = await listOrganizationTraceItemAttributes({
     ...config,
