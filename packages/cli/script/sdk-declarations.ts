@@ -5,11 +5,10 @@
  * describes the library entry point itself.
  */
 
+import ts from "typescript";
+
 /** Location of the module `SentryOptions` is lifted from, relative to `packages/cli`. */
 export const SDK_TYPES_PATH = "src/lib/sdk-types.ts";
-
-const SENTRY_OPTIONS_START = /export type SentryOptions = \{/m;
-const SENTRY_OPTIONS_END = /^\}\s*;/;
 
 /**
  * Lifts the `SentryOptions` declaration verbatim out of `sdk-types.ts`.
@@ -17,36 +16,29 @@ const SENTRY_OPTIONS_END = /^\}\s*;/;
  * This used to be a hand-written copy, which drifted without anything failing: `headers` was
  * added to the source and worked at runtime in 0.44.0, yet consumers passing it got a type
  * error because the copy never learned about the option.
+ *
+ * The declaration is located by parsing the module, so braces inside comments or string
+ * literal types cannot cut it short.
  */
 export function extractSentryOptions(sdkTypesSource: string): string {
-  const startMatch = sdkTypesSource.match(SENTRY_OPTIONS_START);
-  if (!startMatch || startMatch.index === undefined) {
+  const file = ts.createSourceFile(
+    SDK_TYPES_PATH,
+    sdkTypesSource,
+    ts.ScriptTarget.ESNext,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const declaration = file.statements.find(
+    (statement) =>
+      ts.isTypeAliasDeclaration(statement) &&
+      statement.name.text === "SentryOptions",
+  );
+  if (!declaration) {
     throw new Error(
       `Could not find the \`SentryOptions\` declaration in ${SDK_TYPES_PATH}.`,
     );
   }
-
-  const start = startMatch.index;
-  let depth = 1;
-  let i = start + startMatch[0].length;
-  while (i < sdkTypesSource.length && depth > 0) {
-    const char = sdkTypesSource[i];
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-    }
-    i += 1;
-  }
-
-  const endMatch = sdkTypesSource.slice(i - 1).match(SENTRY_OPTIONS_END);
-  if (depth !== 0 || !endMatch) {
-    throw new Error(
-      `Could not find the \`SentryOptions\` declaration in ${SDK_TYPES_PATH}.`,
-    );
-  }
-
-  return sdkTypesSource.slice(start, i - 1 + endMatch[0].length);
+  return sdkTypesSource.slice(declaration.getStart(file), declaration.end);
 }
 
 /** Assembles the entry-point declarations from the current `sdk-types.ts` source. */

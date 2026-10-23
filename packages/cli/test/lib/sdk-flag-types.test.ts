@@ -35,10 +35,10 @@ describe("generated SDK flag types", () => {
     // Streaming calls still take their target as trailing positionals, e.g.
     // `sdk.log.list({ follow: "5" }, "org/project")` must type as an AsyncIterable.
     expect(declarations).toContain(
-      "(params: LogListParams & { follow: string }, ...positional: string[]): AsyncIterable<unknown>;",
+      "(params: LogListParams & { follow: string; }, ...positional: string[]): AsyncIterable<unknown>;",
     );
     expect(declarations).toContain(
-      "(params: DashboardViewParams & { refresh: string }, ...positional: string[]): AsyncIterable<unknown>;",
+      "(params: DashboardViewParams & { refresh: string; }, ...positional: string[]): AsyncIterable<unknown>;",
     );
   });
 });
