@@ -12,7 +12,7 @@
  * or fatal error patterns in stderr indicate failure.
  */
 
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { captureException } from "@sentry/node-core/light";
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
@@ -23,6 +23,7 @@ import { logger } from "../logger.js";
 import type { WorkflowRunResult } from "./types.js";
 import type { WizardUI } from "./ui/types.js";
 import { type DoctorOutcomeKind, verifyWithDoctor } from "./verify-doctor.js";
+import { signalDirectChild, terminateProcessTree } from "./verify-process.js";
 import { resolveVerifyStrategy } from "./verify-strategy.js";
 import {
   recordVerificationSkipped,
@@ -40,9 +41,6 @@ const PROCESS_FORCE_SHUTDOWN_MS = 1000;
 
 /** Poll interval while waiting for a verification process tree to exit. */
 const PROCESS_EXIT_POLL_MS = 50;
-
-/** Maximum time for a Windows taskkill invocation to complete. */
-const WINDOWS_TREE_KILL_TIMEOUT_MS = 1000;
 
 /**
  * Patterns in stderr/stdout that indicate a fatal startup failure.
@@ -186,65 +184,6 @@ function buildVerifyEnv(
     };
   }
   return env;
-}
-
-/** Signal the POSIX process group or force-terminate the Windows process tree. */
-function terminateProcessTree(
-  child: ChildProcess,
-  signal: NodeJS.Signals,
-): boolean {
-  const pid = child.pid;
-  if (pid === undefined) {
-    return false;
-  }
-
-  try {
-    if (process.platform === "win32") {
-      // Verification children are disposable. Force the complete tree in one
-      // bounded call because Windows cannot reliably reproduce POSIX process-
-      // group signaling or discover descendants after their parent exits.
-      const args = ["/PID", String(pid), "/T", "/F"];
-      const taskkill = spawnSync("taskkill", args, {
-        stdio: "ignore",
-        timeout: WINDOWS_TREE_KILL_TIMEOUT_MS,
-        windowsHide: true,
-      });
-      if (taskkill.error) {
-        logger.debug(
-          `Failed to terminate Windows verification process tree while handling ${signal}`,
-          taskkill.error,
-        );
-        return false;
-      }
-      if (taskkill.status !== 0) {
-        logger.debug(
-          `taskkill exited with status ${taskkill.status} while handling ${signal} for the verification process tree`,
-        );
-        return false;
-      }
-      return true;
-    }
-    // Verification children are spawned detached on POSIX, making their PID
-    // the process-group ID. A negative PID signals the whole group, including
-    // shell pipelines, concurrently tasks, and framework watchers.
-    process.kill(-pid, signal);
-    return true;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "ESRCH") {
-      logger.debug(`Failed to signal verification process tree with ${signal}`);
-    }
-    return false;
-  }
-}
-
-/** Fall back to signaling only the direct child process. */
-function signalDirectChild(child: ChildProcess, signal: NodeJS.Signals): void {
-  try {
-    child.kill(signal);
-  } catch {
-    logger.debug(`Verification child exited before receiving ${signal}`);
-  }
 }
 
 /** Check whether the POSIX verification process group is still alive. */

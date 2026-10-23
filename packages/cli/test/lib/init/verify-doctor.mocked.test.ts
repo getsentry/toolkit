@@ -15,7 +15,11 @@ const mocks = vi.hoisted(() => ({
   spawnCalls: [] as Array<{
     command: string;
     args: string[];
-    options: { cwd?: string; env?: Record<string, string | undefined> };
+    options: {
+      cwd?: string;
+      env?: Record<string, string | undefined>;
+      shell?: boolean;
+    };
   }>,
   whichSync: vi.fn((cmd: string) => (cmd === "missing" ? null : `/bin/${cmd}`)),
   nextExitCode: 0 as number,
@@ -127,6 +131,33 @@ describe("verifyWithDoctor", () => {
     });
     expect(outcome).toEqual({ verified: false, kind: "doctor_passed" });
     expect(mocks.captureException).not.toHaveBeenCalled();
+  });
+
+  test("runs batch-file doctor commands through a shell on Windows", async () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      const { ui } = createMockUI();
+      await verifyWithDoctor(
+        {
+          kind: "doctor",
+          tool: "expo",
+          args: ["npx.cmd", "expo", "doctor"],
+          source: "wizard.platform=react-native",
+        },
+        { status: "success", result: { platform: "react-native" } },
+        ui,
+        tmpDir,
+      );
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    }
+
+    expect(mocks.spawnCalls[0]).toMatchObject({
+      command: "npx.cmd",
+      args: ["expo", "doctor"],
+      options: { shell: true },
+    });
   });
 
   test("reports failure and captures telemetry when expo doctor fails", async () => {

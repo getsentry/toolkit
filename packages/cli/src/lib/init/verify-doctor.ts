@@ -13,6 +13,7 @@ import { logger } from "../logger.js";
 import { whichSync } from "../which.js";
 import type { WorkflowRunResult } from "./types.js";
 import type { WizardUI } from "./ui/types.js";
+import { signalDirectChild, terminateProcessTree } from "./verify-process.js";
 import type { DoctorStrategy } from "./verify-strategy.js";
 import {
   recordVerificationSkipped,
@@ -82,6 +83,10 @@ export async function verifyWithDoctor(
       cwd,
       detached: process.platform !== "win32",
       env: childEnv,
+      // `npx.cmd` and `flutter.bat` are batch files, which Node refuses to
+      // spawn without a shell since CVE-2024-27980. The args are fixed
+      // literals, so routing through cmd.exe is safe.
+      shell: process.platform === "win32",
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (error) {
@@ -160,15 +165,11 @@ async function waitForDoctor(
   child.stdout?.on("data", append);
   child.stderr?.on("data", append);
 
+  // Doctor commands start descendants (and run under cmd.exe on Windows), so
+  // signal the whole tree, falling back to the direct child.
   const safeKill = (sig: NodeJS.Signals) => {
-    try {
-      if (child.pid !== undefined && process.platform !== "win32") {
-        process.kill(-child.pid, sig);
-        return;
-      }
-      child.kill(sig);
-    } catch (error) {
-      logger.debug(`Failed to signal doctor process with ${sig}`, error);
+    if (!terminateProcessTree(child, sig)) {
+      signalDirectChild(child, sig);
     }
   };
 
