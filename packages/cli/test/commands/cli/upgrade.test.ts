@@ -1005,6 +1005,59 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(readSchemaVersion()).toBe(16);
   });
 
+  test("keeps the database when downloading the older CLI fails", async () => {
+    mockFetch(async (url) => {
+      const urlStr = extractInputUrl(url);
+      if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
+        return new Response(JSON.stringify([{ tag_name: "cli@0.47.0" }]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("Server Error", { status: 500 });
+    });
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(spawnedArgs).toEqual([]);
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+  });
+
+  test("redoes the hand-off after setup fails", async () => {
+    mockBinaryDownloadWithVersion("0.47.0");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      // Another invocation of this CLI re-migrates the database meanwhile.
+      getRawDatabase()
+        .query("UPDATE schema_version SET version = ?")
+        .run(CURRENT_SCHEMA_VERSION);
+      return fakeChildProcess(1);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      true,
+    );
+    expect(readSchemaVersion()).toBe(16);
+  });
+
   test("leaves the database alone for an older CLI that adapts it", async () => {
     mockBinaryDownloadWithVersion("99.99.99");
     const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);

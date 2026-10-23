@@ -581,6 +581,8 @@ type SetupOptions = {
   ensureAuthScopes: boolean;
   /** Skip agent skill installation during setup. */
   noAgentSkills: boolean;
+  /** Hand the local database to an older CLI around setup (#1611). */
+  handOffDatabase: boolean;
 };
 
 /**
@@ -594,6 +596,11 @@ type SetupOptions = {
  *
  * For package manager upgrades: the binary is already in place, so setup only
  * updates completions, agent skills, and records metadata.
+ *
+ * With `handOffDatabase`, the database is handed off only once the older
+ * binary is downloaded, so a failed download keeps the current login, and
+ * again after setup even when it fails, in case another invocation of this
+ * CLI re-migrated the database meanwhile.
  */
 async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
   const {
@@ -604,6 +611,7 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
     installDir,
     ensureAuthScopes,
     noAgentSkills,
+    handOffDatabase,
   } = opts;
   const args = [
     "cli",
@@ -629,7 +637,17 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
     ? { ...process.env, SENTRY_INSTALL_DIR: installDir }
     : undefined;
 
-  const exitCode = await spawnWithRetry(binaryPath, args, env);
+  if (handOffDatabase) {
+    prepareLocalDatabaseForDowngrade();
+  }
+  let exitCode: number;
+  try {
+    exitCode = await spawnWithRetry(binaryPath, args, env);
+  } finally {
+    if (handOffDatabase) {
+      prepareLocalDatabaseForDowngrade();
+    }
+  }
   if (exitCode !== 0) {
     throw new UpgradeError(
       "execution_failed",
@@ -697,6 +715,7 @@ async function executeStandardUpgrade(opts: {
   json?: boolean;
   noAgentSkills: boolean;
   source?: UpgradeSource;
+  handOffDatabase: boolean;
 }): Promise<void> {
   const {
     method,
@@ -710,6 +729,7 @@ async function executeStandardUpgrade(opts: {
     json,
     noAgentSkills,
     source,
+    handOffDatabase,
   } = opts;
 
   // Use the rolling "nightly" tag only when upgrading to latest nightly
@@ -759,6 +779,7 @@ async function executeStandardUpgrade(opts: {
         installDir,
         ensureAuthScopes: !json,
         noAgentSkills,
+        handOffDatabase,
       });
     } finally {
       releaseLock(downloadResult.lockPath);
@@ -774,6 +795,7 @@ async function executeStandardUpgrade(opts: {
       install: false,
       ensureAuthScopes: !json,
       noAgentSkills,
+      handOffDatabase,
     });
   }
 }
@@ -803,9 +825,18 @@ async function migrateToStandaloneForNightly(opts: {
   json?: boolean;
   source?: UpgradeSource;
   channel: ReleaseChannel;
+  handOffDatabase: boolean;
 }): Promise<string[]> {
-  const { method, target, versionArg, noAgentSkills, json, source, channel } =
-    opts;
+  const {
+    method,
+    target,
+    versionArg,
+    noAgentSkills,
+    json,
+    source,
+    channel,
+    handOffDatabase,
+  } = opts;
   log.info("Nightly builds are only available as standalone binaries.");
   log.info("Migrating to standalone installation...");
 
@@ -849,6 +880,7 @@ async function migrateToStandaloneForNightly(opts: {
       installDir,
       ensureAuthScopes: !json,
       noAgentSkills,
+      handOffDatabase,
     });
   } finally {
     releaseLock(downloadResult.lockPath);
@@ -1110,10 +1142,6 @@ export const upgradeCommand = buildCommand({
     log.debug(`${downgrade ? "Downgrading" : "Upgrading"} to ${target}`);
     const handOffDatabase =
       downgrade && compareVersions(target, SELF_ADAPTING_CLI_VERSION) < 0;
-    // Before installing: the older binary runs `cli setup` during the upgrade.
-    if (handOffDatabase) {
-      prepareLocalDatabaseForDowngrade();
-    }
 
     // Perform the actual upgrade
     let warnings: string[] | undefined;
@@ -1128,6 +1156,7 @@ export const upgradeCommand = buildCommand({
         json: flags.json,
         source,
         channel,
+        handOffDatabase,
       });
     } else {
       await executeStandardUpgrade({
@@ -1142,14 +1171,8 @@ export const upgradeCommand = buildCommand({
         json: flags.json,
         noAgentSkills: flags["no-agent-skills"],
         source,
+        handOffDatabase,
       });
-    }
-
-    // Again after installing: another invocation of this CLI during the
-    // download re-migrates the database. No-op unless the stored version is
-    // this CLI's own, so the older CLI's forward migrations are kept.
-    if (handOffDatabase) {
-      prepareLocalDatabaseForDowngrade();
     }
 
     const changelog = await changelogPromise;
