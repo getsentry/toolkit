@@ -169,7 +169,6 @@ export const revisionsCommand = buildCommand({
       contextKey,
     );
 
-    const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
     const results: DashboardRevision[] = [];
     let cursor = rawCursor;
     let nextCursor: string | undefined;
@@ -187,7 +186,12 @@ export const revisionsCommand = buildCommand({
             for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
               const { data, nextCursor: nc } =
                 await listDashboardRevisionsPaginated(orgSlug, dashboardId, {
-                  perPage,
+                  // Ask only for the remaining budget so the last page's
+                  // cursor points at the first row we did not return.
+                  perPage: Math.min(
+                    flags.limit - results.length,
+                    API_MAX_PER_PAGE,
+                  ),
                   cursor,
                 });
               results.push(...data);
@@ -202,8 +206,10 @@ export const revisionsCommand = buildCommand({
     );
 
     const trimmed = results.slice(0, flags.limit);
-    const hasMore = results.length > flags.limit || !!nextCursor;
-    const cursorToStore = hasMore ? nextCursor : undefined;
+    // A page larger than requested would make the server cursor skip the
+    // trimmed rows, so drop it (same as autoPaginate).
+    const cursorToStore = results.length > flags.limit ? undefined : nextCursor;
+    const hasMore = cursorToStore !== undefined;
 
     advancePaginationState(
       PAGINATION_KEY,
