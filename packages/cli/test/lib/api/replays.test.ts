@@ -139,19 +139,19 @@ describe("listReplays", () => {
       const body =
         callIndex === 0
           ? {
-              data: Array.from({ length: 75 }, (_, index) =>
+              data: Array.from({ length: 100 }, (_, index) =>
                 replayRow(index.toString(16).padStart(32, "a").slice(-32)),
               ),
             }
           : {
-              data: Array.from({ length: 75 }, (_, index) =>
+              data: Array.from({ length: 100 }, (_, index) =>
                 replayRow(index.toString(16).padStart(32, "b").slice(-32)),
               ),
             };
       const headers =
         callIndex === 0
           ? {
-              Link: `<https://sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:75:0"`,
+              Link: `<https://sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
             }
           : {
               Link: `<https://sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
@@ -164,13 +164,13 @@ describe("listReplays", () => {
       });
     });
 
-    const result = await listReplays("test-org", { limit: 150 });
+    const result = await listReplays("test-org", { limit: 200 });
 
-    expect(result.data).toHaveLength(150);
+    expect(result.data).toHaveLength(200);
     expect(result.nextCursor).toBeUndefined();
     expect(capturedUrls).toHaveLength(2);
-    expect(capturedUrls[0]).toContain("per_page=75");
-    expect(capturedUrls[1]).toContain("per_page=75");
+    expect(capturedUrls[0]).toContain("per_page=100");
+    expect(capturedUrls[1]).toContain("per_page=100");
   });
 });
 

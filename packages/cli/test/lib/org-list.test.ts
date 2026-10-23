@@ -512,16 +512,17 @@ describe("handleOrgAll", () => {
     });
 
     expect(result.items).toHaveLength(250);
-    // Every request uses the same page size (team and repo lists use
-    // page-number cursors), chosen to divide the limit: 250 = 5 x 50.
+    // Full pages keep requests to a minimum; the cursor carries the page size
+    // because team and repo lists use page-number cursors.
     expect(listPaginated.mock.calls.map((call) => call[1].perPage)).toEqual([
-      50, 50, 50, 50, 50,
+      100, 100, 100,
     ]);
     // The mock always returns a nextCursor, so hasMore is true and
     // the cursor points to the first item beyond the fetched 250.
     expect(result.hasMore).toBe(true);
 
-    // `-c next` with another --limit keeps the walk's page size.
+    // `-c next` with another --limit keeps the walk's page size and refetches
+    // the third page, skipping the 50 rows already returned.
     listPaginated.mockClear();
     const next = await handleOrgAll({
       config,
@@ -535,7 +536,7 @@ describe("handleOrgAll", () => {
       Array.from({ length: 30 }, (_, i) => String(250 + i)),
     );
     expect(listPaginated.mock.calls.map((call) => call[1])).toEqual([
-      { cursor: "250", perPage: 50 },
+      { cursor: "200", perPage: 100 },
     ]);
   });
 });

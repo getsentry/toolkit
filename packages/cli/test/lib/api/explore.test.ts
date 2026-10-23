@@ -267,13 +267,13 @@ describe("queryEvents", () => {
   test("auto-paginates when limit exceeds API_MAX_PER_PAGE", async () => {
     const { getCapturedUrls } = mockSequential([
       {
-        body: { data: makeRows(75), meta: PAGE_META },
+        body: { data: makeRows(100), meta: PAGE_META },
         headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:75:0"`,
+          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
         },
       },
       {
-        body: { data: makeRows(75), meta: PAGE_META },
+        body: { data: makeRows(100), meta: PAGE_META },
         headers: {
           Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
         },
@@ -282,43 +282,16 @@ describe("queryEvents", () => {
 
     const result = await queryEvents("my-org", {
       fields: ["title", "count()"],
-      limit: 150,
+      limit: 200,
     });
 
-    expect(result.data.data).toHaveLength(150);
+    expect(result.data.data).toHaveLength(200);
     expect(result.data.meta?.fields).toEqual(PAGE_META.fields);
     expect(result.nextCursor).toBeUndefined();
     expect(getCapturedUrls()).toHaveLength(2);
     for (const url of getCapturedUrls()) {
-      expect(url).toContain("per_page=75");
+      expect(url).toContain("per_page=100");
     }
-  });
-
-  test("trims results and resumes inside the overshooting page", async () => {
-    mockSequential([
-      {
-        body: { data: makeRows(60), meta: PAGE_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:60:0"`,
-        },
-      },
-      {
-        // Server ignores per_page=60.
-        body: { data: makeRows(100), meta: PAGE_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:160:0"`,
-        },
-      },
-    ]);
-
-    const result = await queryEvents("my-org", {
-      fields: ["title", "count()"],
-      limit: 120,
-    });
-
-    expect(result.data.data).toHaveLength(120);
-    // Refetches the second page (cursor 0:60:0) and skips its returned rows.
-    expect(result.nextCursor).toContain("0:60:0");
   });
 
   test("single-page fast path when limit <= API_MAX_PER_PAGE", async () => {

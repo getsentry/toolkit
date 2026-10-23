@@ -482,38 +482,6 @@ export async function autoPaginate<T>(
   return { data: allRows.slice(0, limit) };
 }
 
-/**
- * Choose the `per_page` for a {@link paginate} walk that starts fresh.
- *
- * Sentry's page-number paginators (`OffsetPaginator`, `ChainPaginator`,
- * `CallbackPaginator`, used by projects, teams, members, repositories, and
- * dashboard revisions) put the page size in the cursor
- * (`<per_page>:<page>:<is_prev>`). A request that pairs that cursor with a
- * different `per_page` reads the wrong window; `OffsetPaginator` returns the
- * end of the old-sized page and silently skips rows. So a walk keeps one page
- * size from its first request through every `-c next`, and {@link paginate}
- * records it in the cursors it returns.
- *
- * A page size that divides `limit` lets each call end on a page boundary, so
- * the next call does not have to refetch a partly returned page.
- *
- * @param limit - Total number of items the caller wants
- * @returns Page size between 1 and {@link API_MAX_PER_PAGE}
- */
-export function pageSizeForLimit(limit: number): number {
-  if (limit <= API_MAX_PER_PAGE) {
-    return Math.max(1, limit);
-  }
-  const minPages = Math.ceil(limit / API_MAX_PER_PAGE);
-  // Accept up to twice the minimum number of requests (pages of ~50+ rows).
-  for (let pages = minPages; pages <= minPages * 2; pages += 1) {
-    if (limit % pages === 0) {
-      return limit / pages;
-    }
-  }
-  return API_MAX_PER_PAGE;
-}
-
 /** Marks cursors produced by {@link paginate}; Sentry cursors never use it. */
 const PAGE_CURSOR_PREFIX = "cli1~";
 
@@ -570,8 +538,11 @@ function decodePageCursor(
  * owns the decisions those loops kept getting wrong (#1458, #1608):
  *
  * - Every request of a walk, including later `-c next` calls with a different
- *   `--limit`, uses the same `per_page`, because page-number cursors are only
- *   valid with the page size that produced them ({@link pageSizeForLimit}).
+ *   `--limit`, uses the `per_page` of its first request. Sentry's page-number
+ *   paginators (`OffsetPaginator`, used by projects, teams, members,
+ *   repositories, and dashboard revisions) put the page size in the cursor
+ *   (`<per_page>:<page>:<is_prev>`), and pairing it with another `per_page`
+ *   reads the wrong window and silently skips rows.
  * - The returned cursor always resumes at the first row the caller has not
  *   received. When a call stops inside a page (a smaller `--limit`, or a
  *   server that ignored `per_page`), the cursor refetches that page and skips
@@ -599,7 +570,8 @@ export async function paginate<T>(
 ): Promise<PaginatedResponse<T[]>> {
   const limit = options.limit ?? defaultLimit;
   const start = decodePageCursor(options.cursor);
-  const perPage = start.perPage ?? pageSizeForLimit(limit);
+  const perPage =
+    start.perPage ?? Math.max(1, Math.min(limit, API_MAX_PER_PAGE));
   let cursor = start.cursor;
   let skip = start.skip ?? 0;
   const rows: T[] = [];

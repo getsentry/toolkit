@@ -268,93 +268,28 @@ describe("dashboard revisions command", () => {
     expect(output).toContain("-c prev");
   });
 
-  test("auto-pagination: --limit above one page fetches equal-sized pages", async () => {
-    const page = Array.from({ length: 75 }, () => REVISION_A);
+  test("auto-pagination: --limit above one page keeps one per_page", async () => {
+    const page = Array.from({ length: 100 }, () => REVISION_A);
     listDashboardRevisionsPaginatedSpy
-      .mockResolvedValueOnce({ data: page, nextCursor: "75:1:0" })
-      .mockResolvedValueOnce({ data: page, nextCursor: "75:2:0" });
+      .mockResolvedValueOnce({ data: page, nextCursor: "100:1:0" })
+      .mockResolvedValueOnce({ data: page, nextCursor: "100:2:0" });
 
     const { context, stdoutWrite } = createMockContext();
     const func = await revisionsCommand.loader();
-    await func.call(context, defaultFlags({ json: true, limit: 150 }), "123");
+    await func.call(context, defaultFlags({ json: true, limit: 200 }), "123");
 
     // The revisions endpoint uses OffsetPaginator, whose cursor encodes the
     // page size, so every request must send the same per_page.
     expect(
       listDashboardRevisionsPaginatedSpy.mock.calls.map((call) => call[2]),
     ).toEqual([
-      { perPage: 75, cursor: undefined },
-      { perPage: 75, cursor: "75:1:0" },
+      { perPage: 100, cursor: undefined },
+      { perPage: 100, cursor: "100:1:0" },
     ]);
     const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
-    expect(parsed.data).toHaveLength(150);
+    expect(parsed.data).toHaveLength(200);
     expect(parsed.hasMore).toBe(true);
-    expect(parsed.nextCursor).toContain("75:2:0");
-  });
-
-  test("auto-pagination: a short page is followed without changing per_page", async () => {
-    listDashboardRevisionsPaginatedSpy
-      .mockResolvedValueOnce({
-        data: [REVISION_A, REVISION_B],
-        nextCursor: "cursor-page-2",
-      })
-      .mockResolvedValueOnce({ data: [REVISION_C], nextCursor: undefined });
-
-    const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
-    await func.call(context, defaultFlags({ json: true, limit: 3 }), "123");
-
-    expect(
-      listDashboardRevisionsPaginatedSpy.mock.calls.map((call) => call[2]),
-    ).toEqual([
-      { perPage: 3, cursor: undefined },
-      { perPage: 3, cursor: "cursor-page-2" },
-    ]);
-    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
-    expect(parsed.data).toHaveLength(3);
-    expect(parsed.hasMore).toBe(false);
-  });
-
-  test("auto-pagination: resumes inside a page that overshoots the limit", async () => {
-    // An endpoint that ignores per_page returns more rows than asked for; its
-    // cursor would skip the trimmed rows, so `-c next` refetches the page.
-    listDashboardRevisionsPaginatedSpy.mockResolvedValueOnce({
-      data: [REVISION_A, REVISION_B, REVISION_C, REVISION_A],
-      nextCursor: "cursor-page-2",
-    });
-
-    const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
-    await func.call(context, defaultFlags({ json: true, limit: 3 }), "123");
-
-    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
-    expect(parsed.data).toHaveLength(3);
-    expect(parsed.hasMore).toBe(true);
-
-    resolveCursorSpy.mockReturnValue({
-      cursor: parsed.nextCursor,
-      direction: "next",
-    });
-    listDashboardRevisionsPaginatedSpy.mockResolvedValueOnce({
-      data: [REVISION_A, REVISION_B, REVISION_C, REVISION_A],
-      nextCursor: "cursor-page-2",
-    });
-    stdoutWrite.mockClear();
-    await func.call(
-      context,
-      defaultFlags({ json: true, limit: 1, cursor: "next" }),
-      "123",
-    );
-    expect(listDashboardRevisionsPaginatedSpy).toHaveBeenLastCalledWith(
-      expect.anything(),
-      "123",
-      { perPage: 3, cursor: undefined },
-    );
-    const resumed = JSON.parse(
-      stdoutWrite.mock.calls.map((c) => c[0]).join(""),
-    );
-    expect(resumed.data).toEqual([REVISION_A]);
-    expect(resumed.nextCursor).toContain("cursor-page-2");
+    expect(parsed.nextCursor).toContain("100:2:0");
   });
 
   // -------------------------------------------------------------------------
