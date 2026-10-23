@@ -81,6 +81,7 @@ function createMockContext() {
       stdout: { write: stdoutWrite },
       stderr: { write: vi.fn(() => true) },
       cwd: "/tmp",
+      commandPrefix: ["sentry", "feedback", "list"],
     },
     stdoutWrite,
   };

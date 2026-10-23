@@ -14,8 +14,16 @@ import {
   getCompletionTarget,
   ORG_PROJECT_TARGET,
 } from "../../src/lib/completion-target.js";
-import { EXIT, getExitCode, ValidationError } from "../../src/lib/errors.js";
-import { rawPositional } from "../../src/lib/positional-parse.js";
+import {
+  ContextError,
+  EXIT,
+  getExitCode,
+  ValidationError,
+} from "../../src/lib/errors.js";
+import {
+  markDestructive,
+  rawPositional,
+} from "../../src/lib/positional-parse.js";
 import { buildRouteMap } from "../../src/lib/route-map.js";
 import {
   type OrgProjectTarget,
@@ -28,12 +36,12 @@ type TestContext = CommandContext & {
   stdout: { write: (s: string) => boolean };
 };
 
-/** Resolver that echoes the parsed target and the context's cwd. */
+/** Resolver that echoes the parsed target, cwd, and command name. */
 const echoResolver = vi.fn(
-  async (parsed: ParsedOrgProject, { cwd }: { cwd: string }) => ({
-    parsed: { ...parsed },
-    cwd,
-  }),
+  async (
+    parsed: ParsedOrgProject,
+    { cwd, commandName }: { cwd: string; commandName: string },
+  ) => ({ parsed: { ...parsed }, cwd, commandName }),
 );
 
 const echoTarget = orgProjectTarget(echoResolver);
@@ -80,6 +88,10 @@ async function runWithTarget(args: string[]): Promise<{
   const stdout = { write: () => true };
   const context = {
     cwd: "/work",
+    // Like buildContext: Stricli passes the command path to forCommand
+    forCommand({ prefix }: { prefix: readonly string[] }) {
+      return { ...this, commandPrefix: prefix };
+    },
     process: {
       stdout,
       stderr: {
@@ -97,12 +109,13 @@ async function runWithTarget(args: string[]): Promise<{
 }
 
 describe("orgProjectTarget", () => {
-  test("resolves the parsed target with the command context", async () => {
+  test("resolves the parsed target with the command context and name", async () => {
     const { resolved } = await runWithTarget(["acme/web"]);
     expect(resolved).toEqual([
       {
         parsed: { type: "explicit", org: "acme", project: "web" },
         cwd: "/work",
+        commandName: "cmd",
       },
     ]);
   });
@@ -110,7 +123,7 @@ describe("orgProjectTarget", () => {
   test("an omitted target resolves as auto-detect", async () => {
     const { resolved } = await runWithTarget([]);
     expect(resolved).toEqual([
-      { parsed: { type: "auto-detect" }, cwd: "/work" },
+      { parsed: { type: "auto-detect" }, cwd: "/work", commandName: "cmd" },
     ]);
   });
 
@@ -129,7 +142,7 @@ describe("orgProjectTarget", () => {
 });
 
 describe("lazy parsing and resolution", () => {
-  const context = { cwd: "/work" };
+  const context = { cwd: "/work", commandPrefix: ["sentry", "thing", "list"] };
 
   test("parses on first property access", () => {
     const target = echoTarget.call(context, "@latest");
@@ -160,6 +173,29 @@ describe("lazy parsing and resolution", () => {
     expect(target.resolved).toBe(first);
     await first;
     expect(echoResolver).toHaveBeenCalledTimes(1);
+  });
+
+  test("a destructive command refuses an auto-detected target", async () => {
+    echoResolver.mockClear();
+    const omitted = echoTarget.call(context, undefined);
+    markDestructive([omitted]);
+    const error = await omitted.resolved.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ContextError);
+    expect((error as Error).message).toContain(
+      "sentry thing list <org>/<project>",
+    );
+    expect(echoResolver).not.toHaveBeenCalled();
+
+    const explicit = echoTarget.call(context, "acme/web");
+    markDestructive([explicit]);
+    await expect(explicit.resolved).resolves.toMatchObject({
+      commandName: "thing list",
+    });
+  });
+
+  test("needs the command path on the context", async () => {
+    const target = echoTarget.call({ cwd: "/work" }, "acme/web");
+    await expect(target.resolved).rejects.toThrow("commandPrefix");
   });
 
   test("is not a thenable, so awaiting it does not parse", async () => {

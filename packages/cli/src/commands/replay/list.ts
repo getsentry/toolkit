@@ -95,7 +95,6 @@ const SORT_MAP: Record<ReplaySortKey, ReplaySortValue> = {
 const DEFAULT_PERIOD = LIST_PERIOD_FLAG.default;
 const DEFAULT_SORT: ReplaySortValue = SORT_MAP.date;
 const PAGINATION_KEY = "replay-list";
-const COMMAND_NAME = "replay list";
 
 function parseLimit(value: string): number {
   return validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT);
@@ -283,7 +282,7 @@ export const listCommand = buildListCommand("replay", {
         {
           placeholder: "org/project",
           brief: "<org>/, <org>/<project>, or <project> (search)",
-          parse: orgOptionalTarget(COMMAND_NAME),
+          parse: orgOptionalTarget,
           optional: true,
         },
       ],

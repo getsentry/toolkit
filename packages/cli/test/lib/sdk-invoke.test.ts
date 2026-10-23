@@ -270,4 +270,13 @@ describe("buildInvoker: lazily parsed positionals", () => {
       invoke(["project", "view"], {}, ["@latest"]) as Promise<unknown>,
     ).rejects.toThrow("is an issue selector");
   });
+
+  test("resolution sees the command path and the destructive guard", async () => {
+    // The usage hint names the command from the SDK's command path, and
+    // project delete refuses to auto-detect an omitted target.
+    const invoke = buildInvoker({ token: "sntrys_test" });
+    await expect(
+      invoke(["project", "delete"], { yes: true }, []) as Promise<unknown>,
+    ).rejects.toThrow("sentry project delete <org>/<project>");
+  });
 });

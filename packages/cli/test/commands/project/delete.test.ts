@@ -133,6 +133,7 @@ function createMockContext() {
       stdout: { write: stdoutWrite },
       stderr: { write: stderrWrite },
       cwd: "/tmp",
+      commandPrefix: ["sentry", "project", "delete"],
     },
     stdoutWrite,
     stderrWrite,
@@ -425,6 +426,7 @@ describe("project delete — interactive confirmation", () => {
         stdout: { write: stdoutWrite },
         stderr: { write: vi.fn(() => true) },
         cwd: "/tmp",
+        commandPrefix: ["sentry", "project", "delete"],
       },
       stdoutWrite,
     };

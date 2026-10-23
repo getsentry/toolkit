@@ -57,7 +57,6 @@ import {
 const DEFAULT_PERIOD = "14d";
 const DEFAULT_STATUS: FeedbackStatus = "unresolved";
 const PAGINATION_KEY = "feedback-list";
-const COMMAND_NAME = "feedback list";
 
 type ListFlags = {
   readonly status: FeedbackStatus;
@@ -161,7 +160,7 @@ export const listCommand = buildListCommand("feedback", {
         {
           placeholder: "org/project",
           brief: "<org>/, <org>/<project>, or <project> (search)",
-          parse: orgOptionalTarget(COMMAND_NAME),
+          parse: orgOptionalTarget,
           optional: true,
         },
       ],

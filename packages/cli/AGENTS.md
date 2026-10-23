@@ -241,14 +241,20 @@ Reference: `span/list.ts`, `trace/view.ts`, `event/view.ts`
 
 **Target positionals:** A single `[<org>/][<project>]` positional uses a
 parser from `src/lib/target-positional.ts`, which binds the resolver:
-`orgOptionalTarget(COMMAND_NAME)` (org, optional project),
-`projectBoundTarget(COMMAND_NAME)` (one org and project), or
-`orgProjectTarget(resolve)` for a command-specific resolver (see
-`project view` and `project delete`). `func` takes the matching type
-(`OrgOptionalTarget`, `ProjectBoundTarget`, `OrgProjectTarget<R>`), reads the
-parsed form as `target.type` / `target.org`, and gets the org and project with
+`orgOptionalTarget` (org, optional project), `projectBoundTarget` (one org and
+project), or `orgProjectTarget(resolve)` for a command-specific resolver (see
+`project view`). `func` takes the matching type (`OrgOptionalTarget`,
+`ProjectBoundTarget`, `OrgProjectTarget<R>`), reads the parsed form as
+`target.type` / `target.org`, and gets the org and project with
 `await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
-itself, and an omitted target arrives as auto-detect.
+itself, and an omitted target arrives as auto-detect. The
+`sentry-cli/require-target-resolution` lint rule fails a function that takes
+one of these types and never reads `.resolved`.
+
+Resolvers need no command name: they read it from `this.commandPrefix`, which
+Stricli's `forCommand` and the SDK invoker set (test mock contexts set it
+too). In a `buildDeleteCommand` command, the target refuses to auto-detect, so
+delete commands don't call `requireExplicitTarget` for it.
 
 Both steps are lazy (`lazyPositional` in `src/lib/positional-parse.ts`): the
 parse runs on the first property read and the resolver on the first
@@ -265,8 +271,8 @@ completion-aware parser from `src/lib/completion-target.ts` instead of
 `String`: `parseOrgProjectTarget` completes `org/`, `org/project`, and project
 aliases; `parseOrgTarget` completes org slugs only. `LIST_TARGET_POSITIONAL`
 and `LIST_ORG_TARGET_POSITIONAL` already use them. A parser tagged with
-`withCompletionTarget`, such as the `target-positional.ts` parsers, completes the same
-way.
+`withCompletionTarget`, such as the `target-positional.ts` parsers, completes
+the same way.
 `pnpm run generate:completions` collects these into the gitignored
 `src/generated/completion-targets.json` that the `__complete` fast path reads.
 `project create` keeps its dedicated `name:platform` completer in

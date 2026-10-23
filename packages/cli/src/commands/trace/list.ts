@@ -83,9 +83,6 @@ type TraceListResult = {
 /** Accepted values for the --sort flag */
 const VALID_SORT_VALUES: SortValue[] = ["date", "duration"];
 
-/** Command name used in resolver error messages */
-const COMMAND_NAME = "trace list";
-
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "trace-list";
 
@@ -225,7 +222,7 @@ export const listCommand = buildListCommand("trace", {
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search)",
-          parse: projectBoundTarget(COMMAND_NAME),
+          parse: projectBoundTarget,
           optional: true,
         },
       ],
