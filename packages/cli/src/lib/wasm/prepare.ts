@@ -51,6 +51,7 @@ import {
   randomBuildId,
 } from "./build-id.js";
 import { splitWasm } from "./split.js";
+import { ensureBuildIdOnDisk, stampBuildId } from "./stamp.js";
 
 const log = logger.withTag("wasm.prepare");
 
@@ -276,49 +277,6 @@ async function readCompanionBuildId(path: string): Promise<Uint8Array | null> {
     log.debug(`No usable companion at ${path}`, error);
     return null;
   }
-}
-
-/**
- * Give a module a build id, writing it back in place when it has none.
- *
- * `wasm-split` stamps every module it processes regardless of debug quality.
- * Sentry matches a stack frame to its debug file by build id, so an unstamped
- * module can never be symbolicated — not even from a debug file uploaded
- * later. Stamping now keeps that option open.
- *
- * @param path - Module to stamp.
- * @param bytes - The module as read from disk.
- * @param existing - Id the module already carries, if any.
- * @returns The effective build id, or `null` when a dry run left the module
- *   untouched.
- */
-async function ensureBuildIdOnDisk(
-  path: string,
-  bytes: Uint8Array,
-  existing: Uint8Array | null,
-  options: PrepareOptions,
-): Promise<Uint8Array | null> {
-  // Checked before splitting so an already-stamped module is never re-encoded.
-  if (existing) {
-    return existing;
-  }
-  if (options.dryRun) {
-    return null;
-  }
-  const stamped = stampBuildId(bytes, options.buildId);
-  await writeFile(path, stamped.module);
-  return stamped.buildId;
-}
-
-/**
- * Stamp a module with a build id, changing nothing else.
- *
- * A split with neither `strip` nor `companion` is exactly that, so stamping
- * shares one implementation with the real split rather than reassembling the
- * section list by hand.
- */
-function stampBuildId(bytes: Uint8Array, buildId?: Uint8Array) {
-  return splitWasm(bytes, buildId ? { buildId } : {});
 }
 
 /** Whether two build ids are byte-identical. */

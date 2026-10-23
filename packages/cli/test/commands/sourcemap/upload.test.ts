@@ -15,6 +15,33 @@ import { uploadCommand } from "../../../src/commands/sourcemap/upload.js";
 import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import { getDebugIdSnippet } from "../../../src/lib/sourcemap/debug-id.js";
+import {
+  encodeModule,
+  makeBuildIdSection,
+} from "../../../src/lib/wasm/binary.js";
+import { uuidToBytes } from "../../../src/lib/wasm/build-id.js";
+
+/** Deterministic wasm build id, and the debug ID it maps to. */
+const WASM_DEBUG_ID = "00000000-0000-4000-8000-000000000000";
+
+/** Write `<stem>.wasm` + `<stem>.wasm.map` into `dir`. */
+async function writeWasmPair(
+  dir: string,
+  stem: string,
+  buildId?: string,
+): Promise<{ wasmPath: string; mapPath: string }> {
+  const sections = buildId
+    ? [makeBuildIdSection(uuidToBytes(buildId) as Uint8Array)]
+    : [];
+  const wasmPath = join(dir, `${stem}.wasm`);
+  const mapPath = join(dir, `${stem}.wasm.map`);
+  await writeFile(wasmPath, encodeModule(sections));
+  await writeFile(
+    mapPath,
+    JSON.stringify({ version: 3, sources: ["a.c"], names: [], mappings: "" }),
+  );
+  return { wasmPath, mapPath };
+}
 
 type InjectFuncArgs = {
   ext?: string;
@@ -219,6 +246,71 @@ describe("sourcemap inject command — --allow-empty behavior", () => {
     // No convention map — the inline map is discovered as a pair and injected.
     const ctx = makeContext();
     await expect(func.call(ctx, {}, dir)).resolves.toBeUndefined();
+  });
+
+  test("wasm pair: stamps the map with the module's build_id", async () => {
+    const { mapPath } = await writeWasmPair(dir, "app", WASM_DEBUG_ID);
+    const ctx = makeContext();
+
+    await expect(func.call(ctx, {}, dir)).resolves.toBeUndefined();
+
+    const map = JSON.parse(await readFile(mapPath, "utf-8"));
+    expect(map.debug_id).toBe(WASM_DEBUG_ID);
+    expect(map.debugId).toBe(WASM_DEBUG_ID);
+  });
+
+  test("wasm pair alongside a JS pair: both are injected", async () => {
+    await writeFile(join(dir, "app.js"), "console.log(1)\n");
+    await writeFile(join(dir, "app.js.map"), '{"version":3}\n');
+    const { mapPath } = await writeWasmPair(dir, "mod", WASM_DEBUG_ID);
+    const ctx = makeContext();
+
+    await expect(func.call(ctx, {}, dir)).resolves.toBeUndefined();
+
+    expect(await readFile(join(dir, "app.js"), "utf-8")).toContain(
+      "//# debugId=",
+    );
+    expect(JSON.parse(await readFile(mapPath, "utf-8")).debug_id).toBe(
+      WASM_DEBUG_ID,
+    );
+  });
+
+  test("wasm-only directory does not trip the missing-.map guard", async () => {
+    await writeWasmPair(dir, "app", WASM_DEBUG_ID);
+    const ctx = makeContext();
+
+    await expect(func.call(ctx, {}, dir)).resolves.toBeUndefined();
+  });
+
+  test(".wasm files without .wasm.map: error recommends -gsource-map", async () => {
+    await writeFile(
+      join(dir, "app.wasm"),
+      encodeModule([
+        makeBuildIdSection(uuidToBytes(WASM_DEBUG_ID) as Uint8Array),
+      ]),
+    );
+    const ctx = makeContext();
+    try {
+      await func.call(ctx, {}, dir);
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ValidationError);
+      const msg = (err as Error).message;
+      expect(msg).toContain("1 .wasm file(s)");
+      expect(msg).toContain("-gsource-map");
+    }
+  });
+
+  test("--dry-run over a wasm pair: writes nothing", async () => {
+    const { wasmPath, mapPath } = await writeWasmPair(dir, "app");
+    const wasmBefore = await readFile(wasmPath);
+    const mapBefore = await readFile(mapPath);
+    const ctx = makeContext();
+
+    await func.call(ctx, { "dry-run": true }, dir);
+
+    expect(await readFile(wasmPath)).toEqual(wasmBefore);
+    expect(await readFile(mapPath)).toEqual(mapBefore);
   });
 
   test("sourceMappingURL: invalid inline base64 is skipped (zero pairs)", async () => {
@@ -848,6 +940,97 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       );
       expect(await readFile(jsPath, "utf-8")).toBe(js);
       expect(await readFile(mapPath, "utf-8")).toBe(map);
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
+
+  test("wasm pair: uploads module and map under the build_id", async () => {
+    await writeWasmPair(dir, "app", WASM_DEBUG_ID);
+
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      const ctx = makeContext();
+      await func.call(ctx, {}, dir);
+      const files = uploadSpy.mock.calls[0]?.[0]?.files ?? [];
+      expect(files).toHaveLength(2);
+      const wasm = files.find((f) => f.type === "minified_source");
+      const map = files.find((f) => f.type === "source_map");
+      expect(wasm?.url).toBe("~/app.wasm");
+      expect(wasm?.sourcemapFilename).toBe("app.wasm.map");
+      expect(map?.url).toBe("~/app.wasm.map");
+      // Both sides carry the module's build_id as the debug ID.
+      expect(wasm?.debugId).toBe(WASM_DEBUG_ID);
+      expect(map?.debugId).toBe(WASM_DEBUG_ID);
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
+
+  test("wasm pair alongside a JS pair: four artifact entries", async () => {
+    await writeFile(join(dir, "app.js"), "console.log(1)\n");
+    await writeFile(
+      join(dir, "app.js.map"),
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
+    );
+    await writeWasmPair(dir, "mod", WASM_DEBUG_ID);
+
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      const ctx = makeContext();
+      await func.call(ctx, {}, dir);
+      const files = uploadSpy.mock.calls[0]?.[0]?.files ?? [];
+      expect(files.map((f) => f.url).sort()).toEqual([
+        "~/app.js",
+        "~/app.js.map",
+        "~/mod.wasm",
+        "~/mod.wasm.map",
+      ]);
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
+
+  test("DWARF companions are not uploaded as sourcemap artifacts", async () => {
+    await writeWasmPair(dir, "app", WASM_DEBUG_ID);
+    await writeWasmPair(dir, "app.debug", WASM_DEBUG_ID);
+
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      const ctx = makeContext();
+      await func.call(ctx, {}, dir);
+      const urls = uploadSpy.mock.calls[0]?.[0]?.files.map((f) => f.url) ?? [];
+      expect(urls.some((u) => u.includes("debug.wasm"))).toBe(false);
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
+
+  test("--no-rewrite + wasm pair: nothing written, id read off the module", async () => {
+    const { wasmPath, mapPath } = await writeWasmPair(
+      dir,
+      "app",
+      WASM_DEBUG_ID,
+    );
+    const mapBefore = await readFile(mapPath);
+    const wasmBefore = await readFile(wasmPath);
+
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      const ctx = makeContext();
+      await func.call(ctx, { "no-rewrite": true }, dir);
+      expect(await readFile(wasmPath)).toEqual(wasmBefore);
+      expect(await readFile(mapPath)).toEqual(mapBefore);
+      const files = uploadSpy.mock.calls[0]?.[0]?.files ?? [];
+      expect(files.every((f) => f.debugId === WASM_DEBUG_ID)).toBe(true);
     } finally {
       uploadSpy.mockRestore();
     }

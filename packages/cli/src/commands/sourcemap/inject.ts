@@ -22,13 +22,26 @@ import {
   type InjectResult,
   injectDirectory,
 } from "../../lib/sourcemap/inject.js";
+import {
+  addWasmDiscoveryCounts,
+  discoverWasmPairs,
+  syncWasmPairs,
+  type WasmSyncResult,
+} from "../../lib/sourcemap/wasm.js";
 
 /** Result type for the inject command output. */
 type InjectCommandResult = {
   modified: number;
   skipped: number;
   files: InjectResult[];
+  /** Wasm module + sourcemap pairs reconciled onto the module's build id. */
+  wasm: WasmSyncResult[];
 };
+
+/** Whether a wasm pair was changed on disk. */
+function wasmChanged(result: WasmSyncResult): boolean {
+  return result.mapWritten || result.moduleStamped;
+}
 
 /** Format human-readable output for inject results. */
 function formatInjectResult(data: InjectCommandResult): string {
@@ -50,6 +63,16 @@ function formatInjectResult(data: InjectCommandResult): string {
     }
   }
 
+  if (data.wasm.length > 0) {
+    lines.push("");
+    for (const pair of data.wasm) {
+      const status = wasmChanged(pair) ? "✓" : "–";
+      // A dry run over an unstamped module cannot know the id it would mint.
+      const debugId = pair.debugId ?? "(pending)";
+      lines.push(`${status} ${pair.wasmPath} → ${colorTag("muted", debugId)}`);
+    }
+  }
+
   return renderMarkdown(lines.join("\n"));
 }
 
@@ -61,6 +84,9 @@ export const injectCommand = buildCommand({
       "then injects Sentry debug IDs for reliable sourcemap resolution.\n\n" +
       "Existing debug IDs are preserved; missing runtime registration snippets are added.\n" +
       "Files that already register their debug ID at runtime are left unchanged.\n\n" +
+      "WebAssembly pairs (app.wasm + app.wasm.map) are handled too: the map " +
+      "takes the module's build_id as its debug ID, and a module without one " +
+      "is stamped.\n\n" +
       "Exits with an error if zero JS + sourcemap pairs are discovered " +
       "(typical cause: bundler not emitting .map files). Pass " +
       "--allow-empty to suppress this check for directories that may " +
@@ -154,8 +180,12 @@ export const injectCommand = buildCommand({
     );
 
     const pairs = await discoverFilePairs(dir, extSet, ignoreMatcher);
-    if (pairs.length === 0 && !flags["allow-empty"]) {
-      const diag = await diagnoseEmptyDiscovery(dir, { extensions });
+    const wasmPairs = await discoverWasmPairs(dir, ignoreMatcher);
+    if (pairs.length === 0 && wasmPairs.length === 0 && !flags["allow-empty"]) {
+      const diag = await addWasmDiscoveryCounts(
+        dir,
+        await diagnoseEmptyDiscovery(dir, { extensions }),
+      );
       throw buildEmptyDiscoveryError(dir, diag);
     }
 
@@ -164,14 +194,20 @@ export const injectCommand = buildCommand({
       ignoreMatcher,
       dryRun: flags["dry-run"],
     });
+    const wasmResults = await syncWasmPairs(wasmPairs, {
+      dryRun: flags["dry-run"],
+    });
 
-    const modified = results.filter((r) => r.injected).length;
-    const skipped = results.length - modified;
+    const modified =
+      results.filter((r) => r.injected).length +
+      wasmResults.filter(wasmChanged).length;
+    const skipped = results.length + wasmResults.length - modified;
 
     yield new CommandOutput<InjectCommandResult>({
       modified,
       skipped,
       files: results,
+      wasm: wasmResults,
     });
 
     if (modified > 0) {

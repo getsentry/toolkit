@@ -118,6 +118,49 @@ export function readSourcemapDebugId(map: unknown): string | undefined {
   return normalizeDebugId(snake) ?? normalizeDebugId(camel);
 }
 
+/** Outcome of stamping a debug ID onto a standalone sourcemap. */
+export type SourcemapStampResult = {
+  /** Whether the map was rewritten on disk. */
+  written: boolean;
+  /** The debug ID the map carried before, when it carried a different one. */
+  replaced?: string;
+};
+
+/**
+ * Set a debug ID on a sourcemap file, leaving everything else alone.
+ *
+ * Unlike {@link injectDebugId} this touches no host file, so it suits maps
+ * whose companion artifact is not JavaScript — a wasm module carries its own
+ * id in a custom section and must never be rewritten as text. The map itself is
+ * edited by {@link mutateSourcemap}, so it gains the id under both field
+ * spellings exactly as an injected map does, with no `mappings` offset:
+ * `mappings` only shifts when injection prepends a runtime snippet line.
+ *
+ * Idempotent: a map already carrying `debugId` is left byte-identical.
+ *
+ * @param mapPath - Path to the `.map` file
+ * @param debugId - The debug ID to write
+ * @param options.dryRun - Report what would change without writing
+ * @returns Whether the map was written, and the id it replaced
+ */
+export async function setSourcemapDebugId(
+  mapPath: string,
+  debugId: string,
+  options: { dryRun?: boolean } = {},
+): Promise<SourcemapStampResult> {
+  const map = JSON.parse(await readFile(mapPath, "utf-8")) as SourcemapJson;
+  const existing = readSourcemapDebugId(map);
+  if (existing === debugId) {
+    return { written: false };
+  }
+  if (options.dryRun) {
+    return { written: false, replaced: existing };
+  }
+  mutateSourcemap(map, debugId, {});
+  await writeFile(mapPath, JSON.stringify(map));
+  return { written: true, replaced: existing };
+}
+
 /**
  * Generate a deterministic debug ID (UUID v4 format) from content.
  *
