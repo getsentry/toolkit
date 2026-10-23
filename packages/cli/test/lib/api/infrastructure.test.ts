@@ -906,28 +906,90 @@ describe("paginate", () => {
   );
 
   // Cursor continuity across servers and limits is covered by
-  // test/lib/paginate.property.test.ts; this pins the request sequence.
-  test("keeps the walk's page size and resumes mid-page across -c next", async () => {
-    const spy = vi.fn((perPage: number, cursor: string | undefined) => {
-      const offset = cursor ? Number(cursor) : 0;
-      const data = Array.from({ length: perPage }, (_, i) => offset + i);
-      return Promise.resolve({ data, nextCursor: String(offset + perPage) });
+  // test/lib/paginate.property.test.ts; these pin the request sequence.
+  describe("resumes mid-page across -c next", () => {
+    /** Pages `rows` like Sentry, with `<value>:<offset>:0` cursors. */
+    function server(cursorFor: (perPage: number, offset: number) => string) {
+      return vi.fn((perPage: number, cursor: string | undefined) => {
+        const [value = 0, page = 0] = (cursor ?? "0:0:0")
+          .split(":")
+          .map(Number);
+        const offset = value ? value * page : page;
+        const data = Array.from({ length: perPage }, (_, i) => offset + i);
+        return Promise.resolve({
+          data,
+          nextCursor: cursorFor(perPage, offset),
+        });
+      });
+    }
+
+    test("with the page size of a page-number cursor", async () => {
+      const spy = server(
+        (perPage, offset) => `${perPage}:${offset / perPage + 1}:0`,
+      );
+
+      const first = await paginate({ limit: 250 }, spy);
+      expect(first.data).toEqual(Array.from({ length: 250 }, (_, i) => i));
+      // Page 84:2 was partly returned: 82 rows to skip, as zeros in is_prev.
+      expect(first.nextCursor).toBe(`84:2:${"0".repeat(83)}`);
+      const second = await paginate(
+        { limit: 10, cursor: first.nextCursor },
+        spy,
+      );
+      expect(second.data).toEqual(
+        Array.from({ length: 10 }, (_, i) => 250 + i),
+      );
+
+      expect(spy.mock.calls).toEqual([
+        [84, undefined],
+        [84, "84:1:0"],
+        [84, "84:2:0"],
+        [84, "84:2:0"],
+        [84, "84:3:0"],
+      ]);
     });
 
-    const first = await paginate({ limit: 250 }, spy);
-    expect(first.data).toEqual(Array.from({ length: 250 }, (_, i) => i));
-    const second = await paginate({ limit: 10, cursor: first.nextCursor }, spy);
-    expect(second.data).toEqual(Array.from({ length: 10 }, (_, i) => 250 + i));
+    test("fetching the skipped rows in the same request otherwise", async () => {
+      const spy = server((perPage, offset) => `0:${offset + perPage}:0`);
 
-    // The first call stops inside page 3, so the second refetches it with the
-    // walk's page size rather than one derived from its own --limit.
-    expect(spy.mock.calls).toEqual([
-      [84, undefined],
-      [84, "84"],
-      [84, "168"],
-      [84, "168"],
-      [84, "252"],
-    ]);
+      const first = await paginate({ limit: 250 }, spy);
+      expect(first.nextCursor).toBe(`0:168:${"0".repeat(83)}`);
+      const second = await paginate(
+        { limit: 10, cursor: first.nextCursor },
+        spy,
+      );
+      expect(second.data).toEqual(
+        Array.from({ length: 10 }, (_, i) => 250 + i),
+      );
+      expect(second.nextCursor).toBe("0:260:0");
+
+      expect(spy.mock.calls.slice(3)).toEqual([[92, "0:168:0"]]);
+    });
+
+    test("from the first page", async () => {
+      const spy = server((perPage, offset) => `0:${offset + perPage}:0`);
+
+      const first = await paginate({ limit: 3 }, (perPage, cursor) =>
+        spy(perPage + 2, cursor),
+      );
+      expect(first.nextCursor).toBe("0:0:0000");
+      const second = await paginate(
+        { limit: 2, cursor: first.nextCursor },
+        spy,
+      );
+      expect(second.data).toEqual([3, 4]);
+      expect(spy.mock.calls.at(-1)).toEqual([5, undefined]);
+    });
+  });
+
+  test("returns page-boundary cursors unchanged", async () => {
+    const spy = vi
+      .fn()
+      .mockResolvedValue({ data: [1, 2], nextCursor: "2:1:0" });
+    expect(await paginate({ limit: 2 }, spy)).toEqual({
+      data: [1, 2],
+      nextCursor: "2:1:0",
+    });
   });
 
   test("returns no cursor once the server is exhausted", async () => {
@@ -951,16 +1013,23 @@ describe("paginate", () => {
     },
   );
 
-  // Cursors from another CLI version (after an upgrade or downgrade) or a
-  // damaged one must never fail the command or reach the API.
-  test.each([
-    "cli2~100~0~abc",
-    "cli0~abc",
-    "cli1~0~0~abc",
-    "cli1~101~0~abc",
-    "cli1~10~-1~abc",
-    "cli1~x~0~",
-  ])(
+  test("keeps the page size and skip outside cursors Sentry did not issue", async () => {
+    const spy = vi.fn().mockResolvedValue({
+      data: [1, 2, 3],
+      nextCursor: "opaque",
+    });
+    const first = await paginate({ limit: 2, cursor: "token" }, spy);
+    expect(first.nextCursor).toBe("cli1~2~2~token");
+  });
+
+  // Nightly builds returned cli1~<perPage>~<skip>~<server cursor> cursors.
+  test("resumes a nightly cli1~ cursor", async () => {
+    const spy = vi.fn().mockResolvedValue({ data: [] });
+    await paginate({ limit: 5, cursor: "cli1~84~2~84:2:0" }, spy);
+    expect(spy.mock.calls).toEqual([[84, "84:2:0"]]);
+  });
+
+  test.each(["cli1~0~0~abc", "cli1~101~0~abc", "cli1~10~-1~abc", "cli1~x~0~"])(
     "restarts from the first page on the unreadable cursor %s",
     async (cursor) => {
       const spy = vi.fn().mockResolvedValue({ data: [] });

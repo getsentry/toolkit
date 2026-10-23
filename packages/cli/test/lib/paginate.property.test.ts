@@ -133,6 +133,30 @@ describe.each(paginators)("property: paginate over $name", ({ make }) => {
     );
   });
 
+  // What an older CLI does with a cursor: send it to the API unchanged. Rows
+  // the cursor marks as returned come back again, but none are skipped.
+  test("returns cursors the API resumes from without skipping rows", async () => {
+    await fcAssert(
+      asyncProperty(totalArb, limitsArb, async (total, [limit = 1]) => {
+        const fetchPage = make(total);
+        let perPage = 0;
+        const result = await paginate({ limit }, (size, cursor) => {
+          perPage = size;
+          return fetchPage(size, cursor);
+        });
+        if (!result.nextCursor) {
+          return;
+        }
+        expect(result.nextCursor).toMatch(/^\d+:\d+:0+$/);
+        const { data } = await fetchPage(perPage, result.nextCursor);
+        const next = result.data.length;
+        expect(data[0]).toBeLessThanOrEqual(next);
+        expect(data).toContain(next);
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
   test("returns every row exactly once, in order, across -c next", async () => {
     await fcAssert(
       asyncProperty(totalArb, limitsArb, async (total, limits) => {

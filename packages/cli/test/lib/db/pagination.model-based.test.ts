@@ -33,7 +33,6 @@ import {
   clearPaginationState,
   getPaginationState,
   hasPreviousPage,
-  paginationStorageKey,
   resolveCursor,
 } from "../../../src/lib/db/pagination.js";
 import {
@@ -553,7 +552,7 @@ describe("model-based: pagination cursor stack", () => {
           const db = getDatabase();
           db.query(
             "UPDATE pagination_cursors SET expires_at = ? WHERE command_key = ? AND context = ?",
-          ).run(Date.now() - 1000, paginationStorageKey(CMD_KEY), CTX_KEY);
+          ).run(Date.now() - 1000, CMD_KEY, CTX_KEY);
 
           // Should return undefined
           expect(getPaginationState(CMD_KEY, CTX_KEY)).toBeUndefined();

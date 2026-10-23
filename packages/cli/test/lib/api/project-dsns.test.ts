@@ -164,7 +164,8 @@ describe.each([
     const first = await list({ limit: 149, cursor: "0:25:0" });
     expect(projectIds).toEqual(organization ? ["42"] : []);
     expect(first.data).toHaveLength(149);
-    expect(first.nextCursor).toContain("0:100:0");
+    // Page 0:100 was partly returned: 74 rows to skip, as zeros in is_prev.
+    expect(first.nextCursor).toBe(`0:100:${"0".repeat(75)}`);
     const second = await list({ limit: 50, cursor: first.nextCursor });
 
     expect(
@@ -175,9 +176,10 @@ describe.each([
     ).toEqual([
       ["75", "0:25:0"],
       ["75", "0:100:0"],
-      // -c next refetches the partly returned page with the walk's page size.
-      ["75", "0:100:0"],
-      ["75", "0:175:0"],
+      // -c next refetches the partly returned page; offset cursors take any
+      // page size, so it splits the 74 skipped + 50 requested rows evenly.
+      ["62", "0:100:0"],
+      ["62", "0:162:0"],
     ]);
     expect(second.nextCursor).toBeUndefined();
     expect([...first.data, ...second.data].map((key) => key.name)).toEqual(

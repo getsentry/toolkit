@@ -9,10 +9,7 @@
 
 import { describe, expect, test } from "vitest";
 import { getDatabase } from "../../../src/lib/db/index.js";
-import {
-  getPaginationState,
-  paginationStorageKey,
-} from "../../../src/lib/db/pagination.js";
+import { getPaginationState } from "../../../src/lib/db/pagination.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 useTestConfigDir("cache-corruption-");
@@ -27,13 +24,7 @@ function insertPaginationRow(cursorStack: string): void {
     `INSERT OR REPLACE INTO pagination_cursors
        (command_key, context, cursor_stack, page_index, expires_at)
      VALUES (?, ?, ?, ?, ?)`,
-  ).run(
-    paginationStorageKey(CMD_KEY),
-    CTX_KEY,
-    cursorStack,
-    0,
-    Date.now() + 60_000,
-  );
+  ).run(CMD_KEY, CTX_KEY, cursorStack, 0, Date.now() + 60_000);
 }
 
 function paginationRowCount(): number {
@@ -42,7 +33,7 @@ function paginationRowCount(): number {
     .query(
       "SELECT COUNT(*) AS n FROM pagination_cursors WHERE command_key = ? AND context = ?",
     )
-    .get(paginationStorageKey(CMD_KEY), CTX_KEY) as { n: number };
+    .get(CMD_KEY, CTX_KEY) as { n: number };
   return row.n;
 }
 
