@@ -253,8 +253,9 @@ one of these types and never reads `.resolved`.
 
 Resolvers need no command name: they read it from `this.commandPrefix`, which
 Stricli's `forCommand` and the SDK invoker set (test mock contexts set it
-too). In a `buildDeleteCommand` command, the target refuses to auto-detect, so
-delete commands don't call `requireExplicitTarget` for it.
+too). In a destructive command (`buildDeleteCommand`, or `buildCommand` with
+`destructive: true`), the target refuses to auto-detect, so those commands
+don't call `requireExplicitTarget` for it.
 
 Both steps are lazy (`lazyPositional` in `src/lib/positional-parse.ts`): the
 parse runs on the first `parsed` read and the resolver on the first

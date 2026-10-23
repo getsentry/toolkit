@@ -49,7 +49,10 @@ const echoTarget = orgProjectTarget(echoResolver);
 type EchoTarget = OrgProjectTarget<Awaited<ReturnType<typeof echoResolver>>>;
 
 /** Run `test cmd ...args`, recording what `target.resolved` yields. */
-async function runWithTarget(args: string[]): Promise<{
+async function runWithTarget(
+  args: string[],
+  { destructive = false } = {},
+): Promise<{
   resolved: unknown[];
   stderr: string;
   exitCode: number | undefined;
@@ -62,6 +65,7 @@ async function runWithTarget(args: string[]): Promise<{
   >({
     docs: { brief: "Takes a target" },
     auth: false,
+    destructive,
     parameters: {
       positional: {
         kind: "tuple",
@@ -125,6 +129,15 @@ describe("orgProjectTarget", () => {
     expect(resolved).toEqual([
       { parsed: { type: "auto-detect" }, cwd: "/work", commandName: "cmd" },
     ]);
+  });
+
+  test("a destructive: true command refuses an auto-detected target", async () => {
+    const { resolved, stderr, exitCode } = await runWithTarget([], {
+      destructive: true,
+    });
+    expect(resolved).toEqual([]);
+    expect(exitCode).toBe(EXIT.CONTEXT_MISSING);
+    expect(stderr).toContain("Auto-detection is disabled");
   });
 
   test("invalid input fails inside the command with the CliError exit code", async () => {

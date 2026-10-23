@@ -29,8 +29,9 @@
  *
  * Shared code that handles any positional (plural alias interception, `help`
  * recovery, telemetry) reads the raw input with {@link rawPositional}.
- * `buildDeleteCommand` calls {@link markDestructive} on its positionals, so
- * resolvers see `destructive: true` and can refuse to auto-detect.
+ * `buildCommand` calls {@link markDestructive} on the positionals of
+ * destructive commands (`destructive: true`, which `buildDeleteCommand` sets),
+ * so resolvers see `destructive: true` and can refuse to auto-detect.
  */
 
 import {

@@ -49,7 +49,7 @@ if (!skillContentExists) {
 
 const { routes } = await import("../src/app.js");
 const { isCommand, isRouteMap } = await import("../src/lib/introspect.js");
-const { parseOrgProjectTarget } =
+const { getCompletionTarget, ORG_PROJECT_TARGET } =
   await import("../src/lib/completion-target.js");
 
 /** Generated from the route tree, so not worth re-checking. */
@@ -215,7 +215,7 @@ function isTargetParam(param: PositionalParam | undefined): boolean {
     return false;
   }
   return (
-    param.parse === parseOrgProjectTarget ||
+    getCompletionTarget(param.parse) === ORG_PROJECT_TARGET ||
     TARGET_PLACEHOLDER_RE.test(param.placeholder ?? "")
   );
 }
