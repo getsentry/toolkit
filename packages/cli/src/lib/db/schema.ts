@@ -21,7 +21,7 @@ import type { Database } from "./sqlite.js";
 
 const _require = createRequire(import.meta.url);
 
-export const CURRENT_SCHEMA_VERSION = 19;
+export const CURRENT_SCHEMA_VERSION = 20;
 
 /** Environment variable to disable auto-repair */
 const NO_AUTO_REPAIR_ENV = "SENTRY_CLI_NO_AUTO_REPAIR";
@@ -262,6 +262,30 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
         default: "(unixepoch() * 1000)",
       },
     },
+  },
+  /**
+   * Entities seen during normal CLI usage, kept for shell completion.
+   *
+   * `sentry __complete` reads this table instead of calling the API, so it can
+   * suggest issue short IDs and dashboards the user has already listed or
+   * viewed. `kind` names the entity type (see `db/completion-cache.ts`),
+   * `value` is what completion inserts and `label` is the description shells
+   * show next to it. Capped per kind and org, expired with the other caches,
+   * and cleared on logout because titles are scoped to the user's permissions.
+   */
+  completion_cache: {
+    columns: {
+      kind: { type: "TEXT", notNull: true },
+      org_slug: { type: "TEXT", notNull: true },
+      value: { type: "TEXT", notNull: true },
+      label: { type: "TEXT" },
+      last_seen: {
+        type: "INTEGER",
+        notNull: true,
+        default: "(unixepoch() * 1000)",
+      },
+    },
+    compositePrimaryKey: ["kind", "org_slug", "value"],
   },
   project_root_cache: {
     columns: {
@@ -1010,6 +1034,12 @@ export function runMigrations(db: Database): void {
       addColumnIfMissing(db, "org_regions", "account_id", "TEXT");
       backfillOrgRegionAccounts(db);
     })();
+  }
+
+  // Migration 19 -> 20: Add completion_cache for issue and dashboard shell
+  // completion from entities seen during normal CLI usage.
+  if (currentVersion < 20) {
+    db.exec(EXPECTED_TABLES.completion_cache as string);
   }
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {

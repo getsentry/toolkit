@@ -7,8 +7,12 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  DASHBOARD_TARGET,
+  ISSUE_TARGET,
   ORG_PROJECT_TARGET,
   ORG_TARGET,
+  parseDashboardTarget,
+  parseIssueTarget,
   parseOrgProjectTarget,
   parseOrgTarget,
 } from "../../src/lib/completion-target.js";
@@ -22,6 +26,8 @@ import {
   buildCommandInfo,
   extractAllRoutes,
   extractCompletionTargets,
+  extractCompletionTargetPositions,
+  extractCompletionValueFlags,
   extractFlags,
   extractPositionals,
   extractRouteGroupCommands,
@@ -436,6 +442,8 @@ describe("extractCompletionTargets", () => {
     expect(extractCompletionTargets(topLevel)).toEqual({
       [ORG_TARGET]: ["trial"],
       [ORG_PROJECT_TARGET]: ["issue list", "issue rules view", "issue view"],
+      [ISSUE_TARGET]: [],
+      [DASHBOARD_TARGET]: [],
     });
   });
 
@@ -450,6 +458,22 @@ describe("extractCompletionTargets", () => {
     expect(extractCompletionTargets(topLevel)).toEqual({
       [ORG_TARGET]: [],
       [ORG_PROJECT_TARGET]: [],
+      [ISSUE_TARGET]: [],
+      [DASHBOARD_TARGET]: [],
+    });
+  });
+
+  test("classifies issue and dashboard positionals", () => {
+    const topLevel = makeRouteMap([
+      makeEntry("issue", commandWith(parseIssueTarget)),
+      makeEntry("dashboard", commandWith(parseDashboardTarget)),
+    ]);
+
+    expect(extractCompletionTargets(topLevel)).toEqual({
+      [ORG_TARGET]: [],
+      [ORG_PROJECT_TARGET]: [],
+      [ISSUE_TARGET]: ["issue"],
+      [DASHBOARD_TARGET]: ["dashboard"],
     });
   });
 
@@ -459,6 +483,81 @@ describe("extractCompletionTargets", () => {
     ]);
 
     expect(() => extractCompletionTargets(topLevel)).toThrow(/bad/);
+  });
+});
+
+describe("extractCompletionValueFlags", () => {
+  test("lists value-taking flags and aliases of commands with a target", () => {
+    const withFlags = makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: [
+            { placeholder: "dashboard", parse: parseDashboardTarget },
+          ],
+        },
+        flags: {
+          web: { kind: "boolean" },
+          period: { kind: "parsed" },
+          sort: { kind: "enum" },
+        },
+        aliases: { w: "web", t: "period" },
+      },
+    });
+    const noTarget = makeCommand({
+      parameters: { flags: { query: { kind: "parsed" } } },
+    });
+    const topLevel = makeRouteMap([
+      makeEntry("dashboard", makeRouteMap([makeEntry("view", withFlags)])),
+      makeEntry("api", noTarget),
+    ]);
+
+    expect(extractCompletionValueFlags(topLevel)).toEqual({
+      "dashboard view": ["--period", "--sort", "-t"],
+    });
+  });
+});
+
+describe("extractCompletionTargetPositions", () => {
+  test("lists target positionals of tuple commands only", () => {
+    const link = makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: [
+            { placeholder: "issue", parse: parseIssueTarget },
+            { placeholder: "url", parse: String },
+          ],
+        },
+      },
+    });
+    const merge = makeCommand({
+      parameters: {
+        positional: {
+          kind: "array",
+          parameter: { placeholder: "issue", parse: parseIssueTarget },
+        },
+      },
+    });
+    const noTarget = makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: [{ placeholder: "endpoint", parse: String }],
+        },
+      },
+    });
+    const topLevel = makeRouteMap([
+      makeEntry(
+        "issue",
+        makeRouteMap([makeEntry("link", link), makeEntry("merge", merge)]),
+      ),
+      makeEntry("api", noTarget),
+    ]);
+
+    expect(extractCompletionTargetPositions(topLevel)).toEqual({
+      "issue link": [0],
+    });
   });
 });
 

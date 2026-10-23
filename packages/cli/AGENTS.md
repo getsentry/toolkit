@@ -268,13 +268,20 @@ tests that call `command.loader()` keep passing raw strings. Positionals whose
 meaning depends on how many arguments were given, such as
 `[<org>/<project>/]<trace-id>`, keep parsing in `func`.
 
-**Shell completion:** Target positionals that take an org or project use a
-completion-aware parser from `src/lib/completion-target.ts` instead of
-`String`: `parseOrgProjectTarget` completes `org/`, `org/project`, and project
-aliases; `parseOrgTarget` completes org slugs only. `LIST_TARGET_POSITIONAL`
-and `LIST_ORG_TARGET_POSITIONAL` already use them. A parser tagged with
-`withCompletionTarget`, such as the `target-positional.ts` parsers, completes
-the same way.
+**Shell completion:** Target positionals that take an org, project, issue, or
+dashboard use a completion-aware parser from `src/lib/completion-target.ts`
+instead of `String`: `parseOrgProjectTarget` completes `org/`, `org/project`,
+and project aliases; `parseOrgTarget` completes org slugs only;
+`parseIssueTarget` adds cached issue short IDs; `parseDashboardTarget`
+completes cached dashboards. `LIST_TARGET_POSITIONAL`,
+`LIST_ORG_TARGET_POSITIONAL`, and `issueIdPositional` already use them. A
+parser tagged with `withCompletionTarget`, such as the `target-positional.ts`
+parsers, completes the same way.
+Issue and dashboard suggestions come from the `completion_cache` table, which
+the API layer seeds through `src/lib/api/completion-seed.ts` whenever issues or
+dashboards are listed or fetched. To complete a new entity type, add a kind in
+`src/lib/db/completion-cache.ts`, seed it from its API functions, and add a
+parser and completer.
 `pnpm run generate:completions` collects these into the gitignored
 `src/generated/completion-targets.json` that the `__complete` fast path reads.
 `project create` keeps its dedicated `name:platform` completer in

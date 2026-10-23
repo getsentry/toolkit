@@ -7,9 +7,10 @@
  * collects them at build time because the `__complete` fast path cannot boot
  * Stricli to walk the route tree.
  *
- * {@link parseOrgTarget} and {@link parseOrgProjectTarget} return their input
- * unchanged and only mark the kind. Parsers that also parse the value, such
- * as those in `target-positional.ts`, use the same tag.
+ * {@link parseOrgTarget}, {@link parseOrgProjectTarget},
+ * {@link parseIssueTarget}, and {@link parseDashboardTarget} return their
+ * input unchanged and only mark the kind. Parsers that also parse the value,
+ * such as those in `target-positional.ts`, use the same tag.
  */
 
 /** Completes organization slugs only (e.g. `org`, `org/version`, `org/id`). */
@@ -18,10 +19,24 @@ export const ORG_TARGET = "org";
 /** Completes `org/` prefixes, `org/project` pairs, and project aliases. */
 export const ORG_PROJECT_TARGET = "org/project";
 
-/** Every completion target kind, in a stable order. */
-export const COMPLETION_TARGETS = [ORG_TARGET, ORG_PROJECT_TARGET] as const;
+/** Completes everything {@link ORG_PROJECT_TARGET} does plus cached issue short IDs. */
+export const ISSUE_TARGET = "issue";
 
-/** Which cached slugs shell completion suggests for a target positional. */
+/**
+ * Completes `org/` prefixes and cached dashboards: `org/<id>` in the first
+ * positional, bare IDs after an org positional.
+ */
+export const DASHBOARD_TARGET = "dashboard";
+
+/** Every completion target kind, in a stable order. */
+export const COMPLETION_TARGETS = [
+  ORG_TARGET,
+  ORG_PROJECT_TARGET,
+  ISSUE_TARGET,
+  DASHBOARD_TARGET,
+] as const;
+
+/** Which cached values shell completion suggests for a target positional. */
 export type CompletionTarget = (typeof COMPLETION_TARGETS)[number];
 
 const COMPLETION_TARGET_KEY = Symbol("completionTarget");
@@ -48,6 +63,18 @@ export const parseOrgTarget = withCompletionTarget(
 /** Parser for positionals that start with `org/project`, a project, or an alias. */
 export const parseOrgProjectTarget = withCompletionTarget(
   ORG_PROJECT_TARGET,
+  (input: string): string => input,
+);
+
+/** Parser for positionals that name an issue (short ID, `org/ID`, ...). */
+export const parseIssueTarget = withCompletionTarget(
+  ISSUE_TARGET,
+  (input: string): string => input,
+);
+
+/** Parser for `[<org/project>] <dashboard-id-or-title>` positionals. */
+export const parseDashboardTarget = withCompletionTarget(
+  DASHBOARD_TARGET,
   (input: string): string => input,
 );
 

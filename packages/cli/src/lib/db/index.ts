@@ -280,6 +280,9 @@ function cleanupExpiredCaches(): void {
   database
     .query("DELETE FROM project_aliases WHERE last_accessed < ?")
     .run(expiryTime);
+  database
+    .query("DELETE FROM completion_cache WHERE last_seen < ?")
+    .run(expiryTime);
   // project_root_cache uses ttl_expires_at instead of last_accessed
   database
     .query("DELETE FROM project_root_cache WHERE ttl_expires_at < ?")

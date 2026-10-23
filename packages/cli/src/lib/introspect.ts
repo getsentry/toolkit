@@ -15,8 +15,6 @@ import {
   COMPLETION_TARGETS,
   type CompletionTarget,
   getCompletionTarget,
-  ORG_PROJECT_TARGET,
-  ORG_TARGET,
 } from "./completion-target.js";
 import {
   extractSchemaFields,
@@ -400,10 +398,10 @@ export type CompletionTargets = Record<CompletionTarget, string[]>;
 /**
  * Read a command's completion target from its positional parsers.
  *
- * A command completes org or org/project slugs when one of its positionals
- * uses `parseOrgTarget` or `parseOrgProjectTarget` (see
- * `completion-target.ts`). Mixing both kinds in one command is rejected
- * because `__complete` classifies whole commands, not argument positions.
+ * A command declares a completion target when one of its positionals uses a
+ * completion-aware parser such as `parseOrgTarget` (see
+ * `completion-target.ts`). Mixing kinds in one command is rejected because
+ * `__complete` classifies whole commands, not argument positions.
  *
  * @param command - Command to inspect
  * @param path - Command path, used in the error message
@@ -429,7 +427,7 @@ function getCommandCompletionTarget(
   }
   if (kinds.size > 1) {
     throw new Error(
-      `Command "${path}" mixes org and org/project completion targets`,
+      `Command "${path}" mixes completion targets: ${[...kinds].join(", ")}`,
     );
   }
   return kinds.values().next().value;
@@ -449,10 +447,9 @@ export function extractCompletionTargets(
   routeMap: RouteMap,
   prefix: readonly string[] = [],
 ): CompletionTargets {
-  const targets: CompletionTargets = {
-    [ORG_TARGET]: [],
-    [ORG_PROJECT_TARGET]: [],
-  };
+  const targets = Object.fromEntries(
+    COMPLETION_TARGETS.map((kind) => [kind, [] as string[]]),
+  ) as CompletionTargets;
 
   for (const entry of routeMap.getAllEntries()) {
     if (entry.hidden) {
@@ -480,6 +477,118 @@ export function extractCompletionTargets(
     targets[kind].sort();
   }
   return targets;
+}
+
+/** Value-taking flag spellings (`--name`, `-a`) per command path. */
+export type CompletionValueFlags = Record<string, string[]>;
+
+/**
+ * Spellings of a command's flags that consume the next word as their value.
+ *
+ * Every non-boolean flag counts, including hidden ones, because the parser
+ * still accepts them. Single-letter aliases are included as `-x`.
+ */
+function getCommandValueFlags(command: Command): string[] {
+  const flags = command.parameters.flags ?? {};
+  const names = new Set(
+    Object.entries(flags)
+      .filter(([, def]) => def.kind !== "boolean")
+      .map(([name]) => name),
+  );
+  const spellings = [...names].map((name) => `--${name}`);
+  for (const [alias, name] of Object.entries(
+    command.parameters.aliases ?? {},
+  )) {
+    if (names.has(name)) {
+      spellings.push(`-${alias}`);
+    }
+  }
+  return spellings.sort();
+}
+
+/**
+ * Collect the value-taking flags of every command with a completion target.
+ *
+ * `__complete` uses these to tell a flag value apart from a positional, so
+ * it does not suggest targets after `--period` or count `7d` as an
+ * argument. Commands without value flags are omitted.
+ *
+ * @param routeMap - Top-level Stricli route map
+ * @param prefix - Route segments above `routeMap` (used for recursion)
+ */
+export function extractCompletionValueFlags(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+): CompletionValueFlags {
+  const result: CompletionValueFlags = {};
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden) {
+      continue;
+    }
+    const segments = [...prefix, entry.name.original];
+    const target = entry.target;
+    if (isRouteMap(target)) {
+      Object.assign(result, extractCompletionValueFlags(target, segments));
+    } else if (isCommand(target)) {
+      const path = segments.join(" ");
+      if (!getCommandCompletionTarget(target, path)) {
+        continue;
+      }
+      const flags = getCommandValueFlags(target);
+      if (flags.length > 0) {
+        result[path] = flags;
+      }
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(result).sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
+
+/** Zero-based positional indices that take the target, per command path. */
+export type CompletionTargetPositions = Record<string, number[]>;
+
+/**
+ * Collect which positionals take the target in commands with a fixed list of
+ * positionals.
+ *
+ * `__complete` uses these so a later positional, such as the URL in
+ * `issue link <issue> <url>`, is not completed as a target. Commands with a
+ * variadic positional are omitted because every word takes the target.
+ *
+ * @param routeMap - Top-level Stricli route map
+ * @param prefix - Route segments above `routeMap` (used for recursion)
+ */
+export function extractCompletionTargetPositions(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+): CompletionTargetPositions {
+  const result: CompletionTargetPositions = {};
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden) {
+      continue;
+    }
+    const segments = [...prefix, entry.name.original];
+    const target = entry.target;
+    if (isRouteMap(target)) {
+      Object.assign(result, extractCompletionTargetPositions(target, segments));
+    } else if (isCommand(target)) {
+      const path = segments.join(" ");
+      const positional = target.parameters.positional;
+      if (
+        positional?.kind !== "tuple" ||
+        !getCommandCompletionTarget(target, path)
+      ) {
+        continue;
+      }
+      result[path] = positional.parameters.flatMap((param, index) =>
+        getCompletionTarget(param.parse) ? [index] : [],
+      );
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(result).sort(([a], [b]) => a.localeCompare(b)),
+  );
 }
 
 /** Matches the "sentry " prefix at the start of a command path. */

@@ -9,12 +9,20 @@
 import { describe, expect, test } from "vitest";
 import {
   completeAliases,
+  completeCachedEntities,
+  completeDashboards,
+  completeIssues,
   completeOrgSlashProject,
   completeOrgSlugs,
   completeProjectCreateSpec,
   completeProjectSlugs,
   getCompletions,
 } from "../../src/lib/complete.js";
+import {
+  cacheCompletionEntities,
+  DASHBOARD_ENTITY,
+  ISSUE_ENTITY,
+} from "../../src/lib/db/completion-cache.js";
 import { setProjectAliases } from "../../src/lib/db/project-aliases.js";
 import { setCachedProject } from "../../src/lib/db/project-cache.js";
 import {
@@ -85,6 +93,19 @@ describe("getCompletions: context detection", () => {
     // After --verbose (a boolean flag), completions should still work
     const result = getCompletions(["issue", "list", "--verbose"], "");
     expect(result.length).toBeGreaterThan(0);
+  });
+
+  test("returns nothing for the value of a value-taking flag", async () => {
+    await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
+    expect(getCompletions(["issue", "list", "--query"], "")).toEqual([]);
+    expect(getCompletions(["issue", "list", "-q"], "")).toEqual([]);
+    // Once the value is given, the next word is a target again.
+    expect(
+      getCompletions(["issue", "list", "--query", "is:unresolved"], "").length,
+    ).toBeGreaterThan(0);
+    expect(
+      getCompletions(["issue", "list", "--query=is:unresolved"], "").length,
+    ).toBeGreaterThan(0);
   });
 
   test("returns org/project completions for project list", async () => {
@@ -410,5 +431,219 @@ describe("completeAliases", () => {
 
     const result = completeAliases("a");
     expect(result.map((c) => c.value)).toEqual(["a", "abc"]);
+  });
+});
+
+describe("completeCachedEntities", () => {
+  test("returns nothing when no entities are cached", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    expect(completeCachedEntities(ISSUE_ENTITY, "")).toEqual([]);
+  });
+
+  test("lists the most recently seen entities first for an empty partial", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(ISSUE_ENTITY, "acme", [
+      { value: "CLI-2", label: "Newer" },
+      { value: "CLI-1", label: "Older" },
+    ]);
+
+    expect(completeCachedEntities(ISSUE_ENTITY, "")).toEqual([
+      { value: "CLI-2", description: "Newer" },
+      { value: "CLI-1", description: "Older" },
+    ]);
+  });
+
+  test("matches the partial against values and titles", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(ISSUE_ENTITY, "acme", [
+      { value: "CLI-1", label: "TypeError in checkout" },
+      { value: "WEB-7", label: "Timeout talking to db" },
+    ]);
+
+    expect(
+      completeCachedEntities(ISSUE_ENTITY, "cli").map((c) => c.value),
+    ).toEqual(["CLI-1"]);
+    expect(
+      completeCachedEntities(ISSUE_ENTITY, "checkout").map((c) => c.value),
+    ).toEqual(["CLI-1"]);
+  });
+
+  test("only suggests entities from orgs of the active credential", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(ISSUE_ENTITY, "foreign", [{ value: "SECRET-1" }]);
+
+    expect(completeCachedEntities(ISSUE_ENTITY, "")).toEqual([]);
+  });
+
+  test("qualifies values that exist in several orgs", async () => {
+    await seedOrgs([
+      { slug: "acme", name: "Acme" },
+      { slug: "beta", name: "Beta" },
+    ]);
+    cacheCompletionEntities(ISSUE_ENTITY, "acme", [{ value: "CLI-1" }]);
+    cacheCompletionEntities(ISSUE_ENTITY, "beta", [
+      { value: "CLI-1" },
+      { value: "API-3" },
+    ]);
+
+    expect(
+      completeCachedEntities(ISSUE_ENTITY, "")
+        .map((c) => c.value)
+        .sort(),
+    ).toEqual(["API-3", "acme/CLI-1", "beta/CLI-1"]);
+  });
+});
+
+describe("completeIssues", () => {
+  test("suggests org prefixes and cached short IDs", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(ISSUE_ENTITY, "acme", [
+      { value: "CLI-1A", label: "Crash on start" },
+    ]);
+
+    expect(completeIssues("")).toEqual([
+      { value: "acme/", description: "Acme" },
+      { value: "CLI-1A", description: "Crash on start" },
+    ]);
+  });
+
+  test("completes org-qualified short IDs and projects after a slash", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    await seedProjects([
+      {
+        orgId: "1",
+        projectId: "10",
+        orgSlug: "acme",
+        projectSlug: "cli",
+        projectName: "CLI",
+      },
+    ]);
+    cacheCompletionEntities(ISSUE_ENTITY, "acme", [
+      { value: "CLI-1A", label: "Crash on start" },
+    ]);
+
+    expect(completeIssues("acme/cl")).toEqual([
+      { value: "acme/cli", description: "CLI" },
+      { value: "acme/CLI-1A", description: "Crash on start" },
+    ]);
+    expect(completeIssues("nope/")).toEqual([]);
+  });
+
+  test("is used by issue commands", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(ISSUE_ENTITY, "acme", [{ value: "CLI-1A" }]);
+
+    for (const command of [
+      ["issue", "view"],
+      ["issue", "resolve"],
+      ["issue", "merge", "CLI-9"],
+      ["event", "list"],
+    ]) {
+      expect(getCompletions(command, "CLI").map((c) => c.value)).toContain(
+        "CLI-1A",
+      );
+    }
+    // List commands take an org/project target, not an issue.
+    expect(
+      getCompletions(["issue", "list"], "CLI").map((c) => c.value),
+    ).not.toContain("CLI-1A");
+  });
+
+  test("skips positionals that do not take an issue", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(ISSUE_ENTITY, "acme", [{ value: "CLI-1A" }]);
+
+    // `issue link <issue> <url>`: the second positional is a URL.
+    expect(
+      getCompletions(["issue", "link"], "CLI").map((c) => c.value),
+    ).toContain("CLI-1A");
+    expect(getCompletions(["issue", "link", "CLI-1A"], "")).toEqual([]);
+    expect(getCompletions(["issue", "unlink", "CLI-1A"], "")).toEqual([]);
+    expect(getCompletions(["issue", "resolve", "CLI-1A"], "")).toEqual([]);
+    // Variadic issue commands complete every positional.
+    expect(
+      getCompletions(["issue", "view", "CLI-9"], "CLI").map((c) => c.value),
+    ).toContain("CLI-1A");
+  });
+});
+
+describe("completeDashboards", () => {
+  test("suggests org prefixes and org-qualified dashboard IDs first", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(DASHBOARD_ENTITY, "acme", [
+      { value: "12", label: "Errors" },
+    ]);
+
+    expect(completeDashboards("", [])).toEqual([
+      { value: "acme/", description: "Acme" },
+      { value: "acme/12", description: "Errors" },
+    ]);
+    // A title finds its ID.
+    expect(completeDashboards("err", [])).toEqual([
+      { value: "acme/12", description: "Errors" },
+    ]);
+    expect(completeDashboards("acme/", [])).toEqual([
+      { value: "acme/12", description: "Errors" },
+    ]);
+  });
+
+  test("suggests bare IDs after an org positional", async () => {
+    await seedOrgs([
+      { slug: "acme", name: "Acme" },
+      { slug: "beta", name: "Beta" },
+    ]);
+    cacheCompletionEntities(DASHBOARD_ENTITY, "acme", [
+      { value: "12", label: "Errors" },
+    ]);
+    cacheCompletionEntities(DASHBOARD_ENTITY, "beta", [
+      { value: "34", label: "Latency" },
+    ]);
+
+    expect(completeDashboards("", ["acme/"])).toEqual([
+      { value: "12", description: "Errors" },
+    ]);
+    expect(completeDashboards("", ["beta"])).toEqual([
+      { value: "34", description: "Latency" },
+    ]);
+    expect(completeDashboards("", ["acme/", "12"])).toEqual([]);
+  });
+
+  test("skips flag values when counting positionals", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(DASHBOARD_ENTITY, "acme", [
+      { value: "12", label: "Errors" },
+    ]);
+
+    // The value of --period is not a dashboard.
+    expect(getCompletions(["dashboard", "view", "--period"], "")).toEqual([]);
+    expect(
+      getCompletions(["dashboard", "restore", "acme", "--revision"], ""),
+    ).toEqual([]);
+    // `7d` is the flag value, so the next word is still the first positional.
+    expect(
+      getCompletions(["dashboard", "view", "--period", "7d"], "acme/"),
+    ).toEqual([{ value: "acme/12", description: "Errors" }]);
+    expect(
+      getCompletions(["dashboard", "view", "--period", "7d", "acme"], ""),
+    ).toEqual([{ value: "12", description: "Errors" }]);
+    // Boolean flags do not consume a value.
+    expect(getCompletions(["dashboard", "view", "--web", "acme"], "")).toEqual([
+      { value: "12", description: "Errors" },
+    ]);
+  });
+
+  test("is used by dashboard commands that take an existing dashboard", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(DASHBOARD_ENTITY, "acme", [{ value: "12" }]);
+
+    for (const command of [
+      ["dashboard", "view"],
+      ["dashboard", "revisions"],
+      ["dashboard", "widget", "edit"],
+    ]) {
+      expect(getCompletions(command, "acme/").map((c) => c.value)).toEqual([
+        "acme/12",
+      ]);
+    }
   });
 });
