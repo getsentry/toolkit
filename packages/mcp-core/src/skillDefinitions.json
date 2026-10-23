@@ -5,7 +5,7 @@
     "description": "Read-only access to core Sentry data: issues, events, traces, replays, releases, cron monitors, uptime monitors, metric monitors, profiles, documentation, and project metadata",
     "defaultEnabled": true,
     "order": 1,
-    "toolCount": 47,
+    "toolCount": 48,
     "tools": [
       {
         "name": "find_alert_rules",
@@ -188,6 +188,11 @@
         "requiredScopes": ["project:read"]
       },
       {
+        "name": "report_sentry_problem",
+        "description": "Report a problem with Sentry itself to the Sentry team as User Feedback.\n\nUse this tool when you need to:\n- Report a Sentry MCP tool that errors, returns wrong data, or behaves differently than its description\n- Report a Sentry API endpoint that behaves differently than documented\n- Report Sentry documentation that is wrong, outdated, or missing\n\n<examples>\nreport_sentry_problem(surface='mcp', target='search_issues', expected='Issues matching is:unresolved', actual='Tool returned a schema validation error')\nreport_sentry_problem(surface='docs', target='https://docs.sentry.io/platforms/python/', expected='Install command for current SDK', actual='Page references a removed option')\n</examples>\n\n<hints>\n- Only report problems with Sentry products, not errors in the user's own application.\n- Tell the user what you will send before calling this tool.\n- Never include credentials, tokens, prompt text, source code, customer data, or other sensitive content.\n- Keep expected and actual short and factual.\n</hints>",
+        "requiredScopes": []
+      },
+      {
         "name": "search_agent_conversations",
         "description": "Search Sentry Agent Conversations, formerly called AI Conversations, and return one summary row per conversation.\n\nUse this tool to find or list Agent Conversations. Results are conversation summaries, not raw span rows.\nEach row includes title (when available), USD cost, tokens, call counts, previews, and other list metadata.\nUse get_agent_conversation_details with a conversationId to fetch the transcript. Use get_sentry_resource for Sentry conversation URLs.\n\n<examples>\nsearch_agent_conversations(organizationSlug='my-org', query='failed conversations', period='7d')\nsearch_agent_conversations(organizationSlug='my-org', query='checkout', project='backend')\n</examples>",
         "requiredScopes": ["event:read", "project:read"]
@@ -250,7 +255,7 @@
     "description": "Sentry's AI debugger that helps you analyze, root cause, and fix issues",
     "defaultEnabled": true,
     "order": 2,
-    "toolCount": 17,
+    "toolCount": 18,
     "tools": [
       {
         "name": "analyze_issue_with_seer",
@@ -291,6 +296,11 @@
         "name": "get_sentry_resource",
         "description": "Fetch a Sentry resource by URL, or by resourceType plus resourceId.\nPass a Sentry URL directly when possible; the resource type is auto-detected.\n\nSupports issues, events, traces, spans, agent conversations, replays, preprod snapshots, and snapshot images.\nTrace lookups return a condensed overview by default.\n\nAgent Conversations: A conversation is a set of spans sharing the same gen_ai.conversation.id. Use resourceType='ai_conversation' with a conversation ID, or pass a Sentry conversation URL, to fetch the transcript/details. To discover or list conversations, use search_agent_conversations. Conversations are NOT issues — do not use search_issues for conversation queries.\n\nFor preprod snapshot URLs (matching 'sentry.io/preprod/snapshots/'):\n- Without ?selectedSnapshot=: returns the snapshot diff summary (changed, added, removed images)\n- With ?selectedSnapshot=<image_file_name>: returns the image preview and metadata. Full-resolution snapshot image bytes are not available in this session.\n\nResource IDs:\n- snapshot: <snapshotId>\n\n<examples>\nget_sentry_resource(url='https://sentry.io/issues/PROJECT-123/')\nget_sentry_resource(resourceType='issue', organizationSlug='my-org', resourceId='PROJECT-123')\nget_sentry_resource(resourceType='ai_conversation', organizationSlug='my-org', resourceId='conversation-123')\nget_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/')\nget_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/?selectedSnapshot=login_screen.png')\n</examples>",
         "requiredScopes": ["event:read", "project:read"]
+      },
+      {
+        "name": "report_sentry_problem",
+        "description": "Report a problem with Sentry itself to the Sentry team as User Feedback.\n\nUse this tool when you need to:\n- Report a Sentry MCP tool that errors, returns wrong data, or behaves differently than its description\n- Report a Sentry API endpoint that behaves differently than documented\n- Report Sentry documentation that is wrong, outdated, or missing\n\n<examples>\nreport_sentry_problem(surface='mcp', target='search_issues', expected='Issues matching is:unresolved', actual='Tool returned a schema validation error')\nreport_sentry_problem(surface='docs', target='https://docs.sentry.io/platforms/python/', expected='Install command for current SDK', actual='Page references a removed option')\n</examples>\n\n<hints>\n- Only report problems with Sentry products, not errors in the user's own application.\n- Tell the user what you will send before calling this tool.\n- Never include credentials, tokens, prompt text, source code, customer data, or other sensitive content.\n- Keep expected and actual short and factual.\n</hints>",
+        "requiredScopes": []
       },
       {
         "name": "search_agent_conversations",
@@ -346,7 +356,7 @@
     "defaultEnabled": false,
     "deprecated": true,
     "order": 3,
-    "toolCount": 6,
+    "toolCount": 7,
     "tools": [
       {
         "name": "find_organizations",
@@ -369,6 +379,11 @@
         "requiredScopes": []
       },
       {
+        "name": "report_sentry_problem",
+        "description": "Report a problem with Sentry itself to the Sentry team as User Feedback.\n\nUse this tool when you need to:\n- Report a Sentry MCP tool that errors, returns wrong data, or behaves differently than its description\n- Report a Sentry API endpoint that behaves differently than documented\n- Report Sentry documentation that is wrong, outdated, or missing\n\n<examples>\nreport_sentry_problem(surface='mcp', target='search_issues', expected='Issues matching is:unresolved', actual='Tool returned a schema validation error')\nreport_sentry_problem(surface='docs', target='https://docs.sentry.io/platforms/python/', expected='Install command for current SDK', actual='Page references a removed option')\n</examples>\n\n<hints>\n- Only report problems with Sentry products, not errors in the user's own application.\n- Tell the user what you will send before calling this tool.\n- Never include credentials, tokens, prompt text, source code, customer data, or other sensitive content.\n- Keep expected and actual short and factual.\n</hints>",
+        "requiredScopes": []
+      },
+      {
         "name": "search_docs",
         "description": "Search Sentry documentation for SDK setup, instrumentation, and configuration guidance.\n\nUse this tool when you need to:\n- Set up Sentry SDK or framework integrations (Django, Flask, Express, Next.js, etc.)\n- Configure features like performance monitoring, error sampling, or release tracking\n- Implement custom instrumentation (spans, transactions, breadcrumbs)\n- Configure data scrubbing, filtering, or sampling rules\n\nReturns snippets only. Use the Sentry tool `get_doc` to fetch full documentation content.\n\n<examples>\n```\nsearch_docs(query='Django setup configuration SENTRY_DSN', guide='python/django')\nsearch_docs(query='source maps webpack upload', guide='javascript/nextjs')\n```\n</examples>\n\n<hints>\n- Use guide parameter to filter to specific technologies (e.g., 'javascript/nextjs')\n- Include specific feature names like 'beforeSend', 'tracesSampleRate', 'SENTRY_DSN'\n</hints>",
         "requiredScopes": []
@@ -386,7 +401,7 @@
     "description": "Resolve, assign, and update issues",
     "defaultEnabled": false,
     "order": 4,
-    "toolCount": 25,
+    "toolCount": 26,
     "tools": [
       {
         "name": "add_issue_note",
@@ -452,6 +467,11 @@
         "name": "link_issue",
         "description": "Link an existing external ticket or GitHub pull request to a Sentry issue by URL.\nSupports native Jira, GitHub/GitHub Enterprise, GitLab, Bitbucket, and Azure DevOps integrations, and installed Sentry Apps whose issue-link forms use single-value select or text fields.\nCreates a reference: it does not create a ticket, resolve the Sentry issue, or associate a commit. Use update_issue separately to change status or assignment.\nA repeated link returns already_linked. A different App association must be unlinked first.\nFor Apps, copy the canonical issue URL from the provider. Supply fields only when the installed App requires additional form values.\n<examples>\nlink_issue(organizationSlug='my-org', issueId='PROJECT-123', externalIssueUrl='https://github.com/example/repo/pull/42')\nlink_issue(issueUrl='https://my-org.sentry.io/issues/123/', externalIssueUrl='https://linear.app/example/issue/ENG-42/fix-crash')\n</examples>",
         "requiredScopes": ["event:write", "org:read"]
+      },
+      {
+        "name": "report_sentry_problem",
+        "description": "Report a problem with Sentry itself to the Sentry team as User Feedback.\n\nUse this tool when you need to:\n- Report a Sentry MCP tool that errors, returns wrong data, or behaves differently than its description\n- Report a Sentry API endpoint that behaves differently than documented\n- Report Sentry documentation that is wrong, outdated, or missing\n\n<examples>\nreport_sentry_problem(surface='mcp', target='search_issues', expected='Issues matching is:unresolved', actual='Tool returned a schema validation error')\nreport_sentry_problem(surface='docs', target='https://docs.sentry.io/platforms/python/', expected='Install command for current SDK', actual='Page references a removed option')\n</examples>\n\n<hints>\n- Only report problems with Sentry products, not errors in the user's own application.\n- Tell the user what you will send before calling this tool.\n- Never include credentials, tokens, prompt text, source code, customer data, or other sensitive content.\n- Keep expected and actual short and factual.\n</hints>",
+        "requiredScopes": []
       },
       {
         "name": "search_agent_conversations",
@@ -521,7 +541,7 @@
     "description": "Create and modify projects, teams, DSNs, cron monitor environments, uptime monitors, metric monitors, and alert rules",
     "defaultEnabled": false,
     "order": 5,
-    "toolCount": 23,
+    "toolCount": 24,
     "tools": [
       {
         "name": "add_team_to_project",
@@ -607,6 +627,11 @@
         "name": "remove_team_from_project",
         "description": "Revoke a team's access to an existing Sentry project.\n\nUse this tool when you need to:\n- Remove a team from a project\n- Revoke team access without changing project metadata\n- Check project team assignments before removing access\n\nBe careful when using this tool because it revokes project access.\n\n<examples>\nremove_team_from_project(organizationSlug='my-organization', projectSlug='my-project', teamSlug='my-team')\n</examples>\n\n<hints>\n- The team must already be assigned to the project.\n- This tool will not remove the last team assigned to a project.\n</hints>",
         "requiredScopes": ["project:write", "team:read", "org:read"]
+      },
+      {
+        "name": "report_sentry_problem",
+        "description": "Report a problem with Sentry itself to the Sentry team as User Feedback.\n\nUse this tool when you need to:\n- Report a Sentry MCP tool that errors, returns wrong data, or behaves differently than its description\n- Report a Sentry API endpoint that behaves differently than documented\n- Report Sentry documentation that is wrong, outdated, or missing\n\n<examples>\nreport_sentry_problem(surface='mcp', target='search_issues', expected='Issues matching is:unresolved', actual='Tool returned a schema validation error')\nreport_sentry_problem(surface='docs', target='https://docs.sentry.io/platforms/python/', expected='Install command for current SDK', actual='Page references a removed option')\n</examples>\n\n<hints>\n- Only report problems with Sentry products, not errors in the user's own application.\n- Tell the user what you will send before calling this tool.\n- Never include credentials, tokens, prompt text, source code, customer data, or other sensitive content.\n- Keep expected and actual short and factual.\n</hints>",
+        "requiredScopes": []
       },
       {
         "name": "update_alert_rule",

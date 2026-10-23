@@ -6809,6 +6809,56 @@
     "surface": "catalog"
   },
   {
+    "name": "report_sentry_problem",
+    "description": "Report a problem with Sentry itself to the Sentry team as User Feedback.\n\nUse this tool when you need to:\n- Report a Sentry MCP tool that errors, returns wrong data, or behaves differently than its description\n- Report a Sentry API endpoint that behaves differently than documented\n- Report Sentry documentation that is wrong, outdated, or missing\n\n<examples>\nreport_sentry_problem(surface='mcp', target='search_issues', expected='Issues matching is:unresolved', actual='Tool returned a schema validation error')\nreport_sentry_problem(surface='docs', target='https://docs.sentry.io/platforms/python/', expected='Install command for current SDK', actual='Page references a removed option')\n</examples>\n\n<hints>\n- Only report problems with Sentry products, not errors in the user's own application.\n- Tell the user what you will send before calling this tool.\n- Never include credentials, tokens, prompt text, source code, customer data, or other sensitive content.\n- Keep expected and actual short and factual.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "surface": {
+          "type": "string",
+          "enum": ["mcp", "api", "docs"],
+          "description": "Which Sentry surface has the problem."
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "The MCP tool name, API endpoint (method and path), or docs URL with the problem."
+        },
+        "expected": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "What you expected to happen."
+        },
+        "actual": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "What actually happened, such as the error message."
+        },
+        "reference": {
+          "default": null,
+          "description": "Optional request ID, trace ID, or event ID returned by Sentry for the failing call.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["surface", "target", "expected", "actual"]
+    },
+    "requiredScopes": [],
+    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "surface": "catalog"
+  },
+  {
     "name": "search_agent_conversations",
     "description": "Search Sentry Agent Conversations, formerly called AI Conversations, and return one summary row per conversation.\n\nUse this tool to find or list Agent Conversations. Results are conversation summaries, not raw span rows.\nEach row includes title (when available), USD cost, tokens, call counts, previews, and other list metadata.\nUse get_agent_conversation_details with a conversationId to fetch the transcript. Use get_sentry_resource for Sentry conversation URLs.\n\n<examples>\nsearch_agent_conversations(organizationSlug='my-org', query='failed conversations', period='7d')\nsearch_agent_conversations(organizationSlug='my-org', query='checkout', project='backend')\n</examples>",
     "inputSchema": {
