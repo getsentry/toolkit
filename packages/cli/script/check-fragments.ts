@@ -9,6 +9,8 @@
  *   4. Top-level fragments (e.g., configuration.md) exist
  *   5. Fragment content covers all subcommands in a route (warnings only)
  *   6. Fragments don't contain Examples sections (examples belong in docs.examples)
+ *   7. Fragment shell code blocks don't run `sentry` commands unless marked
+ *      with `<!-- allow-commands: <reason> -->` (see fragment-commands.ts)
  *
  * Usage:
  *   tsx script/check-fragments.ts            # Warnings for missing subcommands
@@ -18,6 +20,7 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import type { RouteInfo, RouteMap } from "../src/lib/introspect.js";
+import { findFragmentCommandIssues } from "./fragment-commands.js";
 import { markdownHeadings } from "./markdown.js";
 import { DOCS_FRAGMENTS } from "./paths.js";
 
@@ -118,6 +121,10 @@ for (const file of fragmentFiles) {
     errors.push(
       `Fragment contains an Examples section: ${FRAGMENTS_DIR}/${file} (move command examples to the command's docs.examples metadata so they appear in help, generated docs, and skills)`,
     );
+  }
+
+  for (const { line, message } of findFragmentCommandIssues(content)) {
+    errors.push(`${FRAGMENTS_DIR}/${file}:${line}: ${message}`);
   }
 }
 
@@ -283,7 +290,7 @@ for (const [routeName, route] of multiCommandRoutes) {
     const msg =
       `Fragment missing subcommand coverage: ${fragmentPath}\n` +
       `    Not documented: ${missing.join(", ")}\n` +
-      `    Hint: add a heading or code example for each (e.g., "sentry ${routeName} ${missing[0]}")`;
+      `    Hint: add docs.examples to each command, or mention it in a heading or prose (e.g., "sentry ${routeName} ${missing[0]}")`;
     if (isStrict) {
       errors.push(msg);
     } else {

@@ -74,6 +74,7 @@ that fits what they target, without changing the active account:
   `sentry auth status` show it with its user when the server reports one. It
   can't be selected with `sentry auth switch`.
 
+<!-- allow-commands: shows account selection across commands, not auth usage -->
 ```bash
 # Active account is personal; this uses the work account that knows acme-corp
 sentry issue list acme-corp/
