@@ -39,7 +39,8 @@ import type { SentryContext } from "../../../src/context.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as binary from "../../../src/lib/binary.js";
 import { CLI_VERSION } from "../../../src/lib/constants.js";
-import { getRawDatabase } from "../../../src/lib/db/index.js";
+import { backupDatabase, getUndoBackup } from "../../../src/lib/db/backup.js";
+import { getDbPath, getRawDatabase } from "../../../src/lib/db/index.js";
 import {
   clearInstallInfo,
   setInstallInfo,
@@ -49,6 +50,8 @@ import {
   setReleaseChannel,
 } from "../../../src/lib/db/release-channel.js";
 import { CURRENT_SCHEMA_VERSION } from "../../../src/lib/db/schema.js";
+import { Database } from "../../../src/lib/db/sqlite.js";
+import { getMetadata, setMetadata } from "../../../src/lib/db/utils.js";
 import { setVersionCheckInfo } from "../../../src/lib/db/version-check.js";
 import { extractInputUrl } from "../../../src/lib/fetch-input.js";
 import { TEST_TMP_DIR, useTestConfigDir } from "../../helpers.js";
@@ -1072,6 +1075,96 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     }
 
     expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+  });
+
+  test("backs up the database before the new version runs setup", async () => {
+    mockBinaryDownloadWithVersion("99.99.99");
+    let backupAtSetup: string | undefined;
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      backupAtSetup = getUndoBackup("99.99.99").version;
+      return fakeChildProcess(0);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "--method", "curl"], context);
+
+    expect(backupAtSetup).toBe(CLI_VERSION);
+  });
+
+  test("undo reinstalls the previous version with its own database", async () => {
+    const marker = "test.marker";
+    setMetadata(getRawDatabase(), { [marker]: "saved by 0.50.0" });
+    backupDatabase(getRawDatabase(), "0.50.0", CLI_VERSION);
+    setMetadata(getRawDatabase(), { [marker]: "changed since" });
+
+    const fakeContent = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
+    mockFetch(async (url) => {
+      if (extractInputUrl(url).includes("releases/tags/cli%400.50.0")) {
+        return new Response(JSON.stringify({ tag_name: "cli@0.50.0" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(gzipSync(fakeContent), { status: 200 });
+    });
+    let markerAtSetup: string | undefined;
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      const db = new Database(getDbPath());
+      try {
+        markerAtSetup = getMetadata(db, [marker]).get(marker);
+      } finally {
+        db.close();
+      }
+      return fakeChildProcess(0);
+    });
+
+    const { context, getOutput, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+
+    expect(getOutput()).toContain("Restored the database 0.50.0");
+    const setupCall = spawnedArgs.find((entry) => entry.args.includes("setup"));
+    expect(setupCall?.args).toContain("stable");
+    expect(markerAtSetup).toBe("saved by 0.50.0");
+    // This version's database is kept, so the undo can be undone in turn.
+    expect(getUndoBackup("0.50.0").version).toBe(CLI_VERSION);
+  });
+
+  test("undo explains that Homebrew can't install the earlier version", async () => {
+    backupDatabase(getRawDatabase(), "0.50.0", CLI_VERSION);
+
+    const { context, getOutput, errors, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "brew"], context);
+
+    const output = getOutput() + errors.join("");
+    expect(output).toContain("Homebrew can't install an earlier version");
+    expect(output).toContain("sentry cli upgrade undo --method curl");
+    expect(spawnedArgs).toEqual([]);
+  });
+
+  test("undo explains when there is nothing to undo", async () => {
+    mockBinaryDownloadWithVersion("99.99.99");
+
+    const { context, getOutput, errors, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+
+    expect(getOutput() + errors.join("")).toContain("Nothing to undo");
+    expect(spawnedArgs).toEqual([]);
   });
 
   test("leaves the database alone when upgrading", async () => {
