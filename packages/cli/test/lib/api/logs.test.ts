@@ -206,11 +206,11 @@ describe("listLogs", () => {
 
     const responses = [
       {
-        body: { data: makeRows(100, 0), meta: { fields: {} } },
-        link: `<https://sentry.io/next/>; rel="next"; results="true"; cursor="0:100:0"`,
+        body: { data: makeRows(75, 0), meta: { fields: {} } },
+        link: `<https://sentry.io/next/>; rel="next"; results="true"; cursor="0:75:0"`,
       },
       {
-        body: { data: makeRows(50, 100), meta: { fields: {} } },
+        body: { data: makeRows(75, 75), meta: { fields: {} } },
         link: `<https://sentry.io/next/>; rel="next"; results="false"; cursor=""`,
       },
     ];
@@ -230,6 +230,9 @@ describe("listLogs", () => {
 
     expect(logs).toHaveLength(150);
     expect(urls).toHaveLength(2);
+    for (const url of urls) {
+      expect(url).toContain("per_page=75");
+    }
   });
 });
 

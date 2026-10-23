@@ -6,6 +6,7 @@ import {
   fetchAllPages,
   isTextualContentType,
   MAX_PAGINATION_PAGES,
+  pageSizeForLimit,
   paginate,
   rawApiRequest,
   throwApiError,
@@ -888,7 +889,7 @@ describe("paginate", () => {
     expect(spy).toHaveBeenCalledWith(5, undefined);
   });
 
-  test("accumulates across pages when limit exceeds cap", async () => {
+  test("keeps one page size that divides the limit", async () => {
     const spy = vi.fn((perPage: number, cursor: string | undefined) => {
       const offset = cursor ? Number(cursor) : 0;
       const data = Array.from({ length: perPage }, (_, i) => offset + i);
@@ -900,32 +901,53 @@ describe("paginate", () => {
 
     const result = await paginate({ limit: 150 }, spy);
     expect(result.data).toEqual(Array.from({ length: 150 }, (_, i) => i));
-    expect(spy.mock.calls.map(([perPage]) => perPage)).toEqual([
-      API_MAX_PER_PAGE,
-      50,
-    ]);
+    expect(spy.mock.calls.map(([perPage]) => perPage)).toEqual([75, 75]);
     expect(result.nextCursor).toBe("150");
   });
 
-  test("drops nextCursor when a page exceeds the remaining budget", async () => {
+  test("stops a page early instead of trimming when no page size divides the limit", async () => {
+    const spy = vi.fn().mockResolvedValue({
+      data: Array.from({ length: 100 }, (_, i) => i),
+      nextCursor: "c1",
+    });
+
+    const result = await paginate({ limit: 101 }, spy);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(API_MAX_PER_PAGE, undefined);
+    expect(result.data).toHaveLength(100);
+    expect(result.nextCursor).toBe("c1");
+  });
+
+  test("drops nextCursor when the server ignores per_page", async () => {
     const spy = vi
       .fn()
       .mockResolvedValueOnce({
-        data: Array.from({ length: 100 }, (_, i) => i),
+        data: Array.from({ length: 75 }, (_, i) => i),
         nextCursor: "c1",
       })
       .mockResolvedValueOnce({
-        data: Array.from({ length: 100 }, (_, i) => 100 + i),
+        data: Array.from({ length: 100 }, (_, i) => 75 + i),
         nextCursor: "c2",
       });
 
     const result = await paginate({ limit: 150 }, spy);
     expect(result.data).toHaveLength(150);
     expect(result.nextCursor).toBeUndefined();
-    expect(spy.mock.calls.map(([perPage]) => perPage)).toEqual([
-      API_MAX_PER_PAGE,
-      50,
-    ]);
+  });
+});
+
+describe("pageSizeForLimit", () => {
+  test.each([
+    [1, 1],
+    [25, 25],
+    [100, 100],
+    [150, 75],
+    [200, 100],
+    [250, 50],
+    [1000, 100],
+    [101, API_MAX_PER_PAGE],
+  ])("limit %i uses pages of %i", (limit, perPage) => {
+    expect(pageSizeForLimit(limit)).toBe(perPage);
   });
 });
 

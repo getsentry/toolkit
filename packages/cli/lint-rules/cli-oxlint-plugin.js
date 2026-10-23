@@ -226,17 +226,41 @@ const rules = {
   "prefer-paginate-helper": rule(
     "Use paginate() from infrastructure.js instead of a raw limit.",
     (_context, file, report) =>
-      file.includes("/src/lib/api/") && !file.endsWith("/infrastructure.ts")
+      file.includes("/src/") && !file.endsWith("/lib/api/infrastructure.ts")
         ? {
             CallExpression(node) {
+              const limit = node.arguments[1];
               if (
                 node.callee.name === "autoPaginate" &&
-                node.arguments[1]?.name === "limit"
+                (limit?.name === "limit" || member(limit, "limit"))
               )
                 report(node);
             },
           }
         : {},
+  ),
+  "no-manual-pagination": rule(
+    "Use paginate() from infrastructure.js instead of a limit-bounded cursor loop.",
+    (_context, file, report) => {
+      if (
+        !file.includes("/src/") ||
+        file.endsWith("/lib/api/infrastructure.ts")
+      )
+        return {};
+      // A loop that follows cursors and also counts toward a limit is
+      // re-deriving per_page and cursor-after-trim rules that paginate() owns.
+      const check = (node) => {
+        const followsCursors =
+          containsIdentifier(node, "MAX_PAGINATION_PAGES") ||
+          containsIdentifier(node, "nextCursor");
+        if (followsCursors && containsIdentifier(node, "limit")) report(node);
+      };
+      return {
+        ForStatement: check,
+        WhileStatement: check,
+        DoWhileStatement: check,
+      };
+    },
   ),
   "no-namespace-import": rule(
     "Import only the names used by production code.",

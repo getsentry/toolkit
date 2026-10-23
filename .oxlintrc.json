@@ -71,6 +71,7 @@
         "sentry-cli/no-direct-target-resolution": "error",
         "sentry-cli/no-generic-is-record": "error",
         "sentry-cli/prefer-paginate-helper": "error",
+        "sentry-cli/no-manual-pagination": "error",
         "sentry-cli/no-namespace-import": "error",
         "no-restricted-imports": [
           "error",

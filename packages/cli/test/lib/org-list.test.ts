@@ -511,11 +511,10 @@ describe("handleOrgAll", () => {
     });
 
     expect(result.items).toHaveLength(250);
-    expect(listPaginated).toHaveBeenCalledTimes(3);
-    // Each request uses only the remaining item budget, capped at API_MAX_PER_PAGE,
-    // so the final page requests only the remaining 50 items (250 - 100 - 100).
+    // Every request uses the same page size (team and repo lists use
+    // page-number cursors), chosen to divide the limit: 250 = 5 x 50.
     expect(listPaginated.mock.calls.map((call) => call[1].perPage)).toEqual([
-      100, 100, 50,
+      50, 50, 50, 50, 50,
     ]);
     // The mock always returns a nextCursor, so hasMore is true and
     // the cursor points to the first item beyond the fetched 250.

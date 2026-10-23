@@ -478,22 +478,58 @@ export async function autoPaginate<T>(
 }
 
 /**
- * Wire a single-page fetcher into a limit-bounded, auto-paginating list call.
+ * Choose the single `per_page` used for every request of a {@link paginate} walk.
  *
- * Centralizes the two things every list endpoint kept re-deriving by hand and
- * occasionally got wrong (see #1458): capping `per_page` at
- * {@link API_MAX_PER_PAGE} and threading `limit` plus the initial cursor into
- * {@link autoPaginate}. Each request asks only for the remaining item budget,
- * so a partial final page can return a cursor without skipping trimmed rows.
- * Callers still own region resolution and
- * endpoint-specific query building inside `fetchPage`.
+ * Sentry's page-number paginators (`OffsetPaginator`, `ChainPaginator`,
+ * `CallbackPaginator`, used by projects, teams, members, repositories, and
+ * dashboard revisions) put the page size in the cursor
+ * (`<per_page>:<page>:<is_prev>`). A request that pairs that cursor with a
+ * different `per_page` reads the wrong window; `OffsetPaginator` returns the
+ * end of the old-sized page and silently skips rows. So the page size must
+ * not change during a walk, and asking for "the remaining budget" on the last
+ * page is unsafe.
+ *
+ * A page size that divides `limit` lets the walk end exactly on `limit`.
+ * Otherwise {@link paginate} stops one page early, returning fewer rows but a
+ * cursor that still resumes at the first unreturned row.
+ *
+ * @param limit - Total number of items the caller wants
+ * @returns Page size between 1 and {@link API_MAX_PER_PAGE}
+ */
+export function pageSizeForLimit(limit: number): number {
+  if (limit <= API_MAX_PER_PAGE) {
+    return Math.max(1, limit);
+  }
+  const minPages = Math.ceil(limit / API_MAX_PER_PAGE);
+  // Accept up to twice the minimum number of requests (pages of ~50+ rows).
+  for (let pages = minPages; pages <= minPages * 2; pages += 1) {
+    if (limit % pages === 0) {
+      return limit / pages;
+    }
+  }
+  return API_MAX_PER_PAGE;
+}
+
+/**
+ * Fetch up to `limit` rows and a cursor that resumes after the last one.
+ *
+ * This is the only supported way to build a limit-bounded list; the
+ * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops. It
+ * owns the two decisions those loops kept getting wrong (#1458, #1608): the
+ * `per_page` of every request ({@link pageSizeForLimit}) and when a server
+ * cursor may be returned. The returned `nextCursor` always points at the first
+ * row the caller has not received; it is dropped only if the server ignored
+ * `per_page` and the rows had to be trimmed.
+ *
+ * Callers own region resolution and query building inside `fetchPage`, and
+ * must send `perPage` as the request's `per_page` unchanged.
  *
  * @param options - Caller list options; `limit` bounds total rows, `cursor` is the start cursor
- * @param fetchPage - Fetches one page given the capped `perPage` and a page cursor
+ * @param fetchPage - Fetches one page given the page size and a page cursor
  * @param defaultLimit - Applied when `options.limit` is undefined
- * @returns Accumulated items with optional nextCursor
+ * @returns Up to `limit` items with optional nextCursor
  */
-export function paginate<T>(
+export async function paginate<T>(
   options: { limit?: number; cursor?: string },
   fetchPage: (
     perPage: number,
@@ -502,19 +538,31 @@ export function paginate<T>(
   defaultLimit = 10,
 ): Promise<PaginatedResponse<T[]>> {
   const limit = options.limit ?? defaultLimit;
-  let remaining = limit;
-  return autoPaginate(
-    async (cursor) => {
-      const result = await fetchPage(
-        Math.min(remaining, API_MAX_PER_PAGE),
-        cursor,
-      );
-      remaining -= result.data.length;
-      return result;
-    },
-    limit,
-    options.cursor,
+  const perPage = pageSizeForLimit(limit);
+  const rows: T[] = [];
+  let cursor = options.cursor;
+
+  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
+    const { data, nextCursor } = await fetchPage(perPage, cursor);
+    rows.push(...data);
+
+    if (rows.length > limit) {
+      // The server ignored `per_page`; its cursor would skip the trimmed rows.
+      return { data: rows.slice(0, limit) };
+    }
+    // Stop before a page that cannot fit: trimming it would leave no cursor
+    // that resumes at the first row the caller has not received.
+    if (!nextCursor || rows.length + perPage > limit) {
+      return { data: rows, nextCursor };
+    }
+    cursor = nextCursor;
+  }
+
+  logger.warn(
+    `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${rows.length} items). ` +
+      "Use the returned cursor to continue.",
   );
+  return { data: rows, nextCursor: cursor };
 }
 
 /**

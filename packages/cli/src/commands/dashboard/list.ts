@@ -293,6 +293,9 @@ async function fetchDashboards(
   const allTitles: string[] = [];
   let cursorToStore: string | undefined;
 
+  // Filters titles client-side, so it cannot count rows with paginate(). It
+  // keeps one page size per walk and resumes mid-page via afterId bookmarks.
+  // oxlint-disable-next-line sentry-cli/no-manual-pagination
   for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
     const { data, nextCursor } = await listDashboardsPaginated(orgSlug, {
       perPage: opts.perPage,

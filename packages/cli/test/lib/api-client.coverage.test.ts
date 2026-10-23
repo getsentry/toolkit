@@ -437,7 +437,7 @@ describe("issues.ts", () => {
       expect(result.nextCursor).toBe("has-more");
     });
 
-    test("uses the remaining limit on the final page and preserves its cursor", async () => {
+    test("keeps one page size that divides the limit and preserves the last cursor", async () => {
       const requestedLimits: string[] = [];
       let callCount = 0;
 
@@ -446,8 +446,7 @@ describe("issues.ts", () => {
         const req = new Request(input!, init);
         const url = new URL(req.url);
         requestedLimits.push(url.searchParams.get("limit") ?? "");
-        const count = callCount === 3 ? 50 : 100;
-        const issues = Array.from({ length: count }, (_, index) =>
+        const issues = Array.from({ length: 50 }, (_, index) =>
           mockIssue({ id: `${callCount}-${index}` }),
         );
         return new Response(JSON.stringify(issues), {
@@ -464,8 +463,8 @@ describe("issues.ts", () => {
       });
 
       expect(result.issues).toHaveLength(250);
-      expect(requestedLimits).toEqual(["100", "100", "50"]);
-      expect(result.nextCursor).toBe("cursor-4");
+      expect(requestedLimits).toEqual(["50", "50", "50", "50", "50"]);
+      expect(result.nextCursor).toBe("cursor-6");
     });
 
     test("accepts startCursor option", async () => {

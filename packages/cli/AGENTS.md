@@ -411,24 +411,28 @@ that fits your use case):
 **Auto-pagination for large limits:**
 
 When `--limit` exceeds `API_MAX_PER_PAGE` (100), list commands MUST transparently
-fetch multiple pages to fill the requested limit. Cap `perPage` at
-`Math.min(flags.limit, API_MAX_PER_PAGE)` and loop until `results.length >= limit`
-or pages are exhausted. This matches the `listIssuesAllPages` pattern.
+fetch multiple pages to fill the requested limit. Always do this with
+`paginate()` from `src/lib/api/infrastructure.ts`; never write the cursor loop
+yourself. The `sentry-cli/no-manual-pagination` lint rule rejects loops that
+follow cursors and count toward a limit.
 
 ```typescript
-const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
-for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-  const { data, nextCursor } = await listPaginated(org, { perPage, cursor });
-  results.push(...data);
-  if (results.length >= flags.limit || !nextCursor) break;
-  cursor = nextCursor;
-}
+const { data, nextCursor } = await paginate(
+  { limit: flags.limit, cursor },
+  (perPage, pageCursor) =>
+    listPaginated(org, { perPage, cursor: pageCursor }),
+);
 ```
 
-Never pass a `per_page` value larger than `API_MAX_PER_PAGE` to the API — the
-server silently caps it, causing the command to return fewer items than requested.
+Pass `perPage` to the request unchanged. `paginate()` keeps one page size for
+the whole walk because Sentry's page-number paginators (`OffsetPaginator`,
+used by projects, teams, members, repositories, and dashboard revisions)
+encode the page size in the cursor; asking for "the remaining budget" on the
+last page makes them skip rows. It also only returns a cursor that resumes at
+the first row the caller has not received. Test pagination changes against
+the paginator models in `test/lib/paginate.property.test.ts`.
 
-Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/list.ts`
+Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/revisions.ts`
 
 ### ID Validation
 

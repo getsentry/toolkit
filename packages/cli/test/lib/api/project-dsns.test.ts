@@ -144,7 +144,7 @@ describe.each([
     expect(projectIds.sort()).toEqual(organization ? ["42", "7"] : []);
   });
 
-  test("forwards page budgets and cursors, reusing project lookups across pages", async () => {
+  test("keeps one page size per walk and forwards cursors, reusing project lookups", async () => {
     const { requests, projectIds } = mockKeys((url) => {
       expect(url.pathname).toBe(path);
       expect(url.searchParams.get("project")).toBe(organization ? "-1" : null);
@@ -172,8 +172,8 @@ describe.each([
         return [query.get("per_page"), query.get("cursor")];
       }),
     ).toEqual([
-      ["100", "0:25:0"],
-      ["50", "0:125:0"],
+      ["75", "0:25:0"],
+      ["75", "0:100:0"],
       ["50", "0:175:0"],
     ]);
     expect(second.nextCursor).toBeUndefined();

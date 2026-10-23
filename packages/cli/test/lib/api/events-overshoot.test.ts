@@ -4,13 +4,13 @@
  * Two bugs framed this behavior:
  * 1. The original skip bug: trimming an overshooting page while returning the
  *    server's next-page cursor skipped the trimmed tail on `-c next`.
- * 2. The overcorrection: dropping the cursor on overshoot stranded all events
- *    past the first `limit`, so `sentry issue events` could never page forward.
+ * 2. The overcorrection: without `per_page`, every page overshot the limit and
+ *    dropping the cursor stranded all events past the first `limit`.
  *
- * The fix caps page size with `per_page = min(limit, API_MAX_PER_PAGE)` so the
- * server cursor is page-aligned, and trims defensively while PRESERVING the
- * cursor (the events cursor is offset-based, so resuming re-includes any trimmed
- * tail). These tests pin both the `per_page` request and the cursor preservation.
+ * `per_page` now matches the walk's page size, so a conforming server never
+ * overshoots and its cursor stays usable. If a server still returns more rows
+ * than asked, its cursor was computed from its own page size and would skip
+ * the trimmed rows, so it is dropped (the shared `paginate()` contract).
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -72,7 +72,7 @@ describe("listIssueEvents pagination", () => {
     expect(new URL(capturedUrl).searchParams.get("per_page")).toBe("100");
   });
 
-  test("trims to limit but PRESERVES nextCursor when a page overshoots", async () => {
+  test("trims to limit and drops nextCursor when a page overshoots", async () => {
     // Server ignores per_page and returns 5 with a next cursor; caller wants 2.
     globalThis.fetch = mockFetch(
       async () =>
@@ -90,9 +90,8 @@ describe("listIssueEvents pagination", () => {
     expect(result.data).toHaveLength(2);
     expect(result.data[0]?.id).toBe("evt-0");
     expect(result.data[1]?.id).toBe("evt-1");
-    // Cursor preserved so `-c next` can advance; the offset-based events cursor
-    // re-includes the trimmed tail rather than skipping it.
-    expect(result.nextCursor).toBe("page2");
+    // The server cursor resumes after its 5-row page and would skip evt-2..4.
+    expect(result.nextCursor).toBeUndefined();
   });
 
   test("preserves nextCursor when the page exactly fills the limit", async () => {

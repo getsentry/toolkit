@@ -266,13 +266,13 @@ describe("queryEvents", () => {
   test("auto-paginates when limit exceeds API_MAX_PER_PAGE", async () => {
     const { getCapturedUrls } = mockSequential([
       {
-        body: { data: makeRows(100), meta: PAGE_META },
+        body: { data: makeRows(75), meta: PAGE_META },
         headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
+          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:75:0"`,
         },
       },
       {
-        body: { data: makeRows(50), meta: PAGE_META },
+        body: { data: makeRows(75), meta: PAGE_META },
         headers: {
           Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
         },
@@ -288,20 +288,24 @@ describe("queryEvents", () => {
     expect(result.data.meta?.fields).toEqual(PAGE_META.fields);
     expect(result.nextCursor).toBeUndefined();
     expect(getCapturedUrls()).toHaveLength(2);
+    for (const url of getCapturedUrls()) {
+      expect(url).toContain("per_page=75");
+    }
   });
 
   test("trims results and drops nextCursor when overshoot", async () => {
     mockSequential([
       {
-        body: { data: makeRows(100), meta: PAGE_META },
+        body: { data: makeRows(60), meta: PAGE_META },
         headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
+          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:60:0"`,
         },
       },
       {
+        // Server ignores per_page=60.
         body: { data: makeRows(100), meta: PAGE_META },
         headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:200:0"`,
+          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:160:0"`,
         },
       },
     ]);
