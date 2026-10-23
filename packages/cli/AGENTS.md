@@ -476,6 +476,14 @@ pass these cursors back through `paginate()`; never send them to an API
 request directly. Test pagination changes against the paginator models in
 `test/lib/paginate.property.test.ts`.
 
+A fresh walk splits `--limit` evenly over the fewest requests (201 → 3 × 67),
+so the last request never fetches a full page for a few rows. CLI cursors this
+version cannot read (another `cli<N>~` format, or a damaged one) are ignored
+with a warning and the walk starts from the first page. Stored `-c next`
+history is namespaced by `CURSOR_FORMAT` in `src/lib/constants.ts`, so CLI
+versions never resume from each other's cursors after an upgrade or
+downgrade. Bump `CURSOR_FORMAT` whenever the cursor format changes.
+
 Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/revisions.ts`
 
 ### ID Validation

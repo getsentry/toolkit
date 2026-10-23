@@ -138,3 +138,25 @@ describe.each(paginators)("property: paginate over $name", ({ make }) => {
     );
   });
 });
+
+test("property: a fresh walk uses the fewest requests without overfetching", async () => {
+  await fcAssert(
+    asyncProperty(
+      integer({ min: 1, max: API_MAX_PER_PAGE * 10 }),
+      async (limit) => {
+        const requested: number[] = [];
+        const fetchPage = genericOffsetPaginator(limit * 2);
+        await paginate({ limit }, (perPage, cursor) => {
+          requested.push(perPage);
+          return fetchPage(perPage, cursor);
+        });
+        // e.g. 201 rows: 3 requests of 67, not 100 + 100 + 100.
+        const requests = Math.ceil(limit / API_MAX_PER_PAGE);
+        expect(requested).toHaveLength(requests);
+        const fetched = requested.reduce((sum, perPage) => sum + perPage, 0);
+        expect(fetched - limit).toBeLessThan(requests);
+      },
+    ),
+    { numRuns: DEFAULT_NUM_RUNS },
+  );
+});

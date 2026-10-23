@@ -12,6 +12,7 @@
  * Cursors expire after a short TTL to prevent stale pagination.
  */
 
+import { CURSOR_FORMAT } from "../constants.js";
 import { ValidationError } from "../errors.js";
 import { CURSOR_KEYWORDS } from "../list-command.js";
 import type { ResolvedTarget } from "../resolve-target.js";
@@ -22,6 +23,20 @@ import { runUpsert } from "./utils.js";
 
 /** Default TTL for stored cursors: 5 minutes */
 const CURSOR_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Key under which a command's cursor history is stored.
+ *
+ * Namespaced by {@link CURSOR_FORMAT} so a CLI upgrade or downgrade never
+ * resumes from a cursor written in another format: each version only sees
+ * its own history, and `-c next` after switching versions reports that no
+ * next page is saved until the command runs once without `--cursor`.
+ *
+ * @param commandKey - Command identifier (e.g., "trace-list")
+ */
+export function paginationStorageKey(commandKey: string): string {
+  return `${commandKey}@${CURSOR_FORMAT}`;
+}
 
 /** Direction derived from a `--cursor` flag value. */
 export type CursorDirection = "next" | "prev" | "first";
@@ -69,11 +84,12 @@ export function getPaginationState(
   contextKey: string,
 ): PaginationState | undefined {
   const db = getDatabase();
+  const storageKey = paginationStorageKey(commandKey);
   const row = db
     .query(
       "SELECT cursor_stack, page_index, expires_at FROM pagination_cursors WHERE command_key = ? AND context = ?",
     )
-    .get(commandKey, contextKey) as PaginationCursorRow | undefined;
+    .get(storageKey, contextKey) as PaginationCursorRow | undefined;
 
   if (!row) {
     return;
@@ -82,7 +98,7 @@ export function getPaginationState(
   if (row.expires_at <= Date.now()) {
     db.query(
       "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?",
-    ).run(commandKey, contextKey);
+    ).run(storageKey, contextKey);
     return;
   }
 
@@ -96,7 +112,7 @@ export function getPaginationState(
   if (!stack) {
     db.query(
       "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?",
-    ).run(commandKey, contextKey);
+    ).run(storageKey, contextKey);
     return;
   }
 
@@ -122,7 +138,7 @@ function savePaginationState(
     db,
     "pagination_cursors",
     {
-      command_key: commandKey,
+      command_key: paginationStorageKey(commandKey),
       context: contextKey,
       cursor_stack: JSON.stringify(state.stack),
       page_index: state.index,
@@ -311,7 +327,7 @@ export function clearPaginationState(
   const db = getDatabase();
   db.query(
     "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?",
-  ).run(commandKey, contextKey);
+  ).run(paginationStorageKey(commandKey), contextKey);
 }
 
 /**

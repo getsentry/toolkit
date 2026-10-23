@@ -160,10 +160,11 @@ describe.each([
       );
     });
 
-    const first = await list({ limit: 150, cursor: "0:25:0" });
+    // 149 rows split as 2 x 75, so the first call stops inside page 2.
+    const first = await list({ limit: 149, cursor: "0:25:0" });
     expect(projectIds).toEqual(organization ? ["42"] : []);
-    expect(first.data).toHaveLength(150);
-    expect(first.nextCursor).toContain("0:125:0");
+    expect(first.data).toHaveLength(149);
+    expect(first.nextCursor).toContain("0:100:0");
     const second = await list({ limit: 50, cursor: first.nextCursor });
 
     expect(
@@ -172,10 +173,11 @@ describe.each([
         return [query.get("per_page"), query.get("cursor")];
       }),
     ).toEqual([
-      ["100", "0:25:0"],
-      ["100", "0:125:0"],
+      ["75", "0:25:0"],
+      ["75", "0:100:0"],
       // -c next refetches the partly returned page with the walk's page size.
-      ["100", "0:125:0"],
+      ["75", "0:100:0"],
+      ["75", "0:175:0"],
     ]);
     expect(second.nextCursor).toBeUndefined();
     expect([...first.data, ...second.data].map((key) => key.name)).toEqual(

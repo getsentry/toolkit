@@ -1,13 +1,18 @@
 /**
- * Unit tests for pagination context key builders.
+ * Unit tests for pagination context key builders and cursor storage.
  */
 
 import { describe, expect, test } from "vitest";
+import { getDatabase } from "../../../src/lib/db/index.js";
 import {
+  advancePaginationState,
   buildMultiTargetContextKey,
   buildOrgContextKey,
   buildPaginationContextKey,
+  clearPaginationState,
+  resolveCursor,
 } from "../../../src/lib/db/pagination.js";
+import { useTestConfigDir } from "../../helpers.js";
 
 describe("buildPaginationContextKey", () => {
   test("builds simple org-scoped key", () => {
@@ -75,5 +80,53 @@ describe("buildOrgContextKey", () => {
     const orgKey = buildOrgContextKey("test-org");
     const directKey = buildPaginationContextKey("org", "test-org");
     expect(orgKey).toBe(directKey);
+  });
+});
+
+describe("cursor storage across CLI versions", () => {
+  useTestConfigDir("pagination-versions-");
+
+  const CMD = "trace-list";
+  const CTX = "host:sentry.io|type:org:my-org";
+
+  /** Write a row the way a CLI version without the format namespace did. */
+  function writeUnversionedRow(stack: string[]): void {
+    getDatabase()
+      .query(
+        `INSERT OR REPLACE INTO pagination_cursors
+           (command_key, context, cursor_stack, page_index, expires_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(CMD, CTX, JSON.stringify(stack), 0, Date.now() + 60_000);
+  }
+
+  function unversionedStack(): string | undefined {
+    const row = getDatabase()
+      .query(
+        "SELECT cursor_stack FROM pagination_cursors WHERE command_key = ? AND context = ?",
+      )
+      .get(CMD, CTX) as { cursor_stack: string } | undefined;
+    return row?.cursor_stack;
+  }
+
+  test("ignores history written in another cursor format", () => {
+    writeUnversionedRow(["", "1735689600:0:0"]);
+    expect(() => resolveCursor("next", CMD, CTX)).toThrow(
+      "No next page saved for this query",
+    );
+  });
+
+  test("never overwrites or clears another format's history", () => {
+    writeUnversionedRow(["", "1735689600:0:0"]);
+    advancePaginationState(CMD, CTX, "first", "cli1~100~0~abc");
+
+    expect(resolveCursor("next", CMD, CTX).cursor).toBe("cli1~100~0~abc");
+    expect(unversionedStack()).toBe(JSON.stringify(["", "1735689600:0:0"]));
+
+    clearPaginationState(CMD, CTX);
+    expect(() => resolveCursor("next", CMD, CTX)).toThrow(
+      "No next page saved for this query",
+    );
+    expect(unversionedStack()).toBe(JSON.stringify(["", "1735689600:0:0"]));
   });
 });

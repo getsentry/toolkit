@@ -19,18 +19,14 @@ import * as Sentry from "@sentry/node-core/light";
 import { type GenericSchema, safeParse } from "valibot";
 
 import { extractRequiredScopes } from "../api-scope.js";
+import { CURSOR_FORMAT } from "../constants.js";
 import {
   type CredentialContext,
   getActiveEnvVarName,
   isEnvTokenActive,
 } from "../db/auth.js";
 import { getEnv } from "../env.js";
-import {
-  ApiError,
-  AuthError,
-  stringifyUnknown,
-  ValidationError,
-} from "../errors.js";
+import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -483,7 +479,10 @@ export async function autoPaginate<T>(
 }
 
 /** Marks cursors produced by {@link paginate}; Sentry cursors never use it. */
-const PAGE_CURSOR_PREFIX = "cli1~";
+const PAGE_CURSOR_PREFIX = `${CURSOR_FORMAT}~`;
+
+/** Any CLI cursor format, including ones from older or newer CLI versions. */
+const CLI_CURSOR_RE = /^cli\d+~/;
 
 /**
  * Where a {@link paginate} walk resumes: the server cursor that fetches the
@@ -502,32 +501,53 @@ function encodePageCursor({ cursor, perPage, skip }: PagePosition): string {
 
 /**
  * Decode a cursor from {@link paginate}, or treat anything else as a raw
- * server cursor (older stored cursors, or one pasted from an API response).
+ * server cursor (one pasted from an API response or older CLI output).
+ *
+ * A CLI cursor this version cannot read (another format version, or a
+ * damaged one) is ignored with a warning and the walk starts from the first
+ * page, so a stale cursor never fails a command or reaches the API.
  */
 function decodePageCursor(
   raw: string | undefined,
 ): Partial<PagePosition> & { cursor: string | undefined } {
-  if (!raw?.startsWith(PAGE_CURSOR_PREFIX)) {
+  if (!(raw && CLI_CURSOR_RE.test(raw))) {
     return { cursor: raw };
   }
-  const [perPage, skip, ...server] = raw
-    .slice(PAGE_CURSOR_PREFIX.length)
-    .split("~");
-  const position = {
-    perPage: Number(perPage),
-    skip: Number(skip),
-    cursor: server.join("~") || undefined,
-  };
-  if (
-    !Number.isInteger(position.perPage) ||
-    position.perPage < 1 ||
-    position.perPage > API_MAX_PER_PAGE ||
-    !Number.isInteger(position.skip) ||
-    position.skip < 0
-  ) {
-    throw new ValidationError(`Invalid pagination cursor '${raw}'.`, "cursor");
+  if (raw.startsWith(PAGE_CURSOR_PREFIX)) {
+    const [perPage, skip, ...server] = raw
+      .slice(PAGE_CURSOR_PREFIX.length)
+      .split("~");
+    const position = {
+      perPage: Number(perPage),
+      skip: Number(skip),
+      cursor: server.join("~") || undefined,
+    };
+    if (
+      Number.isInteger(position.perPage) &&
+      position.perPage >= 1 &&
+      position.perPage <= API_MAX_PER_PAGE &&
+      Number.isInteger(position.skip) &&
+      position.skip >= 0
+    ) {
+      return position;
+    }
   }
-  return position;
+  logger.warn(
+    "Ignoring a pagination cursor this CLI version cannot read; starting from the first page.",
+  );
+  return { cursor: undefined };
+}
+
+/**
+ * Page size for a walk that starts fresh: the fewest requests that can hold
+ * `limit` rows, split as evenly as possible so the last request is not a
+ * full page for a few rows (201 rows → 3 pages of 67, not 100 + 100 + 100).
+ */
+function pageSizeForLimit(limit: number): number {
+  if (limit <= API_MAX_PER_PAGE) {
+    return Math.max(1, limit);
+  }
+  return Math.ceil(limit / Math.ceil(limit / API_MAX_PER_PAGE));
 }
 
 /**
@@ -538,7 +558,8 @@ function decodePageCursor(
  * owns the decisions those loops kept getting wrong (#1458, #1608):
  *
  * - Every request of a walk, including later `-c next` calls with a different
- *   `--limit`, uses the `per_page` of its first request. Sentry's page-number
+ *   `--limit`, uses the `per_page` of its first request
+ *   ({@link pageSizeForLimit}). Sentry's page-number
  *   paginators (`OffsetPaginator`, used by projects, teams, members,
  *   repositories, and dashboard revisions) put the page size in the cursor
  *   (`<per_page>:<page>:<is_prev>`), and pairing it with another `per_page`
@@ -570,8 +591,7 @@ export async function paginate<T>(
 ): Promise<PaginatedResponse<T[]>> {
   const limit = options.limit ?? defaultLimit;
   const start = decodePageCursor(options.cursor);
-  const perPage =
-    start.perPage ?? Math.max(1, Math.min(limit, API_MAX_PER_PAGE));
+  const perPage = start.perPage ?? pageSizeForLimit(limit);
   let cursor = start.cursor;
   let skip = start.skip ?? 0;
   const rows: T[] = [];

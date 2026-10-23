@@ -26,6 +26,16 @@ export const DEFAULT_SENTRY_HOST = "sentry.io";
 export const DEFAULT_SENTRY_URL = `https://${DEFAULT_SENTRY_HOST}`;
 
 /**
+ * Version tag of the CLI's pagination cursor format.
+ *
+ * It prefixes cursors returned by `paginate()` and namespaces the stored
+ * `-c next` / `-c prev` history, so CLI versions with a different format never
+ * read each other's cursors after an upgrade or downgrade. Bump it whenever
+ * the cursor format changes.
+ */
+export const CURSOR_FORMAT = "cli1";
+
+/**
  * Name of the JavaScript package directory — used as both a skip target
  * when walking project trees (DSN scanner, sourcemap discovery, init
  * wizard) and as a path segment when detecting how the CLI itself was

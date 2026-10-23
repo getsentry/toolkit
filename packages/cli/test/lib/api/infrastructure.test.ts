@@ -13,11 +13,7 @@ import {
   unwrapResult,
 } from "../../../src/lib/api/infrastructure.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
-import {
-  ApiError,
-  HostScopeError,
-  ValidationError,
-} from "../../../src/lib/errors.js";
+import { ApiError, HostScopeError } from "../../../src/lib/errors.js";
 import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 describe("SDK error compatibility", () => {
@@ -878,6 +874,7 @@ describe("paginate", () => {
     expect(spy).toHaveBeenCalledWith(25, undefined);
   });
 
+  // Raw server cursors, e.g. from an older CLI or an API response.
   test("forwards initial cursor", async () => {
     const spy = vi.fn().mockResolvedValue({ data: [] });
     await paginate({ cursor: "abc", limit: 5 }, spy);
@@ -892,6 +889,22 @@ describe("paginate", () => {
     expect(spy).toHaveBeenCalledWith(5, undefined);
   });
 
+  test.each([
+    { limit: 101, perPage: 51 },
+    { limit: 150, perPage: 75 },
+    { limit: 200, perPage: 100 },
+    { limit: 201, perPage: 67 },
+    { limit: 250, perPage: 84 },
+    { limit: 1000, perPage: 100 },
+  ])(
+    "splits --limit $limit evenly into pages of $perPage",
+    async ({ limit, perPage }) => {
+      const spy = vi.fn().mockResolvedValue({ data: [] });
+      await paginate({ limit }, spy);
+      expect(spy).toHaveBeenCalledWith(perPage, undefined);
+    },
+  );
+
   // Cursor continuity across servers and limits is covered by
   // test/lib/paginate.property.test.ts; this pins the request sequence.
   test("keeps the walk's page size and resumes mid-page across -c next", async () => {
@@ -901,17 +914,19 @@ describe("paginate", () => {
       return Promise.resolve({ data, nextCursor: String(offset + perPage) });
     });
 
-    const first = await paginate({ limit: 150 }, spy);
-    expect(first.data).toEqual(Array.from({ length: 150 }, (_, i) => i));
+    const first = await paginate({ limit: 250 }, spy);
+    expect(first.data).toEqual(Array.from({ length: 250 }, (_, i) => i));
     const second = await paginate({ limit: 10, cursor: first.nextCursor }, spy);
-    expect(second.data).toEqual(Array.from({ length: 10 }, (_, i) => 150 + i));
+    expect(second.data).toEqual(Array.from({ length: 10 }, (_, i) => 250 + i));
 
-    // The first call stops inside page 2, so the second refetches it with the
+    // The first call stops inside page 3, so the second refetches it with the
     // walk's page size rather than one derived from its own --limit.
     expect(spy.mock.calls).toEqual([
-      [100, undefined],
-      [100, "100"],
-      [100, "100"],
+      [84, undefined],
+      [84, "84"],
+      [84, "168"],
+      [84, "168"],
+      [84, "252"],
     ]);
   });
 
@@ -920,14 +935,21 @@ describe("paginate", () => {
     expect(await paginate({ limit: 5 }, spy)).toEqual({ data: [1, 2] });
   });
 
-  test.each(["cli1~0~0~abc", "cli1~101~0~abc", "cli1~10~-1~abc", "cli1~x~0~"])(
-    "rejects the malformed CLI cursor %s",
+  // Cursors from another CLI version (after an upgrade or downgrade) or a
+  // damaged one must never fail the command or reach the API.
+  test.each([
+    "cli2~100~0~abc",
+    "cli0~abc",
+    "cli1~0~0~abc",
+    "cli1~101~0~abc",
+    "cli1~10~-1~abc",
+    "cli1~x~0~",
+  ])(
+    "restarts from the first page on the unreadable cursor %s",
     async (cursor) => {
       const spy = vi.fn().mockResolvedValue({ data: [] });
-      await expect(paginate({ limit: 5, cursor }, spy)).rejects.toThrow(
-        ValidationError,
-      );
-      expect(spy).not.toHaveBeenCalled();
+      await paginate({ limit: 5, cursor }, spy);
+      expect(spy.mock.calls).toEqual([[5, undefined]]);
     },
   );
 });
