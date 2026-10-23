@@ -1982,14 +1982,17 @@ async function buildAccountContextError(
   );
   const targets = candidates.flatMap((candidate) => candidate.targets);
   const alternatives: string[] = [];
-  if (targets.length > 0) {
-    const format =
-      options.formatRecoveryCommand ?? ((target: string) => target);
-    const label = options.formatRecoveryCommand
-      ? "Retry with an explicit target"
-      : "Choose an explicit target";
+  const [exampleTarget, ...otherTargets] = targets;
+  if (exampleTarget && options.formatRecoveryCommand) {
     alternatives.push(
-      `${label}:\n${targets.map((target) => `    ${format(target)}`).join("\n")}`,
+      `Retry example:\n    ${options.formatRecoveryCommand(exampleTarget)}`,
+    );
+    if (otherTargets.length > 0) {
+      alternatives.push(`Other available projects: ${otherTargets.join(", ")}`);
+    }
+  } else if (targets.length > 0) {
+    alternatives.push(
+      `Choose an explicit target:\n${targets.map((target) => `    ${target}`).join("\n")}`,
     );
   }
   alternatives.push(

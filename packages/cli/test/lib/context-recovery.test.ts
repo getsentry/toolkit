@@ -281,15 +281,20 @@ describe.skipIf(process.platform === "win32")(
         expect(first.exitCode, first.stderr).toBe(EXIT.CONTEXT_MISSING);
         expect(first.stdout).toBe("");
         const commands = recoveryCommands(new Error(first.stderr));
-        expect(commands.length).toBeGreaterThan(1);
-        expect(
-          commands.some((command) => command.includes("test-org/test-project")),
-        ).toBe(true);
-        expect(
-          commands.some((command) =>
-            command.includes("test-org-2/test-project"),
-          ),
-        ).toBe(true);
+        expect(commands).toHaveLength(1);
+        expect(commands[0]).toContain("test-org/test-project");
+        expect(first.stderr).toContain(
+          "Other available projects: test-org/test-project-2, test-org-2/test-project, test-org-2/test-project-2",
+        );
+        for (const flag of [
+          "--limit",
+          "--sort",
+          "--period",
+          "--json",
+          "--fields",
+        ]) {
+          expect(first.stderr.split(flag)).toHaveLength(2);
+        }
         expect(
           requests.filter((url) => url.pathname.endsWith("/issues/")),
         ).toHaveLength(0);
@@ -352,10 +357,11 @@ describe("bounded target guidance", () => {
       const error = await failure(guide());
       expect(error).toBeInstanceOf(ContextError);
       const commands = recoveryCommands(error);
-      expect(commands).toHaveLength(2);
-      expect(commands.every((command) => command.includes("test-org-2/"))).toBe(
-        true,
+      expect(commands).toEqual(["sentry issue list test-org-2/test-project"]);
+      expect(error.message).toContain(
+        "Other available projects: test-org-2/test-project-2",
       );
+      expect(error.message).not.toContain("test-org/");
       const lookups = requests.filter((url) =>
         url.pathname.endsWith("/projects/"),
       );
@@ -399,13 +405,19 @@ describe("bounded target guidance", () => {
     );
     expect(error.message).toContain("sentry project list 'candidate-org-0/'");
     const commands = recoveryCommands(error);
-    expect(commands).toHaveLength(6);
+    expect(commands).toEqual([
+      "sentry issue list candidate-org-1/candidate-project-0",
+    ]);
     expect(
-      commands.every((command) => !command.includes("candidate-org-0/")),
-    ).toBe(true);
-    expect(
-      commands.every((command) => !command.includes("candidate-org-3/")),
-    ).toBe(true);
+      error.message.match(/candidate-org-\d\/candidate-project-\d/g),
+    ).toEqual([
+      "candidate-org-1/candidate-project-0",
+      "candidate-org-1/candidate-project-1",
+      "candidate-org-1/candidate-project-2",
+      "candidate-org-2/candidate-project-0",
+      "candidate-org-2/candidate-project-1",
+      "candidate-org-2/candidate-project-2",
+    ]);
     const lookups = requests.filter((url) =>
       url.pathname.endsWith("/projects/"),
     );
@@ -414,6 +426,42 @@ describe("bounded target guidance", () => {
     expect(
       lookups.every((url) => url.searchParams.get("per_page") === "3"),
     ).toBe(true);
+    expect(getDefaultOrganization()).toBeNull();
+    expect(getDefaultProject()).toBeNull();
+  });
+
+  test("shows one retry without an empty alternatives list for a single project", async () => {
+    organizations = organizationsFixture.slice(0, 1);
+    projectsByOrg = new Map([
+      [organizations[0].slug, projectsFixture.slice(0, 1)],
+    ]);
+
+    const error = await failure(guide());
+    expect(error).toBeInstanceOf(ContextError);
+    expect(recoveryCommands(error)).toEqual([
+      "sentry issue list test-org/test-project",
+    ]);
+    expect(error.message).not.toContain("Other available projects:");
+    expect(getDefaultOrganization()).toBeNull();
+    expect(getDefaultProject()).toBeNull();
+  });
+
+  test("lists explicit targets when the caller does not provide a retry formatter", async () => {
+    const error = await failure(
+      guideOrgProjectFailure({
+        cwd: getConfigDir(),
+        interactive: false,
+        usageHint: USAGE,
+      }),
+    );
+    expect(error).toBeInstanceOf(ContextError);
+    expect(recoveryCommands(error)).toEqual([]);
+    expect(error.message).toContain("Choose an explicit target:");
+    for (const org of organizationsFixture) {
+      for (const project of projectsFixture) {
+        expect(error.message).toContain(`${org.slug}/${project.slug}`);
+      }
+    }
     expect(getDefaultOrganization()).toBeNull();
     expect(getDefaultProject()).toBeNull();
   });
