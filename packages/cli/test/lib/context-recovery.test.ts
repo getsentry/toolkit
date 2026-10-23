@@ -211,10 +211,12 @@ describe.skipIf(process.platform === "win32")(
   () => {
     test.each([
       {
+        query: QUERY,
         period: "24h",
         expectedTime: { statsPeriod: "24h" },
       },
       {
+        query: QUERY,
         period: "2026-10-15T00:00:00Z..2026-10-16T00:00:00Z",
         expectedTime: {
           start: "2026-10-15T00:00:00.000Z",
@@ -222,17 +224,49 @@ describe.skipIf(process.platform === "win32")(
         },
       },
       {
+        query: QUERY,
         period: ">=2026-10-15T00:00:00Z",
         expectedTime: { start: "2026-10-15T00:00:00.000Z" },
       },
+      {
+        query: "-timeout",
+        period: "24h",
+        expectedTime: { statsPeriod: "24h" },
+      },
+      {
+        query: "",
+        period: "24h",
+        expectedTime: { statsPeriod: "24h" },
+      },
+      {
+        query: QUERY,
+        period: "24h",
+        expectedTime: { statsPeriod: "24h" },
+        cursor: "next",
+        expectedRetryCursor: "first",
+      },
+      {
+        query: QUERY,
+        period: "24h",
+        expectedTime: { statsPeriod: "24h" },
+        cursor: "0:7:0",
+        expectedRetryCursor: "0:7:0",
+        expectedApiCursor: "0:7:0",
+      },
     ])(
-      "retries the original query and output options with $period",
-      async ({ period, expectedTime }) => {
+      'retries query "$query" and output options with $period and cursor $cursor',
+      async ({
+        query,
+        period,
+        expectedTime,
+        cursor,
+        expectedRetryCursor,
+        expectedApiCursor,
+      }) => {
         const first = await runCommand([
           "issue",
           "list",
-          "--query",
-          QUERY,
+          ...(query === "" ? ["--query", ""] : [`--query=${query}`]),
           "--period",
           period,
           "--limit",
@@ -242,8 +276,9 @@ describe.skipIf(process.platform === "win32")(
           "--json",
           "--fields",
           "id,title",
+          ...(cursor ? ["--cursor", cursor] : []),
         ]);
-        expect(first.exitCode).toBe(EXIT.CONTEXT_MISSING);
+        expect(first.exitCode, first.stderr).toBe(EXIT.CONTEXT_MISSING);
         expect(first.stdout).toBe("");
         const commands = recoveryCommands(new Error(first.stderr));
         expect(commands.length).toBeGreaterThan(1);
@@ -270,8 +305,11 @@ describe.skipIf(process.platform === "win32")(
           .slice(0, -1);
         expect(args).toContain("--json");
         expect(args[args.indexOf("--fields") + 1]).toBe("id,title");
+        if (expectedRetryCursor) {
+          expect(args[args.indexOf("--cursor") + 1]).toBe(expectedRetryCursor);
+        }
         const retry = await runCommand(args);
-        expect(retry.exitCode).toBe(0);
+        expect(retry.exitCode, retry.stderr).toBe(0);
         expect(JSON.parse(retry.stdout)).toEqual({
           data: [{ id: issuesFixture[0].id, title: issuesFixture[0].title }],
           hasMore: false,
@@ -284,9 +322,12 @@ describe.skipIf(process.platform === "win32")(
         const request = issueRequests[0];
         expect(request.pathname).toBe("/api/0/organizations/test-org/issues/");
         expect(request.searchParams.get("project")).toBe(projectsFixture[0].id);
-        expect(request.searchParams.get("query")).toBe(QUERY);
+        expect(request.searchParams.get("query")).toBe(query || null);
         expect(request.searchParams.get("limit")).toBe("7");
         expect(request.searchParams.get("sort")).toBe("freq");
+        expect(request.searchParams.get("cursor")).toBe(
+          expectedApiCursor ?? null,
+        );
         for (const [key, value] of Object.entries(expectedTime)) {
           expect(request.searchParams.get(key)).toBe(value);
         }
