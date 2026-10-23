@@ -64,6 +64,7 @@ import {
   resolveOrgsForListing,
 } from "./resolve-target.js";
 import { setOrgProjectContext } from "./telemetry.js";
+import { shellQuote } from "./utils.js";
 
 const log = logger.withTag("org-list");
 
@@ -681,6 +682,8 @@ export async function handleAutoDetect<TEntity, TWithOrg>(
   config: OrgListConfig<TEntity, TWithOrg>,
   cwd: string,
   flags: BaseListFlags,
+  /** Name filter already applied by `config`; kept in the `<org>/` tip. */
+  filter?: string,
 ): Promise<ListResult<TWithOrg>> {
   const {
     orgs: orgsToFetch,
@@ -736,8 +739,9 @@ export async function handleAutoDetect<TEntity, TWithOrg>(
   }
 
   if (limited.length > 0) {
+    const filterArg = filter === undefined ? "" : ` ${shellQuote(filter)}`;
     hintParts.push(
-      `Tip: Use '${config.commandPrefix} <org>/' to filter by organization`,
+      `Tip: Use '${config.commandPrefix} <org>/${filterArg}' to filter by organization`,
     );
   }
 
@@ -1162,7 +1166,8 @@ function buildDefaultHandlers<TEntity, TWithOrg>(
   }
 
   return {
-    "auto-detect": (ctx) => handleAutoDetect(config, ctx.cwd, ctx.flags),
+    "auto-detect": (ctx) =>
+      handleAutoDetect(config, ctx.cwd, ctx.flags, filter),
 
     explicit: (ctx) => {
       if (config.listForProject) {

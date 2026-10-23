@@ -1303,6 +1303,29 @@ describe("dispatchOrgScopedList name filter", () => {
     expect(result.hint ?? "").not.toContain("paginated");
   });
 
+  test("auto-detect keeps the filter in the <org>/ tip", async () => {
+    const defaultOrgSpy = vi
+      .spyOn(defaults, "getDefaultOrganization")
+      .mockReturnValue("my-org");
+    try {
+      const result = await dispatchOrgScopedList({
+        config: filterConfig(),
+        cwd: "/tmp",
+        flags: { limit: 10, json: true },
+        parsed: { type: "auto-detect" },
+        filter: "web-*",
+      });
+
+      expect(result.items.map((w: FakeWithOrg) => w.name)).toEqual([
+        "web-frontend",
+        "web-backend",
+      ]);
+      expect(result.hint).toContain("sentry widget list <org>/ 'web-*'");
+    } finally {
+      defaultOrgSpy.mockRestore();
+    }
+  });
+
   test("walks every page, so matches past the first page are kept", async () => {
     const listPaginated = vi.fn((_org: string, opts: { cursor?: string }) =>
       Promise.resolve(

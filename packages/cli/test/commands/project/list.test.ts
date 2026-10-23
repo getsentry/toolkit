@@ -1516,6 +1516,25 @@ describe("handleAutoDetect", () => {
     expect(jsonHint).toContain("--json");
   });
 
+  test("name filter: jsonExtra hint keeps the filter", async () => {
+    setDefaultOrganization("test-org");
+    const manyProjects = Array.from({ length: 5 }, (_, i) =>
+      makeProject({ id: String(i), slug: `web-${i}`, name: `Web ${i}` }),
+    );
+    globalThis.fetch = mockProjectFetch(manyProjects);
+
+    const result = await handleAutoDetect("/tmp/test-project", {
+      limit: 2,
+      json: true,
+      fresh: false,
+      filter: "web-*",
+    });
+
+    expect(result.hasMore).toBe(true);
+    const jsonHint = (result.jsonExtra as Record<string, unknown>)?.hint;
+    expect(jsonHint).toBe("sentry project list test-org/ 'web-*' --json");
+  });
+
   test("fast path: non-auth API errors return empty results instead of throwing", async () => {
     setDefaultOrganization("test-org");
     // Mock returns 403 for projects endpoint (stale org, no access)

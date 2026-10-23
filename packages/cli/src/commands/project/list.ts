@@ -68,6 +68,7 @@ import {
   resolveAllTargets,
 } from "../../lib/resolve-target.js";
 import { getApiBaseUrl } from "../../lib/sentry-client.js";
+import { shellQuote } from "../../lib/utils.js";
 import type { SentryProject } from "../../types/index.js";
 
 /** Extended result type with optional title shown above the table. */
@@ -335,10 +336,10 @@ async function fetchAutoDetectProjects(
 }
 
 /** Build a pagination hint for auto-detect JSON output. */
-function autoDetectPaginationHint(orgs: string[]): string {
-  return orgs.length === 1
-    ? `sentry project list ${orgs[0]}/ --json`
-    : "sentry project list <org>/ --json";
+function autoDetectPaginationHint(orgs: string[], filter?: string): string {
+  const target = orgs.length === 1 ? `${orgs[0]}/` : "<org>/";
+  const filterArg = filter === undefined ? "" : ` ${shellQuote(filter)}`;
+  return `sentry project list ${target}${filterArg} --json`;
 }
 
 /** Build the truncation header for auto-detect mode. */
@@ -434,7 +435,7 @@ export async function handleAutoDetect(
     header,
     hint: hintParts.length > 0 ? hintParts.join("\n") : undefined,
     jsonExtra: hasMore
-      ? { hint: autoDetectPaginationHint(orgsToFetch) }
+      ? { hint: autoDetectPaginationHint(orgsToFetch, flags.filter) }
       : undefined,
   };
 }
