@@ -11,12 +11,14 @@ import { checkCommand } from "./check.js";
 import { findCommand } from "./find.js";
 import { printSourcesCommand } from "./print-sources.js";
 import { uploadCommand } from "./upload.js";
+import { wasmUploadCommand } from "./wasm-upload.js";
 
 export const debugFilesRoute = buildRouteMap({
   routes: {
     check: checkCommand,
     find: findCommand,
     upload: uploadCommand,
+    "wasm-upload": wasmUploadCommand,
     "print-sources": printSourcesCommand,
     "bundle-sources": bundleSourcesCommand,
     "bundle-jvm": bundleJvmCommand,

@@ -13,10 +13,10 @@ import {
   renderMarkdown,
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import { buildIgnoreMatcher } from "../../lib/scan/index.js";
 import {
   assertDirectoryReadable,
   buildEmptyDiscoveryError,
-  buildIgnoreMatcher,
   diagnoseEmptyDiscovery,
   discoverFilePairs,
   type InjectResult,

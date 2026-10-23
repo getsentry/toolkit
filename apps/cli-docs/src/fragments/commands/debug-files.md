@@ -49,7 +49,42 @@ sentry debug-files upload ./build --il2cpp-mapping --include-sources
 
 # Preview what would be uploaded without uploading (no credentials needed)
 sentry debug-files upload ./build --no-upload
+
+# Split WebAssembly debug info and upload it (scans directories recursively)
+sentry debug-files wasm-upload ./dist
+
+# Preview the split without writing or uploading anything
+sentry debug-files wasm-upload ./dist --dry-run
+
+# Split only, keeping the companions local
+sentry debug-files wasm-upload ./dist --no-upload
+
+# Write companions elsewhere; modules are still stripped in place
+sentry debug-files wasm-upload ./dist --out-dir ./symbols
+
+# Fail the build if any module was compiled without DWARF
+sentry debug-files wasm-upload ./dist --require-dwarf
 ```
+
+## Notes on `wasm-upload`
+
+- For each module carrying inline DWARF it injects a `build_id` (if absent),
+  writes a `<stem>.<build_id>.debug.wasm` companion retaining the Code section
+  and DWARF, strips the `.debug_*` sections from the deployable module **in
+  place**, and points it at the companion via `external_debug_info`. Your build
+  artifact keeps its path; only the companion is new.
+- The companion must keep the Code section — DWARF addresses are relative to it,
+  so a companion without it cannot be symbolicated.
+- Modules without DWARF are still stamped with a `build_id` and reported with a
+  warning rather than failing the run. Sentry matches a frame to its debug file
+  by `build_id`, so stamping now keeps symbolication possible later.
+- Name/symtab-only modules are not uploaded: the `name` section stays in the
+  deployable module and runtimes read function names from it directly, so a
+  debug file built from one adds nothing to the stack trace.
+- The command is idempotent.
+- `--require-dwarf` exits non-zero when any scanned module lacks DWARF, which is
+  the flag to use in CI. A module whose `external_debug_info` names a companion
+  that cannot be found fails the gate too, since its debug info is unreachable.
 
 ## Notes on `find`
 

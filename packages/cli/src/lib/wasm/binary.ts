@@ -35,6 +35,45 @@ const log = logger.withTag("wasm.binary");
 /** Section id of a custom section. */
 const CUSTOM_SECTION_ID = 0;
 
+/** Section id of the type section. */
+const TYPE_SECTION_ID = 1;
+
+/** Section id of the import section. */
+const IMPORT_SECTION_ID = 2;
+
+/** Section id of the function section. */
+const FUNCTION_SECTION_ID = 3;
+
+/** Section id of the table section. */
+const TABLE_SECTION_ID = 4;
+
+/** Section id of the memory section. */
+const MEMORY_SECTION_ID = 5;
+
+/** Section id of the global section. */
+const GLOBAL_SECTION_ID = 6;
+
+/** Section id of the export section. */
+const EXPORT_SECTION_ID = 7;
+
+/** Section id of the start section. */
+const START_SECTION_ID = 8;
+
+/** Section id of the element section. */
+const ELEMENT_SECTION_ID = 9;
+
+/** Section id of the code section. DWARF offsets are relative to it. */
+const CODE_SECTION_ID = 10;
+
+/** Section id of the data section. */
+const DATA_SECTION_ID = 11;
+
+/** Section id of the data count section. */
+const DATA_COUNT_SECTION_ID = 12;
+
+/** Section id of the exception tag section, from the exception-handling proposal. */
+const EXCEPTION_TAG_SECTION_ID = 13;
+
 /** Name of the custom section holding function names. */
 const NAME_SECTION = "name";
 
@@ -42,7 +81,7 @@ const NAME_SECTION = "name";
 export const BUILD_ID_SECTION = "build_id";
 
 /** Name of the custom section pointing at a module's debug companion. */
-const EXTERNAL_DEBUG_INFO_SECTION = "external_debug_info";
+export const EXTERNAL_DEBUG_INFO_SECTION = "external_debug_info";
 
 /** Prefix shared by the custom sections that carry DWARF. */
 const DEBUG_SECTION_PREFIX = ".debug_";
@@ -57,19 +96,19 @@ const DEBUG_SECTION_PREFIX = ".debug_";
  * with the `exception-handling` feature on, which is what makes 13 legal here.
  */
 const SECTION_ORDER = [
-  [1, "type"],
-  [2, "import"],
-  [3, "function"],
-  [4, "table"],
-  [5, "memory"],
-  [13, "exception tag"],
-  [6, "global"],
-  [7, "export"],
-  [8, "start"],
-  [9, "element"],
-  [12, "data count"],
-  [10, "code"],
-  [11, "data"],
+  [TYPE_SECTION_ID, "type"],
+  [IMPORT_SECTION_ID, "import"],
+  [FUNCTION_SECTION_ID, "function"],
+  [TABLE_SECTION_ID, "table"],
+  [MEMORY_SECTION_ID, "memory"],
+  [EXCEPTION_TAG_SECTION_ID, "exception tag"],
+  [GLOBAL_SECTION_ID, "global"],
+  [EXPORT_SECTION_ID, "export"],
+  [START_SECTION_ID, "start"],
+  [ELEMENT_SECTION_ID, "element"],
+  [DATA_COUNT_SECTION_ID, "data count"],
+  [CODE_SECTION_ID, "code"],
+  [DATA_SECTION_ID, "data"],
 ] as const;
 
 /** What a non-custom section id means, and where it sorts. */
@@ -91,7 +130,7 @@ const WASM_HEADER = Uint8Array.from([
 ]);
 
 /** Bytes consumed by {@link WASM_HEADER}. */
-const WASM_HEADER_LENGTH = WASM_HEADER.length;
+export const WASM_HEADER_LENGTH = WASM_HEADER.length;
 
 /** Continuation flag of a LEB128 group: another byte follows. */
 const CONTINUATION_BIT = 0x80;
@@ -249,6 +288,48 @@ export function parseSections(bytes: Uint8Array): WasmSection[] {
   return sections;
 }
 
+/** Framing of one section, read from bytes starting at the section's id. */
+export type SectionFrame = {
+  /** Section id. */
+  id: number;
+  /** Custom section name, when `head` was long enough to hold it. */
+  name?: string;
+  /** Bytes taken by the id and the length prefix. */
+  headerLength: number;
+  /** Payload length, as declared by the prefix. */
+  payloadLength: number;
+};
+
+/**
+ * Decode a section's framing from its first bytes, without its payload.
+ *
+ * Lets a caller walk a module on disk by reading only section headers and
+ * seeking past payloads. Section order is not checked: that needs the whole
+ * module, and {@link parseSections} checks it.
+ *
+ * @param head - Bytes starting at the section's id. A custom section's name is
+ *   decoded only when `head` holds all of it.
+ * @throws {WasmParseError} when `head` is empty or the length prefix is invalid
+ */
+export function readSectionFrame(head: Uint8Array): SectionFrame {
+  const id = head[0];
+  if (id === undefined) {
+    throw new WasmParseError("truncated section header");
+  }
+  const { value: payloadLength, size } = readVarUint32(head, 1);
+  const headerLength = 1 + size;
+  const { name } = readCustomHeader(
+    id,
+    head.subarray(headerLength, headerLength + payloadLength),
+  );
+  return {
+    id,
+    ...(name === undefined ? {} : { name }),
+    headerLength,
+    payloadLength,
+  };
+}
+
 /**
  * Reassemble sections into a module.
  *
@@ -321,6 +402,38 @@ export function decodeBuildId(contents: Uint8Array): Uint8Array | null {
   return decodeByteVector(contents, BUILD_ID_SECTION);
 }
 
+/**
+ * Read the URL out of an `external_debug_info` section body.
+ *
+ * @param contents - The section body, after its name
+ * @returns The URL, or `null` when the body is malformed or not UTF-8
+ */
+export function decodeExternalDebugInfo(contents: Uint8Array): string | null {
+  const bytes = decodeByteVector(contents, EXTERNAL_DEBUG_INFO_SECTION);
+  if (bytes === null) {
+    return null;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    log.debug(`${EXTERNAL_DEBUG_INFO_SECTION} body is not valid UTF-8`, error);
+    return null;
+  }
+}
+
+/** Whether a section is the code section. */
+export function isCodeSection(section: WasmSection): boolean {
+  return section.id === CODE_SECTION_ID;
+}
+
+/** Whether a section points at a debug companion. */
+export function isExternalDebugInfoSection(section: WasmSection): boolean {
+  return (
+    section.id === CUSTOM_SECTION_ID &&
+    section.name === EXTERNAL_DEBUG_INFO_SECTION
+  );
+}
+
 /** Whether a section is one of the custom sections carrying DWARF. */
 export function isDebugSection(section: WasmSection): boolean {
   return (
@@ -336,7 +449,7 @@ export function isNameSection(section: WasmSection): boolean {
 }
 
 /** Throw unless `bytes` opens with the WebAssembly magic and version. */
-function assertWasmHeader(bytes: Uint8Array): void {
+export function assertWasmHeader(bytes: Uint8Array): void {
   if (bytes.length < WASM_HEADER_LENGTH) {
     throw new WasmParseError(
       `too short to be a WebAssembly module (${bytes.length} bytes)`,
@@ -411,7 +524,7 @@ function checkSectionOrder(
  * that error on the floor, so an unreadable name costs the section its identity
  * and nothing more.
  */
-function readCustomHeader(
+export function readCustomHeader(
   id: number,
   payload: Uint8Array,
 ): { name?: string; contents?: Uint8Array } {
