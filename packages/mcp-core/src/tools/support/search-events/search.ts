@@ -47,9 +47,10 @@ import {
   isValidReplaySort,
 } from "./replays";
 import {
+  AI_QUERY_DATASETS,
   isSeerSearchDataset,
   type SeerSearchTranslation,
-  trackAssistedQueryOutcome,
+  trackAiQueryOutcome,
   translateWithSeer,
 } from "./seer";
 import {
@@ -623,7 +624,7 @@ function trackSeerOutcome(
   state: SeerOutcomeState,
   params: SearchEventsParams,
   resultCount: number,
-  error?: unknown,
+  error: unknown = false,
 ): void {
   if (
     !state.translation ||
@@ -633,12 +634,21 @@ function trackSeerOutcome(
     return;
   }
   state.tracked = true;
-  trackAssistedQueryOutcome({
-    dataset: params.dataset,
-    organizationSlug: params.organizationSlug,
-    translation: state.translation,
+  trackAiQueryOutcome({
+    dataset: AI_QUERY_DATASETS[params.dataset],
+    mode: state.translation.mode,
+    organization: {
+      slug: params.organizationSlug,
+      features: state.translation.organizationFeatures,
+    },
     resultCount,
-    error,
+    runId: state.translation.runId,
+    error:
+      typeof error === "boolean" ||
+      typeof error === "string" ||
+      error instanceof Error
+        ? error
+        : true,
   });
 }
 

@@ -1,11 +1,12 @@
-import { metrics } from "@sentry/core";
+import { logger, metrics } from "@sentry/core";
 import type { z } from "zod";
 import type { CrossEventQueries, SentryApiService } from "../../../api-client";
 import {
   ApiAuthenticationError,
+  ApiError,
   type SearchAgentQuerySchema,
 } from "../../../api-client/index";
-import { logInfo, logWarn } from "../../../telem/logging";
+import { logWarn } from "../../../telem/logging";
 import {
   normalizeEventsDataset,
   type PublicEventsDataset,
@@ -51,88 +52,88 @@ export interface SeerSearchTranslation {
   warning?: string;
   // Identifies the run in the assisted query outcome metric.
   runId: string;
-  mode: AssistedQueryMode;
+  mode: AiQueryMode;
   organizationFeatures: string[];
 }
 
-// Seer doesn't return results, so the caller reports whether the translated
-// query found anything. Mirrors `trackAiQueryOutcome` in Sentry's frontend,
-// which reports the same metric with an `assisted_query.search_bar.*` referrer.
-// See `static/app/components/searchQueryBuilder/askSeerCombobox/utils.ts`.
-const ASSISTED_QUERY_OUTCOME = "assisted_query.outcome";
+export type AiQueryMode = "samples" | "aggregate";
 
-// The frontend's dataset and referrer names for each Seer dataset.
-const ASSISTED_QUERY_DATASETS = {
+export type AiQueryDataset = "spans" | "errors" | "logs" | "tracemetrics";
+
+// The dataset names Sentry's frontend reports for each Seer dataset.
+export const AI_QUERY_DATASETS = {
   errors: "errors",
   logs: "logs",
   spans: "spans",
   metrics: "tracemetrics",
-} as const satisfies Record<SeerSearchDataset, string>;
+} as const satisfies Record<SeerSearchDataset, AiQueryDataset>;
 
-const ASSISTED_QUERY_REFERRERS = {
-  errors: "assisted_query.mcp.errors",
-  logs: "assisted_query.mcp.logs",
-  spans: "assisted_query.mcp.traces",
-  metrics: "assisted_query.mcp.tracemetrics",
-} as const satisfies Record<SeerSearchDataset, string>;
+function extractErrorReason(err: Error): string {
+  if (err instanceof ApiError && err.detail) {
+    return err.detail;
+  }
+  return err.message;
+}
 
-export type AssistedQueryMode = "samples" | "aggregate";
-
-export type AssistedQueryOutcome =
-  | "has_results"
-  | "empty_results"
-  | "error_on_load";
-
-/**
- * Reports whether a Seer-translated query returned results once executed.
- * Pass `error` when the query failed to run.
- */
-export function trackAssistedQueryOutcome({
+// Seer doesn't return results, so the caller reports whether the translated
+// query found anything. Mirrors `trackAiQueryOutcome` in Sentry's frontend
+// (`static/app/components/searchQueryBuilder/askSeerCombobox/utils.ts`), which
+// reports the same metric with an `assisted_query.search_bar.*` referrer.
+export function trackAiQueryOutcome({
   dataset,
-  organizationSlug,
-  translation,
+  mode,
+  organization,
   resultCount,
-  error,
+  runId,
+  error = false,
 }: {
-  dataset: SeerSearchDataset;
-  organizationSlug: string;
-  translation: SeerSearchTranslation;
+  dataset: AiQueryDataset;
+  mode: AiQueryMode;
+  organization: { slug: string; features: string[] };
   resultCount: number;
-  error?: unknown;
+  runId: string;
+  error?: string | boolean | Error;
 }): void {
-  const outcome: AssistedQueryOutcome = error
+  const outcome = error
     ? "error_on_load"
     : resultCount > 0
       ? "has_results"
       : "empty_results";
-  const errorReason = error
-    ? error instanceof Error
-      ? error.message
-      : String(error)
-    : undefined;
+  const errorReason =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+        ? extractErrorReason(error)
+        : undefined;
+
+  const referrer = `assisted_query.mcp.${dataset === "spans" ? "traces" : dataset}`;
+  // Seer runs are stored as conversations in the `sentry` org.
+  const conversationUrl = `https://sentry.io/organizations/sentry/explore/agents/conversations/${encodeURIComponent(runId)}/`;
+  const codeMode = organization.features.includes(
+    "seer-assisted-query-codemode",
+  );
+  const crossEventEnabled = organization.features.includes(
+    "seer-assisted-query-cross-event-explorer",
+  );
 
   const attributes = {
-    dataset: ASSISTED_QUERY_DATASETS[dataset],
-    mode: translation.mode,
-    org_slug: organizationSlug,
-    referrer: ASSISTED_QUERY_REFERRERS[dataset],
-    run_id: translation.runId,
-    // Seer runs are stored as conversations in the `sentry` org.
-    conversation_url: `https://sentry.io/organizations/sentry/explore/agents/conversations/${encodeURIComponent(translation.runId)}/`,
+    dataset,
+    mode,
+    org_slug: organization.slug,
+    referrer,
+    run_id: runId,
+    conversation_url: conversationUrl,
     outcome,
-    code_mode: translation.organizationFeatures.includes(
-      "seer-assisted-query-codemode",
-    ),
-    cross_event_enabled: translation.organizationFeatures.includes(
-      "seer-assisted-query-cross-event-explorer",
-    ),
-    ...(errorReason ? { error_reason: errorReason } : {}),
+    error_reason: errorReason,
+    code_mode: codeMode,
+    cross_event_enabled: crossEventEnabled,
   };
 
-  logInfo(ASSISTED_QUERY_OUTCOME, {
-    extra: { ...attributes, result_count: resultCount },
+  logger.info("assisted_query.outcome", {
+    ...attributes,
+    result_count: resultCount,
   });
-  metrics.distribution(ASSISTED_QUERY_OUTCOME, resultCount, { attributes });
+  metrics.distribution("assisted_query.outcome", resultCount, { attributes });
 }
 
 // Returns the org's features when Seer translation is enabled, otherwise null.
