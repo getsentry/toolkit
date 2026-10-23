@@ -52,10 +52,13 @@ type CapturedOutput = {
  * We must provide it so `commandPrefix` is set on the context, enabling
  * the help recovery logic in `buildCommand`.
  */
-function buildMockContext(captured: {
-  stdout: string;
-  stderr: string;
-}): SentryContext & {
+function buildMockContext(
+  captured: {
+    stdout: string;
+    stderr: string;
+  },
+  extra: Partial<SentryContext> = {},
+): SentryContext & {
   forCommand: (opts: { prefix: readonly string[] }) => SentryContext;
 } {
   const stdoutWriter = {
@@ -89,6 +92,7 @@ function buildMockContext(captured: {
     forCommand: ({ prefix }: { prefix: readonly string[] }): SentryContext => ({
       ...baseContext,
       commandPrefix: prefix,
+      ...extra,
     }),
   };
 }
@@ -100,9 +104,12 @@ function buildMockContext(captured: {
  * will be recovered by the buildCommand wrapper, which shows help output
  * instead of the error.
  */
-async function runCommand(args: string[]): Promise<CapturedOutput> {
+async function runCommand(
+  args: string[],
+  extra?: Partial<SentryContext>,
+): Promise<CapturedOutput> {
   const captured = { stdout: "", stderr: "" };
-  const mockContext = buildMockContext(captured);
+  const mockContext = buildMockContext(captured, extra);
 
   try {
     await run(app, args, mockContext);
@@ -114,6 +121,17 @@ async function runCommand(args: string[]): Promise<CapturedOutput> {
 }
 
 describe("help recovery on ResolutionError", () => {
+  test("is off for direct (typed SDK) invocations", async () => {
+    // The typed SDK sets directInvoke; its callers get the error, not help
+    const args = ["issue", "list", "help"];
+    const recovered = await runCommand(args);
+    const direct = await runCommand(args, { directInvoke: true });
+
+    expect(recovered.stdout).toContain("sentry issue list");
+    expect(direct.stdout).not.toContain("sentry issue list");
+    expect(direct.stderr).not.toContain("Tip");
+  });
+
   test("sentry issue list help → shows help for issue list", async () => {
     // "help" is treated as a project slug, fails resolution → recovery shows help
     const { stdout, stderr } = await runCommand(["issue", "list", "help"]);

@@ -386,7 +386,7 @@ export const viewCommand = buildCommand({
     let dsns: (string | null)[];
     let targets: ResolvedTarget[];
 
-    if (target.type === ProjectSpecificationType.AutoDetect) {
+    if (target.parsed.type === ProjectSpecificationType.AutoDetect) {
       const fetched = await fetchAllProjectDetails(resolvedTargets);
       projects = fetched.projects;
       dsns = fetched.dsns;

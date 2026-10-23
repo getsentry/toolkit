@@ -1,16 +1,16 @@
 /**
  * Positionals whose value parses and resolves lazily.
  *
- * A parser made with {@link lazyPositional} gives the command a stand-in
- * typed as `T & { resolved: Promise<R> }`:
+ * A parser made with {@link lazyPositional} gives the command a
+ * {@link LazyPositional}:
  *
- * - Reading a property of `T` (e.g. `target.type`) runs the parse on first
- *   access, inside `func`.
- * - Reading `resolved` starts the positional's own resolver on first access
- *   and returns its promise, so `func` awaits `target.resolved` instead of
- *   picking and calling a resolver itself. A parse error rejects it.
+ * - `target.parsed` runs the parse on first access, inside `func`.
+ * - `target.resolved` starts the positional's own resolver on first access
+ *   and returns its promise, so `func` awaits it instead of picking and
+ *   calling a resolver itself. A parse error rejects it.
+ * - `target.raw` is what the user typed (`undefined` if omitted).
  *
- * Until `func` reads it, the stand-in does nothing, so nothing can fail and
+ * Until `func` reads it, the value does nothing, so nothing can fail and
  * nothing runs early:
  *
  * - Stricli's argument scanner never sees an error, so invalid input still
@@ -24,10 +24,11 @@
  * `buildCommand` also runs these parsers on positionals that reach the
  * command as plain strings (the SDK invoke path and tests calling the loaded
  * func) and on omitted optional ones (parsed from `undefined`), so `func`
- * always gets a stand-in and every caller keeps passing what the user typed.
+ * always gets a {@link LazyPositional} and every caller keeps passing what
+ * the user typed.
  *
- * Code that needs the raw input (plural alias interception, `help` recovery,
- * telemetry) reads it with {@link rawPositional}, which never parses.
+ * Shared code that handles any positional (plural alias interception, `help`
+ * recovery, telemetry) reads the raw input with {@link rawPositional}.
  * `buildDeleteCommand` calls {@link markDestructive} on its positionals, so
  * resolvers see `destructive: true` and can refuse to auto-detect.
  */
@@ -37,74 +38,55 @@ import {
   withCompletionTarget,
 } from "./completion-target.js";
 
-/** A lazily parsed positional value with a lazily started resolution. */
-export type LazyPositional<T, R> = T & {
-  /** Resolves the value on first access; rejects on a parse or resolve error. */
-  readonly resolved: Promise<R>;
-};
-
 /** What the running command tells a positional's resolver. */
 export type ResolveOptions = {
   /** The command is destructive (see {@link markDestructive}). */
   readonly destructive: boolean;
 };
 
-/** Per stand-in state: the raw input (`undefined` if omitted) and options. */
-type StandInState = { raw: string | undefined; destructive: boolean };
-
-const standIns = new WeakMap<object, StandInState>();
+/** Values whose command is destructive (see {@link markDestructive}). */
+const destructiveValues = new WeakSet<object>();
 
 /** Parsers made by {@link lazyPositional}. */
 const lazyParsers = new WeakSet<object>();
 
-const RESOLVED_KEY = "resolved";
-
 /**
- * A stand-in for `parse(raw)` that parses on first property access.
- *
- * `then` reads as `undefined` without parsing: Stricli awaits parser
- * results, and a promise checks whether a resolved value is thenable.
- * `resolved` is not an own key, so spreading or comparing the stand-in sees
- * only the parsed value.
+ * A positional value that parses on first `parsed` read and resolves on
+ * first `resolved` read. Each step runs once.
  */
-function lazyValue<T extends object, R, C>(
-  raw: string | undefined,
-  parse: (raw: string | undefined) => T,
-  resolve: (value: T, context: C, options: ResolveOptions) => Promise<R>,
-  context: C,
-): LazyPositional<T, R> {
-  const state: StandInState = { raw, destructive: false };
-  let parsed: { value: T } | undefined;
-  let resolved: Promise<R> | undefined;
-  const value = (): T => {
-    parsed ??= { value: parse(raw) };
-    return parsed.value;
-  };
-  const standIn = new Proxy({} as LazyPositional<T, R>, {
-    get: (_target, key) => {
-      if (key === "then") {
-        return;
-      }
-      if (key === RESOLVED_KEY) {
-        resolved ??= (async () =>
-          await resolve(value(), context, {
-            destructive: state.destructive,
-          }))();
-        return resolved;
-      }
-      return Reflect.get(value(), key);
-    },
-    set: (_target, key, newValue) => Reflect.set(value(), key, newValue),
-    has: (_target, key) => key === RESOLVED_KEY || Reflect.has(value(), key),
-    ownKeys: () => Reflect.ownKeys(value()),
-    getOwnPropertyDescriptor: (_target, key) => {
-      const descriptor = Reflect.getOwnPropertyDescriptor(value(), key);
-      // The empty proxy target lacks the key, so it must report configurable
-      return descriptor && { ...descriptor, configurable: true };
-    },
-  });
-  standIns.set(standIn, state);
-  return standIn;
+export class LazyPositional<T, R> {
+  #parsed: { value: T } | undefined;
+  #resolved: Promise<R> | undefined;
+  readonly #parse: (raw: string | undefined) => T;
+  readonly #resolve: (value: T, options: ResolveOptions) => Promise<R>;
+
+  /** What the user typed; `undefined` for an omitted positional. */
+  readonly raw: string | undefined;
+
+  constructor(
+    raw: string | undefined,
+    parse: (raw: string | undefined) => T,
+    resolve: (value: T, options: ResolveOptions) => Promise<R>,
+  ) {
+    this.raw = raw;
+    this.#parse = parse;
+    this.#resolve = resolve;
+  }
+
+  /** The parsed value. Throws the parser's error. */
+  get parsed(): T {
+    this.#parsed ??= { value: this.#parse(this.raw) };
+    return this.#parsed.value;
+  }
+
+  /** The resolved value; rejects on a parse or resolve error. */
+  get resolved(): Promise<R> {
+    this.#resolved ??= (async () =>
+      await this.#resolve(this.parsed, {
+        destructive: destructiveValues.has(this),
+      }))();
+    return this.#resolved;
+  }
 }
 
 /**
@@ -116,13 +98,15 @@ function lazyValue<T extends object, R, C>(
  * @param resolve - Resolves the parsed value; gets the command context that
  *   Stricli passes to parsers as `this`, and {@link ResolveOptions}
  */
-export function lazyPositional<T extends object, R, C>(
+export function lazyPositional<T, R, C>(
   kind: CompletionTarget,
   parse: (raw: string | undefined) => T,
   resolve: (value: T, context: C, options: ResolveOptions) => Promise<R>,
 ): (this: C, input?: string) => LazyPositional<T, R> {
   const parser = withCompletionTarget(kind, function (this: C, input?: string) {
-    return lazyValue(input, parse, resolve, this);
+    return new LazyPositional(input, parse, (value: T, options) =>
+      resolve(value, this, options),
+    );
   });
   lazyParsers.add(parser);
   return parser;
@@ -185,11 +169,8 @@ export function applyLazyPositionals(
  */
 export function markDestructive(args: readonly unknown[]): void {
   for (const arg of args) {
-    if (typeof arg === "object" && arg !== null) {
-      const state = standIns.get(arg);
-      if (state) {
-        state.destructive = true;
-      }
+    if (arg instanceof LazyPositional) {
+      destructiveValues.add(arg);
     }
   }
 }
@@ -197,13 +178,8 @@ export function markDestructive(args: readonly unknown[]): void {
 /**
  * What the user typed for a positional value. Never triggers a parse.
  *
- * @returns The raw input behind a stand-in (`undefined` if omitted),
- *   otherwise `value`
+ * @returns `value.raw` for a {@link LazyPositional}, otherwise `value`
  */
 export function rawPositional(value: unknown): unknown {
-  if (typeof value === "object" && value !== null) {
-    const state = standIns.get(value);
-    return state ? state.raw : value;
-  }
-  return value;
+  return value instanceof LazyPositional ? value.raw : value;
 }

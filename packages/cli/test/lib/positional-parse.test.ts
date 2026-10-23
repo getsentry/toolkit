@@ -144,9 +144,9 @@ describe("orgProjectTarget", () => {
 describe("lazy parsing and resolution", () => {
   const context = { cwd: "/work", commandPrefix: ["sentry", "thing", "list"] };
 
-  test("parses on first property access", () => {
+  test("parses on first read of parsed", () => {
     const target = echoTarget.call(context, "@latest");
-    expect(() => target.type).toThrow(ValidationError);
+    expect(() => target.parsed).toThrow(ValidationError);
   });
 
   test("rejects resolved with the parse error", async () => {
@@ -154,15 +154,15 @@ describe("lazy parsing and resolution", () => {
     await expect(target.resolved).rejects.toThrow(ValidationError);
   });
 
-  test("reads like the parsed value, without the resolved getter", () => {
+  test("keeps the raw input and the parsed value", () => {
     const target = echoTarget.call(context, "acme/web");
-    expect(target).toEqual({ type: "explicit", org: "acme", project: "web" });
-    expect({ ...target }).toEqual({
+    expect(target.raw).toBe("acme/web");
+    expect(target.parsed).toEqual({
       type: "explicit",
       org: "acme",
       project: "web",
     });
-    expect("resolved" in target).toBe(true);
+    expect(target.parsed).toBe(target.parsed);
   });
 
   test("resolves once, on first access of resolved", async () => {

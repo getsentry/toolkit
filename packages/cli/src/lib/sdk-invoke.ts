@@ -564,8 +564,11 @@ export function buildInvoker(options?: SentryOptions) {
     positionalArgs: string[],
     meta?: { streaming?: boolean },
   ): Promise<T> | AsyncIterable<T> {
-    // What Stricli's forCommand sets; commands read it for usage hints
-    const commandPrefix = ["sentry", ...commandPath];
+    // Usage hints read the command path Stricli's forCommand would set
+    const direct = {
+      commandPrefix: ["sentry", ...commandPath],
+      directInvoke: true,
+    };
     if (meta?.streaming) {
       return executeWithStream<T>(options, async (ctx, span) => {
         const { handler, flagDefs } = await resolveCommand(commandPath);
@@ -575,7 +578,7 @@ export function buildInvoker(options?: SentryOptions) {
         }
         const resolvedFlags = applyFlagDefaults(flags, flagDefs);
         await handler.call(
-          { ...ctx.context, commandPrefix },
+          { ...ctx.context, ...direct },
           { ...resolvedFlags, json: true },
           ...positionalArgs,
         );
@@ -590,7 +593,7 @@ export function buildInvoker(options?: SentryOptions) {
       }
       const resolvedFlags = applyFlagDefaults(flags, flagDefs);
       await handler.call(
-        { ...ctx.context, commandPrefix },
+        { ...ctx.context, ...direct },
         { ...resolvedFlags, json: true },
         ...positionalArgs,
       );

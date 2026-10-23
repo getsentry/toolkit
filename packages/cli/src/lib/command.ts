@@ -667,7 +667,11 @@ export function buildCommand<
   async function maybeRecoverWithHelp(
     err: unknown,
     stdout: Writer,
-    ctx: { commandPrefix?: readonly string[]; stderr: Writer },
+    ctx: {
+      commandPrefix?: readonly string[];
+      directInvoke?: boolean;
+      stderr: Writer;
+    },
     args: unknown[],
   ): Promise<boolean> {
     if (!(err instanceof CliError) || err instanceof OutputError) {
@@ -682,7 +686,7 @@ export function buildCommand<
     ) {
       return false;
     }
-    if (!ctx.commandPrefix) {
+    if (!ctx.commandPrefix || ctx.directInvoke) {
       return false;
     }
     const pathSegments = ctx.commandPrefix.slice(1); // strip "sentry" prefix

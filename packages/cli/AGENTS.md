@@ -245,8 +245,8 @@ parser from `src/lib/target-positional.ts`, which binds the resolver:
 project), or `orgProjectTarget(resolve)` for a command-specific resolver (see
 `project view`). `func` takes the matching type (`OrgOptionalTarget`,
 `ProjectBoundTarget`, `OrgProjectTarget<R>`), reads the parsed form as
-`target.type` / `target.org`, and gets the org and project with
-`await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
+`target.parsed` (e.g. `target.parsed.type`), and gets the org and project
+with `await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
 itself, and an omitted target arrives as auto-detect. The
 `sentry-cli/require-target-resolution` lint rule fails a function that takes
 one of these types and never reads `.resolved`.
@@ -257,10 +257,11 @@ too). In a `buildDeleteCommand` command, the target refuses to auto-detect, so
 delete commands don't call `requireExplicitTarget` for it.
 
 Both steps are lazy (`lazyPositional` in `src/lib/positional-parse.ts`): the
-parse runs on the first property read and the resolver on the first
+parse runs on the first `parsed` read and the resolver on the first
 `resolved` read, both inside `func` after the auth guard. Invalid input still
-throws the parser's `CliError` with its exit code. Use `rawPositional(value)`
-for what the user typed; it never parses. `buildCommand` runs these parsers on
+throws the parser's `CliError` with its exit code. `target.raw` is what the
+user typed; shared code that handles any positional uses
+`rawPositional(value)`. `buildCommand` runs these parsers on
 positionals that arrive as strings or are omitted, so the SDK invoke path and
 tests that call `command.loader()` keep passing raw strings. Positionals whose
 meaning depends on how many arguments were given, such as

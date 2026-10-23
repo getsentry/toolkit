@@ -2,9 +2,9 @@
  * `[<org>/][<project>]` target positionals.
  *
  * Each parser here hands `func` an {@link OrgProjectTarget}: the
- * {@link ParsedOrgProject} (parsed on first property access) plus a
+ * {@link ParsedOrgProject} as `target.parsed` (parsed on first read) plus a
  * `resolved` promise bound to the resolver the positional declares. A
- * command reads `target.type` when it needs the parsed form and awaits
+ * command reads `target.parsed.type` when it needs the parsed form and awaits
  * `target.resolved` for the org and project, without choosing or calling a
  * parser or resolver itself. An omitted target arrives as auto-detect. See
  * `positional-parse.ts` for when parsing and resolution run.
