@@ -5,6 +5,7 @@
 A typical CI release creates the release, associates commits, finalizes it, and
 records a deploy:
 
+<!-- allow-commands: multi-step CI release workflow -->
 ```bash
 sentry release create my-org/1.0.0 --project my-project
 sentry release set-commits my-org/1.0.0 --auto

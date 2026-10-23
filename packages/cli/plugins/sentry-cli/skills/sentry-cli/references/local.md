@@ -75,8 +75,17 @@ sentry local --port 9000
 # Only show errors and logs (filter out transactions)
 sentry local -f error -f log
 
+# Only show AI/agent spans
+sentry local -f ai
+
 # Suppress per-envelope tail output
 sentry local --quiet
+
+# Stream NDJSON for scripts and agents
+sentry local --format json
+
+# Start the server and open the Sentry Local UI
+sentry local --open
 ```
 
 ### `sentry local session create <name...>`
@@ -136,6 +145,12 @@ sentry local run -- npm run dev
 
 # Run a Django dev server with the local server enabled
 sentry local run -- python manage.py runserver
+
+# Run your app and open the Sentry Local UI
+sentry local run --open -- npm run dev
+
+# Stream agent-relevant NDJSON without SDK housekeeping envelopes
+sentry local run --format json -f error -f transaction -f log -f ai -- npm run dev
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

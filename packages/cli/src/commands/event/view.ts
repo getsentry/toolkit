@@ -1187,6 +1187,12 @@ export const viewCommand = buildCommand({
         description: "Open in the browser",
         command: "sentry event view abc123def456abc123def456abc12345 -w",
       },
+      {
+        description:
+          "Download an attachment listed by --json (with sentry api)",
+        command:
+          "sentry api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png",
+      },
     ],
   },
   output: {

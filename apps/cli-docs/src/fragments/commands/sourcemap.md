@@ -37,8 +37,4 @@ common cause is a bundler that isn't emitting `.map` files:
 
 For CI steps that may run against legitimately-empty directories (e.g.,
 library-only repos, conditional release skips), pass `--allow-empty` to
-suppress the error:
-
-```bash
-sentry sourcemap upload ./dist --allow-empty
-```
+suppress the error.

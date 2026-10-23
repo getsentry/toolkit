@@ -1009,8 +1009,20 @@ export const serverCommand = buildCommand({
         command: "sentry local -f error -f log",
       },
       {
+        description: "Only show AI/agent spans",
+        command: "sentry local -f ai",
+      },
+      {
         description: "Suppress per-envelope tail output",
         command: "sentry local --quiet",
+      },
+      {
+        description: "Stream NDJSON for scripts and agents",
+        command: "sentry local --format json",
+      },
+      {
+        description: "Start the server and open the Sentry Local UI",
+        command: "sentry local --open",
       },
     ],
   },
