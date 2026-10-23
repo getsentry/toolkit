@@ -20,6 +20,7 @@ import {
 } from "../../../src/lib/db/index.js";
 import {
   CURRENT_SCHEMA_VERSION,
+  EXPECTED_TABLES,
   getSchemaIssues,
   prepareDatabaseForDowngrade,
   repairSchema,
@@ -44,6 +45,12 @@ const V16_ORG_REGIONS_DDL = `CREATE TABLE IF NOT EXISTS org_regions (
   org_slug TEXT PRIMARY KEY, org_id TEXT, org_name TEXT, org_role TEXT,
   region_url TEXT NOT NULL,
   updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+)`;
+/** `auth` as CLI 0.47.0 creates it. */
+const V16_AUTH_DDL = `CREATE TABLE IF NOT EXISTS auth (
+  id INTEGER PRIMARY KEY CHECK (id = 1), token TEXT, refresh_token TEXT,
+  expires_at INTEGER, issued_at INTEGER,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), host TEXT
 )`;
 const V16_ORG_REGIONS_UPSERT = `INSERT INTO org_regions (org_slug, region_url)
   VALUES ('acme', 'https://us.sentry.io')
@@ -165,7 +172,7 @@ describe("repairSchema: primary keys", () => {
 });
 
 describe("prepareDatabaseForDowngrade", () => {
-  test("leaves a database CLI 0.47.0 can use while logged in", () => {
+  test("leaves a database CLI 0.47.0 can use, logged out", () => {
     setAuthToken("active-token", 3600, "active-refresh", { host: HOST });
     setUserInfo({ userId: "7", email: "dev@example.com", name: "Dev" });
     const db = getRawDatabase();
@@ -174,32 +181,25 @@ describe("prepareDatabaseForDowngrade", () => {
 
     expect(storedVersion()).toBe(16);
     expect(tableExists(db, "org_regions")).toBe(false);
+    expect(db.query("SELECT COUNT(*) AS n FROM accounts").get()).toEqual({
+      n: 0,
+    });
     // What 0.47.0 does on startup and when listing organizations.
     db.exec(V16_ORG_REGIONS_DDL);
     expect(() => db.exec(V16_ORG_REGIONS_UPSERT)).not.toThrow();
-    expect(
-      db.query("SELECT token, refresh_token, host FROM auth").get(),
-    ).toEqual({
-      token: "active-token",
-      refresh_token: "active-refresh",
-      host: HOST,
-    });
-    expect(
-      db.query("SELECT user_id, email, name FROM user_info").get(),
-    ).toEqual({ user_id: "7", email: "dev@example.com", name: "Dev" });
   });
 
-  test("picks up the older CLI's token refresh without duplicating the account", () => {
+  test("picks up a login made in the older CLI on the way back up", () => {
     setAuthToken("active-token", 3600, "active-refresh", { host: HOST });
-    setUserInfo({ userId: "7", email: "dev@example.com" });
-    prepareDatabaseForDowngrade(getRawDatabase());
-    // The older CLI refreshes the token and recreates the cache in its shape.
     const db = getRawDatabase();
+    prepareDatabaseForDowngrade(db);
+    // 0.47.0 recreates its tables, then the user logs in there.
     db.exec(V16_ORG_REGIONS_DDL);
     db.exec(V16_ORG_REGIONS_UPSERT);
+    db.exec(V16_AUTH_DDL);
     db.query(
-      "UPDATE auth SET token = 'refreshed-token', refresh_token = 'refreshed-refresh'",
-    ).run();
+      "INSERT INTO auth (id, token, refresh_token, host) VALUES (1, 'older-cli-token', 'older-cli-refresh', ?)",
+    ).run(HOST);
 
     reopen();
 
@@ -210,30 +210,16 @@ describe("prepareDatabaseForDowngrade", () => {
       "source_origin",
       "org_slug",
     ]);
-    const accounts = listAccounts();
-    expect(accounts).toHaveLength(1);
-    expect(accounts[0]).toMatchObject({ active: true, userId: "7" });
+    expect(listAccounts()).toHaveLength(1);
     expect(getAuthConfig()).toMatchObject({
-      token: "refreshed-token",
-      refreshToken: "refreshed-refresh",
+      token: "older-cli-token",
+      refreshToken: "older-cli-refresh",
     });
   });
 
-  test("logs out on the way back up when the older CLI logged out", () => {
-    setAuthToken("active-token", 3600, "active-refresh", { host: HOST });
-    prepareDatabaseForDowngrade(getRawDatabase());
-    // What 0.47.0's `sentry auth logout` does.
-    getRawDatabase().query("DELETE FROM auth WHERE id = 1").run();
-
-    reopen();
-
-    expect(listAccounts()).toEqual([]);
-    expect(getAuthConfig()).toBeUndefined();
-  });
-
   test("redoes the hand-off after another invocation re-migrated", () => {
-    setAuthToken("active-token", 3600, "active-refresh", { host: HOST });
-    prepareDatabaseForDowngrade(getRawDatabase());
+    const db = getRawDatabase();
+    prepareDatabaseForDowngrade(db);
     // Another newer-CLI invocation during the download.
     reopen();
     expect(storedVersion()).toBe(CURRENT_SCHEMA_VERSION);
@@ -241,29 +227,14 @@ describe("prepareDatabaseForDowngrade", () => {
     prepareDatabaseForDowngrade(getRawDatabase());
 
     expect(storedVersion()).toBe(16);
-    expect(getRawDatabase().query("SELECT token FROM auth").get()).toEqual({
-      token: "active-token",
-    });
-  });
-
-  test("keeps a login the older CLI wrote when run again", () => {
-    setAuthToken("active-token", 3600, "active-refresh", { host: HOST });
-    const db = getRawDatabase();
-    prepareDatabaseForDowngrade(db);
-    db.query("UPDATE auth SET token = 'older-cli-login'").run();
-
-    prepareDatabaseForDowngrade(db);
-
-    expect(db.query("SELECT token FROM auth").get()).toEqual({
-      token: "older-cli-login",
-    });
+    expect(tableExists(getRawDatabase(), "org_regions")).toBe(false);
   });
 
   test("keeps migrations the older CLI ran when run again", () => {
-    setAuthToken("active-token", 3600, "active-refresh", { host: HOST });
     const db = getRawDatabase();
     prepareDatabaseForDowngrade(db);
     // An older CLI between schema 16 and this one migrates forward on setup.
+    db.exec(EXPECTED_TABLES.org_regions as string);
     db.query("UPDATE schema_version SET version = ?").run(
       CURRENT_SCHEMA_VERSION - 1,
     );
@@ -271,19 +242,6 @@ describe("prepareDatabaseForDowngrade", () => {
     prepareDatabaseForDowngrade(db);
 
     expect(storedVersion()).toBe(CURRENT_SCHEMA_VERSION - 1);
-    expect(db.query("SELECT token FROM auth").get()).toEqual({
-      token: "active-token",
-    });
-  });
-
-  test("leaves an empty auth table when nobody is logged in", () => {
-    const db = getRawDatabase();
-
-    prepareDatabaseForDowngrade(db);
-
-    expect(db.query("SELECT COUNT(*) AS n FROM auth").get()).toEqual({ n: 0 });
-    reopen();
-    expect(listAccounts()).toEqual([]);
-    expect(storedVersion()).toBe(CURRENT_SCHEMA_VERSION);
+    expect(tableExists(db, "org_regions")).toBe(true);
   });
 });
