@@ -57,6 +57,9 @@ const REGEX_FILTER_KEY_BEFORE_PATTERN = new RegExp(
   `${REGEX_FILTER_KEY_SOURCE}$`,
 );
 const REGEX_FILTER_KEY_SCAN_LIMIT = 256;
+const TRACE_ID_PATTERN = /^[0-9a-f]{32}$/i;
+// One double-quoted phrase with no unescaped quote inside.
+const QUOTED_PHRASE_PATTERN = /^"(?:[^"\\]|\\.)+"$/;
 const SEARCH_FILTER_KEY_SOURCE = String.raw`(^|\s)!?(?<key>[A-Za-z_][A-Za-z0-9_.[\],-]*):`;
 // Used by the semantic-downgrade comparison below, which still scans the raw
 // query text. `looksLikeSentrySearchSyntax` parses with the shared grammar.
@@ -206,6 +209,34 @@ export function looksLikeSentrySearchSyntax(
     }
   }
   return false;
+}
+
+/**
+ * Rewrite a query with only one literal reading into Sentry search syntax, so
+ * it can run without query translation. Returns null for anything else.
+ *
+ * - `*` matches everything.
+ * - A bare 32-character hex ID is a trace ID.
+ * - A single quoted phrase is a full-text search, which Sentry runs as is.
+ */
+export function rewriteLiteralQuery(query?: string): string | null {
+  const trimmedQuery = query?.trim();
+  if (!trimmedQuery) {
+    return null;
+  }
+  if (trimmedQuery === "*") {
+    return "";
+  }
+  if (TRACE_ID_PATTERN.test(trimmedQuery)) {
+    return `trace:${trimmedQuery.toLowerCase()}`;
+  }
+  if (
+    QUOTED_PHRASE_PATTERN.test(trimmedQuery) &&
+    trimmedQuery.slice(1, -1).trim()
+  ) {
+    return trimmedQuery;
+  }
+  return null;
 }
 
 export function readRegexFilterValue(

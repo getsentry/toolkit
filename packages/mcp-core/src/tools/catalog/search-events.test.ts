@@ -4645,5 +4645,37 @@ describe("search_events", () => {
 
       expect(mockGenerateText).toHaveBeenCalled();
     });
+
+    it.each([
+      [
+        "a bare trace ID",
+        "A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6",
+        "trace:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+      ],
+      ["a quoted phrase", '"connection refused"', '"connection refused"'],
+      ["a wildcard", "*", ""],
+    ])(
+      "should run %s without Seer or the agent",
+      async (_, query, expected) => {
+        mswServer.use(
+          mockOrganization(["mcp-search-events-seer-translate"]),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events/",
+            ({ request }) => {
+              const url = new URL(request.url);
+              expect(url.searchParams.get("dataset")).toBe("spans");
+              expect(url.searchParams.get("query")).toBe(expected);
+              expect(url.searchParams.get("sort")).toBe("-timestamp");
+              return HttpResponse.json({ data: [] });
+            },
+          ),
+        );
+
+        await searchEvents.handler({ ...seerParams, query }, context);
+
+        expect(mockSeerStart).not.toHaveBeenCalled();
+        expect(mockGenerateText).not.toHaveBeenCalled();
+      },
+    );
   });
 });

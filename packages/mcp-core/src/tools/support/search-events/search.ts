@@ -56,6 +56,7 @@ import {
   looksLikeSentrySearchSyntax,
   readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
+  rewriteLiteralQuery,
   validateEventsSearch,
 } from "./utils";
 
@@ -662,17 +663,23 @@ export async function runSearchEvents(
   // structured queries and explicit fields or sort, which the embedded agent
   // preserves. Like the UI, an explicit environment is added to Seer's query
   // afterwards.
-  const seerTranslation =
-    params.query &&
+  const seerDataset =
     isSeerSearchDataset(params.dataset) &&
     !hasStructuredQuery &&
     !hasExplicitFields &&
     !hasExplicitSort
+      ? params.dataset
+      : null;
+  // Queries with one literal reading, like a bare trace ID, run directly
+  // instead of going through Seer or the embedded agent.
+  const literalQuery = seerDataset ? rewriteLiteralQuery(params.query) : null;
+  const seerTranslation =
+    params.query && seerDataset && literalQuery === null
       ? await translateWithSeer({
           apiService,
           organizationSlug,
           projectId,
-          dataset: params.dataset,
+          dataset: seerDataset,
           query: params.query,
         })
       : null;
@@ -685,7 +692,8 @@ export async function runSearchEvents(
     inputDataset !== "replays" &&
     params.environment &&
     !canApplyEnvironmentFilter &&
-    !seerTranslation
+    !seerTranslation &&
+    literalQuery === null
   ) {
     throw new UserInputError(
       "The `environment` parameter is only supported for dataset='replays'. For other datasets, include environment filtering in the query string instead.",
@@ -693,7 +701,10 @@ export async function runSearchEvents(
   }
 
   const willRunAgent =
-    hasAgentProvider() && !canRunWithoutAgent && !seerTranslation;
+    hasAgentProvider() &&
+    !canRunWithoutAgent &&
+    !seerTranslation &&
+    literalQuery === null;
   const inputReferencesEnvironment =
     params.environment != null ||
     collectRequestedEnvironments(null, params.query ?? "").length > 0;
@@ -816,9 +827,11 @@ export async function runSearchEvents(
     }
   } else {
     dataset = inputDataset;
-    sentryQuery = shouldTrustStructuredTraceSearch
-      ? explicitStructuredTraceQuery
-      : (params.query ?? "");
+    sentryQuery =
+      literalQuery ??
+      (shouldTrustStructuredTraceSearch
+        ? explicitStructuredTraceQuery
+        : (params.query ?? ""));
     sortParam = explicitSort || defaultSortForDataset(dataset);
     timeParams = { statsPeriod: params.period ?? "14d" };
     fields =
