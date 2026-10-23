@@ -22,11 +22,7 @@ The DSN is resolved in priority order:
 ## Attachments
 
 `sentry event view --json` lists an event's attachment metadata. Download an
-attachment with `sentry api`:
-
-```bash
-sentry api "https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1" > screenshot.png
-```
+attachment with `sentry api` and the attachment's `?download=1` URL.
 
 ## Finding Event IDs
 
@@ -38,8 +34,5 @@ Event IDs can be found:
 
 ## Backward compatibility
 
-The old sentry-cli top-level command is available as a hidden alias:
-
-```bash
-sentry send-event    # same as: sentry event send
-```
+The old sentry-cli top-level command `sentry send-event` is available as a
+hidden alias for `sentry event send`.

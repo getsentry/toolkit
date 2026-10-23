@@ -61,6 +61,9 @@ Set `SENTRY_INIT=1` to run [`sentry init`](../commands/init/) right after instal
 curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
 ```
 
+The installer reports its own errors to Sentry. Set `SENTRY_CLI_NO_TELEMETRY=1`
+to turn this off; the CLI honors the same variable.
+
 ### Windows (PowerShell)
 
 On Windows, install the latest stable release from PowerShell:

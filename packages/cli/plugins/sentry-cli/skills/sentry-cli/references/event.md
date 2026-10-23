@@ -74,6 +74,9 @@ sentry event view abc123def456abc123def456abc12345
 
 # Open in the browser
 sentry event view abc123def456abc123def456abc12345 -w
+
+# Download an attachment listed by --json (with sentry api)
+sentry api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png
 ```
 
 ### `sentry event list <issue>`

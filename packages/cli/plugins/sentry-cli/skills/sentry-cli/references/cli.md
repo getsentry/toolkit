@@ -185,8 +185,10 @@ sentry cli setup --no-agent-skills
 
 Uninstall Sentry CLI
 
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
 **Flags:**
-- `--keep-config - Keep the config directory (~/.sentry) and auth tokens`
+- `--keep-config - Keep the config directory (default ~/.config/sentry) and auth tokens`
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`

@@ -8,12 +8,10 @@
 import type { SentryContext } from "../../context.js";
 import { buildProjectAliasMap } from "../../lib/alias.js";
 import {
-  API_MAX_PER_PAGE,
   buildIssueListCollapse,
   type IssueCollapseField,
   type IssuesPage,
   listIssuesAllPages,
-  listIssuesPaginated,
 } from "../../lib/api-client.js";
 import { extractRequiredScopes } from "../../lib/api-scope.js";
 import {
@@ -744,8 +742,7 @@ function pageHint(
 /**
  * Fetch issues for an organization, optionally restricted to a project set.
  *
- * When `cursor` is provided (--cursor resume), fetches a single page to keep the
- * cursor chain intact. Otherwise auto-paginates up to the requested limit.
+ * Auto-paginates up to the requested limit, resuming from `cursor` when given.
  */
 async function fetchOrganizationIssues(
   org: string,
@@ -762,29 +759,10 @@ async function fetchOrganizationIssues(
   const timeParams = timeRangeToApiParams(timeRange);
   const { cursor, onPage, projects } = options;
 
-  // When resuming with --cursor, fetch a single page so the cursor chain stays intact.
-  if (cursor) {
-    const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
-    const response = await listIssuesPaginated(org, "", {
-      query: flags.query,
-      cursor,
-      perPage,
-      sort: flags.sort,
-      ...timeParams,
-      projects,
-      groupStatsPeriod: apiOpts.groupStatsPeriod,
-      collapse: apiOpts.collapse,
-    });
-    return {
-      issues: applyQueryScopedCounts(response.data),
-      nextCursor: response.nextCursor,
-    };
-  }
-
-  // No cursor — auto-paginate from the beginning via the shared helper.
   const { issues, nextCursor } = await listIssuesAllPages(org, "", {
     query: flags.query,
     limit: flags.limit,
+    startCursor: cursor,
     sort: flags.sort,
     ...timeParams,
     projects,

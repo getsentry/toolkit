@@ -77,6 +77,7 @@ function parseTrialStartArgs(
 }
 
 export const startCommand = buildCommand({
+  destructive: true,
   docs: {
     brief: "Start a product trial",
     fullDescription:

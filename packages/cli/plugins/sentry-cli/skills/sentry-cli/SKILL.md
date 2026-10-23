@@ -46,7 +46,7 @@ The `sentry` CLI follows conventions from well-known tools — if you're familia
 
 ### Safety Rules
 
-- Always confirm with the user before running destructive commands: `project delete`, `trial start`
+- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `trial start`
 - For mutations, verify the org/project context looks correct in the command output before proceeding with further changes
 - Never store or log authentication tokens — the CLI manages credentials automatically
 - If the CLI reports the wrong org/project, override with explicit `<org>/<project>` arguments
@@ -222,7 +222,7 @@ sentry release deploy my-org/1.0.0 production
 sentry agent-conversation list
 
 # Explicit org, last 24 hours
-sentry agent-conversation list my-org --period 24h
+sentry agent-conversation list my-org/ --period 24h
 
 # View a conversation transcript
 sentry agent-conversation view my-org/conv-123

@@ -45,6 +45,8 @@ bun add -g sentry
 
 > The npm/pnpm/yarn packages require Node.js 20+. On Node.js 22.15+ the CLI uses the built-in `node:sqlite`; on Node.js 20–22.14 it transparently falls back to a bundled WASM SQLite driver.
 
+Homebrew and package manager installs don't add agent skills (package managers also skip shell completions). Run `sentry cli setup` once afterwards; see the [installation guide](https://cli.sentry.dev/getting-started/).
+
 ### Run Without Installing
 
 ```bash
@@ -149,11 +151,11 @@ cd packages/cli
 ### Running Locally
 
 ```bash
-# Run CLI in development mode
-pnpm run cli -- --help
+# Run CLI in development mode (generates missing build-time files on first run)
+pnpm run cli --help
 
-# With environment variables (create .env.local first, see DEVELOPMENT.md)
-pnpm run cli -- --help
+# Loads packages/cli/.env.local automatically when present (see DEVELOPMENT.md)
+pnpm run cli auth status
 ```
 
 ### Scripts

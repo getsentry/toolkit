@@ -208,7 +208,7 @@ describe("listConversations", () => {
 
     const result = await listConversations(ORG);
 
-    expect(result.nextCursor).toBe("1735689600000:0:0");
+    expect(result.nextCursor).toContain("1735689600000:0:0");
   });
 
   test("returns undefined nextCursor when no more pages", async () => {

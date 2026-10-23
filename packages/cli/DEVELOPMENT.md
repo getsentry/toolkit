@@ -31,7 +31,7 @@ Dev mode (`pnpm run cli`) falls back to the CLI's public sentry.io client ID whe
 `pnpm run cli` loads `.env.local` automatically when it exists:
 
 ```bash
-pnpm run cli -- auth login
+pnpm run cli auth login
 ```
 
 ## Testing the Device Flow
@@ -39,7 +39,7 @@ pnpm run cli -- auth login
 1. Run the CLI login command:
 
 ```bash
-pnpm run cli -- auth login
+pnpm run cli auth login
 ```
 
 2. You'll see output like:

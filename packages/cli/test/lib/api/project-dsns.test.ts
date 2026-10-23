@@ -144,7 +144,7 @@ describe.each([
     expect(projectIds.sort()).toEqual(organization ? ["42", "7"] : []);
   });
 
-  test("forwards page budgets and cursors, reusing project lookups across pages", async () => {
+  test("keeps the walk's page size across calls and reuses project lookups", async () => {
     const { requests, projectIds } = mockKeys((url) => {
       expect(url.pathname).toBe(path);
       expect(url.searchParams.get("project")).toBe(organization ? "-1" : null);
@@ -163,7 +163,7 @@ describe.each([
     const first = await list({ limit: 150, cursor: "0:25:0" });
     expect(projectIds).toEqual(organization ? ["42"] : []);
     expect(first.data).toHaveLength(150);
-    expect(first.nextCursor).toBe("0:175:0");
+    expect(first.nextCursor).toContain("0:125:0");
     const second = await list({ limit: 50, cursor: first.nextCursor });
 
     expect(
@@ -173,8 +173,9 @@ describe.each([
       }),
     ).toEqual([
       ["100", "0:25:0"],
-      ["50", "0:125:0"],
-      ["50", "0:175:0"],
+      ["100", "0:125:0"],
+      // -c next refetches the partly returned page with the walk's page size.
+      ["100", "0:125:0"],
     ]);
     expect(second.nextCursor).toBeUndefined();
     expect([...first.data, ...second.data].map((key) => key.name)).toEqual(

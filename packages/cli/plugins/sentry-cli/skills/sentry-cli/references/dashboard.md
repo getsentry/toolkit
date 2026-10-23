@@ -192,6 +192,8 @@ sentry dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 
 
 Delete a widget from a dashboard
 
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
 **Flags:**
 - `-i, --index <value> - Widget index (0-based)`
 - `-t, --title <value> - Widget title to match`
@@ -230,13 +232,13 @@ sentry dashboard revisions 'Frontend Performance'
 sentry dashboard revisions 12345
 
 # Pass the organization explicitly
-sentry dashboard revisions my-org 12345
+sentry dashboard revisions my-org/ 12345
 
 # Fetch the next page
-sentry dashboard revisions my-org 12345 -c next
+sentry dashboard revisions my-org/ 12345 -c next
 
 # Output as JSON
-sentry dashboard revisions my-org 12345 --json
+sentry dashboard revisions my-org/ 12345 --json
 ```
 
 ### `sentry dashboard restore <org/dashboard...>`
@@ -256,7 +258,7 @@ sentry dashboard restore 'Frontend Performance' --revision 3
 sentry dashboard restore 12345 --revision 42
 
 # Pass the organization explicitly
-sentry dashboard restore my-org 12345 --revision 42
+sentry dashboard restore my-org/ 12345 --revision 42
 
 # Output the restored dashboard as JSON
 sentry dashboard restore 12345 --revision 42 --json

@@ -251,6 +251,7 @@ async function orderForMerge(
 }
 
 export const mergeCommand = buildCommand({
+  destructive: true,
   docs: {
     brief: "Merge 2+ issues into a single canonical group",
     fullDescription:

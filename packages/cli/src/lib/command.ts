@@ -65,7 +65,11 @@ import {
   parseLogLevel,
   setLogLevel,
 } from "./logger.js";
-import { applyLazyPositionals, rawPositional } from "./positional-parse.js";
+import {
+  applyLazyPositionals,
+  markDestructive,
+  rawPositional,
+} from "./positional-parse.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
 import { applyTipsPreference } from "./tips.js";
 
@@ -193,6 +197,18 @@ type LocalCommandBuilderArguments<
    * repo-local `.sentryclirc` URL mismatches the current token.
    */
   readonly skipRcUrlCheck?: boolean;
+  /**
+   * Mark the command as destructive or irreversible. Defaults to `false`.
+   *
+   * Destructive commands are listed in the agent Safety Rules (generated from
+   * this flag), so agents ask the user before running them, and their lazy
+   * target positionals refuse an auto-detected target.
+   * `buildDeleteCommand` sets this automatically, and `check:destructive`
+   * fails CI when a command that sends an HTTP DELETE lacks it. Set it
+   * explicitly for irreversible operations that use other verbs (e.g.
+   * `issue merge`, `trial start`).
+   */
+  readonly destructive?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -721,6 +737,10 @@ export function buildCommand<
       existingParams.positional,
       this,
     );
+    // Lazy target positionals of destructive commands refuse to auto-detect
+    if (builderArgs.destructive) {
+      markDestructive(args);
+    }
 
     applyLoggingFlags(
       flags[LOG_LEVEL_KEY] as LogLevelName | undefined,
@@ -898,6 +918,9 @@ export function buildCommand<
   if (builderArgs.docs.examples?.length) {
     (cmd as unknown as Record<string, unknown>).__examples =
       builderArgs.docs.examples;
+  }
+  if (builderArgs.destructive) {
+    (cmd as unknown as Record<string, unknown>).__destructive = true;
   }
 
   // Attach the JSON schema to the built command as a non-standard property.

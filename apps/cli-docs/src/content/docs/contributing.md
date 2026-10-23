@@ -27,7 +27,7 @@ pnpm install
 cd packages/cli
 
 # Run CLI in development mode
-pnpm run cli -- --help
+pnpm run cli --help
 
 # Run tests
 pnpm run test

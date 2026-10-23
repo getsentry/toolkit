@@ -5,11 +5,8 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { MAX_PAGINATION_PAGES } from "../../lib/api/infrastructure.js";
-import {
-  API_MAX_PER_PAGE,
-  listDashboardRevisionsPaginated,
-} from "../../lib/api-client.js";
+import { paginate } from "../../lib/api/infrastructure.js";
+import { listDashboardRevisionsPaginated } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseOrgProjectTarget } from "../../lib/completion-target.js";
@@ -131,15 +128,15 @@ export const revisionsCommand = buildCommand({
       },
       {
         description: "Pass the organization explicitly",
-        command: "sentry dashboard revisions my-org 12345",
+        command: "sentry dashboard revisions my-org/ 12345",
       },
       {
         description: "Fetch the next page",
-        command: "sentry dashboard revisions my-org 12345 -c next",
+        command: "sentry dashboard revisions my-org/ 12345 -c next",
       },
       {
         description: "Output as JSON",
-        command: "sentry dashboard revisions my-org 12345 --json",
+        command: "sentry dashboard revisions my-org/ 12345 --json",
       },
     ],
   },
@@ -185,11 +182,7 @@ export const revisionsCommand = buildCommand({
       contextKey,
     );
 
-    const results: DashboardRevision[] = [];
-    let cursor = rawCursor;
-    let nextCursor: string | undefined;
-
-    await withDashboardErrors(
+    const { data: revisions, nextCursor } = await withDashboardErrors(
       {
         orgSlug,
         dashboardId,
@@ -198,50 +191,29 @@ export const revisionsCommand = buildCommand({
       () =>
         withProgress(
           { message: "Fetching revisions...", json: flags.json },
-          async () => {
-            for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-              const { data, nextCursor: nc } =
-                await listDashboardRevisionsPaginated(orgSlug, dashboardId, {
-                  // Ask only for the remaining budget so the last page's
-                  // cursor points at the first row we did not return.
-                  perPage: Math.min(
-                    flags.limit - results.length,
-                    API_MAX_PER_PAGE,
-                  ),
-                  cursor,
-                });
-              results.push(...data);
-              nextCursor = nc;
-              if (results.length >= flags.limit || !nc) {
-                break;
-              }
-              cursor = nc;
-            }
-          },
+          () =>
+            paginate(
+              { limit: flags.limit, cursor: rawCursor },
+              (perPage, pageCursor) =>
+                listDashboardRevisionsPaginated(orgSlug, dashboardId, {
+                  perPage,
+                  cursor: pageCursor,
+                }),
+            ),
         ),
     );
+    const hasMore = nextCursor !== undefined;
 
-    const trimmed = results.slice(0, flags.limit);
-    // A page larger than requested would make the server cursor skip the
-    // trimmed rows, so drop it (same as autoPaginate).
-    const cursorToStore = results.length > flags.limit ? undefined : nextCursor;
-    const hasMore = cursorToStore !== undefined;
-
-    advancePaginationState(
-      PAGINATION_KEY,
-      contextKey,
-      direction,
-      cursorToStore,
-    );
+    advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);
     const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 
     const outputData: RevisionsResult = {
-      revisions: trimmed,
+      revisions,
       orgSlug,
       dashboardId,
       hasMore,
       hasPrev: hasPrev || undefined,
-      nextCursor: cursorToStore,
+      nextCursor,
     };
     yield new CommandOutput(outputData);
 
@@ -254,13 +226,13 @@ export const revisionsCommand = buildCommand({
     });
     const navStr = nav ? ` ${nav}` : "";
 
-    if (trimmed.length === 0) {
+    if (revisions.length === 0) {
       return { hint: nav ? `No revisions found.${navStr}` : undefined };
     }
 
     return {
       hint:
-        `Showing ${trimmed.length} revision(s) for dashboard ${dashboardId}.${navStr}\n` +
+        `Showing ${revisions.length} revision(s) for dashboard ${dashboardId}.${navStr}\n` +
         `Restore: sentry dashboard restore ${orgSlug}/ ${dashboardId} --revision <revision-id>\n` +
         `Dashboard: ${url}`,
     };
