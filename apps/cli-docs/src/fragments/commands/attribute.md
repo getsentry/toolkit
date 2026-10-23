@@ -4,6 +4,7 @@
 
 Attributes are the typed key-value data attached to spans, logs, and metric samples. Their keys can be passed to other commands to filter, add columns, or group results:
 
+<!-- allow-commands: shows attribute keys used in other commands, not attribute usage -->
 ```bash
 # Filter spans that have the attribute
 sentry span list my-org/my-project -q 'has:gen_ai.request.model'
