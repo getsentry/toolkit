@@ -43,6 +43,8 @@ sentry trial list --json
 
 Start a product trial
 
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Confirm with the user before running it.
+
 **Examples:**
 
 ```bash

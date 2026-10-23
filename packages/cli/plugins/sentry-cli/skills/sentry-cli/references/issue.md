@@ -371,6 +371,8 @@ sentry issue ignore CLI-G5 --until auto
 
 Merge 2+ issues into a single canonical group
 
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Confirm with the user before running it.
+
 **Flags:**
 - `-i, --into <value> - Prefer this issue as the canonical parent (included in the merge if not already listed)`
 
@@ -425,6 +427,8 @@ sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --js
 ### `sentry issue unlink <issue> <url>`
 
 Unlink an external issue
+
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
 
 **Flags:**
 - `--integration <value> - Native integration ID, when multiple installations match`

@@ -489,14 +489,18 @@ describe("handleOrgAll", () => {
     const listPaginated = vi.fn(
       (_org: string, opts: { cursor?: string; perPage: number }) => {
         expect(opts.perPage).toBeLessThanOrEqual(100);
-        const offset = opts.cursor ? Number(opts.cursor) : 0;
+        // OffsetPaginator cursors: <per_page>:<page>:<is_prev>.
+        const [size = 0, page = 0] = (opts.cursor ?? "0:0:0")
+          .split(":")
+          .map(Number);
+        const offset = size * page;
         const data = Array.from({ length: opts.perPage }, (_, i) => ({
           id: String(offset + i),
           name: `W${offset + i}`,
         }));
         return Promise.resolve({
           data,
-          nextCursor: String(offset + opts.perPage),
+          nextCursor: `${opts.perPage}:${offset / opts.perPage + 1}:0`,
         });
       },
     );
@@ -512,17 +516,18 @@ describe("handleOrgAll", () => {
     });
 
     expect(result.items).toHaveLength(250);
-    // Full pages keep requests to a minimum; the cursor carries the page size
-    // because team and repo lists use page-number cursors.
+    // The fewest requests, split evenly instead of overfetching on the last
+    // one; the cursor carries the page size because team and repo lists use
+    // page-number cursors.
     expect(listPaginated.mock.calls.map((call) => call[1].perPage)).toEqual([
-      100, 100, 100,
+      84, 84, 84,
     ]);
     // The mock always returns a nextCursor, so hasMore is true and
     // the cursor points to the first item beyond the fetched 250.
     expect(result.hasMore).toBe(true);
 
     // `-c next` with another --limit keeps the walk's page size and refetches
-    // the third page, skipping the 50 rows already returned.
+    // the third page, skipping the 82 rows already returned.
     listPaginated.mockClear();
     const next = await handleOrgAll({
       config,
@@ -536,7 +541,8 @@ describe("handleOrgAll", () => {
       Array.from({ length: 30 }, (_, i) => String(250 + i)),
     );
     expect(listPaginated.mock.calls.map((call) => call[1])).toEqual([
-      { cursor: "200", perPage: 100 },
+      { cursor: "84:2:0", perPage: 84 },
+      { cursor: "84:3:0", perPage: 84 },
     ]);
   });
 });

@@ -100,7 +100,7 @@ catalog:
   vitest-evals: ^0.4.0
   workers-mcp: 0.1.0-3
   wrangler: 4.151.3
-  zod: ^4.4.3
+  zod: ^4.6.6
 
 minimumReleaseAgeExclude:
   - "@ai-sdk/gateway@3.0.153"
@@ -161,6 +161,6 @@ minimumReleaseAgeExclude:
   - "@oxlint/binding-win32-x64-msvc@1.87.0"
   - oxfmt@0.72.0
   - oxlint@1.87.0
-  - "@sentry/api@0.356.0"
+  - "@sentry/api@0.400.0"
   - miniflare@5.20261019.1-beta
   - wrangler@4.151.3

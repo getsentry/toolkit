@@ -31,8 +31,9 @@ marks tokens invalid or fills `parsed` values. A product that needs those
 subclasses `TokenConverter` and passes it as `converter`.
 
 The parser is compiled ahead of time into `src/generated/` and committed,
-since this package has no build step. After editing a grammar, run
-`pnpm --filter @sentry/toolkit-core generate`; the pre-commit hook does this
-for staged grammar changes, and `pnpm run check:generated` fails in CI when
+since this package has no build step. Its types live in
+`grammar/search-syntax.d.ts`. After editing either file, run
+`pnpm run generate:parsers`; the pre-commit hook does this for staged
+grammar changes, and `pnpm run check:generated` fails in CI when
 the committed parser is out of date. When updating the grammar from upstream,
 copy the fixtures too.
