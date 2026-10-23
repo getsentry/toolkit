@@ -1165,7 +1165,8 @@ export const upgradeCommand = buildCommand({
     }
 
     // Again after installing: another invocation of this CLI during the
-    // download re-migrates the database. No-op when nothing undid it.
+    // download re-migrates the database. No-op unless the stored version is
+    // this CLI's own, so the older CLI's forward migrations are kept.
     if (downgrade) {
       prepareLocalDatabaseForDowngrade();
     }

@@ -1026,16 +1026,17 @@ function exportActiveAccountToLegacyTables(db: Database): void {
  *   CLI re-runs its later migrations when it comes back and picks up any
  *   login or token refresh the older CLI wrote to `auth`.
  *
- * Does nothing when the stored version is already that low, so callers can
- * run it again after installing: another invocation of the newer CLI during
- * the download re-migrates the database and undoes the first run.
+ * Does nothing unless the stored version is this CLI's own, so callers can
+ * run it again after installing: only this CLI migrates to that version, so
+ * it means another invocation re-migrated the database during the download.
+ * An older CLI migrating forward from 16 stops below it and is left alone.
  *
  * Every migration after that version must therefore be safe to re-run.
  */
 export function prepareDatabaseForDowngrade(db: Database): void {
-  if (getSchemaVersion(db) <= PRE_ACCOUNTS_SCHEMA_VERSION) {
-    // Already prepared: preparing again would overwrite a login the older
-    // CLI wrote to `auth`.
+  if (getSchemaVersion(db) < CURRENT_SCHEMA_VERSION) {
+    // Already prepared, or the older CLI has since migrated forward on its
+    // own. Preparing again would overwrite a login it wrote to `auth`.
     return;
   }
   db.transaction(() => {
