@@ -649,7 +649,8 @@ function readTargetAnnotations(lines: string[]): TargetAnnotation[] {
  * cannot ship undocumented.
  */
 function generateTargetSyntax(): string {
-  const lines = targetGrammar.split("\n");
+  // Checkouts with CRLF line endings (Windows) must parse the same.
+  const lines = targetGrammar.split(/\r?\n/);
   const annotations = readTargetAnnotations(lines);
 
   const target = peggy.parser
