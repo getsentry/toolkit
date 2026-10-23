@@ -548,6 +548,23 @@ describe("completeIssues", () => {
       getCompletions(["issue", "list"], "CLI").map((c) => c.value),
     ).not.toContain("CLI-1A");
   });
+
+  test("skips positionals that do not take an issue", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(ISSUE_ENTITY, "acme", [{ value: "CLI-1A" }]);
+
+    // `issue link <issue> <url>`: the second positional is a URL.
+    expect(
+      getCompletions(["issue", "link"], "CLI").map((c) => c.value),
+    ).toContain("CLI-1A");
+    expect(getCompletions(["issue", "link", "CLI-1A"], "")).toEqual([]);
+    expect(getCompletions(["issue", "unlink", "CLI-1A"], "")).toEqual([]);
+    expect(getCompletions(["issue", "resolve", "CLI-1A"], "")).toEqual([]);
+    // Variadic issue commands complete every positional.
+    expect(
+      getCompletions(["issue", "view", "CLI-9"], "CLI").map((c) => c.value),
+    ).toContain("CLI-1A");
+  });
 });
 
 describe("completeDashboards", () => {

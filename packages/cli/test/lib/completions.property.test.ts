@@ -26,6 +26,7 @@ import {
 } from "../../src/lib/completions.js";
 import { COMPLETION_TARGETS } from "../../src/lib/completion-target.js";
 import {
+  extractCompletionTargetPositions,
   extractCompletionTargets,
   extractCompletionValueFlags,
   type RouteMap,
@@ -403,11 +404,14 @@ describe("complete.ts: generated completion targets", () => {
   // vitest because Node's CJS require can't resolve .js→.ts for transitive imports.
   const targets = extractCompletionTargets(routes as unknown as RouteMap);
   const valueFlags = extractCompletionValueFlags(routes as unknown as RouteMap);
+  const targetPositions = extractCompletionTargetPositions(
+    routes as unknown as RouteMap,
+  );
 
   // A mismatch means src/generated/completion-targets.json is stale.
   // Regenerate with: pnpm run generate:completions
   test("generated completion targets match the route tree", () => {
-    expect(generatedTargets).toEqual({ targets, valueFlags });
+    expect(generatedTargets).toEqual({ targets, valueFlags, targetPositions });
   });
 
   test("project create keeps its dedicated name:platform completer", () => {

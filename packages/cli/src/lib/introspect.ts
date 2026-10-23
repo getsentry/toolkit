@@ -545,6 +545,52 @@ export function extractCompletionValueFlags(
   );
 }
 
+/** Zero-based positional indices that take the target, per command path. */
+export type CompletionTargetPositions = Record<string, number[]>;
+
+/**
+ * Collect which positionals take the target in commands with a fixed list of
+ * positionals.
+ *
+ * `__complete` uses these so a later positional, such as the URL in
+ * `issue link <issue> <url>`, is not completed as a target. Commands with a
+ * variadic positional are omitted because every word takes the target.
+ *
+ * @param routeMap - Top-level Stricli route map
+ * @param prefix - Route segments above `routeMap` (used for recursion)
+ */
+export function extractCompletionTargetPositions(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+): CompletionTargetPositions {
+  const result: CompletionTargetPositions = {};
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden) {
+      continue;
+    }
+    const segments = [...prefix, entry.name.original];
+    const target = entry.target;
+    if (isRouteMap(target)) {
+      Object.assign(result, extractCompletionTargetPositions(target, segments));
+    } else if (isCommand(target)) {
+      const path = segments.join(" ");
+      const positional = target.parameters.positional;
+      if (
+        positional?.kind !== "tuple" ||
+        !getCommandCompletionTarget(target, path)
+      ) {
+        continue;
+      }
+      result[path] = positional.parameters.flatMap((param, index) =>
+        getCompletionTarget(param.parse) ? [index] : [],
+      );
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(result).sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
+
 /** Matches the "sentry " prefix at the start of a command path. */
 const SENTRY_PREFIX_RE = /^sentry /;
 

@@ -129,6 +129,13 @@ const COMMAND_TARGETS = new Map<string, CompletionTarget>(
 const COMMAND_VALUE_FLAGS: Readonly<Record<string, readonly string[]>> =
   generatedTargets.valueFlags;
 
+/**
+ * Command path → positional indices that take the target. Commands with a
+ * variadic positional are absent: every positional takes the target.
+ */
+const COMMAND_TARGET_POSITIONS: Readonly<Record<string, readonly number[]>> =
+  generatedTargets.targetPositions;
+
 /** The command named by the preceding words and what follows it. */
 type CommandMatch = {
   target: CompletionTarget;
@@ -136,6 +143,8 @@ type CommandMatch = {
   args: string[];
   /** Flags of this command that consume the next word as their value. */
   valueFlags: ReadonlySet<string>;
+  /** Positional indices that take the target; `undefined` when all do. */
+  targetPositions: readonly number[] | undefined;
 };
 
 /** Words typed after a command path, split into positionals and flags. */
@@ -182,6 +191,7 @@ function findCompletionTarget(words: string[]): CommandMatch | undefined {
         target,
         args: words.slice(length),
         valueFlags: new Set(COMMAND_VALUE_FLAGS[path] ?? []),
+        targetPositions: COMMAND_TARGET_POSITIONS[path],
       };
     }
   }
@@ -229,6 +239,10 @@ export function getCompletions(
     case ORG_TARGET:
       return completeOrgSlugs(partial);
     case ISSUE_TARGET:
+      // `issue link <issue> <url>`: only the issue positional is an issue
+      if (match.targetPositions?.includes(args.positionals.length) === false) {
+        return [];
+      }
       return completeIssues(partial);
     case DASHBOARD_TARGET:
       return completeDashboards(partial, args.positionals);

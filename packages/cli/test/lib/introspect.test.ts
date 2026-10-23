@@ -26,6 +26,7 @@ import {
   buildCommandInfo,
   extractAllRoutes,
   extractCompletionTargets,
+  extractCompletionTargetPositions,
   extractCompletionValueFlags,
   extractFlags,
   extractPositionals,
@@ -513,6 +514,49 @@ describe("extractCompletionValueFlags", () => {
 
     expect(extractCompletionValueFlags(topLevel)).toEqual({
       "dashboard view": ["--period", "--sort", "-t"],
+    });
+  });
+});
+
+describe("extractCompletionTargetPositions", () => {
+  test("lists target positionals of tuple commands only", () => {
+    const link = makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: [
+            { placeholder: "issue", parse: parseIssueTarget },
+            { placeholder: "url", parse: String },
+          ],
+        },
+      },
+    });
+    const merge = makeCommand({
+      parameters: {
+        positional: {
+          kind: "array",
+          parameter: { placeholder: "issue", parse: parseIssueTarget },
+        },
+      },
+    });
+    const noTarget = makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: [{ placeholder: "endpoint", parse: String }],
+        },
+      },
+    });
+    const topLevel = makeRouteMap([
+      makeEntry(
+        "issue",
+        makeRouteMap([makeEntry("link", link), makeEntry("merge", merge)]),
+      ),
+      makeEntry("api", noTarget),
+    ]);
+
+    expect(extractCompletionTargetPositions(topLevel)).toEqual({
+      "issue link": [0],
     });
   });
 });
