@@ -185,3 +185,35 @@ tester.run(
     ],
   },
 );
+
+tester.run(
+  "no-regex-markdown-parsing",
+  plugin.rules["no-regex-markdown-parsing"],
+  {
+    valid: [
+      { filename: source, code: "const query = /[^/?#\\s]+/;" },
+      { filename: source, code: "const issue = /#(\\d+)/;" },
+      {
+        filename: "/repo/packages/cli/test/example.test.ts",
+        code: "expect(output).toMatch(/^## Usage/m);",
+      },
+    ],
+    invalid: [
+      {
+        filename: "/repo/packages/cli/script/example.ts",
+        code: "const fence = /^(`{3,}|~{3,}).*\\n[\\s\\S]*?\\n\\1\\s*$/gm;",
+        errors: 1,
+      },
+      {
+        filename: source,
+        code: "const heading = /^#{1,6}\\s+examples?/im;",
+        errors: 1,
+      },
+      {
+        filename: "/repo/packages/cli/script/example.ts",
+        code: "const heading = new RegExp(`^#{1,4}\\\\s+${name}`, 'im');",
+        errors: 1,
+      },
+    ],
+  },
+);

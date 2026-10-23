@@ -25,6 +25,11 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import { formatCommandExamples } from "./generate-skill-markdown.js";
+import {
+  demoteHeadings,
+  markdownCodeBlocks,
+  markdownSection,
+} from "./markdown.js";
 import { DOCS_CONTENT, DOCS_PUBLIC } from "./paths.js";
 
 // Bootstrap: ensure the generated skill-content module exists before
@@ -67,9 +72,6 @@ async function getPackageVersion(): Promise<string> {
 
 /** Regex to match YAML frontmatter at the start of a file */
 const FRONTMATTER_REGEX = /^---\n[\s\S]*?\n---\n/;
-
-/** Regex to match code blocks with optional language specifier */
-const CODE_BLOCK_REGEX = /```(\w*)\n([\s\S]*?)```/g;
 
 /** Regex to extract npm command from PackageManagerCode Astro component (handles multi-line) */
 const PACKAGE_MANAGER_REGEX = /<PackageManagerCode[\s\S]*?npm="([^"]+)"/;
@@ -122,51 +124,6 @@ function stripMdxComponents(markdown: string): string {
   return result.trim();
 }
 
-/** Extract a specific section from markdown by heading */
-function extractSection(markdown: string, heading: string): string | null {
-  const headingPattern = new RegExp(
-    `^(#{1,6})\\s+${escapeRegex(heading)}\\s*$`,
-    "m",
-  );
-  const match = markdown.match(headingPattern);
-  if (!match || match.index === undefined) {
-    return null;
-  }
-  const headingLevel = match[1].length;
-  const startIndex = match.index + match[0].length;
-  const nextHeadingPattern = new RegExp(`^#{1,${headingLevel}}\\s+`, "m");
-  const remainingContent = markdown.slice(startIndex);
-  const nextMatch = remainingContent.match(nextHeadingPattern);
-  const endIndex = nextMatch?.index
-    ? startIndex + nextMatch.index
-    : markdown.length;
-  return markdown.slice(startIndex, endIndex).trim();
-}
-
-/** Extract all code blocks from markdown */
-function extractCodeBlocks(
-  markdown: string,
-  language?: string,
-): { code: string; lang: string }[] {
-  const blocks: { code: string; lang: string }[] = [];
-  const pattern = new RegExp(CODE_BLOCK_REGEX.source, CODE_BLOCK_REGEX.flags);
-  let match = pattern.exec(markdown);
-  while (match !== null) {
-    const lang = match[1] || "";
-    const code = match[2].trim();
-    if (!language || lang === language) {
-      blocks.push({ code, lang });
-    }
-    match = pattern.exec(markdown);
-  }
-  return blocks;
-}
-
-/** Escape special regex characters in a string */
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 // ---------------------------------------------------------------------------
 // Documentation Loading
 // ---------------------------------------------------------------------------
@@ -199,7 +156,9 @@ function generateInstallSection(
   const lines: string[] = [];
   lines.push("### Installation");
   lines.push("");
-  const codeBlocks = extractCodeBlocks(installSection, "bash");
+  const codeBlocks = markdownCodeBlocks(installSection).filter(
+    ({ lang }) => lang === "bash",
+  );
   const npmCommand = extractPackageManagerCommand(rawContent);
   if (codeBlocks.length > 0 || npmCommand) {
     lines.push("```bash");
@@ -223,7 +182,9 @@ function generateAuthSection(authSection: string): string[] {
   const lines: string[] = [];
   lines.push("### Authentication");
   lines.push("");
-  const codeBlocks = extractCodeBlocks(authSection, "bash");
+  const codeBlocks = markdownCodeBlocks(authSection).filter(
+    ({ lang }) => lang === "bash",
+  );
   if (codeBlocks.length > 0) {
     lines.push("```bash");
     for (const block of codeBlocks) {
@@ -251,12 +212,12 @@ async function loadPrerequisites(): Promise<string> {
   lines.push("");
   lines.push("The CLI must be installed and authenticated before use.");
   lines.push("");
-  const installSection = extractSection(content, "Install Script");
+  const installSection = markdownSection(content, "Install Script");
   if (installSection) {
     lines.push(...generateInstallSection(installSection, rawContent));
   }
   lines.push("");
-  const authSection = extractSection(content, "Authentication");
+  const authSection = markdownSection(content, "Authentication");
   if (authSection) {
     lines.push(...generateAuthSection(authSection));
   }
@@ -303,9 +264,9 @@ async function loadCommandsOverview(): Promise<{
   if (!content) {
     return null;
   }
-  const globalSection = extractSection(content, "Global Options");
-  const jsonSection = extractSection(content, "JSON Output");
-  const webSection = extractSection(content, "Opening in Browser");
+  const globalSection = markdownSection(content, "Global Options");
+  const jsonSection = markdownSection(content, "JSON Output");
+  const webSection = markdownSection(content, "Opening in Browser");
   return {
     globalOptions: globalSection || "",
     jsonOutput: jsonSection || "",
@@ -653,11 +614,7 @@ async function generateAllSkillFiles(
   if (agentGuidance) {
     indexSections.push("## Agent Guidance");
     indexSections.push("");
-    const nestedGuidance = agentGuidance.replace(
-      /^(#{2,6})\s/gm,
-      (_, hashes: string) => `#${hashes} `,
-    );
-    indexSections.push(nestedGuidance);
+    indexSections.push(demoteHeadings(agentGuidance));
     indexSections.push("");
   }
 

@@ -1,3 +1,5 @@
+import { marked } from "marked";
+
 const name = "sentry-cli";
 
 function member(node, property) {
@@ -68,8 +70,37 @@ function staticText(node) {
   return "";
 }
 
-const EXAMPLES_BLOCK_RE =
-  /(?:^|\n)[ \t]*(?:#{1,6}[ \t]+examples?|examples?:)[ \t]*(?:\n|$)/i;
+/** Matches a heading or label line that opens an Examples section. */
+const EXAMPLES_LABEL_RE = /^examples?:?$/i;
+
+/** Whether help text has an Examples heading or an `Examples:` label line. */
+function hasExamplesSection(text) {
+  return marked
+    .lexer(text)
+    .some((token) =>
+      token.type === "heading"
+        ? EXAMPLES_LABEL_RE.test(token.text.trim())
+        : token.type === "paragraph" &&
+          token.text
+            .split("\n")
+            .some((line) => EXAMPLES_LABEL_RE.test(line.trim())),
+    );
+}
+
+/** Regex sources that match markdown headings or code fences. */
+const MARKDOWN_STRUCTURE_RE = /(?:(?<!\[)\^|\\n)\(?(?:\?:)?#|`\{3|```|~\{3|~~~/;
+
+/** Source of a regex literal or a `new RegExp("...")` with a static pattern. */
+function regexSource(node) {
+  if (node.type === "Literal" && node.regex) return node.regex.pattern;
+  if (
+    node.type === "NewExpression" &&
+    node.callee.type === "Identifier" &&
+    node.callee.name === "RegExp"
+  )
+    return staticText(node.arguments[0]);
+  return "";
+}
 
 const rules = {
   "no-silent-catch": rule(
@@ -278,9 +309,23 @@ const rules = {
               const key = node.key?.name ?? node.key?.value;
               if (
                 key === "fullDescription" &&
-                EXAMPLES_BLOCK_RE.test(staticText(node.value))
+                hasExamplesSection(staticText(node.value))
               )
                 report(node);
+            },
+          }
+        : {},
+  ),
+  "no-regex-markdown-parsing": rule(
+    "Parse markdown structure with marked instead of regexes.",
+    (_context, file, report) =>
+      file.includes("/src/") || file.includes("/script/")
+        ? {
+            Literal(node) {
+              if (MARKDOWN_STRUCTURE_RE.test(regexSource(node))) report(node);
+            },
+            NewExpression(node) {
+              if (MARKDOWN_STRUCTURE_RE.test(regexSource(node))) report(node);
             },
           }
         : {},

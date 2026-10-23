@@ -18,6 +18,7 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import type { RouteInfo, RouteMap } from "../src/lib/introspect.js";
+import { markdownHeadings } from "./markdown.js";
 import { DOCS_FRAGMENTS } from "./paths.js";
 
 // Ensure skill-content stub exists (see generate-command-docs.ts for rationale)
@@ -90,15 +91,8 @@ for (const name of actualFragments) {
   }
 }
 
-const FENCED_CODE_BLOCK_RE = /^(`{3,}|~{3,}).*\n[\s\S]*?\n\1\s*$/gm;
-
-/** Strip fenced code blocks from markdown to avoid matching bash comments as headings. */
-function stripCodeBlocks(md: string): string {
-  return md.replace(FENCED_CODE_BLOCK_RE, "");
-}
-
-/** Matches an Examples heading outside fenced code blocks. */
-const EXAMPLES_HEADING_RE = /^#{1,6}[ \t]+examples?\b/im;
+/** Matches heading text that starts an Examples section. */
+const EXAMPLES_HEADING_RE = /^examples?\b/i;
 
 // Check 3: Fragment content validation
 for (const file of fragmentFiles) {
@@ -116,7 +110,11 @@ for (const file of fragmentFiles) {
     );
   }
 
-  if (EXAMPLES_HEADING_RE.test(stripCodeBlocks(content))) {
+  if (
+    markdownHeadings(content).some(({ text }) =>
+      EXAMPLES_HEADING_RE.test(text.trim()),
+    )
+  ) {
     errors.push(
       `Fragment contains an Examples section: ${FRAGMENTS_DIR}/${file} (move command examples to the command's docs.examples metadata so they appear in help, generated docs, and skills)`,
     );
@@ -192,15 +190,12 @@ function fragmentMentionsSubcommand(
     }
   }
 
-  // Check 3: Heading that mentions the leaf name (outside code blocks)
-  const proseOnly = stripCodeBlocks(content);
+  // Check 3: Heading (levels 1-4, outside code blocks) that mentions the leaf name
   const escapedLeaf = leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const headingRe = new RegExp(`^#{1,4}\\s+.*\\b${escapedLeaf}\\b`, "im");
-  if (headingRe.test(proseOnly)) {
-    return true;
-  }
-
-  return false;
+  const leafRe = new RegExp(`\\b${escapedLeaf}\\b`, "i");
+  return markdownHeadings(content).some(
+    ({ depth, text }) => depth <= 4 && leafRe.test(text),
+  );
 }
 
 /**

@@ -284,6 +284,16 @@ All non-trivial human output must use the markdown rendering pipeline:
 
 Reference: `formatters/trace.ts` (`formatAncestorChain`), `formatters/human.ts` (`plainSafeMuted`)
 
+### Parsing Markdown
+
+Never parse markdown structure (headings, code fences, lists) with regexes. Use the `marked` lexer, which is already a dependency:
+
+- Scripts: use the helpers in `script/markdown.ts` (`markdownHeadings()`, `blankCodeBlocks()`), or `marked.lexer()` directly for other token types.
+- Runtime code: follow `src/lib/formatters/markdown.ts` and `src/lib/release-notes.ts`.
+- Regexes are fine on the plain text of a parsed token, such as matching heading text.
+
+The `sentry-cli/no-regex-markdown-parsing` lint rule flags regexes that match headings or code fences in `src/` and `script/`.
+
 ### Create & Delete Command Standards
 
 Mutation (create/delete) commands use shared infrastructure from `src/lib/mutate-command.ts`,
