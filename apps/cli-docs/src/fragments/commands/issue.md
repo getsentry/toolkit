@@ -23,6 +23,31 @@ Use `@latest` and `@most_frequent` to target issues without knowing their ID.
 - **`org/project` targets use slugs, not numeric IDs** — `sentry issue list my-org/6775615880` fails when `6775615880` is a project ID copied from a URL. Run `sentry project list my-org/` to find the slug (e.g. `frontend`).
 - **Prefer auto-detect over guessing slugs** — omit the target when possible; the CLI resolves org/project from DSNs, `.env` files, and your working directory.
 
+## Inspect tag distributions
+
+After opening an issue, compare which releases, servers, or browsers account for
+its events. `issue view` shows tags on the latest event; `issue tags` aggregates
+across the issue's retained events.
+
+The result contains up to **9 top values**, ordered by count. Human output shows
+each value's count and percentage of **all retained events**, including events
+with a missing value. Any remainder appears as "Other values (not shown)";
+percentages are never calculated from just the displayed rows. Retention limits
+apply, so this total can differ from the issue's lifetime event count.
+
+`--environment` selects one environment; omitting it includes all environments.
+This aggregate does **not** support `--period`, `--query`, `--limit`, or cursor
+pagination. Use `issue events` when you need filtered event records. For example,
+after identifying a release, inspect recent events with
+`sentry issue events FRONT-ABC --query 'release:1.2.3' --period 7d`.
+
+JSON preserves `key`, `name`, `totalValues`, and `topValues`, including counts and
+first/last seen timestamps. Values and counts may be `null`; missing data is not
+zero. `--fields` selects top-level fields. To discover tag keys, inspect the
+latest event with `sentry issue view <issue>`; it may not contain every tag used
+by earlier events. A tag with no retained values, or an unknown environment,
+can return a not-found error.
+
 ## Short IDs and organizations
 
 Full short IDs such as `FRONT-ABC` use your configured organization: `SENTRY_ORG`,
