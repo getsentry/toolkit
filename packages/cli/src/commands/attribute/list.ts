@@ -48,9 +48,9 @@ import {
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
   LIST_PERIOD_FLAG,
-  LIST_TARGET_POSITIONAL,
   PERIOD_ALIASES,
   paginationHint,
+  targetPatternExplanation,
 } from "../../lib/list-command.js";
 import {
   jsonTransformListResult,
@@ -58,7 +58,10 @@ import {
 } from "../../lib/org-list.js";
 import { isGlobFilter } from "../../lib/list-filter.js";
 import { withProgress } from "../../lib/polling.js";
-import { resolveOrgOptionalFromArg } from "../../lib/resolve-target.js";
+import {
+  type OrgOptionalTarget,
+  orgOptionalTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -66,8 +69,6 @@ import {
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
 import { shellQuote } from "../../lib/utils.js";
-
-const COMMAND_NAME = "attribute list";
 
 /** Cursor storage key for `-c next` / `-c prev` */
 const PAGINATION_KEY = "attribute-list";
@@ -337,11 +338,12 @@ export const listCommand = buildListCommand("attribute", {
       "  ALIASES      Other names the attribute can be queried by\n" +
       "  DESCRIPTION  What the attribute means; deprecated keys name replacements (pass --context)\n" +
       "  EXAMPLES     Sample values seen for the attribute (pass --context)\n\n" +
-      "Target specification:\n" +
-      "  sentry attribute list                      # auto-detect org from DSN or config\n" +
-      "  sentry attribute list <org>/               # all projects in the organization\n" +
-      "  sentry attribute list <org>/<project>      # one project\n" +
-      "  sentry attribute list <project>            # find project across all orgs\n\n" +
+      "Target patterns:\n" +
+      "  sentry attribute list                 # auto-detect org from DSN or config\n" +
+      "  sentry attribute list <org>/          # all projects in the organization\n" +
+      "  sentry attribute list <org>/<proj>    # one project\n" +
+      "  sentry attribute list <project>       # find project across all orgs\n\n" +
+      `${targetPatternExplanation()}\n\n` +
       "Filter (space-separated terms in one argument):\n" +
       "  <text>       Attribute keys containing <text> (case-sensitive)\n" +
       "  has:<key>    Attributes seen on the same items as <key>\n\n" +
@@ -406,7 +408,13 @@ export const listCommand = buildListCommand("attribute", {
     positional: {
       kind: "tuple",
       parameters: [
-        ...LIST_TARGET_POSITIONAL.parameters,
+        {
+          placeholder: "org/project",
+          brief:
+            "<org>/ (all projects), <org>/<project>, or <project> (search)",
+          parse: orgOptionalTarget,
+          optional: true,
+        },
         {
           placeholder: "filter",
           brief:
@@ -452,16 +460,12 @@ export const listCommand = buildListCommand("attribute", {
   async *func(
     this: SentryContext,
     flags: AttributeListFlags,
-    target?: string,
+    target: OrgOptionalTarget,
     filter?: string,
   ) {
     const types = parseAttributeTypes(flags.type);
     const { query, name } = parseAttributeFilter(filter);
-    const { org, project } = await resolveOrgOptionalFromArg(
-      target,
-      this.cwd,
-      COMMAND_NAME,
-    );
+    const { org, project } = await target.resolved;
     const scope = project ? `${org}/${project}` : `${org}/`;
     // Normalized filter, for the cursor's context key and page hints
     const filterText = [name, query].filter(Boolean).join(" ") || undefined;
