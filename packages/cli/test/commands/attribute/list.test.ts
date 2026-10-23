@@ -100,6 +100,7 @@ function createMockContext() {
       stdout: { write: stdoutWrite },
       stderr: { write: stderrWrite },
       cwd: "/tmp",
+      commandPrefix: ["sentry", "attribute", "list"],
     },
     stdoutWrite,
   };
@@ -137,7 +138,7 @@ async function run(
 }
 
 const listSpy = vi.mocked(apiClient.listTraceItemAttributes);
-const resolveSpy = vi.mocked(resolveTarget.resolveOrgOptionalFromArg);
+const resolveSpy = vi.mocked(resolveTarget.resolveOrgOptionalTarget);
 
 /**
  * Serve `data` the way Sentry's attributes endpoint does: one type per
@@ -327,6 +328,11 @@ describe("listCommand.func", () => {
 
     const output = await run({ json: true }, "my-org/backend");
 
+    expect(resolveSpy).toHaveBeenCalledWith(
+      { type: "explicit", org: "my-org", project: "backend" },
+      "/tmp",
+      "attribute list",
+    );
     // One request per attribute type, each paginated on its own
     expect(listSpy).toHaveBeenCalledTimes(4);
     expect(listSpy).toHaveBeenCalledWith("my-org", {
