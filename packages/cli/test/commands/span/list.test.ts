@@ -407,7 +407,7 @@ describe("listCommand.func (trace mode)", () => {
     expect(parsed.nextCursor).toBe("1735689600:0:1");
   });
 
-  test("hint shows -c next when more pages available", async () => {
+  test("next-page hint preserves a quoted query", async () => {
     listSpansSpy.mockResolvedValue({
       data: [
         {
@@ -429,12 +429,16 @@ describe("listCommand.func (trace mode)", () => {
         sort: "date",
         period: parsePeriod("7d"),
         fresh: false,
+        query: 'span.description:"SELECT * FROM users"',
       },
       VALID_TRACE_ID,
     );
 
     const output = getStdout();
     expect(output).toContain("-c next");
+    expect(output).toContain(
+      `--query='span.description:"SELECT * FROM users"'`,
+    );
   });
 
   test("passes statsPeriod to listSpans", async () => {

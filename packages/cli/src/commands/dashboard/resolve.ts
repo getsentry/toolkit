@@ -5,6 +5,7 @@
  * ID resolution from numeric IDs or title strings.
  */
 
+import { parseFunction } from "@sentry/toolkit-core/events-fields";
 import { MAX_PAGINATION_PAGES } from "../../lib/api/infrastructure.js";
 import {
   API_MAX_PER_PAGE,
@@ -34,6 +35,9 @@ import {
   validateAggregateNames,
   WIDGET_TYPES,
 } from "../../types/dashboard.js";
+
+/** Recognize slug-shaped targets without treating arbitrary slash titles as paths. */
+const DASHBOARD_REF_PATH_RE = /^([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?)\/(.+)$/;
 
 /** Shared widget query flags used by `add` and `edit` commands */
 export type WidgetQueryFlags = {
@@ -121,6 +125,7 @@ function tryExtractDashboardUrl(
  *
  * Handles:
  * - `<id-or-title>` — single arg (auto-detect org)
+ * - `<org>/<id>` or `<org>/<project>/<id>` — qualified numeric ID
  * - `<target> <id-or-title>` — explicit target + dashboard ref
  * - Full Sentry dashboard URL — extracts org + dashboard ID
  *
@@ -150,6 +155,13 @@ export function parseDashboardPositionalArgs(
   }
 
   if (args.length === 1) {
+    const [, target, dashboardRef] = DASHBOARD_REF_PATH_RE.exec(first) ?? [];
+    if (target && dashboardRef && isAllDigits(dashboardRef)) {
+      return {
+        dashboardRef,
+        targetArg: target.includes("/") ? target : `${target}/`,
+      };
+    }
     return {
       dashboardRef: first,
       targetArg: undefined,
@@ -319,11 +331,13 @@ export async function resolveDashboardId(
   let cursor: string | undefined;
 
   for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-    const { data, nextCursor } = await listDashboardsPaginated(orgSlug, {
-      perPage: API_MAX_PER_PAGE,
-      cursor,
-    }).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "list" }),
+    const { data, nextCursor } = await withDashboardErrors(
+      { orgSlug, operation: "list" },
+      () =>
+        listDashboardsPaginated(orgSlug, {
+          perPage: API_MAX_PER_PAGE,
+          cursor,
+        }),
     );
     // Match by ID/slug first (e.g. "default-overview"), then fall back to title
     const match =
@@ -544,16 +558,13 @@ function warnUnknownAggregateFields(
     return;
   }
   for (const agg of aggregates) {
-    const parenIdx = agg.indexOf("(");
-    if (parenIdx < 0) {
-      continue;
-    }
-    const fn = agg.slice(0, parenIdx);
+    const parsed = parseFunction(agg);
     // Only check numeric aggregate functions — count_unique, any, etc. accept any column
-    if (!NUMERIC_AGGREGATE_FUNCTIONS.has(fn)) {
+    if (!(parsed && NUMERIC_AGGREGATE_FUNCTIONS.has(parsed.name))) {
       continue;
     }
-    const inner = agg.slice(parenIdx + 1, -1);
+    // The aggregated field is the first argument; percentile() adds a level.
+    const inner = parsed.arguments[0];
     if (!inner) {
       continue;
     }
@@ -777,6 +788,24 @@ export async function enrichDashboardError(
   }
 
   throw error;
+}
+
+/**
+ * Run a dashboard API operation, converting its failures with
+ * {@link enrichDashboardError}.
+ *
+ * @param ctx - Context about the operation for building error messages
+ * @param fn - The operation to run
+ */
+export async function withDashboardErrors<T>(
+  ctx: DashboardErrorContext,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    return await enrichDashboardError(error, ctx);
+  }
 }
 
 /**

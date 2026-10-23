@@ -1,3 +1,4 @@
+import { listOrganizationTeams, SentryApiError } from "@sentry/api";
 import { array, number } from "valibot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -8,10 +9,136 @@ import {
   paginate,
   rawApiRequest,
   throwApiError,
+  unwrapPaginatedResult,
+  unwrapResult,
 } from "../../../src/lib/api/infrastructure.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError, HostScopeError } from "../../../src/lib/errors.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+
+describe("SDK error compatibility", () => {
+  useTestConfigDir("api-sdk-errors-");
+  useEnvSandbox([
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN",
+  ]);
+
+  beforeEach(() => {
+    process.env.SENTRY_AUTH_TOKEN = "example-token";
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+  });
+
+  test.each([
+    {
+      status: 401,
+      detail: "Invalid token",
+      guidance: "is not recognized or has been revoked",
+      excluded: "missing the required scope",
+    },
+    {
+      status: 403,
+      detail: "You are missing the required scope team:read.",
+      guidance: "missing the required scope(s) 'team:read'",
+      excluded: "Unable to reach Sentry API",
+    },
+    {
+      status: 403,
+      detail: "Your organization has disabled this feature for members",
+      guidance: "This is an org-level policy setting",
+      excluded: "token may lack",
+    },
+    {
+      status: 401,
+      detail: { code: "member-disabled-over-limit" },
+      guidance: "This is a billing/seat-limit issue",
+      excluded: "Create a new token",
+    },
+  ])("preserves CLI guidance for $status: $detail", async (scenario) => {
+    const response = Response.json(
+      { detail: scenario.detail },
+      { status: scenario.status },
+    );
+    const result = await listOrganizationTeams({
+      baseUrl: "https://sentry.example",
+      path: { organization_id_or_slug: "example-org" },
+      fetch: async () => response,
+    });
+
+    expect(result.error).toBeInstanceOf(SentryApiError);
+    expect(result.response).toBe(response);
+    expect(() => unwrapResult(result, "Failed to list teams")).toThrow(
+      expect.objectContaining({
+        status: scenario.status,
+        detail: expect.stringContaining(scenario.guidance),
+      }),
+    );
+    expect(() => unwrapResult(result, "Failed to list teams")).toThrow(
+      expect.objectContaining({
+        detail: expect.not.stringContaining(scenario.excluded),
+      }),
+    );
+  });
+
+  test("keeps network failures readable when no HTTP response exists", async () => {
+    const cause = new TypeError("fetch failed");
+    const result = await listOrganizationTeams({
+      baseUrl: "https://sentry.example",
+      path: { organization_id_or_slug: "example-org" },
+      fetch: async () => {
+        throw cause;
+      },
+    });
+
+    expect(result.response).toBeUndefined();
+    expect(result.error).toBe(cause);
+    expect(() => unwrapResult(result, "Failed to list teams")).toThrow(
+      expect.objectContaining({
+        status: 0,
+        message: "Failed to list teams: Network error",
+        detail: expect.stringContaining("fetch failed"),
+      }),
+    );
+  });
+
+  test.each([undefined, null, false, 0, ""])(
+    "does not treat a thrown %s as successful response data",
+    async (cause) => {
+      const result = await listOrganizationTeams({
+        baseUrl: "https://sentry.example",
+        path: { organization_id_or_slug: "example-org" },
+        fetch: async () => {
+          throw cause;
+        },
+      });
+
+      expect(result).toHaveProperty("error", cause);
+      expect(() => unwrapResult(result, "Failed to list teams")).toThrow(
+        ApiError,
+      );
+    },
+  );
+
+  test("keeps response metadata available to existing pagination callers", async () => {
+    const response = Response.json([], {
+      headers: {
+        link: '<https://sentry.example/api/0/teams/>; rel="next"; results="true"; cursor="25:1:0"',
+        "x-request-id": "example-request",
+      },
+    });
+    const result = await listOrganizationTeams({
+      baseUrl: "https://sentry.example",
+      path: { organization_id_or_slug: "example-org" },
+      fetch: async () => response,
+    });
+
+    const page = unwrapPaginatedResult(result, "Failed to list teams");
+    expect(page.data).toEqual([]);
+    expect(page.nextCursor).toBe("25:1:0");
+    expect(page.response).toBe(response);
+    expect(page.response?.headers.get("x-request-id")).toBe("example-request");
+  });
+});
 
 describe("throwApiError", () => {
   test("network failure with Error produces readable message", () => {
@@ -584,7 +711,7 @@ describe("rawApiRequest binary handling", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
   });
 
   afterEach(() => {

@@ -41,7 +41,7 @@ function toUuidFormat(hex: string): string {
 
 describe("parseTraceTarget properties", () => {
   test("single valid trace ID: returns auto-detect with correct traceId", async () => {
-    await fcAssert(
+    fcAssert(
       property(traceIdArb, (input) => {
         const result = parseTraceTarget([input], HINT);
         expect(result.type).toBe("auto-detect");
@@ -52,7 +52,7 @@ describe("parseTraceTarget properties", () => {
   });
 
   test("single arg org/project/traceId: returns explicit with correct fields", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(slugArb, slugArb, traceIdArb),
         ([org, project, traceId]) => {
@@ -71,7 +71,7 @@ describe("parseTraceTarget properties", () => {
   });
 
   test("single arg org/traceId: returns org-scoped", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, traceIdArb), ([org, traceId]) => {
         const combined = `${org}/${traceId}`;
         const result = parseTraceTarget([combined], HINT);
@@ -86,7 +86,7 @@ describe("parseTraceTarget properties", () => {
   });
 
   test("two args: target + trace-id uses second arg as trace ID", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(slugArb, slugArb, traceIdArb),
         ([org, project, traceId]) => {
@@ -101,7 +101,7 @@ describe("parseTraceTarget properties", () => {
   });
 
   test("parsing is deterministic", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(slugArb, traceIdArb), ([target, traceId]) => {
         const args = [target, traceId];
         const result1 = parseTraceTarget(args, HINT);
@@ -117,7 +117,7 @@ describe("parseTraceTarget properties", () => {
   });
 
   test("result always has traceId property defined", async () => {
-    await fcAssert(
+    fcAssert(
       property(traceIdArb, (traceId) => {
         const result = parseTraceTarget([traceId], HINT);
         expect(result.traceId).toBeDefined();
@@ -128,7 +128,7 @@ describe("parseTraceTarget properties", () => {
   });
 
   test("UUID-format trace IDs are accepted and produce 32-char hex", async () => {
-    await fcAssert(
+    fcAssert(
       property(traceIdArb, (hex) => {
         const uuid = toUuidFormat(hex);
         const result = parseTraceTarget([uuid], HINT);
@@ -140,7 +140,7 @@ describe("parseTraceTarget properties", () => {
 
   test("invalid trace IDs always throw ValidationError", async () => {
     const invalidIdArb = stringMatching(/^[g-z]{10,20}$/);
-    await fcAssert(
+    fcAssert(
       property(invalidIdArb, (badId) => {
         expect(() => parseTraceTarget([badId], HINT)).toThrow(ValidationError);
       }),
@@ -235,7 +235,7 @@ function collectSpanIds(spans: TraceSpan[]): Set<string> {
 
 describe("flattenSpanTree properties", () => {
   test("result length equals total span count", async () => {
-    await fcAssert(
+    fcAssert(
       property(spanTreeArb, (tree) => {
         const result = flattenSpanTree(tree);
         expect(result).toHaveLength(countSpans(tree));
@@ -245,7 +245,7 @@ describe("flattenSpanTree properties", () => {
   });
 
   test("all returned spans exist in original tree", async () => {
-    await fcAssert(
+    fcAssert(
       property(spanTreeArb, (tree) => {
         const result = flattenSpanTree(tree);
         const originalIds = collectSpanIds(tree);

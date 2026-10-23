@@ -7,6 +7,7 @@ Complete playbook for building, deploying, and testing the remote MCP server via
 The remote MCP server runs on Cloudflare Workers and provides HTTP-based access to the MCP protocol. Clients connect via HTTP/SSE instead of stdio pipes.
 
 **When to use remote:**
+
 - Testing OAuth flows
 - Testing explicit Sentry API token auth over HTTP
 - Testing constraint-based access control (org/project filtering)
@@ -15,6 +16,7 @@ The remote MCP server runs on Cloudflare Workers and provides HTTP-based access 
 - Multi-user scenarios
 
 **When to use stdio instead:**
+
 - Self-hosted Sentry without a Cloudflare deployment
 - IDE integration testing
 - Local development without network
@@ -57,6 +59,7 @@ make setup-env
 ### 4. Configure Environment Variables
 
 **Edit `packages/mcp-cloudflare/.env`:**
+
 ```bash
 SENTRY_CLIENT_ID=your_development_client_id
 SENTRY_CLIENT_SECRET=your_development_client_secret
@@ -67,12 +70,14 @@ OPENAI_API_KEY=your-openai-key
 ```
 
 **Edit `.env` (root):**
+
 ```bash
 # For testing CLI client and search tools
 OPENAI_API_KEY=your-openai-key
 ```
 
 **Generate COOKIE_SECRET:**
+
 ```bash
 # Using OpenSSL
 openssl rand -base64 32
@@ -86,6 +91,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ### Option 1: Local Development Server
 
 **Start the dev server:**
+
 ```bash
 # From repo root
 pnpm dev
@@ -98,6 +104,7 @@ pnpm dev
 Server runs at: `http://localhost:5173`
 
 **What this does:**
+
 - Starts Cloudflare Workers local dev environment
 - Enables hot reload for code changes
 - Uses local KV storage (not persisted)
@@ -127,6 +134,7 @@ pnpm -w run cli "your query"
 ### Basic Usage
 
 **Test against local dev server (default):**
+
 ```bash
 # Single query
 pnpm -w run cli "who am I?"
@@ -139,11 +147,13 @@ pnpm -w run cli
 ```
 
 **Test against production:**
+
 ```bash
 pnpm -w run cli --mcp-host=https://mcp.sentry.dev "who am I?"
 ```
 
 **Test with specific MCP URL:**
+
 ```bash
 # Custom deployment
 pnpm -w run cli --mcp-host=https://your-worker.workers.dev "query"
@@ -153,15 +163,16 @@ export MCP_URL=https://mcp.sentry.dev
 pnpm -w run cli "query"
 ```
 
-
 ### OAuth Flow Testing
 
 **First run triggers OAuth:**
+
 ```bash
 pnpm -w run cli "who am I?"
 ```
 
 **Flow:**
+
 1. CLI opens browser to `http://localhost:5173/oauth/authorize`
 2. You're redirected to Sentry OAuth
 3. Approve access and grant permissions
@@ -169,6 +180,7 @@ pnpm -w run cli "who am I?"
 5. CLI receives tokens and executes query
 
 **Subsequent runs use cached tokens:**
+
 - Tokens stored in `~/.sentry-mcp-tokens.json`
 - Automatically refreshed when expired
 - To force re-auth: delete the token file
@@ -178,10 +190,10 @@ pnpm -w run cli "who am I?"
 The callback server defaults to `127.0.0.1:8765`, which a browser on the host
 cannot reach. Three environment variables override it:
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `MCP_OAUTH_PORT` | `8765` | Port the callback server listens on |
-| `MCP_OAUTH_HOST` | `127.0.0.1` | Address the callback server binds to |
+| Variable                 | Default                                     | Purpose                               |
+| ------------------------ | ------------------------------------------- | ------------------------------------- |
+| `MCP_OAUTH_PORT`         | `8765`                                      | Port the callback server listens on   |
+| `MCP_OAUTH_HOST`         | `127.0.0.1`                                 | Address the callback server binds to  |
 | `MCP_OAUTH_REDIRECT_URI` | `http://localhost:$MCP_OAUTH_PORT/callback` | Redirect URI sent to the OAuth server |
 
 ```bash
@@ -235,12 +247,14 @@ accept or reject the provided token for the requested org/project.
 Constraints limit access to specific organizations/projects:
 
 **Organization constraint:**
+
 ```bash
 # Access limited to "sentry" org
 pnpm -w run cli --mcp-host=http://localhost:5173/mcp/sentry "list my projects"
 ```
 
 **Organization + Project constraint:**
+
 ```bash
 # Access limited to "sentry/javascript"
 pnpm -w run cli \
@@ -249,6 +263,7 @@ pnpm -w run cli \
 ```
 
 **Verify constraints work:**
+
 ```bash
 # Should only return projects in "sentry" org
 pnpm -w run cli --mcp-host=http://localhost:5173/mcp/sentry "find_projects()"
@@ -258,10 +273,12 @@ pnpm -w run cli --mcp-host=http://localhost:5173/mcp/sentry "find_projects(organ
 ```
 
 **Verify OAuth consent shows the constraint:**
+
 - Start a fresh OAuth flow against a constrained MCP URL such as `http://localhost:5173/mcp/sentry` or `http://localhost:5173/mcp/sentry/javascript`
 - On the approval page, confirm the "Session scope" banner matches the constrained organization or project before approving
 
 **Note:** When testing with constraints, some tools are automatically filtered:
+
 - With org constraint: `find_organizations` is not available (18 tools instead of 19)
 - With org + project constraints: both `find_organizations` and `find_projects` are not available (17 tools instead of 19)
 
@@ -272,33 +289,39 @@ The web UI provides a chat interface for testing the MCP server.
 ### Access the Interface
 
 **Local development:**
+
 1. Start dev server: `pnpm dev`
 2. Open browser: `http://localhost:5173`
 3. Follow OAuth flow to authenticate
 
 **Production:**
+
 1. Navigate to `https://mcp.sentry.dev`
 2. Follow OAuth flow
 
 ### Testing Workflow
 
 **1. Authentication:**
+
 - Click "Connect to Sentry"
 - Authorize the application
 - Grant permissions (select skills)
 
 **2. Basic Queries:**
+
 - "Who am I?" - Test authentication
 - "Show my organizations" - Test data access
 - "List projects in [org-name]" - Test specific queries
 
 **3. Complex Operations:**
+
 - "Find unresolved errors in [project]"
 - "Show me performance issues from yesterday"
 - "Search for 'database timeout' errors"
 
 **4. Test Constraints:**
 Navigate to constrained URL:
+
 - `http://localhost:5173/mcp/your-org` - Org constraint
 - `http://localhost:5173/mcp/your-org/your-project` - Org + project constraint
 
@@ -307,6 +330,7 @@ Verify queries are limited to that scope.
 ### Chat Interface Features
 
 **Available in chat:**
+
 - Natural language queries
 - Tool call visualization
 - Streaming responses
@@ -314,6 +338,7 @@ Verify queries are limited to that scope.
 - Token refresh handling
 
 **Not available (use CLI for these):**
+
 - Direct tool calls with parameters
 - Agent mode toggle
 - Multiple simultaneous queries
@@ -334,17 +359,20 @@ Opens at `http://localhost:6274`
 ### Connect to Remote Server
 
 **1. Add Server:**
+
 - Click "Add Server"
 - Select "SSE" or "HTTP" transport
 - Enter URL: `http://localhost:5173/mcp`
 
 **2. Authenticate:**
+
 - Click "Connect"
 - Browser opens for OAuth flow
 - Approve access
 - Redirected back to Inspector
 
 **3. Test Tools:**
+
 - Click "List Tools" - Verify tools appear
 - Test individual tools with parameters
 - View responses and errors
@@ -352,11 +380,13 @@ Opens at `http://localhost:6274`
 ### Inspector Testing Patterns
 
 **Basic verification:**
+
 1. List tools → Verify expected tools available
 2. Call `execute_sentry_tool` with `name="whoami"` and `arguments={}` → Verify authentication
 3. Call `find_organizations` → Verify data access
 
 **Parameter testing:**
+
 ```json
 // Test find_projects with parameters
 {
@@ -366,6 +396,7 @@ Opens at `http://localhost:6274`
 ```
 
 **Error testing:**
+
 ```json
 // Invalid org should error gracefully
 {
@@ -374,6 +405,7 @@ Opens at `http://localhost:6274`
 ```
 
 **Complex tool testing:**
+
 ```json
 // Test search_events with AI
 {
@@ -404,11 +436,13 @@ pnpm -w run cli "list organizations"
 ### 2. Test Skills Permissions
 
 **In OAuth approval screen, test:**
+
 - Default selection: all active skills (inspect, seer, triage, project-management)
 - Minimal custom selection (inspect only)
 - Write-capable custom selection (triage, project-management)
 
 **Verify tools reflect the current session grant:**
+
 ```bash
 # With read-only grants: no write tools
 pnpm -w run cli "search Sentry tools for create project"
@@ -486,11 +520,13 @@ cat ~/.sentry-mcp-tokens.json | jq .expires_at
 ### "Failed to connect to MCP server"
 
 **Causes:**
+
 1. Dev server not running
 2. Wrong URL
 3. Network issues
 
 **Solution:**
+
 ```bash
 # Verify dev server is running
 curl http://localhost:5173/
@@ -505,11 +541,13 @@ pnpm dev
 ### "OAuth authorization failed"
 
 **Causes:**
+
 1. Invalid client ID/secret
 2. Redirect URI mismatch
 3. Expired OAuth app
 
 **Solution:**
+
 ```bash
 # Verify credentials in .env
 cat packages/mcp-cloudflare/.env | grep SENTRY_CLIENT
@@ -526,6 +564,7 @@ cat packages/mcp-cloudflare/.env | grep SENTRY_CLIENT
 **Cause:** Insufficient skills granted during OAuth.
 
 **Solution:**
+
 ```bash
 # Force re-authorization with more skills
 rm ~/.sentry-mcp-tokens.json
@@ -537,11 +576,13 @@ pnpm -w run cli "who am I?"
 ### "Tool not found" errors
 
 **Causes:**
+
 1. Tool is not available in the current session
 2. Build issue
 3. Server version mismatch
 
 **Solution:**
+
 ```bash
 # Check tool list
 pnpm -w run cli "list tools" | jq '.tools[] | .name'
@@ -559,6 +600,7 @@ pnpm -w run build && pnpm dev
 **Cause:** Trying to access resources outside constrained scope.
 
 **Solution:**
+
 ```bash
 # Verify constraint in URL
 echo "Accessing: http://localhost:5173/mcp/org-slug/project-slug"
@@ -571,11 +613,13 @@ pnpm -w run cli --mcp-host=http://localhost:5173/mcp \
 ### Web UI not loading
 
 **Causes:**
+
 1. Build failed
 2. Assets not compiled
 3. Wrangler issue
 
 **Solution:**
+
 ```bash
 # Rebuild assets
 cd packages/mcp-cloudflare
@@ -595,6 +639,7 @@ pnpm dev
 **Cause:** Too many requests to Sentry API.
 
 **Solution:**
+
 ```bash
 # Wait for rate limit to reset (usually 60 seconds)
 
@@ -670,17 +715,18 @@ it changes production traffic.
 
 Key differences to verify:
 
-| Feature | Stdio | Remote |
-|---------|-------|--------|
-| Authentication | Access token | OAuth, or `Sentry-Bearer` access token |
-| Constraints | Via CLI flags | Via URL path |
-| Transport | stdin/stdout | HTTP/SSE |
-| Multi-user | No | Yes |
-| Token refresh | N/A | OAuth only; direct tokens are caller-managed |
-| Web UI | No | Yes |
-| Performance | Faster (no network) | Network latency |
+| Feature        | Stdio               | Remote                                       |
+| -------------- | ------------------- | -------------------------------------------- |
+| Authentication | Access token        | OAuth, or `Sentry-Bearer` access token       |
+| Constraints    | Via CLI flags       | Via URL path                                 |
+| Transport      | stdin/stdout        | HTTP/SSE                                     |
+| Multi-user     | No                  | Yes                                          |
+| Token refresh  | N/A                 | OAuth only; direct tokens are caller-managed |
+| Web UI         | No                  | Yes                                          |
+| Performance    | Faster (no network) | Network latency                              |
 
 **Test both work identically:**
+
 ```bash
 # Stdio
 pnpm start --access-token=TOKEN

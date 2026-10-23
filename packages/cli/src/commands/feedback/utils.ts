@@ -4,6 +4,7 @@
 
 import { listFeedback } from "../../lib/api-client.js";
 import { type IssueSelector, parseIssueArg } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ApiError,
   ContextError,
@@ -24,7 +25,7 @@ export const feedbackIdPositional = {
       placeholder: "feedback",
       brief:
         "Feedback: @latest, numeric ID, short ID, <org>/SHORT-ID, or <org>/<project>/<suffix>",
-      parse: String,
+      parse: parseOrgProjectTarget,
     },
   ],
 } as const;
@@ -94,7 +95,12 @@ export async function resolveFeedback(
 ): Promise<ResolvedFeedback> {
   const parsed = parseIssueArg(feedbackArg);
   if (parsed.type === "selector") {
-    return resolveFeedbackSelector(parsed.selector, parsed.org, cwd, command);
+    return await resolveFeedbackSelector(
+      parsed.selector,
+      parsed.org,
+      cwd,
+      command,
+    );
   }
 
   let resolved: Awaited<ReturnType<typeof resolveIssue>>;

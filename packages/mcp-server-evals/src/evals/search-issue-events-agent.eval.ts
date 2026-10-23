@@ -73,7 +73,7 @@ describeEval("search-issue-events-agent", {
       },
       {
         // Combined filters with time range
-        input: "Production events from yesterday with specific release",
+        input: "Production events from yesterday with the 5.1 release",
         expectedTools: [],
         expected: {
           query:

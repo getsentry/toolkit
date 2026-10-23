@@ -191,7 +191,7 @@ export class OAuthClient {
   private async startCallbackServer(): Promise<{
     waitForCallback: () => Promise<{ code: string; state: string }>;
   }> {
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       let resolveCallback:
         | ((value: { code: string; state: string }) => void)
         | null = null;
@@ -329,7 +329,7 @@ export class OAuthClient {
       throw new Error(`Token exchange failed: ${response.status} - ${error}`);
     }
 
-    return response.json() as Promise<TokenResponse>;
+    return await (response.json() as Promise<TokenResponse>);
   }
 
   /**
@@ -387,7 +387,7 @@ export class OAuthClient {
     }
 
     // No cached token, perform OAuth flow
-    return this.authenticate();
+    return await this.authenticate();
   }
 
   /**

@@ -8,6 +8,7 @@
 
 import type { EventsTableResponse } from "../../types/dashboard.js";
 import { EventsTableResponseSchema } from "../../types/dashboard.js";
+import { stringifyUnknown } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
   API_MAX_PER_PAGE,
@@ -27,8 +28,9 @@ export type ExploreQueryOptions = {
   query?: string;
   /**
    * Sort field. Prefix with `-` for descending.
-   * Supported on the `spans`, `errors`, and `discover` datasets; `metrics` and
-   * `logs` reject it with 400. A stable sort is required for correct
+   * Every Events dataset accepts it as long as the sort column is in
+   * `fields`; resolve both with `resolveEventsSort` from
+   * `@sentry/toolkit-core/events-sort`. A stable sort is required for correct
    * offset-based cursor pagination on grouped aggregate queries (#1519).
    */
   sort?: string;
@@ -148,9 +150,9 @@ export async function queryMetricsMeta(
   }
 
   return allRows.map((row) => ({
-    name: String(row["metric.name"] ?? ""),
-    type: String(row["metric.type"] ?? "distribution"),
-    unit: String(row["metric.unit"] ?? "none"),
+    name: stringifyUnknown(row["metric.name"] ?? ""),
+    type: stringifyUnknown(row["metric.type"] ?? "distribution"),
+    unit: stringifyUnknown(row["metric.unit"] ?? "none"),
   }));
 }
 
@@ -179,7 +181,7 @@ export async function queryEvents(
 
   // Fast path: single-page fetch when limit fits in one API page
   if (limit <= API_MAX_PER_PAGE) {
-    return fetchEventsPage(regionUrl, orgSlug, options, perPage);
+    return await fetchEventsPage(regionUrl, orgSlug, options, perPage);
   }
 
   // Multi-page: accumulate rows across pages up to the requested limit

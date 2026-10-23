@@ -236,7 +236,7 @@ export async function listReplays(
   options: ListReplaysOptions = {},
 ): Promise<PaginatedResponse<ReplayListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  return paginate(
+  return await paginate(
     options,
     (perPage, cursor) =>
       fetchReplayPage(regionUrl, orgSlug, { options, perPage, cursor }),
@@ -299,7 +299,7 @@ export async function resolveReplay(
     if (!match) {
       throw error;
     }
-    return getReplay(orgSlug, match.id);
+    return await getReplay(orgSlug, match.id);
   }
 }
 

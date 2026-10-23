@@ -18,6 +18,7 @@ import {
   resolveOrgFromTarget,
   resolveWidgetIndex,
   validateWidgetEnums,
+  withDashboardErrors,
 } from "../../../src/commands/dashboard/resolve.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -94,6 +95,42 @@ describe("parseDashboardPositionalArgs", () => {
     const result = parseDashboardPositionalArgs(["123"]);
     expect(result.dashboardRef).toBe("123");
     expect(result.targetArg).toBeUndefined();
+  });
+
+  test.each([
+    ["my-org/12345", "my-org/"],
+    ["my-org/web_app/12345", "my-org/web_app"],
+  ])("extracts a numeric dashboard ID from %s", (input, targetArg) => {
+    expect(parseDashboardPositionalArgs([input])).toEqual({
+      dashboardRef: "12345",
+      targetArg,
+    });
+  });
+
+  test.each([
+    "Latency/p95",
+    "Errors / 2026",
+    "My Dashboard/123",
+    "Errors.v2/123",
+    "org/project/title",
+    "org/",
+    "/123",
+    "org//123",
+    "org/a/b/123",
+  ])("preserves %s as a dashboard title", (title) => {
+    expect(parseDashboardPositionalArgs([title])).toEqual({
+      dashboardRef: title,
+      targetArg: undefined,
+    });
+  });
+
+  test("preserves a numeric slash title with a separate target", () => {
+    expect(parseDashboardPositionalArgs(["my-org/", "incidents/2026"])).toEqual(
+      {
+        dashboardRef: "incidents/2026",
+        targetArg: "my-org/",
+      },
+    );
   });
 
   test("two args returns target + dashboardRef", () => {
@@ -771,6 +808,24 @@ describe("enrichDashboardError", () => {
     await expect(
       enrichDashboardError(apiErr, { orgSlug: "my-org", operation: "list" }),
     ).rejects.toThrow(apiErr);
+  });
+});
+
+describe("withDashboardErrors", () => {
+  test("returns the operation's result", async () => {
+    await expect(
+      withDashboardErrors({ orgSlug: "my-org", operation: "list" }, () =>
+        Promise.resolve("ok"),
+      ),
+    ).resolves.toBe("ok");
+  });
+
+  test("enriches operation failures", async () => {
+    await expect(
+      withDashboardErrors({ orgSlug: "my-org", operation: "list" }, () =>
+        Promise.reject(new ApiError("Not Found", 404)),
+      ),
+    ).rejects.toThrow(ResolutionError);
   });
 });
 

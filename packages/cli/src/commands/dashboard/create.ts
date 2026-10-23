@@ -11,6 +11,7 @@ import {
   parseOrgProjectArg,
 } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { formatDashboardCreated } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -24,7 +25,7 @@ import {
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import type { DashboardDetail } from "../../types/dashboard.js";
-import { enrichDashboardError } from "./resolve.js";
+import { withDashboardErrors } from "./resolve.js";
 
 type CreateFlags = {
   readonly json: boolean;
@@ -158,7 +159,7 @@ export const createCommand = buildCommand({
       parameter: {
         placeholder: "org/project/title",
         brief: "[<org/project>] <title>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {},
@@ -170,12 +171,14 @@ export const createCommand = buildCommand({
     const parsed = parseOrgProjectArg(targetArg);
     const { orgSlug, projectIds } = await resolveDashboardTarget(parsed, cwd);
 
-    const dashboard = await createDashboard(orgSlug, {
-      title,
-      widgets: [],
-      projects: projectIds.length > 0 ? projectIds : undefined,
-    }).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "create" }),
+    const dashboard = await withDashboardErrors(
+      { orgSlug, operation: "create" },
+      () =>
+        createDashboard(orgSlug, {
+          title,
+          widgets: [],
+          projects: projectIds.length > 0 ? projectIds : undefined,
+        }),
     );
     const url = buildDashboardUrl(orgSlug, dashboard.id);
 

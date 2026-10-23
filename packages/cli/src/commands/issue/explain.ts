@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
-import { ApiError, ContextError } from "../../lib/errors.js";
+import { ApiError, ContextError, stringifyUnknown } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   formatIssueExplain,
@@ -145,7 +145,9 @@ export const explainCommand = buildCommand({
       issueArgs,
       (issueArg) => analyzeIssue(issueArg, cwd, flags, flags.json || isBatch),
       (issueArg, reason) => {
-        log.warn(`Failed to analyze issue ${issueArg}: ${reason}`);
+        log.warn(
+          `Failed to analyze issue ${issueArg}: ${stringifyUnknown(reason)}`,
+        );
       },
     );
 

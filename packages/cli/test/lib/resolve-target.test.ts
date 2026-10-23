@@ -377,7 +377,7 @@ describe("fetchProjectId", () => {
   });
 
   test("returns numeric project ID on success", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockFetch(async (input, init) => {
       const req = new Request(input, init);
@@ -392,7 +392,7 @@ describe("fetchProjectId", () => {
   });
 
   test("throws ResolutionError on 404", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockFetch(
       async () =>
@@ -407,7 +407,7 @@ describe("fetchProjectId", () => {
   });
 
   test("includes similar project suggestions on 404 when projects exist", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 
     // Mock: getProject returns 404, but listProjects returns available projects.
@@ -448,7 +448,7 @@ describe("fetchProjectId", () => {
   });
 
   test("includes numeric project ID hint on 404 for all-digit slug", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockFetch(
       async () =>
@@ -470,7 +470,7 @@ describe("fetchProjectId", () => {
   });
 
   test("includes project list suggestion even when listProjects fails", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 
     // Mock: all requests return 404 (both getProject and listProjects fail)
@@ -512,7 +512,7 @@ describe("fetchProjectId", () => {
   });
 
   test("returns undefined on transient server error", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockFetch(
       async () =>
@@ -526,7 +526,7 @@ describe("fetchProjectId", () => {
   });
 
   test("returns cached project ID without hitting the API", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     // Seed the cache via cacheProjectsForOrg (the `list:` key path) as
@@ -547,7 +547,7 @@ describe("fetchProjectId", () => {
   });
 
   test("writes the response to the project cache on a cache miss", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     globalThis.fetch = mockFetch(async (input, init) => {
@@ -578,7 +578,7 @@ describe("fetchProjectId", () => {
   });
 
   test("falls through to API when the cache has no projectId (legacy rows)", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     // Seed a cache entry WITHOUT a projectId (mirrors pre-schema-v7 rows).
@@ -748,7 +748,7 @@ describe("resolveLogProjectId", () => {
   });
 
   test("returns an all-digit slug as a numeric ID without hitting the API", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     let apiCalled = false;
     globalThis.fetch = mockFetch(async () => {
@@ -762,7 +762,7 @@ describe("resolveLogProjectId", () => {
   });
 
   test("resolves a slug to its numeric project ID", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     globalThis.fetch = mockFetch(async (input, init) => {
@@ -778,7 +778,7 @@ describe("resolveLogProjectId", () => {
   });
 
   test("returns undefined on a transient server error (falls back to slug scoping)", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     globalThis.fetch = mockFetch(
@@ -809,7 +809,7 @@ describe("resolveLogProjectId", () => {
   });
 
   test("re-throws ResolutionError on a genuine 404", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     globalThis.fetch = mockFetch(
@@ -837,7 +837,7 @@ describe("tryFuzzyProjectRecovery", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
   });
 
   afterEach(() => {
@@ -903,6 +903,30 @@ describe("tryFuzzyProjectRecovery", () => {
       expect(result.suggestions.length).toBeGreaterThan(0);
       expect(result.suggestions[0]).toContain("test-org");
     }
+  });
+
+  test("keeps short submitted project names ambiguous", async () => {
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    globalThis.fetch = mockListProjects({
+      "test-org": ["go-api", "db"],
+    });
+
+    const result = await tryFuzzyProjectRecovery("go", [{ slug: "test-org" }]);
+
+    expect(result.kind).toBe("suggestions");
+  });
+
+  test("does not recover a submitted project name from a typo in its prefix", async () => {
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    globalThis.fetch = mockListProjects({
+      "test-org": ["frontend-web"],
+    });
+
+    const result = await tryFuzzyProjectRecovery("frone", [
+      { slug: "test-org" },
+    ]);
+
+    expect(result.kind).toBe("none");
   });
 
   test("returns 'none' when no similar projects exist", async () => {

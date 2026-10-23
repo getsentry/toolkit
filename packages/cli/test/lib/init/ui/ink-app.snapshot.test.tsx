@@ -1170,7 +1170,7 @@ describe("Ink App snapshot", () => {
       exitOnCtrlC: false,
     });
     try {
-      stdin.push("frontz");
+      stdin.push("frozz");
       // Observe the empty state before later input can coalesce its render.
       await vi.waitFor(() => {
         expect(stripAnsi(output.latestFrame())).toContain("No matches");
@@ -1183,7 +1183,7 @@ describe("Ink App snapshot", () => {
       stdin.push("\u007f\r");
       await vi.waitFor(() => {
         expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
-        expect(stripAnsi(output.latestFrame())).toContain("/front 1 of 1");
+        expect(stripAnsi(output.latestFrame())).toContain("/froz 1 of 1");
       });
     } finally {
       instance.unmount();
@@ -1272,9 +1272,9 @@ describe("Ink App snapshot", () => {
     });
 
     const output = await renderApp(store, 80, {
-      input: ["\u001b[200~frontz\u001b[201~\u007f\r"],
+      input: ["\u001b[200~frozz\u001b[201~\u007f\r"],
     });
-    expect(stripAnsi(output.latestFrame())).toContain("/front 1 of 2");
+    expect(stripAnsi(output.latestFrame())).toContain("/froz 1 of 2");
     expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
   });
 

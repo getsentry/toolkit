@@ -254,7 +254,7 @@ describe("eventsCommand.func()", () => {
     expect(output).toContain("aaaa1111bbbb2222cccc3333dddd4444");
   });
 
-  test("shows next page hint when nextCursor is present", async () => {
+  test("preserves quoted queries in the next page hint", async () => {
     resolveIssueSpy.mockResolvedValue({
       org: "test-org",
       issue: makeMockIssue(),
@@ -268,13 +268,20 @@ describe("eventsCommand.func()", () => {
     const func = await eventsCommand.loader();
     await func.call(
       context,
-      { limit: 2, json: false, full: false, period: parsePeriod("7d") },
+      {
+        limit: 2,
+        json: false,
+        full: false,
+        period: parsePeriod("7d"),
+        query: 'transaction:"GET /checkout"',
+      },
       "CLI-G5",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     expect(output).toContain("Next:");
     expect(output).toContain("-c next");
+    expect(output).toContain(`--query='transaction:"GET /checkout"'`);
   });
 
   test("shows event view tip when no nextCursor", async () => {

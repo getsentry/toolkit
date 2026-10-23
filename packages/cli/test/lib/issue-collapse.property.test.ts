@@ -15,7 +15,7 @@ import {
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 describe("property: buildIssueListCollapse", () => {
-  test("always collapses filtered and unhandled regardless of optional flags", () => {
+  test("collapses filtered and unhandled by default regardless of other flags", () => {
     fcAssert(
       property(
         tuple(boolean(), boolean()),
@@ -58,6 +58,24 @@ describe("property: buildIssueListCollapse", () => {
             shouldCollapseLifetime: collapseLifetime,
           });
           expect(result.includes("lifetime")).toBe(collapseLifetime);
+        },
+      ),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("filtered presence is exactly controlled by shouldCollapseFiltered", () => {
+    fcAssert(
+      property(
+        tuple(boolean(), boolean(), boolean()),
+        ([collapseStats, collapseLifetime, collapseFiltered]) => {
+          const result = buildIssueListCollapse({
+            shouldCollapseStats: collapseStats,
+            shouldCollapseLifetime: collapseLifetime,
+            shouldCollapseFiltered: collapseFiltered,
+          });
+          expect(result.includes("filtered")).toBe(collapseFiltered);
+          expect(result).toContain("unhandled");
         },
       ),
       { numRuns: DEFAULT_NUM_RUNS },

@@ -6,7 +6,14 @@
  */
 
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "@stricli/core";
@@ -17,6 +24,7 @@ import {
   clearInstallInfo,
   setInstallInfo,
 } from "../../../src/lib/db/install-info.js";
+import { addToFpath } from "../../../src/lib/shell.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 const getConfigDir = useTestConfigDir("uninstall-");
@@ -102,6 +110,79 @@ describe("sentry cli uninstall", () => {
     expect(output).toContain("brew uninstall getsentry/tools/sentry");
   });
 
+  describe("Homebrew Cellar detection", () => {
+    let originalExecPath: string;
+    let tempDir: string | undefined;
+
+    beforeEach(() => {
+      originalExecPath = process.execPath;
+    });
+
+    afterEach(async () => {
+      Object.defineProperty(process, "execPath", {
+        value: originalExecPath,
+        configurable: true,
+      });
+      if (tempDir) {
+        await rm(tempDir, { recursive: true, force: true });
+        tempDir = undefined;
+      }
+    });
+
+    test("detects brew from a symlinked Cellar binary with no install info", async () => {
+      // Mirror Homebrew's layout: <prefix>/bin/sentry -> <prefix>/Cellar/...
+      tempDir = await mkdtemp(join(tmpdir(), "uninstall-brew-"));
+      const cellarBin = join(tempDir, "Cellar", "sentry", "1.0.0", "bin");
+      await mkdir(cellarBin, { recursive: true });
+      await writeFile(join(cellarBin, "sentry"), "");
+      await mkdir(join(tempDir, "bin"));
+      const linkPath = join(tempDir, "bin", "sentry");
+      await symlink(join(cellarBin, "sentry"), linkPath);
+      Object.defineProperty(process, "execPath", {
+        value: linkPath,
+        configurable: true,
+      });
+
+      const { output } = await runUninstall(["--yes"]);
+      expect(output).toContain("brew uninstall getsentry/tools/sentry");
+      expect(output).not.toContain("Removed");
+      expect(existsSync(join(cellarBin, "sentry"))).toBe(true);
+      expect(existsSync(getConfigDir())).toBe(true);
+    });
+
+    test("Cellar path wins over stale curl install info", async () => {
+      setInstallInfo({
+        method: "curl",
+        path: "/home/user/.local/bin/sentry",
+        version: "1.0.0",
+      });
+      Object.defineProperty(process, "execPath", {
+        value: "/opt/homebrew/Cellar/sentry/1.0.0/bin/sentry",
+        configurable: true,
+      });
+
+      const { output } = await runUninstall(["--dry-run"]);
+      expect(output).toContain("brew uninstall getsentry/tools/sentry");
+      expect(output).not.toContain("sentry binary");
+    });
+
+    test("Homebrew-installed Node does not mask an npm install", async () => {
+      setInstallInfo({
+        method: "npm",
+        path: "/opt/homebrew/lib/node_modules/sentry/bin/sentry",
+        version: "1.0.0",
+      });
+      Object.defineProperty(process, "execPath", {
+        value: "/opt/homebrew/Cellar/node/22.0.0/bin/node",
+        configurable: true,
+      });
+
+      const { output } = await runUninstall(["--yes"]);
+      expect(output).toContain("npm uninstall -g sentry");
+      expect(output).not.toContain("brew uninstall");
+    });
+  });
+
   test("detects pnpm install and suggests pnpm remove", async () => {
     setInstallInfo({
       method: "pnpm",
@@ -171,6 +252,17 @@ describe("removeSentryLinesFromConfig", () => {
   afterEach(async () => {
     const { rm } = await import("node:fs/promises");
     await rm(tempDir, { recursive: true, force: true });
+  });
+
+  test("removes repaired zsh completion setup without removing user configuration", async () => {
+    const { removeSentryLinesFromConfig } =
+      await import("../../../src/commands/cli/uninstall.js");
+    const configFile = join(tempDir, ".zshrc");
+    const original = "autoload -Uz compinit; compinit\n";
+    await writeFile(configFile, original);
+    await addToFpath(configFile, join(tempDir, "completions"));
+    expect(await removeSentryLinesFromConfig(configFile)).toBe(true);
+    expect(await readFile(configFile, "utf-8")).toBe(original);
   });
 
   test("removes single # sentry block", async () => {

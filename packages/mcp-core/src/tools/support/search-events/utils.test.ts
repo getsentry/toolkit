@@ -5,6 +5,7 @@ import type { z } from "zod";
 import { SentryApiService } from "../../../api-client";
 import * as logging from "../../../telem/logging";
 import {
+  createDatasetAttributesTool,
   createValidateEventsSearchTool,
   fetchCustomAttributes,
   formatEventsValidationResults,
@@ -363,23 +364,25 @@ describe("search query helpers", () => {
     expect(downgrade).toBe(false);
   });
 
-  it("should detect regex filters inside parentheses and on Sentry's other key shapes", () => {
+  // Which key shapes can carry a regex is tested with the grammar in
+  // packages/toolkit-core/src/search-syntax.test.ts.
+  it("should detect regex filters and other filters inside parentheses", () => {
     expect(looksLikeSentrySearchSyntax("(message://a b//)", "logs")).toBe(true);
-    expect(
-      looksLikeSentrySearchSyntax("tags[App:Region]://^us-//", "logs"),
-    ).toBe(true);
-    expect(looksLikeSentrySearchSyntax("flags[Feature:X]://y//", "logs")).toBe(
+    // The parser reads filters inside parentheses like any other filter.
+    expect(looksLikeSentrySearchSyntax("(level:error)", "logs")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("(level:error OR level:warning)")).toBe(
       true,
     );
-    expect(
-      looksLikeSentrySearchSyntax("tags[foo, string]://a b//", "logs"),
-    ).toBe(true);
-    expect(looksLikeSentrySearchSyntax('"mykey"://a b//', "logs")).toBe(true);
-    expect(looksLikeSentrySearchSyntax("arr[*]://a b//", "logs")).toBe(true);
-    expect(looksLikeSentrySearchSyntax('"Note"message://a b//', "logs")).toBe(
-      true,
+  });
+
+  it("should read structured filters the way Sentry's grammar does", () => {
+    expect(looksLikeSentrySearchSyntax("count():>10")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("p95(span.duration):>200")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("level:error\nchecking out")).toBe(true);
+    expect(looksLikeSentrySearchSyntax("meeting 10.30:45 tomorrow")).toBe(
+      false,
     );
-    expect(looksLikeSentrySearchSyntax("(level:error)", "logs")).toBe(false);
+    expect(looksLikeSentrySearchSyntax("level:")).toBe(false);
   });
 
   it("should not treat regex filters as search syntax outside logs", () => {
@@ -461,6 +464,20 @@ describe("search query helpers", () => {
     ).toBe(true);
     expect(
       isSemanticFilterDowngrade('"mykey"://^a b//', '"mykey":*a*', "logs"),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "tags[k[*],array]://^a b//",
+        "tags[k[*],array]:*a*",
+        "logs",
+      ),
+    ).toBe(true);
+    expect(
+      isSemanticFilterDowngrade(
+        "tags[k[*],array]://^a b//",
+        'message:"*a b*"',
+        "logs",
+      ),
     ).toBe(true);
     expect(
       isSemanticFilterDowngrade(
@@ -661,6 +678,88 @@ describe("search query helpers", () => {
         "logs",
       ),
     ).toBe(true);
+  });
+});
+
+describe("datasetAttributes tool pagination", () => {
+  beforeEach(() => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/trace-items/attributes/",
+        () =>
+          HttpResponse.json([
+            {
+              key: "custom.first",
+              name: "custom.first",
+              attributeType: "string",
+              attributeSource: { source_type: "user" },
+            },
+            {
+              key: "device.memory",
+              name: "device.memory",
+              attributeType: "number",
+              attributeSource: { source_type: "user" },
+              context: {
+                isConvention: true,
+                brief: "The estimated total memory capacity of the device.",
+                isDeprecated: false,
+              },
+            },
+          ]),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    mswServer.resetHandlers();
+  });
+
+  async function listAttributes(offset?: number) {
+    const tool = createDatasetAttributesTool({
+      apiService: new SentryApiService({ accessToken: "test-token" }),
+      organizationSlug: "test-org",
+    });
+    type ToolInput = Parameters<NonNullable<typeof tool.execute>>[0];
+    const schema = tool.inputSchema as z.ZodType<ToolInput>;
+    const output = await tool.execute!(
+      schema.parse({ dataset: "spans", offset }),
+      {
+        toolCallId: "dataset-attributes-test",
+        messages: [],
+      },
+    );
+    return (output as { result: string }).result;
+  }
+
+  it("points to the next page when fields are past the first page", async () => {
+    const result = await listAttributes();
+
+    expect(result).toMatch(/Available Fields \(\d+ total, showing 1-50\):/);
+    expect(result).toContain(
+      "call datasetAttributes again with the same arguments and offset: 50",
+    );
+    expect(result).not.toContain("- device.memory (number): The estimated");
+    expect(result).toContain("EXAMPLE QUERIES FOR SPANS");
+  });
+
+  it("returns later pages with descriptions and types for their fields only", async () => {
+    const result = await listAttributes(50);
+
+    expect(result).toMatch(/showing 51-\d+\):/);
+    expect(result).toContain(
+      "- device.memory (number): The estimated total memory capacity of the device.",
+    );
+    expect(result).not.toContain("- span.op:");
+    expect(result).not.toContain("offset:");
+    expect(result).not.toContain("EXAMPLE QUERIES");
+  });
+
+  it("reports when the offset is past the last field", async () => {
+    const result = await listAttributes(1000);
+
+    expect(result).toMatch(
+      /Available Fields \(\d+ total\): none at offset 1000\./,
+    );
   });
 });
 

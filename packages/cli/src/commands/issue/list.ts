@@ -57,6 +57,7 @@ import {
   type OutputConfig,
 } from "../../lib/formatters/output.js";
 import {
+  appendQueryHint,
   buildListCommand,
   buildListLimitFlag,
   LIST_BASE_ALIASES,
@@ -87,6 +88,7 @@ import {
 import {
   SEARCH_SYNTAX_REFERENCE,
   sanitizeQuery,
+  unscopedCountFilterKeys,
 } from "../../lib/search-query.js";
 import { isSaaS } from "../../lib/sentry-web-urls.js";
 import {
@@ -98,6 +100,7 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
+import { tipsSuppressed } from "../../lib/tips.js";
 import {
   type SentryIssue,
   SentryIssueSchema,
@@ -247,18 +250,99 @@ function shouldCollapseStats(json: boolean, fields?: string[]): boolean {
  * Stats and lifetime are only collapsed in JSON mode with explicit `--fields`
  * that omit the corresponding dependent fields. Human output always requests
  * seen-stats data for the EVENTS, USERS, SEEN, and AGE columns.
+ *
+ * When the query needs query-scoped counts (see {@link shouldScopeCounts}),
+ * `filtered` is requested and `stats` is kept, because the server nests the
+ * `filtered` block under stats. See #1583.
  */
-function buildListApiOptions(json: boolean, fields?: string[]): ListApiOptions {
-  const collapseStats = shouldCollapseStats(json, fields);
+function buildListApiOptions(
+  flags: Pick<ListFlags, "query" | "json" | "fields" | "sort">,
+): ListApiOptions {
+  const scopeCounts = shouldScopeCounts(flags);
+  const collapseStats =
+    !scopeCounts && shouldCollapseStats(flags.json, flags.fields);
   const collapseLifetime =
-    json && shouldCollapseForFields(fields, LIFETIME_FIELDS);
+    flags.json && shouldCollapseForFields(flags.fields, LIFETIME_FIELDS);
   return {
     collapse: buildIssueListCollapse({
       shouldCollapseStats: collapseStats,
       shouldCollapseLifetime: collapseLifetime,
+      shouldCollapseFiltered: !scopeCounts,
     }),
     groupStatsPeriod: collapseStats ? undefined : "auto",
   };
+}
+
+/**
+ * Whether the seen-stats counts (`count`/`userCount`) are displayed for the
+ * given flags. Human output always shows them; JSON only omits them when
+ * `--fields` collapses lifetime fields away. Used to skip requesting
+ * query-scoped counts when the counts aren't shown anyway.
+ */
+function countsShown(json: boolean, fields?: string[]): boolean {
+  return !(json && shouldCollapseForFields(fields, LIFETIME_FIELDS));
+}
+
+/** Whether the issue ordering depends on `count`/`userCount`. */
+function sortUsesCounts(sort: ListFlags["sort"]): boolean {
+  return sort === "freq" || sort === "user";
+}
+
+/**
+ * Whether to request query-scoped counts: the query must filter on a key the
+ * top-level seen-stats ignore, and the counts must either be displayed or
+ * drive the `freq`/`user` ordering.
+ */
+function shouldScopeCounts(
+  flags: Pick<ListFlags, "query" | "json" | "fields" | "sort">,
+): boolean {
+  return Boolean(
+    flags.query &&
+    (countsShown(flags.json, flags.fields) || sortUsesCounts(flags.sort)) &&
+    unscopedCountFilterKeys(flags.query).length > 0,
+  );
+}
+
+/**
+ * Replace each issue's period-wide `count`/`userCount` with the server's
+ * query-scoped `filtered` counts, when the response includes them.
+ *
+ * The issues-list endpoint computes `filtered` seen-stats with the same
+ * event-level conditions (e.g. `release:`) that select and order the issues,
+ * but only when `filtered` is not collapsed (see {@link buildListApiOptions}).
+ * Promoting them right after each fetch keeps the displayed numbers, the
+ * multi-project merge order, and the `--limit` trim consistent with the
+ * query. The `filtered` block is dropped so the JSON output shape is
+ * unchanged. Mutates `issues` in place. See #1583.
+ */
+function applyQueryScopedCounts(issues: SentryIssue[]): SentryIssue[] {
+  for (const issue of issues) {
+    if (issue.filtered) {
+      issue.count = issue.filtered.count;
+      issue.userCount = issue.filtered.userCount;
+    }
+    delete issue.filtered;
+  }
+  return issues;
+}
+
+/**
+ * Combine the framework footer hint from a result's more/footer parts. Only
+ * forwards a hint when items exist — empty results render their hint text
+ * inside {@link formatIssueListHuman}.
+ */
+function buildCombinedHint(result: IssueListResult): string | undefined {
+  if (result.items.length === 0) {
+    return;
+  }
+  const hintParts: string[] = [];
+  if (result.moreHint) {
+    hintParts.push(result.moreHint);
+  }
+  if (result.footer) {
+    hintParts.push(result.footer);
+  }
+  return hintParts.length > 0 ? hintParts.join("\n") : result.hint;
 }
 
 /**
@@ -436,7 +520,12 @@ async function fetchIssuesForTarget(
         end: options.end,
       },
     );
-    return { target, issues, hasMore: !!nextCursor, nextCursor };
+    return {
+      target,
+      issues: applyQueryScopedCounts(issues),
+      hasMore: !!nextCursor,
+      nextCursor,
+    };
   });
 
   if (!result.ok) {
@@ -638,9 +727,7 @@ function appendIssueFlags(base: string, flags: ListFlags): string {
   if (flags.sort !== defaultIssueSort()) {
     parts.push(`--sort ${flags.sort}`);
   }
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   appendPeriodHint(parts, flags.period, DEFAULT_PERIOD, "-t");
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }
@@ -671,7 +758,7 @@ async function fetchOrganizationIssues(
     onPage?: (fetched: number, limit: number) => void;
   },
 ): Promise<IssuesPage> {
-  const apiOpts = buildListApiOptions(flags.json, flags.fields);
+  const apiOpts = buildListApiOptions(flags);
   const timeParams = timeRangeToApiParams(timeRange);
   const { cursor, onPage, projects } = options;
 
@@ -688,7 +775,10 @@ async function fetchOrganizationIssues(
       groupStatsPeriod: apiOpts.groupStatsPeriod,
       collapse: apiOpts.collapse,
     });
-    return { issues: response.data, nextCursor: response.nextCursor };
+    return {
+      issues: applyQueryScopedCounts(response.data),
+      nextCursor: response.nextCursor,
+    };
   }
 
   // No cursor — auto-paginate from the beginning via the shared helper.
@@ -702,7 +792,7 @@ async function fetchOrganizationIssues(
     collapse: apiOpts.collapse,
     onPage,
   });
-  return { issues, nextCursor };
+  return { issues: applyQueryScopedCounts(issues), nextCursor };
 }
 
 /** Options for {@link handleOrganizationIssues}. */
@@ -1175,7 +1265,7 @@ async function handleResolvedTargets(
       ? `Fetching issues from ${targetCount} projects`
       : "Fetching issues";
 
-  const apiOpts = buildListApiOptions(flags.json, flags.fields);
+  const apiOpts = buildListApiOptions(flags);
 
   const { results, hasMore } = await withProgress(
     { message: `${baseMessage} (up to ${flags.limit})...`, json: flags.json },
@@ -1482,7 +1572,7 @@ function formatIssueListHuman(result: IssueListResult): string {
   }
 
   // Footer tip (e.g. "Tip: Use 'sentry issue view <ID>' ...")
-  if (result.footerMode) {
+  if (result.footerMode && !tipsSuppressed()) {
     parts.push(formatListFooter(result.footerMode));
   }
 
@@ -1721,19 +1811,7 @@ export const listCommand = buildListCommand("issue", {
       },
     })) as IssueListResult;
 
-    // Only forward hints to the framework footer when items exist — empty
-    // results already render hint text inside formatIssueListHuman.
-    let combinedHint: string | undefined;
-    if (result.items.length > 0) {
-      const hintParts: string[] = [];
-      if (result.moreHint) {
-        hintParts.push(result.moreHint);
-      }
-      if (result.footer) {
-        hintParts.push(result.footer);
-      }
-      combinedHint = hintParts.length > 0 ? hintParts.join("\n") : result.hint;
-    }
+    const combinedHint = buildCombinedHint(result);
 
     yield new CommandOutput(result);
     return { hint: combinedHint };

@@ -82,7 +82,7 @@ beforeEach(async () => {
   resetCacheState();
   disableResponseCache();
   resetAuthenticatedFetch();
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", "https://de.sentry.io");
 });
 

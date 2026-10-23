@@ -106,5 +106,13 @@
   {
     "key": "custom.feature_flag",
     "name": "Feature Flag"
+  },
+  {
+    "key": "kiosk.firmware",
+    "name": "kiosk.firmware"
+  },
+  {
+    "key": "kiosk.firmware_revision",
+    "name": "kiosk.firmware_revision"
   }
 ]

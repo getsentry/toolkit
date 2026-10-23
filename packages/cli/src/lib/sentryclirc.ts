@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { normalizeUrl } from "./constants.js";
+import { hasStoredAccountForHost } from "./db/auth.js";
 import { getConfigDir } from "./db/index.js";
 import { getEnv } from "./env.js";
 import { HostScopeError } from "./errors.js";
@@ -386,8 +387,8 @@ export async function applySentryCliRcEnvShim(cwd: string): Promise<void> {
  * command — commands that establish or tear down trust (`auth login`,
  * `auth logout`) opt out via `skipRcUrlCheck: true`.
  *
- * No-op when: no rc URL was loaded, the rc URL is SaaS, or the rc URL
- * matches the active token's host.
+ * No-op when: no rc URL was loaded, the rc URL is SaaS, the rc URL
+ * matches the active token's host, or a usable stored account is on it.
  *
  * @throws {HostScopeError} On non-SaaS URL that doesn't match the token
  */
@@ -398,10 +399,16 @@ export async function assertRcUrlTrusted(cwd: string): Promise<void> {
   if (!normalizedRcUrl || isSaaSTrustOrigin(normalizedRcUrl)) {
     return;
   }
-  // Non-SaaS rc URL: must match active token's host. No token at all is
-  // also a refusal — the rc URL by itself isn't a trust source.
+  // Non-SaaS rc URL: must match active token's host, or a usable stored
+  // account must be on it (logging in with `--url` established that trust;
+  // account selection then uses that account for the server, like a pasted
+  // URL). No token at all is also a refusal — the rc URL by itself isn't a
+  // trust source.
   const tokenHost = getActiveTokenHost();
-  if (tokenHost && isHostTrusted(normalizedRcUrl, tokenHost)) {
+  if (
+    (tokenHost && isHostTrusted(normalizedRcUrl, tokenHost)) ||
+    hasStoredAccountForHost(normalizedRcUrl)
+  ) {
     return;
   }
   const source = config.sources.url

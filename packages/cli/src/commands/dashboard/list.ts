@@ -14,6 +14,7 @@ import {
 } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -38,7 +39,7 @@ import {
 import type { DashboardListItem } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardListArgs,
   resolveOrgFromTarget,
 } from "./resolve.js";
@@ -392,7 +393,7 @@ export const listCommand = buildListCommand("dashboard", {
       parameter: {
         placeholder: "org/title-filter",
         brief: "[<org/project>] [<name-glob>]",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -448,21 +449,21 @@ export const listCommand = buildListCommand("dashboard", {
       dashboards: results,
       cursorToStore,
       allTitles,
-    } = await withProgress(
-      {
-        message: `Fetching dashboards${titleFilter ? ` matching '${titleFilter}'` : ""} (up to ${flags.limit})...`,
-        json: flags.json,
-      },
-      () =>
-        fetchDashboards(orgSlug, {
-          limit: flags.limit,
-          perPage,
-          serverCursor,
-          afterId,
-          glob,
-        }),
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "list" }),
+    } = await withDashboardErrors({ orgSlug, operation: "list" }, () =>
+      withProgress(
+        {
+          message: `Fetching dashboards${titleFilter ? ` matching '${titleFilter}'` : ""} (up to ${flags.limit})...`,
+          json: flags.json,
+        },
+        () =>
+          fetchDashboards(orgSlug, {
+            limit: flags.limit,
+            perPage,
+            serverCursor,
+            afterId,
+            glob,
+          }),
+      ),
     );
 
     // Advance the pagination cursor stack

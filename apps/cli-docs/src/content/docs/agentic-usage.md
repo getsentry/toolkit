@@ -7,11 +7,11 @@ AI coding agents can use the Sentry CLI through the skill system. The CLI detect
 
 ## Automatic Installation
 
-The curl installer and Homebrew run `sentry cli setup`, which installs agent skills into detected agent root directories (`~/.claude`, `~/.agents`). After a package-manager install, run `sentry cli setup` yourself. `sentry cli upgrade` also refreshes skills. No network fetch is needed — skill files are embedded in the binary.
+The curl installer runs `sentry cli setup`, which installs agent skills into detected agent root directories (`~/.claude`, `~/.agents`). After a Homebrew or package-manager install, run `sentry cli setup` yourself. `sentry cli upgrade` also refreshes skills. No network fetch is needed — skill files are embedded in the binary.
 
 This uses the same `~/.agents` convention as [dotagents](https://github.com/getsentry/dotagents), Sentry's first-party tool for installing agent skills. See [Manual Installation](#manual-installation) to add the skill with dotagents yourself.
 
-To skip automatic skill installation, pass `--no-agent-skills` to `sentry cli setup`.
+To skip automatic skill installation, pass `--no-agent-skills` to `sentry cli setup` (or to the install script or `sentry cli upgrade`). The CLI remembers this choice, so later upgrades also skip skills. Run `sentry cli defaults agent-skills on` to turn installation back on.
 
 ## Manual Installation
 

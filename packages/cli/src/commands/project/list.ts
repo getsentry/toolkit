@@ -281,7 +281,7 @@ async function fetchAutoDetectProjects(
   flags: ListFlags,
 ): Promise<{ projects: ProjectWithOrg[]; nextCursor?: string }> {
   if (orgs.length === 1 && !flags.platform) {
-    return fetchPaginatedSafe(orgs[0] as string, flags.limit);
+    return await fetchPaginatedSafe(orgs[0] as string, flags.limit);
   }
   if (orgs.length > 0) {
     const results = await Promise.all(orgs.map(fetchOrgProjectsSafe));

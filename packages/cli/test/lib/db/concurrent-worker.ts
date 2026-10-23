@@ -182,4 +182,4 @@ async function main(): Promise<void> {
   console.log(JSON.stringify(result));
 }
 
-main();
+void main();

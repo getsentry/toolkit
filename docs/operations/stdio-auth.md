@@ -67,10 +67,10 @@ The Cloudflare deployment uses a separate OAuth application (configured via `SEN
 
 Both transports use the `SENTRY_CLIENT_ID` env var name for overriding, but they're separate deployments with separate values:
 
-| Transport | Default client ID | Grant type | Client secret |
-|-----------|------------------|------------|---------------|
-| stdio | Bundled in `auth/constants.ts` | Device code (RFC 8628) | None (public client) |
-| Cloudflare | `SENTRY_CLIENT_ID` env var | Authorization code | `SENTRY_CLIENT_SECRET` env var |
+| Transport  | Default client ID              | Grant type             | Client secret                  |
+| ---------- | ------------------------------ | ---------------------- | ------------------------------ |
+| stdio      | Bundled in `auth/constants.ts` | Device code (RFC 8628) | None (public client)           |
+| Cloudflare | `SENTRY_CLIENT_ID` env var     | Authorization code     | `SENTRY_CLIENT_SECRET` env var |
 
 ## Token Cache
 
@@ -126,15 +126,15 @@ These commands support `--host` and `--url` flags with the same precedence as th
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `packages/mcp-server/src/auth/constants.ts` | Bundled client ID, OAuth endpoints, scopes |
-| `packages/mcp-server/src/auth/device-code-flow.ts` | RFC 8628 implementation (request, poll, browser open) |
-| `packages/mcp-server/src/auth/token-cache.ts` | Persistent token storage at `~/.sentry/mcp.json` |
-| `packages/mcp-server/src/auth/resolve-token.ts` | Orchestration: cache check → TTY check → device code flow |
-| `packages/mcp-server/src/auth/types.ts` | Zod schemas for API responses, `CachedToken` type |
-| `packages/mcp-server/src/cli/commands/auth.ts` | `auth login/logout/status` subcommands |
-| `packages/mcp-core/src/scopes.ts` | Shared OAuth scope definitions |
+| File                                               | Purpose                                                   |
+| -------------------------------------------------- | --------------------------------------------------------- |
+| `packages/mcp-server/src/auth/constants.ts`        | Bundled client ID, OAuth endpoints, scopes                |
+| `packages/mcp-server/src/auth/device-code-flow.ts` | RFC 8628 implementation (request, poll, browser open)     |
+| `packages/mcp-server/src/auth/token-cache.ts`      | Persistent token storage at `~/.sentry/mcp.json`          |
+| `packages/mcp-server/src/auth/resolve-token.ts`    | Orchestration: cache check → TTY check → device code flow |
+| `packages/mcp-server/src/auth/types.ts`            | Zod schemas for API responses, `CachedToken` type         |
+| `packages/mcp-server/src/cli/commands/auth.ts`     | `auth login/logout/status` subcommands                    |
+| `packages/mcp-core/src/scopes.ts`                  | Shared OAuth scope definitions                            |
 
 ## Token Refresh
 

@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  formatErrorForUser,
-  isExpectedToolError,
-} from "./error-handling";
+import { formatErrorForUser, isExpectedToolError } from "./error-handling";
 import {
   AgentExecutionError,
   UserInputError,
@@ -85,7 +82,9 @@ describe("formatErrorForUser", () => {
 
     it("returns detailed message for stdio transport", async () => {
       const result = await formatErrorForUser(error, { transport: "stdio" });
-      expect(result).toContain("Workspace monthly budget of $15000.00 exceeded");
+      expect(result).toContain(
+        "Workspace monthly budget of $15000.00 exceeded",
+      );
       expect(result).toContain("**AI Provider Error**");
       expect(result).toContain("Other non-AI tools should still work");
       expect(result).not.toContain("Feature Unavailable");
@@ -101,7 +100,9 @@ describe("formatErrorForUser", () => {
     it("returns graceful availability message for http transport without creating an issue", async () => {
       const result = await formatErrorForUser(error, { transport: "http" });
       expect(result).toContain("**Feature Unavailable**");
-      expect(result).toContain("AI-powered features are temporarily unavailable");
+      expect(result).toContain(
+        "AI-powered features are temporarily unavailable",
+      );
       expect(result).toContain("do not require AI should still work");
       expect(result).not.toContain(
         "Workspace monthly budget of $15000.00 exceeded",
@@ -118,7 +119,9 @@ describe("formatErrorForUser", () => {
 
     it("returns detailed message when transport is undefined", async () => {
       const result = await formatErrorForUser(error);
-      expect(result).toContain("Workspace monthly budget of $15000.00 exceeded");
+      expect(result).toContain(
+        "Workspace monthly budget of $15000.00 exceeded",
+      );
       expect(logIssue).not.toHaveBeenCalled();
       expect(logWarn).toHaveBeenCalled();
     });
@@ -145,7 +148,9 @@ describe("formatErrorForUser", () => {
     it("returns graceful availability message for http transport without creating an issue", async () => {
       const result = await formatErrorForUser(error, { transport: "http" });
       expect(result).toContain("**Feature Unavailable**");
-      expect(result).toContain("AI-powered features are temporarily unavailable");
+      expect(result).toContain(
+        "AI-powered features are temporarily unavailable",
+      );
       expect(result).not.toContain("Invalid API key provided");
       expect(logIssue).not.toHaveBeenCalled();
       expect(logWarn).toHaveBeenCalled();
@@ -170,7 +175,9 @@ describe("formatErrorForUser", () => {
 
     it("returns graceful availability message without creating an issue", async () => {
       const result = await formatErrorForUser(error, { transport: "http" });
-      expect(result).toContain("AI-powered features are temporarily unavailable");
+      expect(result).toContain(
+        "AI-powered features are temporarily unavailable",
+      );
       expect(result).not.toContain("Internal server error");
       expect(logIssue).not.toHaveBeenCalled();
       expect(logWarn).toHaveBeenCalled();
@@ -206,7 +213,9 @@ describe("formatErrorForUser", () => {
 
     it("returns graceful availability message without creating an issue", async () => {
       const result = await formatErrorForUser(error, { transport: "http" });
-      expect(result).toContain("AI-powered features are temporarily unavailable");
+      expect(result).toContain(
+        "AI-powered features are temporarily unavailable",
+      );
       expect(logIssue).not.toHaveBeenCalled();
       expect(logWarn).toHaveBeenCalled();
     });

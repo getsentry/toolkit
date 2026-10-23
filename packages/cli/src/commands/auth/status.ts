@@ -11,12 +11,16 @@ import {
   type AuthConfig,
   type AuthSource,
   ENV_SOURCE_PREFIX,
+  getActiveAuthHost,
   getActiveEnvVarName,
   getAuthConfig,
   getAuthToken,
+  getEnvAccount,
   getRawEnvToken,
   isAuthenticated,
 } from "../../lib/db/auth.js";
+import { fetchEnvAccountUser } from "../../lib/env-account.js";
+import { listAccounts } from "../../lib/db/accounts.js";
 import {
   getDefaultOrganization,
   getDefaultProject,
@@ -58,6 +62,10 @@ export type AuthStatusData = {
   configPath?: string;
   /** User identity from cached user info */
   user?: { name?: string; email?: string; username?: string };
+  /** Server the active stored account belongs to (only for non-env tokens) */
+  host?: string;
+  /** Number of stored accounts (only for non-env tokens) */
+  accounts?: number;
   /** Token display and metadata */
   token?: {
     /** Masked or full token string depending on --show-token */
@@ -87,6 +95,14 @@ export type AuthStatusData = {
     envVar: string;
     /** Whether the env token is the effective auth source (vs bypassed for OAuth) */
     active: boolean;
+    /**
+     * Server the token is scoped to, when known from a trusted source. Then
+     * the token also acts as an account of its own: commands targeting an
+     * organization it can access use it even when stored OAuth is in effect.
+     */
+    host?: string;
+    /** The token's user, from `/auth/` (not for organization auth tokens) */
+    user?: { name?: string; email?: string; username?: string };
   };
 };
 
@@ -148,6 +164,35 @@ async function verifyCredentials(): Promise<AuthStatusData["verification"]> {
   }
 }
 
+/**
+ * Collect the env token's status, server, and user. The user is fetched
+ * from its own server only when that server is known from a trusted source.
+ */
+async function collectEnvToken(
+  active: boolean,
+): Promise<NonNullable<AuthStatusData["envToken"]>> {
+  const envVar = getActiveEnvVarName();
+  const envAccount = getEnvAccount();
+  if (!envAccount) {
+    return { envVar, active };
+  }
+  const user = await fetchEnvAccountUser(envAccount);
+  return {
+    envVar,
+    active,
+    host: envAccount.host,
+    ...(user
+      ? {
+          user: {
+            name: user.name ?? undefined,
+            email: user.email ?? undefined,
+            username: user.username ?? undefined,
+          },
+        }
+      : {}),
+  };
+}
+
 export const statusCommand = buildCommand({
   auth: false,
   docs: {
@@ -201,7 +246,7 @@ export const statusCommand = buildCommand({
     // (it may be set but bypassed because stored OAuth takes priority)
     const rawEnv = getRawEnvToken();
     const envTokenData: AuthStatusData["envToken"] = rawEnv
-      ? { envVar: getActiveEnvVarName(), active: fromEnv }
+      ? await collectEnvToken(fromEnv)
       : undefined;
 
     const data: AuthStatusData = {
@@ -209,6 +254,8 @@ export const statusCommand = buildCommand({
       source: auth?.source ?? "oauth",
       configPath: fromEnv ? undefined : getDbPath(),
       user,
+      host: fromEnv ? undefined : getActiveAuthHost(),
+      accounts: fromEnv ? undefined : listAccounts().length,
       token: collectTokenInfo(auth, flags["show-token"]),
       defaults: collectDefaults(),
       verification: await verifyCredentials(),

@@ -58,6 +58,9 @@ export type CliResult = {
 export function getCliCommand(): string[] {
   const binaryPath = process.env.SENTRY_CLI_BINARY;
   if (binaryPath) {
+    if (/\.[cm]?js$/i.test(binaryPath)) {
+      return [process.execPath, binaryPath];
+    }
     return [binaryPath];
   }
   return [
@@ -162,7 +165,7 @@ export function createE2EContext(
       const prevDir = process.env[CONFIG_DIR_ENV_VAR];
       process.env[CONFIG_DIR_ENV_VAR] = configDir;
       try {
-        await dbSetAuthToken(token, undefined, undefined, { host: serverUrl });
+        dbSetAuthToken(token, undefined, undefined, { host: serverUrl });
         closeDatabase();
       } finally {
         if (prevDir !== undefined) {

@@ -154,6 +154,58 @@ describe("dashboard widget add", () => {
     expect(body.widgets.length).toBe(3);
   });
 
+  test.each([
+    { ref: "my-org/123", target: { type: "org-all", org: "my-org" } },
+    {
+      ref: "my-org/web/123",
+      target: { type: "explicit", org: "my-org", project: "web" },
+    },
+  ])(
+    "adds a widget using the qualified dashboard ID $ref",
+    async ({ ref, target }) => {
+      resolveOrgOnlyTargetSpy.mockResolvedValue("my-org");
+      const listDashboardsSpy = vi
+        .spyOn(apiClient, "listDashboardsPaginated")
+        .mockResolvedValue({ data: [], nextCursor: undefined });
+      const { context, stdoutWrite } = createMockContext();
+      const func = await addCommand.loader();
+
+      try {
+        await func.call(
+          context,
+          { json: true, display: "line", query: ["count"] },
+          ref,
+          "New Widget",
+        );
+
+        expect(resolveOrgOnlyTargetSpy).toHaveBeenCalledWith(
+          target,
+          "/tmp",
+          "dashboard",
+          expect.any(String),
+        );
+        expect(getDashboardSpy).toHaveBeenCalledWith("my-org", "123");
+        expect(updateDashboardSpy).toHaveBeenCalledWith(
+          "my-org",
+          "123",
+          expect.objectContaining({
+            widgets: expect.arrayContaining([
+              expect.objectContaining({ title: "New Widget" }),
+            ]),
+          }),
+        );
+        expect(listDashboardsSpy).not.toHaveBeenCalled();
+        const output = JSON.parse(
+          stdoutWrite.mock.calls.map((call) => call[0]).join(""),
+        );
+        expect(output.url).toContain("my-org.sentry.io/dashboard/123");
+        expect(output.widget.title).toBe("New Widget");
+      } finally {
+        listDashboardsSpy.mockRestore();
+      }
+    },
+  );
+
   test("JSON output contains dashboard, widget, and url", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await addCommand.loader();

@@ -692,7 +692,14 @@ async function executeStandardUpgrade(opts: {
   const downloadResult = await withProgress(
     { message: `Downloading ${target}...`, json },
     async (setMessage) =>
-      executeUpgrade(method, target, downloadTag, offline, setMessage, source),
+      await executeUpgrade(
+        method,
+        target,
+        downloadTag,
+        offline,
+        setMessage,
+        source,
+      ),
   );
 
   if (downloadResult?.patchBytes) {
@@ -780,7 +787,7 @@ async function migrateToStandaloneForNightly(opts: {
   const downloadResult = await withProgress(
     { message: `Downloading ${target}...`, json },
     async (setMessage) =>
-      executeUpgrade(
+      await executeUpgrade(
         "curl",
         target,
         downloadTag,
@@ -1004,7 +1011,7 @@ export const upgradeCommand = buildCommand({
     const resolved = await withProgress(
       { message: "Checking for updates...", json: flags.json },
       async () =>
-        resolveTargetWithFallback({
+        await resolveTargetWithFallback({
           resolveOpts: { method, channel, versionArg, channelChanged, flags },
           versionArg,
           offline: flags.offline,

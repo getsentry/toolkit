@@ -18,7 +18,8 @@ Toolkit contains the Sentry CLI, the Sentry MCP server, and shared code. Product
 ```
 toolkit/
 ├── apps/
-│   └── cli-docs/            # CLI documentation site and generated command pages
+│   ├── cli-docs/            # CLI documentation site and generated command pages
+│   └── local/               # Sentry Local browser viewer
 ├── packages/
 │   ├── cli/                 # Sentry CLI (see packages/cli/AGENTS.md)
 │   ├── toolkit-core/        # Shared CLI/MCP primitives

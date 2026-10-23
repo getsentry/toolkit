@@ -8,7 +8,11 @@
 
 import { promisify } from "node:util";
 import { zstdCompress as zstdCompressCb } from "node:zlib";
-import { parseSentryLinkHeader } from "@sentry/api";
+import {
+  parseSentryLinkHeader,
+  type SdkResult,
+  SentryApiError,
+} from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
@@ -29,6 +33,7 @@ import {
   getDefaultSdkConfig,
   getSdkConfig,
 } from "../sentry-client.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
@@ -225,6 +230,10 @@ export function throwApiError(
     );
   }
 
+  if (error instanceof SentryApiError) {
+    error = error.body;
+  }
+
   const status = response.status;
   const rawDetail =
     error && typeof error === "object" && "detail" in error
@@ -261,32 +270,19 @@ export function throwApiError(
  * @returns The data from the successful response
  */
 export function unwrapResult<T>(
-  result:
-    | { data: unknown; error: undefined }
-    | { data: undefined; error: unknown },
+  result: Pick<SdkResult, "data" | "error" | "response">,
   context: string,
 ): T {
-  const { data, error } = result as {
-    data: unknown;
-    error: unknown;
-    response?: Response;
-  };
-
-  if (error !== undefined) {
+  if ("error" in result) {
+    const { error } = result;
     // Preserve known error types that were caught by the SDK from our fetch function
     if (error instanceof AuthError || error instanceof ApiError) {
       throw error;
     }
-    // The @sentry/api SDK always includes `response` on the returned object in
-    // the default "fields" responseStyle (see createClient request() in the SDK
-    // source — it spreads `{ request, response }` into every return value).
-    // The cast is typed as optional only because the SDK's TypeScript types omit
-    // `response` from the return type, not because it can be absent at runtime.
-    const response = (result as { response?: Response }).response;
-    throwApiError(error, response, context);
+    throwApiError(error, result.response, context);
   }
 
-  return data as T;
+  return result.data as T;
 }
 
 /**
@@ -300,12 +296,10 @@ export function unwrapResult<T>(
  * @returns Data and optional next-page cursor
  */
 export function unwrapPaginatedResult<T>(
-  result:
-    | { data: unknown; error: undefined }
-    | { data: undefined; error: unknown },
+  result: Pick<SdkResult, "data" | "error" | "response">,
   context: string,
 ): PaginatedResponse<T> {
-  const response = (result as { response?: Response }).response;
+  const { response } = result;
   const data = unwrapResult<T>(result, context);
   const { nextCursor, prevCursor } = parseLinkHeader(
     response?.headers.get("link") ?? null,
@@ -383,7 +377,7 @@ export function appendSearchParams(
  */
 export async function getOrgSdkConfig(orgSlug: string) {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  return getSdkConfig(regionUrl);
+  return getSdkClientConfig(regionUrl);
 }
 
 /**
@@ -453,7 +447,7 @@ export async function autoPaginate<T>(
 ): Promise<PaginatedResponse<T[]>> {
   // Fast path: single-page fetch when limit fits in one API page
   if (limit <= API_MAX_PER_PAGE) {
-    return fetchPage(initialCursor);
+    return await fetchPage(initialCursor);
   }
 
   // Multi-page: accumulate rows across pages up to the requested limit
@@ -591,7 +585,11 @@ export async function apiRequestToRegion<T>(
     credential,
     validatedRedirects,
   } = options;
-  const config = getSdkConfig(regionUrl, { credential, validatedRedirects });
+  const config = getSdkConfig(regionUrl, {
+    credential,
+    validatedRedirects,
+    bufferResponseBody: true,
+  });
 
   const endpointWithParams = appendSearchParams(endpoint, params);
   const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
@@ -743,7 +741,7 @@ export async function apiRequestToRegionNoContent(
   options: Omit<ApiRequestOptions, "schema"> = {},
 ): Promise<void> {
   const { method = "GET", body, params } = options;
-  const config = getSdkConfig(regionUrl);
+  const config = getSdkConfig(regionUrl, { bufferResponseBody: true });
 
   const searchParams = buildSearchParams(params);
   const queryString = searchParams ? `?${searchParams.toString()}` : "";
@@ -870,7 +868,9 @@ export async function rawApiRequest(
 
   // Both configs share createAuthenticatedFetch(), whose prepareHeaders()
   // enforces isRequestOriginTrusted() before attaching Authorization.
-  const config = baseUrl ? getSdkConfig(baseUrl) : getDefaultSdkConfig();
+  const config = baseUrl
+    ? getSdkConfig(baseUrl, { bufferResponseBody: true })
+    : getDefaultSdkConfig({ bufferResponseBody: true });
 
   const endpointWithParams = appendSearchParams(endpoint, params);
   const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);

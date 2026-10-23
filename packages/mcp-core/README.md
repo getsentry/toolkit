@@ -7,6 +7,7 @@ This package is primarily for running the `stdio` MCP server. If you do not know
 <https://mcp.sentry.dev>
 
 **Note:** Some tools require additional configuration:
+
 - **AI-powered search tools** (the dataset search tools such as `search_errors`/`search_traces`/`search_logs`, and `search_issues`): These tools use a configured LLM provider to translate natural language queries into Sentry's query syntax. Set one provider key, such as `OPENAI_API_KEY` or `OPENROUTER_API_KEY`. Without a provider key, these specific tools will be unavailable, but all other tools will function normally.
 
 ## Authorization
@@ -101,9 +102,11 @@ If `SENTRY_HOST` is not provided, the CLI automatically targets the Sentry SaaS 
 To utilize the `stdio` transport, create a User Auth Token in Sentry with these scopes:
 
 **Minimum (read-only)**:
+
 - `org:read`, `project:read`, `team:read`, `event:read`
 
 **Additional (for write operations)**:
+
 - `event:write` - Required for `triage` skill
 - `project:write`, `team:write` - Required for `project-management` skill
 

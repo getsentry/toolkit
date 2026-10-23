@@ -15,6 +15,13 @@
  *   Exit:   0 on success (even if no completions)
  */
 
+import generatedTargets from "../generated/completion-targets.json";
+import {
+  COMPLETION_TARGETS,
+  type CompletionTarget,
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
+} from "./completion-target.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getCredentialContext } from "./db/auth.js";
 import { queueCompletionTelemetry } from "./db/completion-telemetry.js";
@@ -95,75 +102,37 @@ export function handleComplete(args: string[]): void {
 }
 
 /**
- * Commands that accept org/project positional args.
+ * Command path → completion target, from `src/generated/completion-targets.json`.
  *
- * Hardcoded for fast-path performance — cannot derive from the route map
- * at runtime because `app.ts` imports `@sentry/node-core`. A property test in
- * `completions.property.test.ts` verifies this set stays in sync.
- *
- * @internal Exported for testing only.
+ * Generated from the commands' positional parsers (`parseOrgTarget` /
+ * `parseOrgProjectTarget`) by `script/generate-completion-targets.ts`
+ * because this fast path cannot boot Stricli to walk the route tree.
  */
-export const ORG_PROJECT_COMMANDS = new Set([
-  "dsn list",
-  "issue list",
-  "issue events",
-  "issue view",
-  "issue explain",
-  "issue plan",
-  "issue resolve",
-  "issue link",
-  "issue unlink",
-  "issue unresolve",
-  "issue archive",
-  "issue merge",
-  "feedback list",
-  "feedback view",
-  "project list",
-  "project view",
-  "project delete",
-  "replay list",
-  "replay view",
-  "trace list",
-  "trace view",
-  "trace logs",
-  "span list",
-  "span view",
-  "event view",
-  "event list",
-  "log list",
-  "log view",
-  "dashboard list",
-  "dashboard view",
-  "dashboard create",
-  "dashboard revisions",
-  "dashboard restore",
-]);
+const COMMAND_TARGETS = new Map<string, CompletionTarget>(
+  COMPLETION_TARGETS.flatMap((kind) =>
+    generatedTargets[kind].map((path): [string, CompletionTarget] => [
+      path,
+      kind,
+    ]),
+  ),
+);
 
 /**
- * Commands that accept only an org slug (no project).
+ * Find the completion target declared by the command named in `words`.
  *
- * @internal Exported for testing only.
+ * Commands are leaves of the route tree, so at most one prefix of the
+ * preceding words can name a command; everything after it is positionals
+ * or flags.
  */
-export const ORG_ONLY_COMMANDS = new Set([
-  "agent-conversation list",
-  "agent-conversation view",
-  "org view",
-  "release list",
-  "release view",
-  "release create",
-  "release finalize",
-  "release delete",
-  "release archive",
-  "release restore",
-  "release deploy",
-  "release deploys",
-  "release set-commits",
-  "team list",
-  "repo list",
-  "monitor list",
-  "trial list",
-  "trial start",
-]);
+function findCompletionTarget(words: string[]): CompletionTarget | undefined {
+  for (let length = 1; length <= words.length; length++) {
+    const target = COMMAND_TARGETS.get(words.slice(0, length).join(" "));
+    if (target) {
+      return target;
+    }
+  }
+  return;
+}
 
 /**
  * Determine what completions to provide based on the command context.
@@ -184,20 +153,21 @@ export function getCompletions(
       ? `${precedingWords[0]} ${precedingWords[1]}`
       : "";
 
+  // `project create` takes `name:platform` specs, not an existing target,
+  // so it keeps a dedicated completer instead of a generated target kind.
   if (cmdPath === "project create") {
     return completeProjectCreateSpec(partial);
   }
 
-  if (ORG_PROJECT_COMMANDS.has(cmdPath)) {
-    return completeOrgSlashProject(partial);
+  switch (findCompletionTarget(precedingWords)) {
+    case ORG_PROJECT_TARGET:
+      return completeOrgSlashProject(partial);
+    case ORG_TARGET:
+      return completeOrgSlugs(partial);
+    default:
+      // Not a known command path — no dynamic completions
+      return [];
   }
-
-  if (ORG_ONLY_COMMANDS.has(cmdPath)) {
-    return completeOrgSlugs(partial);
-  }
-
-  // Not a known command path — no dynamic completions
-  return [];
 }
 
 /**
@@ -233,10 +203,12 @@ export function completeProjectCreateSpec(partial: string): Completion[] {
     const platformPartial = partial.slice(colonIdx + 1);
     const candidates =
       platformPartial === "" ? COMMON_PLATFORMS : VALID_PLATFORMS;
-    return fuzzyMatch(platformPartial, candidates).map((platform) => ({
-      value: `${specPrefix}${platform}`,
-      description: "Platform",
-    }));
+    return fuzzyMatch(platformPartial, candidates, { mode: "search" }).map(
+      (platform) => ({
+        value: `${specPrefix}${platform}`,
+        description: "Platform",
+      }),
+    );
   }
 
   if (partial.includes("/")) {
@@ -263,7 +235,9 @@ export function completeOrgSlugs(partial: string, suffix = ""): Completion[] {
   }
 
   const nameMap = new Map(orgs.map((o) => [o.slug, o.name]));
-  const matched = fuzzyMatch(partial, Array.from(nameMap.keys()));
+  const matched = fuzzyMatch(partial, Array.from(nameMap.keys()), {
+    mode: "search",
+  });
 
   return matched.map((slug) => ({
     value: `${slug}${suffix}`,
@@ -343,7 +317,9 @@ export function completeProjectSlugs(
   }
 
   const nameMap = new Map(projects.map((p) => [p.projectSlug, p.projectName]));
-  const matched = fuzzyMatch(projectPartial, Array.from(nameMap.keys()));
+  const matched = fuzzyMatch(projectPartial, Array.from(nameMap.keys()), {
+    mode: "search",
+  });
 
   return matched.map((slug) => ({
     value: `${orgSlug}/${slug}`,
@@ -385,7 +361,7 @@ export function completeAliases(partial: string): Completion[] {
   }
 
   const keys = Object.keys(aliases);
-  const matched = fuzzyMatch(partial, keys);
+  const matched = fuzzyMatch(partial, keys, { mode: "search" });
 
   return matched.map((alias) => {
     const entry = aliases[alias];

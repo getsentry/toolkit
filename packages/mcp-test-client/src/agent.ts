@@ -151,7 +151,7 @@ export async function runAgent(
           let isStreaming = false;
           let streamError: unknown;
 
-          const result = await streamText({
+          const result = streamText({
             model: languageModel,
             system: SYSTEM_PROMPT,
             messages: [{ role: "user", content: userPrompt }],

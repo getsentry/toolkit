@@ -299,6 +299,42 @@ describe("parsePositionalArgs", () => {
     });
   });
 
+  describe("multiple fully-qualified org/project/logId args (CLI-1XC)", () => {
+    test("splits each full path into a shared target + log IDs", () => {
+      const result = parsePositionalArgs([
+        `my-org/frontend/${ID1}`,
+        `my-org/frontend/${ID2}`,
+      ]);
+      expect(result.targetArg).toBe("my-org/frontend");
+      expect(result.rawLogIds).toEqual([ID1, ID2]);
+    });
+
+    test("accepts a full path followed by bare log IDs", () => {
+      const result = parsePositionalArgs([`my-org/frontend/${ID1}`, ID2, ID3]);
+      expect(result.targetArg).toBe("my-org/frontend");
+      expect(result.rawLogIds).toEqual([ID1, ID2, ID3]);
+    });
+
+    test("throws ValidationError when full paths reference different projects", () => {
+      expect(() =>
+        parsePositionalArgs([
+          `my-org/frontend/${ID1}`,
+          `my-org/backend/${ID2}`,
+        ]),
+      ).toThrow(ValidationError);
+    });
+
+    test("strips a redundant target prefix from log ID args", () => {
+      const result = parsePositionalArgs([
+        "my-org/frontend",
+        `my-org/frontend/${ID1}`,
+        ID2,
+      ]);
+      expect(result.targetArg).toBe("my-org/frontend");
+      expect(result.rawLogIds).toEqual([ID1, ID2]);
+    });
+  });
+
   describe("the exact CLI-BC scenario", () => {
     test("newline-delimited log IDs as a single arg with target", () => {
       const ids = [

@@ -22,7 +22,7 @@ const REGION_URL = "https://us.sentry.io";
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
   // Non-expiring token — refreshToken() becomes a no-op.
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   resetAuthenticatedFetch();
 });
 

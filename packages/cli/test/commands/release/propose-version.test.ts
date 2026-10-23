@@ -37,7 +37,7 @@ describe("release propose-version", () => {
   });
 
   test("outputs HEAD SHA in JSON mode when no env vars set", async () => {
-    getHeadCommitSpy.mockResolvedValue(
+    getHeadCommitSpy.mockReturnValue(
       "abc123def456789012345678901234567890abcd",
     );
 
@@ -51,7 +51,7 @@ describe("release propose-version", () => {
   });
 
   test("outputs bare SHA in human mode", async () => {
-    getHeadCommitSpy.mockResolvedValue(
+    getHeadCommitSpy.mockReturnValue(
       "abc123def456789012345678901234567890abcd",
     );
 
@@ -64,7 +64,7 @@ describe("release propose-version", () => {
   });
 
   test("passes cwd to getHeadCommit", async () => {
-    getHeadCommitSpy.mockResolvedValue("deadbeef");
+    getHeadCommitSpy.mockReturnValue("deadbeef");
 
     const { context } = createMockContext("/my/project");
     const func = await proposeVersionCommand.loader();
@@ -74,7 +74,9 @@ describe("release propose-version", () => {
   });
 
   test("propagates git errors", async () => {
-    getHeadCommitSpy.mockRejectedValue(new Error("Not a git repository"));
+    getHeadCommitSpy.mockImplementation(() => {
+      throw new Error("Not a git repository");
+    });
 
     const { context } = createMockContext();
     const func = await proposeVersionCommand.loader();
@@ -113,7 +115,7 @@ describe("release propose-version", () => {
   });
 
   test("skips empty env vars", async () => {
-    getHeadCommitSpy.mockResolvedValue("git-sha");
+    getHeadCommitSpy.mockReturnValue("git-sha");
 
     const { context, stdoutWrite } = createMockContext("/tmp", {
       SENTRY_RELEASE: "",

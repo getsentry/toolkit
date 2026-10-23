@@ -60,6 +60,14 @@ const FORBIDDEN_HEADER_NAMES = new Set([
  */
 const VALID_HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~\w]+$/;
 
+/**
+ * Characters that `Headers.set()` rejects in a value: anything outside the
+ * Latin-1 ByteString range (e.g. emoji surrogates), plus CR, LF, and NUL.
+ * Undici would otherwise throw an opaque `TypeError` at request time (CLI-31G).
+ */
+// oxlint-disable-next-line no-control-regex -- NUL/CR/LF are exactly what undici rejects.
+const INVALID_HEADER_VALUE_RE = /[^\x00-\xff]|[\x00\x0a\x0d]/;
+
 /** Splits on semicolons and newlines (both valid header separators). */
 const HEADER_SEPARATOR_RE = /[;\n]/;
 
@@ -109,6 +117,29 @@ function assertValidHeaderName(name: string, source: string): void {
 }
 
 /**
+ * Validate that a header value can be sent by `Headers.set()`.
+ *
+ * The value is never echoed in the error, since custom headers commonly carry
+ * proxy credentials (IAP tokens, Cloudflare Access secrets).
+ *
+ * @param name - Header name the value belongs to
+ * @param value - Trimmed header value
+ * @param source - Where the header came from, for the error message
+ * @throws {ConfigError} When the value contains non-Latin-1 or CR/LF/NUL characters
+ */
+function assertValidHeaderValue(
+  name: string,
+  value: string,
+  source: string,
+): void {
+  if (INVALID_HEADER_VALUE_RE.test(value)) {
+    throw new ConfigError(
+      `Invalid value for header '${name}' in ${source}. Header values must contain only Latin-1 characters (no emoji or other non-ASCII symbols) and no line breaks.`,
+    );
+  }
+}
+
+/**
  * Parse a raw custom headers string into validated name/value pairs.
  *
  * Accepts semicolon-separated or newline-separated `Name: Value` entries.
@@ -147,6 +178,7 @@ export function parseCustomHeaders(raw: string): readonly [string, string][] {
     }
 
     assertValidHeaderName(name, "SENTRY_CUSTOM_HEADERS");
+    assertValidHeaderValue(name, value, "SENTRY_CUSTOM_HEADERS");
 
     results.push([name, value]);
   }
@@ -183,7 +215,9 @@ function validateCustomHeadersOverride(
       );
     }
     assertValidHeaderName(name, "SentryOptions.headers");
-    entries.push([name, rawValue.trim()]);
+    const value = rawValue.trim();
+    assertValidHeaderValue(name, value, "SentryOptions.headers");
+    entries.push([name, value]);
   }
   return entries;
 }

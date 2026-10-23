@@ -12,6 +12,7 @@ import {
 } from "../../src/lib/api-client.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("test-product-trial-api-");
@@ -20,7 +21,7 @@ let originalFetch: typeof globalThis.fetch;
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
 
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", "https://sentry.io");
 });
 
@@ -199,7 +200,7 @@ describe("startProductTrial", () => {
 
     globalThis.fetch = mockFetch(
       async (input: RequestInfo | URL, init?: RequestInit) => {
-        capturedUrl = input.toString();
+        capturedUrl = extractInputUrl(input);
         capturedMethod = init?.method ?? "GET";
         return new Response(JSON.stringify({}), {
           status: 200,

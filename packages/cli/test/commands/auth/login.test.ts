@@ -83,8 +83,24 @@ vi.mock("../../../src/lib/logger.js", () => ({
 }));
 
 // Dynamic import: must run AFTER vi.mock() so login.ts picks up fakeLog.
-const { loginCommand, rcTokenHint } =
+const { loginCommand, parseLoginEmail, rcTokenHint, splitLoginTarget } =
   await import("../../../src/commands/auth/login.js");
+
+vi.mock("../../../src/lib/account-selection.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../../src/lib/account-selection.js")
+    >();
+  return Object.fromEntries(
+    Object.entries(actual).map(([k, v]) => [
+      k,
+      typeof v === "function" ? vi.fn(v) : v,
+    ]),
+  );
+});
+
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as accountSelection from "../../../src/lib/account-selection.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
@@ -162,7 +178,11 @@ type LoginFlags = {
 };
 
 /** Command function type extracted from loader result */
-type LoginFunc = (this: unknown, flags: LoginFlags) => Promise<void>;
+type LoginFunc = (
+  this: unknown,
+  flags: LoginFlags,
+  email?: string,
+) => Promise<void>;
 
 const SAMPLE_USER = {
   id: "42",
@@ -203,6 +223,7 @@ function createContext() {
 function expectTokenStored(
   spy: ReturnType<typeof spyOn>,
   expectedToken: string,
+  newAccount = true,
 ): void {
   // shared helper
   expect(spy).toHaveBeenCalled();
@@ -211,6 +232,7 @@ function expectTokenStored(
   // shared helper
   expect(spy.mock.calls[0]?.[3]).toMatchObject({
     host: expect.any(String),
+    newAccount,
   });
 }
 
@@ -222,6 +244,7 @@ describe("loginCommand.func --token path", () => {
   let setAuthTokenSpy: ReturnType<typeof spyOn>;
   let getUserRegionsSpy: ReturnType<typeof spyOn>;
   let clearAuthSpy: ReturnType<typeof spyOn>;
+  let removeAccountSpy: ReturnType<typeof spyOn>;
   let getCurrentUserSpy: ReturnType<typeof spyOn>;
   let setUserInfoSpy: ReturnType<typeof spyOn>;
   let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
@@ -235,6 +258,8 @@ describe("loginCommand.func --token path", () => {
     setAuthTokenSpy = vi.spyOn(dbAuth, "setAuthToken");
     getUserRegionsSpy = vi.spyOn(apiClient, "getUserRegions");
     clearAuthSpy = vi.spyOn(dbAuth, "clearAuth");
+    removeAccountSpy = vi.spyOn(dbAuth, "removeAccount");
+    removeAccountSpy.mockResolvedValue(undefined);
     getCurrentUserSpy = vi.spyOn(apiClient, "getCurrentUser");
     setUserInfoSpy = vi.spyOn(dbUser, "setUserInfo");
     runInteractiveLoginSpy = vi.spyOn(interactiveLogin, "runInteractiveLogin");
@@ -255,6 +280,7 @@ describe("loginCommand.func --token path", () => {
     setAuthTokenSpy.mockRestore();
     getUserRegionsSpy.mockRestore();
     clearAuthSpy.mockRestore();
+    removeAccountSpy.mockRestore();
     getCurrentUserSpy.mockRestore();
     setUserInfoSpy.mockRestore();
     runInteractiveLoginSpy.mockRestore();
@@ -270,6 +296,189 @@ describe("loginCommand.func --token path", () => {
 
     expect(setAuthTokenSpy).not.toHaveBeenCalled();
     expect(getCurrentUserSpy).not.toHaveBeenCalled();
+  });
+
+  test("already authenticated (non-TTY) with an email: adds that account without prompting", async () => {
+    isAuthenticatedSpy.mockReturnValue(true);
+    runInteractiveLoginSpy.mockResolvedValue({
+      method: "oauth",
+      configPath: "/fake",
+    });
+
+    const { context } = createContext();
+    await func.call(
+      context,
+      { force: false, timeout: 900 },
+      "jane@example.com",
+    );
+
+    expect(runInteractiveLoginSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newAccount: true,
+        expectedEmail: "jane@example.com",
+      }),
+    );
+  });
+
+  test("--force: replaces the active account instead of adding one", async () => {
+    isAuthenticatedSpy.mockReturnValue(true);
+    runInteractiveLoginSpy.mockResolvedValue({
+      method: "oauth",
+      configPath: "/fake",
+    });
+
+    const { context } = createContext();
+    await func.call(context, { force: true, timeout: 900 });
+
+    expect(runInteractiveLoginSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ newAccount: false }),
+    );
+  });
+
+  test("--token with an email for someone else: removes the stored token and fails", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue({
+      ...SAMPLE_USER,
+      email: "bob@example.com",
+    });
+
+    const { context } = createContext();
+    await expect(
+      func.call(
+        context,
+        { token: "new-token", force: false, timeout: 900 },
+        "jane@example.com",
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    expect(removeAccountSpy).toHaveBeenCalledWith("new-account");
+    expect(setUserInfoSpy).not.toHaveBeenCalled();
+  });
+
+  test("--token --url with an email for someone else: leaves the default URL alone", async () => {
+    isAuthenticatedSpy.mockReturnValue(true);
+    vi.spyOn(dbAuth, "getActiveAccountId").mockReturnValue("previous-account");
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue({
+      ...SAMPLE_USER,
+      email: "bob@example.com",
+    });
+    const setActiveAccountSpy = vi
+      .spyOn(dbAuth, "setActiveAccount")
+      .mockReturnValue(undefined);
+    const pointDefaultUrlSpy = vi
+      .spyOn(accountSelection, "pointDefaultUrlAtAccount")
+      .mockReturnValue(undefined);
+
+    try {
+      const { context } = createContext();
+      await expect(
+        func.call(
+          context,
+          {
+            token: "new-token",
+            force: false,
+            timeout: 900,
+            url: "https://other.example.com",
+          },
+          "jane@example.com",
+        ),
+      ).rejects.toBeInstanceOf(ValidationError);
+
+      expect(removeAccountSpy).toHaveBeenCalledWith("new-account");
+      expect(setActiveAccountSpy).toHaveBeenCalledWith("previous-account");
+      expect(pointDefaultUrlSpy).not.toHaveBeenCalled();
+    } finally {
+      setActiveAccountSpy.mockRestore();
+      pointDefaultUrlSpy.mockRestore();
+      vi.mocked(dbAuth.getActiveAccountId).mockRestore();
+    }
+  });
+
+  test("--token --url with a matching email: points the default URL at the new host", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
+    setUserInfoSpy.mockReturnValue(undefined);
+    const pointDefaultUrlSpy = vi
+      .spyOn(accountSelection, "pointDefaultUrlAtAccount")
+      .mockReturnValue(undefined);
+
+    try {
+      const { context } = createContext();
+      await func.call(
+        context,
+        {
+          token: "new-token",
+          force: false,
+          timeout: 900,
+          url: "https://other.example.com",
+        },
+        SAMPLE_USER.email,
+      );
+
+      expect(pointDefaultUrlSpy).toHaveBeenCalledWith(
+        "https://other.example.com",
+      );
+    } finally {
+      pointDefaultUrlSpy.mockRestore();
+    }
+  });
+
+  test("<email>:<server> logs in to that server, like --url", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
+    setUserInfoSpy.mockReturnValue(undefined);
+    const pointDefaultUrlSpy = vi
+      .spyOn(accountSelection, "pointDefaultUrlAtAccount")
+      .mockReturnValue(undefined);
+
+    try {
+      const { context } = createContext();
+      await func.call(
+        context,
+        { token: "new-token", force: false, timeout: 900 },
+        `${SAMPLE_USER.email}:other.example.com`,
+      );
+
+      expect(setAuthTokenSpy).toHaveBeenCalledWith(
+        "new-token",
+        undefined,
+        undefined,
+        expect.objectContaining({ host: "https://other.example.com" }),
+      );
+      expect(pointDefaultUrlSpy).toHaveBeenCalledWith(
+        "https://other.example.com",
+      );
+    } finally {
+      pointDefaultUrlSpy.mockRestore();
+    }
+  });
+
+  test("<email>:<server> with a different --url is refused before anything is saved", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+
+    const { context } = createContext();
+    await expect(
+      func.call(
+        context,
+        {
+          token: "new-token",
+          force: false,
+          timeout: 900,
+          url: "https://sentry.io",
+        },
+        `${SAMPLE_USER.email}:other.example.com`,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    expect(setAuthTokenSpy).not.toHaveBeenCalled();
   });
 
   test("already authenticated (env token SENTRY_AUTH_TOKEN): warns and proceeds to OAuth login", async () => {
@@ -428,9 +637,9 @@ describe("loginCommand.func --token path", () => {
     expect(out).toContain("x@y.com");
   });
 
-  test("--token: 401 from validation clears auth and throws AuthError", async () => {
+  test("--token: 401 from validation removes only the new account and throws AuthError", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue("new-account");
     getUserRegionsSpy.mockRejectedValue(new ApiError("Unauthorized", 401));
     clearAuthSpy.mockResolvedValue(undefined);
 
@@ -439,7 +648,8 @@ describe("loginCommand.func --token path", () => {
       func.call(context, { token: "bad-token", force: false, timeout: 900 }),
     ).rejects.toBeInstanceOf(AuthError);
 
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(removeAccountSpy).toHaveBeenCalledWith("new-account");
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(getCurrentUserSpy).not.toHaveBeenCalled();
   });
 
@@ -458,6 +668,7 @@ describe("loginCommand.func --token path", () => {
     ).rejects.toBe(cause);
 
     expect(clearAuthSpy).not.toHaveBeenCalled();
+    expect(removeAccountSpy).not.toHaveBeenCalled();
     expect(getCurrentUserSpy).not.toHaveBeenCalled();
   });
 
@@ -536,7 +747,7 @@ describe("loginCommand.func --token path", () => {
     expect(getStdout()).toContain("Access token expires in: 1 hour");
   });
 
-  test("--force when authenticated: clears auth and proceeds to interactive login", async () => {
+  test("--force when authenticated: keeps stored accounts and proceeds to interactive login", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     clearAuthSpy.mockResolvedValue(undefined);
     runInteractiveLoginSpy.mockResolvedValue({
@@ -547,11 +758,11 @@ describe("loginCommand.func --token path", () => {
     const { context } = createContext();
     await func.call(context, { force: true, timeout: 900 });
 
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(runInteractiveLoginSpy).toHaveBeenCalled();
   });
 
-  test("--force --token when authenticated: clears auth and proceeds to token login", async () => {
+  test("--force --token when authenticated: replaces the active account's token", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     clearAuthSpy.mockResolvedValue(undefined);
     setAuthTokenSpy.mockReturnValue(undefined);
@@ -566,8 +777,9 @@ describe("loginCommand.func --token path", () => {
       timeout: 900,
     });
 
-    expect(clearAuthSpy).toHaveBeenCalled();
-    expectTokenStored(setAuthTokenSpy, "new-token");
+    expect(clearAuthSpy).not.toHaveBeenCalled();
+    // Validated as its own account first; the previous one is dropped after.
+    expectTokenStored(setAuthTokenSpy, "new-token", true);
     expect(getStdout()).toContain("Authenticated");
   });
 
@@ -657,7 +869,7 @@ describe("login re-authentication interactive prompt", () => {
     const promptMessage = (mockPrompt.mock.calls[0] as unknown as string[])[0];
     expect(promptMessage).toContain("Jane Doe");
     expect(promptMessage).toContain("jane@example.com");
-    expect(promptMessage).toContain("Re-authenticate?");
+    expect(promptMessage).toContain("Add another account?");
   });
 
   test("shows 'current user' fallback when no cached user info", async () => {
@@ -673,7 +885,7 @@ describe("login re-authentication interactive prompt", () => {
     expect(promptMessage).toContain("current user");
   });
 
-  test("confirm: clears auth and proceeds to login", async () => {
+  test("confirm: keeps stored accounts and proceeds to login", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     getUserInfoSpy.mockReturnValue(undefined);
     mockPrompt.mockResolvedValue(true);
@@ -681,7 +893,7 @@ describe("login re-authentication interactive prompt", () => {
     const context = createPromptContext();
     await func.call(context, { force: false, timeout: 900 });
 
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(runInteractiveLoginSpy).toHaveBeenCalled();
   });
 
@@ -720,11 +932,11 @@ describe("login re-authentication interactive prompt", () => {
     await func.call(context, { force: true, timeout: 900 });
 
     expect(mockPrompt).not.toHaveBeenCalled();
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(runInteractiveLoginSpy).toHaveBeenCalled();
   });
 
-  test("confirm + --token: clears auth and re-authenticates with token", async () => {
+  test("confirm + --token: adds the token as an account", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     getUserInfoSpy.mockReturnValue(undefined);
     mockPrompt.mockResolvedValue(true);
@@ -751,8 +963,8 @@ describe("login re-authentication interactive prompt", () => {
         timeout: 900,
       });
 
-      expect(clearAuthSpy).toHaveBeenCalled();
-      // Token stored with host scope (4th arg = { host: ... })
+      expect(clearAuthSpy).not.toHaveBeenCalled();
+      // Token stored as a new account with host scope (4th arg)
       expectTokenStored(setAuthTokenSpy, "new-token");
     } finally {
       setAuthTokenSpy.mockRestore();
@@ -760,6 +972,41 @@ describe("login re-authentication interactive prompt", () => {
       getCurrentUserSpy.mockRestore();
       setUserInfoSpy.mockRestore();
     }
+  });
+});
+
+describe("login email argument", () => {
+  test("accepts an email", () => {
+    expect(parseLoginEmail(" jane@acme.com ")).toBe("jane@acme.com");
+    expect(splitLoginTarget("jane@acme.com")).toEqual({
+      email: "jane@acme.com",
+    });
+  });
+
+  test("<email>:<server> also names the server, with or without a scheme or port", () => {
+    expect(splitLoginTarget("jane@acme.com:sentry.acme.com")).toEqual({
+      email: "jane@acme.com",
+      url: "https://sentry.acme.com",
+    });
+    expect(splitLoginTarget("jane@acme.com:sentry.acme.com:9000")).toEqual({
+      email: "jane@acme.com",
+      url: "https://sentry.acme.com:9000",
+    });
+    expect(splitLoginTarget("jane@acme.com:http://localhost:8000")).toEqual({
+      email: "jane@acme.com",
+      url: "http://localhost:8000",
+    });
+  });
+
+  test.each([
+    "jane",
+    "@acme.com",
+    "jane@",
+    "jane@:sentry.io",
+    "jane@acme.com:",
+    "jane@acme.com@sentry.io",
+  ])("rejects %s", (raw) => {
+    expect(() => parseLoginEmail(raw)).toThrow(ValidationError);
   });
 });
 

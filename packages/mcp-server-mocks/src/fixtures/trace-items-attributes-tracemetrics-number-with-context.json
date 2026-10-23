@@ -1,0 +1,34 @@
+[
+  {
+    "key": "value",
+    "name": "value",
+    "context": {
+      "isConvention": false,
+      "brief": "The recorded value of the metric sample.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "timestamp_precise",
+    "name": "timestamp_precise",
+    "context": {
+      "isConvention": false,
+      "brief": "When the metric sample was recorded, with nanosecond precision.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "observed_timestamp",
+    "name": "observed_timestamp",
+    "context": {
+      "isConvention": false,
+      "brief": "When Sentry received the metric sample.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "payload_size",
+    "name": "payload_size",
+    "context": {}
+  }
+]

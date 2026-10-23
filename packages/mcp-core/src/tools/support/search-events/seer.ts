@@ -1,4 +1,6 @@
 import { logger, metrics } from "@sentry/core";
+import { isAggregateFieldOrEquation } from "@sentry/toolkit-core/events-fields";
+import { getSortField } from "@sentry/toolkit-core/events-sort";
 import type { z } from "zod";
 import type { CrossEventQueries, SentryApiService } from "../../../api-client";
 import {
@@ -166,10 +168,10 @@ function toSearchTranslation(
   // The handler adds the sort field to the selected fields, except for a
   // non-aggregate sort in an aggregate query since that would change the
   // grouping. Fall back to the default sort instead of letting Sentry reject it.
-  const sortField = sort.startsWith("-") ? sort.slice(1) : sort;
+  const sortField = getSortField(sort);
   if (
     result.mode === "aggregates" &&
-    !sortField.includes("(") &&
+    !isAggregateFieldOrEquation(sortField) &&
     !fields.includes(sortField)
   ) {
     sort = defaultSort;

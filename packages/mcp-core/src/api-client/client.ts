@@ -1,4 +1,8 @@
 import {
+  getColumnsAndAggregates,
+  isAggregateFieldOrEquation,
+} from "@sentry/toolkit-core/events-fields";
+import {
   createSentryClient,
   listOrganizationProjects,
   listOrganizationTeams,
@@ -416,7 +420,12 @@ export type EventsValidationResult = {
   orderby: EventsAttributeValidationResult[];
 };
 
-const TraceItemAttributeTypeSchema = z.enum(["string", "number", "boolean", "array"]);
+const TraceItemAttributeTypeSchema = z.enum([
+  "string",
+  "number",
+  "boolean",
+  "array",
+]);
 const TraceItemAttributeSourceSchema = z.object({
   source_type: z.enum(["sentry", "user"]),
   is_transformed_alias: z.boolean().optional(),
@@ -773,7 +782,7 @@ export class SentryApiService {
     const method = (options.method ?? "GET").toUpperCase();
     const isIdempotent = method === "GET";
 
-    return retryWithBackoff(
+    return await retryWithBackoff(
       () => this.requestOnce(path, options, requestOptions),
       {
         maxRetries: isIdempotent ? RETRYABLE_REQUEST_MAX_RETRIES : 0,
@@ -891,7 +900,7 @@ export class SentryApiService {
         return response;
       }
       const errorText = await response.text();
-      let parsed: unknown | undefined;
+      let parsed: unknown;
       try {
         parsed = JSON.parse(errorText);
       } catch (error) {
@@ -985,7 +994,7 @@ export class SentryApiService {
   private async parseJsonResponse(response: Response): Promise<unknown> {
     // Handle case where response might not have all properties (e.g., in tests or promise chains)
     if (!response.headers?.get) {
-      return response.json();
+      return await response.json();
     }
 
     const contentType = response.headers.get("content-type");
@@ -1043,7 +1052,7 @@ export class SentryApiService {
     requestOptions?: { host?: string },
   ): Promise<unknown> {
     const response = await this.request(path, options, requestOptions);
-    return this.parseJsonResponse(response);
+    return await this.parseJsonResponse(response);
   }
 
   /** Let SDK operations build paths and queries while MCP owns transport and errors. */
@@ -1425,9 +1434,7 @@ export class SentryApiService {
   private isAggregateExplorerQuery(params: ExplorerAggregateParams): boolean {
     return Boolean(
       params.aggregateFunctions?.length ||
-      params.fields?.some(
-        (field) => field.includes("(") && field.includes(")"),
-      ),
+      params.fields?.some(isAggregateFieldOrEquation),
     );
   }
 
@@ -1461,12 +1468,10 @@ export class SentryApiService {
     }
 
     // Fall back to deriving aggregate metadata from the selected fields.
-    const parsedGroupByFields =
-      fields?.filter((field) => !field.includes("(") && !field.includes(")")) ??
-      [];
-    const parsedAggregateFunctions =
-      fields?.filter((field) => field.includes("(") && field.includes(")")) ??
-      [];
+    const {
+      columns: parsedGroupByFields,
+      aggregates: parsedAggregateFunctions,
+    } = getColumnsAndAggregates(fields ?? []);
 
     for (const field of parsedGroupByFields) {
       urlParams.append("aggregateField", JSON.stringify({ groupBy: field }));
@@ -1976,6 +1981,7 @@ export class SentryApiService {
    * @param params Project fetch parameters
    * @param params.organizationSlug Organization identifier
    * @param params.projectSlugOrId Project slug or numeric ID
+   * @param params.collapse Return only organization ID and slug instead of full organization data
    * @param opts Request options
    * @returns Project data
    */
@@ -1983,14 +1989,22 @@ export class SentryApiService {
     {
       organizationSlug,
       projectSlugOrId,
+      collapse,
     }: {
       organizationSlug: string;
       projectSlugOrId: string;
+      collapse?: "organization";
     },
     opts?: RequestOptions,
   ): Promise<Project> {
+    const queryParams = new URLSearchParams();
+    if (collapse) {
+      queryParams.set("collapse", collapse);
+    }
+    const queryString = queryParams.toString();
+    const projectPath = apiPath`/projects/${organizationSlug}/${projectSlugOrId}/`;
     const body = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlugOrId}/`,
+      `${projectPath}${queryString ? `?${queryString}` : ""}`,
       undefined,
       opts,
     );
@@ -3488,7 +3502,7 @@ export class SentryApiService {
       method?: string;
       headers?: Array<[string, string]>;
       body?: string | null;
-      assertion?: unknown | null;
+      assertion?: unknown;
       status?: "active" | "disabled";
       owner?: string | null;
       environment?: string | null;
@@ -3571,7 +3585,7 @@ export class SentryApiService {
       method?: string;
       headers?: Array<[string, string]>;
       body?: string | null;
-      assertion?: unknown | null;
+      assertion?: unknown;
       status?: "active" | "disabled";
       owner?: string | null;
       environment?: string | null;
@@ -3907,6 +3921,18 @@ export class SentryApiService {
       { ...opts, allowStatuses: [400] },
     );
     const body = await this.parseJsonResponse(response);
+    // ParseError responses use a detail envelope instead of validation results.
+    // Keep malformed validation results reportable, even when their status is 400.
+    if (
+      response.status === 400 &&
+      body &&
+      typeof body === "object" &&
+      !("valid" in body) &&
+      "detail" in body &&
+      typeof body.detail === "string"
+    ) {
+      throw createApiError(body.detail, 400, body.detail, body);
+    }
     return EventsValidationResponseSchema.parse(body);
   }
 
@@ -4139,7 +4165,7 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<ExternalIssueList> {
-    return this.listIssueLinkPages(
+    return await this.listIssueLinkPages(
       apiPath`/organizations/${organizationSlug}/issues/${issueId}/external-issues/`,
       ExternalIssueListSchema,
       opts,
@@ -4174,7 +4200,7 @@ export class SentryApiService {
     }: { organizationSlug: string; issueId: string },
     opts?: RequestOptions,
   ): Promise<IssueIntegrationList> {
-    return this.listIssueLinkPages(
+    return await this.listIssueLinkPages(
       apiPath`/organizations/${organizationSlug}/issues/${issueId}/integrations/`,
       IssueIntegrationListSchema,
       opts,
@@ -4240,7 +4266,7 @@ export class SentryApiService {
     { organizationSlug }: { organizationSlug: string },
     opts?: RequestOptions,
   ): Promise<SentryAppInstallationList> {
-    return this.listIssueLinkPages(
+    return await this.listIssueLinkPages(
       apiPath`/organizations/${organizationSlug}/sentry-app-installations/`,
       SentryAppInstallationListSchema,
       { ...opts, host: this.isPublicSaas() ? "sentry.io" : opts?.host },
@@ -4251,7 +4277,7 @@ export class SentryApiService {
     { organizationSlug }: { organizationSlug: string },
     opts?: RequestOptions,
   ): Promise<SentryAppComponentList> {
-    return this.listIssueLinkPages(
+    return await this.listIssueLinkPages(
       apiPath`/organizations/${organizationSlug}/sentry-app-components/` +
         "?filter=issue-link",
       SentryAppComponentListSchema,
@@ -4398,8 +4424,7 @@ export class SentryApiService {
     opts?: RequestOptions,
   ): Promise<Event> {
     const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/${eventId}/` +
-        `?llmFormat=json`,
+      apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/${eventId}/`,
       undefined,
       opts,
     );
@@ -4486,7 +4511,7 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Event> {
-    return this.getEventForIssue(
+    return await this.getEventForIssue(
       {
         organizationSlug,
         issueId,
@@ -5412,8 +5437,7 @@ export class SentryApiService {
     opts?: RequestOptions,
   ): Promise<AutofixRunState> {
     const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/autofix/` +
-        `?llmFormat=markdown`,
+      apiPath`/organizations/${organizationSlug}/issues/${issueId}/autofix/`,
       undefined,
       opts,
     );
@@ -5899,7 +5923,7 @@ export class SentryApiService {
     const path =
       apiPath`/organizations/${organizationSlug}/preprodartifacts/snapshots/${snapshotId}/` +
       `?${params.toString()}`;
-    return this.requestJSON(path);
+    return await this.requestJSON(path);
   }
 
   async getSnapshotImageDetail({
@@ -5912,7 +5936,7 @@ export class SentryApiService {
     imageIdentifier: string;
   }): Promise<unknown> {
     const path = apiPath`/organizations/${organizationSlug}/preprodartifacts/snapshots/${snapshotId}/images/${imageIdentifier}/`;
-    return this.requestJSON(path);
+    return await this.requestJSON(path);
   }
 
   async fetchImageByUrl(
@@ -5963,6 +5987,6 @@ export class SentryApiService {
     const path =
       apiPath`/organizations/${organizationSlug}/preprodartifacts/snapshots/latest-base/` +
       `?${params.toString()}`;
-    return this.requestJSON(path);
+    return await this.requestJSON(path);
   }
 }

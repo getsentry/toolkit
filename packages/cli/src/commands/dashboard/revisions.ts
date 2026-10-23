@@ -12,6 +12,7 @@ import {
 } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -33,7 +34,7 @@ import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { DashboardRevision } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardPositionalArgs,
   resolveDashboardId,
   resolveOrgFromTarget,
@@ -136,7 +137,7 @@ export const revisionsCommand = buildCommand({
       parameter: {
         placeholder: "org/dashboard",
         brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -168,39 +169,47 @@ export const revisionsCommand = buildCommand({
       contextKey,
     );
 
-    const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
     const results: DashboardRevision[] = [];
     let cursor = rawCursor;
     let nextCursor: string | undefined;
 
-    await withProgress(
-      { message: "Fetching revisions...", json: flags.json },
-      async () => {
-        for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-          const { data, nextCursor: nc } =
-            await listDashboardRevisionsPaginated(orgSlug, dashboardId, {
-              perPage,
-              cursor,
-            });
-          results.push(...data);
-          nextCursor = nc;
-          if (results.length >= flags.limit || !nc) {
-            break;
-          }
-          cursor = nc;
-        }
-      },
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "view",
-      }),
+      },
+      () =>
+        withProgress(
+          { message: "Fetching revisions...", json: flags.json },
+          async () => {
+            for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
+              const { data, nextCursor: nc } =
+                await listDashboardRevisionsPaginated(orgSlug, dashboardId, {
+                  // Ask only for the remaining budget so the last page's
+                  // cursor points at the first row we did not return.
+                  perPage: Math.min(
+                    flags.limit - results.length,
+                    API_MAX_PER_PAGE,
+                  ),
+                  cursor,
+                });
+              results.push(...data);
+              nextCursor = nc;
+              if (results.length >= flags.limit || !nc) {
+                break;
+              }
+              cursor = nc;
+            }
+          },
+        ),
     );
 
     const trimmed = results.slice(0, flags.limit);
-    const hasMore = results.length > flags.limit || !!nextCursor;
-    const cursorToStore = hasMore ? nextCursor : undefined;
+    // A page larger than requested would make the server cursor skip the
+    // trimmed rows, so drop it (same as autoPaginate).
+    const cursorToStore = results.length > flags.limit ? undefined : nextCursor;
+    const hasMore = cursorToStore !== undefined;
 
     advancePaginationState(
       PAGINATION_KEY,

@@ -6,21 +6,21 @@
  */
 
 import chalk from "chalk";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { defaultsCommand } from "../../../src/commands/cli/defaults.js";
 import {
   clearAllDefaults,
-  getAgentSkillsPreference,
   getAllDefaults,
   getDefaultHeaders,
   getDefaultOrganization,
   getDefaultProject,
   getDefaultUrl,
-  getTelemetryPreference,
-  setAgentSkillsPreference,
+  getOnOffPreference,
+  ON_OFF_PREFERENCES,
   setDefaultOrganization,
   setDefaultProject,
   setDefaultUrl,
-  setTelemetryPreference,
+  setOnOffPreference,
 } from "../../../src/lib/db/defaults.js";
 import { getDatabase } from "../../../src/lib/db/index.js";
 import { formatDefaultsResult } from "../../../src/lib/formatters/human.js";
@@ -73,40 +73,19 @@ describe("defaults storage", () => {
     expect(getDefaultProject()).toBe("proj1");
   });
 
-  test("getTelemetryPreference returns undefined when not set", () => {
-    expect(getTelemetryPreference()).toBeUndefined();
-  });
+  describe.each(ON_OFF_PREFERENCES)("on/off preference %s", (name) => {
+    test("is undefined when not set", () => {
+      expect(getOnOffPreference(name)).toBeUndefined();
+    });
 
-  test("setTelemetryPreference stores on/off", () => {
-    setTelemetryPreference(false);
-    expect(getTelemetryPreference()).toBe(false);
-
-    setTelemetryPreference(true);
-    expect(getTelemetryPreference()).toBe(true);
-  });
-
-  test("setTelemetryPreference(null) clears preference", () => {
-    setTelemetryPreference(false);
-    setTelemetryPreference(null);
-    expect(getTelemetryPreference()).toBeUndefined();
-  });
-
-  test("getAgentSkillsPreference returns undefined when not set", () => {
-    expect(getAgentSkillsPreference()).toBeUndefined();
-  });
-
-  test("setAgentSkillsPreference stores on/off", () => {
-    setAgentSkillsPreference(false);
-    expect(getAgentSkillsPreference()).toBe(false);
-
-    setAgentSkillsPreference(true);
-    expect(getAgentSkillsPreference()).toBe(true);
-  });
-
-  test("setAgentSkillsPreference(null) clears preference", () => {
-    setAgentSkillsPreference(false);
-    setAgentSkillsPreference(null);
-    expect(getAgentSkillsPreference()).toBeUndefined();
+    test("stores on/off and clears with null", () => {
+      setOnOffPreference(name, false);
+      expect(getOnOffPreference(name)).toBe(false);
+      setOnOffPreference(name, true);
+      expect(getOnOffPreference(name)).toBe(true);
+      setOnOffPreference(name, null);
+      expect(getOnOffPreference(name)).toBeUndefined();
+    });
   });
 
   test("getDefaultUrl returns null when not set", () => {
@@ -127,8 +106,8 @@ describe("defaults storage", () => {
   test("getAllDefaults returns full state", () => {
     setDefaultOrganization("test-org");
     setDefaultProject("test-project");
-    setTelemetryPreference(false);
-    setAgentSkillsPreference(false);
+    setOnOffPreference("telemetry", false);
+    setOnOffPreference("agent-skills", false);
     setDefaultUrl("https://sentry.example.com");
 
     const state = getAllDefaults();
@@ -141,6 +120,7 @@ describe("defaults storage", () => {
       headers: null,
       "ca-cert": null,
       graphics: null,
+      tips: null,
     });
   });
 
@@ -155,20 +135,23 @@ describe("defaults storage", () => {
       headers: null,
       "ca-cert": null,
       graphics: null,
+      tips: null,
     });
   });
 
   test("clearAllDefaults removes everything", () => {
     setDefaultOrganization("org");
     setDefaultProject("proj");
-    setTelemetryPreference(true);
+    setOnOffPreference("telemetry", true);
+    setOnOffPreference("tips", false);
     setDefaultUrl("https://example.com");
 
     clearAllDefaults();
 
     expect(getDefaultOrganization()).toBeNull();
     expect(getDefaultProject()).toBeNull();
-    expect(getTelemetryPreference()).toBeUndefined();
+    expect(getOnOffPreference("telemetry")).toBeUndefined();
+    expect(getOnOffPreference("tips")).toBeUndefined();
     expect(getDefaultUrl()).toBeNull();
     expect(getDefaultHeaders()).toBeNull();
   });
@@ -234,7 +217,7 @@ describe("isTelemetryEnabled", () => {
   test("respects persistent preference: off", () => {
     setup();
     try {
-      setTelemetryPreference(false);
+      setOnOffPreference("telemetry", false);
       expect(isTelemetryEnabled()).toBe(false);
     } finally {
       teardown();
@@ -244,7 +227,7 @@ describe("isTelemetryEnabled", () => {
   test("respects persistent preference: on", () => {
     setup();
     try {
-      setTelemetryPreference(true);
+      setOnOffPreference("telemetry", true);
       expect(isTelemetryEnabled()).toBe(true);
     } finally {
       teardown();
@@ -254,7 +237,7 @@ describe("isTelemetryEnabled", () => {
   test("SENTRY_CLI_NO_TELEMETRY=1 overrides preference", () => {
     setup();
     try {
-      setTelemetryPreference(true);
+      setOnOffPreference("telemetry", true);
       process.env.SENTRY_CLI_NO_TELEMETRY = "1";
       expect(isTelemetryEnabled()).toBe(false);
     } finally {
@@ -265,7 +248,7 @@ describe("isTelemetryEnabled", () => {
   test("DO_NOT_TRACK=1 overrides preference", () => {
     setup();
     try {
-      setTelemetryPreference(true);
+      setOnOffPreference("telemetry", true);
       process.env.DO_NOT_TRACK = "1";
       expect(isTelemetryEnabled()).toBe(false);
     } finally {
@@ -339,7 +322,7 @@ describe("computeTelemetryEffective", () => {
   test("returns preference source when set to off", () => {
     setup();
     try {
-      setTelemetryPreference(false);
+      setOnOffPreference("telemetry", false);
       const result = computeTelemetryEffective();
       expect(result).toEqual({ enabled: false, source: "preference" });
     } finally {
@@ -350,7 +333,7 @@ describe("computeTelemetryEffective", () => {
   test("returns preference source when set to on", () => {
     setup();
     try {
-      setTelemetryPreference(true);
+      setOnOffPreference("telemetry", true);
       const result = computeTelemetryEffective();
       expect(result).toEqual({ enabled: true, source: "preference" });
     } finally {
@@ -361,7 +344,7 @@ describe("computeTelemetryEffective", () => {
   test("SENTRY_CLI_NO_TELEMETRY overrides preference", () => {
     setup();
     try {
-      setTelemetryPreference(true);
+      setOnOffPreference("telemetry", true);
       process.env.SENTRY_CLI_NO_TELEMETRY = "1";
       const result = computeTelemetryEffective();
       expect(result.enabled).toBe(false);
@@ -374,7 +357,7 @@ describe("computeTelemetryEffective", () => {
   test("DO_NOT_TRACK overrides preference", () => {
     setup();
     try {
-      setTelemetryPreference(true);
+      setOnOffPreference("telemetry", true);
       process.env.DO_NOT_TRACK = "1";
       const result = computeTelemetryEffective();
       expect(result.enabled).toBe(false);
@@ -417,6 +400,7 @@ describe("formatDefaultsResult", () => {
         project: "my-proj",
         telemetry: "off",
         graphics: "off",
+        tips: "off",
         url: "https://sentry.example.com",
       },
       telemetryEffective: { enabled: false, source: "preference" },
@@ -426,6 +410,7 @@ describe("formatDefaultsResult", () => {
     expect(plain).toContain("my-proj");
     expect(plain).toContain("off");
     expect(plain).toContain("Graphics");
+    expect(plain).toContain("Tips");
     expect(plain).toContain("sentry.example.com");
   });
 
@@ -544,5 +529,57 @@ describe("formatDefaultsResult", () => {
     const plain = stripAnsi(result);
     expect(plain).toContain("unknown_key");
     expect(plain).toContain("set to");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Command func: show-all verb aliases
+// ---------------------------------------------------------------------------
+
+describe("defaultsCommand.func show-all aliases", () => {
+  const FLAGS = { clear: false, yes: false, force: false, json: true };
+
+  async function run(
+    flags: Record<string, unknown>,
+    ...args: string[]
+  ): Promise<string> {
+    const stdoutWrite = vi.fn(() => true);
+    const context = {
+      stdout: { write: stdoutWrite },
+      stderr: { write: vi.fn(() => true) },
+      cwd: "/tmp",
+    };
+    const func = await defaultsCommand.loader();
+    await (func as any).call(context, flags, ...args);
+    return stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
+  }
+
+  test.each(["list", "ls", "show", "LIST"])(
+    "'%s' shows all defaults like no arguments",
+    async (verb) => {
+      setDefaultOrganization("alias-org");
+      const expected = JSON.parse(await run(FLAGS));
+      const actual = JSON.parse(await run(FLAGS, verb));
+      expect(actual).toEqual(expected);
+      expect(actual.defaults.organization).toBe("alias-org");
+    },
+  );
+
+  test("show verb with a value is rejected", async () => {
+    await expect(run(FLAGS, "list", "foo")).rejects.toThrow(
+      /shows all defaults/,
+    );
+  });
+
+  test("show verb with --clear is rejected and clears nothing", async () => {
+    setDefaultOrganization("keep-org");
+    await expect(run({ ...FLAGS, clear: true }, "list")).rejects.toThrow(
+      /shows all defaults/,
+    );
+    expect(getDefaultOrganization()).toBe("keep-org");
+  });
+
+  test("unknown key still throws", async () => {
+    await expect(run(FLAGS, "nope")).rejects.toThrow(/Unknown default 'nope'/);
   });
 });

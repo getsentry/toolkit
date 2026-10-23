@@ -11,7 +11,11 @@ import * as Sentry from "@sentry/node-core/light";
 import type { SentryContext } from "../context.js";
 import { appendSearchParams, rawApiRequest } from "../lib/api-client.js";
 import { buildCommand } from "../lib/command.js";
-import { OutputError, ValidationError } from "../lib/errors.js";
+import {
+  OutputError,
+  stringifyUnknown,
+  ValidationError,
+} from "../lib/errors.js";
 import { filterFields } from "../lib/formatters/json.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { validateEndpoint } from "../lib/input-validation.js";
@@ -1071,7 +1075,7 @@ export function formatApiResponse(data: unknown): string {
   if (typeof data === "object") {
     return JSON.stringify(data, null, 2);
   }
-  return String(data);
+  return stringifyUnknown(data);
 }
 
 /**

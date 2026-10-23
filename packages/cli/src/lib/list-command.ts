@@ -25,6 +25,7 @@ import {
   type CommandDocumentation,
   numberParser,
 } from "./command.js";
+import { parseOrgProjectTarget, parseOrgTarget } from "./completion-target.js";
 import { disableOrgCache } from "./db/regions.js";
 import { logger } from "./logger.js";
 
@@ -45,6 +46,7 @@ import {
 } from "./org-list.js";
 import { disableResponseCache } from "./response-cache.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
+import { shellQuote } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // Level A: shared parameter / flag definitions
@@ -77,7 +79,23 @@ export const LIST_TARGET_POSITIONAL = {
     {
       placeholder: "org/project",
       brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
-      parse: String,
+      parse: parseOrgProjectTarget,
+      optional: true as const,
+    },
+  ],
+};
+
+/**
+ * {@link LIST_TARGET_POSITIONAL} for org-scoped resources (teams, repos,
+ * releases, …): same syntax, but shell completion suggests org slugs only.
+ */
+export const LIST_ORG_TARGET_POSITIONAL = {
+  kind: "tuple" as const,
+  parameters: [
+    {
+      placeholder: "org/project",
+      brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
+      parse: parseOrgTarget,
       optional: true as const,
     },
   ],
@@ -277,18 +295,18 @@ export function paginationHint(opts: {
 }
 
 /**
- * Append `-q "<query>"` to a hint-flag parts array when the user passed `--query`.
+ * Append a shell-quoted `--query` argument when the user passed `--query`.
  *
- * Standard helper for pagination-hint builders that need to preserve the
- * active search filter. Quotes are added unconditionally to handle queries
- * containing spaces.
+ * Preserve the exact query, including quotes and shell metacharacters, so copied
+ * pagination hints resolve the cursor stored for the original search. The inline
+ * flag value also keeps quoted segments in one argument in PowerShell.
  */
 export function appendQueryHint(
   parts: string[],
   query: string | undefined,
 ): void {
   if (query) {
-    parts.push(`-q "${query}"`);
+    parts.push(`--query=${shellQuote(query)}`);
   }
 }
 
@@ -698,7 +716,7 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
       schema: config.schema,
     } satisfies OutputConfig<ListResult<TWithOrg>>,
     parameters: {
-      positional: LIST_TARGET_POSITIONAL,
+      positional: LIST_ORG_TARGET_POSITIONAL,
       flags: {
         limit: buildListLimitFlag(config.entityPlural),
       },

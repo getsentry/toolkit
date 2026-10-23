@@ -22,6 +22,12 @@
 curl https://cli.sentry.dev/install -fsS | bash
 ```
 
+### Windows (PowerShell)
+
+```powershell
+irm https://cli.sentry.dev/install.ps1 | iex
+```
+
 ### Homebrew
 
 ```bash
@@ -94,10 +100,13 @@ const sdk = createSentrySDK({ token: "sntrys_..." });
 // Typed methods for every CLI command
 const orgs = await sdk.org.list();
 const issues = await sdk.issue.list({ orgProject: "acme/frontend", limit: 5 });
-const issue = await sdk.issue.view({ issue: "ACME-123" });
+const issue = await sdk.issue.view({}, "ACME-123");
 
 // Nested commands
-await sdk.dashboard.widget.add({ display: "line", query: "count" }, "my-org/my-dashboard");
+await sdk.dashboard.widget.add(
+  { display: "line", query: ["count"] },
+  "acme/", "my-dashboard", "Errors over time"
+);
 
 // Escape hatch for any CLI command
 const version = await sdk.run("--version");
@@ -105,7 +114,7 @@ const text = await sdk.run("issue", "list", "-l", "5");
 ```
 
 Options (all optional):
-- `token` — Auth token. Falls back to `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` env vars.
+- `token` — Auth token. Falls back to the stored login from `sentry auth login`, then `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` env vars.
 - `url` — Sentry instance URL for self-hosted (e.g., `"sentry.example.com"`).
 - `org` — Default organization slug (avoids passing it on every call).
 - `project` — Default project slug.

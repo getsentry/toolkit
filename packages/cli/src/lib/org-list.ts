@@ -681,7 +681,7 @@ export async function handleAutoDetect<TEntity, TWithOrg>(
         );
         return results.flat();
       }
-      return fetchAllOrgs(config);
+      return await fetchAllOrgs(config);
     },
   );
 
@@ -941,7 +941,7 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
         `'${projectSlug}' is an organization, not a project. ` +
           `Listing all ${config.entityPlural} in '${projectSlug}'.`,
       );
-      return orgAllFallback(resolution.org);
+      return await orgAllFallback(resolution.org);
     }
     throw new ResolutionError(
       `'${projectSlug}'`,
@@ -1257,5 +1257,5 @@ export async function dispatchOrgScopedList<TEntity, TWithOrg>(
   };
 
   // oxlint-disable-next-line typescript/no-explicit-any -- safe — dispatch guarantees type match
-  return (handler as ModeHandler<any>)(ctx);
+  return await (handler as ModeHandler<any>)(ctx);
 }

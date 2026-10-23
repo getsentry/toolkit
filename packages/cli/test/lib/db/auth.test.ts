@@ -179,11 +179,13 @@ describe("stored credential validation", () => {
     "rejects a malformed replacement without changing stored credentials %#",
     (token) => {
       setAuthToken("previous-token", 3600, "previous-refresh-token");
-      const before = getDatabase().query("SELECT * FROM auth").get();
+      const before = getDatabase().query("SELECT * FROM accounts").get();
       expect(() => setAuthToken(token, 60, "new-refresh-token")).toThrow(
         MalformedAuthTokenError,
       );
-      expect(getDatabase().query("SELECT * FROM auth").get()).toEqual(before);
+      expect(getDatabase().query("SELECT * FROM accounts").get()).toEqual(
+        before,
+      );
       expect(getAuthToken()).toBe("previous-token");
     },
   );
@@ -231,7 +233,7 @@ describe("clearAuth: integration with per-account caches", () => {
       await import("../../../src/lib/db/issue-org-cache.js");
 
     // Seed a mapping as if a previous session resolved this issue.
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setCachedIssueOrg("12345", "previous-account-org");
     expect(getCachedIssueOrg("12345")).toBe("previous-account-org");
 
@@ -330,7 +332,7 @@ describe("getIdentityFingerprint", () => {
     const fp = getIdentityFingerprint();
 
     // With no DB row, same env token should produce the same fingerprint.
-    getDatabase().query("DELETE FROM auth").run();
+    getDatabase().query("DELETE FROM accounts").run();
     resetIdentityFingerprintCache();
     expect(getIdentityFingerprint()).toBe(fp);
   });
@@ -353,7 +355,9 @@ describe("getAuthToken memoization", () => {
 
     // Mutate the DB row directly behind getAuthToken's back — a cached
     // read must not reflect this change until the cache is invalidated.
-    getDatabase().query("UPDATE auth SET token = 'mutated' WHERE id = 1").run();
+    getDatabase()
+      .query("UPDATE accounts SET token = 'mutated' WHERE is_active = 1")
+      .run();
 
     // Still returns the cached value
     expect(getAuthToken()).toBe("stored_token");
@@ -369,7 +373,9 @@ describe("getAuthToken memoization", () => {
     // Write a token directly to DB, bypassing setAuthToken. The cached
     // undefined must persist until invalidated.
     getDatabase()
-      .query("INSERT INTO auth (id, token, updated_at) VALUES (1, 'sneaky', ?)")
+      .query(
+        "INSERT INTO accounts (account_id, token, is_active, updated_at) VALUES ('sneaky', 'sneaky', 1, ?)",
+      )
       .run(Date.now());
 
     expect(getAuthToken()).toBeUndefined();
@@ -462,7 +468,7 @@ describe("hasStoredAuthCredentials memoization", () => {
     // (simulates a code path the cache doesn't know about).
     const db = getDatabase();
     db.query(
-      "INSERT OR REPLACE INTO auth (id, token) VALUES (1, 'sneaky')",
+      "INSERT INTO accounts (account_id, token, is_active) VALUES ('sneaky', 'sneaky', 1)",
     ).run();
 
     // Cache still returns stale false

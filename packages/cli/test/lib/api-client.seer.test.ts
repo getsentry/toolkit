@@ -24,7 +24,7 @@ beforeEach(async () => {
   originalFetch = globalThis.fetch;
 
   // Set up auth token (manual token, no refresh)
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   // Pre-populate region cache to avoid region resolution API calls
   setOrgRegion("test-org", "https://sentry.io");
 });

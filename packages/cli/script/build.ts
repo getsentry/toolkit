@@ -31,6 +31,7 @@ import { execSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { buildCarExtract } from "./build-car-extract.js";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 import { build as esbuild } from "esbuild";
@@ -356,6 +357,16 @@ async function compileAllTargets(
   copyFileSync(SPLEEN_FONT_SRC, SPLEEN_FONT);
   assetArgs.push("--assets", SPLEEN_FONT);
 
+  if (
+    targets.some((target) => target.os === "darwin" && target.arch === "arm64")
+  ) {
+    // Always build and embed the decoder for darwin-arm64. Its asset path must
+    // match CAR_EXTRACT_ASSET_KEY in src/lib/build/asset-catalog-extract.ts.
+    const CAR_EXTRACT = `${BUILD_DIR}/car-extract`;
+    copyFileSync(buildCarExtract(), CAR_EXTRACT);
+    assetArgs.push("--assets", CAR_EXTRACT);
+  }
+
   console.log(
     `  Step 2: Compiling ${platforms.length} target(s) (Node SEA via fossilize)...`,
   );
@@ -407,7 +418,7 @@ async function compileAllTargets(
       successes += 1;
     } catch (error) {
       console.error(
-        `  Post-processing ${getPackageName(target)} failed: ${error}`,
+        `  Post-processing ${getPackageName(target)} failed: ${String(error)}`,
       );
       failures += 1;
     }

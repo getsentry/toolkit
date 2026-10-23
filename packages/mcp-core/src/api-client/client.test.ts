@@ -8,7 +8,103 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
-import { ApiNotFoundError, ApiPermissionError, ApiServerError } from "./errors";
+import {
+  ApiNotFoundError,
+  ApiPermissionError,
+  ApiServerError,
+  ApiValidationError,
+} from "./errors";
+import { z } from "zod";
+
+describe("validateEvents error bodies", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("retains structured validation results on HTTP 400", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        () =>
+          HttpResponse.json(
+            {
+              valid: false,
+              projects: [
+                {
+                  valid: false,
+                  error: "At least one valid project is required to query",
+                },
+              ],
+              dataset: [],
+              environment: [],
+              field: [],
+              orderby: [],
+              query: { valid: true, error: null, fields: [] },
+            },
+            { status: 400 },
+          ),
+      ),
+    );
+    const api = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    await expect(
+      api.validateEvents({ organizationSlug: "test-org" }),
+    ).resolves.toMatchObject({
+      valid: false,
+      projects: [
+        {
+          valid: false,
+          error: "At least one valid project is required to query",
+        },
+      ],
+    });
+  });
+
+  it.each([{}, { valid: false, detail: "Unexpected validation shape" }])(
+    "keeps malformed HTTP 400 validation results reportable: %j",
+    async (body) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          () => HttpResponse.json(body, { status: 400 }),
+        ),
+      );
+      const api = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+      await expect(
+        api.validateEvents({ organizationSlug: "test-org" }),
+      ).rejects.toBeInstanceOf(z.ZodError);
+    },
+  );
+
+  it.each([400, 200])(
+    "preserves error classification for HTTP %i",
+    async (status) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          () => HttpResponse.json({ detail: "Invalid query" }, { status }),
+        ),
+      );
+      const api = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+      const result = api.validateEvents({ organizationSlug: "test-org" });
+      if (status === 400) {
+        await expect(result).rejects.toBeInstanceOf(ApiValidationError);
+        await expect(result).rejects.toMatchObject({
+          status: 400,
+          detail: "Invalid query",
+        });
+      } else {
+        await expect(result).rejects.toBeInstanceOf(z.ZodError);
+      }
+    },
+  );
+});
 
 describe("API bearer token validation", () => {
   it("removes edge padding before sending a request", async () => {
@@ -898,6 +994,85 @@ describe("monitor time parameters", () => {
       "Cannot use both statsPeriod and start/end parameters",
     );
     expect(requestReceived).toBe(false);
+  });
+});
+
+describe("getProject", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  const project = {
+    ...projectFixture,
+    id: "123",
+    slug: "backend",
+    name: "Backend",
+    organization: {
+      id: "456",
+      slug: "test-org",
+      name: "Test Organization",
+      features: ["organizations:issue-basic"],
+    },
+    hasProfiles: true,
+    hasReplays: false,
+    hasLogs: true,
+    firstTransactionEvent: false,
+  };
+  const api = new SentryApiService({
+    host: "sentry.io",
+    accessToken: "test-token",
+  });
+
+  it("keeps the default request and full organization response", async () => {
+    const requests: string[] = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/projects/test-org/backend/",
+        ({ request }) => {
+          requests.push(request.url);
+          return HttpResponse.json(project);
+        },
+      ),
+    );
+
+    const result = await api.getProject({
+      organizationSlug: "test-org",
+      projectSlugOrId: "backend",
+    });
+
+    expect(requests).toEqual([
+      "https://sentry.io/api/0/projects/test-org/backend/",
+    ]);
+    expect(result).toEqual(project);
+  });
+
+  it("collapses organization on the regional host and preserves project capabilities", async () => {
+    const collapsedProject = {
+      ...project,
+      organization: { id: "456", slug: "test-org" },
+    };
+    const requests: string[] = [];
+    mswServer.use(
+      http.get(
+        "https://eu.sentry.io/api/0/projects/test-org/backend/",
+        ({ request }) => {
+          requests.push(request.url);
+          return HttpResponse.json(collapsedProject);
+        },
+      ),
+    );
+
+    const result = await api.getProject(
+      {
+        organizationSlug: "test-org",
+        projectSlugOrId: "backend",
+        collapse: "organization",
+      },
+      { host: "eu.sentry.io" },
+    );
+
+    expect(requests).toEqual([
+      "https://eu.sentry.io/api/0/projects/test-org/backend/?collapse=organization",
+    ]);
+    expect(result).toEqual(collapsedProject);
   });
 });
 
@@ -2824,6 +2999,35 @@ describe("API query builders", () => {
       });
 
       expect(repos).toHaveLength(0);
+    });
+
+    it("should accept repos with null externalSlug and externalId", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        headers: {
+          get: (key: string) =>
+            key === "content-type" ? "application/json" : null,
+        },
+        json: () =>
+          Promise.resolve([
+            {
+              id: "101",
+              name: "getsentry/sentry",
+              provider: { id: "integrations:github", name: "GitHub" },
+              status: "active",
+              externalSlug: null,
+              externalId: null,
+            },
+          ]),
+      });
+
+      const repos = await apiService.listRepos({
+        organizationSlug: "test-org",
+      });
+
+      expect(repos).toHaveLength(1);
+      expect(repos[0].externalSlug).toBeNull();
+      expect(repos[0].externalId).toBeNull();
     });
   });
 

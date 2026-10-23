@@ -159,6 +159,38 @@ describe("telemetry credential boundaries", () => {
     expect(serialized).not.toContain("SYNTHETIC");
   });
 
+  test("removes Local capabilities from HTTP telemetry without changing caller URLs", async () => {
+    const capture = captureTelemetry();
+    const ingestUrl =
+      "http://127.0.0.1:8969/_local/v1/sessions/sdk/ingest/LOCAL_INGEST_SECRET";
+    const streamUrl =
+      "http://127.0.0.1:8969/_local/v1/sessions/sdk/stream?base64=true&cap=LOCAL_READ_SECRET";
+    const resetUrl =
+      "http://127.0.0.1:8969/_local/v1/sessions/sdk/ui/reset?cap=LOCAL_READ_SECRET";
+    const event: ErrorEvent = {
+      message: `Rejected POST ${ingestUrl}`,
+      request: { url: ingestUrl },
+      breadcrumbs: [{ type: "http", data: { url: streamUrl } }],
+      extra: { resetUrl },
+    };
+    captureEvent(event);
+    startSpan({ name: `POST ${ingestUrl}`, forceTransaction: true }, (span) => {
+      span.setAttribute("http.url", ingestUrl);
+      span.setAttribute("http.target", new URL(ingestUrl).pathname);
+      span.setAttribute("stream.url", streamUrl);
+    });
+    await capture.client.flush(1000);
+    for (const type of ["event", "transaction"]) {
+      const serialized = capture.serializedEnvelope(type);
+      expect(serialized).not.toContain("LOCAL_INGEST_SECRET");
+      expect(serialized).not.toContain("LOCAL_READ_SECRET");
+      expect(serialized).toContain("[REDACTED]");
+      expect(serialized).toContain("/_local/v1/sessions/sdk/");
+    }
+    expect(event.request?.url).toBe(ingestUrl);
+    expect(event.extra?.resetUrl).toBe(resetUrl);
+  });
+
   test("redacts before deriving a grouping key from the first line", () => {
     expect(extractMessagePrefix(headerError, 4)).toBe(
       "Headers.set: is an invalid",

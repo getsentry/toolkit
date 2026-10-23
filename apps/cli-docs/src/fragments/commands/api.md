@@ -14,6 +14,11 @@ sentry api organizations/
 sentry api issues/123456789/
 ```
 
+If a successful GET response is interrupted while downloading, the CLI retries
+within its existing limit of three attempts. This also applies to complete API
+responses read by other commands. The request timeout covers these response
+bodies; streaming responses such as SSE are excluded.
+
 ### POST requests
 
 ```bash

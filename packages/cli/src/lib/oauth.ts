@@ -90,6 +90,7 @@ export const OAUTH_SCOPES: readonly string[] = [
   "project:write",
   "project:admin",
   "org:read",
+  "org:integrations",
   "event:read",
   "event:write",
   "member:read",
@@ -108,8 +109,9 @@ const SCOPES = OAUTH_SCOPES.join(" ");
  *
  * Derived by keeping only scopes whose action is `:read`. This assumes every
  * read-granting scope the CLI requests carries the `:read` suffix — true for
- * the current list. If a future read-ish scope without that suffix is added to
- * `OAUTH_SCOPES` (e.g. `org:integrations`), update this filter explicitly.
+ * the current list. `org:integrations` grants install/uninstall, so excluding
+ * it here is intended. If a future read-ish scope without that suffix is
+ * added to `OAUTH_SCOPES`, update this filter explicitly.
  */
 const OAUTH_SCOPES_READ_ONLY: readonly string[] = OAUTH_SCOPES.filter((scope) =>
   scope.endsWith(":read"),
@@ -478,21 +480,45 @@ export async function performDeviceFlow(
   );
 }
 
+/** Where {@link completeOAuthFlow} / {@link setApiToken} store the token. */
+export type StoreTokenOptions = {
+  /**
+   * Store the token as a new, active account, keeping earlier logins for
+   * `sentry auth switch` (a re-login as the same user on the same server is
+   * folded back into one account once user info is recorded). When false
+   * (the default), the active account's credentials are replaced — what
+   * re-authentication (`sentry auth login --force`, `sentry auth refresh`,
+   * automatic login) expects.
+   */
+  newAccount?: boolean;
+  /**
+   * Re-authorize this stored account in place instead of the active one
+   * (scope recovery for an account picked for the target org).
+   */
+  accountId?: string;
+};
+
 /**
  * Complete the OAuth flow by storing the token in the database. The token
  * is scoped to {@link getSentryUrl} so the fetch-layer trust check refuses
  * to attach it to other hosts.
  *
  * @param tokenResponse - The token response from performDeviceFlow
+ * @param options - Whether to add a new account or replace the active one
  */
 export async function completeOAuthFlow(
   tokenResponse: TokenResponse,
+  options: StoreTokenOptions = {},
 ): Promise<void> {
-  await setAuthToken(
+  setAuthToken(
     tokenResponse.access_token,
     tokenResponse.expires_in,
     tokenResponse.refresh_token,
-    { host: getSentryUrl() },
+    {
+      host: getSentryUrl(),
+      newAccount: options.newAccount,
+      accountId: options.accountId,
+    },
   );
 }
 
@@ -502,9 +528,16 @@ export async function completeOAuthFlow(
  * Use this for users who have an existing API token from Sentry settings.
  *
  * @param token - The API token to store
+ * @param options - Whether to add a new account or replace the active one
  */
-export async function setApiToken(token: string): Promise<void> {
-  await setAuthToken(token, undefined, undefined, { host: getSentryUrl() });
+export async function setApiToken(
+  token: string,
+  options: StoreTokenOptions = {},
+): Promise<void> {
+  setAuthToken(token, undefined, undefined, {
+    host: getSentryUrl(),
+    newAccount: options.newAccount,
+  });
 }
 
 /** Refresh an access token using a refresh token. */

@@ -1,6 +1,7 @@
 import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
+import { pointDefaultUrlAtAccount } from "../../lib/account-selection.js";
 import {
   getCurrentUser,
   getUserRegions,
@@ -10,14 +11,21 @@ import { normalizeAuthToken } from "../../lib/auth-header.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import {
-  clearAuth,
+  getAccountIdToReplace,
+  getActiveAccountId,
   getActiveEnvVarName,
   hasStoredAuthCredentials,
   isAuthenticated,
   isEnvTokenActive,
+  removeAccount,
+  setActiveAccount,
   setAuthToken,
 } from "../../lib/db/auth.js";
-import { setDefaultUrl } from "../../lib/db/defaults.js";
+import {
+  getAccountRow,
+  isAccountRowUsable,
+  splitAccountSelector,
+} from "../../lib/db/accounts.js";
 import { getDbPath } from "../../lib/db/index.js";
 import { getUserInfo, setUserInfo } from "../../lib/db/user.js";
 import { getEnv } from "../../lib/env.js";
@@ -35,6 +43,7 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import type { LoginResult } from "../../lib/interactive-login.js";
 import {
+  assertExpectedLoginEmail,
   runInteractiveLogin,
   toLoginUser,
 } from "../../lib/interactive-login.js";
@@ -148,6 +157,80 @@ function resolveLoginScope(flags: LoginFlags): string | undefined {
  * and full URLs; returns the normalized origin.
  */
 /** @internal exported for testing */
+/**
+ * Parse the optional `email` argument of `sentry auth login`: an email, or
+ * `<email>:<server>` (the notation `sentry org list` shows, e.g.
+ * `jane@acme.com:sentry.acme.com`) to also pick the server like `--url`.
+ * Returns the trimmed argument; {@link splitLoginTarget} splits it.
+ *
+ * @throws {ValidationError} when the value is not an email address, or the
+ *   server part is not a valid URL
+ */
+export function parseLoginEmail(raw: string): string {
+  const target = raw.trim();
+  splitLoginTarget(target, raw);
+  return target;
+}
+
+/**
+ * Split a `sentry auth login` target into its email and, for
+ * `<email>:<server>`, the server's normalized origin. Uses the same
+ * {@link splitAccountSelector} as `--account`, plus an email check.
+ *
+ * @throws {ValidationError} when either part is invalid
+ */
+export function splitLoginTarget(
+  target: string,
+  raw = target,
+): { email: string; url?: string } {
+  const parts = splitAccountSelector(target);
+  if (!(parts && isEmailAddress(parts.who))) {
+    throw new ValidationError(
+      `Expected an email address, or <email>:<server> with a valid server, to log in as; got '${raw}'.`,
+      "email",
+    );
+  }
+  return parts.server
+    ? { email: parts.who, url: parts.server }
+    : { email: parts.who };
+}
+
+/** One `@` with text on both sides, and no whitespace. */
+function isEmailAddress(value: string): boolean {
+  const at = value.indexOf("@");
+  return (
+    at > 0 &&
+    at < value.length - 1 &&
+    value.indexOf("@", at + 1) === -1 &&
+    !/\s/.test(value)
+  );
+}
+
+/**
+ * Apply the server of an `<email>:<server>` login target as `--url`.
+ *
+ * @throws {ValidationError} when `--url` names a different server
+ */
+function applyLoginTarget(
+  flags: LoginFlags,
+  target: string | undefined,
+): { flags: LoginFlags; email?: string } {
+  if (target === undefined) {
+    return { flags };
+  }
+  const { email, url } = splitLoginTarget(target);
+  if (!url) {
+    return { flags, email };
+  }
+  if (flags.url && flags.url !== url) {
+    throw new ValidationError(
+      `'${target}' names ${url}, but --url is ${flags.url}. Pass only one server.`,
+      "url",
+    );
+  }
+  return { flags: { ...flags, url }, email };
+}
+
 export function parseLoginUrl(raw: string): string {
   const prefixed = normalizeUrl(raw);
   if (!prefixed) {
@@ -270,20 +353,22 @@ export function rcTokenHint(
 }
 
 /**
- * Persist a non-SaaS `--url` host as the stored default so subsequent CLI
- * invocations route correctly without requiring `SENTRY_HOST`. Only writes
- * when `--url` was explicitly passed; env/rc-sourced values persist
- * through those channels. Non-fatal on DB failure.
+ * Persist an explicit `--url` host as the stored default so subsequent CLI
+ * invocations route to the account just logged in to without requiring
+ * `SENTRY_HOST`: a self-hosted host is stored, SaaS clears a previous
+ * self-hosted default. Only writes when `--url` was explicitly passed;
+ * env/rc-sourced values persist through those channels. Non-fatal on DB
+ * failure.
  */
 function persistLoginUrlAsDefault(
   flagUrl: string | undefined,
   effectiveHost: string,
 ): void {
-  if (!flagUrl || isSaaSTrustOrigin(effectiveHost)) {
+  if (!flagUrl) {
     return;
   }
   try {
-    setDefaultUrl(effectiveHost);
+    pointDefaultUrlAtAccount(effectiveHost);
   } catch {
     log.debug(
       `Could not persist default URL to DB; host is recorded on the stored token. Set SENTRY_HOST or run 'sentry cli defaults url ${effectiveHost}' if subsequent commands route incorrectly.`,
@@ -318,12 +403,16 @@ export function applyLoginUrl(url: string | undefined): string {
 /**
  * Handle the case where the user is already authenticated.
  *
- * Returns `true` if the login flow should proceed (credentials cleared),
- * or `false` if the command should exit early.
+ * Returns `true` if the login flow should proceed, or `false` if the
+ * command should exit early. Without `--force` the new login is added
+ * alongside the current account and becomes active (logging in again as
+ * the same user replaces that user's old account); with `--force` it
+ * replaces the stored login for the same server (or adds one when that
+ * server has none). Accounts on other servers are never touched.
  *
- * - Env-var auth: always blocks re-auth (user must unset the var).
- * - `--force`: clears auth silently and proceeds.
- * - Interactive TTY: prompts user to confirm re-authentication.
+ * - Env-var auth only: proceeds (stored OAuth is kept separately).
+ * - `--force`: proceeds without prompting.
+ * - Interactive TTY: prompts user to confirm adding another account.
  * - Non-interactive without `--force`: prints a message and blocks.
  */
 async function handleExistingAuth(force: boolean): Promise<boolean> {
@@ -344,7 +433,8 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     // Non-interactive (piped, CI): print message and block
     if (!isatty(0)) {
       log.info(
-        "You are already authenticated. Use '--force' or 'sentry auth logout' first to re-authenticate.",
+        "You are already authenticated. Use 'sentry auth login <email>' to add another account, " +
+          "or '--force' to replace the current login.",
       );
       return false;
     }
@@ -353,7 +443,8 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     const userInfo = getUserInfo();
     const identity = userInfo ? formatUserIdentity(userInfo) : "current user";
     const confirmed = await log.prompt(
-      `Already authenticated as ${identity}. Re-authenticate?`,
+      `Already authenticated as ${identity}. Add another account? ` +
+        "(The current account stays saved; see 'sentry auth list'. Use --force to replace it.)",
       { type: "confirm", initial: false },
     );
 
@@ -363,35 +454,72 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     }
   }
 
-  // Clear existing credentials and caches before re-authenticating
-  await clearAuth();
   return true;
+}
+
+/**
+ * Drop a `--token` login that failed validation and make the previously
+ * active account active again. The token is always stored as its own
+ * account until it checks out, so `previousAccountId` is still intact here.
+ */
+async function discardTokenLogin(
+  accountId: string,
+  previousAccountId: string | undefined,
+): Promise<void> {
+  await removeAccount(accountId);
+  if (previousAccountId && previousAccountId !== accountId) {
+    setActiveAccount(previousAccountId);
+  }
 }
 
 /**
  * Handle a failure while validating a user-supplied `--token` via
  * {@link getUserRegions}. A 401/403 means the token itself is rejected (invalid
- * or insufficiently scoped) — clear it and raise a user-facing {@link AuthError}.
- * Any other failure (network, 5xx, parse) is NOT a token problem, so the token
- * is kept and the original error is re-thrown: surfacing "Invalid API token"
- * would mislead the user and discard the real cause, and clearing a
- * possibly-valid token on a transient blip is hostile (CLI-19).
+ * or insufficiently scoped) — remove the account it was stored as, restore the
+ * previously active account, and raise a user-facing {@link AuthError}.
+ * Any other failure (network, 5xx, parse) is NOT a token problem, so the
+ * original error is re-thrown: surfacing "Invalid API token" would mislead the
+ * user and discard the real cause. The unconfirmed token must not take over
+ * the session either: when the previously active account still has usable
+ * credentials, the token is dropped and that account restored (the user can
+ * retry). Otherwise (no other account, or its credentials expired or were
+ * rejected) the token is kept, since discarding a possibly-valid token on a
+ * transient blip would leave the user logged out (CLI-19).
  *
- * @throws {AuthError} for a 401/403 (after clearing the stored token)
+ * @throws {AuthError} for a 401/403 (after removing the stored token)
  * @throws the original error for any other failure
  */
-async function handleTokenValidationError(error: unknown): Promise<never> {
+async function handleTokenValidationError(
+  error: unknown,
+  accountId: string,
+  previousAccountId: string | undefined,
+): Promise<never> {
   if (
     error instanceof ApiError &&
     (error.status === 401 || error.status === 403)
   ) {
-    await clearAuth();
+    await discardTokenLogin(accountId, previousAccountId);
     throw new AuthError(
       "invalid",
       "Invalid API token. Please check your token and try again.",
     );
   }
+  if (hasUsablePreviousAccount(accountId, previousAccountId)) {
+    await discardTokenLogin(accountId, previousAccountId);
+  }
   throw error;
+}
+
+/** Whether the account active before this login can still authenticate. */
+function hasUsablePreviousAccount(
+  accountId: string,
+  previousAccountId: string | undefined,
+): previousAccountId is string {
+  if (!previousAccountId || previousAccountId === accountId) {
+    return false;
+  }
+  const row = getAccountRow(previousAccountId);
+  return row !== undefined && isAccountRowUsable(row);
 }
 
 export const loginCommand = buildCommand({
@@ -403,10 +531,22 @@ export const loginCommand = buildCommand({
       "Log in to Sentry using OAuth or an API token.\n\n" +
       "The OAuth flow uses a device code - you'll be given a code to enter at a URL.\n" +
       "Alternatively, use --token to authenticate with an existing API token.\n\n" +
-      "For self-hosted Sentry, pass --url <url> to authenticate against that\n" +
-      "instance. This is the ONLY way to trust a new Sentry host — URL\n" +
-      "arguments and config files are refused when they don't match the\n" +
-      "currently-authenticated host.",
+      "For self-hosted Sentry, pass --url <url> (or an <email>:<server>\n" +
+      "argument) to authenticate against that instance. This is the ONLY way\n" +
+      "to trust a new Sentry host — URL arguments and config files are\n" +
+      "refused when they don't match the currently-authenticated host.\n\n" +
+      "When already logged in, the new login is stored as another account\n" +
+      "(see 'sentry auth list' / 'sentry auth switch'); --force instead\n" +
+      "replaces the stored login for that server (accounts on other servers\n" +
+      "are kept). Pass an email (or <email>:<server>, as 'sentry org list'\n" +
+      "shows it) to add or log in again to that account without prompting:\n" +
+      "Sentry approves the request as whoever is signed in to the browser,\n" +
+      "so a login approved as another user is refused and nothing is saved.\n\n" +
+      "Examples:\n" +
+      "  sentry auth login\n" +
+      "  sentry auth login jane@acme.com\n" +
+      "  sentry auth login jane@acme.com --url https://sentry.acme.com\n" +
+      "  sentry auth login jane@acme.com:sentry.acme.com",
   },
   parameters: {
     flags: {
@@ -425,7 +565,8 @@ export const loginCommand = buildCommand({
       },
       force: {
         kind: "boolean",
-        brief: "Re-authenticate without prompting",
+        brief:
+          "Replace the stored login for this server without prompting, instead of adding another account",
         default: false,
       },
       url: {
@@ -454,9 +595,23 @@ export const loginCommand = buildCommand({
       },
     },
     aliases: { s: "scope" },
+    positional: {
+      kind: "tuple",
+      parameters: [
+        {
+          placeholder: "email",
+          brief:
+            "Email of the account to add or log in to again (<email>:<server> also sets --url); the login is refused if you approve it as someone else",
+          parse: parseLoginEmail,
+          optional: true,
+        },
+      ],
+    },
   },
   output: { human: formatLoginResult },
-  async *func(this: SentryContext, flags: LoginFlags) {
+  async *func(this: SentryContext, rawFlags: LoginFlags, target?: string) {
+    // `<email>:<server>` picks the server just like `--url <server>`.
+    const { flags, email } = applyLoginTarget(rawFlags, target);
     // Resolve OAuth scopes up front so conflicting flag combinations
     // (--token + --read-only/--scope, --read-only + --scope) and invalid
     // scope values fail fast before any network or DB work.
@@ -481,8 +636,10 @@ export const loginCommand = buildCommand({
 
     refuseLoginToUntrustedHost(flags, effectiveHost, urlFromRc);
 
-    // Check if already authenticated and handle re-authentication
-    if (isAuthenticated()) {
+    // Check if already authenticated and handle re-authentication. Naming
+    // the account to log in to is an explicit request to add (or refresh)
+    // that account, so it skips the prompt.
+    if (email === undefined && isAuthenticated()) {
       const shouldProceed = await handleExistingAuth(flags.force);
       if (!shouldProceed) {
         return;
@@ -496,19 +653,30 @@ export const loginCommand = buildCommand({
       // Non-fatal: cache directory may not exist
     }
 
+    // `--force` replaces the stored login for this server; otherwise the
+    // login is stored as another account (see handleExistingAuth).
+    const newAccount = email !== undefined || !flags.force;
+
     if (token !== undefined) {
-      // Save token first (with host scope), then validate by fetching user regions
-      await setAuthToken(token, undefined, undefined, {
+      // Save token first (with host scope), then validate by fetching user
+      // regions. It is always stored as its own account so a rejected token
+      // never touches the stored ones; with `--force` the stored login for
+      // this server (never another server's) is replaced only once the new
+      // token checks out.
+      const previousAccountId = getActiveAccountId();
+      const replacedAccountId = newAccount
+        ? undefined
+        : getAccountIdToReplace(effectiveHost);
+      const accountId = setAuthToken(token, undefined, undefined, {
         host: effectiveHost,
+        newAccount: true,
       });
 
       try {
         await getUserRegions();
       } catch (error) {
-        await handleTokenValidationError(error);
+        await handleTokenValidationError(error, accountId, previousAccountId);
       }
-
-      persistLoginUrlAsDefault(flags.url, effectiveHost);
 
       // Fetch and cache user info via /auth/ (works with all token types).
       // A transient failure here must not block login — the token is already valid.
@@ -516,18 +684,43 @@ export const loginCommand = buildCommand({
         method: "token",
         configPath: getDbPath(),
       };
-      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+      let user: Awaited<ReturnType<typeof getCurrentUser>> | undefined;
       try {
-        const user = await getCurrentUser();
-        setUserInfo({
-          userId: user.id,
-          email: user.email ?? undefined,
-          username: user.username ?? undefined,
-          name: user.name ?? undefined,
-        });
-        result.user = toLoginUser(user);
-      } catch {
+        user = await getCurrentUser();
+      } catch (error) {
         // Non-fatal: user info is supplementary. Token remains stored and valid.
+        log.debug("Could not fetch user info after token login", error);
+      }
+      if (email !== undefined) {
+        try {
+          assertExpectedLoginEmail(email, user?.email);
+        } catch (error) {
+          await discardTokenLogin(accountId, previousAccountId);
+          throw error;
+        }
+      }
+      // Only now is the login kept: a rejected email above restores the
+      // previous account, so the default URL must not have moved yet.
+      persistLoginUrlAsDefault(flags.url, effectiveHost);
+      if (user) {
+        try {
+          setUserInfo({
+            userId: user.id,
+            email: user.email ?? undefined,
+            username: user.username ?? undefined,
+            name: user.name ?? undefined,
+          });
+        } catch (error) {
+          // Non-fatal: user info is supplementary. Token remains stored and valid.
+          log.debug("Could not store user info after token login", error);
+        }
+        result.user = toLoginUser(user);
+      }
+      // Replace this server's previous login only now. After setUserInfo,
+      // so a re-login as the same user folds that account in (keeping a
+      // known username) instead of losing it; then this is a no-op.
+      if (replacedAccountId && replacedAccountId !== accountId) {
+        await removeAccount(replacedAccountId);
       }
 
       // Warm the org + region cache so the first real command is fast.
@@ -540,6 +733,8 @@ export const loginCommand = buildCommand({
     const result = await runInteractiveLogin({
       timeout: flags.timeout * 1000,
       scope: oauthScope,
+      newAccount,
+      expectedEmail: email,
     });
 
     if (result) {

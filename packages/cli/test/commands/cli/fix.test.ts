@@ -31,7 +31,7 @@ import { useTestConfigDir } from "../../helpers.js";
  */
 function createPreMigrationDatabase(db: Database): void {
   // Create all tables, but use pre-migration versions for tables with migrated columns
-  const preMigrationTables = ["dsn_cache", "user_info"];
+  const preMigrationTables = ["dsn_cache"];
   const statements: string[] = [];
 
   for (const tableName of Object.keys(EXPECTED_TABLES)) {

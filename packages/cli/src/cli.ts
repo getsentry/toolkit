@@ -58,6 +58,8 @@ async function preloadProjectContext(cwd: string): Promise<void> {
       const url = getDefaultUrl();
       if (url) {
         env.SENTRY_URL = url;
+        const { markPersistedDefaultUrl } = await import("./lib/constants.js");
+        markPersistedDefaultUrl(url);
       }
     } catch {
       // DB not available — skip
@@ -757,7 +759,7 @@ export async function startCli(): Promise<void> {
 
   // Completions are a fast-path (~1ms) — skip .sentryclirc I/O.
   if (args[0] === "__complete") {
-    return runCompletion(args.slice(1)).catch(() => {
+    return await runCompletion(args.slice(1)).catch(() => {
       // Completions should never crash — silently return no results
       process.exitCode = 0;
     });
@@ -779,7 +781,7 @@ export async function startCli(): Promise<void> {
     // Gracefully degrade: project context is optional.
   }
 
-  return runCli(args).catch((err) => {
+  return await runCli(args).catch((err) => {
     process.stderr.write(`Fatal: ${redactCredentialText(String(err))}\n`);
     process.exitCode = 1;
   });
