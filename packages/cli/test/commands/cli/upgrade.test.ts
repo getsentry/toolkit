@@ -1002,6 +1002,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
       true,
     );
     expect(versionAtSetup).toBe(16);
+    expect(readSchemaVersion()).toBe(16);
   });
 
   test("leaves the database alone when upgrading", async () => {

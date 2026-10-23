@@ -219,6 +219,46 @@ describe("prepareDatabaseForDowngrade", () => {
     });
   });
 
+  test("logs out on the way back up when the older CLI logged out", () => {
+    setAuthToken("active-token", 3600, "active-refresh", { host: HOST });
+    prepareDatabaseForDowngrade(getRawDatabase());
+    // What 0.47.0's `sentry auth logout` does.
+    getRawDatabase().query("DELETE FROM auth WHERE id = 1").run();
+
+    reopen();
+
+    expect(listAccounts()).toEqual([]);
+    expect(getAuthConfig()).toBeUndefined();
+  });
+
+  test("redoes the hand-off after another invocation re-migrated", () => {
+    setAuthToken("active-token", 3600, "active-refresh", { host: HOST });
+    prepareDatabaseForDowngrade(getRawDatabase());
+    // Another newer-CLI invocation during the download.
+    reopen();
+    expect(storedVersion()).toBe(CURRENT_SCHEMA_VERSION);
+
+    prepareDatabaseForDowngrade(getRawDatabase());
+
+    expect(storedVersion()).toBe(16);
+    expect(getRawDatabase().query("SELECT token FROM auth").get()).toEqual({
+      token: "active-token",
+    });
+  });
+
+  test("keeps a login the older CLI wrote when run again", () => {
+    setAuthToken("active-token", 3600, "active-refresh", { host: HOST });
+    const db = getRawDatabase();
+    prepareDatabaseForDowngrade(db);
+    db.query("UPDATE auth SET token = 'older-cli-login'").run();
+
+    prepareDatabaseForDowngrade(db);
+
+    expect(db.query("SELECT token FROM auth").get()).toEqual({
+      token: "older-cli-login",
+    });
+  });
+
   test("leaves an empty auth table when nobody is logged in", () => {
     const db = getRawDatabase();
 

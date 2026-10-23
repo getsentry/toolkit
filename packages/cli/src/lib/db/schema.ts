@@ -939,6 +939,11 @@ function migrateSingleAuthToAccounts(db: Database): void {
         now,
       );
     }
+  } else if (auth || tableExists(db, "auth")) {
+    // No stored token: the older CLI logged out (it deletes the `auth` row).
+    // Only an account handed down by prepareDatabaseForDowngrade can be
+    // active here, so drop it rather than silently logging back in.
+    db.query("DELETE FROM accounts WHERE is_active = 1").run();
   }
 
   db.exec("DROP TABLE IF EXISTS auth");
@@ -1021,9 +1026,18 @@ function exportActiveAccountToLegacyTables(db: Database): void {
  *   CLI re-runs its later migrations when it comes back and picks up any
  *   login or token refresh the older CLI wrote to `auth`.
  *
+ * Does nothing when the stored version is already that low, so callers can
+ * run it again after installing: another invocation of the newer CLI during
+ * the download re-migrates the database and undoes the first run.
+ *
  * Every migration after that version must therefore be safe to re-run.
  */
 export function prepareDatabaseForDowngrade(db: Database): void {
+  if (getSchemaVersion(db) <= PRE_ACCOUNTS_SCHEMA_VERSION) {
+    // Already prepared: preparing again would overwrite a login the older
+    // CLI wrote to `auth`.
+    return;
+  }
   db.transaction(() => {
     for (const tableName of REBUILDABLE_TABLES) {
       db.exec(`DROP TABLE IF EXISTS ${tableName}`);
