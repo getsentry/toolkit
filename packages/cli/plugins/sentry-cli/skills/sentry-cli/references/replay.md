@@ -15,6 +15,12 @@ Search and inspect Session Replays
 
 List recent Session Replays
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `-n, --limit <value> - Number of replays (1-1000) - (default: "25")`
 - `-q, --query <value> - Search query (Sentry replay search syntax)`
@@ -92,11 +98,20 @@ sentry replay list my-org/frontend -c prev
 
 # Output as JSON
 sentry replay list my-org/frontend --json
+
+# Find a project across organizations
+sentry replay list frontend
 ```
 
 ### `sentry replay view <replay-id-or-url...>`
 
 View a Session Replay
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<replay-id-or-url...>` | [&lt;org&gt;/&lt;project&gt;] &lt;replay-id or trace-id&gt; or &lt;replay-url&gt; |
 
 **Flags:**
 - `-w, --web - Open in browser`
@@ -168,6 +183,12 @@ sentry replay view my-org/346789a703f6454384f1de473b8b9fcc --web
 ### `sentry replay download <replay-id-or-url...>`
 
 Download a Session Replay as rrweb JSON
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<replay-id-or-url...>` | [&lt;org&gt;/&lt;project&gt;] &lt;replay-id or trace-id&gt; or &lt;replay-url&gt; |
 
 **Flags:**
 - `-o, --output <value> - Output path (default: <replay-id>.rrweb.json in the current directory)`

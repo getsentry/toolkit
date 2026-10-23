@@ -340,11 +340,7 @@ export const uploadCommand = buildCommand({
       "Each image (PNG/JPEG) is hashed and uploaded to Sentry's object store " +
       "(images already present are skipped), then a manifest is created. " +
       "Companion `<image>.json` sidecar files add per-image metadata. " +
-      "This feature only works with Sentry SaaS.\n\n" +
-      "Usage:\n" +
-      "  sentry snapshots upload ./screenshots --app-id com.example.app\n" +
-      "  sentry snapshots upload ./shots --app-id my-app --diff-threshold 0.01\n" +
-      "  sentry snapshots upload ./shots --app-id my-app --selective",
+      "This feature only works with Sentry SaaS.",
     examples: [
       {
         description: "Upload a folder of screenshots as a snapshot for an app",

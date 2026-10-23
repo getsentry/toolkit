@@ -81,9 +81,7 @@ export const proposeVersionCommand = buildCommand({
       "  12. CI_COMMIT_SHA (GitLab CI)\n" +
       "  13. BITBUCKET_COMMIT (Bitbucket Pipelines)\n" +
       "  14. TRAVIS_COMMIT (Travis CI)\n" +
-      "  15. Git HEAD SHA (fallback)\n\n" +
-      "Useful in CI scripts:\n" +
-      "  sentry release create $(sentry release propose-version)",
+      "  15. Git HEAD SHA (fallback)",
     examples: [
       {
         description: "Propose a version from git HEAD",
@@ -92,6 +90,10 @@ export const proposeVersionCommand = buildCommand({
       {
         description: "Output as JSON",
         command: "sentry release propose-version --json",
+      },
+      {
+        description: "Create a release named after the proposed version",
+        command: "sentry release create $(sentry release propose-version)",
       },
     ],
   },

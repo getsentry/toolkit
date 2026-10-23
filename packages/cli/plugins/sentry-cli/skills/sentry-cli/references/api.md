@@ -15,6 +15,12 @@ Make an authenticated API request
 
 Make an authenticated API request
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<endpoint>` | API endpoint relative to /api/0/, or an absolute HTTP(S) URL |
+
 **Flags:**
 - `-X, --method <value> - The HTTP method for the request - (default: "GET")`
 - `-d, --data <value> - Inline JSON body for the request (like curl -d)`

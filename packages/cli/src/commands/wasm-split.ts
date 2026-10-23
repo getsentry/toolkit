@@ -63,11 +63,7 @@ export const wasmSplitCommand = buildCommand({
       "The debug companion is a complete copy of the module, captured before " +
       "stripping. DWARF offsets are relative to the code section, so a " +
       "companion missing it cannot be symbolicated.\n\n" +
-      "This is a drop-in replacement for Symbolicator's `wasm-split` binary.\n\n" +
-      "Usage:\n" +
-      "  sentry wasm-split app.wasm\n" +
-      "  sentry wasm-split app.wasm -d app.debug.wasm --strip\n" +
-      "  BUILD_ID=$(sentry wasm-split app.wasm)",
+      "This is a drop-in replacement for Symbolicator's `wasm-split` binary.",
     examples: [
       {
         description: "Add a build ID to a module in place and print it",

@@ -58,14 +58,6 @@ const docs: OrgListCommandDocs = {
   fullDescription:
     "List integrations installed on an organization (GitHub, GitLab, Slack, Jira, ...).\n\n" +
     "Includes integrations that are disabled or pending deletion.\n\n" +
-    "Target specification:\n" +
-    "  sentry integration list               # auto-detect from DSN or config\n" +
-    "  sentry integration list <org>/        # list all integrations in org (paginated)\n" +
-    "  sentry integration list <org>/<proj>  # list integrations in org (project context)\n" +
-    "  sentry integration list <org>         # list integrations in org\n\n" +
-    "Pagination:\n" +
-    "  sentry integration list <org>/ -c next  # fetch next page\n" +
-    "  sentry integration list <org>/ -c prev  # fetch previous page\n\n" +
     "Alias: `sentry integrations` → `sentry integration list`",
   examples: [
     {

@@ -36,17 +36,41 @@ Restart the Local control-plane daemon
 
 List retained envelopes for a Local session
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
+
 ### `sentry local envelope view <session envelope...>`
 
 View a raw Local envelope
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session envelope...>` | Session and envelope ID |
 
 ### `sentry local event list <session...>`
 
 List decoded events for a Local session
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
+
 ### `sentry local event view <session event...>`
 
 View a decoded Local event
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session event...>` | Session and event ID |
 
 ### `sentry local serve`
 
@@ -92,6 +116,12 @@ sentry local --open
 
 Create a Local telemetry session
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<name...>` | Optional session label |
+
 **Flags:**
 - `--clientId <value> - Idempotency key for retried agent session creation`
 - `--host <value> - Loopback host - (default: "localhost")`
@@ -101,6 +131,12 @@ Create a Local telemetry session
 ### `sentry local session retention <session...>`
 
 View or change session envelope retention
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
 
 **Flags:**
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
@@ -113,17 +149,41 @@ List Local telemetry sessions
 
 View a Local telemetry session
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
+
 ### `sentry local session close <session...>`
 
 Close a Local telemetry session
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
 
 ### `sentry local session reset <session...>`
 
 Clear a Local telemetry session
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
+
 ### `sentry local run <command...>`
 
 Run a command with the local dev server enabled
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<command...>` | Command to run |
 
 **Flags:**
 - `-p, --port <value> - Port for the local server (default 8969) - (default: "8969")`

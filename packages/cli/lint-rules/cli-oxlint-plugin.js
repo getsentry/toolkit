@@ -106,8 +106,14 @@ function staticText(node) {
 /** Matches a heading or label line that opens an Examples section. */
 const EXAMPLES_LABEL_RE = /^examples?:?$/i;
 
-/** Whether help text has an Examples heading or an `Examples:` label line. */
+/** Matches an indented `sentry …` usage line, whatever label sits above it. */
+const EXAMPLE_LINE_RE = /^[ \t]+sentry\s/;
+
+/** Whether help text has an Examples section or free-text example lines. */
 function hasExamplesSection(text) {
+  if (text.split("\n").some((line) => EXAMPLE_LINE_RE.test(line))) {
+    return true;
+  }
   return marked
     .lexer(text)
     .some((token) =>

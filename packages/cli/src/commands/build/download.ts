@@ -55,10 +55,7 @@ export const downloadCommand = buildCommand({
       "Download a mobile build artifact (APK or IPA) previously uploaded to " +
       "Sentry's preprod system for size analysis. The build is resolved by " +
       "ID within the organization; the artifact is streamed to a local file.\n\n" +
-      "This feature only works with Sentry SaaS.\n\n" +
-      "Usage:\n" +
-      "  sentry build download 1234567890\n" +
-      "  sentry build download 1234567890 --output ./app.ipa",
+      "This feature only works with Sentry SaaS.",
     examples: [
       {
         description: "Download a build artifact by ID",
