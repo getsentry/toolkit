@@ -24,6 +24,7 @@ List attribute keys for spans, logs, or metrics
 - `-n, --limit <value> - Maximum number of attributes to list - (default: "25")`
 - `--context - Include each attribute's description, examples, and deprecation info (experimental API)`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+- `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
 **Examples:**
 
@@ -45,6 +46,9 @@ sentry attribute list --context
 
 # Show more than the default 25
 sentry attribute list my-org/my-project -n 100
+
+# Show the next page of the previous listing (same flags)
+sentry attribute list my-org/my-project -n 100 -c next
 
 # Select fields as JSON
 sentry attribute list --json --fields key,type,source
