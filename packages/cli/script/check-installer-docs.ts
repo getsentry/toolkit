@@ -2,14 +2,16 @@
 /**
  * Installer documentation coverage.
  *
- * The install scripts (`install` for bash, `install.ps1` for PowerShell) read
- * environment variables and flags that the CLI's ENV_VAR_REGISTRY never sees,
- * so check-env-coverage.ts cannot catch them. This check closes that gap:
+ * The install scripts (`install` for bash, `install.ps1` for PowerShell) have
+ * their own help text and flags. This check keeps those in sync:
  *
  *   1. Every `SENTRY_*` variable an installer reads, and every flag the bash
  *      installer parses, appears in that installer's own help text.
- *   2. Every variable and flag in either installer's help text appears in the
- *      installation guide (getting-started.mdx).
+ *   2. Every flag the bash installer parses appears in the installation guide
+ *      (getting-started.mdx).
+ *
+ * Installer environment variables are documented in configuration.md, which
+ * is generated from ENV_VAR_REGISTRY; check-env-coverage.ts enforces that.
  *
  * Usage:
  *   tsx script/check-installer-docs.ts
@@ -36,8 +38,6 @@ const BASH_USAGE_RE = /usage\(\) \{\n\s*cat <<EOF\n([\s\S]*?)\nEOF/;
 const PS_ENV_READ_RE = /\$env:(SENTRY_[A-Z0-9_]+)/g;
 /** The leading `<# ... #>` comment-based help block in PowerShell. */
 const PS_HELP_RE = /^<#([\s\S]*?)#>/;
-/** Variable names listed in a help block. */
-const HELP_VAR_RE = /\b(SENTRY_[A-Z0-9_]+)\b/g;
 
 /** Flags handled by every CLI; not worth documenting in the guide. */
 const UNDOCUMENTED_FLAGS = new Set(["--help"]);
@@ -92,8 +92,7 @@ for (const { file, reads, flags, help } of installers) {
       problems.push(`${file} reads ${name} but its help text omits it`);
     }
   }
-  const documented = [...matchAll(HELP_VAR_RE, help), ...flags];
-  for (const name of documented) {
+  for (const name of flags) {
     if (!(UNDOCUMENTED_FLAGS.has(name) || guide.includes(name))) {
       problems.push(`${file} supports ${name} but ${GUIDE} omits it`);
     }

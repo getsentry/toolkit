@@ -42,6 +42,7 @@ if (!skillContentExists) {
 }
 
 import type { EnvVarEntry } from "../src/lib/env-registry.js";
+import type { TargetForm } from "../src/lib/target-syntax.js";
 import type { RouteInfo, RouteMap } from "../src/lib/introspect.js";
 
 const { routes } = await import("../src/app.js");
@@ -50,6 +51,7 @@ const { OAUTH_SCOPES } = await import("../src/lib/oauth.js");
 const { ENV_VAR_REGISTRY } = await import("../src/lib/env-registry.js");
 const { AGENT_DISPLAY_NAMES } = await import("../src/lib/detect-agent.js");
 const { TARGET_FORMS } = await import("../src/lib/target-syntax.js");
+const { parseOrgProjectArg } = await import("../src/lib/arg-parsing.js");
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
 const workspace = JSON.parse(await readFile("../../package.json", "utf-8"));
 
@@ -594,7 +596,7 @@ function generateDestructiveCommands(allRoutes: RouteInfo[]): string {
 
 /** Generate the list of agents the CLI detects, from AGENT_DISPLAY_NAMES. */
 function generateDetectedAgents(): string {
-  const names = [...AGENT_DISPLAY_NAMES.values()];
+  const names: string[] = Object.values(AGENT_DISPLAY_NAMES);
   const last = names.pop();
   return `The CLI detects ${names.join(", ")}, and ${last}.`;
 }
@@ -603,11 +605,23 @@ function generateDetectedAgents(): string {
 // Section: Target Syntax (commands/index.md fragment, CONTRIBUTING.md)
 // ---------------------------------------------------------------------------
 
-/** Generate the target syntax table from TARGET_FORMS. */
+/**
+ * Generate the target syntax table from TARGET_FORMS. Each example goes
+ * through the real parser, so generation fails when the docs and the parser
+ * disagree about what a form means.
+ */
 function generateTargetSyntax(): string {
   const lines = ["| Target | Meaning |", "|--------|---------|"];
-  for (const form of TARGET_FORMS) {
-    lines.push(`| ${form.syntax} | ${form.meaning} |`);
+  for (const [type, forms] of Object.entries(TARGET_FORMS)) {
+    for (const form of forms as readonly TargetForm[]) {
+      const parsed = parseOrgProjectArg(form.example, { multi: form.multi });
+      if (parsed.type !== type) {
+        throw new Error(
+          `TARGET_FORMS: ${form.syntax} example ${JSON.stringify(form.example)} parses as "${parsed.type}", not "${type}"`,
+        );
+      }
+      lines.push(`| ${form.syntax} | ${form.meaning} |`);
+    }
   }
   return lines.join("\n");
 }

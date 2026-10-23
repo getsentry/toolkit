@@ -3,8 +3,8 @@
  * Check `sentry …` examples in hand-written docs against the live route tree.
  *
  * Every `sentry` invocation in a fenced shell block or inline code span, and
- * every example embedded in a command (`docs.examples` and `fullDescription`,
- * which feed `--help` and the generated command pages), must:
+ * every structured command example (`docs.examples`, which feeds `--help` and
+ * the generated command pages), must:
  *   1. Name a command that exists (e.g. `sentry upgrade` → `sentry cli upgrade`)
  *   2. Use only flags (and single-letter aliases) that command defines
  *   3. Not pass a bare org-looking slug (`my-org`) as a target. A bare name
@@ -282,8 +282,9 @@ const files = [
 ];
 
 /**
- * Examples embedded in commands: `docs.examples` and `sentry …` lines in
- * `fullDescription`. These feed `--help` and the generated command pages.
+ * Structured command examples (`docs.examples`). These feed `--help` and the
+ * generated command pages. Examples hand-written into `fullDescription` are
+ * not checked; they belong in `docs.examples`.
  */
 function commandExamples(
   target: RouteTarget,
@@ -299,15 +300,9 @@ function commandExamples(
     return [];
   }
   const source = `\`${["sentry", ...path].join(" ")}\` help`;
-  const fromDocs = (target.__examples ?? []).map((e) => e.command);
-  const fromDescription = (target.fullDescription ?? "")
-    .replace(CONTINUATION_RE, " ")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("sentry "));
-  return [...fromDocs, ...fromDescription].map((invocation) => ({
+  return (target.__examples ?? []).map((e) => ({
     source,
-    invocation,
+    invocation: e.command,
   }));
 }
 

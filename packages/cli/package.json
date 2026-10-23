@@ -56,8 +56,8 @@
   },
   "scripts": {
     "tsx": "tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs",
-    "cli": "node script/ensure-generated.mjs && tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs src/bin.ts",
-    "dev": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && tsx --import ./script/require-shim.mjs src/bin.ts",
+    "cli": "node script/ensure-generated.mjs && tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs --import ./script/strip-arg-separator.mjs src/bin.ts",
+    "dev": "pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && tsx --import ./script/require-shim.mjs --import ./script/strip-arg-separator.mjs src/bin.ts",
     "build": "pnpm --filter @sentry/mcp-core run build && pnpm --filter @sentry/mcp-server run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts --single",
     "build:all": "pnpm --filter @sentry/mcp-core run build && pnpm --filter @sentry/mcp-server run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts",
     "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm --filter @sentry/mcp-server run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/bundle.ts",
@@ -91,7 +91,8 @@
     "check:stale-refs": "pnpm tsx script/check-stale-references.ts",
     "check:doc-examples": "pnpm tsx script/check-doc-examples.ts",
     "check:installer-docs": "pnpm tsx script/check-installer-docs.ts",
-    "ci:policy": "pnpm run check:patches && pnpm run check:deps && pnpm run check:errors && pnpm run check:fragments && pnpm run check:docs-sections && pnpm run check:env-coverage && pnpm run check:stale-refs && pnpm run check:doc-examples && pnpm run check:installer-docs"
+    "check:destructive": "pnpm tsx script/check-destructive-commands.ts",
+    "ci:policy": "pnpm run check:patches && pnpm run check:deps && pnpm run check:errors && pnpm run check:fragments && pnpm run check:docs-sections && pnpm run check:env-coverage && pnpm run check:stale-refs && pnpm run check:doc-examples && pnpm run check:installer-docs && pnpm run check:destructive"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

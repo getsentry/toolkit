@@ -197,8 +197,10 @@ type LocalCommandBuilderArguments<
    *
    * Destructive commands are listed in the agent Safety Rules (generated from
    * this flag), so agents ask the user before running them.
-   * `buildDeleteCommand` sets this automatically; set it explicitly for other
-   * irreversible operations (e.g. `issue merge`, `trial start`).
+   * `buildDeleteCommand` sets this automatically, and `check:destructive`
+   * fails CI when a command that sends an HTTP DELETE lacks it. Set it
+   * explicitly for irreversible operations that use other verbs (e.g.
+   * `issue merge`, `trial start`).
    */
   readonly destructive?: boolean;
 };

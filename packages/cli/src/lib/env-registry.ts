@@ -176,6 +176,13 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     example: "1",
     installOnly: true,
   },
+  {
+    name: "SENTRY_NO_MODIFY_PATH",
+    description:
+      "Used with the PowerShell install script (`install.ps1`). When set to `1`, the installer leaves the user `PATH` unchanged. The bash install script takes the `--no-modify-path` flag instead.",
+    example: "1",
+    installOnly: true,
+  },
   // -- Init wizard --
   {
     name: "SENTRY_INIT_TUI",
