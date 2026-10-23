@@ -1564,7 +1564,7 @@ export const apiCommand = buildCommand({
       {
         description: "Set a nested field",
         command:
-          "sentry api projects/my-org/my-project/ -F options[sampleRate]=0.5",
+          "sentry api projects/my-org/my-project/ -X PUT -F options[sampleRate]=0.5",
       },
       {
         description: "Assign an issue",

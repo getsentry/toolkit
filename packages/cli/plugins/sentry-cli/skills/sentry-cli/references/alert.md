@@ -127,7 +127,7 @@ sentry alert issues edit my-org/my-project/'Old name' --status disabled
 sentry alert issues edit 12345 --name 'Renamed' --status active
 
 # Replace the rule's conditions
-sentry alert issues edit my-org/my-project/12345 --condition '{"id":"sentry.rules.conditions.first_seen_event.FirstSeenEventCondition"}'
+sentry alert issues edit my-org/my-project/12345 --condition '{"type":"first_seen_event","comparison":true,"conditionResult":true}'
 ```
 
 ### `sentry alert metrics list [<target>]`

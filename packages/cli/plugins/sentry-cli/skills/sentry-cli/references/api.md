@@ -45,7 +45,7 @@ sentry api issues/123456789/ -X PUT -F status=resolved
 sentry api issues/123456789/ -X PUT -d '{"status":"resolved"}'
 
 # Set a nested field
-sentry api projects/my-org/my-project/ -F options[sampleRate]=0.5
+sentry api projects/my-org/my-project/ -X PUT -F options[sampleRate]=0.5
 
 # Assign an issue
 sentry api issues/123456789/ -X PUT --field assignedTo="user@example.com"

@@ -192,7 +192,7 @@ export const editCommand = buildCommand({
       {
         description: "Replace the rule's conditions",
         command:
-          'sentry alert issues edit my-org/my-project/12345 --condition \'{"id":"sentry.rules.conditions.first_seen_event.FirstSeenEventCondition"}\'',
+          'sentry alert issues edit my-org/my-project/12345 --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\'',
       },
     ],
   },
