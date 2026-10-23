@@ -19,7 +19,7 @@ import { colorTag } from "./markdown.js";
  * - Under 3 days: "2d ago"
  * - Otherwise: short date like "Jan 18"
  *
- * Returns a muted "—" when the input is undefined.
+ * Returns a muted "—" when the input is undefined or not a valid date.
  *
  * @param dateString - ISO date string or undefined
  * @returns Human-readable relative time string
@@ -30,6 +30,10 @@ export function formatRelativeTime(dateString: string | undefined): string {
   }
 
   const date = new Date(dateString);
+  // An unparseable timestamp would otherwise render as "Invalid Date".
+  if (Number.isNaN(date.getTime())) {
+    return colorTag("muted", "—");
+  }
   const now = Date.now();
   // Clamp to >= 0 so clock skew, scheduled/future timestamps, or bad API data
   // render as "0m ago" instead of a negative duration like "-5m ago".

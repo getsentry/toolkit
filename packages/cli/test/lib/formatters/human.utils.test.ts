@@ -99,6 +99,10 @@ describe("formatRelativeTime", () => {
     expect(stripAnsi(result).trim()).toBe("—");
   });
 
+  test("returns em-dash for an unparseable date", () => {
+    expect(stripAnsi(formatRelativeTime("not-a-date")).trim()).toBe("—");
+  });
+
   test("formats minutes ago for recent times", () => {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const result = stripAnsi(formatRelativeTime(fiveMinutesAgo));
