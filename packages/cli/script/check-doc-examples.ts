@@ -84,6 +84,7 @@ const PROMPT_RE = /^\$\s+/;
 const CONTINUATION_RE = /\\\n\s*/g;
 const PLACEHOLDER_RE = /[<>[\]{}]|\.\.\.|…|^\$/;
 const SHORT_ALIAS_RE = /^-([a-zA-Z])$/;
+const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 type Finding = { file: string; example: string; problem: string };
 
@@ -222,7 +223,15 @@ function isTargetParam(param: PositionalParam | undefined): boolean {
 
 /** Problems with one `sentry …` invocation. */
 function checkInvocation(invocation: string): string[] {
-  const tokens = tokenize(invocation).slice(1);
+  const words = tokenize(invocation);
+  // Skip a `sudo` or `NAME=value` prefix, e.g. `SENTRY_DSN=… sentry monitor run`
+  const start = words.findIndex(
+    (word) => word !== "sudo" && !ENV_ASSIGNMENT_RE.test(word),
+  );
+  if (words[start] !== "sentry") {
+    return [];
+  }
+  const tokens = words.slice(start + 1);
   const resolved = resolve(tokens);
   if (!resolved) {
     return [];

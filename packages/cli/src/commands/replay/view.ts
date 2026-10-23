@@ -347,13 +347,38 @@ export const viewCommand = buildCommand({
       "  <id>                     - auto-detect org from config or DSN\n" +
       "  <org>/<id>               - explicit organization\n" +
       "  <org>/<project>/<id>     - explicit org/project context\n" +
-      "  <replay-url>             - parse org and replay ID from a Sentry URL\n\n" +
-      "Examples:\n" +
-      "  sentry replay view 346789a703f6454384f1de473b8b9fcc\n" +
-      "  sentry replay view sentry/346789a703f6454384f1de473b8b9fcc\n" +
-      "  sentry replay view sentry/cli/346789a703f6454384f1de473b8b9fcc\n" +
-      "  sentry replay view https://sentry.io/organizations/sentry/explore/replays/346789a703f6454384f1de473b8b9fcc/\n" +
-      "  sentry replay view --web sentry/346789a703f6454384f1de473b8b9fcc",
+      "  <replay-url>             - parse org and replay ID from a Sentry URL",
+    examples: [
+      {
+        description:
+          "View a replay by ID (organization and project auto-detected)",
+        command: "sentry replay view 346789a703f6454384f1de473b8b9fcc",
+      },
+      {
+        description: "View a replay in an explicit organization",
+        command: "sentry replay view my-org/346789a703f6454384f1de473b8b9fcc",
+      },
+      {
+        description: "View a replay with explicit org/project context",
+        command:
+          "sentry replay view my-org/frontend/346789a703f6454384f1de473b8b9fcc",
+      },
+      {
+        description: "View a replay from its URL",
+        command:
+          "sentry replay view https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
+      },
+      {
+        description: "View the replay linked to a trace",
+        command:
+          "sentry replay view my-org/frontend/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
+      {
+        description: "Open a replay in the browser",
+        command:
+          "sentry replay view my-org/346789a703f6454384f1de473b8b9fcc --web",
+      },
+    ],
   },
   output: {
     human: formatReplayDetails,

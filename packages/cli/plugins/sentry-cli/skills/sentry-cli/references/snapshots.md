@@ -22,6 +22,16 @@ Compare two directories of snapshot images
 - `--fail-on-diff - Exit non-zero if any diffs (changed/added/removed/errored) are found`
 - `--selective - Treat images missing from head as skipped instead of removed`
 
+**Examples:**
+
+```bash
+# Compare two directories of snapshot images locally
+sentry snapshots diff ./baseline ./head
+
+# Exit non-zero if any images changed, with a custom threshold
+sentry snapshots diff ./baseline ./head --fail-on-diff --threshold 0.02
+```
+
 ### `sentry snapshots download`
 
 Download baseline snapshot images
@@ -31,6 +41,19 @@ Download baseline snapshot images
 - `--snapshot-id <value> - Direct snapshot artifact ID; mutually exclusive with --app-id`
 - `--branch <value> - Git branch filter (only with --app-id)`
 - `-o, --output <value> - Directory for extracted images (default: ./snapshots-base/)`
+
+**Examples:**
+
+```bash
+# Download a specific baseline snapshot by ID
+sentry snapshots download --snapshot-id 1234567890
+
+# Download the latest baseline for an app, filtered by branch
+sentry snapshots download --app-id my-app --branch main
+
+# Extract images to a specific directory
+sentry snapshots download --app-id my-app --output ./baseline/
+```
 
 ### `sentry snapshots upload <path>`
 
@@ -64,21 +87,6 @@ sentry snapshots upload ./screenshots --app-id my-app --selective
 
 # Only flag images that differ by more than 1%
 sentry snapshots upload ./screenshots --app-id my-app --diff-threshold 0.01
-
-# Compare two directories of snapshot images locally
-sentry snapshots diff ./baseline ./head
-
-# Fail (non-zero exit) if any images changed, with a custom threshold
-sentry snapshots diff ./baseline ./head --fail-on-diff --threshold 0.02
-
-# Download a specific baseline snapshot by ID
-sentry snapshots download --snapshot-id 1234567890
-
-# Download the latest baseline for an app, filtered by branch
-sentry snapshots download --app-id my-app --branch main
-
-# Extract images to a specific directory
-sentry snapshots download --app-id my-app --output ./baseline/
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

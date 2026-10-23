@@ -143,12 +143,22 @@ export const createCommand = buildCommand({
     brief: "Create a dashboard",
     fullDescription:
       "Create a new Sentry dashboard.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard create 'My Dashboard'\n" +
-      "  sentry dashboard create my-org/ 'My Dashboard'\n" +
-      "  sentry dashboard create my-org/my-project 'My Dashboard'\n\n" +
       "Add widgets after creation with:\n" +
       '  sentry dashboard widget add <dashboard> "My Widget" --display line --query count',
+    examples: [
+      {
+        description: "Create a dashboard (organization auto-detected)",
+        command: "sentry dashboard create 'Frontend Performance'",
+      },
+      {
+        description: "Create a dashboard in an explicit organization",
+        command: "sentry dashboard create my-org/ 'My Dashboard'",
+      },
+      {
+        description: "Use the organization of an explicit project",
+        command: "sentry dashboard create my-org/my-project 'My Dashboard'",
+      },
+    ],
   },
   output: {
     human: formatDashboardCreated,

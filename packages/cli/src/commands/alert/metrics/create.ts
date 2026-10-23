@@ -84,16 +84,20 @@ export const createCommand = buildCommand({
       "  thresholdType 0 alerts above the threshold (default), 1 below. Without resolveThreshold\n" +
       "  the rule resolves at the critical threshold. Native detector conditions\n" +
       '  ({"type":"gt","comparison":N,"conditionResult":75}) are passed through as-is.\n' +
-      "  Notifications are not part of triggers: pass --workflow with an existing alert id.\n\n" +
-      "Examples:\n" +
-      "  sentry alert metrics create my-org/ --name 'P95 latency' \\\n" +
-      "    --query 'environment:prod' --aggregate 'p95(span.duration)' \\\n" +
-      "    --dataset spans --time-window 5 --project my-app \\\n" +
-      "    --trigger '{\"alertThreshold\":500}'\n\n" +
-      "  sentry alert metrics create my-org/ --name 'AI chat failures' \\\n" +
-      "    --query 'action:ai.chat result:error' --aggregate 'count()' --dataset logs \\\n" +
-      '    --time-window 5 --trigger \'{"alertThreshold":0,"resolveThreshold":0}\' \\\n' +
-      "    --project my-app --workflow 123 --dry-run",
+      "  Notifications are not part of triggers: pass --workflow with an existing alert id.",
+    examples: [
+      {
+        description: "Alert when P95 span duration goes above 500ms",
+        command:
+          "sentry alert metrics create my-org/ --name 'P95 latency' --project my-project --query 'environment:prod' --aggregate 'p95(span.duration)' --dataset spans --time-window 5 --trigger '{\"alertThreshold\":500}'",
+      },
+      {
+        description:
+          "Preview an alert on any matching log line that notifies through an existing alert",
+        command:
+          "sentry alert metrics create my-org/ --name 'AI chat failures' --project my-project --query 'action:ai.chat result:error' --aggregate 'count()' --dataset logs --time-window 5 --trigger '{\"alertThreshold\":0,\"resolveThreshold\":0}' --workflow 12345 --dry-run",
+      },
+    ],
   },
   output: {
     human: formatCreated,

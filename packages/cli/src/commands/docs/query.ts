@@ -30,8 +30,25 @@ export const queryCommand = buildCommand({
     brief: "Ask a cited question about Sentry documentation",
     fullDescription:
       "Answer a natural-language Sentry documentation question using current docs.sentry.io pages. " +
-      "The command automatically uses safe local project metadata (manifests and config presence only) to tailor the answer.\n\n" +
-      'Examples:\n  sentry docs "How do I configure Next.js tracing?"\n  sentry docs query "How do I upload source maps?"\n  sentry docs search "How does session replay mask text?"\n  sentry docs "How do I configure tracing?" --json',
+      "The command automatically uses safe local project metadata (manifests and config presence only) to tailor the answer.",
+    examples: [
+      {
+        description: "Ask a documentation question",
+        command: 'sentry docs "How do I configure tracing in Next.js?"',
+      },
+      {
+        description: "Use the explicit subcommand",
+        command: 'sentry docs query "How do I upload source maps?"',
+      },
+      {
+        description: "Use the search alias",
+        command: 'sentry docs search "How does session replay mask text?"',
+      },
+      {
+        description: "Output the answer as JSON",
+        command: 'sentry docs "How do I configure tracing?" --json',
+      },
+    ],
   },
   output: { human: formatQueryHuman },
   parameters: {

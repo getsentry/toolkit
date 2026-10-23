@@ -119,13 +119,29 @@ export const revisionsCommand = buildCommand({
     fullDescription:
       "List revision history for a Sentry dashboard.\n\n" +
       "Shows saved revisions with their IDs, titles, authors, and timestamps.\n" +
-      "Use `sentry dashboard restore` to revert to a previous revision.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard revisions 12345\n" +
-      "  sentry dashboard revisions 'My Dashboard'\n" +
-      "  sentry dashboard revisions my-org/ 12345\n" +
-      "  sentry dashboard revisions my-org/ 12345 --json\n" +
-      "  sentry dashboard revisions my-org/ 12345 -c next",
+      "Use `sentry dashboard restore` to revert to a previous revision.",
+    examples: [
+      {
+        description: "List revisions by dashboard title",
+        command: "sentry dashboard revisions 'Frontend Performance'",
+      },
+      {
+        description: "List revisions by dashboard ID",
+        command: "sentry dashboard revisions 12345",
+      },
+      {
+        description: "Pass the organization explicitly",
+        command: "sentry dashboard revisions my-org/ 12345",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry dashboard revisions my-org/ 12345 -c next",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry dashboard revisions my-org/ 12345 --json",
+      },
+    ],
   },
   output: {
     human: formatRevisionsHuman,

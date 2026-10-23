@@ -30,12 +30,29 @@ export const unlinkCommand = buildDeleteCommand({
       "Remove an external tracker issue or GitHub pull request reference from a Sentry issue.\n" +
       "This does not delete the external issue or change the Sentry issue's status.\n\n" +
       "Requires event:write and access to the Sentry project.\n" +
-      "Older Sentry versions may still require event:admin.\n\n" +
-      "Examples:\n" +
-      "  sentry issue unlink FRONT-123 https://github.com/example/app/issues/42\n" +
-      "  sentry issue unlink FRONT-123 https://github.com/example/app/pull/43 --yes\n" +
-      "  sentry issue unlink my-org/FRONT-123 https://example.atlassian.net/browse/APP-42 --yes\n" +
-      "  sentry issue unlink FRONT-123 https://linear.app/example/issue/APP-42/fix-error --dry-run",
+      "Older Sentry versions may still require event:admin.",
+    examples: [
+      {
+        description: "Unlink a GitHub issue (prompts for confirmation)",
+        command:
+          "sentry issue unlink FRONT-123 https://github.com/example/app/issues/42",
+      },
+      {
+        description: "Unlink a GitHub pull request without prompting",
+        command:
+          "sentry issue unlink FRONT-123 https://github.com/example/app/pull/43 --yes",
+      },
+      {
+        description: "Unlink a Jira issue in an explicit organization",
+        command:
+          "sentry issue unlink my-org/FRONT-123 https://example.atlassian.net/browse/APP-42 --yes",
+      },
+      {
+        description: "Check whether a link exists without removing it",
+        command:
+          "sentry issue unlink FRONT-123 https://linear.app/example/issue/APP-42/fix-error --dry-run",
+      },
+    ],
   },
   output: { human: formatIssueLinkResult },
   parameters: {

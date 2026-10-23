@@ -35,12 +35,21 @@ function formatDeployList(deploys: SentryDeploy[]): string {
 export const deploysCommand = buildCommand({
   docs: {
     brief: "List deploys for a release",
-    fullDescription:
-      "List all deploys recorded for a specific release.\n\n" +
-      "Examples:\n" +
-      "  sentry release deploys 1.0.0\n" +
-      "  sentry release deploys my-org/1.0.0\n" +
-      "  sentry release deploys 1.0.0 --json",
+    fullDescription: "List all deploys recorded for a specific release.",
+    examples: [
+      {
+        description: "List deploys for a release",
+        command: "sentry release deploys 1.0.0",
+      },
+      {
+        description: "List deploys for a release in an explicit organization",
+        command: "sentry release deploys my-org/1.0.0",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry release deploys 1.0.0 --json",
+      },
+    ],
   },
   output: {
     human: formatDeployList,

@@ -44,12 +44,22 @@ function formatMetricAlertView(data: MetricRuleResolution): string {
 export const viewCommand = buildCommand({
   docs: {
     brief: "View a metric alert rule",
-    fullDescription:
-      "View a single metric alert rule by ID or name.\n\n" +
-      "Examples:\n" +
-      "  sentry alert metrics view 12345\n" +
-      "  sentry alert metrics view my-org/12345\n" +
-      "  sentry alert metrics view my-org/'p95 latency alert'",
+    fullDescription: "View a single metric alert rule by ID or name.",
+    examples: [
+      {
+        description:
+          "View a metric alert rule by ID (organization auto-detected)",
+        command: "sentry alert metrics view 12345",
+      },
+      {
+        description: "View by ID in an explicit organization",
+        command: "sentry alert metrics view my-org/12345",
+      },
+      {
+        description: "View by name",
+        command: "sentry alert metrics view my-org/'P95 latency alert'",
+      },
+    ],
   },
   output: {
     human: formatMetricAlertView,

@@ -115,6 +115,17 @@ export const resolveCommand = buildCommand({
       "  sentry sourcemap resolve ./dist\n" +
       "  sentry sourcemap resolve ./build --ext .js,.mjs\n" +
       "  sentry sourcemap resolve ./out --json",
+    examples: [
+      {
+        description:
+          "Report how each JS file's sourcemap resolves and whether a debug ID is injected",
+        command: "sentry sourcemap resolve ./dist",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry sourcemap resolve ./dist --json",
+      },
+    ],
   },
   // Purely local file operation — no Sentry API calls, no auth needed.
   auth: false,

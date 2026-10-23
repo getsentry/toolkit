@@ -42,11 +42,14 @@ View an issue alert rule
 **Examples:**
 
 ```bash
-# View by ID
+# View an issue alert rule by ID (organization and project auto-detected)
+sentry alert issues view 12345
+
+# View by ID in an explicit project
 sentry alert issues view my-org/my-project/12345
 
 # View by name
-sentry alert issues view my-org/my-project/"Error Spike"
+sentry alert issues view my-org/my-project/'Error Spike'
 ```
 
 ### `sentry alert issues create [<target>]`
@@ -67,11 +70,11 @@ Create an issue alert rule
 **Examples:**
 
 ```bash
-# Create an issue alert rule with inline JSON condition/action
-sentry alert issues create my-org/my-project \
-  --name "Error Spike" \
-  --condition '{"type":"first_seen_event","comparison":true,"conditionResult":true}' \
-  --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}'
+# Alert on new issues and email a team
+sentry alert issues create my-org/my-project --name 'New Issues' --condition '{"type":"first_seen_event","comparison":true,"conditionResult":true}' --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}'
+
+# Preview a high-priority alert that emails a user at most every 30 minutes
+sentry alert issues create my-org/my-project --name 'High Priority' --condition '{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}' --action '{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}' --frequency 30 --dry-run
 ```
 
 ### `sentry alert issues delete <org/project/rule-id-or-name>`
@@ -86,7 +89,13 @@ Delete an issue alert rule
 **Examples:**
 
 ```bash
-# Delete with preview
+# Delete an issue alert rule (prompts for confirmation)
+sentry alert issues delete my-org/my-project/12345
+
+# Delete a rule selected by name without prompting
+sentry alert issues delete my-org/my-project/'My Rule' --yes
+
+# Preview the deletion
 sentry alert issues delete my-org/my-project/12345 --dry-run
 ```
 
@@ -108,8 +117,17 @@ Edit an issue alert rule
 **Examples:**
 
 ```bash
-# Edit issue alert name/status
-sentry alert issues edit my-org/my-project/12345 --name "Prod Error Spike" --status disabled
+# Rename an issue alert rule
+sentry alert issues edit my-org/my-project/12345 --name 'Prod errors'
+
+# Disable a rule selected by name
+sentry alert issues edit my-org/my-project/'Old name' --status disabled
+
+# Rename and enable a rule (organization and project auto-detected)
+sentry alert issues edit 12345 --name 'Renamed' --status active
+
+# Replace the rule's conditions
+sentry alert issues edit my-org/my-project/12345 --condition '{"type":"first_seen_event","comparison":true,"conditionResult":true}'
 ```
 
 ### `sentry alert metrics list [<target>]`
@@ -140,11 +158,14 @@ View a metric alert rule
 **Examples:**
 
 ```bash
-# View by ID
-sentry alert metrics view my-org/67890
+# View a metric alert rule by ID (organization auto-detected)
+sentry alert metrics view 12345
+
+# View by ID in an explicit organization
+sentry alert metrics view my-org/12345
 
 # View by name
-sentry alert metrics view my-org/"P95 latency alert"
+sentry alert metrics view my-org/'P95 latency alert'
 ```
 
 ### `sentry alert metrics create <target>`
@@ -168,25 +189,10 @@ Create a metric alert rule
 
 ```bash
 # Alert when P95 span duration goes above 500ms
-sentry alert metrics create my-org/ \
-  --name "P95 Latency" \
-  --project my-app \
-  --query "environment:prod" \
-  --aggregate "p95(span.duration)" \
-  --dataset spans \
-  --time-window 5 \
-  --trigger '{"alertThreshold":500}'
+sentry alert metrics create my-org/ --name 'P95 latency' --project my-project --query 'environment:prod' --aggregate 'p95(span.duration)' --dataset spans --time-window 5 --trigger '{"alertThreshold":500}'
 
-# Alert on any matching log line and notify through an existing alert
-sentry alert metrics create my-org/ \
-  --name "AI chat failures" \
-  --project my-app \
-  --query "action:ai.chat result:error" \
-  --aggregate "count()" \
-  --dataset logs \
-  --time-window 5 \
-  --trigger '{"alertThreshold":0,"resolveThreshold":0}' \
-  --workflow 12345
+# Preview an alert on any matching log line that notifies through an existing alert
+sentry alert metrics create my-org/ --name 'AI chat failures' --project my-project --query 'action:ai.chat result:error' --aggregate 'count()' --dataset logs --time-window 5 --trigger '{"alertThreshold":0,"resolveThreshold":0}' --workflow 12345 --dry-run
 ```
 
 ### `sentry alert metrics delete <org/rule-id-or-name>`
@@ -201,8 +207,11 @@ Delete a metric alert rule
 **Examples:**
 
 ```bash
-# Delete without prompt
-sentry alert metrics delete my-org/67890 --yes
+# Delete a metric alert rule (prompts for confirmation)
+sentry alert metrics delete my-org/12345
+
+# Delete a rule selected by name without prompting
+sentry alert metrics delete my-org/'P95 alert' --yes
 ```
 
 ### `sentry alert metrics edit <org/rule-id-or-name>`
@@ -225,8 +234,17 @@ Edit a metric alert rule
 **Examples:**
 
 ```bash
-# Edit metric alert query/window
-sentry alert metrics edit my-org/67890 --query "environment:prod event.type:error" --time-window 15
+# Rename a metric alert rule
+sentry alert metrics edit my-org/12345 --name 'Error budget'
+
+# Disable a rule
+sentry alert metrics edit my-org/12345 --status disabled
+
+# Change the query and time window
+sentry alert metrics edit my-org/12345 --query "environment:prod event.type:error" --time-window 15
+
+# Switch the dataset
+sentry alert metrics edit my-org/12345 --time-window 15 --dataset spans
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

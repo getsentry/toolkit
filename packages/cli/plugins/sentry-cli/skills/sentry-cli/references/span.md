@@ -49,20 +49,20 @@ sentry span list -q "op:db"
 # Slow spans in the last 24 hours
 sentry span list -q "duration:>100ms" --period 24h
 
+# Sort by slowest first
+sentry span list --sort duration
+
 # List spans within a specific trace
 sentry span list abc123def456abc123def456abc12345
-
-# Paginate through results
-sentry span list -c next
 
 # Show only spans from one project within a trace
 sentry span list my-org/cli-server/abc123def456abc123def456abc12345
 
-# Or use --query to filter by project
-sentry span list abc123def456abc123def456abc12345 -q "project:cli-server"
-
-# Multiple projects at once
+# Filter a trace's spans to several projects
 sentry span list abc123def456abc123def456abc12345 -q "project:[cli-server,api]"
+
+# Fetch the next page
+sentry span list -c next
 ```
 
 ### `sentry span view <trace-id/span-id...>`
@@ -82,7 +82,7 @@ sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890
 # View multiple spans at once
 sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890 b2c3d4e5f6789012
 
-# With explicit org/project
+# Specify the organization and project explicitly
 sentry span view my-org/backend/abc123def456abc123def456abc12345 a1b2c3d4e5f67890
 ```
 

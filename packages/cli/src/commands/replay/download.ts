@@ -57,12 +57,25 @@ export const downloadCommand = buildCommand({
       "  <id>                     - auto-detect org from config or DSN\n" +
       "  <org>/<id>               - explicit organization\n" +
       "  <org>/<project>/<id>     - explicit org/project context\n" +
-      "  <replay-url>             - parse org and replay ID from a Sentry URL\n\n" +
-      "Examples:\n" +
-      "  sentry replay download 346789a703f6454384f1de473b8b9fcc\n" +
-      "  sentry replay download sentry/346789a703f6454384f1de473b8b9fcc\n" +
-      "  sentry replay download sentry/346789a703f6454384f1de473b8b9fcc --output ./replay.json\n" +
-      "  sentry replay download https://sentry.io/organizations/sentry/explore/replays/346789a703f6454384f1de473b8b9fcc/",
+      "  <replay-url>             - parse org and replay ID from a Sentry URL",
+    examples: [
+      {
+        description:
+          "Download a replay as rrweb JSON to ./<replay-id>.rrweb.json",
+        command:
+          "sentry replay download my-org/346789a703f6454384f1de473b8b9fcc",
+      },
+      {
+        description: "Choose where the file goes",
+        command:
+          "sentry replay download my-org/346789a703f6454384f1de473b8b9fcc --output ./replay.json",
+      },
+      {
+        description: "Download from a replay URL",
+        command:
+          "sentry replay download https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
+      },
+    ],
   },
   output: {
     human: formatReplayDownloadResult,

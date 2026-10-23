@@ -200,6 +200,16 @@ export const statusCommand = buildCommand({
     fullDescription:
       "Display information about your current authentication status, " +
       "including whether you're logged in and your default organization/project settings.",
+    examples: [
+      {
+        description: "Check authentication status",
+        command: "sentry auth status",
+      },
+      {
+        description: "Include the raw token",
+        command: "sentry auth status --show-token",
+      },
+    ],
   },
   output: { human: formatAuthStatus },
   parameters: {

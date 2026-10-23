@@ -81,11 +81,23 @@ export const switchCommand = buildCommand({
       "'jane@acme.com') is used with a warning when it is the only one. When\n" +
       "the same user is stored on several servers, add --url <server> (or use\n" +
       "'<email>@<server-hostname>'). Without an argument, pick from a\n" +
-      "searchable list interactively.\n\n" +
-      "Examples:\n" +
-      "  sentry auth switch\n" +
-      "  sentry auth switch jane@acme.com\n" +
-      "  sentry auth switch jane@acme.com --url https://sentry.acme.com",
+      "searchable list interactively.",
+    examples: [
+      {
+        description: "Pick the active account from a searchable list",
+        command: "sentry auth switch",
+      },
+      {
+        description: "Switch to a specific account",
+        command: "sentry auth switch jane@example.com",
+      },
+      {
+        description:
+          "Pick the account on one server when the same email is stored twice",
+        command:
+          "sentry auth switch jane@example.com --url https://sentry.example.com",
+      },
+    ],
   },
   output: { human: formatAccountSwitch },
   parameters: {

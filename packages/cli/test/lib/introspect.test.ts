@@ -242,6 +242,12 @@ describe("buildCommandInfo", () => {
     const cmd = makeCommand({
       brief: "List things",
       fullDescription: "List all the things.",
+      __examples: [
+        {
+          description: "List things in an org",
+          command: "sentry thing list myorg",
+        },
+      ],
       parameters: {
         positional: {
           kind: "tuple",
@@ -258,9 +264,7 @@ describe("buildCommandInfo", () => {
       },
     });
 
-    const info = buildCommandInfo(cmd, "sentry thing list", [
-      "sentry thing list myorg",
-    ]);
+    const info = buildCommandInfo(cmd, "sentry thing list");
     expect(info.path).toBe("sentry thing list");
     expect(info.brief).toBe("List things");
     expect(info.fullDescription).toBe("List all the things.");
@@ -268,7 +272,9 @@ describe("buildCommandInfo", () => {
     expect(info.flags).toHaveLength(1);
     expect(info.flags[0].name).toBe("limit");
     expect(info.aliases).toEqual({ l: "limit" });
-    expect(info.examples).toEqual(["sentry thing list myorg"]);
+    expect(info.examples).toEqual([
+      "# List things in an org\nsentry thing list myorg",
+    ]);
   });
 
   test("handles command with no positional args", () => {
