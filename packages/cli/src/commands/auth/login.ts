@@ -540,8 +540,8 @@ export const loginCommand = buildCommand({
       "replaces the stored login for that server (accounts on other servers\n" +
       "are kept). Pass an email (or <email>:<server>, as 'sentry org list'\n" +
       "shows it) to add or log in again to that account without prompting:\n" +
-      "Sentry approves the request as whoever is signed in to the browser,\n" +
-      "so a login approved as another user is refused and nothing is saved.\n\n" +
+      "Sentry only accepts approval from that account, and a login approved\n" +
+      "as another user is refused and nothing is saved.\n\n" +
       "Examples:\n" +
       "  sentry auth login\n" +
       "  sentry auth login jane@acme.com\n" +
