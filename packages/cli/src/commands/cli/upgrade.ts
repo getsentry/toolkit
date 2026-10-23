@@ -1136,6 +1136,12 @@ export const upgradeCommand = buildCommand({
       });
     }
 
+    // Again after installing: another invocation of this CLI during the
+    // download re-migrates the database. No-op when nothing undid it.
+    if (downgrade) {
+      prepareLocalDatabaseForDowngrade();
+    }
+
     const changelog = await changelogPromise;
     yield new CommandOutput({
       action: downgrade ? "downgraded" : "upgraded",
