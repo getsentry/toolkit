@@ -87,9 +87,14 @@ const paginators = [
  * Follow `-c next` until the cursor runs out, like repeated CLI calls, using
  * the next limit from `limits` (cycled) on each call.
  */
-async function walk(fetchPage: FetchPage, total: number, limits: number[]) {
+async function walk(
+  fetchPage: FetchPage,
+  total: number,
+  limits: number[],
+  start?: string,
+) {
   const seen: number[] = [];
-  let cursor: string | undefined;
+  let cursor = start;
   // Each call returns at least one row while rows remain.
   for (let call = 0; call <= total; call += 1) {
     const limit = limits[call % limits.length] ?? 1;
@@ -137,6 +142,31 @@ describe.each(paginators)("property: paginate over $name", ({ make }) => {
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });
+});
+
+test("property: a pasted OffsetPaginator cursor resumes without skipping", async () => {
+  await fcAssert(
+    asyncProperty(
+      integer({ min: 1, max: API_MAX_PER_PAGE }),
+      integer({ min: 1, max: 5 }),
+      nat(API_MAX_PER_PAGE * 3),
+      limitsArb,
+      async (pageSize, page, extra, limits) => {
+        // A cursor as the API returned it, from a walk with another page size.
+        const start = pageSize * page;
+        const seen = await walk(
+          offsetPaginator(start + extra),
+          extra,
+          limits,
+          `${pageSize}:${page}:0`,
+        );
+        expect(seen).toEqual(
+          Array.from({ length: extra }, (_, i) => start + i),
+        );
+      },
+    ),
+    { numRuns: DEFAULT_NUM_RUNS },
+  );
 });
 
 test("property: a fresh walk uses the fewest requests without overfetching", async () => {

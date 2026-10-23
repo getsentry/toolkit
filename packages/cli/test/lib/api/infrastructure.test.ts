@@ -935,6 +935,22 @@ describe("paginate", () => {
     expect(await paginate({ limit: 5 }, spy)).toEqual({ data: [1, 2] });
   });
 
+  // A pasted page-number cursor is only valid with the page size it encodes.
+  test.each([
+    { cursor: "100:2:0", perPage: 100 },
+    { cursor: "25:4:0", perPage: 25 },
+    { cursor: "0:200:0", perPage: 67 },
+    { cursor: "1735689600000:0:0", perPage: 67 },
+    { cursor: "abc", perPage: 67 },
+  ])(
+    "resumes the raw cursor $cursor with pages of $perPage",
+    async ({ cursor, perPage }) => {
+      const spy = vi.fn().mockResolvedValue({ data: [] });
+      await paginate({ limit: 201, cursor }, spy);
+      expect(spy.mock.calls).toEqual([[perPage, cursor]]);
+    },
+  );
+
   // Cursors from another CLI version (after an upgrade or downgrade) or a
   // damaged one must never fail the command or reach the API.
   test.each([

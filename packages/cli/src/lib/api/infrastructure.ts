@@ -484,6 +484,9 @@ const PAGE_CURSOR_PREFIX = `${CURSOR_FORMAT}~`;
 /** Any CLI cursor format, including ones from older or newer CLI versions. */
 const CLI_CURSOR_RE = /^cli\d+~/;
 
+/** Sentry cursor `<value>:<offset>:<is_prev>`; `OffsetPaginator` puts its page size in `value`. */
+const SERVER_CURSOR_RE = /^(\d+):\d+:[01]$/;
+
 /**
  * Where a {@link paginate} walk resumes: the server cursor that fetches the
  * page, the page size it must be fetched with, and how many of that page's
@@ -510,8 +513,12 @@ function encodePageCursor({ cursor, perPage, skip }: PagePosition): string {
 function decodePageCursor(
   raw: string | undefined,
 ): Partial<PagePosition> & { cursor: string | undefined } {
-  if (!(raw && CLI_CURSOR_RE.test(raw))) {
-    return { cursor: raw };
+  if (!raw) {
+    return { cursor: undefined };
+  }
+  if (!CLI_CURSOR_RE.test(raw)) {
+    const perPage = serverCursorPageSize(raw);
+    return perPage === undefined ? { cursor: raw } : { cursor: raw, perPage };
   }
   if (raw.startsWith(PAGE_CURSOR_PREFIX)) {
     const [perPage, skip, ...server] = raw
@@ -536,6 +543,21 @@ function decodePageCursor(
     "Ignoring a pagination cursor this CLI version cannot read; starting from the first page.",
   );
   return { cursor: undefined };
+}
+
+/**
+ * Page size a raw server cursor must be resumed with, if it carries one.
+ *
+ * `OffsetPaginator` cursors (`<per_page>:<page>:<is_prev>`) are only valid
+ * with the page size that produced them. Other paginators put an offset of 0
+ * or a sort value there; a sort value that happens to be in range only
+ * changes the page size, which they tolerate.
+ */
+function serverCursorPageSize(raw: string): number | undefined {
+  const value = Number(SERVER_CURSOR_RE.exec(raw)?.[1]);
+  return Number.isInteger(value) && value >= 1 && value <= API_MAX_PER_PAGE
+    ? value
+    : undefined;
 }
 
 /**
@@ -571,7 +593,7 @@ function pageSizeForLimit(limit: number): number {
  *
  * Returned cursors are opaque CLI cursors; pass them back through this
  * function, never directly to an API request. Raw server cursors are accepted
- * as a starting point.
+ * as a starting point, with the page size of a page-number cursor.
  *
  * Callers own region resolution and query building inside `fetchPage`, and
  * must send `perPage` as the request's `per_page` unchanged.
