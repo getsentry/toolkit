@@ -4502,6 +4502,36 @@ describe("search_events", () => {
         );
       });
 
+      it("should report error_on_load when validating the Seer query fails", async () => {
+        mswServer.use(
+          ...mockSeerEvents(() => HttpResponse.json({ data: [] })),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events/validate/",
+            () =>
+              HttpResponse.json(
+                { detail: "Validation broke" },
+                { status: 400 },
+              ),
+          ),
+        );
+
+        await expect(
+          searchEvents.handler(seerParams, context),
+        ).rejects.toThrow();
+
+        expect(mockDistribution).toHaveBeenCalledTimes(1);
+        expect(mockDistribution).toHaveBeenCalledWith(
+          "assisted_query.outcome",
+          0,
+          {
+            attributes: expect.objectContaining({
+              outcome: "error_on_load",
+              error_reason: expect.any(String),
+            }),
+          },
+        );
+      });
+
       it("should count non-empty buckets for a Seer time series", async () => {
         mswServer.use(
           mockOrganization(["mcp-search-events-seer-translate"]),

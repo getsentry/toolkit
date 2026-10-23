@@ -48,6 +48,7 @@ import {
 } from "./replays";
 import {
   isSeerSearchDataset,
+  type SeerSearchTranslation,
   trackAssistedQueryOutcome,
   translateWithSeer,
 } from "./seer";
@@ -611,10 +612,56 @@ export function logSearchEventsError(
 /**
  * Shared handler for search_events and the dataset-specific search tools.
  */
+interface SeerOutcomeState {
+  translation: SeerSearchTranslation | null;
+  tracked: boolean;
+}
+
+// Only Seer's translations are tracked, not the embedded agent's, and at most
+// once per run.
+function trackSeerOutcome(
+  state: SeerOutcomeState,
+  params: SearchEventsParams,
+  resultCount: number,
+  error?: unknown,
+): void {
+  if (
+    !state.translation ||
+    state.tracked ||
+    !isSeerSearchDataset(params.dataset)
+  ) {
+    return;
+  }
+  state.tracked = true;
+  trackAssistedQueryOutcome({
+    dataset: params.dataset,
+    organizationSlug: params.organizationSlug,
+    translation: state.translation,
+    resultCount,
+    error,
+  });
+}
+
 export async function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
   options: RunSearchEventsOptions = {},
+): Promise<string> {
+  // Any failure after Seer translates the query counts as `error_on_load`.
+  const seerOutcome: SeerOutcomeState = { translation: null, tracked: false };
+  try {
+    return await executeSearchEvents(params, context, options, seerOutcome);
+  } catch (error) {
+    trackSeerOutcome(seerOutcome, params, 0, error);
+    throw error;
+  }
+}
+
+async function executeSearchEvents(
+  params: SearchEventsParams,
+  context: ServerContext,
+  options: RunSearchEventsOptions,
+  seerOutcome: SeerOutcomeState,
 ): Promise<string> {
   const lockDataset = options.lockDataset === true;
   const apiService = apiServiceFromContext(context, {
@@ -691,6 +738,7 @@ export async function runSearchEvents(
           query: params.query,
         })
       : null;
+  seerOutcome.translation = seerTranslation;
   if (seerTranslation && !projectId) {
     projectId = "-1";
   }
@@ -874,19 +922,6 @@ export async function runSearchEvents(
   const withLeadingNote = (text: string): string =>
     leadingNote ? `${leadingNote}\n\n${text}` : text;
 
-  // Only Seer's translations are tracked, not the embedded agent's.
-  const trackSeerOutcome = (resultCount: number, error?: unknown): void => {
-    if (seerTranslation && isSeerSearchDataset(params.dataset)) {
-      trackAssistedQueryOutcome({
-        dataset: params.dataset,
-        organizationSlug,
-        translation: seerTranslation,
-        resultCount,
-        error,
-      });
-    }
-  };
-
   if (dataset === "replays") {
     const replaySort = sortParam || DEFAULT_REPLAY_SORT;
     if (!isValidReplaySort(replaySort)) {
@@ -967,23 +1002,19 @@ export async function runSearchEvents(
     // request shape — fields + orderby — which is not what a timeseries
     // sends (yAxis + interval, no fields/sort). events-timeseries validates
     // the query server-side, so a bad query still surfaces as an API error.
-    let series: Awaited<ReturnType<typeof apiService.getEventsTimeSeries>>;
-    try {
-      series = await apiService.getEventsTimeSeries({
-        organizationSlug,
-        query: timeSeriesQuery,
-        yAxis: timeSeries.yAxis,
-        interval: timeSeries.interval ?? undefined,
-        projectId,
-        dataset,
-        ...timeParams,
-      });
-    } catch (error) {
-      trackSeerOutcome(0, error);
-      throw error;
-    }
+    const series = await apiService.getEventsTimeSeries({
+      organizationSlug,
+      query: timeSeriesQuery,
+      yAxis: timeSeries.yAxis,
+      interval: timeSeries.interval ?? undefined,
+      projectId,
+      dataset,
+      ...timeParams,
+    });
     // A series always has buckets, so count the ones with data.
     trackSeerOutcome(
+      seerOutcome,
+      params,
       series.timeSeries
         .flatMap((s) => s.values)
         .filter((point) => point.value != null && point.value !== 0).length,
@@ -1054,13 +1085,11 @@ export async function runSearchEvents(
 
   if (!lastValidation.valid) {
     const formatted = formatEventsValidationResults(lastValidation);
-    const error = new UserInputError(
+    throw new UserInputError(
       formatted
         ? `Search validation failed:\n${formatted}`
         : "Search validation failed.",
     );
-    trackSeerOutcome(0, error);
-    throw error;
   }
 
   const finalRequestFields = buildRequestFields(dataset, fields);
@@ -1070,23 +1099,17 @@ export async function runSearchEvents(
     environment,
   );
 
-  let eventsResponse: Awaited<ReturnType<typeof apiService.searchEvents>>;
-  try {
-    eventsResponse = await apiService.searchEvents({
-      organizationSlug,
-      query: sentryQuery,
-      fields: finalRequestFields,
-      limit: params.limit,
-      projectId,
-      dataset,
-      sort: sortParam,
-      crossEventQueries: seerTranslation?.crossEventQueries,
-      ...timeParams,
-    });
-  } catch (error) {
-    trackSeerOutcome(0, error);
-    throw error;
-  }
+  const eventsResponse = await apiService.searchEvents({
+    organizationSlug,
+    query: sentryQuery,
+    fields: finalRequestFields,
+    limit: params.limit,
+    projectId,
+    dataset,
+    sort: sortParam,
+    crossEventQueries: seerTranslation?.crossEventQueries,
+    ...timeParams,
+  });
 
   const aggregateFunctions = fields.filter(
     (field) => field.includes("(") && field.includes(")"),
@@ -1121,7 +1144,7 @@ export async function runSearchEvents(
     "gen_ai.tool.call.result.count",
     eventData.length,
   );
-  trackSeerOutcome(eventData.length);
+  trackSeerOutcome(seerOutcome, params, eventData.length);
 
   const conversationId = extractConversationIdFromSearchQuery(sentryQuery);
   const explorerUrl = conversationId
