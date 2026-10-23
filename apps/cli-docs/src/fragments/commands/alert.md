@@ -50,7 +50,7 @@ sentry alert issues delete my-org/my-project/12345 --dry-run
 
 ```bash
 # Alert when P95 span duration goes above 500ms
-sentry alert metrics create my-org \
+sentry alert metrics create my-org/ \
   --name "P95 Latency" \
   --project my-app \
   --query "environment:prod" \
@@ -60,7 +60,7 @@ sentry alert metrics create my-org \
   --trigger '{"alertThreshold":500}'
 
 # Alert on any matching log line and notify through an existing alert
-sentry alert metrics create my-org \
+sentry alert metrics create my-org/ \
   --name "AI chat failures" \
   --project my-app \
   --query "action:ai.chat result:error" \

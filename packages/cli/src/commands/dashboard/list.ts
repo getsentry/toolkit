@@ -376,7 +376,6 @@ export const listCommand = buildListCommand("dashboard", {
       "  sentry dashboard list my-org/             # explicit org\n" +
       "  sentry dashboard list my-org/my-project   # org from explicit project\n" +
       "  sentry dashboard list 'Error*'            # filter by title glob\n" +
-      "  sentry dashboard list my-org '*API*'      # bare org + filter\n" +
       "  sentry dashboard list my-org/ '*API*'     # org/ + filter\n" +
       "  sentry dashboard list -c next             # next page\n" +
       "  sentry dashboard list -c prev             # previous page\n" +

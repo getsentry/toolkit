@@ -41,7 +41,7 @@ sentry init --features profiling,replay
 | _(omitted)_ | Auto-detect org and project |
 | `acme/` | Use org `acme`, auto-detect or create project |
 | `acme/my-app` | Use org `acme` and project `my-app` |
-| `my-app` | Search for project `my-app` across all accessible orgs |
+| `my-app` | Use the existing project `my-app` from any accessible org. If there is none, use org `my-app` when one exists; otherwise create a new project named `my-app` |
 
 Path-like arguments (starting with `.`, `/`, or `~`) are always treated as the directory. The order of target and directory can be swapped — the CLI will auto-correct with a warning.
 

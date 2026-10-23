@@ -192,6 +192,15 @@ type LocalCommandBuilderArguments<
    * repo-local `.sentryclirc` URL mismatches the current token.
    */
   readonly skipRcUrlCheck?: boolean;
+  /**
+   * Mark the command as destructive or irreversible. Defaults to `false`.
+   *
+   * Destructive commands are listed in the agent Safety Rules (generated from
+   * this flag), so agents ask the user before running them.
+   * `buildDeleteCommand` sets this automatically; set it explicitly for other
+   * irreversible operations (e.g. `issue merge`, `trial start`).
+   */
+  readonly destructive?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -881,6 +890,9 @@ export function buildCommand<
   if (builderArgs.docs.examples?.length) {
     (cmd as unknown as Record<string, unknown>).__examples =
       builderArgs.docs.examples;
+  }
+  if (builderArgs.destructive) {
+    (cmd as unknown as Record<string, unknown>).__destructive = true;
   }
 
   // Attach the JSON schema to the built command as a non-standard property.

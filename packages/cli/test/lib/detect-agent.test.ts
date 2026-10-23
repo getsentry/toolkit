@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import {
   AGENT_ALIASES,
+  AGENT_DISPLAY_NAMES,
   type AgentInfo,
   detectAgent,
   detectAgentFromProcessTree,
@@ -642,6 +643,32 @@ describe("AGENT_ALIASES map structure", () => {
     for (const [key, value] of AGENT_ALIASES) {
       expect(key).not.toBe(value);
     }
+  });
+});
+
+describe("AGENT_DISPLAY_NAMES", () => {
+  // The agentic-usage docs list is generated from AGENT_DISPLAY_NAMES, so it
+  // must name exactly the agents detectAgent() can return.
+  const detectable = new Set([
+    ...ENV_VAR_AGENTS.values(),
+    ...PROCESS_NAME_AGENTS.values(),
+    ...AGENT_ALIASES.values(),
+    // Branches in detectAgent() that are not table-driven
+    "claude",
+    "cowork",
+    "cursor",
+  ]);
+
+  test("names every detectable agent", () => {
+    const missing = [...detectable].filter((a) => !AGENT_DISPLAY_NAMES.has(a));
+    expect(missing).toEqual([]);
+  });
+
+  test("names only detectable agents", () => {
+    const extra = [...AGENT_DISPLAY_NAMES.keys()].filter(
+      (a) => !detectable.has(a),
+    );
+    expect(extra).toEqual([]);
   });
 });
 

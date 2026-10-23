@@ -13,6 +13,9 @@
  * `packageManager` field in package.json will automatically make this
  * check flag every `pnpm run` / `pnpm add` reference in dev docs.
  *
+ * It also flags `pnpm run cli -- <args>` in dev docs: pnpm passes the `--`
+ * through, so the CLI sees it as the end of options and fails.
+ *
  * Usage:
  *   tsx script/check-stale-references.ts
  *
@@ -175,15 +178,60 @@ function findOriginalLineNumber(
   return 0;
 }
 
+// ---------------------------------------------------------------------------
+// CLI scripts: `pnpm run cli -- --help` passes a literal `--` to the CLI,
+// which then treats `--help` as a command name. Checked inside code blocks
+// too, since that is where these commands live.
+// ---------------------------------------------------------------------------
+
+/** package.json scripts that run the CLI entry point directly. */
+const cliScripts = Object.entries(pkg.scripts as Record<string, string>)
+  .filter(([, command]) => command.includes("src/bin.ts"))
+  .map(([name]) => name);
+
+const CLI_SEPARATOR_RE = new RegExp(
+  `\\bpnpm(?:\\s+--filter\\s+\\S+)?\\s+(?:run\\s+)?(?:${cliScripts.join("|")})\\s+--(?=\\s|$)`,
+);
+
+/** Docs that show how to run the CLI from a checkout. */
+const CLI_USAGE_FILES = [
+  ...DOC_FILES,
+  "README.md",
+  "AGENTS.md",
+  "CONTRIBUTING.md",
+];
+
+for (const filePath of CLI_USAGE_FILES) {
+  let content: string;
+  try {
+    content = await readFile(filePath, "utf-8");
+  } catch {
+    continue;
+  }
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (CLI_SEPARATOR_RE.test(line)) {
+      findings.push({
+        file: filePath,
+        line: i + 1,
+        text: line.trim(),
+        reason:
+          "pnpm forwards a literal `--` to the CLI; pass arguments directly (`pnpm run cli --help`)",
+      });
+    }
+  }
+}
+
 if (findings.length === 0) {
   console.log(
-    `✓ No stale package manager references found (current: ${currentPM}, checked: ${FILES_TO_SCAN.length} files)`,
+    `✓ No stale references found (current PM: ${currentPM}, checked: ${FILES_TO_SCAN.length + CLI_USAGE_FILES.length} files)`,
   );
   process.exit(0);
 }
 
 console.error(
-  `✗ Found ${findings.length} stale package manager reference(s) (current PM: ${currentPM}):\n`,
+  `✗ Found ${findings.length} stale reference(s) (current PM: ${currentPM}):\n`,
 );
 for (const f of findings) {
   console.error(`  ${f.file}:${f.line}: ${f.text}`);

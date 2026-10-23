@@ -172,8 +172,8 @@ export const viewCommand = buildCommand({
       "Examples:\n" +
       "  sentry dashboard view 12345\n" +
       "  sentry dashboard view 'My Dashboard'\n" +
-      "  sentry dashboard view my-org 12345\n" +
-      "  sentry dashboard view my-org 'My Dashboard'\n" +
+      "  sentry dashboard view my-org/ 12345\n" +
+      "  sentry dashboard view my-org/ 'My Dashboard'\n" +
       "  sentry dashboard view my-org/my-project 12345\n" +
       "  sentry dashboard view 12345 --json\n" +
       "  sentry dashboard view 12345 --period 7d\n" +

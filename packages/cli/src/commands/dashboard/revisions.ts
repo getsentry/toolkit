@@ -123,9 +123,9 @@ export const revisionsCommand = buildCommand({
       "Examples:\n" +
       "  sentry dashboard revisions 12345\n" +
       "  sentry dashboard revisions 'My Dashboard'\n" +
-      "  sentry dashboard revisions my-org 12345\n" +
-      "  sentry dashboard revisions my-org 12345 --json\n" +
-      "  sentry dashboard revisions my-org 12345 -c next",
+      "  sentry dashboard revisions my-org/ 12345\n" +
+      "  sentry dashboard revisions my-org/ 12345 --json\n" +
+      "  sentry dashboard revisions my-org/ 12345 -c next",
   },
   output: {
     human: formatRevisionsHuman,

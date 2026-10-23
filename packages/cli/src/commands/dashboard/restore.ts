@@ -61,7 +61,7 @@ export const restoreCommand = buildCommand({
       "Use `sentry dashboard revisions` to list available revisions first.\n\n" +
       "Examples:\n" +
       "  sentry dashboard restore 12345 --revision 42\n" +
-      "  sentry dashboard restore my-org 12345 --revision 42\n" +
+      "  sentry dashboard restore my-org/ 12345 --revision 42\n" +
       "  sentry dashboard restore 'My Dashboard' --revision 42\n" +
       "  sentry dashboard restore 12345 --revision 42 --json",
   },

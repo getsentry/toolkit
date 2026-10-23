@@ -11,6 +11,10 @@
  *   - self-hosted.md:   OAuth scopes, env var table
  *   - README.md:        dev prerequisites, library prerequisites, dev scripts
  *   - getting-started.mdx: platform support table
+ *   - agent-guidance.md: destructive commands (from `destructive` commands)
+ *   - agentic-usage.md: detected agents (from AGENT_DISPLAY_NAMES)
+ *   - commands/index.md fragment, CONTRIBUTING.md: target syntax (TARGET_FORMS)
+ *   - plugins/README.md: skill file layout (paths checked on disk)
  *
  * Unlike generate-command-docs.ts (which produces gitignored files from scratch),
  * this script edits committed files in-place between marker pairs.
@@ -20,9 +24,9 @@
  *   tsx script/generate-docs-sections.ts --check   # Dry-run, exit 1 if stale
  */
 
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
-import { DOCS_CONTENT } from "./paths.js";
+import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-command-docs.ts)
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
@@ -44,6 +48,8 @@ const { routes } = await import("../src/app.js");
 const { extractAllRoutes } = await import("../src/lib/introspect.js");
 const { OAUTH_SCOPES } = await import("../src/lib/oauth.js");
 const { ENV_VAR_REGISTRY } = await import("../src/lib/env-registry.js");
+const { AGENT_DISPLAY_NAMES } = await import("../src/lib/detect-agent.js");
+const { TARGET_FORMS } = await import("../src/lib/target-syntax.js");
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
 const workspace = JSON.parse(await readFile("../../package.json", "utf-8"));
 
@@ -557,6 +563,97 @@ function generatePlatformSupport(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Section: Destructive Commands (agent-guidance.md)
+// ---------------------------------------------------------------------------
+
+const SENTRY_PREFIX_RE = /^sentry /;
+
+/**
+ * Generate the Safety Rules bullet that lists destructive commands.
+ *
+ * Commands opt in with `buildCommand({ destructive: true })`;
+ * `buildDeleteCommand` sets it automatically, so new delete commands are
+ * listed without touching the docs.
+ */
+function generateDestructiveCommands(allRoutes: RouteInfo[]): string {
+  const names = allRoutes
+    .flatMap((route) => route.commands)
+    .filter((cmd) => cmd.destructive)
+    .map((cmd) => cmd.path.replace(SENTRY_PREFIX_RE, ""))
+    .sort((a, b) => a.localeCompare(b));
+  if (names.length === 0) {
+    throw new Error("No destructive commands found in the route tree");
+  }
+  const list = names.map((name) => `\`${name}\``).join(", ");
+  return `- Always confirm with the user before running destructive commands: ${list}`;
+}
+
+// ---------------------------------------------------------------------------
+// Section: Detected Agents (agentic-usage.md)
+// ---------------------------------------------------------------------------
+
+/** Generate the list of agents the CLI detects, from AGENT_DISPLAY_NAMES. */
+function generateDetectedAgents(): string {
+  const names = [...AGENT_DISPLAY_NAMES.values()];
+  const last = names.pop();
+  return `The CLI detects ${names.join(", ")}, and ${last}.`;
+}
+
+// ---------------------------------------------------------------------------
+// Section: Target Syntax (commands/index.md fragment, CONTRIBUTING.md)
+// ---------------------------------------------------------------------------
+
+/** Generate the target syntax table from TARGET_FORMS. */
+function generateTargetSyntax(): string {
+  const lines = ["| Target | Meaning |", "|--------|---------|"];
+  for (const form of TARGET_FORMS) {
+    lines.push(`| ${form.syntax} | ${form.meaning} |`);
+  }
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Section: Skill File Layout (plugins/README.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Skill-related paths under `packages/cli/`, in tree order. Generation fails
+ * when one no longer exists, so the README cannot describe a stale layout.
+ */
+const SKILL_LAYOUT: readonly [path: string, note: string][] = [
+  [".claude-plugin/marketplace.json", "Marketplace manifest"],
+  [".cursor/skills/sentry-cli/SKILL.md", "Symlink to the plugin skill"],
+  [".cursor/skills/sentry-cli/references", "Symlink to the plugin references"],
+  ["plugins/README.md", "This file"],
+  ["plugins/sentry-cli/.claude-plugin/plugin.json", "Plugin manifest"],
+  [
+    "plugins/sentry-cli/skills/sentry-cli/SKILL.md",
+    "CLI usage skill (generated)",
+  ],
+  [
+    "plugins/sentry-cli/skills/sentry-cli/references",
+    "One file per command group (generated)",
+  ],
+  ["script/generate-skill.ts", "Generates SKILL.md and references/"],
+];
+
+/** Render {@link SKILL_LAYOUT} as an annotated path list. */
+function generateSkillLayout(): string {
+  const missing = SKILL_LAYOUT.filter(([path]) => !existsSync(path));
+  if (missing.length > 0) {
+    throw new Error(
+      `plugins/README.md layout lists missing paths: ${missing.map(([p]) => p).join(", ")}`,
+    );
+  }
+  const paths = SKILL_LAYOUT.map(([path]) => `packages/cli/${path}`);
+  const width = Math.max(...paths.map((p) => p.length));
+  const rows = SKILL_LAYOUT.map(
+    ([, note], i) => `${paths[i]?.padEnd(width)}  # ${note}`,
+  );
+  return ["```", ...rows, "```"].join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Section Definitions
 // ---------------------------------------------------------------------------
 
@@ -646,6 +743,32 @@ const sections: SectionDef[] = [
     sectionName: "platform-support",
     generate: generatePlatformSupport,
     markerStyle: "mdx",
+  },
+  // -- Lists that mirror code --
+  {
+    filePath: `${DOCS_CONTENT}/agent-guidance.md`,
+    sectionName: "destructive-commands",
+    generate: () => generateDestructiveCommands(routeInfos),
+  },
+  {
+    filePath: `${DOCS_CONTENT}/agentic-usage.md`,
+    sectionName: "detected-agents",
+    generate: generateDetectedAgents,
+  },
+  {
+    filePath: `${DOCS_FRAGMENTS}/commands/index.md`,
+    sectionName: "target-syntax",
+    generate: generateTargetSyntax,
+  },
+  {
+    filePath: "CONTRIBUTING.md",
+    sectionName: "target-syntax",
+    generate: generateTargetSyntax,
+  },
+  {
+    filePath: "plugins/README.md",
+    sectionName: "skill-layout",
+    generate: generateSkillLayout,
   },
 ];
 

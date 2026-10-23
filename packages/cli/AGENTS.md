@@ -39,7 +39,7 @@ Before working on this codebase, read the Cursor rules:
 # Development
 pnpm install                             # Install dependencies (from repo root)
 pnpm run dev                             # Run CLI in dev mode
-pnpm run cli -- <args>                   # Run the CLI with arguments
+pnpm run cli <args>                      # Run the CLI with arguments
 
 # Build
 pnpm run build                           # Build for current platform

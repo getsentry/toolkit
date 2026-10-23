@@ -197,7 +197,7 @@ sentry dashboard revisions 'Frontend Performance'
 sentry dashboard revisions 12345
 
 # With explicit org
-sentry dashboard revisions my-org 12345
+sentry dashboard revisions my-org/ 12345
 ```
 
 ### `sentry dashboard restore <org/dashboard...>`
@@ -217,7 +217,7 @@ sentry dashboard restore 'Frontend Performance' --revision 3
 sentry dashboard restore 12345 --revision 1
 
 # With explicit org
-sentry dashboard restore my-org 12345 --revision 1
+sentry dashboard restore my-org/ 12345 --revision 1
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

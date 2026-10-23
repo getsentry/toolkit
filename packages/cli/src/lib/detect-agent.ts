@@ -182,6 +182,34 @@ export const PROCESS_NAME_AGENTS = new Map<string, string>([
   ["gemini", "gemini"],
 ]);
 
+/**
+ * Canonical agent name → display name, in documentation order.
+ *
+ * The agentic-usage docs list is generated from this map, and a unit test
+ * fails when a detected agent (from {@link ENV_VAR_AGENTS},
+ * {@link PROCESS_NAME_AGENTS}, {@link AGENT_ALIASES}, or the Claude/Cowork
+ * branch in {@link detectAgent}) has no entry here.
+ */
+export const AGENT_DISPLAY_NAMES = new Map<string, string>([
+  ["claude", "Claude Code"],
+  ["cowork", "Claude Cowork"],
+  ["cursor", "Cursor"],
+  ["windsurf", "Windsurf"],
+  ["github-copilot", "GitHub Copilot"],
+  ["gemini", "Gemini CLI"],
+  ["codex", "OpenAI Codex"],
+  ["antigravity", "Antigravity"],
+  ["goose", "Goose"],
+  ["amp", "Amp"],
+  ["augment", "Augment"],
+  ["opencode", "OpenCode"],
+  ["cline", "Cline"],
+  ["grok", "Grok"],
+  ["kimi", "Kimi"],
+  ["junie", "Junie"],
+  ["openclaw", "OpenClaw"],
+]);
+
 /** Max levels to walk up the process tree before giving up. */
 const MAX_ANCESTOR_DEPTH = 5;
 
