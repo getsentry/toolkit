@@ -13,6 +13,7 @@
  * - repositories: repository listing
  * - integrations: installed integration listing and removal
  * - issues: issue listing, lookup, status updates
+ * - issue-tags: issue tag distributions
  * - events: event retrieval and resolution
  * - replays: replay listing and detail lookup
  * - traces: trace details and transactions
@@ -86,6 +87,7 @@ export {
   parseLinkHeader,
   rawApiRequest,
 } from "./api/infrastructure.js";
+export { getIssueTag } from "./api/issue-tags.js";
 export {
   buildIssueListCollapse,
   getIssue,
