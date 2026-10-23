@@ -248,22 +248,6 @@ export const defaultsCommand = buildCommand({
       "View and manage persistent CLI default settings.\n\n" +
       "With no arguments, shows all current defaults. Pass a key and value\n" +
       "to set a default, or use `--clear` to remove defaults.\n\n" +
-      "## Examples\n\n" +
-      "```\n" +
-      "sentry cli defaults                    # Show all defaults\n" +
-      "sentry cli defaults list               # Same as above (alias: ls, show)\n" +
-      "sentry cli defaults org my-org         # Set default organization\n" +
-      "sentry cli defaults project my-proj    # Set default project\n" +
-      "sentry cli defaults telemetry off      # Disable telemetry\n" +
-      "sentry cli defaults agent-skills off   # Stop installing agent skills on upgrade\n" +
-      "sentry cli defaults graphics off       # Disable inline terminal images\n" +
-      "sentry cli defaults tips off           # Hide Tip: hints in command output\n" +
-      "sentry cli defaults url https://...    # Set Sentry URL (self-hosted)\n" +
-      "sentry cli defaults headers 'X-IAP: t'  # Set custom headers (self-hosted)\n" +
-      "sentry cli defaults ca-cert /path/to/ca.pem  # Trust a custom CA certificate\n" +
-      "sentry cli defaults org --clear        # Clear a specific default\n" +
-      "sentry cli defaults --clear --yes      # Clear all defaults\n" +
-      "```\n\n" +
       "## Recognized keys\n\n" +
       "| Key | Description |\n" +
       "|-----|------------|\n" +
@@ -280,6 +264,10 @@ export const defaultsCommand = buildCommand({
       {
         description: "Show all current defaults",
         command: "sentry cli defaults",
+      },
+      {
+        description: "Same as above (aliases: ls, show)",
+        command: "sentry cli defaults list",
       },
       {
         description: "Set the default organization",
@@ -308,6 +296,14 @@ export const defaultsCommand = buildCommand({
         command: "sentry cli defaults telemetry off",
       },
       {
+        description: "Stop installing agent skills on upgrade",
+        command: "sentry cli defaults agent-skills off",
+      },
+      {
+        description: "Disable inline terminal images",
+        command: "sentry cli defaults graphics off",
+      },
+      {
         description: "Hide Tip: hints in command output",
         command: "sentry cli defaults tips off",
       },
@@ -316,8 +312,8 @@ export const defaultsCommand = buildCommand({
         command: "sentry cli defaults org --clear",
       },
       {
-        description: "Clear all defaults",
-        command: "sentry cli defaults --clear",
+        description: "Clear all defaults without prompting",
+        command: "sentry cli defaults --clear --yes",
       },
     ],
   },

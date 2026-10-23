@@ -177,6 +177,11 @@ tester.run(
         code: "buildRouteMap({ docs: { fullDescription: `Manage items.\\n\\nExample:\\n  sentry item view 1` } });",
         errors: 1,
       },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Manage items.\\n\\n' + '## Examples\\n\\n' + 'sentry item list\\n' } });",
+        errors: 1,
+      },
     ],
   },
 );

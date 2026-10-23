@@ -46,6 +46,9 @@ View and manage default settings
 # Show all current defaults
 sentry cli defaults
 
+# Same as above (aliases: ls, show)
+sentry cli defaults list
+
 # Set the default organization
 sentry cli defaults org my-org
 
@@ -64,14 +67,20 @@ sentry cli defaults ca-cert /path/to/ca.pem
 # Disable telemetry
 sentry cli defaults telemetry off
 
+# Stop installing agent skills on upgrade
+sentry cli defaults agent-skills off
+
+# Disable inline terminal images
+sentry cli defaults graphics off
+
 # Hide Tip: hints in command output
 sentry cli defaults tips off
 
 # Clear a single default
 sentry cli defaults org --clear
 
-# Clear all defaults
-sentry cli defaults --clear
+# Clear all defaults without prompting
+sentry cli defaults --clear --yes
 ```
 
 ### `sentry cli feedback <message...>`

@@ -68,7 +68,8 @@ function staticText(node) {
   return "";
 }
 
-const EXAMPLES_BLOCK_RE = /(?:^|\n)[ \t]*examples?:[ \t]*(?:\n|$)/i;
+const EXAMPLES_BLOCK_RE =
+  /(?:^|\n)[ \t]*(?:#{1,6}[ \t]+examples?|examples?:)[ \t]*(?:\n|$)/i;
 
 const rules = {
   "no-silent-catch": rule(

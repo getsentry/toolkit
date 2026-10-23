@@ -630,7 +630,7 @@ export const exploreCommand = buildListCommand("explore", {
       {
         description: "Errors with user impact for a specific UTC window",
         command:
-          'sentry explore my-org/cli -F title -F "count()" -F "count_unique(user)" --period "2024-01-15T00:00:00Z/2024-01-16T00:00:00Z"',
+          'sentry explore my-org/cli -F title -F "count()" -F "count_unique(user)" --period "2024-01-15T00:00:00Z..2024-01-16T00:00:00Z"',
       },
       {
         description: "Filter by error type (combined with the project filter)",
