@@ -930,8 +930,9 @@ describe("paginate", () => {
 
       const first = await paginate({ limit: 250 }, spy);
       expect(first.data).toEqual(Array.from({ length: 250 }, (_, i) => i));
-      // Page 84:2 was partly returned: 82 rows to skip, as zeros in is_prev.
-      expect(first.nextCursor).toBe(`84:2:${"0".repeat(83)}`);
+      // Page 84:2 was partly returned: 82 (0b1010010) rows to skip, in binary
+      // in is_prev with `_0` for 1 and `0` for 0.
+      expect(first.nextCursor).toBe("84:2:0_00_000_00");
       const second = await paginate(
         { limit: 10, cursor: first.nextCursor },
         spy,
@@ -953,7 +954,7 @@ describe("paginate", () => {
       const spy = server((perPage, offset) => `0:${offset + perPage}:0`);
 
       const first = await paginate({ limit: 250 }, spy);
-      expect(first.nextCursor).toBe(`0:168:${"0".repeat(83)}`);
+      expect(first.nextCursor).toBe("0:168:0_00_000_00");
       const second = await paginate(
         { limit: 10, cursor: first.nextCursor },
         spy,
@@ -972,7 +973,7 @@ describe("paginate", () => {
       const first = await paginate({ limit: 3 }, (perPage, cursor) =>
         spy(perPage + 2, cursor),
       );
-      expect(first.nextCursor).toBe("0:0:0000");
+      expect(first.nextCursor).toBe("0:0:0_0_0");
       const second = await paginate(
         { limit: 2, cursor: first.nextCursor },
         spy,

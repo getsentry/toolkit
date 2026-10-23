@@ -164,8 +164,9 @@ describe.each([
     const first = await list({ limit: 149, cursor: "0:25:0" });
     expect(projectIds).toEqual(organization ? ["42"] : []);
     expect(first.data).toHaveLength(149);
-    // Page 0:100 was partly returned: 74 rows to skip, as zeros in is_prev.
-    expect(first.nextCursor).toBe(`0:100:${"0".repeat(75)}`);
+    // Page 0:100 was partly returned: 74 (0b1001010) rows to skip, in binary
+    // in is_prev.
+    expect(first.nextCursor).toBe("0:100:0_000_00_00");
     const second = await list({ limit: 50, cursor: first.nextCursor });
 
     expect(

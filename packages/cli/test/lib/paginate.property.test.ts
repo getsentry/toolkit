@@ -147,7 +147,9 @@ describe.each(paginators)("property: paginate over $name", ({ make }) => {
         if (!result.nextCursor) {
           return;
         }
-        expect(result.nextCursor).toMatch(/^\d+:\d+:0+$/);
+        // is_prev must stay a Python int literal equal to 0: zeros joined by
+        // single underscores (PEP 515), which `Cursor.from_string` accepts.
+        expect(result.nextCursor).toMatch(/^\d+:\d+:0(?:_?0)*$/);
         const { data } = await fetchPage(perPage, result.nextCursor);
         const next = result.data.length;
         expect(data[0]).toBeLessThanOrEqual(next);

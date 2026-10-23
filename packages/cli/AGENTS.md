@@ -475,8 +475,12 @@ walk splits `--limit` evenly over the fewest requests (201 → 3 × 67).
 The cursors `paginate()` returns are Sentry cursors, so every CLI version and
 the API accept them, and stored `-c next` history works across upgrades and
 downgrades. When a call stops inside a page, the cursor points at that page
-and records how many of its rows were already returned as extra zeros in
-`is_prev` (`84:2:000` skips 2 rows; Sentry parses `is_prev` with `int()`).
+and records how many of its rows were already returned in `is_prev`, in
+binary with `_0` for 1 and `0` for 0 after a leading `0` (`84:2:0_00_000_00`
+skips 82 = `0b1010010` rows). Sentry parses `is_prev` with Python's `int()`,
+which reads any zeros joined by single underscores as 0, so it is still a
+next-page cursor. `encodeSkip()` in `src/lib/api/infrastructure.ts` documents
+the format.
 `paginate()` refetches the page and skips them; anything else that sends the
 cursor (with the page size it encodes, if any) gets those rows again, never
 fewer. Keep returned cursors valid Sentry
