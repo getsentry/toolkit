@@ -5,6 +5,11 @@
  * or metrics)
  */
 
+import {
+  FilterType,
+  parseSearch,
+  Token,
+} from "@sentry/toolkit-core/search-syntax";
 import type { SentryContext } from "../../context.js";
 import { paginate } from "../../lib/api/infrastructure.js";
 import type {
@@ -51,6 +56,7 @@ import {
   jsonTransformListResult,
   type ListResult,
 } from "../../lib/org-list.js";
+import { isGlobFilter } from "../../lib/list-filter.js";
 import { withProgress } from "../../lib/polling.js";
 import { resolveOrgOptionalFromArg } from "../../lib/resolve-target.js";
 import {
@@ -83,8 +89,6 @@ const VALID_TYPES: readonly TraceItemAttributeValueType[] = [
 type AttributeListFlags = {
   readonly dataset: TraceItemAttributeDataset;
   readonly type?: readonly string[];
-  readonly search?: string;
-  readonly with?: readonly string[];
   readonly period: TimeRange;
   readonly context: boolean;
   readonly limit: number;
@@ -94,41 +98,70 @@ type AttributeListFlags = {
   readonly fields?: string[];
 };
 
-/** Characters that cannot appear in an attribute key passed to `--with`. */
-const INVALID_WITH_KEY = /[\s"'()]/;
+/** A parsed filter argument. */
+type AttributeFilter = {
+  /** The `has:` terms, as Sentry's `query`: keys must co-occur with all of them */
+  query?: string;
+  /** The free text: Sentry matches it as a substring of attribute keys */
+  name?: string;
+};
 
 /**
- * Normalize repeated and/or comma-separated `--with` values into a
- * deduplicated list of attribute keys.
+ * Parse the filter with the shared search parser. `has:` terms go to Sentry
+ * as the `query` and free text as the `substringMatch`. The attributes
+ * endpoint only uses key names, so values and negation are not supported.
+ * OR is not supported.
+ *
+ * TODO: support globbing/fuzzy search
+ *
  * @internal Exported for testing
  */
-export function parseWithKeys(
-  values: readonly string[] | undefined,
-): string[] | undefined {
-  if (!values?.length) {
-    return;
+export function parseAttributeFilter(
+  filter: string | undefined,
+): AttributeFilter {
+  if (!filter?.trim()) {
+    return {};
   }
-  const keys = new Set<string>();
-  for (const key of values.flatMap(parseFieldsList)) {
-    if (INVALID_WITH_KEY.test(key)) {
+  const tokens = parseSearch(filter);
+  if (!tokens) {
+    throw new ValidationError(`Couldn't parse the filter "${filter}".`);
+  }
+  const hasTerms = new Set<string>();
+  const names: string[] = [];
+  for (const token of tokens) {
+    if (token.type === Token.SPACES) {
+      continue;
+    }
+    if (
+      token.type === Token.FILTER &&
+      token.filter === FilterType.HAS &&
+      !token.negated &&
+      token.value.text
+    ) {
+      hasTerms.add(token.text);
+    } else if (token.type === Token.FREE_TEXT) {
+      names.push(token.value.trim());
+    } else {
       throw new ValidationError(
-        `Invalid attribute key "${key}" for --with. Pass keys as listed by this command, e.g. gen_ai.request.model.`,
-        "with",
+        `Unsupported filter "${token.text.trim()}". The filter accepts a search term and/or has:<key> terms (no values, negation, or OR).`,
       );
     }
-    keys.add(key);
   }
-  return keys.size > 0 ? [...keys] : undefined;
-}
-
-/**
- * Build the API `query` for `--with`. The attributes endpoint only uses the
- * key names in its query (values are ignored) and returns keys that co-occur
- * with all of them, so `has:` filters state exactly what it does.
- * @internal Exported for testing
- */
-export function buildWithQuery(keys: readonly string[]): string {
-  return keys.map((key) => `has:${key}`).join(" ");
+  const name = names.join(" ") || undefined;
+  if (name && /\s/.test(name)) {
+    throw new ValidationError(
+      `The filter accepts a single search term, got "${name}".`,
+    );
+  }
+  if (name && isGlobFilter(name)) {
+    throw new ValidationError(
+      `Globs aren't supported in the filter ("${name}"). Use plain text.`,
+    );
+  }
+  return {
+    query: hasTerms.size > 0 ? [...hasTerms].join(" ") : undefined,
+    name,
+  };
 }
 
 /**
@@ -270,20 +303,15 @@ function pageHint(
   scope: string,
   flags: AttributeListFlags,
   types: readonly string[] | undefined,
-  withKeys: readonly string[] | undefined,
+  filter: string | undefined,
 ): string {
-  const parts = [`sentry attribute list ${scope} -c ${direction}`];
+  const filterArg = filter ? ` ${shellQuote(filter)}` : "";
+  const parts = [`sentry attribute list ${scope}${filterArg} -c ${direction}`];
   if (flags.dataset !== DEFAULT_DATASET) {
     parts.push(`--dataset ${datasetDisplayName(flags.dataset)}`);
   }
   if (types) {
     parts.push(`--type ${types.join(",")}`);
-  }
-  if (flags.search) {
-    parts.push(`--search ${shellQuote(flags.search)}`);
-  }
-  for (const key of withKeys ?? []) {
-    parts.push(`--with ${shellQuote(key)}`);
   }
   appendPeriodHint(parts, flags.period, LIST_PERIOD_FLAG.default);
   if (flags.limit !== LIST_DEFAULT_LIMIT) {
@@ -314,15 +342,60 @@ export const listCommand = buildListCommand("attribute", {
       "  sentry attribute list <org>/               # all projects in the organization\n" +
       "  sentry attribute list <org>/<project>      # one project\n" +
       "  sentry attribute list <project>            # find project across all orgs\n\n" +
-      "Examples:\n" +
-      "  sentry attribute list --dataset logs                       # Attributes on logs instead of spans\n" +
-      "  sentry attribute list --with gen_ai.request.model          # Attributes seen on spans with gen_ai.request.model\n" +
-      "  sentry attribute list --type string --search gen_ai        # Attributes containing gen_ai and are type string\n" +
-      "  sentry attribute list --period 24h                         # Get attributes that appeared in the last 24 hours\n" +
-      "  sentry attribute list --context                            # Display description and examples for each attribute\n" +
-      "  sentry attribute list my-org/ -c next                      # Next page of the previous listing\n" +
-      "  sentry attribute list --json --fields key,type             # Output in JSON format with specified fields\n\n" +
+      "Filter (space-separated terms in one argument):\n" +
+      "  <text>       Attribute keys containing <text> (case-sensitive)\n" +
+      "  has:<key>    Attributes seen on the same items as <key>\n\n" +
       "Alias: `sentry attributes` → `sentry attribute list`",
+    examples: [
+      {
+        description: "List span attribute keys for a project",
+        command: "sentry attribute list my-org/my-project",
+      },
+      {
+        description: "List log attribute keys across the whole organization",
+        command: "sentry attribute list my-org/ --dataset logs",
+      },
+      {
+        description:
+          "String attributes whose keys contain gen_ai (case-sensitive)",
+        command: "sentry attribute list my-org/ gen_ai --type string",
+      },
+      {
+        description: "Attributes seen on the same spans as an attribute",
+        command: "sentry attribute list my-org/ has:gen_ai.request.model",
+      },
+      {
+        description:
+          "Attributes seen alongside several keys (one quoted argument)",
+        command:
+          "sentry attribute list my-org/ 'has:gen_ai.request.model has:gen_ai.usage.input_tokens'",
+      },
+      {
+        description: "Text and has: filters together",
+        command: "sentry attribute list my-org/ 'gen_ai has:http.method'",
+      },
+      {
+        description: "Attributes seen in the last 24 hours",
+        command: "sentry attribute list my-org/ --period 24h",
+      },
+      {
+        description: "Show descriptions, example values, and deprecation info",
+        command: "sentry attribute list my-org/ --context",
+      },
+      {
+        description: "Show more than the default 25",
+        command: "sentry attribute list my-org/my-project -n 100",
+      },
+      {
+        description: "Show the next page of the previous listing (same flags)",
+        command: "sentry attribute list my-org/my-project -n 100 -c next",
+      },
+      {
+        description: "Select fields as JSON",
+        command:
+          "sentry attribute list my-org/ --json --fields key,type,source",
+      },
+    ],
   },
   output: {
     human: formatAttributeList,
@@ -330,7 +403,19 @@ export const listCommand = buildListCommand("attribute", {
       jsonTransformListResult(result, fields),
   },
   parameters: {
-    positional: LIST_TARGET_POSITIONAL,
+    positional: {
+      kind: "tuple",
+      parameters: [
+        ...LIST_TARGET_POSITIONAL.parameters,
+        {
+          placeholder: "filter",
+          brief:
+            "Text in attribute keys and/or has:<key> terms, e.g. 'gen_ai has:http.method'",
+          parse: String,
+          optional: true,
+        },
+      ],
+    },
     flags: {
       dataset: {
         kind: "parsed",
@@ -342,20 +427,6 @@ export const listCommand = buildListCommand("attribute", {
         kind: "parsed",
         parse: String,
         brief: `Find attributes of these types (${VALID_TYPES.join(", ")}; repeatable, comma-separated)`,
-        variadic: true,
-        optional: true,
-      },
-      search: {
-        kind: "parsed",
-        parse: String,
-        brief: "Find attribute keys containing this text (case-sensitive)",
-        optional: true,
-      },
-      with: {
-        kind: "parsed",
-        parse: String,
-        brief:
-          "Find attributes that appear on the same items as all of these keys (repeatable, comma-separated)",
         variadic: true,
         optional: true,
       },
@@ -376,26 +447,31 @@ export const listCommand = buildListCommand("attribute", {
       ...PERIOD_ALIASES,
       d: "dataset",
       n: "limit",
-      s: "search",
     },
   },
-  async *func(this: SentryContext, flags: AttributeListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: AttributeListFlags,
+    target?: string,
+    filter?: string,
+  ) {
     const types = parseAttributeTypes(flags.type);
-    const withKeys = parseWithKeys(flags.with);
+    const { query, name } = parseAttributeFilter(filter);
     const { org, project } = await resolveOrgOptionalFromArg(
       target,
       this.cwd,
       COMMAND_NAME,
     );
     const scope = project ? `${org}/${project}` : `${org}/`;
+    // Normalized filter, for the cursor's context key and page hints
+    const filterText = [name, query].filter(Boolean).join(" ") || undefined;
 
     // Sorted so each type keeps its position in the compound cursor
     const requestTypes = [...(types ?? VALID_TYPES)].sort();
     const contextKey = buildPaginationContextKey("attribute", scope, {
       dataset: flags.dataset,
       type: requestTypes.join(","),
-      search: flags.search,
-      with: withKeys?.join(","),
+      filter: filterText,
       period: serializeTimeRange(flags.period),
       limit: String(flags.limit),
     });
@@ -411,8 +487,8 @@ export const listCommand = buildListCommand("attribute", {
     const options = {
       dataset: flags.dataset,
       project: project ? [project] : undefined,
-      substringMatch: flags.search,
-      query: withKeys ? buildWithQuery(withKeys) : undefined,
+      substringMatch: name,
+      query,
       context: flags.context,
       ...timeRangeToApiParams(flags.period),
     };
@@ -435,13 +511,12 @@ export const listCommand = buildListCommand("attribute", {
         ).catch((error: unknown): never => {
           // A key Sentry can't parse is a user input mistake, not a CLI bug.
           if (
-            withKeys &&
+            query &&
             error instanceof ApiError &&
             isSearchQueryParseError(error)
           ) {
             throw new ValidationError(
-              `Sentry rejected --with ${withKeys.join(",")}${error.detail ? `: ${error.detail}` : ""}`,
-              "with",
+              `Sentry rejected the filter "${query}"${error.detail ? `: ${error.detail}` : ""}`,
             );
           }
           throw error;
@@ -473,20 +548,20 @@ export const listCommand = buildListCommand("attribute", {
     const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
     const hasMore = !!nextCursor;
 
-    const items = shown.map(toAttributeListItem);
     const datasetLabel = datasetDisplayName(flags.dataset);
     const plural = (n: number) => `attribute${n === 1 ? "" : "s"}`;
     const countText =
-      items.length > 0
-        ? `Showing ${items.length} ${datasetLabel} ${plural(items.length)} in ${scope}${hasMore ? "; more are available" : ""}.`
+      shown.length > 0
+        ? `Showing ${shown.length} ${datasetLabel} ${plural(shown.length)} in ${scope}${hasMore ? "; more are available" : ""}.`
         : undefined;
     const nav = paginationHint({
       hasPrev,
       hasMore,
-      prevHint: pageHint("prev", scope, flags, types, withKeys),
-      nextHint: pageHint("next", scope, flags, types, withKeys),
+      prevHint: pageHint("prev", scope, flags, types, filterText),
+      nextHint: pageHint("next", scope, flags, types, filterText),
     });
 
+    const items = shown.map(toAttributeListItem);
     const result: ListResult<AttributeListItem> = {
       items,
       hasMore,

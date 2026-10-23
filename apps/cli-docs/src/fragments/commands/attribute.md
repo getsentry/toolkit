@@ -1,35 +1,5 @@
 
 
-## Examples
-
-### List attributes
-
-```bash
-# List span attribute keys for a project
-sentry attribute list my-org/my-project
-
-# List log attribute keys across the whole organization
-sentry attribute list my-org/ --dataset logs
-
-# Find keys containing "gen_ai" that are also of type string
-sentry attribute list --search gen_ai --type string
-
-# Attributes seen on the same spans as the specified attribute
-sentry attribute list --with gen_ai.request.model
-
-# Show descriptions, example values, and deprecation info
-sentry attribute list --context
-
-# Show more than the default 25
-sentry attribute list my-org/my-project -n 100
-
-# Show the next page of the previous listing (same flags)
-sentry attribute list my-org/my-project -n 100 -c next
-
-# Select fields as JSON
-sentry attribute list --json --fields key,type,source
-```
-
 ## Using Attribute Keys
 
 Attributes are the typed key-value data attached to spans, logs, and metric samples. Their keys can be passed to other commands to filter, add columns, or group results:

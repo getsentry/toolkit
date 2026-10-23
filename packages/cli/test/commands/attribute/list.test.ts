@@ -9,11 +9,10 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   buildUsageTip,
-  buildWithQuery,
   compareAttributes,
   listCommand,
   parseAttributeTypes,
-  parseWithKeys,
+  parseAttributeFilter,
   selectAcrossTypes,
 } from "../../../src/commands/attribute/list.js";
 import {
@@ -129,10 +128,11 @@ type ListFunc = (
 async function run(
   flagOverrides: Record<string, unknown>,
   target?: string,
+  filter?: string,
 ): Promise<string> {
   const { context, stdoutWrite } = createMockContext();
   const func = (await listCommand.loader()) as unknown as ListFunc;
-  await func.call(context, flags(flagOverrides), target);
+  await func.call(context, flags(flagOverrides), target, filter);
   return stdoutWrite.mock.calls.map((c) => c[0]).join("");
 }
 
@@ -182,33 +182,47 @@ describe("parseAttributeTypes", () => {
   });
 });
 
-describe("parseWithKeys / buildWithQuery", () => {
-  test("accepts repeated and comma-separated keys, deduplicated", () => {
+describe("parseAttributeFilter", () => {
+  test("keeps has: terms (deduplicated, typed keys intact) as the query and free text as the name", () => {
     expect(
-      parseWithKeys(["gen_ai.request.model,http.method", " http.method "]),
-    ).toEqual(["gen_ai.request.model", "http.method"]);
+      parseAttributeFilter(
+        " has:gen_ai.request.model gen_ai has:tags[cart.total,number] has:gen_ai.request.model ",
+      ),
+    ).toEqual({
+      query: "has:gen_ai.request.model has:tags[cart.total,number]",
+      name: "gen_ai",
+    });
+    expect(parseAttributeFilter("http")).toEqual({ name: "http" });
   });
 
-  test("keeps typed tags[...] keys intact", () => {
-    expect(parseWithKeys(["tags[cart.total,number],http.method"])).toEqual([
-      "tags[cart.total,number]",
-      "http.method",
-    ]);
+  test("returns nothing without a filter", () => {
+    expect(parseAttributeFilter(undefined)).toEqual({});
+    expect(parseAttributeFilter("  ")).toEqual({});
   });
 
-  test("returns undefined when no keys are given", () => {
-    expect(parseWithKeys(undefined)).toBeUndefined();
-    expect(parseWithKeys([" , "])).toBeUndefined();
+  test("rejects values, negation, OR, and an empty has:", () => {
+    for (const bad of [
+      "span.op:db",
+      "!has:http.method",
+      "has:a OR has:b",
+      "has:",
+    ]) {
+      expect(() => parseAttributeFilter(bad)).toThrow(ValidationError);
+    }
   });
 
-  test("rejects keys that look like search syntax", () => {
-    expect(() => parseWithKeys(['span.op:"db"'])).toThrow(ValidationError);
-    expect(() => parseWithKeys(["span.op db"])).toThrow(ValidationError);
+  test("rejects globs, since Sentry matches the text literally", () => {
+    expect(() => parseAttributeFilter("gen_ai.*")).toThrow(
+      /Globs aren't supported/,
+    );
   });
 
-  test("builds has: filters for every key", () => {
-    expect(buildWithQuery(["gen_ai.request.model", "http.method"])).toBe(
-      "has:gen_ai.request.model has:http.method",
+  test("rejects more than one search term", () => {
+    expect(() => parseAttributeFilter("gen_ai http")).toThrow(
+      /single search term/,
+    );
+    expect(() => parseAttributeFilter("gen_ai has:x http")).toThrow(
+      /single search term/,
     );
   });
 });
@@ -319,7 +333,6 @@ describe("listCommand.func", () => {
       dataset: "spans",
       project: ["backend"],
       attributeTypes: ["string"],
-      substringMatch: undefined,
       query: undefined,
       context: false,
       perPage: 25,
@@ -347,7 +360,7 @@ describe("listCommand.func", () => {
     });
   });
 
-  test("passes dataset, types, search, --with, and limit through for an org-wide listing", async () => {
+  test("passes dataset, types, the has: filter, and limit through for an org-wide listing", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
     mockAttributes([]);
 
@@ -356,12 +369,11 @@ describe("listCommand.func", () => {
         json: true,
         dataset: "logs",
         type: ["string,boolean"],
-        search: "http",
-        with: ["gen_ai.request.model", "http.method"],
         period: parsePeriod("24h"),
         limit: 50,
       },
       "my-org/",
+      "has:gen_ai.request.model has:http.method",
     );
 
     expect(listSpy).toHaveBeenCalledTimes(2);
@@ -370,7 +382,6 @@ describe("listCommand.func", () => {
         dataset: "logs",
         project: undefined,
         attributeTypes: [type],
-        substringMatch: "http",
         query: "has:gen_ai.request.model has:http.method",
         context: false,
         perPage: 50,
@@ -416,7 +427,7 @@ describe("listCommand.func", () => {
     mockAttributes([HTTP_METHOD, attr("http.route"), attr("http.status")]);
 
     const output = await run(
-      { dataset: "logs", search: "http", type: ["string"], limit: 2 },
+      { dataset: "logs", type: ["string"], limit: 2 },
       "my-org/",
     );
 
@@ -427,7 +438,7 @@ describe("listCommand.func", () => {
       "Showing 2 logs attributes in my-org/; more are available.",
     );
     expect(output).toContain(
-      "Next: sentry attribute list my-org/ -c next --dataset logs --type string --search 'http' -n 2",
+      "Next: sentry attribute list my-org/ -c next --dataset logs --type string -n 2",
     );
   });
 
@@ -556,7 +567,7 @@ describe("listCommand.func", () => {
     expect(withContext).not.toContain(examples.at(-1));
   });
 
-  test("turns a Sentry query parse error into a --with validation error", async () => {
+  test("turns a Sentry query parse error into a filter validation error", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
     listSpy.mockRejectedValue(
       new ApiError(
@@ -566,9 +577,52 @@ describe("listCommand.func", () => {
       ),
     );
 
-    await expect(run({ with: ["bad]key"] }, "my-org/")).rejects.toThrow(
-      /Sentry rejected --with bad\]key/,
+    await expect(run({}, "my-org/", "has:bad]key")).rejects.toThrow(
+      /Sentry rejected the filter "has:bad\]key"/,
     );
+  });
+
+  test("rejects a value filter before calling the API", async () => {
+    await expect(run({}, "my-org/", "span.op:db")).rejects.toThrow(
+      ValidationError,
+    );
+    expect(listSpy).not.toHaveBeenCalled();
+  });
+
+  test("sends the name term as substringMatch and has: terms as the query", async () => {
+    resolveSpy.mockResolvedValue({ org: "my-org" });
+    mockAttributes([]);
+
+    await run({ json: true }, "my-org/", "has:http.method gen_ai");
+
+    expect(listSpy).toHaveBeenCalledWith(
+      "my-org",
+      expect.objectContaining({
+        substringMatch: "gen_ai",
+        query: "has:http.method",
+      }),
+    );
+  });
+
+  test("pages a filtered listing with -c next, repeating the filter in the hint", async () => {
+    resolveSpy.mockResolvedValue({ org: "my-org" });
+    mockAttributes([attr("gen_ai.a"), attr("gen_ai.b"), attr("gen_ai.c")]);
+
+    const output = await run({ limit: 2 }, "my-org/", "gen_ai has:http.method");
+    expect(output).toContain(
+      "Next: sentry attribute list my-org/ 'gen_ai has:http.method' -c next -n 2",
+    );
+
+    const next = JSON.parse(
+      await run(
+        { json: true, limit: 2, cursor: "next" },
+        "my-org/",
+        "gen_ai has:http.method",
+      ),
+    );
+    expect(next.data.map((a: { name: string }) => a.name)).toEqual([
+      "gen_ai.c",
+    ]);
   });
 
   test("rejects an invalid --type before calling the API", async () => {
