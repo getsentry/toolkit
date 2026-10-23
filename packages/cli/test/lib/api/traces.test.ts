@@ -115,28 +115,6 @@ describe("listTransactions", () => {
     expect(decodeURIComponent(capturedUrl)).toContain("is_transaction:true");
   });
 
-  test("uses the remaining item budget for the final page", async () => {
-    const { getCapturedUrls } = mockSequential([
-      {
-        body: { data: makeTxnRows(100), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeTxnRows(50), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
-        },
-      },
-    ]);
-
-    await listTransactions("my-org", "my-project", { limit: 150 });
-
-    expect(getCapturedUrls()[0]).toContain("per_page=100");
-    expect(getCapturedUrls()[1]).toContain("per_page=50");
-  });
-
   test("sends sort=-timestamp by default", async () => {
     mockOk({ data: [], meta: TX_META });
 
@@ -206,7 +184,7 @@ describe("listTransactions", () => {
         },
       },
       {
-        body: { data: makeTxnRows(50), meta: TX_META },
+        body: { data: makeTxnRows(100), meta: TX_META },
         headers: {
           Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
         },
@@ -214,36 +192,12 @@ describe("listTransactions", () => {
     ]);
 
     const result = await listTransactions("my-org", "my-project", {
-      limit: 150,
+      limit: 200,
     });
 
-    expect(result.data).toHaveLength(150);
+    expect(result.data).toHaveLength(200);
     expect(result.nextCursor).toBeUndefined();
     expect(getCapturedUrls()).toHaveLength(2);
-  });
-
-  test("trims results and drops nextCursor when overshoot", async () => {
-    mockSequential([
-      {
-        body: { data: makeTxnRows(100), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeTxnRows(100), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:200:0"`,
-        },
-      },
-    ]);
-
-    const result = await listTransactions("my-org", "my-project", {
-      limit: 120,
-    });
-
-    expect(result.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
   });
 
   test("single-page fast path for limit <= 100", async () => {
@@ -309,7 +263,7 @@ describe("listTransactions", () => {
       limit: 10,
     });
 
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false", async () => {
@@ -427,28 +381,6 @@ describe("listSpans", () => {
     expect(capturedUrl).toContain("dataset=spans");
   });
 
-  test("uses the remaining item budget for the final page", async () => {
-    const { getCapturedUrls } = mockSequential([
-      {
-        body: { data: makeSpanRows(100), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeSpanRows(50), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
-        },
-      },
-    ]);
-
-    await listSpans("my-org", "my-project", { limit: 150 });
-
-    expect(getCapturedUrls()[0]).toContain("per_page=100");
-    expect(getCapturedUrls()[1]).toContain("per_page=50");
-  });
-
   test("sends sort=-timestamp by default", async () => {
     mockOk({ data: [], meta: SPAN_META });
 
@@ -495,40 +427,18 @@ describe("listSpans", () => {
         },
       },
       {
-        body: { data: makeSpanRows(50), meta: SPAN_META },
+        body: { data: makeSpanRows(100), meta: SPAN_META },
         headers: {
           Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
         },
       },
     ]);
 
-    const result = await listSpans("my-org", "my-project", { limit: 150 });
+    const result = await listSpans("my-org", "my-project", { limit: 200 });
 
-    expect(result.data).toHaveLength(150);
+    expect(result.data).toHaveLength(200);
     expect(result.nextCursor).toBeUndefined();
     expect(getCapturedUrls()).toHaveLength(2);
-  });
-
-  test("trims results when overshoot", async () => {
-    mockSequential([
-      {
-        body: { data: makeSpanRows(100), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeSpanRows(100), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:200:0"`,
-        },
-      },
-    ]);
-
-    const result = await listSpans("my-org", "my-project", { limit: 120 });
-
-    expect(result.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
   });
 
   test("single-page fast path for limit <= 100", async () => {
@@ -639,7 +549,7 @@ describe("listSpans", () => {
 
     const result = await listSpans("my-org", "my-project", { limit: 10 });
 
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false", async () => {

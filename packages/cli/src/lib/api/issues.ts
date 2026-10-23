@@ -26,8 +26,8 @@ import {
   apiRequest,
   apiRequestToRegion,
   getOrgSdkConfig,
-  MAX_PAGINATION_PAGES,
   type PaginatedResponse,
+  paginate,
   unwrapPaginatedResult,
 } from "./infrastructure.js";
 
@@ -213,10 +213,8 @@ export type IssuesPage = {
  * Auto-paginate through issues up to the requested limit.
  *
  * The Sentry API caps `per_page` at {@link API_MAX_PER_PAGE} server-side. When the caller
- * requests more than that, this function transparently fetches multiple
- * pages using cursor-based pagination and returns the combined result.
- *
- * Safety-bounded by {@link MAX_PAGINATION_PAGES} to prevent runaway requests.
+ * requests more than that, {@link paginate} transparently fetches multiple
+ * pages and returns the combined result.
  *
  * @param orgSlug - Organization slug
  * @param projectSlug - Single-slug fallback used when `options.projects` is
@@ -255,45 +253,28 @@ export async function listIssuesAllPages(
     );
   }
 
-  const allResults: SentryIssue[] = [];
-  let cursor: string | undefined = options.startCursor;
-
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-    const remaining = options.limit - allResults.length;
-    const perPage = Math.min(remaining, API_MAX_PER_PAGE);
-    const response = await listIssuesPaginated(orgSlug, projectSlug, {
-      query: options.query,
-      cursor,
-      perPage,
-      sort: options.sort,
-      statsPeriod: options.statsPeriod,
-      start: options.start,
-      end: options.end,
-      projects: options.projects,
-      groupStatsPeriod: options.groupStatsPeriod,
-      collapse: options.collapse,
-    });
-
-    allResults.push(...response.data);
-    options.onPage?.(Math.min(allResults.length, options.limit), options.limit);
-
-    // Request only the remaining number of items on each page. A conforming
-    // API therefore reaches the limit exactly and its cursor remains usable.
-    // Keep the defensive overshoot branch for servers that ignore `limit`.
-    if (allResults.length >= options.limit || !response.nextCursor) {
-      if (allResults.length > options.limit) {
-        // The cursor resumes after the oversized page; exposing it would skip
-        // the trimmed items that the caller has not received.
-        return { issues: allResults.slice(0, options.limit) };
-      }
-      return { issues: allResults, nextCursor: response.nextCursor };
-    }
-
-    cursor = response.nextCursor;
-  }
-
-  // Safety limit reached — return what we have, no nextCursor
-  return { issues: allResults.slice(0, options.limit) };
+  let fetched = 0;
+  const { data: issues, nextCursor } = await paginate(
+    { limit: options.limit, cursor: options.startCursor },
+    async (perPage, cursor) => {
+      const response = await listIssuesPaginated(orgSlug, projectSlug, {
+        query: options.query,
+        cursor,
+        perPage,
+        sort: options.sort,
+        statsPeriod: options.statsPeriod,
+        start: options.start,
+        end: options.end,
+        projects: options.projects,
+        groupStatsPeriod: options.groupStatsPeriod,
+        collapse: options.collapse,
+      });
+      fetched += response.data.length;
+      options.onPage?.(Math.min(fetched, options.limit), options.limit);
+      return response;
+    },
+  );
+  return { issues, nextCursor };
 }
 
 /**

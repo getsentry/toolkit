@@ -1097,8 +1097,8 @@ describe("issue list: org-all mode (cursor pagination)", () => {
       cursor: "cached:cursor:789",
       direction: "next",
     });
-    listIssuesPaginatedMock.mockResolvedValue({
-      data: [sampleIssue],
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [sampleIssue],
       nextCursor: undefined,
     });
 
@@ -1121,10 +1121,10 @@ describe("issue list: org-all mode (cursor pagination)", () => {
       "my-org/",
     );
 
-    expect(listIssuesPaginatedMock).toHaveBeenCalledWith(
+    expect(listIssuesAllPagesMock).toHaveBeenCalledWith(
       "my-org",
       "",
-      expect.objectContaining({ cursor: "cached:cursor:789" }),
+      expect.objectContaining({ limit: 10, startCursor: "cached:cursor:789" }),
     );
   });
 
@@ -1165,8 +1165,8 @@ describe("issue list: org-all mode (cursor pagination)", () => {
       cursor: "explicit:cursor:val",
       direction: "next",
     });
-    listIssuesPaginatedMock.mockResolvedValue({
-      data: [sampleIssue],
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [sampleIssue],
       nextCursor: undefined,
     });
 
@@ -1189,10 +1189,13 @@ describe("issue list: org-all mode (cursor pagination)", () => {
       "my-org/",
     );
 
-    expect(listIssuesPaginatedMock).toHaveBeenCalledWith(
+    expect(listIssuesAllPagesMock).toHaveBeenCalledWith(
       "my-org",
       "",
-      expect.objectContaining({ cursor: "explicit:cursor:val" }),
+      expect.objectContaining({
+        limit: 10,
+        startCursor: "explicit:cursor:val",
+      }),
     );
   });
 });
@@ -1234,6 +1237,12 @@ describe("issue list: Phase 2 budget redistribution", () => {
   //     org-two: returns 1 issue, no cursor (exhausted)
   //   Surplus: 6 - 4 = 2, expandable = [org-one]
   //   Phase 2: fetch 2 more from org-one via cursor resume.
+
+  beforeEach(() => {
+    // Exercise the real pagination helpers, not overrides left by earlier tests.
+    listIssuesPaginatedMock.mockReset();
+    listIssuesAllPagesMock.mockReset();
+  });
 
   test("redistributes surplus to expandable targets", async () => {
     setOrgRegion("org-one", DEFAULT_SENTRY_URL);
@@ -2198,10 +2207,6 @@ describe("issue list: comma-separated project slugs", () => {
       ],
       nextCursor: "1735689600:0:1",
     });
-    listIssuesPaginatedMock.mockResolvedValue({
-      data: [],
-      nextCursor: undefined,
-    });
 
     await func.call(createContext().context, baseFlags, "test-org/web,api");
     await func.call(
@@ -2210,10 +2215,13 @@ describe("issue list: comma-separated project slugs", () => {
       "test-org/api,web",
     );
 
-    expect(listIssuesPaginatedMock).toHaveBeenCalledWith(
+    expect(listIssuesAllPagesMock).toHaveBeenLastCalledWith(
       "test-org",
       "",
-      expect.objectContaining({ cursor: "1735689600:0:1", projects: [2, 1] }),
+      expect.objectContaining({
+        startCursor: "1735689600:0:1",
+        projects: [2, 1],
+      }),
     );
   });
 

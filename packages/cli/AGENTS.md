@@ -451,24 +451,32 @@ that fits your use case):
 **Auto-pagination for large limits:**
 
 When `--limit` exceeds `API_MAX_PER_PAGE` (100), list commands MUST transparently
-fetch multiple pages to fill the requested limit. Cap `perPage` at
-`Math.min(flags.limit, API_MAX_PER_PAGE)` and loop until `results.length >= limit`
-or pages are exhausted. This matches the `listIssuesAllPages` pattern.
+fetch multiple pages to fill the requested limit. Always do this with
+`paginate()` from `src/lib/api/infrastructure.ts`; never write the cursor loop
+yourself. The `sentry-cli/no-manual-pagination` lint rule rejects loops that
+follow cursors and count toward a limit.
 
 ```typescript
-const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
-for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-  const { data, nextCursor } = await listPaginated(org, { perPage, cursor });
-  results.push(...data);
-  if (results.length >= flags.limit || !nextCursor) break;
-  cursor = nextCursor;
-}
+const { data, nextCursor } = await paginate(
+  { limit: flags.limit, cursor },
+  (perPage, pageCursor) =>
+    listPaginated(org, { perPage, cursor: pageCursor }),
+);
 ```
 
-Never pass a `per_page` value larger than `API_MAX_PER_PAGE` to the API — the
-server silently caps it, causing the command to return fewer items than requested.
+Pass `perPage` to the request unchanged. Sentry's page-number paginators
+(`OffsetPaginator`, used by projects, teams, members, repositories, and
+dashboard revisions) encode the page size in the cursor, so a cursor is only
+valid with the `per_page` that produced it. `paginate()` therefore returns
+opaque CLI cursors (`cli1~<perPage>~<skip>~<server cursor>`) that record the
+walk's page size and how many rows of the current page were already returned.
+A later `-c next` reuses that page size even when `--limit` changes, and
+resumes mid-page by refetching the page and skipping returned rows. Always
+pass these cursors back through `paginate()`; never send them to an API
+request directly. Test pagination changes against the paginator models in
+`test/lib/paginate.property.test.ts`.
 
-Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/list.ts`
+Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/revisions.ts`
 
 ### ID Validation
 

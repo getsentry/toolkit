@@ -1489,10 +1489,12 @@ describe("listTransactions", () => {
       return new Response(JSON.stringify({}), { status: 200 });
     };
 
-    const result = await listTransactions("my-org", "my-project");
+    const result = await listTransactions("my-org", "my-project", {
+      limit: 1,
+    });
     expect(Array.isArray(result.data)).toBe(true);
     expect(result.data).toHaveLength(1);
-    expect(result.nextCursor).toBe("1735689600:0:0");
+    expect(result.nextCursor).toContain("1735689600:0:0");
   });
 
   test("returns no nextCursor when link header has results=false", async () => {
