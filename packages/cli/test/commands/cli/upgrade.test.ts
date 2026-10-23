@@ -1137,6 +1137,22 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(getUndoBackup("0.50.0").version).toBe(CLI_VERSION);
   });
 
+  test("undo explains that Homebrew can't install the earlier version", async () => {
+    backupDatabase(getRawDatabase(), "0.50.0", CLI_VERSION);
+
+    const { context, getOutput, errors, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "brew"], context);
+
+    const output = getOutput() + errors.join("");
+    expect(output).toContain("Homebrew can't install an earlier version");
+    expect(output).toContain("sentry cli upgrade undo --method curl");
+    expect(spawnedArgs).toEqual([]);
+  });
+
   test("undo explains when there is nothing to undo", async () => {
     mockBinaryDownloadWithVersion("99.99.99");
 
