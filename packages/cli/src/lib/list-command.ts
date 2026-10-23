@@ -44,7 +44,7 @@ import {
   type ListResult,
   type OrgListConfig,
 } from "./org-list.js";
-import { rawPositional } from "./positional-parse.js";
+import { applyLazyPositionals, rawPositional } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
@@ -629,7 +629,9 @@ export function buildListCommand<
         args[0] = undefined;
       }
     }
-    return originalFunc.call(this, flags, ...(args as unknown as ARGS));
+    // A dropped lazy target becomes an omitted one (auto-detect)
+    const finalArgs = applyLazyPositionals(args, params.positional, this);
+    return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 
   return buildCommand({

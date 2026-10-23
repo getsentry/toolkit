@@ -9,7 +9,7 @@
  *
  * {@link parseOrgTarget} and {@link parseOrgProjectTarget} return their input
  * unchanged and only mark the kind. Parsers that also parse the value, such
- * as `parseOrgProjectPositional` in `arg-parsing.ts`, use the same tag.
+ * as those in `target-positional.ts`, use the same tag.
  */
 
 /** Completes organization slugs only (e.g. `org`, `org/version`, `org/id`). */

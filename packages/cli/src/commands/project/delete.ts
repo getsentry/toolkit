@@ -20,10 +20,6 @@
 
 import type { SentryContext } from "../../context.js";
 import {
-  type ParsedOrgProject,
-  parseOrgProjectPositional,
-} from "../../lib/arg-parsing.js";
-import {
   deleteProject,
   getOrganization,
   getProject,
@@ -44,11 +40,28 @@ import {
 } from "../../lib/mutate-command.js";
 import { resolveProjectBoundTarget } from "../../lib/resolve-target.js";
 import { buildProjectUrl } from "../../lib/sentry-web-urls.js";
+import {
+  orgProjectTarget,
+  type ProjectBoundTarget,
+} from "../../lib/target-positional.js";
 
 const log = logger.withTag("project.delete");
 
 /** Command name used in error messages and resolution hints */
 const COMMAND_NAME = "project delete";
+
+/**
+ * The project to delete. Blocks auto-detect for safety: destructive commands
+ * require an explicit target.
+ */
+const deleteTarget = orgProjectTarget(async (parsed, { cwd }) => {
+  requireExplicitTarget(
+    parsed,
+    "Project target",
+    `sentry ${COMMAND_NAME} <org>/<project>`,
+  );
+  return await resolveProjectBoundTarget(parsed, cwd, COMMAND_NAME);
+});
 
 /**
  * Build an actionable 403 error by checking the user's org role.
@@ -171,7 +184,7 @@ export const deleteCommand = buildDeleteCommand({
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search across orgs)",
-          parse: parseOrgProjectPositional,
+          parse: deleteTarget,
         },
       ],
     },
@@ -179,18 +192,9 @@ export const deleteCommand = buildDeleteCommand({
   async *func(
     this: SentryContext,
     flags: DeleteFlags,
-    parsed: ParsedOrgProject,
+    target: ProjectBoundTarget,
   ) {
-    const { cwd } = this;
-
-    // Block auto-detect for safety — destructive commands require explicit targets
-    requireExplicitTarget(
-      parsed,
-      "Project target",
-      `sentry ${COMMAND_NAME} <org>/<project>`,
-    );
-
-    const resolved = await resolveProjectBoundTarget(parsed, cwd, COMMAND_NAME);
+    const resolved = await target.resolved;
     const { org: orgSlug, project: projectSlug } = resolved;
 
     // Use already-fetched project data from project-search, or fetch for

@@ -710,10 +710,12 @@ export function buildCommand<
     ...positionalArgs: unknown[]
   ) {
     // Callers that skip Stricli's scanner (SDK invoke, tests) pass raw
-    // strings; give lazily parsed positionals the value Stricli would.
+    // strings, and omitted optional positionals are undefined; give lazily
+    // parsed positionals the value Stricli would.
     const args = applyLazyPositionals(
       positionalArgs,
       existingParams.positional,
+      this,
     );
 
     applyLoggingFlags(

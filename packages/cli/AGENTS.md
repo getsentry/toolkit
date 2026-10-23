@@ -239,25 +239,33 @@ const parsed = parseOrgProjectArg(targetArg);
 
 Reference: `span/list.ts`, `trace/view.ts`, `event/view.ts`
 
-**Parsed target positionals:** A single `[<org>/][<project>]` positional can
-use `parseOrgProjectPositional` from `src/lib/arg-parsing.ts`. `func` then
-takes a `ParsedOrgProject` (default an optional positional to
-`AUTO_DETECT_TARGET`) and never calls `parseOrgProjectArg` itself. The value
-parses on first property access (`lazyPositional` in
-`src/lib/positional-parse.ts`), so invalid input still throws the parser's
-`CliError` from inside `func`, after the auth guard, with its exit code. Use
-`rawPositional(value)` for what the user typed; it never parses.
-`buildCommand` runs these parsers on positionals that arrive as strings, so the
-SDK invoke path and tests that call `command.loader()` directly keep passing
-raw strings. Positionals whose meaning depends on how many arguments were
-given, such as `[<org>/<project>/]<trace-id>`, keep parsing in `func`.
+**Target positionals:** A single `[<org>/][<project>]` positional uses a
+parser from `src/lib/target-positional.ts`, which binds the resolver:
+`orgOptionalTarget(COMMAND_NAME)` (org, optional project),
+`projectBoundTarget(COMMAND_NAME)` (one org and project), or
+`orgProjectTarget(resolve)` for a command-specific resolver (see
+`project view` and `project delete`). `func` takes the matching type
+(`OrgOptionalTarget`, `ProjectBoundTarget`, `OrgProjectTarget<R>`), reads the
+parsed form as `target.type` / `target.org`, and gets the org and project with
+`await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
+itself, and an omitted target arrives as auto-detect.
+
+Both steps are lazy (`lazyPositional` in `src/lib/positional-parse.ts`): the
+parse runs on the first property read and the resolver on the first
+`resolved` read, both inside `func` after the auth guard. Invalid input still
+throws the parser's `CliError` with its exit code. Use `rawPositional(value)`
+for what the user typed; it never parses. `buildCommand` runs these parsers on
+positionals that arrive as strings or are omitted, so the SDK invoke path and
+tests that call `command.loader()` keep passing raw strings. Positionals whose
+meaning depends on how many arguments were given, such as
+`[<org>/<project>/]<trace-id>`, keep parsing in `func`.
 
 **Shell completion:** Target positionals that take an org or project use a
 completion-aware parser from `src/lib/completion-target.ts` instead of
 `String`: `parseOrgProjectTarget` completes `org/`, `org/project`, and project
 aliases; `parseOrgTarget` completes org slugs only. `LIST_TARGET_POSITIONAL`
 and `LIST_ORG_TARGET_POSITIONAL` already use them. A parser tagged with
-`withCompletionTarget`, such as `parseOrgProjectPositional`, completes the same
+`withCompletionTarget`, such as the `target-positional.ts` parsers, completes the same
 way.
 `pnpm run generate:completions` collects these into the gitignored
 `src/generated/completion-targets.json` that the `__complete` fast path reads.

@@ -7,10 +7,8 @@
  */
 
 import type { LogSortDirection } from "./api/logs.js";
-import { ORG_PROJECT_TARGET } from "./completion-target.js";
 import { ContextError, ValidationError, validationError } from "./errors.js";
 import { validateResourceId } from "./input-validation.js";
-import { lazyPositional } from "./positional-parse.js";
 
 import type { ParsedSentryUrl } from "./sentry-url-parser.js";
 import { applySentryUrlContext, parseSentryUrl } from "./sentry-url-parser.js";
@@ -962,23 +960,6 @@ export function parseOrgProjectArg(
 
   return parsed;
 }
-
-/** What an omitted `[<org>/][<project>]` positional means. */
-export const AUTO_DETECT_TARGET: ParsedOrgProject = Object.freeze({
-  type: ProjectSpecificationType.AutoDetect,
-});
-
-/**
- * Positional parser for `[<org>/][<project>]` targets. The command receives
- * a {@link ParsedOrgProject} that runs {@link parseOrgProjectArg} on first
- * property access (see `lazyPositional`), and the positional completes like
- * `parseOrgProjectTarget`. Use {@link AUTO_DETECT_TARGET} as the default for
- * an optional positional.
- */
-export const parseOrgProjectPositional = lazyPositional(
-  ORG_PROJECT_TARGET,
-  (raw): ParsedOrgProject => parseOrgProjectArg(raw),
-);
 
 /**
  * Parsed issue argument types - flattened for ergonomics.

@@ -10,12 +10,7 @@ import {
   getProject,
   listFeedback,
 } from "../../lib/api-client.js";
-import {
-  validateLimit,
-  AUTO_DETECT_TARGET,
-  type ParsedOrgProject,
-  parseOrgProjectPositional,
-} from "../../lib/arg-parsing.js";
+import { validateLimit } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -39,10 +34,13 @@ import { jsonTransformListResult } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type ResolvedOrgOptionalTarget,
-  resolveOrgOptionalTarget,
   toNumericId,
 } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
+import {
+  type OrgOptionalTarget,
+  orgOptionalTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   PERIOD_BRIEF,
@@ -163,7 +161,7 @@ export const listCommand = buildListCommand("feedback", {
         {
           placeholder: "org/project",
           brief: "<org>/, <org>/<project>, or <project> (search)",
-          parse: parseOrgProjectPositional,
+          parse: orgOptionalTarget(COMMAND_NAME),
           optional: true,
         },
       ],
@@ -203,13 +201,9 @@ export const listCommand = buildListCommand("feedback", {
   async *func(
     this: SentryContext,
     flags: ListFlags,
-    target: ParsedOrgProject = AUTO_DETECT_TARGET,
+    target: OrgOptionalTarget,
   ) {
-    const resolved = await resolveOrgOptionalTarget(
-      target,
-      this.cwd,
-      COMMAND_NAME,
-    );
+    const resolved = await target.resolved;
     const projectId = await projectIdFor(resolved);
     const contextKey = buildPaginationContextKey(
       "feedback",

@@ -1,17 +1,14 @@
 /**
- * Lazily parsed positionals (src/lib/positional-parse.ts).
+ * Lazily parsed and resolved target positionals (src/lib/positional-parse.ts,
+ * src/lib/target-positional.ts).
  *
  * Runs a test command through Stricli's `run()` so the positional parser,
  * the command wrapper, and exit-code handling are exercised together.
  */
 
 import { buildApplication, type CommandContext, run } from "@stricli/core";
-import { describe, expect, test } from "vitest";
-import {
-  AUTO_DETECT_TARGET,
-  type ParsedOrgProject,
-  parseOrgProjectPositional,
-} from "../../src/lib/arg-parsing.js";
+import { describe, expect, test, vi } from "vitest";
+import type { ParsedOrgProject } from "../../src/lib/arg-parsing.js";
 import { buildCommand } from "../../src/lib/command.js";
 import {
   getCompletionTarget,
@@ -20,22 +17,39 @@ import {
 import { EXIT, getExitCode, ValidationError } from "../../src/lib/errors.js";
 import { rawPositional } from "../../src/lib/positional-parse.js";
 import { buildRouteMap } from "../../src/lib/route-map.js";
+import {
+  type OrgProjectTarget,
+  orgProjectTarget,
+} from "../../src/lib/target-positional.js";
 
 type TestContext = CommandContext & {
+  cwd: string;
   process: { exitCode?: number };
   stdout: { write: (s: string) => boolean };
 };
 
-/** Run `test cmd ...args` with an org/project target positional. */
+/** Resolver that echoes the parsed target and the context's cwd. */
+const echoResolver = vi.fn(
+  async (parsed: ParsedOrgProject, { cwd }: { cwd: string }) => ({
+    parsed: { ...parsed },
+    cwd,
+  }),
+);
+
+const echoTarget = orgProjectTarget(echoResolver);
+
+type EchoTarget = OrgProjectTarget<Awaited<ReturnType<typeof echoResolver>>>;
+
+/** Run `test cmd ...args`, recording what `target.resolved` yields. */
 async function runWithTarget(args: string[]): Promise<{
-  parsed: ParsedOrgProject[];
+  resolved: unknown[];
   stderr: string;
   exitCode: number | undefined;
 }> {
-  const parsed: ParsedOrgProject[] = [];
+  const resolved: unknown[] = [];
   const command = buildCommand<
     Record<string, never>,
-    [ParsedOrgProject?],
+    [EchoTarget],
     TestContext
   >({
     docs: { brief: "Takes a target" },
@@ -47,16 +61,15 @@ async function runWithTarget(args: string[]): Promise<{
           {
             placeholder: "org/project",
             brief: "Target",
-            parse: parseOrgProjectPositional,
+            parse: echoTarget,
             optional: true,
           },
         ],
       },
     },
-    // oxlint-disable-next-line require-yield -- test command only records the parsed target
-    async *func(_flags, target = AUTO_DETECT_TARGET) {
-      // Copying reads every property, which runs the lazy parse
-      parsed.push({ ...target });
+    // oxlint-disable-next-line require-yield -- test command only records the resolved target
+    async *func(_flags, target) {
+      resolved.push(await target.resolved);
     },
   });
   const app = buildApplication(
@@ -66,6 +79,7 @@ async function runWithTarget(args: string[]): Promise<{
   let stderr = "";
   const stdout = { write: () => true };
   const context = {
+    cwd: "/work",
     process: {
       stdout,
       stderr: {
@@ -79,23 +93,30 @@ async function runWithTarget(args: string[]): Promise<{
     stdout,
   } as unknown as TestContext;
   await run(app, ["cmd", ...args], context);
-  return { parsed, stderr, exitCode: context.process.exitCode };
+  return { resolved, stderr, exitCode: context.process.exitCode };
 }
 
-describe("parseOrgProjectPositional", () => {
-  test("hands the command a parsed target", async () => {
-    const { parsed } = await runWithTarget(["acme/web"]);
-    expect(parsed).toEqual([{ type: "explicit", org: "acme", project: "web" }]);
+describe("orgProjectTarget", () => {
+  test("resolves the parsed target with the command context", async () => {
+    const { resolved } = await runWithTarget(["acme/web"]);
+    expect(resolved).toEqual([
+      {
+        parsed: { type: "explicit", org: "acme", project: "web" },
+        cwd: "/work",
+      },
+    ]);
   });
 
-  test("an omitted target means auto-detect", async () => {
-    const { parsed } = await runWithTarget([]);
-    expect(parsed).toEqual([{ type: "auto-detect" }]);
+  test("an omitted target resolves as auto-detect", async () => {
+    const { resolved } = await runWithTarget([]);
+    expect(resolved).toEqual([
+      { parsed: { type: "auto-detect" }, cwd: "/work" },
+    ]);
   });
 
   test("invalid input fails inside the command with the CliError exit code", async () => {
-    const { parsed, stderr, exitCode } = await runWithTarget(["@latest"]);
-    expect(parsed).toEqual([]);
+    const { resolved, stderr, exitCode } = await runWithTarget(["@latest"]);
+    expect(resolved).toEqual([]);
     expect(exitCode).toBe(EXIT.VALIDATION);
     expect(stderr).toContain("is an issue selector");
     // Not Stricli's argument-parse error, which would exit with -4.
@@ -103,40 +124,58 @@ describe("parseOrgProjectPositional", () => {
   });
 
   test("keeps completing org/project slugs", () => {
-    expect(getCompletionTarget(parseOrgProjectPositional)).toBe(
-      ORG_PROJECT_TARGET,
-    );
+    expect(getCompletionTarget(echoTarget)).toBe(ORG_PROJECT_TARGET);
   });
 });
 
-describe("lazy parsing", () => {
+describe("lazy parsing and resolution", () => {
+  const context = { cwd: "/work" };
+
   test("parses on first property access", () => {
-    const target = parseOrgProjectPositional("@latest");
+    const target = echoTarget.call(context, "@latest");
     expect(() => target.type).toThrow(ValidationError);
   });
 
-  test("reads like the parsed value", () => {
-    const target = parseOrgProjectPositional("acme/web");
+  test("rejects resolved with the parse error", async () => {
+    const target = echoTarget.call(context, "@latest");
+    await expect(target.resolved).rejects.toThrow(ValidationError);
+  });
+
+  test("reads like the parsed value, without the resolved getter", () => {
+    const target = echoTarget.call(context, "acme/web");
     expect(target).toEqual({ type: "explicit", org: "acme", project: "web" });
     expect({ ...target }).toEqual({
       type: "explicit",
       org: "acme",
       project: "web",
     });
-    expect("org" in target).toBe(true);
+    expect("resolved" in target).toBe(true);
+  });
+
+  test("resolves once, on first access of resolved", async () => {
+    echoResolver.mockClear();
+    const target = echoTarget.call(context, "acme/web");
+    expect(echoResolver).not.toHaveBeenCalled();
+    const first = target.resolved;
+    expect(target.resolved).toBe(first);
+    await first;
+    expect(echoResolver).toHaveBeenCalledTimes(1);
   });
 
   test("is not a thenable, so awaiting it does not parse", async () => {
     // Stricli awaits parser results; a parse here would fail in its scanner.
-    const target = parseOrgProjectPositional("@latest");
+    const target = echoTarget.call(context, "@latest");
     await expect(Promise.resolve(target)).resolves.toBe(target);
   });
 });
 
 describe("rawPositional", () => {
+  const context = { cwd: "/work" };
+
   test("returns what the user typed without parsing", () => {
-    expect(rawPositional(parseOrgProjectPositional("acme/"))).toBe("acme/");
-    expect(rawPositional(parseOrgProjectPositional("@latest"))).toBe("@latest");
+    expect(rawPositional(echoTarget.call(context, "acme/"))).toBe("acme/");
+    expect(rawPositional(echoTarget.call(context, "@latest"))).toBe("@latest");
+    expect(rawPositional(echoTarget.call(context, undefined))).toBeUndefined();
     expect(rawPositional("plain")).toBe("plain");
     expect(rawPositional(undefined)).toBeUndefined();
   });

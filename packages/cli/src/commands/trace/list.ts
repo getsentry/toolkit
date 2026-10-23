@@ -6,12 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listTransactions } from "../../lib/api-client.js";
-import {
-  validateLimit,
-  AUTO_DETECT_TARGET,
-  type ParsedOrgProject,
-  parseOrgProjectPositional,
-} from "../../lib/arg-parsing.js";
+import { validateLimit } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -34,11 +29,12 @@ import {
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
-import {
-  resolveLogProjectId,
-  resolveProjectBoundTarget,
-} from "../../lib/resolve-target.js";
+import { resolveLogProjectId } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
+import {
+  type ProjectBoundTarget,
+  projectBoundTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -229,7 +225,7 @@ export const listCommand = buildListCommand("trace", {
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search)",
-          parse: parseOrgProjectPositional,
+          parse: projectBoundTarget(COMMAND_NAME),
           optional: true,
         },
       ],
@@ -265,18 +261,13 @@ export const listCommand = buildListCommand("trace", {
   async *func(
     this: SentryContext,
     flags: ListFlags,
-    target: ParsedOrgProject = AUTO_DETECT_TARGET,
+    target: ProjectBoundTarget,
   ) {
-    const { cwd } = this;
     const timeRange = flags.period;
     const { query } = flags;
 
     // Resolve org/project from positional arg, config, or DSN auto-detection
-    const { org, project } = await resolveProjectBoundTarget(
-      target,
-      cwd,
-      COMMAND_NAME,
-    );
+    const { org, project } = await target.resolved;
     // Resolve slug → numeric ID so the Events query scopes via the `project`
     // param. `project:<slug>` only matches actively-selected projects and can
     // otherwise 400 with "not actively selected" (#1317).
