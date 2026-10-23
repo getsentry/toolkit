@@ -28,6 +28,7 @@ import { access, readFile, writeFile } from "node:fs/promises";
 import {
   formatCommandArguments,
   formatCommandExamples,
+  formatDestructiveNotice,
 } from "./generate-skill-markdown.js";
 import { stripAllowCommandMarkers } from "./fragment-commands.js";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
@@ -171,6 +172,11 @@ function generateCommandSection(cmd: CommandInfo): string {
   lines.push(`### \`${signature}\``);
   lines.push("");
   lines.push(cmd.brief);
+
+  const destructiveNotice = formatDestructiveNotice(cmd);
+  if (destructiveNotice) {
+    lines.push("", ":::caution[Destructive]", destructiveNotice, ":::");
+  }
 
   // Arguments table
   if (cmd.positionals.length > 0) {
