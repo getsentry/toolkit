@@ -259,6 +259,23 @@ describe("prepareDatabaseForDowngrade", () => {
     });
   });
 
+  test("keeps migrations the older CLI ran when run again", () => {
+    setAuthToken("active-token", 3600, "active-refresh", { host: HOST });
+    const db = getRawDatabase();
+    prepareDatabaseForDowngrade(db);
+    // An older CLI between schema 16 and this one migrates forward on setup.
+    db.query("UPDATE schema_version SET version = ?").run(
+      CURRENT_SCHEMA_VERSION - 1,
+    );
+
+    prepareDatabaseForDowngrade(db);
+
+    expect(storedVersion()).toBe(CURRENT_SCHEMA_VERSION - 1);
+    expect(db.query("SELECT token FROM auth").get()).toEqual({
+      token: "active-token",
+    });
+  });
+
   test("leaves an empty auth table when nobody is logged in", () => {
     const db = getRawDatabase();
 
