@@ -14,7 +14,8 @@
  * Safety measures:
  * - Uses `buildDeleteCommand` — auto-injects `--yes`/`--force`/`--dry-run`
  *   flags and enforces the non-interactive guard before `func()` runs
- * - No auto-detect mode: `requireExplicitTarget` blocks accidental deletion
+ * - No auto-detect mode: `buildDeleteCommand` marks the target destructive, so
+ *   `target.resolved` rejects an omitted target
  * - Type-out confirmation via `confirmByTyping` (unless --yes/--force)
  */
 
@@ -24,8 +25,6 @@ import {
   getOrganization,
   getProject,
 } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { getCachedOrgRole } from "../../lib/db/regions.js";
 import { ApiError } from "../../lib/errors.js";
 import {
@@ -38,15 +37,14 @@ import {
   buildDeleteCommand,
   confirmByTyping,
   isConfirmationBypassed,
-  requireExplicitTarget,
 } from "../../lib/mutate-command.js";
-import { resolveProjectBoundTarget } from "../../lib/resolve-target.js";
 import { buildProjectUrl } from "../../lib/sentry-web-urls.js";
+import {
+  type ProjectBoundTarget,
+  projectBoundTarget,
+} from "../../lib/target-positional.js";
 
 const log = logger.withTag("project.delete");
-
-/** Command name used in error messages and resolution hints */
-const COMMAND_NAME = "project delete";
 
 /**
  * Build an actionable 403 error by checking the user's org role.
@@ -169,23 +167,17 @@ export const deleteCommand = buildDeleteCommand({
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search across orgs)",
-          parse: parseOrgProjectTarget,
+          parse: projectBoundTarget,
         },
       ],
     },
   },
-  async *func(this: SentryContext, flags: DeleteFlags, target: string) {
-    const { cwd } = this;
-
-    // Block auto-detect for safety — destructive commands require explicit targets
-    const parsed = parseOrgProjectArg(target);
-    requireExplicitTarget(
-      parsed,
-      "Project target",
-      `sentry ${COMMAND_NAME} <org>/<project>`,
-    );
-
-    const resolved = await resolveProjectBoundTarget(parsed, cwd, COMMAND_NAME);
+  async *func(
+    this: SentryContext,
+    flags: DeleteFlags,
+    target: ProjectBoundTarget,
+  ) {
+    const resolved = await target.resolved;
     const { org: orgSlug, project: projectSlug } = resolved;
 
     // Use already-fetched project data from project-search, or fetch for

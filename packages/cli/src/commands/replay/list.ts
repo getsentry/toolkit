@@ -11,7 +11,6 @@ import {
   type ReplaySortValue,
 } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -45,8 +44,11 @@ import {
   getReplayUserLabel,
   parseReplayEnvironmentFilter,
 } from "../../lib/replay-search.js";
-import { resolveOrgOptionalFromArg } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
+import {
+  type OrgOptionalTarget,
+  orgOptionalTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -93,7 +95,6 @@ const SORT_MAP: Record<ReplaySortKey, ReplaySortValue> = {
 const DEFAULT_PERIOD = LIST_PERIOD_FLAG.default;
 const DEFAULT_SORT: ReplaySortValue = SORT_MAP.date;
 const PAGINATION_KEY = "replay-list";
-const COMMAND_NAME = "replay list";
 
 function parseLimit(value: string): number {
   return validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT);
@@ -281,7 +282,7 @@ export const listCommand = buildListCommand("replay", {
         {
           placeholder: "org/project",
           brief: "<org>/, <org>/<project>, or <project> (search)",
-          parse: parseOrgProjectTarget,
+          parse: orgOptionalTarget,
           optional: true,
         },
       ],
@@ -323,13 +324,16 @@ export const listCommand = buildListCommand("replay", {
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
-    const { cwd } = this;
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: OrgOptionalTarget,
+  ) {
     const timeRange = flags.period;
     const environment = parseReplayEnvironmentFilter(flags.environment);
     const { query } = flags;
 
-    const resolved = await resolveOrgOptionalFromArg(target, cwd, COMMAND_NAME);
+    const resolved = await target.resolved;
 
     const contextKey = buildPaginationContextKey(
       "replay",
