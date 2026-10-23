@@ -47,6 +47,17 @@ After switching, bare `sentry cli upgrade` will continue tracking that channel.
 | `stable` | Latest stable release (default) |
 | `nightly` | Built from `main`, updated on every commit |
 
+### Undo an upgrade
+
+```bash
+# Return to the version before the last `sentry cli upgrade`
+sentry cli upgrade undo
+```
+
+Before switching versions, `sentry cli upgrade` saves a copy of the local database for the version it replaces, in `backups/` under the config directory. `sentry cli upgrade undo` reinstalls that version and restores its database. The logins you have now are kept when that version stores them the same way; otherwise the command says so, and you may need to run `sentry auth login`. Other changes since the upgrade, such as defaults, are undone.
+
+One backup is kept per version, up to the five most recent. They contain your credentials, so only your user can read them. Undo only covers version changes made with `sentry cli upgrade`, not ones made through npm or Homebrew directly.
+
 ### Installation Detection
 
 The CLI detects how it was installed and uses the appropriate upgrade method:
