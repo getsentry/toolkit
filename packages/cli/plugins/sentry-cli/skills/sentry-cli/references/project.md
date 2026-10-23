@@ -42,6 +42,8 @@ sentry project create my-app:go --json
 
 Delete a project
 
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`

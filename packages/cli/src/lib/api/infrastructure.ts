@@ -25,12 +25,7 @@ import {
   isEnvTokenActive,
 } from "../db/auth.js";
 import { getEnv } from "../env.js";
-import {
-  ApiError,
-  AuthError,
-  stringifyUnknown,
-  ValidationError,
-} from "../errors.js";
+import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -482,8 +477,24 @@ export async function autoPaginate<T>(
   return { data: allRows.slice(0, limit) };
 }
 
-/** Marks cursors produced by {@link paginate}; Sentry cursors never use it. */
-const PAGE_CURSOR_PREFIX = "cli1~";
+/**
+ * A Sentry next-page cursor, `<value>:<offset>:<is_prev>`, split before
+ * `is_prev`, which may carry a skip count ({@link encodeSkip}).
+ */
+const NEXT_CURSOR_RE = /^(.*:\d+):(0(?:_?0)*)$/;
+
+/** Resumes at the first row for every paginator the CLI uses. */
+const FIRST_PAGE_CURSOR = "0:0:0";
+
+/** `OffsetPaginator` cursors are `<per_page>:<page>:<is_prev>`. */
+const PAGE_NUMBER_CURSOR_RE = /^(\d+):\d+:[01]$/;
+
+/**
+ * Prefix of `cli1~<perPage>~<skip>~<server cursor>` cursors, which nightly
+ * builds returned. Read so their saved history still resumes; never written,
+ * because older CLIs send cursors to the API unchanged.
+ */
+const CLI_CURSOR_PREFIX = "cli1~";
 
 /**
  * Where a {@link paginate} walk resumes: the server cursor that fetches the
@@ -496,22 +507,73 @@ type PagePosition = {
   skip: number;
 };
 
-function encodePageCursor({ cursor, perPage, skip }: PagePosition): string {
-  return `${PAGE_CURSOR_PREFIX}${perPage}~${skip}~${cursor ?? ""}`;
+/**
+ * Write how many rows of a page were already returned into a cursor's
+ * `is_prev` field, so the cursor stays a valid Sentry cursor.
+ *
+ * Sentry parses `is_prev` with Python's `int()` (`Cursor.from_string` in
+ * `src/sentry/utils/cursors.py`). `int()` ignores leading zeros and allows a
+ * single `_` between digits (PEP 515), so any string of `0`s joined by
+ * single `_`s is 0: "next page". The skip count is written in binary in that
+ * alphabet: a leading `0`, then `_0` for each 1 bit and `0` for each 0 bit,
+ * most significant first. 82 is `1010010`, so `0` + `_0 0 _0 0 0 _0 0`
+ * gives `0_00_000_00`.
+ *
+ * The API and older CLIs read the cursor as the page's own cursor and return
+ * the page from its first row; {@link decodeSkip} recovers the count.
+ *
+ * @param skip - Rows of the page already returned; must be at least 1
+ */
+function encodeSkip(skip: number): string {
+  return `0${skip.toString(2).replaceAll("1", "_0")}`;
+}
+
+/** Read the skip count {@link encodeSkip} wrote; plain `0` is no skip. */
+function decodeSkip(isPrev: string): number {
+  return Number.parseInt(isPrev.slice(1).replaceAll("_0", "1"), 2) || 0;
 }
 
 /**
- * Decode a cursor from {@link paginate}, or treat anything else as a raw
- * server cursor (older stored cursors, or one pasted from an API response).
+ * Encode where a walk resumes as a Sentry cursor. A server cursor that is not
+ * a Sentry next-page cursor cannot carry the skip, so it is returned as is and
+ * resuming returns that page's rows again rather than missing any.
+ */
+function encodePageCursor(cursor: string | undefined, skip: number): string {
+  const server = cursor ?? FIRST_PAGE_CURSOR;
+  const next = skip > 0 ? NEXT_CURSOR_RE.exec(server) : null;
+  return next ? `${next[1]}:${encodeSkip(skip)}` : server;
+}
+
+/**
+ * Decode a cursor from {@link paginate}, an older CLI, or an API response.
+ *
+ * A damaged `cli1~` cursor is ignored with a warning and the walk starts from
+ * the first page, so it never fails a command or reaches the API.
  */
 function decodePageCursor(
   raw: string | undefined,
 ): Partial<PagePosition> & { cursor: string | undefined } {
-  if (!raw?.startsWith(PAGE_CURSOR_PREFIX)) {
-    return { cursor: raw };
+  if (!raw) {
+    return { cursor: undefined };
   }
+  if (raw.startsWith(CLI_CURSOR_PREFIX)) {
+    return decodeCliCursor(raw);
+  }
+  const next = NEXT_CURSOR_RE.exec(raw);
+  const cursor = next ? `${next[1]}:0` : raw;
+  const position = {
+    cursor: cursor === FIRST_PAGE_CURSOR ? undefined : cursor,
+    skip: next?.[2] ? decodeSkip(next[2]) : 0,
+  };
+  const perPage = serverCursorPageSize(cursor);
+  return perPage === undefined ? position : { ...position, perPage };
+}
+
+function decodeCliCursor(
+  raw: string,
+): Partial<PagePosition> & { cursor: string | undefined } {
   const [perPage, skip, ...server] = raw
-    .slice(PAGE_CURSOR_PREFIX.length)
+    .slice(CLI_CURSOR_PREFIX.length)
     .split("~");
   const position = {
     perPage: Number(perPage),
@@ -519,15 +581,45 @@ function decodePageCursor(
     cursor: server.join("~") || undefined,
   };
   if (
-    !Number.isInteger(position.perPage) ||
-    position.perPage < 1 ||
-    position.perPage > API_MAX_PER_PAGE ||
-    !Number.isInteger(position.skip) ||
-    position.skip < 0
+    Number.isInteger(position.perPage) &&
+    position.perPage >= 1 &&
+    position.perPage <= API_MAX_PER_PAGE &&
+    Number.isInteger(position.skip) &&
+    position.skip >= 0
   ) {
-    throw new ValidationError(`Invalid pagination cursor '${raw}'.`, "cursor");
+    return position;
   }
-  return position;
+  logger.warn(
+    "Ignoring an unreadable pagination cursor; starting from the first page.",
+  );
+  return { cursor: undefined };
+}
+
+/**
+ * Page size a server cursor must be resumed with, if it carries one.
+ *
+ * `OffsetPaginator` cursors are only valid with the page size that produced
+ * them. Other paginators put an offset of 0 or a sort value there; a sort
+ * value that happens to be in range only changes the page size, which they
+ * tolerate.
+ */
+function serverCursorPageSize(cursor: string): number | undefined {
+  const value = Number(PAGE_NUMBER_CURSOR_RE.exec(cursor)?.[1]);
+  return Number.isInteger(value) && value >= 1 && value <= API_MAX_PER_PAGE
+    ? value
+    : undefined;
+}
+
+/**
+ * Page size for a walk that starts fresh: the fewest requests that can hold
+ * `limit` rows, split as evenly as possible so the last request is not a
+ * full page for a few rows (201 rows → 3 pages of 67, not 100 + 100 + 100).
+ */
+function pageSizeForLimit(limit: number): number {
+  if (limit <= API_MAX_PER_PAGE) {
+    return Math.max(1, limit);
+  }
+  return Math.ceil(limit / Math.ceil(limit / API_MAX_PER_PAGE));
 }
 
 /**
@@ -537,20 +629,23 @@ function decodePageCursor(
  * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops. It
  * owns the decisions those loops kept getting wrong (#1458, #1608):
  *
- * - Every request of a walk, including later `-c next` calls with a different
- *   `--limit`, uses the `per_page` of its first request. Sentry's page-number
- *   paginators (`OffsetPaginator`, used by projects, teams, members,
- *   repositories, and dashboard revisions) put the page size in the cursor
- *   (`<per_page>:<page>:<is_prev>`), and pairing it with another `per_page`
- *   reads the wrong window and silently skips rows.
+ * - A fresh walk splits `limit` evenly over the fewest requests
+ *   ({@link pageSizeForLimit}). Resuming a page-number cursor
+ *   (`OffsetPaginator`, used by projects, teams, members, repositories, and
+ *   dashboard revisions) reuses the page size the cursor encodes
+ *   (`<per_page>:<page>:<is_prev>`), whatever the new `limit`: pairing it with
+ *   another `per_page` reads the wrong window and silently skips rows.
  * - The returned cursor always resumes at the first row the caller has not
  *   received. When a call stops inside a page (a smaller `--limit`, or a
  *   server that ignored `per_page`), the cursor refetches that page and skips
  *   the rows already returned.
  *
- * Returned cursors are opaque CLI cursors; pass them back through this
- * function, never directly to an API request. Raw server cursors are accepted
- * as a starting point.
+ * Returned cursors are Sentry cursors, so older CLI versions and the API
+ * accept them too; mid-page cursors record the rows to skip in `is_prev`
+ * ({@link encodeSkip}), which a caller that does not know about them sees
+ * again rather than misses (given the page size a page-number
+ * cursor encodes). Pass cursors back through this function
+ * to resume exactly. Raw server cursors are accepted as a starting point.
  *
  * Callers own region resolution and query building inside `fetchPage`, and
  * must send `perPage` as the request's `per_page` unchanged.
@@ -570,10 +665,10 @@ export async function paginate<T>(
 ): Promise<PaginatedResponse<T[]>> {
   const limit = options.limit ?? defaultLimit;
   const start = decodePageCursor(options.cursor);
-  const perPage =
-    start.perPage ?? Math.max(1, Math.min(limit, API_MAX_PER_PAGE));
   let cursor = start.cursor;
   let skip = start.skip ?? 0;
+  // Cursors without a page size accept any, so fetch the skipped rows too.
+  const perPage = start.perPage ?? pageSizeForLimit(limit + skip);
   const rows: T[] = [];
 
   for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
@@ -585,11 +680,7 @@ export async function paginate<T>(
       rows.push(...unseen.slice(0, remaining));
       return {
         data: rows,
-        nextCursor: encodePageCursor({
-          cursor,
-          perPage,
-          skip: skip + remaining,
-        }),
+        nextCursor: encodePageCursor(cursor, skip + remaining),
       };
     }
     rows.push(...unseen);
@@ -597,7 +688,8 @@ export async function paginate<T>(
       return { data: rows };
     }
     cursor = nextCursor;
-    skip = 0;
+    // A resumed walk can fetch pages smaller than the rows it must skip.
+    skip = Math.max(0, skip - data.length);
     if (rows.length === limit) {
       break;
     }
@@ -611,7 +703,7 @@ export async function paginate<T>(
   }
   return {
     data: rows,
-    nextCursor: encodePageCursor({ cursor, perPage, skip: 0 }),
+    nextCursor: encodePageCursor(cursor, skip),
   };
 }
 

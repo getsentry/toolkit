@@ -192,6 +192,8 @@ sentry dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 
 
 Delete a widget from a dashboard
 
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
 **Flags:**
 - `-i, --index <value> - Widget index (0-based)`
 - `-t, --title <value> - Widget title to match`

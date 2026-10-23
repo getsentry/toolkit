@@ -81,6 +81,8 @@ sentry alert issues create my-org/my-project --name 'High Priority' --condition 
 
 Delete an issue alert rule
 
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
@@ -198,6 +200,8 @@ sentry alert metrics create my-org/ --name 'AI chat failures' --project my-proje
 ### `sentry alert metrics delete <org/rule-id-or-name>`
 
 Delete a metric alert rule
+
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
 
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`

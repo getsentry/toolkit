@@ -32,8 +32,8 @@ import {
 import { applyCustomHeaders } from "./custom-headers.js";
 import {
   type CredentialContext,
-  DEFAULT_TOKEN_LIFETIME_MS,
   getCredentialContext,
+  getRemainingLifetimeRatio,
   REFRESH_THRESHOLD,
   refreshToken,
 } from "./db/auth.js";
@@ -631,19 +631,14 @@ async function fetchWithRetry({
   validatedRedirects,
   responseBodyMode,
 }: RetryContext): Promise<Response> {
-  const issuedAt =
-    credential.issuedAt ??
-    (credential.expiresAt
-      ? credential.expiresAt - DEFAULT_TOKEN_LIFETIME_MS
-      : undefined);
   const shouldRefresh = Boolean(
     credential.refreshable &&
     credential.expiresAt &&
-    (Date.now() >= credential.expiresAt ||
-      (issuedAt &&
-        (credential.expiresAt - Date.now()) /
-          (credential.expiresAt - issuedAt) <=
-          REFRESH_THRESHOLD)),
+    getRemainingLifetimeRatio(
+      credential.expiresAt,
+      credential.issuedAt,
+      Date.now(),
+    ) <= REFRESH_THRESHOLD,
   );
   const refreshed = shouldRefresh
     ? await refreshToken({ expectedCredential: credential })

@@ -75,6 +75,26 @@ export const REFRESH_THRESHOLD = 0.1;
 export const DEFAULT_TOKEN_LIFETIME_MS = 3600 * 1000;
 
 /**
+ * Fraction of a token's lifetime that remains at `now`.
+ *
+ * Uses {@link DEFAULT_TOKEN_LIFETIME_MS} when `issuedAt` is missing or not
+ * before `expiresAt`. A corrupt row with `issued_at >= expires_at` would
+ * otherwise divide by zero or flip the sign, and an `Infinity` ratio skips
+ * proactive refresh.
+ */
+export function getRemainingLifetimeRatio(
+  expiresAt: number,
+  issuedAt: number | null | undefined,
+  now: number,
+): number {
+  const storedLifetime =
+    issuedAt === null || issuedAt === undefined ? 0 : expiresAt - issuedAt;
+  const totalLifetime =
+    storedLifetime > 0 ? storedLifetime : DEFAULT_TOKEN_LIFETIME_MS;
+  return (expiresAt - now) / totalLifetime;
+}
+
+/**
  * The active account row. `host` is NULL only for rows migrated from the
  * pre-v16 `auth` table; `migrateNullHost` backfills it on access.
  */
@@ -1679,10 +1699,12 @@ export async function refreshToken(
     return { ...baseResult, token: row.token, refreshed: false };
   }
 
-  const issuedAt = row.issued_at ?? expiresAt - DEFAULT_TOKEN_LIFETIME_MS;
-  const totalLifetime = expiresAt - issuedAt;
   const remainingLifetime = expiresAt - now;
-  const remainingRatio = remainingLifetime / totalLifetime;
+  const remainingRatio = getRemainingLifetimeRatio(
+    expiresAt,
+    row.issued_at,
+    now,
+  );
   const expiresIn = Math.max(0, Math.floor(remainingLifetime / 1000));
 
   if (!force && remainingRatio > REFRESH_THRESHOLD && now < expiresAt) {
