@@ -12,13 +12,9 @@
  * or fatal error patterns in stderr indicate failure.
  */
 
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { resolve } from "node:path";
-import {
-  addBreadcrumb,
-  captureException,
-  setTag,
-} from "@sentry/node-core/light";
+import { captureException } from "@sentry/node-core/light";
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { BUFFER_SIZE, shutdownServer } from "../../commands/local/run.js";
 import { buildApp, tryListen } from "../../commands/local/server.js";
@@ -26,6 +22,13 @@ import { detectDevCommand } from "../dev-script.js";
 import { logger } from "../logger.js";
 import type { WorkflowRunResult } from "./types.js";
 import type { WizardUI } from "./ui/types.js";
+import { type DoctorOutcomeKind, verifyWithDoctor } from "./verify-doctor.js";
+import { signalDirectChild, terminateProcessTree } from "./verify-process.js";
+import { resolveVerifyStrategy } from "./verify-strategy.js";
+import {
+  recordVerificationSkipped,
+  scrubOutputLine,
+} from "./verify-telemetry.js";
 
 /** Verification timeout in seconds. */
 const VERIFY_TIMEOUT_S = 15;
@@ -38,9 +41,6 @@ const PROCESS_FORCE_SHUTDOWN_MS = 1000;
 
 /** Poll interval while waiting for a verification process tree to exit. */
 const PROCESS_EXIT_POLL_MS = 50;
-
-/** Maximum time for a Windows taskkill invocation to complete. */
-const WINDOWS_TREE_KILL_TIMEOUT_MS = 1000;
 
 /**
  * Patterns in stderr/stdout that indicate a fatal startup failure.
@@ -62,23 +62,6 @@ const FATAL_ERROR_PATTERNS = [
 
 /** Maximum number of output lines to keep for error reporting. */
 const MAX_OUTPUT_LINES = 50;
-
-/** Absolute-path pattern — scrub user-specific directory paths from telemetry. */
-const ABS_PATH_RE = /(?:\/[\w.@-]+){2,}/g;
-
-/** Key=value pattern for redaction (env vars and --flag=value args). */
-const KEY_VALUE_RE = /(?:--?)?[A-Za-z_][\w-]*=\S+/g;
-
-/** URI userinfo (user:password@ or :password@) pattern for redaction. */
-const URI_USERINFO_RE = /\/\/[^@/\s]*:[^@/\s]+@/g;
-
-/** Strip absolute paths, env-var values, and URI credentials from output. */
-function scrubOutputLine(line: string): string {
-  return line
-    .replace(URI_USERINFO_RE, "//[REDACTED]@")
-    .replace(KEY_VALUE_RE, (m) => `${m.split("=")[0]}=[REDACTED]`)
-    .replace(ABS_PATH_RE, "[PATH]");
-}
 
 /** Newline splitter — hoisted to top level per lint rule. */
 const NEWLINE_RE = /\r?\n/;
@@ -203,65 +186,6 @@ function buildVerifyEnv(
   return env;
 }
 
-/** Signal the POSIX process group or force-terminate the Windows process tree. */
-function terminateProcessTree(
-  child: ChildProcess,
-  signal: NodeJS.Signals,
-): boolean {
-  const pid = child.pid;
-  if (pid === undefined) {
-    return false;
-  }
-
-  try {
-    if (process.platform === "win32") {
-      // Verification children are disposable. Force the complete tree in one
-      // bounded call because Windows cannot reliably reproduce POSIX process-
-      // group signaling or discover descendants after their parent exits.
-      const args = ["/PID", String(pid), "/T", "/F"];
-      const taskkill = spawnSync("taskkill", args, {
-        stdio: "ignore",
-        timeout: WINDOWS_TREE_KILL_TIMEOUT_MS,
-        windowsHide: true,
-      });
-      if (taskkill.error) {
-        logger.debug(
-          `Failed to terminate Windows verification process tree while handling ${signal}`,
-          taskkill.error,
-        );
-        return false;
-      }
-      if (taskkill.status !== 0) {
-        logger.debug(
-          `taskkill exited with status ${taskkill.status} while handling ${signal} for the verification process tree`,
-        );
-        return false;
-      }
-      return true;
-    }
-    // Verification children are spawned detached on POSIX, making their PID
-    // the process-group ID. A negative PID signals the whole group, including
-    // shell pipelines, concurrently tasks, and framework watchers.
-    process.kill(-pid, signal);
-    return true;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "ESRCH") {
-      logger.debug(`Failed to signal verification process tree with ${signal}`);
-    }
-    return false;
-  }
-}
-
-/** Fall back to signaling only the direct child process. */
-function signalDirectChild(child: ChildProcess, signal: NodeJS.Signals): void {
-  try {
-    child.kill(signal);
-  } catch {
-    logger.debug(`Verification child exited before receiving ${signal}`);
-  }
-}
-
 /** Check whether the POSIX verification process group is still alive. */
 function isPosixProcessGroupAlive(child: ChildProcess): boolean {
   const pid = child.pid;
@@ -324,21 +248,6 @@ async function cleanupProcessTree(child: ChildProcess): Promise<void> {
   }
 }
 
-type VerificationSkipReason = "no_dev_command" | "server_bind" | "spawn_failed";
-
-/**
- * Expected verification skips are not failures. Emitting them with
- * `captureException` produced ERROR events on healthy completed runs.
- */
-function recordVerificationSkipped(reason: VerificationSkipReason): void {
-  addBreadcrumb({
-    category: "wizard.verify",
-    level: "info",
-    message: `skipped:${reason}`,
-  });
-  setTag("wizard.verify", "skipped");
-}
-
 /**
  * Outcome of {@link verifySetup}, surfaced to the completion screen so it can
  * celebrate a received event (and deep-link it) instead of only telling the
@@ -346,24 +255,44 @@ function recordVerificationSkipped(reason: VerificationSkipReason): void {
  */
 export type VerifyResult = {
   /** True when the SDK delivered an envelope to the local sidecar — the
-   * strongest signal that events are actually flowing to Sentry. */
+   * strongest signal that events are actually flowing to Sentry. A passing
+   * platform doctor does not prove events flow, so it stays false. */
   verified: boolean;
   /** Outcome detail, for callers that want more than the boolean. */
-  kind: VerifyOutcome["kind"] | "skipped";
+  kind: VerifyOutcome["kind"] | DoctorOutcomeKind | "skipped";
   /** event_id of the first intercepted event, when one could be parsed.
    * Only set when {@link verified} is true. */
   eventId?: string;
 };
 
 /**
- * Run the dev server, spawn the child process, and verify that the Sentry
- * SDK is working or at minimum that the app starts without errors.
+ * Verify the post-init setup.
+ *
+ * Embedded frameworks (Flutter, Expo) cannot start a short-lived dev server,
+ * so they run their platform doctor command instead. Everything else uses the
+ * Spotlight-backed local verification path.
  *
  * Called before `formatResult` in the wizard success path. On failure this
  * logs a warning and reports to Sentry telemetry — it does NOT throw, since
  * the init itself succeeded and the user should not be blocked.
  */
 export async function verifySetup(
+  result: WorkflowRunResult,
+  ui: WizardUI,
+  cwd: string,
+): Promise<VerifyResult> {
+  const strategy = await resolveVerifyStrategy(result.result?.platform, cwd);
+  if (strategy.kind === "doctor") {
+    return await verifyWithDoctor(strategy, result, ui, cwd);
+  }
+  return await verifyWithLocal(result, ui, cwd);
+}
+
+/**
+ * Run the dev server, spawn the child process, and verify that the Sentry
+ * SDK is working or at minimum that the app starts without errors.
+ */
+async function verifyWithLocal(
   result: WorkflowRunResult,
   ui: WizardUI,
   cwd: string,
