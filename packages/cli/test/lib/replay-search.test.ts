@@ -60,10 +60,6 @@ describe("isSupportedReplayField", () => {
     expect(isSupportedReplayField("device.model_id")).toBe(false);
     expect(isSupportedReplayField("warning_ids")).toBe(false);
   });
-
-  test("rejects response fields the replay index does not accept", () => {
-    expect(isSupportedReplayField("replay_type")).toBe(false);
-  });
 });
 
 describe("getReplayFieldValue", () => {

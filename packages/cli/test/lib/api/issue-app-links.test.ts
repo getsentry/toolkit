@@ -50,6 +50,7 @@ const COMPONENT = {
   type: "issue-link",
   error: "",
   sentryApp: { uuid: "app-uuid", slug: "linear", name: "Linear", avatars: [] },
+  installationUuid: INSTALLATION.uuid,
   schema: { link: FORM },
 };
 

@@ -1158,14 +1158,14 @@ describe("sentry explore", () => {
       );
     });
 
-    test("rejects replay detail-only fields on the replay dataset", async () => {
+    test("rejects fields missing from the replay schema", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       const { context } = createContext();
 
       await expect(
         func.call(
           context,
-          { ...DEFAULT_FLAGS, dataset: "replays", field: ["replay_type"] },
+          { ...DEFAULT_FLAGS, dataset: "replays", field: ["device.model_id"] },
           "test-org/",
         ),
       ).rejects.toThrow(ValidationError);

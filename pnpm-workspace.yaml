@@ -161,6 +161,6 @@ minimumReleaseAgeExclude:
   - "@oxlint/binding-win32-x64-msvc@1.87.0"
   - oxfmt@0.72.0
   - oxlint@1.87.0
-  - "@sentry/api@0.356.0"
+  - "@sentry/api@0.399.0"
   - miniflare@5.20261019.1-beta
   - wrangler@4.151.3
