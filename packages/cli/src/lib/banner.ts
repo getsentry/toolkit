@@ -101,7 +101,7 @@ export const FULL_BANNER_LINES: BannerLine[] = colorize(BANNER_ROWS_FULL);
 export function bannerLinesWidth(lines: readonly BannerLine[]): number {
   let max = 0;
   for (const { content } of lines) {
-    const width = [...content].length;
+    const width = Array.from(content).length;
     if (width > max) {
       max = width;
     }

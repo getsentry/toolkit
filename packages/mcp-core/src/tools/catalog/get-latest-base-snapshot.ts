@@ -5,7 +5,10 @@ import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId } from "../../utils/slug-validation";
-import { renderSnapshotImageTreeSection } from "../support/snapshots/formatting";
+import {
+  type SnapshotVcsInfo,
+  renderSnapshotImageTreeSection,
+} from "../support/snapshots/formatting";
 
 export default defineTool({
   name: "get_latest_base_snapshot",
@@ -100,8 +103,10 @@ export default defineTool({
 
     const snapshotId = data.id as string | undefined;
     const images = (data.images as Array<Record<string, unknown>>) || [];
-    const appInfo = data.app_info as Record<string, unknown> | undefined;
-    const vcsInfo = data.vcs_info as Record<string, unknown> | undefined;
+    const appInfo = data.app_info as
+      | { name?: string | null; platform?: string | null }
+      | undefined;
+    const vcsInfo = data.vcs_info as SnapshotVcsInfo | undefined;
 
     const snapshotUrl = snapshotId
       ? apiService.getPreprodSnapshotUrl(params.organizationSlug, snapshotId)
@@ -124,7 +129,7 @@ export default defineTool({
     if (vcsInfo) {
       if (vcsInfo.head_ref)
         sections.push(
-          `- **Branch**: ${vcsInfo.head_ref} (\`${String(vcsInfo.head_sha ?? "").slice(0, 8)}\`)`,
+          `- **Branch**: ${vcsInfo.head_ref} (\`${(vcsInfo.head_sha ?? "").slice(0, 8)}\`)`,
         );
     }
     sections.push(`- **Total Images**: ${images.length}`);

@@ -18,6 +18,7 @@ export type MockRoute = {
   /** Path pattern with optional :params (e.g., "/api/0/organizations/:orgSlug/") */
   path: string;
   /** Static response body, or handler function for dynamic responses */
+  // oxlint-disable-next-line typescript/no-redundant-type-constituents -- documents the accepted shapes
   response: unknown | RouteHandler;
   /** HTTP status code (default: 200) */
   status?: number;
@@ -32,6 +33,7 @@ type CompiledRoute = {
   method: string;
   pattern: RegExp;
   paramNames: string[];
+  // oxlint-disable-next-line typescript/no-redundant-type-constituents -- documents the accepted shapes
   response: unknown | RouteHandler;
   status: number;
 };

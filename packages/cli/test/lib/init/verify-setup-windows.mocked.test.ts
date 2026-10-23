@@ -29,7 +29,9 @@ vi.mock("node:child_process", async (importOriginal) => {
     spawn: vi.fn(
       (_command: string, _args: string[], options: { detached?: boolean }) => {
         mocks.spawnCalls.push({ options });
-        const child = new EventEmitter() as EventEmitter & {
+        const child = new EventEmitter() as InstanceType<
+          typeof EventEmitter
+        > & {
           exitCode: number | null;
           kill: (signal: NodeJS.Signals) => boolean;
           pid: number;

@@ -579,9 +579,9 @@ function summarizeObject(
 
   const entries = Object.entries(value)
     .filter(
-      ([key, nested]) =>
-        !excludedKeys.has(key) &&
-        (typeof nested === "string" || typeof nested === "number"),
+      (entry): entry is [string, string | number] =>
+        !excludedKeys.has(entry[0]) &&
+        (typeof entry[1] === "string" || typeof entry[1] === "number"),
     )
     .slice(0, 3)
     .map(([key, nested]) => `${key}=${nested}`);

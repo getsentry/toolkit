@@ -91,7 +91,7 @@ catalog:
   vitest: ^4.1.11
   vitest-evals: ^0.4.0
   workers-mcp: 0.1.0-3
-  wrangler: 4.80.0
+  wrangler: 4.151.3
   zod: ^4.4.3
 
 minimumReleaseAgeExclude:

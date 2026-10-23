@@ -31,7 +31,7 @@ let originalFetch: typeof globalThis.fetch;
 
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   resetAuthenticatedFetch();
 });
 

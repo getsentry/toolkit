@@ -27,6 +27,10 @@
       "types": "./src/events-sort.ts",
       "default": "./src/events-sort.ts"
     },
+    "./metric-monitor": {
+      "types": "./src/metric-monitor.ts",
+      "default": "./src/metric-monitor.ts"
+    },
     "./oauth-device": {
       "types": "./src/oauth-device.ts",
       "default": "./src/oauth-device.ts"

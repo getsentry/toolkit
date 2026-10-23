@@ -41,6 +41,7 @@ import {
   setReleaseChannel,
 } from "../../../src/lib/db/release-channel.js";
 import { setVersionCheckInfo } from "../../../src/lib/db/version-check.js";
+import { extractInputUrl } from "../../../src/lib/fetch-input.js";
 import { TEST_TMP_DIR, useTestConfigDir } from "../../helpers.js";
 
 /** Store original fetch for restoration */
@@ -171,7 +172,7 @@ function createMockContext(
  */
 function mockGhcrNightlyVersion(version: string): void {
   mockFetch(async (url) => {
-    const urlStr = String(url);
+    const urlStr = extractInputUrl(url);
 
     if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
       return new Response(null, { status: 200 });
@@ -212,7 +213,7 @@ function mockGhcrNightlyVersion(version: string): void {
  */
 function mockGitHubVersion(version: string): void {
   mockFetch(async (url) => {
-    const urlStr = String(url);
+    const urlStr = extractInputUrl(url);
 
     if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
       return new Response(JSON.stringify([{ tag_name: `cli@${version}` }]), {
@@ -253,7 +254,7 @@ function mockGitHubVersion(version: string): void {
  */
 function mockNightlyVersion(version: string): void {
   mockFetch(async (url) => {
-    const urlStr = String(url);
+    const urlStr = extractInputUrl(url);
     if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
       return new Response(null, { status: 200 });
     }
@@ -366,7 +367,7 @@ describe("sentry cli upgrade", () => {
     test("resolves a pinned check target from its exact source", async () => {
       const requests: string[] = [];
       mockFetch(async (url) => {
-        const request = String(url);
+        const request = extractInputUrl(url);
         requests.push(request);
         if (
           request.includes("getsentry/toolkit/releases/tags/cli%4088.88.88")
@@ -462,7 +463,7 @@ describe("sentry cli upgrade", () => {
       const requests: string[] = [];
       setVersionCheckInfo("88.88.88");
       mockFetch(async (url) => {
-        requests.push(String(url));
+        requests.push(extractInputUrl(url));
         return await response();
       });
       const { context, errors, getOutput, restore } = createMockContext({
@@ -543,7 +544,7 @@ describe("sentry cli upgrade", () => {
     test("uses the selected legacy source for the check-mode changelog", async () => {
       const requests: string[] = [];
       mockFetch(async (url) => {
-        const request = String(url);
+        const request = extractInputUrl(url);
         requests.push(request);
         if (request.includes("getsentry/toolkit/releases?per_page=100")) {
           return new Response("Not Found", { status: 404 });
@@ -581,7 +582,7 @@ describe("sentry cli upgrade", () => {
     test("reports error for non-existent version", async () => {
       // Mock: latest is 99.99.99, but 0.0.1 doesn't exist
       mockFetch(async (url) => {
-        const urlStr = String(url);
+        const urlStr = extractInputUrl(url);
         if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
           return new Response(JSON.stringify([{ tag_name: "cli@99.99.99" }]), {
             status: 200,
@@ -917,7 +918,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     const fakeContent = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]); // ELF magic
     const gzipped = gzipSync(fakeContent);
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
         return new Response(JSON.stringify([{ tag_name: `cli@${version}` }]), {
           status: 200,
@@ -1024,7 +1025,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     async (method) => {
       const requests: string[] = [];
       mockFetch(async (url) => {
-        requests.push(String(url));
+        requests.push(extractInputUrl(url));
         return new Response(null, { status: 404 });
       });
       const { context, errors, restore } = createMockContext({
@@ -1046,7 +1047,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
       for (const status of [401, 403, 429, 500]) {
         const requests: string[] = [];
         mockFetch(async (url) => {
-          requests.push(String(url));
+          requests.push(extractInputUrl(url));
           return new Response(null, { status });
         });
         const { context, errors, restore } = createMockContext({
@@ -1075,7 +1076,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     async (method) => {
       const requests: string[] = [];
       mockFetch(async (url) => {
-        requests.push(String(url));
+        requests.push(extractInputUrl(url));
         return Response.json(null);
       });
       const { context, errors, restore } = createMockContext({
@@ -1117,7 +1118,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     const fakeContent = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
     const gzipped = gzipSync(fakeContent);
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
         return new Response(JSON.stringify([{ tag_name: "cli@99.99.99" }]), {
           status: 200,
@@ -1148,7 +1149,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
 
     // GHCR flow: token exchange → manifest → blob redirect → blob download
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       capturedUrls.push(urlStr);
       if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
@@ -1304,7 +1305,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
 
     // Nightly is now distributed via GHCR (token → manifest → blob)
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -1384,7 +1385,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
 
   test("allows a pinned nightly for a Homebrew installation", async () => {
     mockFetch(async (url) => {
-      const request = String(url);
+      const request = extractInputUrl(url);
       if (request === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -1431,7 +1432,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
   test("rejects a pinned stable for Homebrew before network access", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       return new Response("Unexpected", { status: 500 });
     });
     setReleaseChannel("nightly");
@@ -1453,7 +1454,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
   test("validates an npm stable pin through npm while tracking nightly", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      const requestUrl = new URL(String(url));
+      const requestUrl = new URL(extractInputUrl(url));
       requests.push(requestUrl.href);
       return requestUrl.origin === "https://api.github.com"
         ? new Response(JSON.stringify([]), { status: 200 })

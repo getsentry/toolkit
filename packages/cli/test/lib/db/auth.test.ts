@@ -233,7 +233,7 @@ describe("clearAuth: integration with per-account caches", () => {
       await import("../../../src/lib/db/issue-org-cache.js");
 
     // Seed a mapping as if a previous session resolved this issue.
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setCachedIssueOrg("12345", "previous-account-org");
     expect(getCachedIssueOrg("12345")).toBe("previous-account-org");
 

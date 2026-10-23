@@ -17,6 +17,7 @@ import {
   resetIdentityFingerprintCache,
 } from "../src/lib/db/auth.js";
 import { CONFIG_DIR_ENV_VAR, closeDatabase } from "../src/lib/db/index.js";
+import { ENV_VAR_AGENTS } from "../src/lib/detect-agent.js";
 import type { PositionalDef } from "../src/lib/positional-parse.js";
 import { applyPositionalParsers } from "../src/lib/sdk-invoke.js";
 import { resetTipsCache } from "../src/lib/tips.js";
@@ -244,10 +245,12 @@ export type FetchRoute = {
   match: string | RegExp;
   /** HTTP method filter (default: any) */
   method?: string;
+  /* oxlint-disable typescript/no-redundant-type-constituents -- documents the accepted shapes */
   /** Response body (JSON-serialized) or a handler function */
   response:
     | unknown
     | ((url: string, init?: RequestInit) => unknown | Promise<unknown>);
+  /* oxlint-enable typescript/no-redundant-type-constituents */
   /** HTTP status code (default: 200) */
   status?: number;
   /** Response headers */
@@ -379,4 +382,24 @@ export async function loadCommandFunc<CONTEXT extends CommandContext>(
       ...(applyPositionalParsers(args, positional, this) as never[]),
     );
   };
+}
+
+/** Env vars `detectAgent()` reads besides the {@link ENV_VAR_AGENTS} table. */
+const AGENT_ENV_VARS = [
+  "AI_AGENT",
+  "AGENT",
+  "CLAUDECODE",
+  "CLAUDE_CODE",
+  "CURSOR_EXTENSION_HOST_ROLE",
+];
+
+/**
+ * A copy of `process.env` without any variable that `detectAgent()` reads, so
+ * code under test behaves as if a human ran it even inside an agent session.
+ */
+export function envWithoutAgent(): NodeJS.ProcessEnv {
+  const agentKeys = new Set([...AGENT_ENV_VARS, ...ENV_VAR_AGENTS.keys()]);
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !agentKeys.has(key)),
+  );
 }

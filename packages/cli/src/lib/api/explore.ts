@@ -8,6 +8,7 @@
 
 import type { EventsTableResponse } from "../../types/dashboard.js";
 import { EventsTableResponseSchema } from "../../types/dashboard.js";
+import { stringifyUnknown } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
   API_MAX_PER_PAGE,
@@ -43,12 +44,6 @@ export type ExploreQueryOptions = {
   start?: string;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
   end?: string;
-  /**
-   * Numeric project IDs to scope the query to. Passed as repeated `project`
-   * params. Avoids the "project not actively selected" error when querying a
-   * specific project's events.
-   */
-  project?: string[];
 };
 
 /**
@@ -86,7 +81,6 @@ async function fetchEventsPage(
         start: options.start,
         end: options.end,
         cursor: options.cursor,
-        project: options.project,
       },
       schema: EventsTableResponseSchema,
     },
@@ -156,9 +150,9 @@ export async function queryMetricsMeta(
   }
 
   return allRows.map((row) => ({
-    name: String(row["metric.name"] ?? ""),
-    type: String(row["metric.type"] ?? "distribution"),
-    unit: String(row["metric.unit"] ?? "none"),
+    name: stringifyUnknown(row["metric.name"] ?? ""),
+    type: stringifyUnknown(row["metric.type"] ?? "distribution"),
+    unit: stringifyUnknown(row["metric.unit"] ?? "none"),
   }));
 }
 

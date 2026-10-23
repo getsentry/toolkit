@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { feedbackCommand } from "../../src/commands/cli/feedback.js";
 import type { UpgradeResult } from "../../src/commands/cli/upgrade.js";
 import { upgradeCommand } from "../../src/commands/cli/upgrade.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 
 /**
  * Create a mock context with a process.stderr.write spy for capturing
@@ -165,7 +166,9 @@ describe("upgradeCommand.func", () => {
 
   test("check mode with version shows versioned command", async () => {
     globalThis.fetch = (async (url) => {
-      const response = String(url).includes("/releases/tags/cli%402.0.0")
+      const response = extractInputUrl(url).includes(
+        "/releases/tags/cli%402.0.0",
+      )
         ? { tag_name: "cli@2.0.0" }
         : [{ tag_name: "cli@99.0.0" }];
       return new Response(JSON.stringify(response), {

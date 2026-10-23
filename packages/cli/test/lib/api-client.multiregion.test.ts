@@ -41,7 +41,7 @@ beforeEach(async () => {
   delete process.env.SENTRY_TOKEN;
 
   // Set up auth token (manual token, no refresh)
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
 
   // Clear any existing region cache
   clearOrgRegions();

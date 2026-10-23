@@ -748,7 +748,11 @@ export function formatEventValue(
     return formatObjectValue(value, maxLength);
   }
 
-  return truncateString(sanitizeWhitespace(String(value)), maxLength);
+  if (typeof value === "bigint") {
+    return String(value);
+  }
+
+  return `<${typeof value}>`;
 }
 
 // Helper function to fetch custom attributes for a dataset

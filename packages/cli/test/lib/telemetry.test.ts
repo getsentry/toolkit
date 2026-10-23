@@ -1164,7 +1164,7 @@ describe("createTracedDatabase", () => {
 
     // toString() requires proper 'this' binding to access native private fields.
     // bun:sqlite returns the SQL string; Node.js sqlite returns "[object Object]".
-    const sqlString = stmt.toString();
+    const sqlString = (stmt as { toString(): string }).toString();
     if (sqlString !== "[object Object]") {
       expect(sqlString).toContain("SELECT * FROM test");
     }

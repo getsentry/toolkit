@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { UPGRADE_SOURCES } from "../../src/lib/binary.js";
 import { UpgradeError } from "../../src/lib/errors.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import {
   downloadLayerBlob,
   downloadNightlyBlob,
@@ -80,7 +81,7 @@ afterEach(() => {
 describe("getAnonymousToken", () => {
   test("returns token from successful response", async () => {
     mockFetch(async (url) => {
-      expect(String(url)).toContain(
+      expect(extractInputUrl(url)).toContain(
         `https://ghcr.io/token?scope=repository:${GHCR_REPO}:pull`,
       );
       return new Response(JSON.stringify({ token: "test-token-abc" }), {
@@ -95,7 +96,9 @@ describe("getAnonymousToken", () => {
 
   test("uses the selected source's GHCR repository", async () => {
     mockFetch(async (url) => {
-      expect(String(url)).toContain("scope=repository:getsentry/toolkit:pull");
+      expect(extractInputUrl(url)).toContain(
+        "scope=repository:getsentry/toolkit:pull",
+      );
       return new Response(JSON.stringify({ token: "toolkit-token" }), {
         status: 200,
       });
@@ -217,7 +220,9 @@ describe("fetchNightlyManifest", () => {
     let capturedHeaders: Record<string, string> = {};
 
     mockFetch(async (url, init) => {
-      expect(String(url)).toContain(`/v2/${GHCR_REPO}/manifests/${GHCR_TAG}`);
+      expect(extractInputUrl(url)).toContain(
+        `/v2/${GHCR_REPO}/manifests/${GHCR_TAG}`,
+      );
       capturedHeaders = Object.fromEntries(
         new Headers(init?.headers as HeadersInit).entries(),
       );
@@ -240,7 +245,9 @@ describe("fetchNightlyManifest", () => {
   test("uses the selected source's GHCR repository", async () => {
     const manifest = makeManifest();
     mockFetch(async (url) => {
-      expect(String(url)).toContain("/v2/getsentry/toolkit/manifests/nightly");
+      expect(extractInputUrl(url)).toContain(
+        "/v2/getsentry/toolkit/manifests/nightly",
+      );
       return new Response(JSON.stringify(manifest), { status: 200 });
     });
 
@@ -569,7 +576,9 @@ describe("fetchManifest", () => {
     const manifest = makeManifest();
 
     mockFetch(async (url) => {
-      expect(String(url)).toContain(`/v2/${GHCR_REPO}/manifests/patch-0.13.0`);
+      expect(extractInputUrl(url)).toContain(
+        `/v2/${GHCR_REPO}/manifests/patch-0.13.0`,
+      );
       return new Response(JSON.stringify(manifest), {
         status: 200,
         headers: {
@@ -628,7 +637,7 @@ describe("listTags", () => {
   });
   test("returns all tags when no prefix filter", async () => {
     mockFetch(async (url) => {
-      expect(String(url)).toContain(`/v2/${GHCR_REPO}/tags/list`);
+      expect(extractInputUrl(url)).toContain(`/v2/${GHCR_REPO}/tags/list`);
       return new Response(
         JSON.stringify({ tags: ["nightly", "patch-0.13.0", "patch-0.14.0"] }),
         { status: 200 },
@@ -750,7 +759,9 @@ describe("downloadLayerBlob", () => {
     mockFetch(async (url) => {
       requestCount += 1;
       if (requestCount === 1) {
-        expect(String(url)).toContain(`/v2/${GHCR_REPO}/blobs/sha256:abc123`);
+        expect(extractInputUrl(url)).toContain(
+          `/v2/${GHCR_REPO}/blobs/sha256:abc123`,
+        );
         return Response.redirect("https://blob.storage.azure.com/file", 307);
       }
       return new Response(content, { status: 200 });

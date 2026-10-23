@@ -23,7 +23,7 @@ function parseUrl(value: string): URL {
       !["https:", "http:"].includes(url.protocol) ||
       url.username ||
       url.password ||
-      [...value].some(
+      Array.from(value).some(
         (character) => character.charCodeAt(0) <= 32 || character === "\\",
       )
     ) {

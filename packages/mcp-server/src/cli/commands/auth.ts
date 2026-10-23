@@ -55,7 +55,9 @@ async function login(argv: string[]): Promise<void> {
     await writeCachedToken(toCachedToken(tokenResponse, sentryHost, clientId));
   } catch (err) {
     console.error(
-      err instanceof Error ? err.message : `Authentication failed: ${err}`,
+      err instanceof Error
+        ? err.message
+        : `Authentication failed: ${String(err)}`,
     );
     process.exit(1);
   }

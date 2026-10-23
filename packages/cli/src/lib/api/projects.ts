@@ -460,7 +460,8 @@ export async function findProjectsBySlug(
  */
 const escapeRegex: (str: string) => string =
   typeof RegExp.escape === "function"
-    ? RegExp.escape
+    ? // oxlint-disable-next-line typescript/unbound-method -- static method that never reads `this`
+      RegExp.escape
     : (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**

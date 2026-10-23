@@ -344,7 +344,10 @@ async function handleAuthenticatedMcpRequest(
   }
 
   if (auth.kind === "oauth") {
-    for (const skill of Array.from(auth.grantedSkills).sort()) {
+    const grantedSkills = Array.from(auth.grantedSkills).sort((a, b) =>
+      a.localeCompare(b),
+    );
+    for (const skill of grantedSkills) {
       activeSpan?.setAttribute(getSkillGrantedAttributeName(skill), true);
     }
   }

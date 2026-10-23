@@ -94,7 +94,7 @@ let func: ListFunc;
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
   func = (await listCommand.loader()) as unknown as ListFunc;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   setDefaultOrganization("test-org");
   setDefaultProject("test-project");
@@ -782,59 +782,38 @@ describe("issue list: server sort order preservation", () => {
   });
 });
 
-describe("issue list: scoped counts via events endpoint (#1518)", () => {
+describe("issue list: query-scoped counts (#1583)", () => {
   /**
-   * Mock a single issue from the list endpoint and (optionally) a scoped-count
-   * response from the events endpoint. Tracks the events-endpoint URLs seen so
-   * tests can assert what was queried.
+   * Serve `issues` from the list endpoint and record each list request URL so
+   * tests can assert which response blocks were collapsed.
    */
-  function mockScopedCounts(options?: {
-    events?: { count: number; userCount: number } | "error";
-    issues?: Record<string, unknown>[];
-  }) {
-    const eventsUrls: string[] = [];
+  function mockIssueList(issues: Record<string, unknown>[]) {
+    const issueUrls: URL[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
       const req = new Request(input, init);
       const projectResp = mockDefaultProject(req.url);
       if (projectResp) return projectResp;
-      if (req.url.includes("/events/")) {
-        eventsUrls.push(req.url);
-        if (options?.events === "error") {
-          return new Response(JSON.stringify({ detail: "boom" }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        const ev = options?.events ?? { count: 0, userCount: 0 };
-        return Response.json({
-          data: [
-            {
-              "count()": ev.count,
-              "count_unique(user)": ev.userCount,
-            },
-          ],
-          meta: {},
-        });
-      }
       if (req.url.includes("/issues/")) {
-        const issues = options?.issues ?? [mockIssue()];
-        return new Response(JSON.stringify(issues), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        issueUrls.push(new URL(req.url));
+        return Response.json(issues);
       }
-      return new Response(JSON.stringify([]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return Response.json([]);
     });
-    return { eventsUrls };
+    return { issueUrls };
   }
 
-  test("replaces counts with scoped values from the events endpoint", async () => {
-    const { eventsUrls } = mockScopedCounts({
-      events: { count: 238, userCount: 189 },
-    });
+  const releaseFiltered = {
+    count: "238",
+    userCount: 189,
+    firstSeen: "2025-01-01T00:00:00Z",
+    lastSeen: "2025-01-01T00:00:00Z",
+    stats: {},
+  };
+
+  test("requests filtered stats and uses them for a release: query", async () => {
+    const { issueUrls } = mockIssueList([
+      mockIssue({ count: "639", userCount: 442, filtered: releaseFiltered }),
+    ]);
     const { context, stdout } = createContext();
 
     await func.call(context, {
@@ -845,21 +824,19 @@ describe("issue list: scoped counts via events endpoint (#1518)", () => {
       query: 'release:"1.0.0"',
     });
 
-    // The events endpoint is queried with issue:<shortId> AND the release filter.
-    expect(eventsUrls.length).toBe(1);
-    const decoded = decodeURIComponent(eventsUrls[0] ?? "");
-    expect(decoded).toContain("issue:TEST-PROJECT-1");
-    expect(decoded).toContain('release:"1.0.0"');
+    const collapse = issueUrls[0]?.searchParams.getAll("collapse");
+    expect(collapse).toContain("unhandled");
+    expect(collapse).not.toContain("filtered");
+    expect(collapse).not.toContain("stats");
 
     const output = JSON.parse(stdout.output);
     expect(output.data[0].count).toBe("238");
     expect(output.data[0].userCount).toBe(189);
+    expect(output.data[0]).not.toHaveProperty("filtered");
   });
 
-  test("does not call the events endpoint without an unscoped filter", async () => {
-    const { eventsUrls } = mockScopedCounts({
-      events: { count: 238, userCount: 189 },
-    });
+  test("keeps filtered collapsed without a release: filter", async () => {
+    const { issueUrls } = mockIssueList([mockIssue()]);
     const { context, stdout } = createContext();
 
     await func.call(context, {
@@ -870,15 +847,14 @@ describe("issue list: scoped counts via events endpoint (#1518)", () => {
       query: "is:unresolved",
     });
 
-    expect(eventsUrls.length).toBe(0);
+    expect(issueUrls[0]?.searchParams.getAll("collapse")).toContain("filtered");
     const output = JSON.parse(stdout.output);
-    // Original list-endpoint count is preserved.
     expect(output.data[0].count).toBe("10");
     expect(output.data[0].userCount).toBe(5);
   });
 
-  test("falls back to unscoped counts when the events refetch fails", async () => {
-    mockScopedCounts({ events: "error" });
+  test("keeps top-level counts when the server returns filtered: null", async () => {
+    mockIssueList([mockIssue({ filtered: null })]);
     const { context, stdout } = createContext();
 
     await func.call(context, {
@@ -890,67 +866,29 @@ describe("issue list: scoped counts via events endpoint (#1518)", () => {
     });
 
     const output = JSON.parse(stdout.output);
-    // Listing still renders with the original list-endpoint counts.
     expect(output.data[0].count).toBe("10");
     expect(output.data[0].userCount).toBe(5);
+    expect(output.data[0]).not.toHaveProperty("filtered");
   });
 
-  test.each([
-    { label: "with counts shown", fields: undefined },
-    { label: "when --fields omits counts", fields: ["id", "title"] },
-  ])("--sort freq re-ranks by scoped counts $label", async ({ fields }) => {
-    // List endpoint orders by unscoped counts: A (100) before B (50).
-    const issues = [
-      mockIssue({ id: "A", shortId: "AAA-1", count: "100", userCount: 100 }),
-      mockIssue({ id: "B", shortId: "BBB-2", count: "50", userCount: 50 }),
-    ];
-    // Scoped counts invert the ranking: B (90) should outrank A (5).
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input, init);
-      const projectResp = mockDefaultProject(req.url);
-      if (projectResp) return projectResp;
-      if (req.url.includes("/events/")) {
-        const decoded = decodeURIComponent(req.url);
-        const scoped = decoded.includes("issue:AAA-1")
-          ? { count: 5, userCount: 5 }
-          : { count: 90, userCount: 90 };
-        return Response.json({
-          data: [
-            {
-              "count()": scoped.count,
-              "count_unique(user)": scoped.userCount,
-            },
-          ],
-          meta: {},
-        });
-      }
-      if (req.url.includes("/issues/")) {
-        return new Response(JSON.stringify(issues), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify([]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-    const { context, stdout } = createContext();
+  test("keeps stats for --sort freq even when --fields omits counts", async () => {
+    const { issueUrls } = mockIssueList([
+      mockIssue({ filtered: releaseFiltered }),
+    ]);
+    const { context } = createContext();
 
     await func.call(context, {
       limit: 10,
       sort: "freq",
       period: parsePeriod("90d"),
       json: true,
-      fields,
+      fields: ["id", "title"],
       query: 'release:"1.0.0"',
     });
 
-    const output = JSON.parse(stdout.output);
-    expect(output.data.map((issue: { id: string }) => issue.id)).toEqual([
-      "B",
-      "A",
-    ]);
+    const collapse = issueUrls[0]?.searchParams.getAll("collapse");
+    expect(collapse).not.toContain("filtered");
+    expect(collapse).not.toContain("stats");
   });
 });
 
@@ -1559,7 +1497,7 @@ describe("issue list: collapse parameter optimization", () => {
     resolveCursorMock.mockReset();
     advancePaginationStateMock.mockReset();
 
-    await setOrgRegion("my-org", DEFAULT_SENTRY_URL);
+    setOrgRegion("my-org", DEFAULT_SENTRY_URL);
   });
 
   // End-to-end guard for the headline feature: when --sort is omitted, the
@@ -1622,7 +1560,7 @@ describe("issue list: collapse parameter optimization", () => {
     test("uses date on a self-hosted instance", async () => {
       delete process.env.SENTRY_HOST;
       process.env.SENTRY_URL = "https://sentry.example.com";
-      await setOrgRegion("my-org", "https://sentry.example.com");
+      setOrgRegion("my-org", "https://sentry.example.com");
       const options = await runOrgAllWithoutSort();
       expect(listIssuesAllPagesMock).toHaveBeenCalled();
       expect(options.sort).toBe("date");
@@ -1844,6 +1782,61 @@ describe("issue list: multi-target cursor-safe budget", () => {
       "first",
       undefined,
     );
+  });
+
+  test("merges and trims multi-project --sort freq by release-scoped counts (#1583)", async () => {
+    findProjectsBySlugMock.mockResolvedValue({
+      projects: [
+        { id: "1", slug: "myproj", name: "My Project", orgSlug: "org-one" },
+        { id: "2", slug: "myproj", name: "My Project", orgSlug: "org-two" },
+      ],
+      orgs: [],
+    });
+    const scoped = (id: string, count: number, filteredCount: number) =>
+      mockIssue({
+        id,
+        shortId: id.toUpperCase(),
+        project: { slug: "myproj" },
+        count: String(count),
+        userCount: count,
+        filtered: {
+          count: String(filteredCount),
+          userCount: filteredCount,
+          firstSeen: null,
+          lastSeen: null,
+          stats: {},
+        },
+      });
+    // Each server page is already ordered by the release-scoped count.
+    // Period-wide counts would rank one-a and one-b above two-a instead.
+    const pages: Record<string, ReturnType<typeof mockIssue>[]> = {
+      "org-one": [scoped("one-b", 80, 70), scoped("one-a", 100, 5)],
+      "org-two": [scoped("two-a", 50, 90)],
+    };
+    listIssuesAllPagesMock.mockImplementation(async (org) => ({
+      issues: pages[org] ?? [],
+    }));
+
+    const { context, stdout } = createContext();
+    await func.call(
+      context,
+      {
+        limit: 2,
+        sort: "freq",
+        period: parsePeriod("90d"),
+        json: true,
+        query: 'release:"1.0.0"',
+      },
+      "myproj",
+    );
+
+    const output = JSON.parse(stdout.output);
+    expect(
+      output.data.map((i: { id: string; count: string }) => [i.id, i.count]),
+    ).toEqual([
+      ["two-a", "90"],
+      ["one-b", "70"],
+    ]);
   });
 });
 

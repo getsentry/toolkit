@@ -1,4 +1,4 @@
-import type { Constraints, ProjectCapabilities } from "@sentry/mcp-core/types";
+import type { Constraints } from "@sentry/mcp-core/types";
 import { SentryApiService, ApiError } from "@sentry/mcp-core/api-client";
 import { logIssue, logWarn } from "@sentry/mcp-core/telem/logging";
 
@@ -11,12 +11,22 @@ const PROJECT_TIMEOUT_CACHE_TTL_SECONDS = 60;
 const CACHE_KEY_VERSION = "v1";
 
 /**
+ * `ProjectCapabilities | null`, derived from `Constraints` instead of written
+ * as a union: root lint runs before `@sentry/mcp-core` is built, and an
+ * unresolved type in a union trips `no-redundant-type-constituents`.
+ */
+type NullableProjectCapabilities = Exclude<
+  Constraints["projectCapabilities"],
+  undefined
+>;
+
+/**
  * Cached constraints data stored in KV.
  */
 export type CachedConstraints = {
   regionUrl: string | null;
   /** Null for org-only entries or a project verification timeout. */
-  projectCapabilities: ProjectCapabilities | null;
+  projectCapabilities: NullableProjectCapabilities;
   cachedAt: number;
 };
 
@@ -212,7 +222,7 @@ export async function verifyConstraintsAccess(
   }
 
   // Verify project access if specified
-  let projectCapabilities: ProjectCapabilities | null = null;
+  let projectCapabilities: NullableProjectCapabilities = null;
   if (projectSlug) {
     try {
       // Fetch project with timeout to avoid blocking on slow API responses

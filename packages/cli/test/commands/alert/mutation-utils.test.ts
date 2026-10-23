@@ -12,7 +12,7 @@ import {
   validateIssueRuleArrays,
   validateMetricDataset,
   validateMetricTimeWindow,
-  validateMetricTriggers,
+  parseWorkflowIds,
 } from "../../../src/commands/alert/mutation-utils.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 
@@ -291,7 +291,7 @@ describe("resolveMetricDataset", () => {
 });
 
 describe("validateMetricDataset", () => {
-  const valid = ["errors", "sessions", "events", "spans", "metrics"];
+  const valid = ["errors", "sessions", "events", "spans", "logs", "metrics"];
 
   for (const dataset of valid) {
     test(`passes for "${dataset}"`, () => {
@@ -299,7 +299,7 @@ describe("validateMetricDataset", () => {
     });
   }
 
-  test.each(["error", "error-events", "METRIC", "span"])(
+  test.each(["error", "error-events", "METRIC", "span", "log"])(
     'passes for alias "%s"',
     (dataset) => {
       expect(() => validateMetricDataset(dataset)).not.toThrow();
@@ -345,58 +345,17 @@ describe("validateMetricTimeWindow", () => {
   });
 });
 
-describe("validateMetricTriggers", () => {
-  test("throws for undefined triggers", () => {
-    try {
-      validateMetricTriggers(undefined);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
+describe("parseWorkflowIds", () => {
+  test("returns undefined when absent", () => {
+    expect(parseWorkflowIds(undefined)).toBeUndefined();
   });
 
-  test("throws for empty triggers", () => {
-    try {
-      validateMetricTriggers([]);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
+  test("splits repeatable and comma-separated ids", () => {
+    expect(parseWorkflowIds(["12,34", "56"])).toEqual([12, 34, 56]);
   });
 
-  test("throws for missing alertThreshold", () => {
-    try {
-      validateMetricTriggers([{ actions: [{ id: "a" }] }]);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
-  });
-
-  test("throws for missing actions array", () => {
-    try {
-      validateMetricTriggers([{ alertThreshold: 100 }]);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
-  });
-
-  test("throws for empty actions array", () => {
-    try {
-      validateMetricTriggers([{ alertThreshold: 100, actions: [] }]);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
-  });
-
-  test("passes for valid trigger", () => {
-    expect(() =>
-      validateMetricTriggers([
-        { alertThreshold: 100, actions: [{ type: "email" }] },
-      ]),
-    ).not.toThrow();
+  test("rejects non-numeric ids", () => {
+    expect(() => parseWorkflowIds(["abc"])).toThrow(ValidationError);
   });
 });
 

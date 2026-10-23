@@ -3,47 +3,13 @@
  */
 
 import { ValidationError } from "../../lib/errors.js";
+import {
+  METRIC_ALERT_DATASET_ALIASES,
+  METRIC_ALERT_DATASET_NAMES,
+  metricAlertSource,
+} from "../../types/metric-alert.js";
 
 const ISSUE_MATCH_MODES = new Set(["all", "any"]);
-const METRIC_DATASET_VALUES = new Set([
-  "errors",
-  "sessions",
-  "events",
-  "spans",
-  "metrics",
-]);
-
-/**
- * Maps user-provided dataset aliases to canonical metric alert dataset values.
- *
- * Only aliases that resolve to a value already accepted by the metric alert API
- * are listed here: the singular forms (`error` → `errors`, `span` → `spans`)
- * and the dashboard terminology for the error dataset (`error-events` →
- * `errors`). This lets users copying from dashboard docs avoid a validation
- * error without changing which dataset is sent.
- *
- * Names that denote a *distinct* dataset in the metric alert path — e.g.
- * `tracemetrics`, `metricsenhanced`, `eap`, `events_analytics_platform` — are
- * deliberately NOT aliased here. Rewriting them onto `metrics`/`spans` would
- * silently send the wrong dataset in the create/edit payload (the CLI's
- * canonical `metrics` is session/crash-rate, not trace metrics), with no
- * validation error to catch it.
- *
- * The deprecated `transaction`/`transactions` datasets are handled separately
- * by {@link resolveMetricDataset} — they route to `spans` with an added
- * `is_transaction:true` filter rather than a plain rename, so they are not
- * listed here.
- */
-const METRIC_DATASET_ALIASES: Record<string, string> = {
-  // Singular forms
-  error: "errors",
-  session: "sessions",
-  metric: "metrics",
-  span: "spans",
-  // Dashboard terminology for the error dataset
-  "error-events": "errors",
-};
-
 /** Deprecated dataset names that now route to `spans` with `is_transaction:true`. */
 const TRANSACTION_DATASET_NAMES = new Set(["transaction", "transactions"]);
 
@@ -52,6 +18,8 @@ const IS_TRANSACTION_FILTER = "is_transaction:true";
 
 /** Splits a query string on runs of whitespace. */
 const QUERY_TOKEN_SEPARATOR = /\s+/;
+/** Workflow (alert) ids are numeric. */
+const WORKFLOW_ID_PATTERN = /^\d+$/;
 const METRIC_TIME_WINDOWS = new Set([
   1, 5, 10, 15, 30, 60, 120, 240, 360, 720, 1440,
 ]);
@@ -221,7 +189,7 @@ export function normalizeProjectList(
  */
 export function normalizeMetricDataset(dataset: string): string {
   const lower = dataset.trim().toLowerCase();
-  return METRIC_DATASET_ALIASES[lower] ?? lower;
+  return METRIC_ALERT_DATASET_ALIASES[lower] ?? lower;
 }
 
 /**
@@ -277,12 +245,11 @@ export function resolveMetricDataset(
 
 /** Validate that `dataset` is one of the allowed Sentry metric alert dataset values. */
 export function validateMetricDataset(dataset: string): void {
-  const normalized = normalizeMetricDataset(dataset);
-  if (METRIC_DATASET_VALUES.has(normalized)) {
+  if (metricAlertSource(normalizeMetricDataset(dataset))) {
     return;
   }
   throw new ValidationError(
-    `dataset must be one of: ${[...METRIC_DATASET_VALUES].join(", ")}.`,
+    `dataset must be one of: ${METRIC_ALERT_DATASET_NAMES.join(", ")}.`,
     "dataset",
   );
 }
@@ -298,33 +265,23 @@ export function validateMetricTimeWindow(timeWindow: number): void {
   );
 }
 
-/** Validate that each trigger has an `alertThreshold` and a non-empty `actions` array. */
-export function validateMetricTriggers(
-  triggers: readonly Record<string, unknown>[] | undefined,
-): void {
-  if (!triggers || triggers.length === 0) {
-    throw new ValidationError(
-      "Pass at least one --trigger JSON object.",
-      "trigger",
-    );
+/** Parse `--workflow` values (repeatable or comma-separated) into numeric workflow ids. */
+export function parseWorkflowIds(
+  values: readonly string[] | undefined,
+): number[] | undefined {
+  const ids = normalizeProjectList(values);
+  if (!ids) {
+    return;
   }
-
-  for (const trigger of triggers) {
-    const threshold = trigger.alertThreshold;
-    if (typeof threshold !== "number" && typeof threshold !== "string") {
+  return ids.map((id) => {
+    if (!WORKFLOW_ID_PATTERN.test(id)) {
       throw new ValidationError(
-        "Each trigger must include alertThreshold.",
-        "trigger",
+        `Workflow id must be numeric (got ${JSON.stringify(id)}).`,
+        "workflow",
       );
     }
-    const actions = trigger.actions;
-    if (!Array.isArray(actions) || actions.length === 0) {
-      throw new ValidationError(
-        "Each trigger must include a non-empty actions array.",
-        "trigger",
-      );
-    }
-  }
+    return Number(id);
+  });
 }
 
 /** Map a human-readable status string to the numeric value the metric alert API expects. */

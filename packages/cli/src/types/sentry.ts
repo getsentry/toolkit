@@ -17,6 +17,7 @@ import type {
   IssueEventDetailsResponse,
   DeployResponse as SdkDeployResponse,
   GetOrganizationIssueResponse as SdkIssueDetail,
+  ListOrganizationIssuesResponse as SdkIssueList,
   ListOrganizations as SdkOrganizationList,
   ProjectKey as SdkProjectKey,
   OrganizationProjectResponseDict as SdkProjectList,
@@ -191,6 +192,12 @@ export type SentryIssue = Omit<Partial<SdkIssueDetail>, "metadata"> &
      * `null` when Seer has not analyzed this issue; absent when the org has Seer disabled.
      */
     seerFixabilityScore?: number | null;
+    /**
+     * Seen-stats scoped to the query's event-level filters (e.g. `release:`).
+     * Returned by the issues-list endpoint only when `filtered` isn't
+     * collapsed; `null` when the query has no such filters.
+     */
+    filtered?: SdkIssueList[number]["filtered"];
   };
 
 /**
