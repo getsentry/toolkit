@@ -42,11 +42,11 @@ function mockOk(body: unknown, headers: Record<string, string> = {}) {
   });
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   originalFetch = globalThis.fetch;
   capturedUrl = undefined;
   resetAuthenticatedFetch();
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 });
 
