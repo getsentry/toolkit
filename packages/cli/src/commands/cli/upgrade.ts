@@ -20,6 +20,7 @@ import { dirname, join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import type { SentryContext } from "../../context.js";
 import {
+  compareVersions,
   determineInstallDir,
   isDowngrade,
   isNightlyVersion,
@@ -72,8 +73,14 @@ import { whichSync } from "../../lib/which.js";
 const log = logger.withTag("cli.upgrade");
 
 /**
- * Leave the local database readable by the older CLI being installed (#1611).
- * A failure must not block the downgrade itself.
+ * First release that adapts a database written by a newer CLI on its own
+ * (#1611). Older releases (schema 16 and below) need the hand-off.
+ */
+const SELF_ADAPTING_CLI_VERSION = "0.48.0";
+
+/**
+ * Leave the local database readable by an older CLI that cannot adapt it
+ * itself. A failure must not block the downgrade.
  */
 function prepareLocalDatabaseForDowngrade(): void {
   try {
@@ -1101,8 +1108,10 @@ export const upgradeCommand = buildCommand({
     }
     const downgrade = isDowngrade(CLI_VERSION, target);
     log.debug(`${downgrade ? "Downgrading" : "Upgrading"} to ${target}`);
+    const handOffDatabase =
+      downgrade && compareVersions(target, SELF_ADAPTING_CLI_VERSION) < 0;
     // Before installing: the older binary runs `cli setup` during the upgrade.
-    if (downgrade) {
+    if (handOffDatabase) {
       prepareLocalDatabaseForDowngrade();
     }
 
@@ -1139,7 +1148,7 @@ export const upgradeCommand = buildCommand({
     // Again after installing: another invocation of this CLI during the
     // download re-migrates the database. No-op unless the stored version is
     // this CLI's own, so the older CLI's forward migrations are kept.
-    if (downgrade) {
+    if (handOffDatabase) {
       prepareLocalDatabaseForDowngrade();
     }
 

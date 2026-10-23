@@ -890,141 +890,49 @@ function migrateSingleAuthToAccounts(db: Database): void {
 
   if (auth?.token) {
     const now = Date.now();
-    // A newer CLI hands its active login back through `auth` before a
-    // downgrade (see prepareDatabaseForDowngrade), so on the way back up the
-    // login may already exist. Refresh that row instead of duplicating it.
-    const existing = db
-      .query(
-        `SELECT account_id FROM accounts
-         WHERE token = ? OR (user_id IS NOT NULL AND user_id = ? AND host IS ?)
-         LIMIT 1`,
-      )
-      .get(auth.token, user?.user_id ?? null, auth.host) as
-      | { account_id: string }
-      | undefined;
     db.query("UPDATE accounts SET is_active = 0").run();
-    if (existing) {
-      db.query(
-        `UPDATE accounts SET token = ?, refresh_token = ?, expires_at = ?,
-          issued_at = ?, is_active = 1, updated_at = ?, last_used_at = ?
-         WHERE account_id = ?`,
-      ).run(
-        auth.token,
-        auth.refresh_token,
-        auth.expires_at,
-        auth.issued_at,
-        auth.updated_at ?? now,
-        now,
-        existing.account_id,
-      );
-    } else {
-      db.query(
-        `INSERT INTO accounts (account_id, host, user_id, email, username, name,
+    db.query(
+      `INSERT INTO accounts (account_id, host, user_id, email, username, name,
         token, refresh_token, expires_at, issued_at, is_active, created_at, updated_at,
         last_used_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-      ).run(
-        uuidv7(),
-        auth.host,
-        user?.user_id ?? null,
-        user?.email ?? null,
-        user?.username ?? null,
-        user?.name ?? null,
-        auth.token,
-        auth.refresh_token,
-        auth.expires_at,
-        auth.issued_at,
-        now,
-        auth.updated_at ?? now,
-        now,
-      );
-    }
-  } else if (auth || tableExists(db, "auth")) {
-    // No stored token: the older CLI logged out (it deletes the `auth` row).
-    // Only an account handed down by prepareDatabaseForDowngrade can be
-    // active here, so drop it rather than silently logging back in.
-    db.query("DELETE FROM accounts WHERE is_active = 1").run();
+    ).run(
+      uuidv7(),
+      auth.host,
+      user?.user_id ?? null,
+      user?.email ?? null,
+      user?.username ?? null,
+      user?.name ?? null,
+      auth.token,
+      auth.refresh_token,
+      auth.expires_at,
+      auth.issued_at,
+      now,
+      auth.updated_at ?? now,
+      now,
+    );
   }
 
   db.exec("DROP TABLE IF EXISTS auth");
   db.exec("DROP TABLE IF EXISTS user_info");
 }
 
-/**
- * Newest schema an older CLI can read without knowing about `accounts` or
- * org-region provenance: v17 rebuilt `org_regions` with a new key and v18
- * moved the login out of `auth`.
- */
+/** Schema of CLI 0.47.0 and earlier, before `accounts` (v18) existed. */
 const PRE_ACCOUNTS_SCHEMA_VERSION = 16;
 
-/** `auth` and `user_info` as CLI versions before schema v18 read them. */
-const LEGACY_AUTH_DDL = `CREATE TABLE auth (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    token TEXT,
-    refresh_token TEXT,
-    expires_at INTEGER,
-    issued_at INTEGER,
-    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    host TEXT
-  )`;
-const LEGACY_USER_INFO_DDL = `CREATE TABLE user_info (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    user_id TEXT NOT NULL,
-    email TEXT,
-    username TEXT,
-    name TEXT,
-    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
-  )`;
-
-/** Copy the active account into the single-row tables older CLIs read. */
-function exportActiveAccountToLegacyTables(db: Database): void {
-  db.exec("DROP TABLE IF EXISTS auth");
-  db.exec("DROP TABLE IF EXISTS user_info");
-  db.exec(LEGACY_AUTH_DDL);
-  db.exec(LEGACY_USER_INFO_DDL);
-
-  const account = db
-    .query(
-      `SELECT host, user_id, email, username, name, token, refresh_token,
-        expires_at, issued_at, updated_at
-       FROM accounts WHERE is_active = 1 LIMIT 1`,
-    )
-    .get() as (LegacyAuthRow & LegacyUserRow) | undefined;
-  if (!account?.token) {
-    return;
-  }
-
-  db.query(
-    `INSERT INTO auth (id, token, refresh_token, expires_at, issued_at, updated_at, host)
-     VALUES (1, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    account.token,
-    account.refresh_token,
-    account.expires_at,
-    account.issued_at,
-    account.updated_at ?? Date.now(),
-    account.host,
-  );
-  if (account.user_id) {
-    db.query(
-      "INSERT INTO user_info (id, user_id, email, username, name) VALUES (1, ?, ?, ?, ?)",
-    ).run(account.user_id, account.email, account.username, account.name);
-  }
-}
-
 /**
- * Leave the database readable by an older CLI before `sentry cli upgrade`
- * installs one (#1611).
+ * Leave the database readable by a CLI from before schema v18, ahead of
+ * `sentry cli upgrade` installing one (#1611).
  *
- * Older CLIs only migrate forward and create missing tables with
+ * Those CLIs only migrate forward and create missing tables with
  * `CREATE TABLE IF NOT EXISTS`, so this:
  * - drops every cache table, letting the older CLI recreate them in its own
  *   shape (v17 changed the `org_regions` key, which breaks older upserts);
- * - copies the active login into the pre-v18 `auth`/`user_info` tables, so
- *   the older CLI stays logged in;
+ * - deletes every stored account: the older CLI cannot read `accounts`, so
+ *   the user logs in again there;
  * - sets the stored version to {@link PRE_ACCOUNTS_SCHEMA_VERSION}, so this
- *   CLI re-runs its later migrations when it comes back and picks up any
- *   login or token refresh the older CLI wrote to `auth`.
+ *   CLI re-runs its later migrations when it comes back and folds a login
+ *   made in the older CLI into `accounts`.
  *
  * Does nothing unless the stored version is this CLI's own, so callers can
  * run it again after installing: only this CLI migrates to that version, so
@@ -1035,17 +943,15 @@ function exportActiveAccountToLegacyTables(db: Database): void {
  */
 export function prepareDatabaseForDowngrade(db: Database): void {
   if (getSchemaVersion(db) < CURRENT_SCHEMA_VERSION) {
-    // Already prepared, or the older CLI has since migrated forward on its
-    // own. Preparing again would overwrite a login it wrote to `auth`.
     return;
   }
   db.transaction(() => {
     for (const tableName of REBUILDABLE_TABLES) {
       db.exec(`DROP TABLE IF EXISTS ${tableName}`);
     }
-    if (tableExists(db, "accounts")) {
-      exportActiveAccountToLegacyTables(db);
-    }
+    // DELETE, not DROP: later reads in this process must not hit a missing
+    // table, whose auto-repair would restore this CLI's schema version.
+    db.query("DELETE FROM accounts").run();
     db.query("UPDATE schema_version SET version = ?").run(
       PRE_ACCOUNTS_SCHEMA_VERSION,
     );

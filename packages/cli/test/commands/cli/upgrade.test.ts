@@ -976,8 +976,8 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(setupCall?.args).toContain("--ensure-auth-scopes");
   });
 
-  test("hands the database to the older CLI before it runs setup", async () => {
-    mockBinaryDownloadWithVersion("99.99.99");
+  test("hands the database to an older CLI before it runs setup", async () => {
+    mockBinaryDownloadWithVersion("0.47.0");
     const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
     let versionAtSetup: number | undefined;
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
@@ -1003,6 +1003,22 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     );
     expect(versionAtSetup).toBe(16);
     expect(readSchemaVersion()).toBe(16);
+  });
+
+  test("leaves the database alone for an older CLI that adapts it", async () => {
+    mockBinaryDownloadWithVersion("99.99.99");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
   });
 
   test("leaves the database alone when upgrading", async () => {
