@@ -7,7 +7,6 @@
 import type { SentryContext } from "../../context.js";
 import { listTransactions } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -30,11 +29,12 @@ import {
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
-import {
-  resolveLogProjectId,
-  resolveProjectBoundFromArg,
-} from "../../lib/resolve-target.js";
+import { resolveLogProjectId } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
+import {
+  type ProjectBoundTarget,
+  projectBoundTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -82,9 +82,6 @@ type TraceListResult = {
 
 /** Accepted values for the --sort flag */
 const VALID_SORT_VALUES: SortValue[] = ["date", "duration"];
-
-/** Command name used in resolver error messages */
-const COMMAND_NAME = "trace list";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "trace-list";
@@ -225,7 +222,7 @@ export const listCommand = buildListCommand("trace", {
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search)",
-          parse: parseOrgProjectTarget,
+          parse: projectBoundTarget,
           optional: true,
         },
       ],
@@ -258,17 +255,16 @@ export const listCommand = buildListCommand("trace", {
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
-    const { cwd } = this;
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ProjectBoundTarget,
+  ) {
     const timeRange = flags.period;
     const { query } = flags;
 
     // Resolve org/project from positional arg, config, or DSN auto-detection
-    const { org, project } = await resolveProjectBoundFromArg(
-      target,
-      cwd,
-      COMMAND_NAME,
-    );
+    const { org, project } = await target.resolved;
     // Resolve slug → numeric ID so the Events query scopes via the `project`
     // param. `project:<slug>` only matches actively-selected projects and can
     // otherwise 400 with "not actively selected" (#1317).

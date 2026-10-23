@@ -25,18 +25,51 @@ function rule(message, visitors) {
   };
 }
 
-function containsIdentifier(node, identifier) {
+function someNode(node, predicate) {
   if (!node || typeof node !== "object") return false;
-  if (node.type === "Identifier" && node.name === identifier) return true;
+  if (predicate(node)) return true;
   return Object.entries(node).some(
     ([key, value]) =>
       key !== "parent" &&
       (Array.isArray(value)
-        ? value.some((child) => containsIdentifier(child, identifier))
-        : value &&
-          typeof value === "object" &&
-          containsIdentifier(value, identifier)),
+        ? value.some((child) => someNode(child, predicate))
+        : value && typeof value === "object" && someNode(value, predicate)),
   );
+}
+
+function containsIdentifier(node, identifier) {
+  return someNode(
+    node,
+    (n) => n.type === "Identifier" && n.name === identifier,
+  );
+}
+
+function readsProperty(node, object, property) {
+  return someNode(
+    node,
+    (n) =>
+      member(n, property) &&
+      n.object.type === "Identifier" &&
+      n.object.name === object,
+  );
+}
+
+/** Target positional types from `src/lib/target-positional.ts`. */
+const BOUND_TARGET_TYPES = new Set([
+  "OrgOptionalTarget",
+  "OrgProjectTarget",
+  "ProjectBoundTarget",
+]);
+
+function boundTargetParams(fn) {
+  return fn.params.filter((param) => {
+    const type = param.typeAnnotation?.typeAnnotation;
+    return (
+      param.type === "Identifier" &&
+      type?.type === "TSTypeReference" &&
+      BOUND_TARGET_TYPES.has(type.typeName.name)
+    );
+  });
 }
 
 function silentBody(block, parameter) {
@@ -202,6 +235,22 @@ const rules = {
             },
           }
         : {},
+  ),
+  "require-target-resolution": rule(
+    "Await `<target>.resolved`: it runs the target's resolver and destructive-command guard.",
+    (_context, file, report) => {
+      if (!file.includes("/src/commands/")) return {};
+      const check = (node) => {
+        for (const param of boundTargetParams(node)) {
+          if (!readsProperty(node.body, param.name, "resolved")) report(param);
+        }
+      };
+      return {
+        FunctionDeclaration: check,
+        FunctionExpression: check,
+        ArrowFunctionExpression: check,
+      };
+    },
   ),
   "no-generic-is-record": rule(
     "Use a shape-specific guard instead of isRecord().",

@@ -99,6 +99,7 @@ describe("listCommand.func", () => {
         stdout: { write: stdoutWrite },
         stderr: { write: vi.fn(() => true) },
         cwd: "/tmp",
+        commandPrefix: ["sentry", "replay", "list"],
       },
       stdoutWrite,
     };
@@ -106,7 +107,7 @@ describe("listCommand.func", () => {
 
   beforeEach(() => {
     listReplaysSpy = vi.spyOn(apiClient, "listReplays");
-    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalFromArg");
+    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
     resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
       cursor: undefined,
       direction: "next" as const,

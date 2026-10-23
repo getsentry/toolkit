@@ -23,6 +23,7 @@ import { buildCommand, type CommandDocumentation } from "./command.js";
 import { CliError, ContextError } from "./errors.js";
 import type { CommandReturn } from "./formatters/output.js";
 import { logger } from "./logger.js";
+import { markDestructive } from "./positional-parse.js";
 
 // ---------------------------------------------------------------------------
 // Level A: shared flag / alias definitions
@@ -400,6 +401,9 @@ export function buildDeleteCommand<
         },
       );
     }
+
+    // Lazy target positionals refuse to auto-detect when they resolve
+    markDestructive(args);
 
     return originalFunc.call(this, flags, ...(args as unknown as ARGS));
   } as typeof originalFunc;
