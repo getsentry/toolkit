@@ -2,6 +2,7 @@ import { getColumnsAndAggregates } from "@sentry/toolkit-core/events-fields";
 import { getActiveSpan } from "@sentry/core";
 import { ensureSortInFields } from "@sentry/toolkit-core/events-sort";
 import { z } from "zod";
+import { ApiValidationError } from "../../../api-client";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import { UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
@@ -52,6 +53,7 @@ import { isSeerSearchDataset, translateWithSeer } from "./seer";
 import {
   formatEventsValidationResults,
   isAggregateQuery,
+  isOnlySentrySearchSyntax,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
   readRegexFilterValue,
@@ -601,6 +603,39 @@ export async function runSearchEvents(
   context: ServerContext,
   options: RunSearchEventsOptions = {},
 ): Promise<string> {
+  // A search_errors query written entirely in Sentry syntax needs no
+  // translation, so run it as written and only call the embedded agent if
+  // Sentry rejects it. The validate endpoint doesn't check the errors dataset,
+  // so the search request itself is the check. search_events keeps the agent
+  // because it may move the search to a better dataset.
+  if (
+    options.lockDataset === true &&
+    hasAgentProvider() &&
+    params.dataset === "errors" &&
+    isOnlySentrySearchSyntax(params.query, { dataset: "errors" })
+  ) {
+    try {
+      return await executeSearchEvents(params, context, options, false);
+    } catch (error) {
+      if (
+        !(
+          error instanceof ApiValidationError || error instanceof UserInputError
+        )
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  return await executeSearchEvents(params, context, options, true);
+}
+
+async function executeSearchEvents(
+  params: SearchEventsParams,
+  context: ServerContext,
+  options: RunSearchEventsOptions,
+  allowAgent: boolean,
+): Promise<string> {
   const lockDataset = options.lockDataset === true;
   const apiService = apiServiceFromContext(context, {
     regionUrl: params.regionUrl ?? undefined,
@@ -693,7 +728,7 @@ export async function runSearchEvents(
   }
 
   const willRunAgent =
-    hasAgentProvider() && !canRunWithoutAgent && !seerTranslation;
+    allowAgent && hasAgentProvider() && !canRunWithoutAgent && !seerTranslation;
   const inputReferencesEnvironment =
     params.environment != null ||
     collectRequestedEnvironments(null, params.query ?? "").length > 0;

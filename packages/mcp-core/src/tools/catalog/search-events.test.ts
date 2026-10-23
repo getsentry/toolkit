@@ -3927,6 +3927,95 @@ describe("search_events", () => {
     );
   });
 
+  it("runs plain Sentry syntax on a locked errors search without the agent", async () => {
+    let eventsRequestUrl: URL | undefined;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          eventsRequestUrl = new URL(request.url);
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    await runSearchEvents(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "level:error environment:production",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        constraints: {
+          organizationSlug: null,
+          regionUrl: null,
+          projectSlug: null,
+        },
+        accessToken: "test-token",
+        userId: "1",
+      },
+      { lockDataset: true },
+    );
+
+    expect(mockGenerateText).not.toHaveBeenCalled();
+    expect(eventsRequestUrl?.searchParams.get("dataset")).toBe("errors");
+    expect(eventsRequestUrl?.searchParams.get("query")).toBe(
+      "level:error environment:production",
+    );
+    expect(eventsRequestUrl?.searchParams.get("sort")).toBe("-timestamp");
+  });
+
+  it("repairs a rejected plain Sentry syntax errors search with the agent", async () => {
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse("errors", "error.type:TimeoutError"),
+    );
+    const requestedQueries: Array<string | null> = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          const query = new URL(request.url).searchParams.get("query");
+          requestedQueries.push(query);
+          return query === "error.type:TimeoutError"
+            ? HttpResponse.json({ data: [] })
+            : HttpResponse.json({ detail: "Invalid query" }, { status: 400 });
+        },
+      ),
+    );
+
+    await runSearchEvents(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "error.type:[TimeoutError",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        constraints: {
+          organizationSlug: null,
+          regionUrl: null,
+          projectSlug: null,
+        },
+        accessToken: "test-token",
+        userId: "1",
+      },
+      { lockDataset: true },
+    );
+
+    expect(mockGenerateText).toHaveBeenCalledTimes(1);
+    expect(requestedQueries).toEqual([
+      "error.type:[TimeoutError",
+      "error.type:TimeoutError",
+    ]);
+  });
+
   describe("with Seer", () => {
     const seerParams = {
       organizationSlug: "test-org",

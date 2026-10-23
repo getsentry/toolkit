@@ -26,7 +26,9 @@ BEHAVIOR:
 SYNTAX:
 - Time ranges use relative notation: -24h, -7d, -30d
 - Comparisons: >, <, >=, <=
-- Boolean operators: AND, OR, NOT (or !)
+- Issue search rejects AND, OR, and parentheses. Space-separated terms must all match. Negate with !, e.g. !is:resolved
+- For either/or on one field, use a list: level:[error,fatal]
+- is: does not accept lists. For substatus alternatives use substatus:[...], e.g. "is:regressed OR is:escalating" -> substatus:[regressed,escalating]
 - Field values with spaces need quotes: environment:"dev server"
 
 BUILT-IN FIELDS:

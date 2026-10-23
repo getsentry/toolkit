@@ -1,5 +1,6 @@
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
+import { ApiValidationError, type IssueList } from "../../api-client";
 import { SEARCH_ISSUES_PERIOD_VALUES } from "../../constants";
 import { hasAgentProvider } from "../../internal/agents/provider-factory";
 import { withProviderFallback } from "../../internal/agents/provider-fallback";
@@ -9,6 +10,7 @@ import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
+import { isOnlySentrySearchSyntax } from "../support/search-events/utils";
 import { searchIssuesAgent } from "../support/search-issues/agent";
 import {
   formatExplanation,
@@ -16,6 +18,17 @@ import {
 } from "../support/search-issues/formatters";
 
 const ProjectSlugOrIdSchema = z.string().trim().superRefine(validateSlugOrId);
+
+// Issue search keys that are camelCase, which the prose guard would otherwise
+// treat as words rather than filters.
+const CAMEL_CASE_ISSUE_KEYS = new Set([
+  "activeSince",
+  "firstRelease",
+  "firstSeen",
+  "lastSeen",
+  "timesSeen",
+  "userCount",
+]);
 
 function buildIssueSearchRepairPrompt(params: {
   query: string;
@@ -43,7 +56,7 @@ export default defineTool({
   description: [
     "Search for grouped issues/problems in Sentry - returns a LIST of issues, NOT counts or aggregations.",
     "",
-    "Provide `query` as natural language or Sentry issue search syntax. When an embedded agent is configured, it fixes query and sort before running while preserving explicit Sentry search syntax.",
+    "Provide `query` as natural language or Sentry issue search syntax. Plain issue search syntax runs as written. When an embedded agent is configured, it translates natural language and repairs queries Sentry rejects.",
     "",
     "Returns grouped issues with metadata like title, status, and user count.",
     "",
@@ -142,7 +155,43 @@ export default defineTool({
       }
     }
 
-    if (hasAgentProvider()) {
+    const listIssues = (
+      issueQuery: string,
+      issueSort: typeof params.sort,
+    ): Promise<IssueList> =>
+      apiService.listIssues({
+        organizationSlug: params.organizationSlug,
+        projectId,
+        query: issueQuery,
+        sortBy: issueSort,
+        limit: params.limit,
+        statsPeriod: params.period,
+      });
+
+    // Queries made only of issue search filters run as-is; only a query Sentry
+    // rejects goes to the repair agent. Issue search rejects AND/OR and
+    // parentheses, so queries with those always go to the agent.
+    let issues: IssueList | undefined;
+    if (
+      hasAgentProvider() &&
+      isOnlySentrySearchSyntax(params.query, {
+        knownKeys: CAMEL_CASE_ISSUE_KEYS,
+        allowLogic: false,
+      })
+    ) {
+      try {
+        issues = await listIssues(params.query, params.sort);
+      } catch (error) {
+        if (!(error instanceof ApiValidationError)) {
+          throw error;
+        }
+      }
+    }
+
+    if (issues) {
+      query = params.query;
+      sort = params.sort;
+    } else if (hasAgentProvider()) {
       // Agent mode: repair requests before calling Sentry. If the optional AI
       // provider is unavailable, preserve the original query and continue.
       const translatedQuery = await withProviderFallback<
@@ -177,14 +226,7 @@ export default defineTool({
       sort = params.sort;
     }
 
-    const issues = await apiService.listIssues({
-      organizationSlug: params.organizationSlug,
-      projectId,
-      query,
-      sortBy: sort,
-      limit: params.limit,
-      statsPeriod: params.period,
-    });
+    issues ??= await listIssues(query, sort);
 
     getActiveSpan()?.setAttribute(
       "gen_ai.tool.call.result.count",

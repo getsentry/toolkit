@@ -6,6 +6,8 @@ AI-powered natural language to Sentry issue search translation.
 
 The `search_issues` tool uses an embedded AI agent to translate natural language queries into Sentry issue search syntax. It provides intelligent searching for grouped issues/problems rather than individual events.
 
+A query made entirely of issue search filters runs as written. The agent only sees it if Sentry rejects it. Issue search rejects AND, OR, and parentheses, so queries with those always go to the agent.
+
 ## Architecture
 
 - **Handler**: `handler.ts` - MCP tool definition and orchestration

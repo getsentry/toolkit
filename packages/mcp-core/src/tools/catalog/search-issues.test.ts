@@ -406,7 +406,7 @@ describe("search_issues", () => {
     expect(result).not.toContain("update_issue");
   });
 
-  it("should preserve explicit query syntax through agent repair", async () => {
+  it("runs plain issue search syntax without the agent", async () => {
     const explicitQuery =
       "is:for_review release:latest assigned:me issue.priority:high";
     mockGenerateText.mockResolvedValue(mockAIResponse(explicitQuery, "date"));
@@ -455,9 +455,79 @@ describe("search_issues", () => {
       mockContext,
     );
 
-    expect(mockGenerateText).toHaveBeenCalled();
+    expect(mockGenerateText).not.toHaveBeenCalled();
     expect(result).toContain("PROJ-123");
     expect(result).toContain("Needs Review");
+  });
+
+  it("repairs plain issue search syntax that Sentry rejects", async () => {
+    mockGenerateText.mockResolvedValue(mockAIResponse("is:unresolved", "date"));
+    const requestedQueries: Array<string | null> = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/",
+        ({ request }) => {
+          const query = new URL(request.url).searchParams.get("query");
+          requestedQueries.push(query);
+          return query === "is:unresolved"
+            ? HttpResponse.json([])
+            : HttpResponse.json(
+                { detail: 'Invalid value for "is" search' },
+                { status: 400 },
+              );
+        },
+      ),
+    );
+
+    await searchIssues.handler(
+      {
+        organizationSlug: "test-org",
+        query: "is:unresolve",
+        sort: "date",
+        projectSlugOrId: null,
+        regionUrl: null,
+        limit: 10,
+        period: "30d",
+        includeExplanation: false,
+      },
+      mockContext,
+    );
+
+    expect(mockGenerateText).toHaveBeenCalledTimes(1);
+    expect(requestedQueries).toEqual(["is:unresolve", "is:unresolved"]);
+  });
+
+  it("sends boolean issue queries to the agent, since issue search rejects them", async () => {
+    mockGenerateText.mockResolvedValue(
+      mockAIResponse("substatus:[regressed,escalating]", "date"),
+    );
+    const requestedQueries: Array<string | null> = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/",
+        ({ request }) => {
+          requestedQueries.push(new URL(request.url).searchParams.get("query"));
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    await searchIssues.handler(
+      {
+        organizationSlug: "test-org",
+        query: "is:regressed OR is:escalating",
+        sort: "date",
+        projectSlugOrId: null,
+        regionUrl: null,
+        limit: 10,
+        period: "30d",
+        includeExplanation: false,
+      },
+      mockContext,
+    );
+
+    expect(mockGenerateText).toHaveBeenCalledTimes(1);
+    expect(requestedQueries).toEqual(["substatus:[regressed,escalating]"]);
   });
 
   it("should handle project slug parameter", async () => {

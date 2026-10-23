@@ -11,6 +11,7 @@ import {
   formatEventsValidationResults,
   formatEventValue,
   formatKnownUserValue,
+  isOnlySentrySearchSyntax,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
 } from "./utils";
@@ -274,6 +275,35 @@ describe("formatEventValue", () => {
 });
 
 describe("search query helpers", () => {
+  it("only accepts queries made entirely of Sentry search syntax", () => {
+    expect(isOnlySentrySearchSyntax("level:error environment:production")).toBe(
+      true,
+    );
+    expect(
+      isOnlySentrySearchSyntax('!transaction:"healthcheck" (a:b OR c:d)'),
+    ).toBe(true);
+    expect(
+      isOnlySentrySearchSyntax("TypeErrors in checkout environment:production"),
+    ).toBe(false);
+    expect(isOnlySentrySearchSyntax('"quoted text" level:error')).toBe(false);
+    expect(isOnlySentrySearchSyntax("Note: deploy failed")).toBe(false);
+    expect(isOnlySentrySearchSyntax("")).toBe(false);
+  });
+
+  it("applies known keys and logic options to whole-syntax detection", () => {
+    expect(isOnlySentrySearchSyntax("firstSeen:-24h")).toBe(false);
+    expect(
+      isOnlySentrySearchSyntax("firstSeen:-24h userCount:>100", {
+        knownKeys: new Set(["firstSeen", "userCount"]),
+      }),
+    ).toBe(true);
+    expect(
+      isOnlySentrySearchSyntax("is:regressed OR is:escalating", {
+        allowLogic: false,
+      }),
+    ).toBe(false);
+  });
+
   it("should detect structured Sentry search syntax", () => {
     expect(looksLikeSentrySearchSyntax("vpn connections from China")).toBe(
       false,

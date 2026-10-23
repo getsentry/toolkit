@@ -142,7 +142,11 @@ function* filterTokens(
  * Whether a parsed filter is Sentry search syntax rather than prose that
  * happens to contain a colon, like `Note: ...`, `10:30`, or a URL.
  */
-function isStructuredFilter(query: string, filter: FilterToken): boolean {
+function isStructuredFilter(
+  query: string,
+  filter: FilterToken,
+  knownKeys?: ReadonlySet<string>,
+): boolean {
   const key = query.slice(
     filter.key.location.start.offset,
     filter.key.location.end.offset,
@@ -166,7 +170,11 @@ function isStructuredFilter(query: string, filter: FilterToken): boolean {
     return false;
   }
 
-  if (filter.key.type === Token.KEY_AGGREGATE || /^tags\[[^\]]+\]$/.test(key)) {
+  if (
+    filter.key.type === Token.KEY_AGGREGATE ||
+    /^tags\[[^\]]+\]$/.test(key) ||
+    knownKeys?.has(key)
+  ) {
     return true;
   }
 
@@ -206,6 +214,60 @@ export function looksLikeSentrySearchSyntax(
     }
   }
   return false;
+}
+
+/**
+ * Whether the whole query is Sentry search syntax with no free text, so it can
+ * run without translation. Unlike {@link looksLikeSentrySearchSyntax}, one
+ * filter inside prose ("TypeErrors in checkout environment:prod") is not enough.
+ *
+ * `knownKeys` accepts keys the prose guard would reject, such as the
+ * camelCase issue keys `firstSeen` and `userCount`. Set `allowLogic: false`
+ * for searches that reject AND/OR and parentheses, like issue search.
+ */
+export function isOnlySentrySearchSyntax(
+  query: string | undefined,
+  {
+    dataset,
+    knownKeys,
+    allowLogic = true,
+  }: {
+    dataset?: SearchSyntaxDataset;
+    knownKeys?: ReadonlySet<string>;
+    allowLogic?: boolean;
+  } = {},
+): boolean {
+  const trimmedQuery = query?.trim().replace(LINE_BREAK_PATTERN, " ");
+  if (!trimmedQuery) {
+    return false;
+  }
+
+  const tokens = parseSearch(trimmedQuery, {
+    config: { allowRegex: dataset === "logs" },
+  });
+  if (!tokens) {
+    return false;
+  }
+
+  const onlyFilters = (inner: readonly ParseResultToken[]): boolean =>
+    inner.every((token) => {
+      switch (token.type) {
+        case Token.SPACES:
+          return true;
+        case Token.FREE_TEXT:
+          return token.text.trim() === "";
+        case Token.FILTER:
+          return isStructuredFilter(trimmedQuery, token, knownKeys);
+        case Token.LOGIC_BOOLEAN:
+          return allowLogic;
+        case Token.LOGIC_GROUP:
+          return allowLogic && onlyFilters(token.inner);
+        default:
+          return false;
+      }
+    });
+
+  return onlyFilters(tokens);
 }
 
 export function readRegexFilterValue(
