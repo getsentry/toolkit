@@ -30,7 +30,11 @@ import type { SentryContext } from "../../context.js";
 import { getSkillInstallPath } from "../../lib/agent-skills.js";
 import { isHomebrewInstall } from "../../lib/binary.js";
 import { getCompletionPath } from "../../lib/completions.js";
-import { closeDatabase, getConfigDir } from "../../lib/db/index.js";
+import {
+  closeDatabase,
+  DEFAULT_CONFIG_DIR_DISPLAY,
+  getConfigDir,
+} from "../../lib/db/index.js";
 import { getInstallInfo } from "../../lib/db/install-info.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
@@ -328,7 +332,7 @@ function gatherArtifacts(home: string): UninstallArtifact[] {
     }
   }
 
-  // 5. Config directory (~/.sentry/)
+  // 5. Config directory (SENTRY_CONFIG_DIR, XDG, or legacy ~/.sentry)
   const configDir = getConfigDir();
   artifacts.push({
     label: "config directory",
@@ -452,7 +456,7 @@ export const uninstallCommand = buildDeleteCommand({
     flags: {
       "keep-config": {
         kind: "boolean",
-        brief: "Keep the config directory (~/.sentry) and auth tokens",
+        brief: `Keep the config directory (default ${DEFAULT_CONFIG_DIR_DISPLAY}) and auth tokens`,
         default: false,
         optional: true,
       },

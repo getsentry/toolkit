@@ -128,15 +128,15 @@ export const revisionsCommand = buildCommand({
       },
       {
         description: "Pass the organization explicitly",
-        command: "sentry dashboard revisions my-org 12345",
+        command: "sentry dashboard revisions my-org/ 12345",
       },
       {
         description: "Fetch the next page",
-        command: "sentry dashboard revisions my-org 12345 -c next",
+        command: "sentry dashboard revisions my-org/ 12345 -c next",
       },
       {
         description: "Output as JSON",
-        command: "sentry dashboard revisions my-org 12345 --json",
+        command: "sentry dashboard revisions my-org/ 12345 --json",
       },
     ],
   },

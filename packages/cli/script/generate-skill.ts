@@ -128,6 +128,9 @@ function stripMdxComponents(markdown: string): string {
 // Documentation Loading
 // ---------------------------------------------------------------------------
 
+/** `<!-- GENERATED:START name -->` / `END` lines from generate-docs-sections.ts */
+const GENERATED_MARKER_LINE_RE = /^<!-- GENERATED:(?:START|END) [\w-]+ -->\n/gm;
+
 /** Load and parse a documentation file */
 async function loadDoc(relativePath: string): Promise<string | null> {
   const fullPath = `${DOCS_PATH}/${relativePath}`;
@@ -139,7 +142,9 @@ async function loadDoc(relativePath: string): Promise<string | null> {
     return null;
   }
   const content = await readFile(fullPath, "utf-8");
-  return stripMdxComponents(stripFrontmatter(content));
+  return stripMdxComponents(
+    stripFrontmatter(content).replace(GENERATED_MARKER_LINE_RE, ""),
+  );
 }
 
 /** Extract npm command from PackageManagerCode Astro component */

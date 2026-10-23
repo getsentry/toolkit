@@ -11,8 +11,8 @@
  *
  * Resolution gets the command path from `commandPrefix`, which Stricli's
  * `forCommand` (and the SDK invoker) set on the context, so usage hints need
- * no hand-written command name. Destructive commands (`buildDeleteCommand`)
- * refuse an auto-detected target.
+ * no hand-written command name. Destructive commands (`destructive: true`,
+ * which `buildDeleteCommand` sets) refuse an auto-detected target.
  */
 
 import { type ParsedOrgProject, parseOrgProjectArg } from "./arg-parsing.js";

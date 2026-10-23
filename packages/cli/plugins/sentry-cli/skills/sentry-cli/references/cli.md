@@ -186,7 +186,7 @@ sentry cli setup --no-agent-skills
 Uninstall Sentry CLI
 
 **Flags:**
-- `--keep-config - Keep the config directory (~/.sentry) and auth tokens`
+- `--keep-config - Keep the config directory (default ~/.config/sentry) and auth tokens`
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`

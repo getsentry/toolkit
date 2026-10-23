@@ -90,6 +90,7 @@ Environment Variables:
     SENTRY_INSTALL_DIR      Override the installation directory
     SENTRY_VERSION          Install a specific version (e.g., 0.42.2, nightly)
     SENTRY_INIT             Set to 1 to run \`sentry init\` after installing
+    SENTRY_CLI_NO_TELEMETRY Set to 1 to disable installer error reporting
 
 Examples:
     curl -fsSL https://cli.sentry.dev/install | bash

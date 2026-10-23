@@ -70,7 +70,7 @@ export const restoreCommand = buildCommand({
       },
       {
         description: "Pass the organization explicitly",
-        command: "sentry dashboard restore my-org 12345 --revision 42",
+        command: "sentry dashboard restore my-org/ 12345 --revision 42",
       },
       {
         description: "Output the restored dashboard as JSON",

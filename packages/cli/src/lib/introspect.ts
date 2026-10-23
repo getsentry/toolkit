@@ -68,6 +68,8 @@ export type Command = {
    */
   __primaryUsage?: string;
   __examples?: readonly CommandExample[];
+  /** Set by `buildCommand({ destructive: true })` and `buildDeleteCommand`. */
+  __destructive?: boolean;
 };
 
 /** Positional parameter definitions — either fixed-length tuple or variadic array */
@@ -124,6 +126,8 @@ export type CommandInfo = {
   examples: string[];
   /** JSON output field metadata extracted from `OutputConfig.schema` */
   jsonFields?: SchemaFieldInfo[];
+  /** Present (and `true`) when the command is destructive or irreversible */
+  destructive?: true;
 };
 
 /** Extracted metadata for a single flag */
@@ -320,6 +324,7 @@ export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
       ({ description, command }) => `# ${description}\n${command}`,
     ),
     jsonFields: jsonFields?.length ? jsonFields : undefined,
+    ...(cmd.__destructive ? { destructive: true as const } : {}),
   };
 }
 

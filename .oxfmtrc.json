@@ -12,6 +12,7 @@
     "packages/cli/plugins/**",
     "packages/cli/README.md",
     "packages/cli/DEVELOPMENT.md",
+    "packages/cli/CONTRIBUTING.md",
     "packages/cli/CHANGELOG.md",
     "packages/cli/AGENTS.md",
     "packages/mcp-server-mocks/src/fixtures/**",

@@ -230,13 +230,13 @@ sentry dashboard revisions 'Frontend Performance'
 sentry dashboard revisions 12345
 
 # Pass the organization explicitly
-sentry dashboard revisions my-org 12345
+sentry dashboard revisions my-org/ 12345
 
 # Fetch the next page
-sentry dashboard revisions my-org 12345 -c next
+sentry dashboard revisions my-org/ 12345 -c next
 
 # Output as JSON
-sentry dashboard revisions my-org 12345 --json
+sentry dashboard revisions my-org/ 12345 --json
 ```
 
 ### `sentry dashboard restore <org/dashboard...>`
@@ -256,7 +256,7 @@ sentry dashboard restore 'Frontend Performance' --revision 3
 sentry dashboard restore 12345 --revision 42
 
 # Pass the organization explicitly
-sentry dashboard restore my-org 12345 --revision 42
+sentry dashboard restore my-org/ 12345 --revision 42
 
 # Output the restored dashboard as JSON
 sentry dashboard restore 12345 --revision 42 --json
