@@ -154,6 +154,40 @@ sentry issue events FRONT-ABC -c next
 sentry issue events FRONT-ABC --json
 ```
 
+### `sentry issue tags <issue> <key>`
+
+Show the top values of an issue tag
+
+**Flags:**
+- `-e, --environment <value> - Filter to one environment (default: all environments)`
+- `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uniqueValues` | number \| null |  |
+| `totalValues` | number \| null | Total retained events, including missing tag values; not a lifetime count |
+| `topValues` | array \| null | Up to 9 values ordered by count, with nullable counts and first/last seen timestamps |
+| `key` | string |  |
+| `name` | string |  |
+
+**Examples:**
+
+```bash
+# Show which releases concentrate an issue's events
+sentry issue tags my-org/FRONT-ABC release
+
+# Inspect server distribution for the latest issue in production
+sentry issue tags @latest server_name --environment production
+
+# Get browser counts and timestamps as JSON
+sentry issue tags FRONT-ABC browser.name --json
+
+# Select the aggregate fields for a release distribution
+sentry issue tags FRONT-ABC release --json --fields key,totalValues,topValues
+```
+
 ### `sentry issue explain <issue...>`
 
 Analyze one or more issues using Seer AI

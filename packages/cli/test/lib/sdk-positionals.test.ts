@@ -29,6 +29,16 @@ function createRecordingSDK(): {
 }
 
 describe("generated SDK positional arguments", () => {
+  test("issue tags passes the issue and tag key as separate tokens", async () => {
+    const { calls, sdk } = createRecordingSDK();
+
+    await sdk.issue.tags({ issue: "my-org/FRONT-ABC", key: "release" });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.path).toEqual(["issue", "tags"]);
+    expect(calls[0]?.positional).toEqual(["my-org/FRONT-ABC", "release"]);
+  });
+
   test("issue link forwards repeated form fields as an array", async () => {
     const { calls, sdk } = createRecordingSDK();
     await sdk.issue.link({
