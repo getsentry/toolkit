@@ -108,7 +108,7 @@ describe("explainTokenForbidden", () => {
       true,
     );
     expect((error as ApiError).detail).toContain(
-      "skipped with --yes or --json",
+      "skipped with --yes, --json, or --dry-run",
     );
   });
 });

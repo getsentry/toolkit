@@ -12,9 +12,9 @@ adds it. Creating a token also needs `org:ci`, because a login can only give a
 new token scopes it holds itself, and revoking one needs `org:write` (org
 owners and managers).
 
-Re-authorization only happens in interactive runs: with `--yes` or `--json`
-the CLI never starts the authorization flow, so run a `sentry token` command
-once without those flags first.
+Re-authorization only happens in interactive runs: with `--yes`, `--json`, or
+`--dry-run` the CLI never starts the authorization flow, so run a
+`sentry token` command once without those flags first.
 
 New tokens always get the `org:ci` scope. Sentry returns a token's value only
 when it's created, so save it right away.

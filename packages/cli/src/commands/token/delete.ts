@@ -116,7 +116,7 @@ export const deleteCommand = buildDeleteCommand({
       "Find the token ID with `sentry token list`.\n\n" +
       "Needs the org:write permission (org owners and managers). The first run " +
       "asks you to re-authorize so your CLI login can manage org auth tokens " +
-      "(interactive runs only; skipped with --yes or --json).",
+      "(interactive runs only; skipped with --yes, --json, or --dry-run).",
     examples: [
       {
         description: "Revoke a token (auto-detect org)",

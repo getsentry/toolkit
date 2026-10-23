@@ -75,7 +75,7 @@ export async function ensureTokenScopes(
  * @param error - Error thrown by the API call
  * @param required - Scopes the command needs
  * @param scopeMissing - The stored login lacks `required` and couldn't be
- *   re-authorized in this run (no interactive terminal, or `--yes`/`--json`,
+ *   re-authorized in this run (no interactive terminal, or `--yes`/`--json`/`--dry-run`,
  *   which must never block on the authorization flow)
  */
 export function explainTokenForbidden(
@@ -88,8 +88,8 @@ export function explainTokenForbidden(
   }
   const scopes = required.join(", ");
   const detail = scopeMissing
-    ? `Your saved login doesn't include ${scopes}. Re-authorization needs an interactive terminal and is skipped with --yes or --json.\n  ` +
-      "Run this command once in a terminal without --yes or --json to re-authorize."
+    ? `Your saved login doesn't include ${scopes}. Re-authorization needs an interactive terminal and is skipped with --yes, --json, or --dry-run.\n  ` +
+      "Run this command once in a terminal without --yes, --json, or --dry-run to re-authorize."
     : "Org auth tokens can only be managed with a CLI login from 'sentry auth login'. " +
       "Personal tokens, org auth tokens, and SENTRY_AUTH_TOKEN can't manage them.\n  " +
       `The login also needs ${scopes}, and your org role must allow it.`;

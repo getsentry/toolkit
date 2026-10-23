@@ -153,6 +153,20 @@ describe("token delete", () => {
     expect(output(stdoutWrite)).toContain("Would revoke");
   });
 
+  test("dry-run explains the 403 when it can't re-authorize", async () => {
+    ensureScopesSpy.mockResolvedValue("unavailable");
+    listSpy.mockRejectedValue(new ApiError("Forbidden", 403));
+    const { context } = createMockContext();
+    const func = await deleteCommand.loader();
+
+    const error = await func
+      .call(context, { ...yesFlags, "dry-run": true }, "my-org/7")
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).detail).toContain("--dry-run");
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
   test("fails before deleting when the token doesn't exist", async () => {
     const { context } = createMockContext();
     const func = await deleteCommand.loader();
