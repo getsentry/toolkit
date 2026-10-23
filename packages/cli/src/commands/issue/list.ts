@@ -99,6 +99,7 @@ import {
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
 import { tipsSuppressed } from "../../lib/tips.js";
+import { shellQuote } from "../../lib/utils.js";
 import {
   type SentryIssue,
   SentryIssueSchema,
@@ -718,6 +719,35 @@ function trimWithProjectGuarantee(
   );
 }
 
+/** Re-run the failed search with an explicit target and the same parsed flags. */
+function contextRecoveryCommand(target: string, flags: ListFlags): string {
+  const parts = [
+    `sentry issue list ${shellQuote(target)}`,
+    `--limit ${flags.limit}`,
+    `--sort ${flags.sort}`,
+    `--period ${shellQuote(formatTimeRangeFlag(flags.period))}`,
+  ];
+  if (flags.query !== undefined) {
+    parts.push(`--query ${shellQuote(flags.query)}`);
+  }
+  if (flags.cursor !== undefined) {
+    parts.push(`--cursor ${shellQuote(flags.cursor)}`);
+  }
+  if (flags.json) {
+    parts.push("--json");
+  }
+  if (flags.fields) {
+    parts.push(`--fields ${shellQuote(flags.fields.join(","))}`);
+  }
+  if (flags.fresh) {
+    parts.push("--fresh");
+  }
+  if (flags.compact !== undefined) {
+    parts.push(flags.compact ? "--compact" : "--no-compact");
+  }
+  return parts.join(" ");
+}
+
 /** Build the CLI hint for fetching the next page, preserving active flags. */
 /** Append active non-default issue list flags to a base command string. */
 function appendIssueFlags(base: string, flags: ListFlags): string {
@@ -1194,6 +1224,7 @@ async function handleResolvedTargets(
     await resolveProjectBoundTargets(parsed, {
       cwd,
       usageHint: USAGE_HINT,
+      formatRecoveryCommand: (target) => contextRecoveryCommand(target, flags),
       projectSearchResolution,
       enrichProjectIds: true,
       checkIssueShortId: true,

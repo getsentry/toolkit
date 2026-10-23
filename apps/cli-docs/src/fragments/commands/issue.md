@@ -1,5 +1,13 @@
 
 
+## Context recovery
+
+If auto-detection cannot find a project, authenticated non-interactive runs show
+available `org/project` targets and commands to retry the search. Choose the
+project that matches your task; the retry keeps your query, period, limit, sort,
+and output flags. Suggestions are a bounded sample, with `sentry project list`
+commands to discover other projects. Showing suggestions does not save defaults.
+
 ## Search syntax
 
 :::caution[Search syntax]
