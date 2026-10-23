@@ -20,6 +20,7 @@ import { dirname, join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import type { SentryContext } from "../../context.js";
 import {
+  compareVersions,
   determineInstallDir,
   isDowngrade,
   isNightlyVersion,
@@ -30,13 +31,19 @@ import {
 } from "../../lib/binary.js";
 import { buildCommand } from "../../lib/command.js";
 import { CLI_VERSION } from "../../lib/constants.js";
+import { getDbPath, getRawDatabase } from "../../lib/db/index.js";
 import {
   getReleaseChannel,
   type ReleaseChannel,
   setReleaseChannel,
 } from "../../lib/db/release-channel.js";
+import { prepareDatabaseForDowngrade } from "../../lib/db/schema.js";
 import { getVersionCheckInfo } from "../../lib/db/version-check.js";
-import { UpgradeError, UpgradeTransportError } from "../../lib/errors.js";
+import {
+  stringifyUnknown,
+  UpgradeError,
+  UpgradeTransportError,
+} from "../../lib/errors.js";
 import { formatUpgradeResult } from "../../lib/formatters/human.js";
 import { formatBytes } from "../../lib/formatters/numbers.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -64,6 +71,27 @@ import {
 import { whichSync } from "../../lib/which.js";
 
 const log = logger.withTag("cli.upgrade");
+
+/**
+ * First release that adapts a database written by a newer CLI on its own
+ * (#1611). Older releases (schema 16 and below) need the hand-off.
+ */
+const SELF_ADAPTING_CLI_VERSION = "0.48.0";
+
+/**
+ * Leave the local database readable by an older CLI that cannot adapt it
+ * itself. A failure must not block the downgrade.
+ */
+function prepareLocalDatabaseForDowngrade(): void {
+  try {
+    prepareDatabaseForDowngrade(getRawDatabase());
+  } catch (error) {
+    log.warn(
+      `Could not prepare the local database for an older CLI: ${stringifyUnknown(error)}. ` +
+        `If the older CLI fails, delete ${getDbPath()} and run \`sentry auth login\`.`,
+    );
+  }
+}
 
 /** Special version strings that select a channel rather than a specific release. */
 const CHANNEL_VERSIONS = new Set(["nightly", "stable"]);
@@ -553,6 +581,8 @@ type SetupOptions = {
   ensureAuthScopes: boolean;
   /** Skip agent skill installation during setup. */
   noAgentSkills: boolean;
+  /** Hand the local database to an older CLI around setup (#1611). */
+  handOffDatabase: boolean;
 };
 
 /**
@@ -566,6 +596,11 @@ type SetupOptions = {
  *
  * For package manager upgrades: the binary is already in place, so setup only
  * updates completions, agent skills, and records metadata.
+ *
+ * With `handOffDatabase`, the database is handed off only once the older
+ * binary is downloaded, so a failed download keeps the current login, and
+ * again after setup even when it fails, in case another invocation of this
+ * CLI re-migrated the database meanwhile.
  */
 async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
   const {
@@ -576,6 +611,7 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
     installDir,
     ensureAuthScopes,
     noAgentSkills,
+    handOffDatabase,
   } = opts;
   const args = [
     "cli",
@@ -601,7 +637,17 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
     ? { ...process.env, SENTRY_INSTALL_DIR: installDir }
     : undefined;
 
-  const exitCode = await spawnWithRetry(binaryPath, args, env);
+  if (handOffDatabase) {
+    prepareLocalDatabaseForDowngrade();
+  }
+  let exitCode: number;
+  try {
+    exitCode = await spawnWithRetry(binaryPath, args, env);
+  } finally {
+    if (handOffDatabase) {
+      prepareLocalDatabaseForDowngrade();
+    }
+  }
   if (exitCode !== 0) {
     throw new UpgradeError(
       "execution_failed",
@@ -669,6 +715,7 @@ async function executeStandardUpgrade(opts: {
   json?: boolean;
   noAgentSkills: boolean;
   source?: UpgradeSource;
+  handOffDatabase: boolean;
 }): Promise<void> {
   const {
     method,
@@ -682,6 +729,7 @@ async function executeStandardUpgrade(opts: {
     json,
     noAgentSkills,
     source,
+    handOffDatabase,
   } = opts;
 
   // Use the rolling "nightly" tag only when upgrading to latest nightly
@@ -731,6 +779,7 @@ async function executeStandardUpgrade(opts: {
         installDir,
         ensureAuthScopes: !json,
         noAgentSkills,
+        handOffDatabase,
       });
     } finally {
       releaseLock(downloadResult.lockPath);
@@ -746,6 +795,7 @@ async function executeStandardUpgrade(opts: {
       install: false,
       ensureAuthScopes: !json,
       noAgentSkills,
+      handOffDatabase,
     });
   }
 }
@@ -775,9 +825,18 @@ async function migrateToStandaloneForNightly(opts: {
   json?: boolean;
   source?: UpgradeSource;
   channel: ReleaseChannel;
+  handOffDatabase: boolean;
 }): Promise<string[]> {
-  const { method, target, versionArg, noAgentSkills, json, source, channel } =
-    opts;
+  const {
+    method,
+    target,
+    versionArg,
+    noAgentSkills,
+    json,
+    source,
+    channel,
+    handOffDatabase,
+  } = opts;
   log.info("Nightly builds are only available as standalone binaries.");
   log.info("Migrating to standalone installation...");
 
@@ -821,6 +880,7 @@ async function migrateToStandaloneForNightly(opts: {
       installDir,
       ensureAuthScopes: !json,
       noAgentSkills,
+      handOffDatabase,
     });
   } finally {
     releaseLock(downloadResult.lockPath);
@@ -1080,6 +1140,8 @@ export const upgradeCommand = buildCommand({
     }
     const downgrade = isDowngrade(CLI_VERSION, target);
     log.debug(`${downgrade ? "Downgrading" : "Upgrading"} to ${target}`);
+    const handOffDatabase =
+      downgrade && compareVersions(target, SELF_ADAPTING_CLI_VERSION) < 0;
 
     // Perform the actual upgrade
     let warnings: string[] | undefined;
@@ -1094,6 +1156,7 @@ export const upgradeCommand = buildCommand({
         json: flags.json,
         source,
         channel,
+        handOffDatabase,
       });
     } else {
       await executeStandardUpgrade({
@@ -1108,6 +1171,7 @@ export const upgradeCommand = buildCommand({
         json: flags.json,
         noAgentSkills: flags["no-agent-skills"],
         source,
+        handOffDatabase,
       });
     }
 

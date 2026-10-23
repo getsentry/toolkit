@@ -24,6 +24,11 @@ vi.mock("node:child_process", async (importOriginal) => {
   const orig = await importOriginal<typeof import("node:child_process")>();
   return { ...orig };
 });
+vi.mock("../../../src/lib/binary.js", async (importOriginal) => {
+  const orig =
+    await importOriginal<typeof import("../../../src/lib/binary.js")>();
+  return { ...orig };
+});
 
 import { app } from "../../../src/app.js";
 import {
@@ -31,7 +36,10 @@ import {
   resolveUpgradeInstallDir,
 } from "../../../src/commands/cli/upgrade.js";
 import type { SentryContext } from "../../../src/context.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as binary from "../../../src/lib/binary.js";
 import { CLI_VERSION } from "../../../src/lib/constants.js";
+import { getRawDatabase } from "../../../src/lib/db/index.js";
 import {
   clearInstallInfo,
   setInstallInfo,
@@ -40,9 +48,17 @@ import {
   getReleaseChannel,
   setReleaseChannel,
 } from "../../../src/lib/db/release-channel.js";
+import { CURRENT_SCHEMA_VERSION } from "../../../src/lib/db/schema.js";
 import { setVersionCheckInfo } from "../../../src/lib/db/version-check.js";
 import { extractInputUrl } from "../../../src/lib/fetch-input.js";
 import { TEST_TMP_DIR, useTestConfigDir } from "../../helpers.js";
+
+function readSchemaVersion(): number {
+  const row = getRawDatabase()
+    .query("SELECT version FROM schema_version")
+    .get() as { version: number };
+  return row.version;
+}
 
 /** Store original fetch for restoration */
 let originalFetch: typeof globalThis.fetch;
@@ -958,6 +974,115 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(setupCall?.args).toContain("curl");
     expect(setupCall?.args).toContain("--install");
     expect(setupCall?.args).toContain("--ensure-auth-scopes");
+  });
+
+  test("hands the database to an older CLI before it runs setup", async () => {
+    mockBinaryDownloadWithVersion("0.47.0");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+    let versionAtSetup: number | undefined;
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      versionAtSetup = readSchemaVersion();
+      return fakeChildProcess(0);
+    });
+
+    const { context, getOutput, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(getOutput()).toContain("Downgraded to");
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      true,
+    );
+    expect(versionAtSetup).toBe(16);
+    expect(readSchemaVersion()).toBe(16);
+  });
+
+  test("keeps the database when downloading the older CLI fails", async () => {
+    mockFetch(async (url) => {
+      const urlStr = extractInputUrl(url);
+      if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
+        return new Response(JSON.stringify([{ tag_name: "cli@0.47.0" }]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("Server Error", { status: 500 });
+    });
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(spawnedArgs).toEqual([]);
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+  });
+
+  test("redoes the hand-off after setup fails", async () => {
+    mockBinaryDownloadWithVersion("0.47.0");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      // Another invocation of this CLI re-migrates the database meanwhile.
+      getRawDatabase()
+        .query("UPDATE schema_version SET version = ?")
+        .run(CURRENT_SCHEMA_VERSION);
+      return fakeChildProcess(1);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      true,
+    );
+    expect(readSchemaVersion()).toBe(16);
+  });
+
+  test("leaves the database alone for an older CLI that adapts it", async () => {
+    mockBinaryDownloadWithVersion("99.99.99");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+  });
+
+  test("leaves the database alone when upgrading", async () => {
+    mockBinaryDownloadWithVersion("99.99.99");
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "--method", "curl"], context);
+
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
   });
 
   test("does not launch interactive auth from JSON upgrades", async () => {
