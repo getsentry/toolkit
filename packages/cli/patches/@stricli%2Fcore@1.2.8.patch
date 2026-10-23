@@ -1,8 +1,60 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5ea209e29 100644
+index a9afbc1ab78cad7ba97d53882a80236af62854df..bb41ae32d8d26c83934865440f393a20ae7c8305 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
-@@ -1277,6 +1277,35 @@ var RouteMapSymbol = Symbol("RouteMap");
+@@ -1182,13 +1182,32 @@ function shouldUseAnsiColor(process, stream, config) {
+ }
+ 
+ // src/routing/command/run.ts
++// PATCH(getsentry/cli): pluggable exit code for argument-parsing failures.
++// Stock Stricli always exits with `ExitCode.InvalidArgument` when scanning
++// fails, even when a parameter's `parse` function threw an application error
++// that carries its own exit code. When the host application supplies
++// `determineArgumentErrorExitCode`, the first error it maps to a number wins;
++// returning `undefined` keeps `ExitCode.InvalidArgument`. Inert when unset. If
++// `exitCodeForArgumentErrors` is missing, the CLI's `check:patches` fails.
++function exitCodeForArgumentErrors(errors, determineArgumentErrorExitCode) {
++  if (determineArgumentErrorExitCode) {
++    for (const error of errors) {
++      const exitCode = determineArgumentErrorExitCode(error);
++      if (typeof exitCode === "number") {
++        return exitCode;
++      }
++    }
++  }
++  return ExitCode.InvalidArgument;
++}
+ async function runCommand({ loader, parameters }, {
+   context,
+   inputs,
+   scannerConfig,
+   errorFormatting,
+   documentationConfig,
+-  determineExitCode
++  determineExitCode,
++  determineArgumentErrorExitCode
+ }) {
+   let parsedArguments;
+   try {
+@@ -1209,7 +1228,7 @@ async function runCommand({ loader, parameters }, {
+ `
+         );
+       }
+-      return ExitCode.InvalidArgument;
++      return exitCodeForArgumentErrors(result.errors, determineArgumentErrorExitCode);
+     }
+   } catch (exc) {
+     const ansiColor = shouldUseAnsiColor(context.process, context.process.stderr, documentationConfig);
+@@ -1219,7 +1238,7 @@ async function runCommand({ loader, parameters }, {
+ ` : `${errorMessage}
+ `
+     );
+-    return ExitCode.InvalidArgument;
++    return exitCodeForArgumentErrors([exc], determineArgumentErrorExitCode);
+   }
+   let commandFunction;
+   try {
+@@ -1277,6 +1296,35 @@ var RouteMapSymbol = Symbol("RouteMap");
  var CommandSymbol = Symbol("Command");
  
  // src/routing/scanner.ts
@@ -38,7 +90,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
  function buildRouteScanner(root, config, startingPrefix) {
    const prefix = [...startingPrefix];
    const unprocessedInputs = [];
-@@ -1285,7 +1314,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1285,7 +1333,14 @@ function buildRouteScanner(root, config, startingPrefix) {
    let target;
    let rootLevel = true;
    let helpRequested = false;
@@ -53,7 +105,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
    return {
      next: (input) => {
        if (!treatInputsAsArguments && config.allowArgumentEscapeSequence && input === "--") {
-@@ -1293,6 +1329,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1293,6 +1348,14 @@ function buildRouteScanner(root, config, startingPrefix) {
          unprocessedInputs.push(input);
          return;
        }
@@ -68,7 +120,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
        if (!treatInputsAsArguments) {
          if (input === "--help" || input === "-h") {
            helpRequested = true;
-@@ -1300,12 +1341,28 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1300,12 +1363,28 @@ function buildRouteScanner(root, config, startingPrefix) {
              target = current;
            }
            return;
@@ -98,7 +150,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
          }
        }
        if (target) {
-@@ -1357,6 +1414,7 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1357,6 +1436,7 @@ function buildRouteScanner(root, config, startingPrefix) {
          target,
          unprocessedInputs,
          helpRequested,
@@ -106,7 +158,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
          prefix,
          rootLevel,
          aliases
-@@ -1410,16 +1468,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1410,16 +1490,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      }
    }
    const inputs = rawInputs.slice();
@@ -123,7 +175,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
    const scanner = buildRouteScanner(root, config.scanner, [config.name]);
    let error;
    while (inputs.length > 0 && !error) {
-@@ -1445,7 +1493,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1445,7 +1515,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      return ExitCode.UnknownCommand;
    }
    const result = scanner.finish();
@@ -161,7 +213,17 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
      const ansiColor = shouldUseAnsiColor(context.process, context.process.stdout, config.documentation);
      context.process.stdout.write(
        result.target.formatHelp({
-@@ -1514,6 +1592,9 @@ function withDefaults(config) {
+@@ -1481,7 +1581,8 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+     scannerConfig: config.scanner,
+     documentationConfig: config.documentation,
+     errorFormatting: text,
+-    determineExitCode: config.determineExitCode
++    determineExitCode: config.determineExitCode,
++    determineArgumentErrorExitCode: config.determineArgumentErrorExitCode
+   });
+ }
+ 
+@@ -1514,6 +1615,9 @@ function withDefaults(config) {
    const scannerConfig = {
      caseStyle: scannerCaseStyle,
      allowArgumentEscapeSequence: config.scanner?.allowArgumentEscapeSequence ?? false,
@@ -171,7 +233,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
      distanceOptions: config.scanner?.distanceOptions ?? {
        threshold: 7,
        weights: {
-@@ -1529,7 +1610,10 @@ function withDefaults(config) {
+@@ -1529,7 +1633,10 @@ function withDefaults(config) {
      useAliasInUsageLine: config.documentation?.useAliasInUsageLine ?? false,
      onlyRequiredInUsageLine: config.documentation?.onlyRequiredInUsageLine ?? false,
      caseStyle: displayCaseStyle,
@@ -183,7 +245,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
    };
    const completionConfig = {
      includeAliases: config.completion?.includeAliases ?? documentationConfig.useAliasInUsageLine,
-@@ -1881,7 +1965,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
+@@ -1881,7 +1988,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
      rows.push({
@@ -192,7 +254,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
        flagName: atLeastOneOptional ? ` --${helpAllFlagName}` : `--${helpAllFlagName}`,
        brief: briefs.helpAll,
        hidden: !args.config.alwaysShowHelpAllFlag
-@@ -1920,7 +2004,7 @@ function* generateBuiltInFlagUsageLines(args) {
+@@ -1920,7 +2027,7 @@ function* generateBuiltInFlagUsageLines(args) {
    yield args.config.useAliasInUsageLine ? "-h" : "--help";
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
@@ -201,7 +263,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
    }
    if (args.includeVersionFlag) {
      yield args.config.useAliasInUsageLine ? "-v" : "--version";
-@@ -2057,7 +2141,7 @@ function checkForInvalidVariadicSeparators(flags) {
+@@ -2057,7 +2164,7 @@ function checkForInvalidVariadicSeparators(flags) {
  function buildCommand(builderArgs) {
    const { flags = {}, aliases = {} } = builderArgs.parameters;
    checkForReservedFlags(flags, ["help", "helpAll", "help-all"]);
@@ -211,7 +273,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
    checkForInvalidVariadicSeparators(flags);
    let loader;
 diff --git a/dist/index.d.cts b/dist/index.d.cts
-index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab670451851709a7e2 100644
+index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..9c4cc5dd09306f92f6fc0b023598eeeaa042b277 100644
 --- a/dist/index.d.cts
 +++ b/dist/index.d.cts
 @@ -402,6 +402,25 @@ interface ScannerConfiguration {
@@ -269,8 +331,30 @@ index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab67045185
  }
  /**
   * Configuration for controlling the behavior of completion proposals.
+@@ -561,11 +602,20 @@ interface ApplicationConfiguration {
+      * If unspecified, the exit code will default to 1 when a command function throws some value.
+      */
+     readonly determineExitCode?: (exc: unknown) => number;
++    /**
++     * Optional exit code for a failure while parsing command line arguments,
++     * such as an error thrown from a parameter's `parse` function. Called for
++     * each scanner error in order; the first number returned is used. Returning
++     * `undefined` keeps the default `ExitCode.InvalidArgument`.
++     *
++     * Default value is `undefined` (always `ExitCode.InvalidArgument`).
++     */
++    readonly determineArgumentErrorExitCode?: (exc: unknown) => number | undefined;
+ }
+ /**
+  * Partial configuration for application, see individual description for behavior when each value is unspecified.
+  */
+-type PartialApplicationConfiguration = Pick<ApplicationConfiguration, "name" | "versionInfo" | "determineExitCode"> & {
++type PartialApplicationConfiguration = Pick<ApplicationConfiguration, "name" | "versionInfo" | "determineExitCode" | "determineArgumentErrorExitCode"> & {
+     [K in "scanner" | "documentation" | "completion" | "localization"]?: Partial<ApplicationConfiguration[K]>;
+ };
+ 
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab670451851709a7e2 100644
+index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..9c4cc5dd09306f92f6fc0b023598eeeaa042b277 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -402,6 +402,25 @@ interface ScannerConfiguration {
@@ -328,11 +412,85 @@ index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab67045185
  }
  /**
   * Configuration for controlling the behavior of completion proposals.
+@@ -561,11 +602,20 @@ interface ApplicationConfiguration {
+      * If unspecified, the exit code will default to 1 when a command function throws some value.
+      */
+     readonly determineExitCode?: (exc: unknown) => number;
++    /**
++     * Optional exit code for a failure while parsing command line arguments,
++     * such as an error thrown from a parameter's `parse` function. Called for
++     * each scanner error in order; the first number returned is used. Returning
++     * `undefined` keeps the default `ExitCode.InvalidArgument`.
++     *
++     * Default value is `undefined` (always `ExitCode.InvalidArgument`).
++     */
++    readonly determineArgumentErrorExitCode?: (exc: unknown) => number | undefined;
+ }
+ /**
+  * Partial configuration for application, see individual description for behavior when each value is unspecified.
+  */
+-type PartialApplicationConfiguration = Pick<ApplicationConfiguration, "name" | "versionInfo" | "determineExitCode"> & {
++type PartialApplicationConfiguration = Pick<ApplicationConfiguration, "name" | "versionInfo" | "determineExitCode" | "determineArgumentErrorExitCode"> & {
+     [K in "scanner" | "documentation" | "completion" | "localization"]?: Partial<ApplicationConfiguration[K]>;
+ };
+ 
 diff --git a/dist/index.js b/dist/index.js
-index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d87c52de17 100644
+index f76639637e812453d107bda3e3ec165fc195f4d8..a2216e46e4e6b5aba1f87316682c78388ec91e7e 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -1229,6 +1229,35 @@ var RouteMapSymbol = Symbol("RouteMap");
+@@ -1134,13 +1134,32 @@ function shouldUseAnsiColor(process, stream, config) {
+ }
+ 
+ // src/routing/command/run.ts
++// PATCH(getsentry/cli): pluggable exit code for argument-parsing failures.
++// Stock Stricli always exits with `ExitCode.InvalidArgument` when scanning
++// fails, even when a parameter's `parse` function threw an application error
++// that carries its own exit code. When the host application supplies
++// `determineArgumentErrorExitCode`, the first error it maps to a number wins;
++// returning `undefined` keeps `ExitCode.InvalidArgument`. Inert when unset. If
++// `exitCodeForArgumentErrors` is missing, the CLI's `check:patches` fails.
++function exitCodeForArgumentErrors(errors, determineArgumentErrorExitCode) {
++  if (determineArgumentErrorExitCode) {
++    for (const error of errors) {
++      const exitCode = determineArgumentErrorExitCode(error);
++      if (typeof exitCode === "number") {
++        return exitCode;
++      }
++    }
++  }
++  return ExitCode.InvalidArgument;
++}
+ async function runCommand({ loader, parameters }, {
+   context,
+   inputs,
+   scannerConfig,
+   errorFormatting,
+   documentationConfig,
+-  determineExitCode
++  determineExitCode,
++  determineArgumentErrorExitCode
+ }) {
+   let parsedArguments;
+   try {
+@@ -1161,7 +1180,7 @@ async function runCommand({ loader, parameters }, {
+ `
+         );
+       }
+-      return ExitCode.InvalidArgument;
++      return exitCodeForArgumentErrors(result.errors, determineArgumentErrorExitCode);
+     }
+   } catch (exc) {
+     const ansiColor = shouldUseAnsiColor(context.process, context.process.stderr, documentationConfig);
+@@ -1171,7 +1190,7 @@ async function runCommand({ loader, parameters }, {
+ ` : `${errorMessage}
+ `
+     );
+-    return ExitCode.InvalidArgument;
++    return exitCodeForArgumentErrors([exc], determineArgumentErrorExitCode);
+   }
+   let commandFunction;
+   try {
+@@ -1229,6 +1248,35 @@ var RouteMapSymbol = Symbol("RouteMap");
  var CommandSymbol = Symbol("Command");
  
  // src/routing/scanner.ts
@@ -368,7 +526,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
  function buildRouteScanner(root, config, startingPrefix) {
    const prefix = [...startingPrefix];
    const unprocessedInputs = [];
-@@ -1237,7 +1266,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1237,7 +1285,14 @@ function buildRouteScanner(root, config, startingPrefix) {
    let target;
    let rootLevel = true;
    let helpRequested = false;
@@ -383,7 +541,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
    return {
      next: (input) => {
        if (!treatInputsAsArguments && config.allowArgumentEscapeSequence && input === "--") {
-@@ -1245,6 +1281,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1245,6 +1300,14 @@ function buildRouteScanner(root, config, startingPrefix) {
          unprocessedInputs.push(input);
          return;
        }
@@ -398,7 +556,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
        if (!treatInputsAsArguments) {
          if (input === "--help" || input === "-h") {
            helpRequested = true;
-@@ -1252,12 +1293,28 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1252,12 +1315,28 @@ function buildRouteScanner(root, config, startingPrefix) {
              target = current;
            }
            return;
@@ -428,7 +586,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
          }
        }
        if (target) {
-@@ -1309,6 +1366,7 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1309,6 +1388,7 @@ function buildRouteScanner(root, config, startingPrefix) {
          target,
          unprocessedInputs,
          helpRequested,
@@ -436,7 +594,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
          prefix,
          rootLevel,
          aliases
-@@ -1362,16 +1420,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1362,16 +1442,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      }
    }
    const inputs = rawInputs.slice();
@@ -453,7 +611,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
    const scanner = buildRouteScanner(root, config.scanner, [config.name]);
    let error;
    while (inputs.length > 0 && !error) {
-@@ -1397,7 +1445,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1397,7 +1467,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      return ExitCode.UnknownCommand;
    }
    const result = scanner.finish();
@@ -491,7 +649,17 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
      const ansiColor = shouldUseAnsiColor(context.process, context.process.stdout, config.documentation);
      context.process.stdout.write(
        result.target.formatHelp({
-@@ -1466,6 +1544,9 @@ function withDefaults(config) {
+@@ -1433,7 +1533,8 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+     scannerConfig: config.scanner,
+     documentationConfig: config.documentation,
+     errorFormatting: text,
+-    determineExitCode: config.determineExitCode
++    determineExitCode: config.determineExitCode,
++    determineArgumentErrorExitCode: config.determineArgumentErrorExitCode
+   });
+ }
+ 
+@@ -1466,6 +1567,9 @@ function withDefaults(config) {
    const scannerConfig = {
      caseStyle: scannerCaseStyle,
      allowArgumentEscapeSequence: config.scanner?.allowArgumentEscapeSequence ?? false,
@@ -501,7 +669,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
      distanceOptions: config.scanner?.distanceOptions ?? {
        threshold: 7,
        weights: {
-@@ -1481,7 +1562,10 @@ function withDefaults(config) {
+@@ -1481,7 +1585,10 @@ function withDefaults(config) {
      useAliasInUsageLine: config.documentation?.useAliasInUsageLine ?? false,
      onlyRequiredInUsageLine: config.documentation?.onlyRequiredInUsageLine ?? false,
      caseStyle: displayCaseStyle,
@@ -513,7 +681,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
    };
    const completionConfig = {
      includeAliases: config.completion?.includeAliases ?? documentationConfig.useAliasInUsageLine,
-@@ -1833,7 +1917,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
+@@ -1833,7 +1940,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
      rows.push({
@@ -522,7 +690,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
        flagName: atLeastOneOptional ? ` --${helpAllFlagName}` : `--${helpAllFlagName}`,
        brief: briefs.helpAll,
        hidden: !args.config.alwaysShowHelpAllFlag
-@@ -1872,7 +1956,7 @@ function* generateBuiltInFlagUsageLines(args) {
+@@ -1872,7 +1979,7 @@ function* generateBuiltInFlagUsageLines(args) {
    yield args.config.useAliasInUsageLine ? "-h" : "--help";
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
@@ -531,7 +699,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
    }
    if (args.includeVersionFlag) {
      yield args.config.useAliasInUsageLine ? "-v" : "--version";
-@@ -2009,7 +2093,7 @@ function checkForInvalidVariadicSeparators(flags) {
+@@ -2009,7 +2116,7 @@ function checkForInvalidVariadicSeparators(flags) {
  function buildCommand(builderArgs) {
    const { flags = {}, aliases = {} } = builderArgs.parameters;
    checkForReservedFlags(flags, ["help", "helpAll", "help-all"]);

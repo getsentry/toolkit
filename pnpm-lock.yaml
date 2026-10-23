@@ -199,7 +199,7 @@ patchedDependencies:
   '@cloudflare/workers-oauth-provider@0.10.3': 34910b67929c1888b1492384c514d6baeedc4a439f66e21375dee5af404834f8
   '@sentry/core@10.63.0': e663994979ff877a26ab6d4dea5968fbaee4ccdfdeb85623983535a572678940
   '@sentry/node-core@10.63.0': 0a5f08471bd72cb833a2b36220c96001d966e5c390d71aaf598fdef75b552640
-  '@stricli/core@1.2.8': cbf047581d38be04108d3921321c14a778272c24004da8110d4498d4f2a6b2e1
+  '@stricli/core@1.2.8': 4f42fc9b875fb61132fb69eff6cb253c19afbc5a7ec0eb725d85c1a5bda8b677
 
 importers:
 
@@ -478,7 +478,7 @@ importers:
         version: 1.3.0
       '@stricli/core':
         specifier: 1.2.8
-        version: 1.2.8(patch_hash=cbf047581d38be04108d3921321c14a778272c24004da8110d4498d4f2a6b2e1)
+        version: 1.2.8(patch_hash=4f42fc9b875fb61132fb69eff6cb253c19afbc5a7ec0eb725d85c1a5bda8b677)
       '@types/http-cache-semantics':
         specifier: ^4.2.0
         version: 4.2.0
@@ -13284,7 +13284,7 @@ snapshots:
     dependencies:
       '@stricli/core': 1.3.0
 
-  '@stricli/core@1.2.8(patch_hash=cbf047581d38be04108d3921321c14a778272c24004da8110d4498d4f2a6b2e1)': {}
+  '@stricli/core@1.2.8(patch_hash=4f42fc9b875fb61132fb69eff6cb253c19afbc5a7ec0eb725d85c1a5bda8b677)': {}
 
   '@stricli/core@1.3.0': {}
 
@@ -15149,7 +15149,7 @@ snapshots:
   fossilize@0.10.1:
     dependencies:
       '@stricli/auto-complete': 1.3.0
-      '@stricli/core': 1.2.8(patch_hash=cbf047581d38be04108d3921321c14a778272c24004da8110d4498d4f2a6b2e1)
+      '@stricli/core': 1.2.8(patch_hash=4f42fc9b875fb61132fb69eff6cb253c19afbc5a7ec0eb725d85c1a5bda8b677)
       binpunch: 1.0.0
       esbuild: 0.25.12
       macho-unsign: 2.0.6
@@ -18472,7 +18472,7 @@ snapshots:
 
   tsx@4.23.13:
     dependencies:
-      esbuild: 0.28.1
+      esbuild: 0.28.2
     optionalDependencies:
       fsevents: 2.3.3
 
