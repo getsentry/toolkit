@@ -50,6 +50,8 @@ describe("isSupportedReplayField", () => {
   test("accepts nested fields from the published replay schema", () => {
     expect(isSupportedReplayField("user.geo.country_code")).toBe(true);
     expect(isSupportedReplayField("user.display_name")).toBe(true);
+    expect(isSupportedReplayField("ota_updates.channel")).toBe(true);
+    expect(isSupportedReplayField("replay_type")).toBe(true);
   });
 
   test("recognizes user.display as a supported replay field", () => {
@@ -59,6 +61,12 @@ describe("isSupportedReplayField", () => {
   test("rejects fields missing from the published replay schema", () => {
     expect(isSupportedReplayField("device.model_id")).toBe(false);
     expect(isSupportedReplayField("warning_ids")).toBe(false);
+    expect(isSupportedReplayField("info_ids")).toBe(false);
+  });
+
+  test("does not offer internal replay fields as request roots", () => {
+    expect(requestableRoots.has("info_ids")).toBe(false);
+    expect(requestableRoots.has("warning_ids")).toBe(false);
   });
 });
 
