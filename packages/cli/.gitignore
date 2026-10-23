@@ -35,7 +35,10 @@ test/skill-eval/results.json
 *.tsbuildinfo
 
 # generated files (rebuilt at build time)
-src/generated/
+src/generated/*
 src/sdk.generated.ts
 src/sdk.generated.d.cts
 !src/generated/banner-sixel.ts
+# committed: built by `pnpm run generate:parsers` from grammar/
+!src/generated/org-project-target-grammar.js
+!src/generated/org-project-target-grammar.d.ts

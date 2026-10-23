@@ -136,6 +136,7 @@
     "marked": "^15.0.12",
     "node-sqlite3-wasm": "0.8.59",
     "p-limit": "^7.3.0",
+    "peggy": "^5.1.0",
     "picomatch": "^4.0.4",
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",

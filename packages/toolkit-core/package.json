@@ -61,13 +61,11 @@
     }
   },
   "scripts": {
-    "generate": "tsx script/generate-parsers.ts",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "tsc": "tsc --noEmit"
   },
   "devDependencies": {
-    "peggy": "^5.1.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
