@@ -11,15 +11,13 @@ requires:
 
 Explore span, log, and metric attributes
 
-### `sentry attribute list [<org/project>]`
+### `sentry attribute list [<org/project>] [<filter>]`
 
 List attribute keys for spans, logs, or metrics
 
 **Flags:**
 - `-d, --dataset <value> - Dataset to list attributes for (spans, logs, metrics) - (default: "spans")`
 - `--type <value>... - Find attributes of these types (string, number, boolean, array; repeatable, comma-separated)`
-- `-s, --search <value> - Find attribute keys containing this text (case-sensitive)`
-- `--with <value>... - Find attributes that appear on the same items as all of these keys (repeatable, comma-separated)`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
 - `-n, --limit <value> - Maximum number of attributes to list - (default: "25")`
 - `--context - Include each attribute's description, examples, and deprecation info (experimental API)`
@@ -35,14 +33,23 @@ sentry attribute list my-org/my-project
 # List log attribute keys across the whole organization
 sentry attribute list my-org/ --dataset logs
 
-# Find keys containing "gen_ai" that are also of type string
-sentry attribute list --search gen_ai --type string
+# String attributes whose keys contain gen_ai (case-sensitive)
+sentry attribute list my-org/ gen_ai --type string
 
-# Attributes seen on the same spans as the specified attribute
-sentry attribute list --with gen_ai.request.model
+# Attributes seen on the same spans as an attribute
+sentry attribute list my-org/ has:gen_ai.request.model
+
+# Attributes seen alongside several keys (one quoted argument)
+sentry attribute list my-org/ 'has:gen_ai.request.model has:gen_ai.usage.input_tokens'
+
+# Text and has: filters together
+sentry attribute list my-org/ 'gen_ai has:http.method'
+
+# Attributes seen in the last 24 hours
+sentry attribute list my-org/ --period 24h
 
 # Show descriptions, example values, and deprecation info
-sentry attribute list --context
+sentry attribute list my-org/ --context
 
 # Show more than the default 25
 sentry attribute list my-org/my-project -n 100
@@ -51,7 +58,7 @@ sentry attribute list my-org/my-project -n 100
 sentry attribute list my-org/my-project -n 100 -c next
 
 # Select fields as JSON
-sentry attribute list --json --fields key,type,source
+sentry attribute list my-org/ --json --fields key,type,source
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
