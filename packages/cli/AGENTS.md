@@ -449,7 +449,7 @@ All command docs and skill files are generated via `pnpm run generate:docs` (whi
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
-- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write an `Examples:` block in `fullDescription` or a `## Examples` section in a fragment for new commands.
+- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write an `Examples:` block in `fullDescription` or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
 - Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.

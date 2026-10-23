@@ -114,6 +114,17 @@ export const printSourcesCommand = buildCommand({
       "Usage:\n" +
       "  sentry debug-files print-sources ./libexample.so\n" +
       "  sentry debug-files print-sources ./app.pdb --json",
+    examples: [
+      {
+        description:
+          "List the source files a debug file references (and whether they're available)",
+        command: "sentry debug-files print-sources ./libexample.so",
+      },
+      {
+        description: "Output the list as JSON",
+        command: "sentry debug-files print-sources ./app.pdb --json",
+      },
+    ],
   },
   output: {
     human: formatPrintSources,

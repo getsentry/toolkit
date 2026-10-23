@@ -55,11 +55,22 @@ export const deleteCommand = buildDeleteCommand(
       fullDescription:
         "Remove a widget from an existing Sentry dashboard.\n\n" +
         "The dashboard can be specified by numeric ID or title.\n" +
-        "Identify the widget by --index (0-based) or --title.\n\n" +
-        "Examples:\n" +
-        "  sentry dashboard widget delete 12345 --index 0\n" +
-        "  sentry dashboard widget delete 'My Dashboard' --title 'Error Rate'\n" +
-        "  sentry dashboard widget delete 12345 --index 0 --dry-run",
+        "Identify the widget by --index (0-based) or --title.",
+      examples: [
+        {
+          description: "Delete a widget by title",
+          command:
+            "sentry dashboard widget delete 'My Dashboard' --title 'Error Rate'",
+        },
+        {
+          description: "Delete a widget by index",
+          command: "sentry dashboard widget delete 12345 --index 0",
+        },
+        {
+          description: "Preview the deletion",
+          command: "sentry dashboard widget delete 12345 --index 0 --dry-run",
+        },
+      ],
     },
     output: {
       human: formatWidgetDeleted,

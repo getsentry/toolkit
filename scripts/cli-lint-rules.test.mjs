@@ -143,3 +143,40 @@ tester.run("no-raw-metadata-queries", plugin.rules["no-raw-metadata-queries"], {
     },
   ],
 });
+
+tester.run(
+  "no-examples-in-full-description",
+  plugin.rules["no-examples-in-full-description"],
+  {
+    valid: [
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.', examples: [{ description: 'List', command: 'sentry list' }] } });",
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Format: count()\\n  Example: p50(value)' } });",
+      },
+      {
+        filename: commands,
+        code: "throw new ValidationError('Bad input.\\n\\nExamples:\\n  sentry list');",
+      },
+      {
+        filename: source,
+        code: "const docs = { fullDescription: `${base}\\n\\nExamples:\\n${rendered}` };",
+      },
+    ],
+    invalid: [
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.\\n\\n' + 'Examples:\\n' + '  sentry list\\n' } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildRouteMap({ docs: { fullDescription: `Manage items.\\n\\nExample:\\n  sentry item view 1` } });",
+        errors: 1,
+      },
+    ],
+  },
+);

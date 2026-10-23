@@ -72,6 +72,7 @@
         "sentry-cli/no-generic-is-record": "error",
         "sentry-cli/prefer-paginate-helper": "error",
         "sentry-cli/no-namespace-import": "error",
+        "sentry-cli/no-examples-in-full-description": "error",
         "no-restricted-imports": [
           "error",
           {

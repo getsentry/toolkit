@@ -430,6 +430,20 @@ export const uninstallCommand = buildDeleteCommand({
       "Remove the Sentry CLI binary, shell completions, PATH entries, " +
       "agent skill files, and configuration directory. Reverses the " +
       "changes made by `sentry cli setup`.",
+    examples: [
+      {
+        description: "Show what would be removed",
+        command: "sentry cli uninstall --dry-run",
+      },
+      {
+        description: "Uninstall, keeping the config directory",
+        command: "sentry cli uninstall --yes --keep-config",
+      },
+      {
+        description: "Full uninstall with confirmation",
+        command: "sentry cli uninstall",
+      },
+    ],
   },
   output: {
     human: formatUninstallHuman,

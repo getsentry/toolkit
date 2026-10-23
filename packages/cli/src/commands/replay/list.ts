@@ -259,15 +259,51 @@ export const listCommand = buildListCommand("replay", {
       "  sentry replay list <org>/<proj> # list replays for one project\n" +
       "  sentry replay list <project>    # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
-      "Examples:\n" +
-      "  sentry replay list\n" +
-      "  sentry replay list sentry/\n" +
-      "  sentry replay list sentry/cli --limit 50\n" +
-      "  sentry replay list sentry/cli --sort duration\n" +
-      '  sentry replay list sentry/cli -q "user.email:foo@example.com"\n' +
-      "  sentry replay list sentry/cli -e production -e canary\n" +
-      "  sentry replay list sentry/cli --period 24h\n\n" +
       "Alias: `sentry replays` → `sentry replay list`",
+    examples: [
+      {
+        description: "List recent replays (project auto-detected)",
+        command: "sentry replay list",
+      },
+      {
+        description: "List recent replays for a project",
+        command: "sentry replay list my-org/frontend",
+      },
+      {
+        description: "Search across all projects in an organization",
+        command: 'sentry replay list my-org/ --query "environment:production"',
+      },
+      {
+        description: "Change the time window and sort",
+        command:
+          "sentry replay list my-org/frontend --period 24h --sort errors",
+      },
+      {
+        description: "Find replays for a user",
+        command:
+          'sentry replay list my-org/frontend -q "user.email:foo@example.com"',
+      },
+      {
+        description: "Filter by environments",
+        command: "sentry replay list my-org/frontend -e production -e canary",
+      },
+      {
+        description: "Show more results",
+        command: "sentry replay list my-org/frontend --limit 50",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry replay list my-org/frontend -c next",
+      },
+      {
+        description: "Fetch the previous page",
+        command: "sentry replay list my-org/frontend -c prev",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry replay list my-org/frontend --json",
+      },
+    ],
   },
   output: {
     human: formatReplayListHuman,

@@ -47,10 +47,17 @@ export const deleteCommand = buildDeleteCommand({
     brief: "Delete a metric alert rule",
     fullDescription:
       "Permanently remove a metric alert rule from an organization. " +
-      "Type org/rule-id to confirm, or use --yes / --force, or --dry-run.\n\n" +
-      "Examples:\n" +
-      "  sentry alert metrics delete my-org/12345\n" +
-      "  sentry alert metrics delete my-org/'P95 alert' --yes",
+      "Type org/rule-id to confirm, or use --yes / --force, or --dry-run.",
+    examples: [
+      {
+        description: "Delete a metric alert rule (prompts for confirmation)",
+        command: "sentry alert metrics delete my-org/12345",
+      },
+      {
+        description: "Delete a rule selected by name without prompting",
+        command: "sentry alert metrics delete my-org/'P95 alert' --yes",
+      },
+    ],
   },
   output: {
     human: formatDeleted,

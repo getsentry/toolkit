@@ -146,6 +146,42 @@ export const listCommand = buildListCommand("feedback", {
       "  resolved    Resolved feedback\n" +
       "  spam        Feedback marked as spam\n" +
       "  all         All feedback statuses",
+    examples: [
+      {
+        description: "List Feedback (organization auto-detected)",
+        command: "sentry feedback list",
+      },
+      {
+        description: "List Feedback for one project",
+        command: "sentry feedback list my-org/frontend",
+      },
+      {
+        description: "List Feedback across every project in an organization",
+        command: "sentry feedback list my-org/",
+      },
+      {
+        description: "Search for a project across accessible organizations",
+        command: "sentry feedback list frontend",
+      },
+      {
+        description: "Show resolved Feedback",
+        command: "sentry feedback list my-org/frontend --status resolved",
+      },
+      {
+        description: "Show the spam mailbox",
+        command: "sentry feedback list my-org/frontend --status spam",
+      },
+      {
+        description: "Show every status over the last 90 days",
+        command:
+          "sentry feedback list my-org/frontend --status all --period 90d",
+      },
+      {
+        description: "Search Feedback messages",
+        command:
+          'sentry feedback list my-org/frontend --query "message:*checkout*"',
+      },
+    ],
   },
   output: {
     human: formatFeedbackList,

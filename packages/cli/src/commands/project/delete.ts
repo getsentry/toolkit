@@ -135,13 +135,21 @@ export const deleteCommand = buildDeleteCommand({
     brief: "Delete a project",
     fullDescription:
       "Permanently delete a Sentry project. This action cannot be undone.\n\n" +
-      "Requires explicit target — auto-detection is disabled for safety.\n\n" +
-      "Examples:\n" +
-      "  sentry project delete acme-corp/my-app\n" +
-      "  sentry project delete my-app\n" +
-      "  sentry project delete acme-corp/my-app --yes\n" +
-      "  sentry project delete acme-corp/my-app --force\n" +
-      "  sentry project delete acme-corp/my-app --dry-run",
+      "Requires explicit target — auto-detection is disabled for safety.",
+    examples: [
+      {
+        description: "Delete a project (prompts for confirmation)",
+        command: "sentry project delete my-org/old-project",
+      },
+      {
+        description: "Delete without confirmation",
+        command: "sentry project delete my-org/old-project --yes",
+      },
+      {
+        description: "Preview the deletion",
+        command: "sentry project delete my-org/old-project --dry-run",
+      },
+    ],
   },
   output: {
     human: formatProjectDeleted,

@@ -51,6 +51,25 @@ function silentBody(block, parameter) {
   );
 }
 
+/** Static text of a string expression; dynamic parts become line breaks. */
+function staticText(node) {
+  if (node?.type === "Literal") {
+    return typeof node.value === "string" ? node.value : "";
+  }
+  if (node?.type === "TemplateLiteral") {
+    return node.quasis.map((quasi) => quasi.value.cooked ?? "").join("\n");
+  }
+  if (node?.type === "BinaryExpression" && node.operator === "+") {
+    return staticText(node.left) + staticText(node.right);
+  }
+  if (node?.type === "ConditionalExpression") {
+    return `${staticText(node.consequent)}\n${staticText(node.alternate)}`;
+  }
+  return "";
+}
+
+const EXAMPLES_BLOCK_RE = /(?:^|\n)[ \t]*examples?:[ \t]*(?:\n|$)/i;
+
 const rules = {
   "no-silent-catch": rule(
     "Handle or report caught errors instead of discarding them.",
@@ -245,6 +264,22 @@ const rules = {
         ? {
             ImportNamespaceSpecifier(node) {
               report(node);
+            },
+          }
+        : {},
+  ),
+  "no-examples-in-full-description": rule(
+    "Move command examples from fullDescription to docs.examples.",
+    (_context, file, report) =>
+      file.includes("/src/commands/") || file.endsWith("/src/app.ts")
+        ? {
+            Property(node) {
+              const key = node.key?.name ?? node.key?.value;
+              if (
+                key === "fullDescription" &&
+                EXAMPLES_BLOCK_RE.test(staticText(node.value))
+              )
+                report(node);
             },
           }
         : {},

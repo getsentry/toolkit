@@ -38,11 +38,18 @@ export const listCommand = buildCommand({
     brief: "List all valid Sentry platform identifiers",
     fullDescription:
       "List every valid Sentry platform identifier — the full set behind " +
-      "`sentry project create <name>:<platform>`. Use --search to filter.\n\n" +
-      "Examples:\n" +
-      "  sentry platform list                 List all valid platforms\n" +
-      "  sentry platform list --search python  Filter by substring\n" +
-      "  sentry platform list --json           Machine-readable output",
+      "`sentry project create <name>:<platform>`. Use --search to filter.",
+    examples: [
+      {
+        description: "List all valid Sentry platform identifiers",
+        command: "sentry platform list",
+      },
+      {
+        description: "Filter by substring",
+        command: "sentry platform list --search python",
+      },
+      { description: "Output as JSON", command: "sentry platform list --json" },
+    ],
   },
   output: {
     human: formatPlatformsHuman,

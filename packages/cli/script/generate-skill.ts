@@ -2,8 +2,9 @@
 /**
  * Generate Skill Files from Stricli Command Metadata and Docs
  *
- * Introspects the CLI's route tree and merges with documentation
- * to generate structured documentation for AI agents.
+ * Introspects the CLI's route tree (including command-owned examples) and
+ * merges it with hand-written guidance to generate structured documentation
+ * for AI agents.
  *
  * Produces:
  *   - SKILL.md: compact index with agent guidance + command summaries
@@ -23,13 +24,7 @@
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
-import type { Token } from "marked";
-import { marked } from "marked";
-import {
-  extractCommandPathFromHeading,
-  formatCommandExamples,
-  matchExampleToCommand,
-} from "./generate-skill-markdown.js";
+import { formatCommandExamples } from "./generate-skill-markdown.js";
 import { DOCS_CONTENT, DOCS_PUBLIC } from "./paths.js";
 
 // Bootstrap: ensure the generated skill-content module exists before
@@ -56,40 +51,7 @@ import type {
   RouteInfo,
   RouteMap,
 } from "../src/lib/introspect.js";
-import {
-  buildCommandInfo,
-  extractRouteGroupCommands,
-  isCommand,
-  isRouteMap,
-} from "../src/lib/introspect.js";
-
-/**
- * Resolve the default subcommand name for a route map, if configured.
- *
- * Hidden dispatcher routes (e.g. auth's `default`) map bare group examples
- * onto the user-facing command they primarily document (login).
- */
-function findDefaultCommandName(routeMap: RouteMap): string | undefined {
-  if (!routeMap.getDefaultCommand) {
-    return;
-  }
-  const defaultCmd = routeMap.getDefaultCommand();
-  if (!defaultCmd) {
-    return;
-  }
-  for (const sub of routeMap.getAllEntries()) {
-    if (sub.target === defaultCmd) {
-      const name = sub.name.original;
-      // Auth uses a hidden "default" dispatcher; bare `sentry auth` examples
-      // document the login path.
-      if (name === "default") {
-        return "login";
-      }
-      return name;
-    }
-  }
-  return;
-}
+import { extractAllRoutes } from "../src/lib/introspect.js";
 
 const SKILL_DIR = "plugins/sentry-cli/skills/sentry-cli";
 const OUTPUT_PATH = `${SKILL_DIR}/SKILL.md`;
@@ -331,115 +293,6 @@ sentry auth status
 \`\`\``;
 }
 
-/** Append a code block to a map entry, creating the array if needed */
-function appendExample(
-  map: Map<string, string[]>,
-  key: string,
-  code: string,
-): void {
-  const list = map.get(key) ?? [];
-  list.push(code);
-  map.set(key, list);
-}
-
-/**
- * Collect all command paths from `### \`sentry ...\`` headings in a token list.
- * Initializes each path with an empty array in the examples map.
- */
-function collectCommandPaths(
-  tokens: Token[],
-  examples: Map<string, string[]>,
-): string[] {
-  const paths: string[] = [];
-  for (const token of tokens) {
-    if (token.type !== "heading" || token.depth !== 3) {
-      continue;
-    }
-    const cmdPath = extractCommandPathFromHeading(token.text);
-    if (cmdPath) {
-      paths.push(cmdPath);
-      if (!examples.has(cmdPath)) {
-        examples.set(cmdPath, []);
-      }
-    }
-  }
-  return paths;
-}
-
-/**
- * Walk tokens sequentially and associate each bash code block with
- * the appropriate command path — either by heading context or content matching.
- */
-function associateCodeBlocks(
-  tokens: Token[],
-  context: {
-    commandPaths: string[];
-    commandGroup: string;
-    examples: Map<string, string[]>;
-    defaultCommandPath?: string;
-  },
-): void {
-  const { commandPaths, commandGroup, examples, defaultCommandPath } = context;
-  const groupFallback = `sentry ${commandGroup}`;
-  let currentCmd: string | null = null;
-
-  for (const token of tokens) {
-    if (token.type === "heading" && token.depth === 3) {
-      currentCmd = extractCommandPathFromHeading(token.text) ?? null;
-    }
-    if (token.type !== "code" || token.lang !== "bash") {
-      continue;
-    }
-    const code = token.text.trim();
-    if (currentCmd && examples.has(currentCmd)) {
-      appendExample(examples, currentCmd, code);
-    } else {
-      const target = matchExampleToCommand(
-        code,
-        commandPaths,
-        groupFallback,
-        defaultCommandPath,
-      );
-      if (target) {
-        appendExample(examples, target, code);
-      }
-    }
-  }
-}
-
-/**
- * Load examples for a specific command group from docs using the `marked`
- * AST parser. Walks the token tree to find command headings and associate
- * bash code blocks with each command.
- *
- * Handles both auto-generated reference sections (`### \`sentry ...\`` headings)
- * and hand-written custom sections (`## Examples` with descriptive headings)
- * by matching code blocks to commands via heading context or content analysis.
- */
-async function loadCommandExamples(
-  commandGroup: string,
-  defaultCommandName?: string,
-): Promise<Map<string, string[]>> {
-  const docContent = await loadDoc(`commands/${commandGroup}.md`);
-  if (!docContent) {
-    return new Map();
-  }
-
-  const tokens = marked.lexer(docContent);
-  const examples = new Map<string, string[]>();
-  const commandPaths = collectCommandPaths(tokens, examples);
-  const defaultCommandPath = defaultCommandName
-    ? `sentry ${commandGroup} ${defaultCommandName}`
-    : undefined;
-  associateCodeBlocks(tokens, {
-    commandPaths,
-    commandGroup,
-    examples,
-    defaultCommandPath,
-  });
-  return examples;
-}
-
 /** Load supplementary content from commands/index.md */
 async function loadCommandsOverview(): Promise<{
   globalOptions: string;
@@ -466,48 +319,6 @@ async function loadCommandsOverview(): Promise<{
  */
 async function loadAgentGuidance(): Promise<string | null> {
   return await loadDoc("agent-guidance.md");
-}
-
-// ---------------------------------------------------------------------------
-// Route Introspection (with async doc loading)
-// ---------------------------------------------------------------------------
-
-/**
- * Walk the route tree and extract command information with doc examples.
- * This is the async version that loads documentation examples from disk.
- */
-async function extractRoutes(routeMap: RouteMap): Promise<RouteInfo[]> {
-  const result: RouteInfo[] = [];
-  for (const entry of routeMap.getAllEntries()) {
-    if (entry.hidden) {
-      continue;
-    }
-    const routeName = entry.name.original;
-    const target = entry.target;
-    const defaultCommandName = isRouteMap(target)
-      ? findDefaultCommandName(target)
-      : undefined;
-    const docExamples = await loadCommandExamples(
-      routeName,
-      defaultCommandName,
-    );
-    if (isRouteMap(target)) {
-      result.push({
-        name: routeName,
-        brief: target.brief,
-        commands: extractRouteGroupCommands(target, routeName, docExamples),
-      });
-    } else if (isCommand(target)) {
-      const path = `sentry ${routeName}`;
-      const examples = docExamples.get(path) ?? [];
-      result.push({
-        name: routeName,
-        brief: target.brief,
-        commands: [buildCommandInfo(target, path, examples)],
-      });
-    }
-  }
-  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -800,7 +611,7 @@ async function generateAllSkillFiles(
 ): Promise<GeneratedFiles> {
   const files: GeneratedFiles = new Map();
   const version = await getPackageVersion();
-  const routeInfos = await extractRoutes(routeMap);
+  const routeInfos = extractAllRoutes(routeMap);
   const prerequisites = await loadPrerequisites();
   const supplementary = await generateSupplementarySections();
   const agentGuidance = await loadAgentGuidance();

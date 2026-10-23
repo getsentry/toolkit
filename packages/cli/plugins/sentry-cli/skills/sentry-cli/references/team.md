@@ -35,10 +35,13 @@ List teams
 **Examples:**
 
 ```bash
-# List teams
+# List teams (organization auto-detected)
+sentry team list
+
+# List teams in an organization
 sentry team list my-org/
 
-# Paginate through teams
+# Fetch the next page
 sentry team list my-org/ -c next
 
 # Output as JSON

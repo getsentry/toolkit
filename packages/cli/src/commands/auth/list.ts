@@ -32,6 +32,12 @@ export const listCommand = buildCommand({
       "(an organization auth token's own URL, or sentry.io), with the user\n" +
       "it belongs to when the server says. It is never stored and can't be\n" +
       "switched to: commands targeting an organization it can access use it.",
+    examples: [
+      {
+        description: "Show stored accounts (* marks the active one)",
+        command: "sentry auth list",
+      },
+    ],
   },
   output: {
     human: formatAccountList,

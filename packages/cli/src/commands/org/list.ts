@@ -415,15 +415,28 @@ export const listCommand = buildCommand({
       "Pass a filter to only list organizations whose slug or name matches it,\n" +
       "ignoring case: exactly, as a prefix or substring, or with a small typo\n" +
       "(best matches first), or as a glob like 'acme-*'.\n\n" +
-      "Examples:\n" +
-      "  sentry org list\n" +
-      "  sentry org list acme\n" +
-      "  sentry org list 'acme-*'\n" +
-      "  sentry org list --limit 10\n" +
-      "  sentry org list --account jane@example.com\n" +
-      "  sentry org list -a jane@example.com:sentry.example.com\n" +
-      "  sentry org list --json\n\n" +
       "Alias: `sentry orgs` → `sentry org list`",
+    examples: [
+      { description: "List organizations", command: "sentry org list" },
+      {
+        description:
+          "Only organizations whose slug or name matches (fuzzy, best matches first)",
+        command: "sentry org list acme",
+      },
+      {
+        description: "Only organizations matching a glob",
+        command: "sentry org list 'acme-*'",
+      },
+      {
+        description: "Only one account's organizations",
+        command: "sentry org list --account jane@acme.com",
+      },
+      {
+        description: "Same email on several servers: add the server",
+        command: "sentry org list -a jane@example.com:sentry.io",
+      },
+      { description: "Output as JSON", command: "sentry org list --json" },
+    ],
   },
   output: { human: formatOrgListHuman },
   parameters: {

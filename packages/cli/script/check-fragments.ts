@@ -8,6 +8,7 @@
  *   3. Fragment files don't accidentally contain frontmatter or the generated marker
  *   4. Top-level fragments (e.g., configuration.md) exist
  *   5. Fragment content covers all subcommands in a route (warnings only)
+ *   6. Fragments don't contain Examples sections (examples belong in docs.examples)
  *
  * Usage:
  *   tsx script/check-fragments.ts            # Warnings for missing subcommands
@@ -89,6 +90,16 @@ for (const name of actualFragments) {
   }
 }
 
+const FENCED_CODE_BLOCK_RE = /^(`{3,}|~{3,}).*\n[\s\S]*?\n\1\s*$/gm;
+
+/** Strip fenced code blocks from markdown to avoid matching bash comments as headings. */
+function stripCodeBlocks(md: string): string {
+  return md.replace(FENCED_CODE_BLOCK_RE, "");
+}
+
+/** Matches an Examples heading outside fenced code blocks. */
+const EXAMPLES_HEADING_RE = /^#{1,6}[ \t]+examples?\b/im;
+
 // Check 3: Fragment content validation
 for (const file of fragmentFiles) {
   const content = await readFile(`${FRAGMENTS_DIR}/${file}`, "utf-8");
@@ -102,6 +113,12 @@ for (const file of fragmentFiles) {
   if (content.includes(GENERATED_END_MARKER)) {
     errors.push(
       `Fragment contains generated marker: ${FRAGMENTS_DIR}/${file} (the "${GENERATED_END_MARKER}" marker should not appear in fragment files)`,
+    );
+  }
+
+  if (EXAMPLES_HEADING_RE.test(stripCodeBlocks(content))) {
+    errors.push(
+      `Fragment contains an Examples section: ${FRAGMENTS_DIR}/${file} (move command examples to the command's docs.examples metadata so they appear in help, generated docs, and skills)`,
     );
   }
 }
@@ -133,13 +150,6 @@ for (const name of REQUIRED_TOP_LEVEL_FRAGMENTS) {
 // ---------------------------------------------------------------------------
 
 const warnings: string[] = [];
-
-const FENCED_CODE_BLOCK_RE = /^(`{3,}|~{3,}).*\n[\s\S]*?\n\1\s*$/gm;
-
-/** Strip fenced code blocks from markdown to avoid matching bash comments as headings. */
-function stripCodeBlocks(md: string): string {
-  return md.replace(FENCED_CODE_BLOCK_RE, "");
-}
 
 /**
  * Check whether a fragment mentions a specific subcommand.

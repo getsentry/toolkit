@@ -432,6 +432,13 @@ export const xcodeCommand = buildCommand({
       "app Info.plist (unless `--no-auto-release`); outside an Xcode build the " +
       "release is discovered via `xcodebuild`. Use `--wait`/`--wait-for` to " +
       "block until the server finishes processing the upload.",
+    examples: [
+      {
+        description:
+          "Run as the Xcode build phase (usually added automatically to your build script)",
+        command: "sentry react-native xcode",
+      },
+    ],
   },
   auth: false,
   output: {

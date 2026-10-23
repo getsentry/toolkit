@@ -70,6 +70,20 @@ export const injectCommand = buildCommand({
       "  sentry sourcemap inject ./build --ext .js,.mjs\n" +
       "  sentry sourcemap inject ./out --dry-run\n" +
       "  sentry sourcemap inject ./maybe-empty --allow-empty",
+    examples: [
+      {
+        description: "Inject debug IDs into all JS files in dist/",
+        command: "sentry sourcemap inject ./dist",
+      },
+      {
+        description: "Preview changes without writing",
+        command: "sentry sourcemap inject ./dist --dry-run",
+      },
+      {
+        description: "Only process specific extensions",
+        command: "sentry sourcemap inject ./build --ext .js,.mjs",
+      },
+    ],
   },
   // Purely local file operation — no Sentry API calls, no auth needed.
   auth: false,

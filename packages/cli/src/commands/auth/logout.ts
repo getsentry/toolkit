@@ -91,12 +91,32 @@ export const logoutCommand = buildCommand({
       "accounts (email, username, user ID, or account ID; space- or\n" +
       "comma-separated) to remove those instead, or 'all' to remove every\n" +
       "stored account. When the same email is stored for several servers, add\n" +
-      "--url <server> to pick the one on that server.\n\n" +
-      "Examples:\n" +
-      "  sentry auth logout\n" +
-      "  sentry auth logout jane@acme.com,jane@personal.dev\n" +
-      "  sentry auth logout jane@acme.com --url https://sentry.acme.com\n" +
-      "  sentry auth logout all",
+      "--url <server> to pick the one on that server.",
+    examples: [
+      {
+        description:
+          "Log out of the active account (the most recently used other account becomes active)",
+        command: "sentry auth logout",
+      },
+      {
+        description: "Log out of a specific account",
+        command: "sentry auth logout jane@example.com",
+      },
+      {
+        description: "Log out of several accounts (space- or comma-separated)",
+        command: "sentry auth logout jane@example.com,jane@personal.dev",
+      },
+      {
+        description:
+          "Pick the account on one server when the same email is stored twice",
+        command:
+          "sentry auth logout jane@example.com --url https://sentry.example.com",
+      },
+      {
+        description: "Log out of every stored account",
+        command: "sentry auth logout all",
+      },
+    ],
   },
   output: { human: formatLogoutResult },
   parameters: {

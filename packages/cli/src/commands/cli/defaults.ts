@@ -276,6 +276,50 @@ export const defaultsCommand = buildCommand({
       "| `url` | Sentry instance URL (for self-hosted installations) |\n" +
       "| `headers` | Custom HTTP headers for self-hosted proxies (semicolon-separated `Name: Value`) |\n" +
       "| `ca-cert` | Path to PEM file with custom CA certificates (for corporate proxies) |",
+    examples: [
+      {
+        description: "Show all current defaults",
+        command: "sentry cli defaults",
+      },
+      {
+        description: "Set the default organization",
+        command: "sentry cli defaults org my-org",
+      },
+      {
+        description: "Set the default project",
+        command: "sentry cli defaults project my-project",
+      },
+      {
+        description: "Set the default Sentry URL (self-hosted)",
+        command: "sentry cli defaults url https://sentry.example.com",
+      },
+      {
+        description:
+          "Set custom HTTP headers (self-hosted, e.g. for IAP/proxies)",
+        command: 'sentry cli defaults headers "X-IAP: token"',
+      },
+      {
+        description:
+          "Set a custom CA certificate (self-hosted, behind a TLS proxy)",
+        command: "sentry cli defaults ca-cert /path/to/ca.pem",
+      },
+      {
+        description: "Disable telemetry",
+        command: "sentry cli defaults telemetry off",
+      },
+      {
+        description: "Hide Tip: hints in command output",
+        command: "sentry cli defaults tips off",
+      },
+      {
+        description: "Clear a single default",
+        command: "sentry cli defaults org --clear",
+      },
+      {
+        description: "Clear all defaults",
+        command: "sentry cli defaults --clear",
+      },
+    ],
   },
   output: {
     human: formatDefaultsResult,

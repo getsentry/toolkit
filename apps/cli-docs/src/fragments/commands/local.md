@@ -6,26 +6,6 @@ No DSN is required either. If your app has no DSN configured, events flow **only
 
 If a server is already running on the port, the command attaches as an SSE consumer instead of starting a duplicate.
 
-## Examples
-
-```bash
-# Start the server and tail events (default)
-sentry local
-
-# Run your app with the local server auto-enabled
-sentry local run -- npm run dev
-sentry local run -- python manage.py runserver
-
-# Use a custom port
-sentry local --port 9000
-
-# Only show errors and logs (filter out transactions)
-sentry local -f error -f log
-
-# Run quietly (suppress per-envelope tail output)
-sentry local --quiet
-```
-
 ## `sentry local run`
 
 Runs a command with `SENTRY_SPOTLIGHT` injected into the environment. The Sentry SDK automatically detects this variable and sends envelopes to the local server. No code changes needed.
