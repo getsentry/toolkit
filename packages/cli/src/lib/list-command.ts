@@ -44,6 +44,7 @@ import {
   type ListResult,
   type OrgListConfig,
 } from "./org-list.js";
+import { splitListTargetAndFilter } from "./list-filter.js";
 import { applyLazyPositionals, rawPositional } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
@@ -99,6 +100,42 @@ export const LIST_ORG_TARGET_POSITIONAL = {
       parse: parseOrgTarget,
       optional: true as const,
     },
+  ],
+};
+
+/**
+ * Optional name filter after the target (`sentry team list <org>/ back*`),
+ * matched with `filterByName` from `list-filter.ts`. A glob can also join
+ * the target (`<org>/back*`); see `splitListTargetAndFilter`.
+ */
+export const LIST_NAME_FILTER_PARAMETER = {
+  placeholder: "filter",
+  brief: "Only names matching a glob (web-*) or text (fuzzy)",
+  parse: String,
+  optional: true as const,
+};
+
+/**
+ * {@link LIST_TARGET_POSITIONAL} followed by {@link LIST_NAME_FILTER_PARAMETER}.
+ * Split the two with {@link splitListTargetAndFilter}.
+ */
+export const LIST_TARGET_FILTER_POSITIONAL = {
+  kind: "tuple" as const,
+  parameters: [
+    ...LIST_TARGET_POSITIONAL.parameters,
+    LIST_NAME_FILTER_PARAMETER,
+  ],
+};
+
+/**
+ * {@link LIST_ORG_TARGET_POSITIONAL} followed by
+ * {@link LIST_NAME_FILTER_PARAMETER}, for org-scoped resources.
+ */
+export const LIST_ORG_TARGET_FILTER_POSITIONAL = {
+  kind: "tuple" as const,
+  parameters: [
+    ...LIST_ORG_TARGET_POSITIONAL.parameters,
+    LIST_NAME_FILTER_PARAMETER,
   ],
 };
 
@@ -626,7 +663,9 @@ export function buildListCommand<
       // All list commands use SentryContext which has stderr at top level
       const ctx = this as unknown as { stderr: { write(s: string): void } };
       if (interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined) {
-        args[0] = undefined;
+        // Drop the subcommand token so later positionals move up a slot:
+        // `sentry projects list my-org/` targets `my-org/`, not a filter.
+        args.shift();
       }
     }
     // A dropped lazy target becomes an omitted one (auto-detect)
@@ -716,7 +755,9 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
       schema: config.schema,
     } satisfies OutputConfig<ListResult<TWithOrg>>,
     parameters: {
-      positional: LIST_ORG_TARGET_POSITIONAL,
+      positional: config.namesOf
+        ? LIST_ORG_TARGET_FILTER_POSITIONAL
+        : LIST_ORG_TARGET_POSITIONAL,
       flags: {
         limit: buildListLimitFlag(config.entityPlural),
       },
@@ -731,15 +772,20 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
         readonly fresh: boolean;
         readonly fields?: string[];
       },
-      target?: string,
+      rawTarget?: string,
+      rawFilter?: string,
     ) {
       const { cwd } = this;
+      const { target, filter } = config.namesOf
+        ? splitListTargetAndFilter(rawTarget, rawFilter)
+        : { target: rawTarget, filter: undefined };
       const parsed = parseOrgProjectArg(target);
       const result = await dispatchOrgScopedList({
         config,
         cwd,
         flags,
         parsed,
+        filter,
       });
       yield new CommandOutput(result);
       // Only forward hint to the footer when items exist — empty results

@@ -227,13 +227,75 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
 describe("listCommand.func — explicit org/project (org-scoped with note)", () => {
   const listRepositoriesSpy = vi.mocked(apiClient.listRepositories);
+  const listRepositoriesPaginatedSpy = vi.mocked(
+    apiClient.listRepositoriesPaginated,
+  );
 
   beforeEach(async () => {
     setOrgRegion("my-org", DEFAULT_SENTRY_URL);
+    // `<org>/<name>` tries repository names first; none is like `my-project`.
+    listRepositoriesPaginatedSpy.mockResolvedValue({
+      data: sampleRepos,
+      nextCursor: undefined,
+    });
   });
 
   afterEach(() => {
     listRepositoriesSpy.mockReset();
+    listRepositoriesPaginatedSpy.mockReset();
+  });
+
+  test("<org>/<name> keeps repositories named like it", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(
+      context,
+      { limit: 30, json: true },
+      "my-org/sentry-javascript",
+    );
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    expect(items.map((repo: { name: string }) => repo.name)).toEqual([
+      "getsentry/sentry-javascript",
+    ]);
+    // The server narrows by name; the whole-org listing is never read.
+    expect(listRepositoriesPaginatedSpy).toHaveBeenCalledWith("my-org", {
+      cursor: undefined,
+      perPage: 100,
+      query: "sentry-javascript",
+    });
+    expect(listRepositoriesSpy).not.toHaveBeenCalled();
+  });
+
+  test("<org>/<name> fuzzily matches the repo name without its owner", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(
+      context,
+      { limit: 30, json: true },
+      "my-org/sentry-javscript",
+    );
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    expect(items.map((repo: { name: string }) => repo.name)).toEqual([
+      "getsentry/sentry-javascript",
+    ]);
+    // Matched by name, so no whole-org fallback.
+    expect(listRepositoriesSpy).not.toHaveBeenCalled();
+  });
+
+  test("<org>/<glob> with no matches stays empty", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(context, { limit: 30, json: true }, "my-org/other/*");
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    expect(items).toEqual([]);
+    // A glob is never a project slug: no whole-org fallback.
+    expect(listRepositoriesSpy).not.toHaveBeenCalled();
   });
 
   test("explicit org/project uses org part (repos are org-scoped)", async () => {

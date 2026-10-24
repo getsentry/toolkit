@@ -38,7 +38,7 @@ sentry monitor run nightly-job npm run task
 sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh
 ```
 
-### `sentry monitor list [<org/project>]`
+### `sentry monitor list [<org/project>] [<filter>]`
 
 List cron monitors
 
@@ -71,6 +71,12 @@ sentry monitor list my-org/
 
 # Fetch the next page
 sentry monitor list my-org/ -c next
+
+# Only monitors whose slug or name matches a glob
+sentry monitor list 'my-org/nightly-*'
+
+# Monitors named like 'nightly' (fuzzy when nothing matches exactly)
+sentry monitor list my-org/nigthly
 
 # Output as JSON
 sentry monitor list --json

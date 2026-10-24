@@ -66,6 +66,8 @@ const monitorListConfig: OrgListConfig<SentryMonitor, MonitorWithOrg> = {
   listForOrg: (org) => listMonitors(org),
   listPaginated: (org, opts) => listMonitorsPaginated(org, opts),
   withOrg: (monitor, orgSlug) => ({ ...monitor, orgSlug }),
+  namesOf: (monitor) => [monitor.slug, monitor.name],
+  searchesNames: true,
   displayTable: (monitors: MonitorWithOrg[]) =>
     formatTable(monitors, MONITOR_COLUMNS),
   schema: SentryMonitorSchema,
@@ -78,8 +80,9 @@ const docs: OrgListCommandDocs = {
     "Target specification:\n" +
     "  sentry monitor list               # auto-detect from DSN or config\n" +
     "  sentry monitor list <org>/        # list all monitors in org (paginated)\n" +
-    "  sentry monitor list <org>/<proj>  # list monitors in org (project context)\n" +
+    "  sentry monitor list <org>/<name>  # monitors whose slug or name matches <name>\n" +
     "  sentry monitor list <org>         # list monitors in org\n\n" +
+    "`<name>` is a glob (`<org>/nightly-*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
     "Pagination:\n" +
     "  sentry monitor list <org>/ -c next  # fetch next page\n" +
     "  sentry monitor list <org>/ -c prev  # fetch previous page\n\n" +
@@ -96,6 +99,15 @@ const docs: OrgListCommandDocs = {
     {
       description: "Fetch the next page",
       command: "sentry monitor list my-org/ -c next",
+    },
+    {
+      description: "Only monitors whose slug or name matches a glob",
+      command: "sentry monitor list 'my-org/nightly-*'",
+    },
+    {
+      description:
+        "Monitors named like 'nightly' (fuzzy when nothing matches exactly)",
+      command: "sentry monitor list my-org/nigthly",
     },
     { description: "Output as JSON", command: "sentry monitor list --json" },
   ],

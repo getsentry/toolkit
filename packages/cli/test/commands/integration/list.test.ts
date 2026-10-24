@@ -130,11 +130,54 @@ describe("integration list", () => {
 
   test("explicit org lists that org's integrations", async () => {
     listSpy.mockResolvedValue(sampleIntegrations);
+    listPaginatedSpy.mockResolvedValue({
+      data: sampleIntegrations,
+      nextCursor: undefined,
+    });
 
     const { context } = createMockContext();
     const func = await listCommand.loader();
+    // No integration is named like `my-project`, so it reads as a project.
     await func.call(context, { limit: 30, json: true }, "my-org/my-project");
 
     expect(listSpy).toHaveBeenCalledWith("my-org");
   });
+
+  test("<org>/<name> keeps integrations named like it, fuzzily", async () => {
+    listPaginatedSpy.mockResolvedValue({
+      data: sampleIntegrations,
+      nextCursor: undefined,
+    });
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(context, { limit: 30, json: true }, "my-org/sentri");
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    expect(items.map((i: { name: string }) => i.name)).toEqual(["Sentry"]);
+    expect(listSpy).not.toHaveBeenCalled();
+  });
+
+  test.each(["my-org/githb", "my-org/git*"])(
+    "%s matches the provider, not just the install label",
+    async (target) => {
+      listPaginatedSpy.mockResolvedValue({
+        data: sampleIntegrations,
+        nextCursor: undefined,
+      });
+
+      const { context, stdoutWrite } = createMockContext();
+      const func = await listCommand.loader();
+      await func.call(context, { limit: 30, json: true }, target);
+
+      const parsed = JSON.parse(
+        stdoutWrite.mock.calls.map((c) => c[0]).join(""),
+      );
+      const items = Array.isArray(parsed) ? parsed : parsed.data;
+      // The GitHub install is labeled with its GitHub org, `getsentry`.
+      expect(items.map((i: { name: string }) => i.name)).toEqual(["getsentry"]);
+      expect(listSpy).not.toHaveBeenCalled();
+    },
+  );
 });

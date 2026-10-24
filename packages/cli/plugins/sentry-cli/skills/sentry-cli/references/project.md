@@ -62,7 +62,7 @@ sentry project delete my-org/old-project --yes
 sentry project delete my-org/old-project --dry-run
 ```
 
-### `sentry project list [<org/project>]`
+### `sentry project list [<org/project>] [<filter>]`
 
 List projects
 
@@ -83,6 +83,12 @@ sentry project list my-org/frontend,backend
 
 # Filter by platform
 sentry project list my-org/ --platform javascript
+
+# Only projects whose slug or name matches a glob
+sentry project list 'my-org/web-*'
+
+# Projects named like 'frontend' (fuzzy when nothing matches exactly)
+sentry project list my-org/frontnd
 ```
 
 ### `sentry project view [<org/project>]`
