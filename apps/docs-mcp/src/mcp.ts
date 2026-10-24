@@ -24,6 +24,7 @@ function errorEnvelope(message: string) {
         type: "text" as const,
       },
     ],
+    isError: true,
   };
 }
 
