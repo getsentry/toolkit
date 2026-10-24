@@ -490,13 +490,22 @@ export async function handleExplicit(
     // `<org>/frontnd`: no such project, so match names (fuzzily) instead.
     // Other failures (403, 5xx, network) keep the plain not-found hint.
     if (!flags.filter && isNotFoundApiError(projectResult.error)) {
-      const fallback = await handleOrgAllFiltered(org, {
-        ...flags,
-        filter: projectSlug,
-      });
-      if (fallback.items.length > 0) {
+      // A failing fallback (e.g. a bad org) still ends in the not-found hint.
+      const fallback = await withAuthGuard(() =>
+        handleOrgAllFiltered(org, { ...flags, filter: projectSlug }),
+      );
+      if (fallback.ok && fallback.value.items.length > 0) {
         const note = `No project '${projectSlug}' in '${org}'. Showing projects matching '${projectSlug}'.`;
-        return { ...fallback, title: note } as ProjectListResult;
+        return { ...fallback.value, title: note } as ProjectListResult;
+      }
+      if (fallback.ok && flags.platform) {
+        // Name matches may exist but not on this platform; say so.
+        return {
+          items: [],
+          hint:
+            `No project '${projectSlug}' in '${org}', and no projects matching '${projectSlug}' on platform '${flags.platform}'.\n` +
+            `Tip: Use 'sentry project list ${org}/' to see all projects`,
+        };
       }
     }
     return {

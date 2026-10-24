@@ -491,6 +491,38 @@ describe("handleExplicit", () => {
     expect(urls.some((url) => url.includes("/organizations/"))).toBe(false);
   });
 
+  test("a failing name fallback keeps the not-found hint", async () => {
+    // A bad org: the project lookup and the fallback listing both 404.
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }),
+      )) as unknown as typeof globalThis.fetch;
+
+    const result = await handleExplicit("test-org", "frontnd", {
+      limit: 30,
+      json: false,
+      fresh: false,
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.hint).toContain("No project 'frontnd' found");
+  });
+
+  test("fuzzy matches dropped by --platform say so", async () => {
+    globalThis.fetch = mockProjectFetch(sampleProjects);
+
+    const result = await handleExplicit("test-org", "frontnd", {
+      limit: 30,
+      json: false,
+      platform: "rust",
+      fresh: false,
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.hint).toContain("No project 'frontnd' in 'test-org'");
+    expect(result.hint).toContain("on platform 'rust'");
+  });
+
   test("no direct or fuzzy match keeps the not-found hint", async () => {
     globalThis.fetch = mockProjectFetch(sampleProjects);
 

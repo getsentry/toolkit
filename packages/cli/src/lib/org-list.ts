@@ -57,7 +57,12 @@ import {
 } from "./errors.js";
 import { filterFields } from "./formatters/json.js";
 import { paginationHint } from "./list-command.js";
-import { fetchByName, filterByName, orgFilterTarget } from "./list-filter.js";
+import {
+  fetchByName,
+  filterByName,
+  isGlobFilter,
+  orgFilterTarget,
+} from "./list-filter.js";
 import { logger } from "./logger.js";
 import { withProgress } from "./polling.js";
 import { resolveEffectiveOrg } from "./region.js";
@@ -1134,7 +1139,8 @@ async function handleExplicitByName<TEntity, TWithOrg>(
     );
     // Nothing named like it: most likely an `<org>/<project>` target, which
     // these org-scoped entities ignore, so list the whole org as before.
-    if (matches.items.length > 0) {
+    // A glob is never a slug, so an empty glob match stays empty.
+    if (matches.items.length > 0 || isGlobFilter(name)) {
       return matches;
     }
     return await handleExplicitOrg({ config, org, flags, noteOrgScoped: true });

@@ -663,7 +663,9 @@ export function buildListCommand<
       // All list commands use SentryContext which has stderr at top level
       const ctx = this as unknown as { stderr: { write(s: string): void } };
       if (interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined) {
-        args[0] = undefined;
+        // Drop the subcommand token so later positionals move up a slot:
+        // `sentry projects list my-org/` targets `my-org/`, not a filter.
+        args.shift();
       }
     }
     // A dropped lazy target becomes an omitted one (auto-detect)

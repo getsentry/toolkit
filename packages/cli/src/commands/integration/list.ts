@@ -48,7 +48,9 @@ const integrationListConfig: OrgListConfig<
   listForOrg: (org) => listIntegrations(org),
   listPaginated: (org, opts) => listIntegrationsPaginated(org, opts),
   withOrg: (integration, orgSlug) => ({ ...integration, orgSlug }),
-  namesOf: (integration) => [integration.name],
+  // The install label (e.g. a GitHub org) and the product (`GitHub`), so
+  // `<org>/git*` finds GitHub installs whatever their label.
+  namesOf: (integration) => [integration.name, integration.provider.name],
   displayTable: (integrations: IntegrationWithOrg[]) =>
     formatTable(integrations, INTEGRATION_COLUMNS),
   schema: SentryIntegrationSchema,
@@ -62,7 +64,7 @@ const docs: OrgListCommandDocs = {
     "Target specification:\n" +
     "  sentry integration list               # auto-detect from DSN or config\n" +
     "  sentry integration list <org>/        # list all integrations in org (paginated)\n" +
-    "  sentry integration list <org>/<name>  # integrations whose name matches <name>\n" +
+    "  sentry integration list <org>/<name>  # integrations whose name or provider matches <name>\n" +
     "  sentry integration list <org>         # list integrations in org\n\n" +
     "`<name>` is a glob (`<org>/git*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
     "Pagination:\n" +
@@ -83,7 +85,7 @@ const docs: OrgListCommandDocs = {
       command: "sentry integration list my-org/ -c next",
     },
     {
-      description: "Only integrations whose name matches a glob",
+      description: "Only integrations whose name or provider matches a glob",
       command: "sentry integration list 'my-org/git*'",
     },
     {

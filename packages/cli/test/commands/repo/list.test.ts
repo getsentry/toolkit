@@ -268,6 +268,18 @@ describe("listCommand.func — explicit org/project (org-scoped with note)", () 
     expect(listRepositoriesSpy).not.toHaveBeenCalled();
   });
 
+  test("<org>/<glob> with no matches stays empty", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(context, { limit: 30, json: true }, "my-org/other/*");
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    expect(items).toEqual([]);
+    // A glob is never a project slug: no whole-org fallback.
+    expect(listRepositoriesSpy).not.toHaveBeenCalled();
+  });
+
   test("explicit org/project uses org part (repos are org-scoped)", async () => {
     listRepositoriesSpy.mockResolvedValue(sampleRepos);
 
