@@ -21,6 +21,7 @@ import {
   ValidationError,
 } from "../../src/lib/errors.js";
 import {
+  lazyPositional,
   markDestructive,
   rawPositional,
 } from "../../src/lib/positional-parse.js";
@@ -204,6 +205,33 @@ describe("lazy parsing and resolution", () => {
     await expect(explicit.resolved).resolves.toMatchObject({
       commandName: "thing list",
     });
+  });
+
+  test("a destructive command refuses an auto-detected target on parsed reads", () => {
+    const omitted = echoTarget.call(context, undefined);
+    markDestructive([omitted]);
+    expect(() => omitted.parsed).toThrow(ContextError);
+  });
+
+  test("marking an already parsed positional destructive throws", () => {
+    const target = echoTarget.call(context, undefined);
+    expect(target.parsed).toEqual({ type: "auto-detect" });
+    expect(() => markDestructive([target])).toThrow("before the positional");
+  });
+
+  test("parses once even when the parse fails", async () => {
+    const parse = vi.fn((): never => {
+      throw new ValidationError("bad target");
+    });
+    const target = lazyPositional(
+      ORG_PROJECT_TARGET,
+      parse,
+      async () => 1,
+    ).call(context, "x");
+    expect(() => target.parsed).toThrow("bad target");
+    expect(() => target.parsed).toThrow("bad target");
+    await expect(target.resolved).rejects.toThrow("bad target");
+    expect(parse).toHaveBeenCalledTimes(1);
   });
 
   test("needs the command path on the context", async () => {

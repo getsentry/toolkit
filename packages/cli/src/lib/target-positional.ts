@@ -61,8 +61,9 @@ function commandNameOf(context: TargetContext): string {
 /**
  * Positional parser for an `[<org>/][<project>]` target with its own
  * resolver. Completes like `parseOrgProjectTarget`. In a destructive command
- * an auto-detected target fails `requireExplicitTarget` before `resolve`
- * runs.
+ * an auto-detected target fails `requireExplicitTarget` in the parse, so
+ * reading `target.parsed` throws and `target.resolved` rejects before
+ * `resolve` runs.
  *
  * @param resolve - Turns the parsed target into what `target.resolved`
  *   yields
@@ -75,18 +76,22 @@ export function orgProjectTarget<R>(
 ): (this: TargetContext, input?: string) => OrgProjectTarget<R> {
   return lazyPositional(
     ORG_PROJECT_TARGET,
-    (raw) => parseOrgProjectArg(raw),
-    async (parsed, context: TargetContext, { destructive }) => {
-      const commandName = commandNameOf(context);
+    (raw, context: TargetContext, { destructive }) => {
+      const parsed = parseOrgProjectArg(raw);
       if (destructive) {
         requireExplicitTarget(
           parsed,
           "Project target",
-          `sentry ${commandName} <org>/<project>`,
+          `sentry ${commandNameOf(context)} <org>/<project>`,
         );
       }
-      return await resolve(parsed, { ...context, commandName });
+      return parsed;
     },
+    async (parsed, context: TargetContext) =>
+      await resolve(parsed, {
+        ...context,
+        commandName: commandNameOf(context),
+      }),
   );
 }
 

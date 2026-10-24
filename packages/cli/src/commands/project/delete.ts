@@ -15,7 +15,7 @@
  * - Uses `buildDeleteCommand` — auto-injects `--yes`/`--force`/`--dry-run`
  *   flags and enforces the non-interactive guard before `func()` runs
  * - No auto-detect mode: `buildDeleteCommand` marks the target destructive, so
- *   `target.resolved` rejects an omitted target
+ *   reading an omitted target throws
  * - Type-out confirmation via `confirmByTyping` (unless --yes/--force)
  */
 

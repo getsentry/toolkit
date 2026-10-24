@@ -31,7 +31,8 @@
  * recovery, telemetry) reads the raw input with {@link rawPositional}.
  * `buildCommand` calls {@link markDestructive} on the positionals of
  * destructive commands (`destructive: true`, which `buildDeleteCommand` sets),
- * so resolvers see `destructive: true` and can refuse to auto-detect.
+ * so parsers and resolvers see `destructive: true`. A parser that refuses
+ * input there (an auto-detected target) guards both `parsed` and `resolved`.
  */
 
 import {
@@ -39,7 +40,7 @@ import {
   withCompletionTarget,
 } from "./completion-target.js";
 
-/** What the running command tells a positional's resolver. */
+/** What the running command tells a positional's parser and resolver. */
 export type ResolveOptions = {
   /** The command is destructive (see {@link markDestructive}). */
   readonly destructive: boolean;
@@ -48,17 +49,24 @@ export type ResolveOptions = {
 /** Values whose command is destructive (see {@link markDestructive}). */
 const destructiveValues = new WeakSet<object>();
 
+/** Values whose parse has run, so marking them is too late. */
+const parsedValues = new WeakSet<object>();
+
 /** Parsers made by {@link lazyPositional}. */
 const lazyParsers = new WeakSet<object>();
 
+/** The outcome of a parse: its value or what it threw. */
+type ParseOutcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
 /**
  * A positional value that parses on first `parsed` read and resolves on
- * first `resolved` read. Each step runs once.
+ * first `resolved` read. Each step runs once; a parse error is rethrown on
+ * later reads without parsing again.
  */
 export class LazyPositional<T, R> {
-  #parsed: { value: T } | undefined;
+  #parsed: ParseOutcome<T> | undefined;
   #resolved: Promise<R> | undefined;
-  readonly #parse: (raw: string | undefined) => T;
+  readonly #parse: (raw: string | undefined, options: ResolveOptions) => T;
   readonly #resolve: (value: T, options: ResolveOptions) => Promise<R>;
 
   /** What the user typed; `undefined` for an omitted positional. */
@@ -66,7 +74,7 @@ export class LazyPositional<T, R> {
 
   constructor(
     raw: string | undefined,
-    parse: (raw: string | undefined) => T,
+    parse: (raw: string | undefined, options: ResolveOptions) => T,
     resolve: (value: T, options: ResolveOptions) => Promise<R>,
   ) {
     this.raw = raw;
@@ -76,17 +84,33 @@ export class LazyPositional<T, R> {
 
   /** The parsed value. Throws the parser's error. */
   get parsed(): T {
-    this.#parsed ??= { value: this.#parse(this.raw) };
+    this.#parsed ??= this.#runParse();
+    if (!this.#parsed.ok) {
+      throw this.#parsed.error;
+    }
     return this.#parsed.value;
   }
 
   /** The resolved value; rejects on a parse or resolve error. */
   get resolved(): Promise<R> {
     this.#resolved ??= (async () =>
-      await this.#resolve(this.parsed, {
-        destructive: destructiveValues.has(this),
-      }))();
+      await this.#resolve(this.parsed, this.#options()))();
     return this.#resolved;
+  }
+
+  #runParse(): ParseOutcome<T> {
+    parsedValues.add(this);
+    try {
+      return { ok: true, value: this.#parse(this.raw, this.#options()) };
+    } catch (error) {
+      // Rethrown by every `parsed` read; parsing again could repeat side
+      // effects such as applying a pasted URL's host.
+      return { ok: false, error };
+    }
+  }
+
+  #options(): ResolveOptions {
+    return { destructive: destructiveValues.has(this) };
   }
 }
 
@@ -95,18 +119,23 @@ export class LazyPositional<T, R> {
  *
  * @param kind - Shell completion kind for the positional
  * @param parse - Parses the raw input (`undefined` when omitted); may throw a
- *   `CliError`
- * @param resolve - Resolves the parsed value; gets the command context that
- *   Stricli passes to parsers as `this`, and {@link ResolveOptions}
+ *   `CliError`. Gets the command context that Stricli passes to parsers as
+ *   `this`, and {@link ResolveOptions}; checks that must hold before any use
+ *   of the value, such as refusing auto-detect in a destructive command,
+ *   belong here
+ * @param resolve - Resolves the parsed value; gets the same context and
+ *   options
  */
 export function lazyPositional<T, R, C>(
   kind: CompletionTarget,
-  parse: (raw: string | undefined) => T,
+  parse: (raw: string | undefined, context: C, options: ResolveOptions) => T,
   resolve: (value: T, context: C, options: ResolveOptions) => Promise<R>,
 ): (this: C, input?: string) => LazyPositional<T, R> {
   const parser = withCompletionTarget(kind, function (this: C, input?: string) {
-    return new LazyPositional(input, parse, (value: T, options) =>
-      resolve(value, this, options),
+    return new LazyPositional(
+      input,
+      (raw, options) => parse(raw, this, options),
+      (value: T, options) => resolve(value, this, options),
     );
   });
   lazyParsers.add(parser);
@@ -165,12 +194,20 @@ export function applyLazyPositionals(
 }
 
 /**
- * Tell the resolvers of these positionals that the command is destructive.
- * Must run before `func` reads `resolved`. Other values are ignored.
+ * Tell the parsers and resolvers of these positionals that the command is
+ * destructive. Other values are ignored.
+ *
+ * @throws {Error} When a positional was already parsed, so its parser ran
+ *   without the destructive checks
  */
 export function markDestructive(args: readonly unknown[]): void {
   for (const arg of args) {
     if (arg instanceof LazyPositional) {
+      if (parsedValues.has(arg)) {
+        throw new Error(
+          "markDestructive must run before the positional is parsed",
+        );
+      }
       destructiveValues.add(arg);
     }
   }
