@@ -120,7 +120,7 @@ sentry release create 1.0.0 --finalize
 sentry release create 1.0.0 --project proj-a,proj-b
 
 # Create a release from a proposed version
-sentry release create $(sentry release propose-version)
+sentry release create "$(sentry release propose-version --json | jq -r .version)"
 
 # Set the release ref and URL
 sentry release create 1.0.0 --ref main --url https://github.com/org/repo/releases/tag/1.0.0
@@ -361,7 +361,7 @@ sentry release propose-version
 sentry release propose-version --json
 
 # Create a release named after the proposed version
-sentry release create $(sentry release propose-version)
+sentry release create "$(sentry release propose-version --json | jq -r .version)"
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
