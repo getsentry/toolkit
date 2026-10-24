@@ -100,7 +100,7 @@ catalog:
   vitest-evals: ^0.4.0
   workers-mcp: 0.1.0-3
   wrangler: 4.151.3
-  zod: ^4.4.3
+  zod: ^4.6.6
 
 minimumReleaseAgeExclude:
   - "@ai-sdk/gateway@3.0.153"
