@@ -1415,6 +1415,43 @@ describe("dispatchOrgScopedList name filter", () => {
     expect(listForProject).toHaveBeenCalledWith("my-org", "proj");
   });
 
+  test("ranks matches merged across projects before --limit", async () => {
+    // The same project slug in two orgs: org-a only has a contains match,
+    // org-b has the exact one, which must win the single slot.
+    const findSpy = vi
+      .spyOn(apiClient, "findProjectsBySlug")
+      .mockResolvedValue({
+        projects: [
+          { orgSlug: "org-a", slug: "my-proj", id: "1", name: "My Project" },
+          { orgSlug: "org-b", slug: "my-proj", id: "2", name: "My Project" },
+        ],
+        orgs: [],
+      });
+    try {
+      const teams: Record<string, FakeEntity[]> = {
+        "org-a": [{ id: "1", name: "backend-old" }],
+        "org-b": [{ id: "2", name: "backend" }],
+      };
+      const config = makeConfig({
+        listForProject: (org: string) => Promise.resolve(teams[org] ?? []),
+        namesOf: (team) => [team.name],
+      });
+      const result = await dispatchOrgScopedList({
+        config,
+        cwd: "/tmp",
+        flags: { limit: 1, json: true },
+        parsed: { type: "project-search", projectSlug: "my-proj" },
+        filter: "backend",
+      });
+
+      expect(result.items.map((t: FakeWithOrg) => [t.orgSlug, t.name])).toEqual(
+        [["org-b", "backend"]],
+      );
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
   test("rejects --cursor with a filter", async () => {
     await expect(
       dispatchOrgScopedList({

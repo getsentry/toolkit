@@ -462,6 +462,14 @@ export type OrgListConfig<TEntity, TWithOrg> = ListCommandMeta & {
    * reading every page (see {@link fetchByName}).
    */
   searchesNames?: boolean;
+
+  /**
+   * Re-rank items merged from several fetches (orgs or projects). Set by
+   * the name filter, which ranks matches within each fetch: merging must
+   * rank again before `--limit` so a weaker match from an earlier fetch
+   * can't hide a better one from a later fetch.
+   */
+  rankMerged?: (items: TWithOrg[]) => TWithOrg[];
 };
 
 /** Extract a specific variant from the {@link ParsedOrgProject} union by its `type` discriminant. */
@@ -707,7 +715,7 @@ export async function handleAutoDetect<TEntity, TWithOrg>(
     skippedSelfHosted,
   } = await resolveOrgsForListing(undefined, cwd);
 
-  const allItems = await withProgress(
+  const fetchedItems = await withProgress(
     {
       message: `Fetching ${config.entityPlural} (up to ${flags.limit})...`,
       json: flags.json,
@@ -722,6 +730,9 @@ export async function handleAutoDetect<TEntity, TWithOrg>(
       return await fetchAllOrgs(config);
     },
   );
+  const allItems = config.rankMerged
+    ? config.rankMerged(fetchedItems)
+    : fetchedItems;
 
   const limitCount =
     orgsToFetch.length > 1 ? flags.limit * orgsToFetch.length : flags.limit;
@@ -1040,6 +1051,9 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
     );
     allItems = results.flat();
   }
+  if (config.rankMerged) {
+    allItems = config.rankMerged(allItems);
+  }
 
   const limited = allItems.slice(0, flags.limit);
 
@@ -1188,9 +1202,21 @@ function withNameFilter<TEntity, TWithOrg>(
     );
   }
   const keep = (entities: TEntity[]) => filterByName(entities, filter, namesOf);
+  // The entity behind each item, so merged items can be ranked by name.
+  const entityOf = new Map<TWithOrg, TEntity>();
   return {
     ...config,
     entityPlural: `${config.entityPlural} matching '${filter}'`,
+    withOrg: (entity, org) => {
+      const item = config.withOrg(entity, org);
+      entityOf.set(item, entity);
+      return item;
+    },
+    rankMerged: (items) =>
+      filterByName(items, filter, (item) => {
+        const entity = entityOf.get(item);
+        return entity === undefined ? [] : namesOf(entity);
+      }),
     listForOrg: (org) =>
       fetchByName({
         filter,
