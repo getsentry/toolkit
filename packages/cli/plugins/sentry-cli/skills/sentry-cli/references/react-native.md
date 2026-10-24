@@ -37,6 +37,12 @@ sentry react-native gradle --bundle index.android.bundle --sourcemap index.andro
 
 Upload React Native sourcemaps (Xcode build step)
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<script-arg...>` | Extra arguments passed to the build script |
+
 **Flags:**
 - `-f, --force - Run even in a debug configuration`
 - `--allow-fetch - Fetch sourcemaps from the packager on simulator builds`

@@ -563,10 +563,6 @@ export const viewCommand = buildCommand({
     brief: "View details of one or more log entries",
     fullDescription:
       "View detailed information about Sentry log entries by their IDs.\n\n" +
-      "Target specification:\n" +
-      "  sentry log view <log-id>                          # auto-detect from DSN or config\n" +
-      "  sentry log view <org>/<proj> <log-id> [<id>...]   # explicit org and project\n" +
-      "  sentry log view <project> <log-id> [<id>...]      # find project across all orgs\n\n" +
       "Multiple log IDs can be passed as separate arguments or newline-separated\n" +
       "within a single argument (handy when piping from other commands).\n\n" +
       "The log ID is the 32-character hexadecimal identifier shown in log listings.",
@@ -583,6 +579,10 @@ export const viewCommand = buildCommand({
       {
         description: "Open in the browser",
         command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01 -w",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry log view backend 968c763c740cfda8b6728f27fb9e9b01",
       },
     ],
   },

@@ -15,6 +15,12 @@ View, list, and send Sentry events
 
 View details of one or more events
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/event-id...>` | [&lt;org&gt;/&lt;project&gt;] &lt;event-id&gt; [&lt;event-id&gt;...] - Target (optional) and one or more event IDs |
+
 **Flags:**
 - `-w, --web - Open in browser`
 - `--spans <value> - Span tree depth limit (number, "all" for unlimited, "no" to disable) - (default: "3")`
@@ -77,11 +83,23 @@ sentry event view abc123def456abc123def456abc12345 -w
 
 # Download an attachment listed by --json (with sentry api)
 sentry api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png
+
+# View an event in an explicit project
+sentry event view my-org/my-project abc123def456abc123def456abc12345
+
+# View several events, finding the project across organizations
+sentry event view my-project abc123def456abc123def456abc12345 def456abc123def456abc123def45678
 ```
 
 ### `sentry event list <issue>`
 
 List events for an issue
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
 
 **Flags:**
 - `-n, --limit <value> - Number of events (1-1000) - (default: "25")`
@@ -145,6 +163,12 @@ sentry event list PROJ-ABC --json
 ### `sentry event send <target-or-file...>`
 
 Send a Sentry event
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<target-or-file...>` | Optional DSN/project target followed by JSON event file path(s) |
 
 **Flags:**
 - `-m, --message <value>... - Event message (repeat for multi-line)`

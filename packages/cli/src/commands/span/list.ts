@@ -542,19 +542,8 @@ export const listCommand = buildListCommand("span", {
     brief: "List spans in a project or trace",
     fullDescription:
       "List spans from a Sentry project, or within a specific trace.\n\n" +
-      "Project mode (no trace ID):\n" +
-      "  sentry span list                        # auto-detect from DSN or config\n" +
-      "  sentry span list <org>/<project>        # explicit org and project\n" +
-      "  sentry span list <project>              # find project across all orgs\n\n" +
       `${TARGET_PATTERN_NOTE}\n\n` +
-      "Trace mode (provide a 32-char trace ID):\n" +
-      "  sentry span list <trace-id>                      # auto-detect org/project\n" +
-      "  sentry span list <org>/<project>/<trace-id>      # explicit\n" +
-      "  sentry span list <project> <trace-id>            # find project + trace\n\n" +
-      "Pagination:\n" +
-      "  sentry span list -c next                # fetch next page (project mode)\n" +
-      "  sentry span list -c prev                # fetch previous page\n" +
-      "  sentry span list <trace-id> -c next     # fetch next page (trace mode)\n\n" +
+      "Pass a 32-character trace ID to list the spans in one trace.\n\n" +
       "Alias: `sentry spans` → `sentry span list`",
     examples: [
       {
@@ -590,6 +579,18 @@ export const listCommand = buildListCommand("span", {
       {
         description: "Fetch the next page",
         command: "sentry span list -c next",
+      },
+      {
+        description: "List spans in an explicit project",
+        command: "sentry span list my-org/cli-server",
+      },
+      {
+        description: "Find a project across organizations, then list a trace",
+        command: "sentry span list cli-server abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Fetch the next page of a trace",
+        command: "sentry span list abc123def456abc123def456abc12345 -c next",
       },
     ],
   },

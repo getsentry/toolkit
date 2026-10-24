@@ -117,6 +117,21 @@ export const addCommand = buildCommand({
         command:
           'sentry dashboard widget add \'My Dashboard\' "Slow Requests" --display bar --query p95:span.duration --where "span.op:http.client" --group-by span.description',
       },
+      {
+        description: "P95 latency KPI",
+        command:
+          "sentry dashboard widget add 'My Dashboard' \"P95\" --display big_number --query p95:span.duration",
+      },
+      {
+        description: "Throughput KPI",
+        command:
+          "sentry dashboard widget add 'My Dashboard' \"Throughput\" --display big_number --query epm",
+      },
+      {
+        description: "Custom metric percentiles from the tracemetrics dataset",
+        command:
+          'sentry dashboard widget add \'My Dashboard\' "Latency" --display line --dataset tracemetrics --query "p50(value,completion.duration_ms,distribution,none)" --query "p90(value,completion.duration_ms,distribution,none)"',
+      },
     ],
   },
   output: {

@@ -159,6 +159,14 @@ tester.run(
       },
       {
         filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.\\n\\nRun `sentry item view` for details.' } });",
+      },
+      {
+        filename: commands,
+        code: "throw new ContextError('Item', 'sentry item view <id>\\n  sentry item list');",
+      },
+      {
+        filename: commands,
         code: "throw new ValidationError('Bad input.\\n\\nExamples:\\n  sentry list');",
       },
       {
@@ -180,6 +188,16 @@ tester.run(
       {
         filename: commands,
         code: "buildCommand({ docs: { fullDescription: 'Manage items.\\n\\n' + '## Examples\\n\\n' + 'sentry item list\\n' } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.\\n\\n' + 'Target patterns:\\n' + '  sentry item list <org>/  # all items in org\\n' } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: `Lists items.\\n\\n  sentry item list -c next\\n\\n${note}` } });",
         errors: 1,
       },
     ],

@@ -198,7 +198,7 @@ describe("sentry log list (trace mode)", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toMatch(/trace-id/i);
-    expect(result.stdout).toMatch(/trace filtering/i);
+    expect(result.stdout).toMatch(/filter by trace/i);
   });
 });
 

@@ -15,6 +15,13 @@ Initialize Sentry in your project (experimental)
 
 Initialize Sentry in your project (experimental)
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<target>]` | &lt;org&gt;/&lt;project&gt;, &lt;org&gt;/, &lt;project&gt;, or a directory path |
+| `[<directory>]` | Project directory (default: current directory) |
+
 **Flags:**
 - `-y, --yes - Accept non-interactive defaults (requires --features outside a TTY)`
 - `-n, --dry-run - Show what would happen without making changes`

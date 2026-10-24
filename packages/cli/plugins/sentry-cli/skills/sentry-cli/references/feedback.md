@@ -15,6 +15,12 @@ Manage User Feedback
 
 List and search User Feedback
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `--status <value> - Mailbox: unresolved, resolved, spam, or all - (default: "unresolved")`
 - `-n, --limit <value> - Number of feedback items (1-1000) - (default: "25")`
@@ -83,6 +89,12 @@ sentry feedback list my-org/frontend --query "message:*checkout*"
 
 View a User Feedback item
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<feedback>` | Feedback: @latest, numeric ID, short ID, &lt;org&gt;/SHORT-ID, or &lt;org&gt;/&lt;project&gt;/&lt;suffix&gt; |
+
 **Flags:**
 - `-w, --web - Open in browser`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -148,6 +160,12 @@ sentry feedback view my-org/FRONTEND-2SDJ --web
 
 Mark User Feedback as resolved
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<feedback>` | Feedback: @latest, numeric ID, short ID, &lt;org&gt;/SHORT-ID, or &lt;org&gt;/&lt;project&gt;/&lt;suffix&gt; |
+
 **JSON Fields** (use `--json --fields` to select specific fields):
 
 | Field | Type | Description |
@@ -195,6 +213,12 @@ sentry feedback resolve my-org/FRONTEND-2SDJ --json --fields id,shortId,status
 ### `sentry feedback unresolve <feedback>`
 
 Return User Feedback to the inbox
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<feedback>` | Feedback: @latest, numeric ID, short ID, &lt;org&gt;/SHORT-ID, or &lt;org&gt;/&lt;project&gt;/&lt;suffix&gt; |
 
 **JSON Fields** (use `--json --fields` to select specific fields):
 
@@ -246,6 +270,12 @@ sentry feedback unresolve FRONTEND-2SDJ --json --fields id,shortId,status
 ### `sentry feedback spam <feedback>`
 
 Mark User Feedback as spam
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<feedback>` | Feedback: @latest, numeric ID, short ID, &lt;org&gt;/SHORT-ID, or &lt;org&gt;/&lt;project&gt;/&lt;suffix&gt; |
 
 **JSON Fields** (use `--json --fields` to select specific fields):
 

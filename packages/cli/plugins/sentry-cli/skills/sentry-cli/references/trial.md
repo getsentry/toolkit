@@ -15,6 +15,12 @@ Manage product trials
 
 List product trials
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org>]` | Organization slug (auto-detected if omitted) |
+
 **JSON Fields** (use `--json --fields` to select specific fields):
 
 | Field | Type | Description |
@@ -44,6 +50,13 @@ sentry trial list --json
 Start a product trial
 
 **Destructive:** This command deletes data or makes changes that can't easily be undone. Confirm with the user before running it.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<name>` | Trial name (seer, replays, performance, spans, profiling, logs, monitors, uptime, plan) |
+| `[<org>]` | Organization slug (auto-detected if omitted) |
 
 **Examples:**
 
