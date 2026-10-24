@@ -15,6 +15,12 @@ Manage Sentry alert rules
 
 List issue alert rules
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `-w, --web - Open in browser`
 - `-n, --limit <value> - Maximum number of issue alert rules to list - (default: "25")`
@@ -25,16 +31,31 @@ List issue alert rules
 **Examples:**
 
 ```bash
+# List issue alert rules (project auto-detected)
+sentry alert issues list
+
 # List issue alert rules for a project
 sentry alert issues list my-org/my-project
 
 # Filter rules by name
 sentry alert issues list my-org/my-project --query "spike"
+
+# List issue alert rules for all projects in an organization
+sentry alert issues list my-org/
+
+# Find a project across organizations
+sentry alert issues list frontend
 ```
 
 ### `sentry alert issues view <org/project/rule-id-or-name>`
 
 View an issue alert rule
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/rule-id-or-name>` | Issue alert rule ID or name |
 
 **Flags:**
 - `-w, --web - Open issue alert rules page in browser`
@@ -55,6 +76,12 @@ sentry alert issues view my-org/my-project/'Error Spike'
 ### `sentry alert issues create [<target>]`
 
 Create an issue alert rule
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<target>]` | &lt;org&gt;/&lt;project&gt;, auto-detected project, or &lt;project&gt; (search) |
 
 **Flags:**
 - `--name <value> - Rule name`
@@ -83,6 +110,12 @@ Delete an issue alert rule
 
 **Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/rule-id-or-name>` | Rule id or name (same as view) |
+
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
@@ -104,6 +137,12 @@ sentry alert issues delete my-org/my-project/12345 --dry-run
 ### `sentry alert issues edit <org/project/rule-id-or-name>`
 
 Edit an issue alert rule
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/rule-id-or-name>` | Rule id or name (same as view) |
 
 **Flags:**
 - `--name <value> - New rule name`
@@ -136,6 +175,12 @@ sentry alert issues edit my-org/my-project/12345 --condition '{"type":"first_see
 
 List metric alert rules
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<target>]` | &lt;org&gt;/, &lt;org&gt;/&lt;project&gt; (project ignored), or &lt;project&gt; (search) |
+
 **Flags:**
 - `-w, --web - Open in browser`
 - `-n, --limit <value> - Maximum number of metric alert rules to list - (default: "25")`
@@ -146,13 +191,25 @@ List metric alert rules
 **Examples:**
 
 ```bash
+# List metric alert rules (organization auto-detected)
+sentry alert metrics list
+
 # List metric alert rules for an organization
 sentry alert metrics list my-org/
+
+# Fetch the next page
+sentry alert metrics list my-org/ -c next
 ```
 
 ### `sentry alert metrics view <org/rule-id-or-name>`
 
 View a metric alert rule
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/rule-id-or-name>` | Metric alert rule ID or name |
 
 **Flags:**
 - `-w, --web - Open metric alert rules page in browser`
@@ -173,6 +230,12 @@ sentry alert metrics view my-org/'P95 latency alert'
 ### `sentry alert metrics create <target>`
 
 Create a metric alert rule
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<target>` | Target project or organization |
 
 **Flags:**
 - `--name <value> - Rule name`
@@ -203,6 +266,12 @@ Delete a metric alert rule
 
 **Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/rule-id-or-name>` | Rule id or name (same as view) |
+
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
@@ -221,6 +290,12 @@ sentry alert metrics delete my-org/'P95 alert' --yes
 ### `sentry alert metrics edit <org/rule-id-or-name>`
 
 Edit a metric alert rule
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/rule-id-or-name>` | Rule id or name (same as view) |
 
 **Flags:**
 - `--name <value> - New rule name`

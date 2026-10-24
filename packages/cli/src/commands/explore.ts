@@ -35,8 +35,10 @@ import {
   appendSortHint,
   buildListCommand,
   LIST_MAX_LIMIT,
+  ORG_ALL_TARGET_BRIEF,
   PERIOD_ALIASES,
   paginationHint,
+  targetPatternExplanation,
 } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
 import { resolveMetricField } from "../lib/metrics-transform.js";
@@ -604,15 +606,8 @@ export const exploreCommand = buildListCommand("explore", {
       "  metrics  Custom metrics (tracemetrics format)\n" +
       "  logs     Log entries\n" +
       "  replays  Session replay search\n\n" +
-      "Targets:\n" +
-      "  <org>/<project>  Filter by project (auto-adds project:<slug> to query)\n" +
-      "  <org>/           All projects in org\n" +
-      "  <project>        Bare slug — searches across orgs\n" +
-      "  (omitted)        Auto-detect from DSN/config\n\n" +
-      "Metrics (auto mode — resolves type/unit automatically):\n" +
-      "  sentry explore my-org/ -m llm.token_usage --dataset metrics\n" +
-      "  sentry explore my-org/seer -F gen_ai.request.model -m llm.token_usage --dataset metrics --period 7d\n" +
-      "  sentry explore my-org/ -m cache.hit_rate --agg avg --dataset metrics",
+      "A <org>/<project> target adds project:<slug> to the query. " +
+      targetPatternExplanation(),
     examples: [
       {
         description: "Top errors in the last 24 hours, scoped to a project",
@@ -698,8 +693,7 @@ export const exploreCommand = buildListCommand("explore", {
       parameters: [
         {
           placeholder: "target",
-          brief:
-            "Target: <org>/<project>, <org>/, or <project>. Auto-detected if omitted.",
+          brief: ORG_ALL_TARGET_BRIEF,
           parse: orgOptionalTarget,
           optional: true as const,
         },

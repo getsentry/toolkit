@@ -213,15 +213,7 @@ export const uploadCommand = buildCommand({
       "Exits with an error if zero JS + sourcemap pairs are discovered " +
       "(typical cause: bundler not emitting .map files). Pass " +
       "--allow-empty to suppress this check for directories that may " +
-      "legitimately be empty.\n\n" +
-      "Usage:\n" +
-      "  sentry sourcemap upload ./dist\n" +
-      "  sentry sourcemap upload ./dist --release 1.0.0\n" +
-      "  sentry sourcemap upload ./dist --release 1.0.0 --dist 12345\n" +
-      "  sentry sourcemap upload ./dist --url-prefix '~/static/js/'\n" +
-      "  sentry sourcemap upload ./dist --no-rewrite\n" +
-      "  sentry sourcemap upload ./dist --ext .js,.mjs\n" +
-      "  sentry sourcemap upload ./maybe-empty --allow-empty",
+      "legitimately be empty.",
     examples: [
       {
         description: "Upload sourcemaps from dist/",
@@ -238,6 +230,18 @@ export const uploadCommand = buildCommand({
       {
         description: "Don't fail when no sourcemaps are found",
         command: "sentry sourcemap upload ./dist --allow-empty",
+      },
+      {
+        description: "Set a release and distribution",
+        command: "sentry sourcemap upload ./dist --release 1.0.0 --dist 12345",
+      },
+      {
+        description: "Upload without rewriting sourcemaps",
+        command: "sentry sourcemap upload ./dist --no-rewrite",
+      },
+      {
+        description: "Only upload some extensions",
+        command: "sentry sourcemap upload ./dist --ext .js,.mjs",
       },
     ],
   },

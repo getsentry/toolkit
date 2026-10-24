@@ -15,6 +15,12 @@ Work with Sentry organizations
 
 List organizations
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<filter>]` | Only list organizations whose slug or name fuzzy-matches this text or matches this glob |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of organizations to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -45,6 +51,12 @@ sentry org list --json
 ### `sentry org view [<org>]`
 
 View details of an organization
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org>]` | Organization slug (optional if auto-detected) |
 
 **Flags:**
 - `-w, --web - Open in browser`

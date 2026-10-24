@@ -75,14 +75,6 @@ const docs: OrgListCommandDocs = {
   brief: "List cron monitors",
   fullDescription:
     "List cron monitors in an organization.\n\n" +
-    "Target specification:\n" +
-    "  sentry monitor list               # auto-detect from DSN or config\n" +
-    "  sentry monitor list <org>/        # list all monitors in org (paginated)\n" +
-    "  sentry monitor list <org>/<proj>  # list monitors in org (project context)\n" +
-    "  sentry monitor list <org>         # list monitors in org\n\n" +
-    "Pagination:\n" +
-    "  sentry monitor list <org>/ -c next  # fetch next page\n" +
-    "  sentry monitor list <org>/ -c prev  # fetch previous page\n\n" +
     "Alias: `sentry monitors` → `sentry monitor list`",
   examples: [
     {

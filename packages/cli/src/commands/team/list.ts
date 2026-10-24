@@ -59,14 +59,6 @@ const docs: OrgListCommandDocs = {
   brief: "List teams",
   fullDescription:
     "List teams in an organization.\n\n" +
-    "Target specification:\n" +
-    "  sentry team list               # auto-detect from DSN or config\n" +
-    "  sentry team list <org>/        # list all teams in org (paginated)\n" +
-    "  sentry team list <org>/<proj>  # list teams in org (project context)\n" +
-    "  sentry team list <org>         # list teams in org\n\n" +
-    "Pagination:\n" +
-    "  sentry team list <org>/ -c next  # fetch next page\n" +
-    "  sentry team list <org>/ -c prev  # fetch previous page\n\n" +
     "Alias: `sentry teams` → `sentry team list`",
   examples: [
     {

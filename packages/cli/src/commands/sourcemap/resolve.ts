@@ -110,11 +110,7 @@ export const resolveCommand = buildCommand({
       ".map file, external sourceMappingURL directive, inline data: URL, or " +
       "none) and whether a Sentry debug ID has been injected.\n\n" +
       "This command never modifies files. Use it to debug why " +
-      "`sentry sourcemap upload` may not find the expected sourcemaps.\n\n" +
-      "Usage:\n" +
-      "  sentry sourcemap resolve ./dist\n" +
-      "  sentry sourcemap resolve ./build --ext .js,.mjs\n" +
-      "  sentry sourcemap resolve ./out --json",
+      "`sentry sourcemap upload` may not find the expected sourcemaps.",
     examples: [
       {
         description:
@@ -124,6 +120,10 @@ export const resolveCommand = buildCommand({
       {
         description: "Output as JSON",
         command: "sentry sourcemap resolve ./dist --json",
+      },
+      {
+        description: "Only scan some extensions",
+        command: "sentry sourcemap resolve ./build --ext .js,.mjs",
       },
     ],
   },

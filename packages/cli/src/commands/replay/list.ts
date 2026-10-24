@@ -35,6 +35,7 @@ import {
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
   LIST_PERIOD_FLAG,
+  ORG_ALL_TARGET_BRIEF,
   PERIOD_ALIASES,
   paginationHint,
   targetPatternExplanation,
@@ -254,11 +255,6 @@ export const listCommand = buildListCommand("replay", {
     brief: "List recent Session Replays",
     fullDescription:
       "List recent Session Replays from Sentry.\n\n" +
-      "Target patterns:\n" +
-      "  sentry replay list              # auto-detect org from config or DSN\n" +
-      "  sentry replay list <org>/       # list all org replays\n" +
-      "  sentry replay list <org>/<proj> # list replays for one project\n" +
-      "  sentry replay list <project>    # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "Alias: `sentry replays` → `sentry replay list`",
     examples: [
@@ -304,6 +300,10 @@ export const listCommand = buildListCommand("replay", {
         description: "Output as JSON",
         command: "sentry replay list my-org/frontend --json",
       },
+      {
+        description: "Find a project across organizations",
+        command: "sentry replay list frontend",
+      },
     ],
   },
   output: {
@@ -317,7 +317,7 @@ export const listCommand = buildListCommand("replay", {
       parameters: [
         {
           placeholder: "org/project",
-          brief: "<org>/, <org>/<project>, or <project> (search)",
+          brief: ORG_ALL_TARGET_BRIEF,
           parse: orgOptionalTarget,
           optional: true,
         },

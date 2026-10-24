@@ -497,18 +497,21 @@ export const listCommand = buildListCommand("alert metrics", {
     fullDescription:
       "List metric alert rules for one or more Sentry organizations.\n\n" +
       "Metric alerts trigger notifications when a metric query crosses a threshold.\n\n" +
-      "Target patterns:\n" +
-      "  sentry alert metrics list                     # auto-detect from DSN or config\n" +
-      "  sentry alert metrics list <org>/              # explicit org (paginated)\n" +
-      "  sentry alert metrics list <org>/<project>     # explicit org (project ignored)\n" +
-      "  sentry alert metrics list <project>           # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "Metric alert rules are org-scoped; the project part is ignored when provided.\n\n" +
       "Use --cursor / -c next / -c prev to paginate through larger result sets.",
     examples: [
       {
+        description: "List metric alert rules (organization auto-detected)",
+        command: "sentry alert metrics list",
+      },
+      {
         description: "List metric alert rules for an organization",
         command: "sentry alert metrics list my-org/",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry alert metrics list my-org/ -c next",
       },
     ],
   },
