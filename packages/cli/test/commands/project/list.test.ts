@@ -464,6 +464,33 @@ describe("handleExplicit", () => {
     expect(requests.some((url) => url.includes("query=frontnd"))).toBe(true);
   });
 
+  test("only a 404 falls back to name matching", async () => {
+    const urls: string[] = [];
+    const fetch = mockProjectFetch(sampleProjects);
+    globalThis.fetch = (input, init) => {
+      const url = new Request(input, init).url;
+      urls.push(url);
+      if (url.includes("/projects/test-org/frontnd/")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ detail: "Forbidden" }), {
+            status: 403,
+          }),
+        );
+      }
+      return fetch(input, init);
+    };
+
+    const result = await handleExplicit("test-org", "frontnd", {
+      limit: 30,
+      json: false,
+      fresh: false,
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.hint).toContain("No project 'frontnd' found");
+    expect(urls.some((url) => url.includes("/organizations/"))).toBe(false);
+  });
+
   test("no direct or fuzzy match keeps the not-found hint", async () => {
     globalThis.fetch = mockProjectFetch(sampleProjects);
 

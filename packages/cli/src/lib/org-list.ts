@@ -1151,6 +1151,15 @@ async function handleExplicitByName<TEntity, TWithOrg>(
     org,
     flags,
   );
+  if (result.items.length === 0) {
+    // Empty results render only the hint, so it must say both lookups failed.
+    return {
+      items: [],
+      hint:
+        `No project '${name}' in '${org}', and no ${config.entityPlural} named like it.\n` +
+        `Tip: Use '${config.commandPrefix} ${org}/' to see all ${config.entityPlural}`,
+    };
+  }
   const note = `No project '${name}' in '${org}'. Matching ${config.entityPlural} by name instead.`;
   result.header = result.header ? `${note}\n${result.header}` : note;
   return result;

@@ -13,6 +13,7 @@
 import type { SentryContext } from "../../context.js";
 import {
   getProject,
+  isNotFoundApiError,
   listOrganizations,
   listProjects,
   listProjectsAllPages,
@@ -486,8 +487,9 @@ export async function handleExplicit(
     () => withAuthGuard(() => getProject(org, projectSlug)),
   );
   if (!projectResult.ok) {
-    // `<org>/frontnd`: no direct match, so match names (fuzzily) instead.
-    if (!flags.filter) {
+    // `<org>/frontnd`: no such project, so match names (fuzzily) instead.
+    // Other failures (403, 5xx, network) keep the plain not-found hint.
+    if (!flags.filter && isNotFoundApiError(projectResult.error)) {
       const fallback = await handleOrgAllFiltered(org, {
         ...flags,
         filter: projectSlug,

@@ -256,6 +256,23 @@ describe("listCommand.func — explicit org/project", () => {
     expect(output).not.toContain("frontend");
   });
 
+  test("says the project is missing when no team matches either", async () => {
+    listProjectTeamsSpy.mockRejectedValue(new ApiError("Not found", 404));
+    listTeamsPaginatedSpy.mockResolvedValue({
+      data: sampleTeams,
+      nextCursor: undefined,
+    });
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(context, { limit: 30, json: false }, "my-org/zzzzzz");
+
+    const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
+    expect(output).toContain(
+      "No project 'zzzzzz' in 'my-org', and no teams named like it.",
+    );
+  });
+
   test("errors other than a missing project propagate", async () => {
     listProjectTeamsSpy.mockRejectedValue(new ApiError("Forbidden", 403));
 
