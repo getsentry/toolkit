@@ -76,6 +76,9 @@ describe("splitListTargetAndFilter", () => {
     [["my-org/web-*", undefined], { target: "my-org/", filter: "web-*" }],
     [["my-org/web,api", undefined], { target: "my-org/web,api" }],
     [["my-org/proj/x*", undefined], { target: "my-org/proj/x*" }],
+    // `/<name>` means `<name>`, so `/web-*` is a filter, not target `/`.
+    [["/web-*", undefined], { filter: "web-*" }],
+    [["/web", undefined], { target: "/web" }],
   ] as const)("%j → %j", ([target, filter], expected) => {
     const result = splitListTargetAndFilter(target, filter);
     expect({

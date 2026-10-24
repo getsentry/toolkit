@@ -66,7 +66,8 @@ export function filterByName<T>(
  * target and name filter. With no second positional, a glob in the lone
  * argument is a filter, since no slug contains glob characters:
  * `web-*` → filter `web-*` (auto-detected org), `acme/web-*` → target
- * `acme/` and filter `web-*`. Any other lone argument stays the target.
+ * `acme/` and filter `web-*`, and `/web-*` is `web-*`. Any other lone
+ * argument stays the target.
  */
 export function splitListTargetAndFilter(
   target: string | undefined,
@@ -83,6 +84,10 @@ export function splitListTargetAndFilter(
   const rest = target.slice(slash + 1);
   if (rest.includes("/") || !isGlobFilter(rest)) {
     return { target };
+  }
+  // `/web-*` has no org, so it is `web-*`: a filter on the detected org.
+  if (slash === 0) {
+    return { filter: rest.trim() };
   }
   return { target: target.slice(0, slash + 1), filter: rest };
 }

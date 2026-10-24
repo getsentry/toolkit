@@ -49,7 +49,12 @@ const repoListConfig: OrgListConfig<SentryRepository, RepositoryWithOrg> = {
   listForOrg: (org) => listRepositories(org),
   listPaginated: (org, opts) => listRepositoriesPaginated(org, opts),
   withOrg: (repo, orgSlug) => ({ ...repo, orgSlug }),
-  namesOf: (repo) => [repo.name],
+  // `getsentry/sentry-python` also matches as `sentry-python`, so a typo
+  // in the short name is still close enough to match fuzzily.
+  namesOf: (repo) => {
+    const short = repo.name.slice(repo.name.lastIndexOf("/") + 1);
+    return short && short !== repo.name ? [repo.name, short] : [repo.name];
+  },
   searchesNames: true,
   displayTable: (repos: RepositoryWithOrg[]) =>
     formatTable(repos, REPO_COLUMNS),

@@ -268,6 +268,24 @@ describe("listCommand.func — explicit org/project (org-scoped with note)", () 
     expect(listRepositoriesSpy).not.toHaveBeenCalled();
   });
 
+  test("<org>/<name> fuzzily matches the repo name without its owner", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(
+      context,
+      { limit: 30, json: true },
+      "my-org/sentry-javscript",
+    );
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    expect(items.map((repo: { name: string }) => repo.name)).toEqual([
+      "getsentry/sentry-javascript",
+    ]);
+    // Matched by name, so no whole-org fallback.
+    expect(listRepositoriesSpy).not.toHaveBeenCalled();
+  });
+
   test("<org>/<glob> with no matches stays empty", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await listCommand.loader();
