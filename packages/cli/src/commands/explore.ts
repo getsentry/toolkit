@@ -51,8 +51,11 @@ import {
   listSupportedReplayFields,
   parseReplayEnvironmentFilter,
 } from "../lib/replay-search.js";
-import { resolveOrgOptionalFromArg } from "../lib/resolve-target.js";
 import { sanitizeQuery } from "../lib/search-query.js";
+import {
+  type OrgOptionalTarget,
+  orgOptionalTarget,
+} from "../lib/target-positional.js";
 import {
   appendPeriodHint,
   PERIOD_BRIEF,
@@ -691,7 +694,7 @@ export const exploreCommand = buildListCommand("explore", {
         {
           placeholder: "target",
           brief: ORG_ALL_TARGET_BRIEF,
-          parse: String,
+          parse: orgOptionalTarget,
           optional: true as const,
         },
       ],
@@ -767,13 +770,12 @@ export const exploreCommand = buildListCommand("explore", {
       n: "limit",
     },
   },
-  async *func(this: SentryContext, flags: ExploreFlags, target?: string) {
-    const { cwd } = this;
-    const { org, project } = await resolveOrgOptionalFromArg(
-      target,
-      cwd,
-      "explore",
-    );
+  async *func(
+    this: SentryContext,
+    flags: ExploreFlags,
+    target: OrgOptionalTarget,
+  ) {
+    const { org, project } = await target.resolved;
 
     let dataset = flags.dataset;
     const userSuppliedFields = flags.field && flags.field.length > 0;
