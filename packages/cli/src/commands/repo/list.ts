@@ -58,14 +58,6 @@ const docs: OrgListCommandDocs = {
   brief: "List repositories",
   fullDescription:
     "List repositories connected to an organization.\n\n" +
-    "Target specification:\n" +
-    "  sentry repo list               # auto-detect from DSN or config\n" +
-    "  sentry repo list <org>/        # list all repos in org (paginated)\n" +
-    "  sentry repo list <org>/<proj>  # list repos in org (project context)\n" +
-    "  sentry repo list <org>         # list repos in org\n\n" +
-    "Pagination:\n" +
-    "  sentry repo list <org>/ -c next  # fetch next page\n" +
-    "  sentry repo list <org>/ -c prev  # fetch previous page\n\n" +
     "Alias: `sentry repos` → `sentry repo list`",
   examples: [
     {

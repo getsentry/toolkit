@@ -470,10 +470,6 @@ export const viewCommand = buildCommand({
     brief: "View details of a specific trace",
     fullDescription:
       "View detailed information about a distributed trace by its ID.\n\n" +
-      "Target specification:\n" +
-      "  sentry trace view <trace-id>                       # auto-detect from DSN or config\n" +
-      "  sentry trace view <org>/<project>/<trace-id>       # explicit org and project\n" +
-      "  sentry trace view <project> <trace-id>             # find project across all orgs\n\n" +
       "The trace ID is the 32-character hexadecimal identifier.",
     examples: [
       {
@@ -496,6 +492,11 @@ export const viewCommand = buildCommand({
       {
         description: "Open the trace in the browser",
         command: "sentry trace view abc123def456abc123def456abc12345 -w",
+      },
+      {
+        description: "Find a project across organizations",
+        command:
+          "sentry trace view cli-server abc123def456abc123def456abc12345",
       },
     ],
   },

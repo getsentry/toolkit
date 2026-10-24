@@ -1169,15 +1169,10 @@ export const viewCommand = buildCommand({
     brief: "View details of one or more events",
     fullDescription:
       "View detailed information about Sentry events by their IDs.\n\n" +
-      "Target specification:\n" +
-      "  sentry event view <event-id>                         # auto-detect from DSN or config\n" +
-      "  sentry event view <org>/<proj> <event-id> [<id>...]  # explicit org and project\n" +
-      "  sentry event view <project> <event-id> [<id>...]     # find project across all orgs\n\n" +
       "Multiple event IDs can be passed as separate arguments or newline-separated\n" +
       "within a single argument (handy when piping from other commands).\n\n" +
       "Attachment metadata (id, name, size, mimetype, download URL) is included when available.\n" +
-      "Download bytes with:\n" +
-      '  sentry api "<attachments[].download>" > file',
+      "Download the bytes with `sentry api` and the attachment's download URL.",
     examples: [
       {
         description: "View an event",
@@ -1192,6 +1187,17 @@ export const viewCommand = buildCommand({
           "Download an attachment listed by --json (with sentry api)",
         command:
           "sentry api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png",
+      },
+      {
+        description: "View an event in an explicit project",
+        command:
+          "sentry event view my-org/my-project abc123def456abc123def456abc12345",
+      },
+      {
+        description:
+          "View several events, finding the project across organizations",
+        command:
+          "sentry event view my-project abc123def456abc123def456abc12345 def456abc123def456abc123def45678",
       },
     ],
   },

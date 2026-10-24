@@ -15,6 +15,12 @@ Work with debug information files
 
 Inspect a debug information file
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path>` | Path to the debug information file |
+
 **Examples:**
 
 ```bash
@@ -31,6 +37,12 @@ sentry debug-files check ./app.pdb --json
 ### `sentry debug-files find <id...>`
 
 Locate debug files for given debug identifiers
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<id...>` | Debug identifier(s) to search for |
 
 **Flags:**
 - `-t, --type <value>... - Only consider debug files of the given type (repeatable). Default: all`
@@ -54,6 +66,12 @@ sentry debug-files find <debug-id> --no-cwd --no-well-known -p /symbols --json
 ### `sentry debug-files upload <path...>`
 
 Upload debug information files to Sentry
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path...>` | Files or directories to scan for debug information files |
 
 **Flags:**
 - `-t, --type <value>... - Only upload files of this type (repeatable): dsym, elf, pe, pdb, portablepdb, wasm, breakpad, sourcebundle, jvm`
@@ -99,11 +117,20 @@ sentry debug-files upload ./build --il2cpp-mapping --include-sources
 
 # Preview what would be uploaded (no credentials needed)
 sentry debug-files upload ./build --no-upload
+
+# Scan Xcode's DerivedData without uploading
+sentry debug-files upload --derived-data --no-upload
 ```
 
 ### `sentry debug-files print-sources <path>`
 
 List the source files a debug file references
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path>` | Path to the debug information file |
 
 **Examples:**
 
@@ -118,6 +145,12 @@ sentry debug-files print-sources ./app.pdb --json
 ### `sentry debug-files bundle-sources <path>`
 
 Bundle a debug file's source files for source context
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path>` | Path to the debug information file |
 
 **Flags:**
 - `-o, --output <value> - Output path for the source bundle ZIP (default: <path>.src.zip)`
@@ -135,6 +168,12 @@ sentry debug-files bundle-sources ./app.pdb --output ./app.src.zip
 ### `sentry debug-files bundle-jvm <path>`
 
 Create a JVM source bundle for source context
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path>` | Directory containing JVM source files |
 
 **Flags:**
 - `-o, --output <value> - Output directory for the bundle ZIP`

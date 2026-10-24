@@ -25,6 +25,7 @@ import {
   LIST_MIN_LIMIT,
   LIST_PERIOD_FLAG,
   PERIOD_ALIASES,
+  PROJECT_TARGET_BRIEF,
   paginationHint,
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
@@ -197,10 +198,6 @@ export const listCommand = buildListCommand("trace", {
     brief: "List recent traces in a project",
     fullDescription:
       "List recent traces from Sentry projects.\n\n" +
-      "Target patterns:\n" +
-      "  sentry trace list               # auto-detect from DSN or config\n" +
-      "  sentry trace list <org>/<proj>  # explicit org and project\n" +
-      "  sentry trace list <project>     # find project across all orgs\n\n" +
       `${TARGET_PATTERN_NOTE}\n\n` +
       "Alias: `sentry traces` → `sentry trace list`",
     examples: [
@@ -222,6 +219,10 @@ export const listCommand = buildListCommand("trace", {
         description: "Fetch the next page",
         command: "sentry trace list my-org/backend -c next",
       },
+      {
+        description: "Find a project across organizations",
+        command: "sentry trace list backend",
+      },
     ],
   },
   output: {
@@ -235,7 +236,7 @@ export const listCommand = buildListCommand("trace", {
       parameters: [
         {
           placeholder: "org/project",
-          brief: "<org>/<project> or <project> (search)",
+          brief: PROJECT_TARGET_BRIEF,
           parse: projectBoundTarget,
           optional: true,
         },

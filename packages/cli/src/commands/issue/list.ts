@@ -1604,12 +1604,6 @@ export const listCommand = buildListCommand("issue", {
     brief: "List issues in a project",
     fullDescription:
       "List issues from Sentry projects.\n\n" +
-      "Target patterns:\n" +
-      "  sentry issue list               # auto-detect from DSN or config\n" +
-      "  sentry issue list <org>/<proj>  # explicit org and project\n" +
-      "  sentry issue list <org>/a,b     # several projects in the same org\n" +
-      "  sentry issue list <org>/        # all projects in org (trailing / required)\n" +
-      "  sentry issue list <project>     # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "In monorepos with multiple Sentry projects, shows issues from all detected projects.\n\n" +
       "The --limit flag specifies the total number of issues to display (max 1000). " +
@@ -1630,6 +1624,10 @@ export const listCommand = buildListCommand("issue", {
       "  Docs:     https://docs.sentry.io/concepts/search/\n\n" +
       "Alias: `sentry issues` → `sentry issue list`",
     examples: [
+      {
+        description: "List issues (project auto-detected)",
+        command: "sentry issue list",
+      },
       {
         description: "List issues in a specific project",
         command: "sentry issue list my-org/frontend",
