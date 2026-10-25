@@ -294,7 +294,7 @@ const rules = {
         : {},
   ),
   "require-target-resolution": rule(
-    "Await `<target>.resolved`: it runs the target's resolver and destructive-command guard.",
+    "Await `<target>.resolved`: it runs the target's resolver.",
     (_context, file, report) => {
       if (!file.includes("/src/commands/")) return {};
       const check = (node) => {

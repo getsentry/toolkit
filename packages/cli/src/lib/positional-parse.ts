@@ -1,37 +1,29 @@
 /**
- * Positionals whose value parses and resolves lazily.
+ * Positionals that Stricli parses and the command resolves.
  *
- * A parser made with {@link lazyPositional} gives the command a
- * {@link LazyPositional}:
+ * A parser made with {@link boundPositional} gives the command a
+ * {@link BoundPositional}:
  *
- * - `target.parsed` runs the parse on first access, inside `func`.
+ * - `target.parsed` is the parsed value. Stricli runs the parse in its
+ *   argument scanner, so invalid input fails like any other argument:
+ *   `Failed to parse "<input>" for <placeholder>: …` and Stricli's
+ *   `InvalidArgument` exit code (-4, shown as 252).
  * - `target.resolved` starts the positional's own resolver on first access
  *   and returns its promise, so `func` awaits it instead of picking and
- *   calling a resolver itself. A parse error rejects it.
+ *   calling a resolver itself. It runs inside `func`, after the auth guard
+ *   and rc URL check.
  * - `target.raw` is what the user typed (`undefined` if omitted).
  *
- * Until `func` reads it, the value does nothing, so nothing can fail and
- * nothing runs early:
- *
- * - Stricli's argument scanner never sees an error, so invalid input still
- *   throws the parser's `CliError` from the command, with its exit code,
- *   telemetry, and `--json` error output, instead of Stricli's generic
- *   "Failed to parse" (exit -4).
- * - Parser side effects, such as `parseOrgProjectArg` applying the host of a
- *   pasted Sentry URL, run after the auth guard and rc URL check, as they did
- *   when `func` called the parser itself.
+ * The parse must have no side effects: it runs before the auth guard, and
+ * also when a later argument fails to parse. Work that changes state, such
+ * as applying the host of a pasted Sentry URL, belongs in the resolver.
  *
  * `buildCommand` also runs these parsers on positionals that reach the
  * command as plain strings (the SDK invoke path and tests calling the loaded
  * func) and on omitted optional ones (parsed from `undefined`), so `func`
- * always gets a {@link LazyPositional} and every caller keeps passing what
- * the user typed.
- *
- * Shared code that handles any positional (plural alias interception, `help`
- * recovery, telemetry) reads the raw input with {@link rawPositional}.
- * `buildCommand` calls {@link markDestructive} on the positionals of
- * destructive commands (`destructive: true`, which `buildDeleteCommand` sets),
- * so resolvers see `destructive: true` and can refuse to auto-detect.
+ * always gets a {@link BoundPositional}. Shared code that handles any
+ * positional (plural alias interception, `help` recovery, telemetry) reads
+ * the raw input with {@link rawPositional}.
  */
 
 import {
@@ -39,77 +31,69 @@ import {
   withCompletionTarget,
 } from "./completion-target.js";
 
-/** What the running command tells a positional's resolver. */
-export type ResolveOptions = {
-  /** The command is destructive (see {@link markDestructive}). */
-  readonly destructive: boolean;
-};
+/** Destructive-command checks of {@link boundPositional} values. */
+const destructiveChecks = new WeakMap<object, () => void>();
 
-/** Values whose command is destructive (see {@link markDestructive}). */
-const destructiveValues = new WeakSet<object>();
-
-/** Parsers made by {@link lazyPositional}. */
-const lazyParsers = new WeakSet<object>();
+/** Parsers made by {@link boundPositional}. */
+const boundParsers = new WeakSet<object>();
 
 /**
- * A positional value that parses on first `parsed` read and resolves on
- * first `resolved` read. Each step runs once.
+ * A parsed positional value bound to its resolver, which runs once, on the
+ * first `resolved` read.
  */
-export class LazyPositional<T, R> {
-  #parsed: { value: T } | undefined;
+export class BoundPositional<T, R> {
   #resolved: Promise<R> | undefined;
-  readonly #parse: (raw: string | undefined) => T;
-  readonly #resolve: (value: T, options: ResolveOptions) => Promise<R>;
+  readonly #resolve: (value: T) => Promise<R>;
 
   /** What the user typed; `undefined` for an omitted positional. */
   readonly raw: string | undefined;
+  /** The parsed value. */
+  readonly parsed: T;
 
   constructor(
     raw: string | undefined,
-    parse: (raw: string | undefined) => T,
-    resolve: (value: T, options: ResolveOptions) => Promise<R>,
+    parsed: T,
+    resolve: (value: T) => Promise<R>,
   ) {
     this.raw = raw;
-    this.#parse = parse;
+    this.parsed = parsed;
     this.#resolve = resolve;
   }
 
-  /** The parsed value. Throws the parser's error. */
-  get parsed(): T {
-    this.#parsed ??= { value: this.#parse(this.raw) };
-    return this.#parsed.value;
-  }
-
-  /** The resolved value; rejects on a parse or resolve error. */
+  /** The resolved value; rejects on a resolve error. */
   get resolved(): Promise<R> {
-    this.#resolved ??= (async () =>
-      await this.#resolve(this.parsed, {
-        destructive: destructiveValues.has(this),
-      }))();
+    this.#resolved ??= this.#resolve(this.parsed);
     return this.#resolved;
   }
 }
 
 /**
- * Build a positional parser that hands the command a {@link LazyPositional}.
+ * Build a positional parser that hands the command a {@link BoundPositional}.
  *
  * @param kind - Shell completion kind for the positional
- * @param parse - Parses the raw input (`undefined` when omitted); may throw a
- *   `CliError`
+ * @param parse - Parses the raw input (`undefined` when omitted); may throw.
+ *   Must have no side effects
  * @param resolve - Resolves the parsed value; gets the command context that
- *   Stricli passes to parsers as `this`, and {@link ResolveOptions}
+ *   Stricli passes to parsers as `this`, and the raw input
+ * @param checkDestructive - Throws when the parsed value is not allowed in a
+ *   destructive command (see {@link checkDestructive})
  */
-export function lazyPositional<T, R, C>(
+export function boundPositional<T, R, C>(
   kind: CompletionTarget,
   parse: (raw: string | undefined) => T,
-  resolve: (value: T, context: C, options: ResolveOptions) => Promise<R>,
-): (this: C, input?: string) => LazyPositional<T, R> {
+  resolve: (value: T, context: C, raw: string | undefined) => Promise<R>,
+  checkDestructive?: (value: T, context: C) => void,
+): (this: C, input?: string) => BoundPositional<T, R> {
   const parser = withCompletionTarget(kind, function (this: C, input?: string) {
-    return new LazyPositional(input, parse, (value: T, options) =>
-      resolve(value, this, options),
+    const value = new BoundPositional(input, parse(input), (parsed: T) =>
+      resolve(parsed, this, input),
     );
+    if (checkDestructive) {
+      destructiveChecks.set(value, () => checkDestructive(value.parsed, this));
+    }
+    return value;
   });
-  lazyParsers.add(parser);
+  boundParsers.add(parser);
   return parser;
 }
 
@@ -118,30 +102,30 @@ type PositionalDef =
   | { kind: "tuple"; parameters: readonly { parse?: unknown }[] }
   | { kind: "array"; parameter: { parse?: unknown } };
 
-/** The {@link lazyPositional} parser at a positional index, if any. */
-function lazyParserAt(
+/** The {@link boundPositional} parser at a positional index, if any. */
+function boundParserAt(
   def: PositionalDef,
   index: number,
 ): ((this: unknown, input?: string) => unknown) | undefined {
   const parse =
     def.kind === "array" ? def.parameter.parse : def.parameters[index]?.parse;
-  return typeof parse === "function" && lazyParsers.has(parse)
+  return typeof parse === "function" && boundParsers.has(parse)
     ? (parse as (this: unknown, input?: string) => unknown)
     : undefined;
 }
 
 /**
- * Give every {@link lazyPositional} positional its stand-in.
+ * Give every {@link boundPositional} positional its value.
  *
  * Stricli already ran the parsers for typed input. This covers callers that
  * skip its scanner (the SDK invoke path, tests calling the loaded func),
  * which pass raw strings, and omitted optional positionals, which Stricli
- * leaves `undefined`. Lazy parsers never throw and have no side effects, so
- * this is safe to run up front. Other positionals are left as they are.
+ * leaves `undefined`. Other positionals are left as they are.
  *
  * @param context - Passed to each parser as `this`, as Stricli does
+ * @throws The parser's error for an invalid raw string
  */
-export function applyLazyPositionals(
+export function applyBoundPositionals(
   args: readonly unknown[],
   positional: unknown,
   context: unknown,
@@ -156,7 +140,7 @@ export function applyLazyPositionals(
       : args.length;
   return Array.from({ length: count }, (_, index) => {
     const arg = args[index];
-    const parse = lazyParserAt(def, index);
+    const parse = boundParserAt(def, index);
     const missing = arg === undefined && def.kind === "tuple";
     return parse && (typeof arg === "string" || missing)
       ? parse.call(context, arg)
@@ -165,22 +149,24 @@ export function applyLazyPositionals(
 }
 
 /**
- * Tell the resolvers of these positionals that the command is destructive.
- * Must run before `func` reads `resolved`. Other values are ignored.
+ * Run the destructive-command checks of these positionals, such as a target
+ * refusing to auto-detect. Other values are ignored.
+ *
+ * @throws The first failing check's error
  */
-export function markDestructive(args: readonly unknown[]): void {
+export function checkDestructive(args: readonly unknown[]): void {
   for (const arg of args) {
-    if (arg instanceof LazyPositional) {
-      destructiveValues.add(arg);
+    if (arg instanceof BoundPositional) {
+      destructiveChecks.get(arg)?.();
     }
   }
 }
 
 /**
- * What the user typed for a positional value. Never triggers a parse.
+ * What the user typed for a positional value.
  *
- * @returns `value.raw` for a {@link LazyPositional}, otherwise `value`
+ * @returns `value.raw` for a {@link BoundPositional}, otherwise `value`
  */
 export function rawPositional(value: unknown): unknown {
-  return value instanceof LazyPositional ? value.raw : value;
+  return value instanceof BoundPositional ? value.raw : value;
 }

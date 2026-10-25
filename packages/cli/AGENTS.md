@@ -254,17 +254,19 @@ one of these types and never reads `.resolved`.
 Resolvers need no command name: they read it from `this.commandPrefix`, which
 Stricli's `forCommand` and the SDK invoker set (test mock contexts set it
 too). In a destructive command (`buildDeleteCommand`, or `buildCommand` with
-`destructive: true`), the target refuses to auto-detect, so those commands
-don't call `requireExplicitTarget` for it.
+`destructive: true`), an auto-detected target fails before `func` runs, so
+those commands don't call `requireExplicitTarget` for it.
 
-Both steps are lazy (`lazyPositional` in `src/lib/positional-parse.ts`): the
-parse runs on the first `parsed` read and the resolver on the first
-`resolved` read, both inside `func` after the auth guard. Invalid input still
-throws the parser's `CliError` with its exit code. `target.raw` is what the
-user typed; shared code that handles any positional uses
-`rawPositional(value)`. `buildCommand` runs these parsers on
-positionals that arrive as strings or are omitted, so the SDK invoke path and
-tests that call `command.loader()` keep passing raw strings. Positionals whose
+`boundPositional` in `src/lib/positional-parse.ts` builds these parsers.
+Stricli runs the parse in its argument scanner, so invalid input fails like
+any other argument: `Failed to parse "<input>" for <placeholder>: …` and exit
+code 252. The parse must have no side effects; anything that changes state
+(such as applying a pasted Sentry URL's server) goes in the resolver, which
+runs on the first `resolved` read, inside `func` after the auth guard.
+`target.raw` is what the user typed; shared code that handles any positional
+uses `rawPositional(value)`. `buildCommand` runs these parsers on positionals
+that arrive as strings or are omitted, so the SDK invoke path and tests that
+call `command.loader()` keep passing raw strings. Positionals whose
 meaning depends on how many arguments were given, such as
 `[<org>/<project>/]<trace-id>`, keep parsing in `func`.
 
