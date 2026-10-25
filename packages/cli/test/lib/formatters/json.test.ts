@@ -26,6 +26,12 @@ function filter(data: unknown, fields: string[]): unknown {
 }
 
 describe("filterFields edge cases", () => {
+  test("preserves unselected nested array positions for an indexed path", () => {
+    expect(
+      filter({ items: [[{ id: 1 }], [{ id: 2 }]] }, ["items.1.id"]),
+    ).toEqual({ items: [[{}], [{ id: 2 }]] });
+  });
+
   test("picks nested fields via dot-notation", () => {
     const data = {
       id: 1,
@@ -38,6 +44,136 @@ describe("filterFields edge cases", () => {
       id: 1,
       metadata: { value: "ReferenceError" },
       contexts: { trace: { traceId: "abc" } },
+    });
+  });
+
+  test("projects dotted attributes through nested arrays without changing keys", () => {
+    const data = {
+      spans: [
+        {
+          span_id: "root",
+          data: { "http.method": "GET", unrelated: true },
+          children: [{ data: { "http.method": "POST" } }],
+        },
+        { span_id: "other", data: { unrelated: true } },
+      ],
+    };
+    expect(filter(data, ["spans.span_id", "spans.data.http.method"])).toEqual({
+      spans: [
+        { span_id: "root", data: { "http.method": "GET" } },
+        { span_id: "other" },
+      ],
+    });
+    expect(filter(data, ["spans.children.data.http.method"])).toEqual({
+      spans: [{ children: [{ data: { "http.method": "POST" } }] }, {}],
+    });
+  });
+
+  test("preserves literal key precedence at every nesting level", () => {
+    const data = {
+      "data.http.method": "root literal",
+      data: {
+        "http.method": "nested literal",
+        http: { method: "nested object", status: 200 },
+      },
+    };
+    expect(filter(data, ["data.http.method"])).toEqual({
+      "data.http.method": "root literal",
+    });
+    expect(
+      filter({ item: data.data }, ["item.http.method", "item.http.status"]),
+    ).toEqual({
+      item: { "http.method": "nested literal", http: { status: 200 } },
+    });
+  });
+
+  test("unions nested selections and whole parents independently of order", () => {
+    const data = {
+      spans: [
+        { span_id: "first", data: { "http.method": "GET", count: 0 } },
+        { span_id: "second", data: { "http.method": "POST", count: 1 } },
+      ],
+    };
+    const fields = ["spans.data.http.method", "spans.span_id", "spans.data"];
+    expect(filter(data, fields)).toEqual(data);
+    expect(filter(data, fields.toReversed())).toEqual(data);
+    expect(filter(data, ["spans.data.http.method", "spans"])).toEqual(data);
+    expect(filter(data, ["spans", "spans.data.http.method"])).toEqual(data);
+  });
+
+  test("does not mutate frozen nested source objects for overlapping fields", () => {
+    const attributes = Object.freeze({ "http.method": "GET", count: 0 });
+    const span = Object.freeze({ span_id: "first", data: attributes });
+    const data = Object.freeze({ spans: Object.freeze([span]) });
+    expect(
+      filter(data, ["spans.data", "spans.data.http.method", "spans.span_id"]),
+    ).toEqual(data);
+    expect(data.spans[0]?.data).toEqual({ "http.method": "GET", count: 0 });
+  });
+
+  test("keeps nested array positions and empty arrays when fields are absent", () => {
+    expect(
+      filter({ spans: [{ id: "one" }, { other: true }], empty: [] }, [
+        "spans.id",
+        "empty.id",
+        "missing.id",
+      ]),
+    ).toEqual({ spans: [{ id: "one" }, {}], empty: [] });
+    expect(filter({ spans: [{ other: true }] }, ["spans.id"])).toEqual({
+      spans: [{}],
+    });
+  });
+
+  test("preserves array indices when mixing numeric and per-item selectors", () => {
+    const data = {
+      spans: [
+        { id: "one", data: { "http.method": "GET" } },
+        { id: "two", data: { "http.method": "POST" } },
+        { id: "three" },
+      ],
+    };
+    expect(filter(data, ["spans.1.data.http.method"])).toEqual({
+      spans: [{}, { data: { "http.method": "POST" } }, {}],
+    });
+    const fields = ["spans.id", "spans.1.data.http.method", "spans.1"];
+    const expected = {
+      spans: [
+        { id: "one" },
+        { id: "two", data: { "http.method": "POST" } },
+        { id: "three" },
+      ],
+    };
+    expect(filter(data, fields)).toEqual(expected);
+    expect(filter(data, fields.toReversed())).toEqual(expected);
+    expect(filter(data, ["spans.10.id"])).toEqual({});
+  });
+
+  test("retains selected falsey values and omits null intermediate fields", () => {
+    expect(
+      filter(
+        {
+          spans: [
+            { data: { count: 0, label: "", optional: null, unset: undefined } },
+            { data: null },
+            null,
+          ],
+        },
+        [
+          "spans.data.count",
+          "spans.data.label",
+          "spans.data.optional",
+          "spans.data.unset",
+        ],
+      ),
+    ).toEqual({
+      spans: [
+        { data: { count: 0, label: "", optional: null, unset: undefined } },
+        {},
+        null,
+      ],
+    });
+    expect(filter({ spans: [{ data: null }] }, ["spans.data"])).toEqual({
+      spans: [{ data: null }],
     });
   });
 
