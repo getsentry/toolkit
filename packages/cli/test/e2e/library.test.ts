@@ -14,6 +14,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { beforeAll, describe, expect, test } from "vitest";
 import { EXIT } from "../../src/lib/errors.js";
+import organizationsFixture from "../fixtures/organizations.json";
 import { useTestConfigDir } from "../helpers.js";
 import {
   BUNDLE_INDEX_PATH,
@@ -204,6 +205,49 @@ describe("library mode (bundled)", () => {
   });
 
   // --- Typed SDK ---
+
+  test("sdk.api passes an opaque cursor and returns page metadata", async () => {
+    const { stdout } = await runNodeScriptOk(`
+      const { createSentrySDK } = require('./dist/index.cjs');
+      const requests = [];
+      globalThis.fetch = async (input) => {
+        requests.push(String(input));
+        return Response.json(${JSON.stringify([organizationsFixture[1]])}, {
+          statusText: 'OK',
+          headers: {
+            Link: '<http://localhost:9000/next>; rel="next"; results="true"; cursor="100:2:0", <http://localhost:9000/previous>; rel="previous"; results="true"; cursor="100:0:1"',
+          },
+        });
+      };
+      const sdk = createSentrySDK({
+        token: 'test-sdk-token',
+        url: 'http://localhost:9000',
+        cwd: ${JSON.stringify(getConfigDir())},
+      });
+      sdk.api({
+        endpoint: 'organizations/?cursor=old',
+        cursor: 'page-token+/=:1',
+        rawField: ['field=id', 'field=name'],
+      }).then(response => {
+        console.log(JSON.stringify({ requests, response }));
+      }).catch(error => {
+        console.error(error);
+        process.exitCode = 1;
+      });
+    `);
+
+    const result = JSON.parse(stdout.trim());
+    expect(result.requests).toHaveLength(1);
+    const request = new URL(result.requests[0]);
+    expect(request.searchParams.getAll("cursor")).toEqual(["page-token+/=:1"]);
+    expect(request.searchParams.getAll("field")).toEqual(["id", "name"]);
+    expect(result.response).toEqual({
+      status: 200,
+      statusText: "OK",
+      body: [organizationsFixture[1]],
+      pagination: { nextCursor: "100:2:0", prevCursor: "100:0:1" },
+    });
+  });
 
   test("sourcemap upload rejects a split token without leaking it or fetching", async () => {
     const directory = getConfigDir();

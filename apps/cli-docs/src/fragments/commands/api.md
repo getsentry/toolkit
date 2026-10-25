@@ -13,6 +13,23 @@ bodies; streaming responses such as SSE are excluded.
 
 When querying the Events API (`/events/` endpoint), valid dataset values are: `spans`, `logs`, `errors`, `tracemetrics`, `profile_functions`, and `uptime_results`.
 
+## Pagination
+
+Each invocation fetches one page. With `--json`, successful textual responses
+include `pagination.nextCursor` and/or `pagination.prevCursor` when the server's
+`Link` header advertises a usable continuation. `--fields` filters only the
+response body and preserves this metadata.
+
+Repeat the same GET request with `--cursor <token>` to continue, keeping its
+filters, ordering, page size, and time range. The token is opaque: `next` and
+`prev` do not refer to saved pages. `--cursor` replaces existing cursor parameters
+from both the endpoint URL and request fields; all other parameters are retained.
+It is only supported for GET requests, including `--dry-run` previews.
+
+When no usable cursor is advertised, `pagination` is omitted. This does not prove
+that the underlying dataset was fully scanned or unsampled. The command does not
+automatically follow pages.
+
 ## Binary responses
 
 Endpoints that return binary data — image attachments, minidumps, debug files — are streamed to stdout as raw bytes, so you can redirect them straight to a file.

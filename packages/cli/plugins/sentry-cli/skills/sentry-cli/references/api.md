@@ -23,6 +23,7 @@ Make an authenticated API request
 
 **Flags:**
 - `-X, --method <value> - The HTTP method for the request - (default: "GET")`
+- `--cursor <value> - Pagination cursor for GET (replaces any existing cursor)`
 - `-d, --data <value> - Inline JSON body for the request (like curl -d)`
 - `-F, --field <value>... - Add a typed parameter (key=value, key[sub]=value, key[]=value)`
 - `-f, --raw-field <value>... - Add a string parameter without JSON parsing`
@@ -37,6 +38,12 @@ Make an authenticated API request
 ```bash
 # List organizations
 sentry api organizations/
+
+# Read a page and its pagination metadata
+sentry api organizations/ -f per_page=2 --json
+
+# Continue using a cursor from the previous response
+sentry api organizations/ -f per_page=2 --cursor '2:1:0' --json
 
 # Get a specific issue
 sentry api issues/123456789/

@@ -16,16 +16,50 @@ import {
 } from "vitest";
 import { EXIT } from "../../src/lib/errors.js";
 import { createE2EContext, type E2EContext } from "../fixture.js";
+import organizationsFixture from "../fixtures/organizations.json";
 import { cleanupTestDir, createTestConfigDir } from "../helpers.js";
-import { createSentryMockServer, TEST_TOKEN } from "../mocks/routes.js";
-import type { MockServer } from "../mocks/server.js";
+import { apiRoutes, TEST_TOKEN } from "../mocks/routes.js";
+import { createMockServer, type MockServer } from "../mocks/server.js";
 
 let testConfigDir: string;
 let mockServer: MockServer;
 let ctx: E2EContext;
+const paginationRequests: URL[] = [];
+const nextCursor = "100:1:0";
+const prevCursor = "100:0:1";
 
 beforeAll(async () => {
-  mockServer = createSentryMockServer();
+  mockServer = createMockServer(
+    [
+      ...apiRoutes,
+      {
+        method: "GET",
+        path: "/api/0/api-pagination/",
+        response: (req, _params, serverUrl) => {
+          const url = new URL(req.url);
+          paginationRequests.push(url);
+          const isSecondPage = url.searchParams.get("cursor") === nextCursor;
+          return {
+            body: [organizationsFixture[isSecondPage ? 1 : 0]],
+            headers: {
+              Link:
+                `<${serverUrl}/api/0/api-pagination/?cursor=${nextCursor}>; rel="next"; results="${!isSecondPage}"; cursor="${nextCursor}", ` +
+                `<${serverUrl}/api/0/api-pagination/?cursor=${prevCursor}>; rel="previous"; results="${isSecondPage}"; cursor="${prevCursor}"`,
+            },
+          };
+        },
+      },
+      {
+        method: "POST",
+        path: "/api/0/api-pagination/",
+        response: (req) => {
+          paginationRequests.push(new URL(req.url));
+          return { body: { accepted: true } };
+        },
+      },
+    ],
+    { validTokens: [TEST_TOKEN] },
+  );
   await mockServer.start();
 });
 
@@ -34,6 +68,7 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  paginationRequests.length = 0;
   testConfigDir = await createTestConfigDir("e2e-api-");
   ctx = createE2EContext(testConfigDir, mockServer.url);
 });
@@ -122,6 +157,91 @@ describe("sentry api", () => {
 
     expect(result.exitCode, result.stderr + result.stdout).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({ method: "GET" });
+  });
+
+  test("continues one page at a time and preserves pagination with --fields", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const args = ["api", "api-pagination/", "--json", "--fields", "name"];
+
+    const first = await ctx.run(args);
+    expect(first.exitCode, first.stderr + first.stdout).toBe(0);
+    const firstPage = JSON.parse(first.stdout);
+    expect(firstPage).toEqual({
+      status: 200,
+      statusText: "OK",
+      body: [{ name: organizationsFixture[0].name }],
+      pagination: { nextCursor },
+    });
+    expect(paginationRequests).toHaveLength(1);
+
+    const second = await ctx.run([
+      ...args,
+      "--cursor",
+      firstPage.pagination.nextCursor,
+    ]);
+    expect(second.exitCode, second.stderr + second.stdout).toBe(0);
+    expect(JSON.parse(second.stdout)).toEqual({
+      status: 200,
+      statusText: "OK",
+      body: [{ name: organizationsFixture[1].name }],
+      pagination: { prevCursor },
+    });
+    expect(paginationRequests).toHaveLength(2);
+    expect(paginationRequests[1].searchParams.getAll("cursor")).toEqual([
+      nextCursor,
+    ]);
+  });
+
+  test.each([
+    {
+      name: "typed and raw fields",
+      flags: ["-F", "cursor=typed-old", "-f", "cursor=raw-old"],
+    },
+    { name: "JSON data", flags: ["-d", '{"cursor":"data-old"}'] },
+    { name: "form data", flags: ["-d", "cursor=data-old"] },
+  ])(
+    "--cursor replaces $name and URL cursors in the preview and request",
+    async ({ flags }) => {
+      await ctx.setAuthToken(TEST_TOKEN);
+      const args = [
+        "api",
+        `${mockServer.url}/api/0/api-pagination/?cursor=url-old&cursor=url-older&field=id&field=name&project=1&project=2`,
+        ...flags,
+        "--cursor",
+        nextCursor,
+        "--json",
+      ];
+
+      const preview = await ctx.run([...args, "--dry-run"]);
+      expect(preview.exitCode, preview.stderr + preview.stdout).toBe(0);
+      const request = JSON.parse(preview.stdout);
+      const url = new URL(request.url);
+      expect(url.searchParams.getAll("cursor")).toEqual([nextCursor]);
+      expect(url.searchParams.getAll("field")).toEqual(["id", "name"]);
+      expect(url.searchParams.getAll("project")).toEqual(["1", "2"]);
+      expect(paginationRequests).toHaveLength(0);
+
+      const result = await ctx.run(args);
+      expect(result.exitCode, result.stderr + result.stdout).toBe(0);
+      expect(paginationRequests.map((sent) => sent.href)).toEqual([url.href]);
+      expect(JSON.parse(result.stdout).body).toEqual([organizationsFixture[1]]);
+    },
+  );
+
+  test("rejects --cursor for non-GET requests before sending them", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const result = await ctx.run([
+      "api",
+      "api-pagination/",
+      "--method",
+      "POST",
+      "--cursor",
+      nextCursor,
+    ]);
+
+    expect(result.exitCode).toBe(EXIT.VALIDATION);
+    expect(result.stdout + result.stderr).toMatch(/cursor.*GET|GET.*cursor/i);
+    expect(paginationRequests).toHaveLength(0);
   });
 
   test("empty error bodies report the HTTP status and request", async () => {

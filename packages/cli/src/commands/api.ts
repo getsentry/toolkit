@@ -9,7 +9,11 @@ import { access, readFile } from "node:fs/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../context.js";
-import { appendSearchParams, rawApiRequest } from "../lib/api-client.js";
+import {
+  appendSearchParams,
+  parseLinkHeader,
+  rawApiRequest,
+} from "../lib/api-client.js";
 import { buildCommand } from "../lib/command.js";
 import {
   OutputError,
@@ -42,6 +46,7 @@ type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
 type ApiFlags = {
   readonly method: HttpMethod;
+  readonly cursor?: string;
   readonly data?: string;
   readonly field?: string[];
   readonly "raw-field"?: string[];
@@ -1178,10 +1183,12 @@ function formatApiResponseOutput(
   if (!json || output instanceof Uint8Array) {
     return output;
   }
+  const pagination = parseLinkHeader(response.headers.get("link"));
   return {
     status: response.status,
     statusText: response.statusText,
     body: output,
+    ...(pagination.nextCursor || pagination.prevCursor ? { pagination } : {}),
   };
 }
 
@@ -1205,6 +1212,25 @@ function formatApiResponseJson(data: unknown, fields?: string[]): unknown {
         ? filterFields(response.body, fields)
         : response.body,
   };
+}
+
+/** Compose query parameters, replacing all existing cursors when explicitly set. */
+function resolveRequestEndpoint(
+  endpoint: string,
+  params: Record<string, string | string[]> | undefined,
+  cursor: string | undefined,
+): string {
+  const composed = appendSearchParams(endpoint, params);
+  if (cursor === undefined) {
+    return composed;
+  }
+  const queryIndex = composed.indexOf("?");
+  const path = queryIndex === -1 ? composed : composed.slice(0, queryIndex);
+  const query = new URLSearchParams(
+    queryIndex === -1 ? "" : composed.slice(queryIndex + 1),
+  );
+  query.set("cursor", cursor);
+  return `${path}?${query}`;
 }
 
 /**
@@ -1535,6 +1561,9 @@ export const apiCommand = buildCommand({
       "Absolute HTTP(S) Sentry URLs are also accepted; their origin is " +
       "validated against your authenticated host. " +
       "Authentication is handled automatically using your stored credentials.\n\n" +
+      "Pagination: --json includes usable nextCursor/prevCursor values in " +
+      "pagination when the server advertises them. Repeat the same GET with " +
+      "--cursor <token> to continue. Each invocation fetches one page.\n\n" +
       "Body options:\n" +
       '  --data/-d \'{"key":"value"}\'   Inline JSON body (like curl -d)\n' +
       '  --input/-i file.json          Read body from file (or "-" for stdin)\n\n' +
@@ -1548,6 +1577,15 @@ export const apiCommand = buildCommand({
       {
         description: "List organizations",
         command: "sentry api organizations/",
+      },
+      {
+        description: "Read a page and its pagination metadata",
+        command: "sentry api organizations/ -f per_page=2 --json",
+      },
+      {
+        description: "Continue using a cursor from the previous response",
+        command:
+          "sentry api organizations/ -f per_page=2 --cursor '2:1:0' --json",
       },
       {
         description: "Get a specific issue",
@@ -1625,6 +1663,13 @@ export const apiCommand = buildCommand({
         default: "GET" as const,
         placeholder: "method",
       },
+      cursor: {
+        kind: "parsed",
+        parse: String,
+        brief: "Pagination cursor for GET (replaces any existing cursor)",
+        optional: true,
+        placeholder: "token",
+      },
       data: {
         kind: "parsed",
         parse: String,
@@ -1688,6 +1733,12 @@ export const apiCommand = buildCommand({
   },
   async *func(this: SentryContext, flags: ApiFlags, endpoint: string) {
     const { stdin } = this;
+    if (flags.cursor !== undefined && flags.method !== "GET") {
+      throw new ValidationError(
+        "--cursor is only supported for GET requests",
+        "cursor",
+      );
+    }
 
     const { normalizedEndpoint, requestBaseUrl, strippedApiPrefix } =
       resolveApiTarget(endpoint);
@@ -1702,6 +1753,11 @@ export const apiCommand = buildCommand({
       );
     }
     const { body, params } = await resolveBody(flags, stdin);
+    const requestEndpoint = resolveRequestEndpoint(
+      normalizedEndpoint,
+      params,
+      flags.cursor,
+    );
 
     const headers =
       flags.header && flags.header.length > 0
@@ -1712,7 +1768,7 @@ export const apiCommand = buildCommand({
     if (flags["dry-run"]) {
       yield new CommandOutput({
         method: flags.method,
-        url: resolveRequestUrl(normalizedEndpoint, params, requestBaseUrl),
+        url: resolveRequestUrl(requestEndpoint, undefined, requestBaseUrl),
         headers: resolveEffectiveHeaders(headers, body),
         body: body ?? null,
       });
@@ -1722,15 +1778,14 @@ export const apiCommand = buildCommand({
     const verbose = flags.verbose && !flags.silent;
 
     if (verbose) {
-      logRequest(flags.method, normalizedEndpoint, headers);
+      logRequest(flags.method, requestEndpoint, headers);
     }
 
     // The shared authenticated fetch validates requestBaseUrl against the
     // token host and registered regional origins before adding credentials.
-    const response = await rawApiRequest(normalizedEndpoint, {
+    const response = await rawApiRequest(requestEndpoint, {
       method: flags.method,
       body,
-      params,
       headers,
       baseUrl: requestBaseUrl,
     });
