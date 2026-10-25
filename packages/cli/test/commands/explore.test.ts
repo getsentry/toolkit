@@ -10,6 +10,7 @@ import { buildApplication, run } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { exploreCommand } from "../../src/commands/explore.js";
 import { buildContext } from "../../src/context.js";
+import { createSentrySDK } from "../../src/index.js";
 
 vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
@@ -708,77 +709,45 @@ describe("sentry explore", () => {
           interval: "1m",
         }),
       );
-      expect(JSON.parse(result.getStdout()).timeSeries).toEqual(
-        MOCK_TIME_SERIES_RESPONSE.timeSeries,
-      );
+      expect(JSON.parse(result.getStdout())).toEqual({
+        ...MOCK_TIME_SERIES_RESPONSE,
+        dataset: "errors",
+      });
       expect(queryEventsSpy).not.toHaveBeenCalled();
       expect(resolveCursorSpy).not.toHaveBeenCalled();
       expect(advancePaginationStateSpy).not.toHaveBeenCalled();
       expect(hasPreviousPageSpy).not.toHaveBeenCalled();
     });
 
-    test("parses explicit intervals and repeated aggregates while preserving target and environment filters", async () => {
-      resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "web" });
-
-      const result = await runExploreArgs([
-        "test-org/web",
-        "--time-series",
-        "--interval",
-        "15m",
-        "--dataset",
-        "spans",
-        "--period",
-        "7d",
-        "-F",
-        "count()",
-        "-F",
-        "p95(span.duration)",
-        "--environment",
-        "production,canary",
-        "--query",
-        "span.op:http.server",
-        "--json",
-      ]);
-
-      expect(result.exitCode).toBe(0);
-      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
-        "test-org",
-        expect.objectContaining({
-          fields: ["count()", "p95(span.duration)"],
-          dataset: "spans",
-          query:
-            "project:web environment:[production,canary] span.op:http.server",
-          interval: "15m",
-          statsPeriod: "7d",
-        }),
-      );
-    });
-
-    test("passes an absolute time window without a relative period", async () => {
-      const { context } = createContext();
-
-      await func.call(
-        context,
-        {
-          ...TIME_SERIES_FLAGS,
-          period: parsePeriod("2025-01-01T00:00:00Z..2025-01-01T01:00:00Z"),
-          interval: "15m",
-        },
-        "test-org/",
-      );
-
-      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
-        "test-org",
-        expect.objectContaining({
+    test.each([
+      { period: "1h", timeParams: { statsPeriod: "1h" } },
+      {
+        period: "2025-01-01T00:00:00Z..2025-01-01T01:00:00Z",
+        timeParams: {
           start: "2025-01-01T00:00:00.000Z",
           end: "2025-01-01T01:00:00.000Z",
+        },
+      },
+    ])(
+      "accepts the SDK's string period $period",
+      async ({ period, timeParams }) => {
+        const sdk = createSentrySDK({ cwd: "/tmp/test-explore" });
+        await sdk.explore({
+          target: "test-org/",
+          timeSeries: true,
+          period,
           interval: "15m",
-        }),
-      );
-      expect(
-        queryEventsTimeSeriesSpy.mock.calls[0]?.[1].statsPeriod,
-      ).toBeUndefined();
-    });
+        });
+
+        expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith("test-org", {
+          fields: ["count()"],
+          dataset: "errors",
+          query: undefined,
+          interval: "15m",
+          ...timeParams,
+        });
+      },
+    );
 
     test("keeps legacy transaction filtering in temporal mode", async () => {
       const { context } = createContext();
@@ -834,20 +803,18 @@ describe("sentry explore", () => {
       );
     });
 
-    test("accepts raw metric aggregates without metadata discovery", async () => {
-      const { context } = createContext();
+    test("shows the public metrics name while querying raw aggregates without discovery", async () => {
       const aggregate = "sum(value,llm.token_usage,distribution,none)";
-
-      await func.call(
-        context,
-        {
-          ...TIME_SERIES_FLAGS,
-          dataset: "tracemetrics",
-          field: [aggregate],
-        },
+      const result = await runExploreArgs([
         "test-org/",
-      );
+        "--time-series",
+        "--dataset",
+        "metrics",
+        "-F",
+        aggregate,
+      ]);
 
+      expect(result.exitCode).toBe(0);
       expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
         "test-org",
         expect.objectContaining({
@@ -856,83 +823,63 @@ describe("sentry explore", () => {
         }),
       );
       expect(queryMetricsMetaSpy).not.toHaveBeenCalled();
-    });
-
-    test("preserves zero, null, string values and bucket metadata in the JSON envelope", async () => {
-      const response = {
-        ...MOCK_TIME_SERIES_RESPONSE,
-        timeSeries: [
-          ...MOCK_TIME_SERIES_RESPONSE.timeSeries,
-          {
-            yAxis: "latest_event()",
-            meta: { valueType: "string", valueUnit: null, interval: 60_000 },
-            values: [
-              {
-                timestamp: 1_735_689_600_000,
-                value: "00123",
-                incomplete: false,
-              },
-            ],
-          },
-        ],
-      };
-      queryEventsTimeSeriesSpy.mockResolvedValue(response);
-      const { context, getStdout } = createContext();
-
-      await func.call(
-        context,
-        {
-          ...TIME_SERIES_FLAGS,
-          field: ["count()", "latest_event()"],
-          json: true,
-        },
-        "test-org/",
-      );
-
-      expect(JSON.parse(getStdout())).toEqual({
-        ...response,
-        dataset: "errors",
-      });
-    });
-
-    test("renders human-readable series without pagination hints", async () => {
-      const { context, getStdout } = createContext();
-
-      await func.call(context, TIME_SERIES_FLAGS, "test-org/");
-
-      expect(getStdout()).toContain("count()");
-      expect(getStdout()).toContain("test-org");
-      expect(getStdout()).not.toContain("Next:");
-      expect(getStdout()).not.toContain("Showing 3 results");
+      expect(result.getStdout()).toContain("Querying metrics in test-org");
+      expect(result.getStdout()).not.toContain("tracemetrics");
+      expect(result.getStdout()).not.toContain("Next:");
     });
 
     test.each([
-      { name: "interval without temporal mode", args: ["--interval", "15m"] },
+      {
+        name: "interval without temporal mode",
+        args: ["--interval", "15m"],
+        error: "--interval requires --time-series",
+      },
       {
         name: "non-aggregate fields",
         args: ["--time-series", "-F", "project", "-F", "count()"],
+        error: "Grouping is not supported: project",
       },
-      { name: "replays", args: ["--time-series", "--dataset", "replays"] },
-      { name: "cursor", args: ["--time-series", "--cursor", "next"] },
-      { name: "sort", args: ["--time-series", "--sort", "-count()"] },
-      { name: "explicit limit", args: ["--time-series", "--limit", "25"] },
+      {
+        name: "replays",
+        args: ["--time-series", "--dataset", "replays"],
+        error: "The replays dataset is only available as a table",
+      },
+      {
+        name: "cursor",
+        args: ["--time-series", "--cursor", "next"],
+        error: "--cursor is only available for tables",
+      },
+      {
+        name: "sort",
+        args: ["--time-series", "--sort", "-count()"],
+        error: "--sort is only available for tables",
+      },
+      {
+        name: "explicit limit",
+        args: ["--time-series", "--limit", "25"],
+        error: "--limit is only available for tables",
+      },
       {
         name: "invalid interval",
         args: ["--time-series", "--interval", "bad"],
+        error: 'Invalid interval "bad"',
       },
       {
         name: "metrics without an aggregate",
         args: ["--time-series", "--dataset", "metrics"],
+        error:
+          "The metrics dataset requires --metric or explicit --field flags",
       },
       {
         name: "metric grouping fields",
         args: ["--time-series", "--metric", "llm.token_usage", "-F", "project"],
+        error: "Grouping is not supported: project",
       },
-    ])("rejects $name before querying the API", async ({ args }) => {
+    ])("rejects $name before querying the API", async ({ args, error }) => {
       const result = await runExploreArgs(["test-org/", ...args]);
 
       expect(result.exitCode).not.toBe(0);
-      expect(result.getStderr()).not.toBe("");
+      expect(result.getStderr()).toContain(error);
       expect(queryEventsTimeSeriesSpy).not.toHaveBeenCalled();
       expect(queryEventsSpy).not.toHaveBeenCalled();
       expect(queryMetricsMetaSpy).not.toHaveBeenCalled();

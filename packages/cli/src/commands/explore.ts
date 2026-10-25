@@ -277,8 +277,9 @@ function orderFieldNames(
 
 /** Format explore results for human-readable terminal output */
 function formatExploreHuman(data: ExploreData | ExploreTimeSeriesData): string {
+  const displayDataset = API_TO_USER_DATASET.get(data.dataset) ?? data.dataset;
   if ("timeSeries" in data) {
-    return formatExploreTimeSeriesHuman(data);
+    return formatExploreTimeSeriesHuman({ ...data, dataset: displayDataset });
   }
   if (data.data.length === 0) {
     // Empty page mid-pagination (more or prev pages exist) vs. truly no results.
@@ -295,7 +296,6 @@ function formatExploreHuman(data: ExploreData | ExploreTimeSeriesData): string {
   );
 
   const scope = data.project ? `${data.org}/${data.project}` : data.org;
-  const displayDataset = API_TO_USER_DATASET.get(data.dataset) ?? data.dataset;
   const header = `Querying ${displayDataset} in ${scope}:\n\n`;
   return header + formatTable(data.data, columns);
 }
@@ -334,7 +334,7 @@ function jsonTransformExplore(
 // Pagination hints
 // ---------------------------------------------------------------------------
 
-/** Default limit value matching the flag default for hint comparison */
+/** Default table row limit, also omitted from pagination hints. */
 const DEFAULT_LIMIT = 25;
 
 function defaultFieldsForDataset(dataset: string): readonly string[] {
@@ -872,7 +872,7 @@ export const exploreCommand = buildListCommand("explore", {
         kind: "parsed",
         parse: parseLimit,
         placeholder: "number",
-        brief: `Number of table rows (1-${LIST_MAX_LIMIT}, default: 25)`,
+        brief: `Number of table rows (1-${LIST_MAX_LIMIT}, default: ${DEFAULT_LIMIT})`,
         optional: true,
       },
       "time-series": {
@@ -922,7 +922,11 @@ export const exploreCommand = buildListCommand("explore", {
     if (userSuppliedFields) {
       fieldList = flags.field;
     }
-    const timeRange = flags.period;
+    // SDK callers supply the public string form without Stricli parsing.
+    const timeRange =
+      typeof flags.period === "string"
+        ? parsePeriod(flags.period)
+        : flags.period;
     const environment = parseReplayEnvironmentFilter(flags.environment);
 
     // --metric auto mode: resolve metric name → tracemetrics aggregate
@@ -1047,7 +1051,7 @@ export const exploreCommand = buildListCommand("explore", {
     const hasMore = !!nextCursor;
 
     const baseTarget = project ? `${org}/${project}` : `${org}/`;
-    const hintFlags = { ...flags, dataset };
+    const hintFlags = { ...flags, dataset, period: timeRange };
     const nav = paginationHint({
       hasPrev,
       hasMore,

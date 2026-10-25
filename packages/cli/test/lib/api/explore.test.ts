@@ -456,7 +456,7 @@ describe("queryEventsTimeSeries", () => {
     expect(url.searchParams.has("topEvents")).toBe(false);
   });
 
-  test("sends repeated yAxis parameters and preserves date and string aggregates", async () => {
+  test("defaults to errors over 24h with repeated yAxis and string-valued aggregates", async () => {
     const response = {
       timeSeries: [
         {
@@ -495,28 +495,16 @@ describe("queryEventsTimeSeries", () => {
 
     const result = await queryEventsTimeSeries("timeseries-org", {
       fields: ["max(timestamp)", "latest_event()"],
-      dataset: "errors",
       interval: "5m",
-    });
-
-    expect(result).toEqual(response);
-    expect(new URL(requests[0]!.url).searchParams.getAll("yAxis")).toEqual([
-      "max(timestamp)",
-      "latest_event()",
-    ]);
-  });
-
-  test("defaults to errors over 24h and preserves an empty response without metadata", async () => {
-    mockResponse({ timeSeries: [] });
-
-    const result = await queryEventsTimeSeries("timeseries-org", {
-      fields: ["count()"],
-      interval: "1h",
       query: "",
     });
 
-    expect(result).toEqual({ timeSeries: [] });
+    expect(result).toEqual(response);
     const params = new URL(requests[0]!.url).searchParams;
+    expect(params.getAll("yAxis")).toEqual([
+      "max(timestamp)",
+      "latest_event()",
+    ]);
     expect(params.get("dataset")).toBe("errors");
     expect(params.get("statsPeriod")).toBe("24h");
     expect(params.has("query")).toBe(false);
@@ -525,7 +513,7 @@ describe("queryEventsTimeSeries", () => {
   test("uses an absolute range without also sending statsPeriod", async () => {
     mockResponse({ timeSeries: [] });
 
-    await queryEventsTimeSeries("timeseries-org", {
+    const result = await queryEventsTimeSeries("timeseries-org", {
       fields: ["sum(value,request.count,counter,none)"],
       dataset: "tracemetrics",
       start: "2024-10-20T12:00:00Z",
@@ -534,6 +522,7 @@ describe("queryEventsTimeSeries", () => {
       interval: "1m",
     });
 
+    expect(result).toEqual({ timeSeries: [] });
     const params = new URL(requests[0]!.url).searchParams;
     expect(params.get("dataset")).toBe("tracemetrics");
     expect(params.get("start")).toBe("2024-10-20T12:00:00Z");

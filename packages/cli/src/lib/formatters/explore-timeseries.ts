@@ -8,7 +8,10 @@ import { filterFields } from "./json.js";
 import { escapeMarkdownInline, renderMarkdown } from "./markdown.js";
 import { buildMetaColumns } from "./meta-table.js";
 import { formatTable } from "./table.js";
-import { formatDurationCompactMs } from "./time-utils.js";
+import {
+  formatDurationCompact,
+  formatDurationCompactMs,
+} from "./time-utils.js";
 
 /** An API response with the query scope used by human output. */
 export type ExploreTimeSeriesData = EventsTimeSeriesResponse & {
@@ -136,7 +139,7 @@ export function formatExploreTimeSeriesHuman(
     );
     if (ingestion.delaySeconds != null) {
       details.push(
-        `Reported ingestion delay: ${formatDurationCompactMs(ingestion.delaySeconds * 1000)}.`,
+        `Reported ingestion delay: ${formatDurationCompact(ingestion.delaySeconds)}.`,
       );
     }
   }

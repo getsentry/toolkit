@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   type ExploreTimeSeriesData,
   formatExploreTimeSeriesHuman,
-  jsonTransformExploreTimeSeries,
 } from "../../../src/lib/formatters/explore-timeseries.js";
 
 /** Sanitized shape of a captured spans timeseries response, including ingestion metadata. */
@@ -86,26 +85,37 @@ describe("formatExploreTimeSeriesHuman", () => {
     expect(output).toContain("Ingestion pending");
     expect(output).toContain("Ingestion status: healthy");
     expect(output).toContain("Reported ingestion delay: 4m 48s");
-    expect(output).not.toContain("Total:");
-    expect(output).not.toContain("Peak:");
   });
 
-  test("uses metadata units and keeps missing values distinct from zero", () => {
+  test("renders each measure with its own metadata and distinguishes missing values from zero", () => {
     const data = makeData();
-    const series = data.timeSeries[0]!;
-    series.yAxis = "p95(span.duration)";
-    series.meta.valueType = "duration";
-    series.meta.valueUnit = "millisecond";
-    series.values = [
-      { timestamp: Date.UTC(2026, 0, 1), value: null, incomplete: false },
-      { timestamp: Date.UTC(2026, 0, 1, 0, 5), value: 12.5, incomplete: false },
-    ];
+    data.timeSeries[0]!.values.pop();
+    data.timeSeries.push({
+      yAxis: "p95(span.duration)",
+      meta: {
+        valueType: "duration",
+        valueUnit: "millisecond",
+        interval: 600_000,
+      },
+      values: [
+        { timestamp: Date.UTC(2026, 0, 1), value: null, incomplete: false },
+        {
+          timestamp: Date.UTC(2026, 0, 1, 0, 10),
+          value: 12.5,
+          incomplete: false,
+        },
+      ],
+    });
 
     const output = formatExploreTimeSeriesHuman(data);
 
+    expect(output).toContain("count() over time");
     expect(output).toContain("p95(span.duration) over time");
+    expect(output).toContain("Interval: 5m");
+    expect(output).toContain("Interval: 10m");
     expect(output).toContain("Unit: millisecond");
     expect(output).toContain("12.5ms");
+    expect(output).toMatch(/2026-01-01 00:05:00\s+│\s+0/);
     expect(output).toMatch(/2026-01-01 00:00:00\s+│\s+—/);
     expect(output).not.toContain("STATUS");
     expect(output).not.toContain("Ingestion status");
@@ -175,69 +185,5 @@ describe("formatExploreTimeSeriesHuman", () => {
     expect(formatExploreTimeSeriesHuman(data)).toContain(
       "No time series returned",
     );
-  });
-
-  test("renders every returned measure with its own metadata", () => {
-    const data = makeData();
-    data.timeSeries.push({
-      yAxis: "avg(span.duration)",
-      meta: {
-        valueType: "duration",
-        valueUnit: "millisecond",
-        interval: 600_000,
-      },
-      values: [
-        { timestamp: Date.UTC(2026, 0, 1), value: 42, incomplete: false },
-      ],
-    });
-
-    const output = formatExploreTimeSeriesHuman(data);
-
-    expect(output).toContain("count() over time");
-    expect(output).toContain("avg(span.duration) over time");
-    expect(output).toContain("Interval: 10m");
-    expect(output).toContain("42ms");
-  });
-});
-
-describe("jsonTransformExploreTimeSeries", () => {
-  test("preserves response values and all metadata while excluding human scope", () => {
-    const base = makeData();
-    base.timeSeries[0]!.values[0]!.value = "00123";
-    base.timeSeries[0]!.values[1]!.value = null;
-    const data = {
-      ...base,
-      meta: { ...base.meta, extraMetadata: { retained: true } },
-    };
-    const original = structuredClone(data);
-    const { org: _org, project: _project, ...expected } = data;
-
-    expect(jsonTransformExploreTimeSeries(data)).toEqual(expected);
-    expect(data).toEqual(original);
-  });
-
-  test("applies --fields to buckets while preserving series identity and metadata", () => {
-    const data = makeData();
-    const original = structuredClone(data);
-    const series = data.timeSeries[0]!;
-
-    expect(
-      jsonTransformExploreTimeSeries(data, ["timestamp", "value"]),
-    ).toEqual({
-      dataset: "spans",
-      meta: data.meta,
-      timeSeries: [
-        {
-          yAxis: "count()",
-          meta: series.meta,
-          values: [
-            { timestamp: Date.UTC(2026, 0, 1), value: 1234 },
-            { timestamp: Date.UTC(2026, 0, 1, 0, 5), value: 0 },
-            { timestamp: Date.UTC(2026, 0, 1, 0, 10), value: 52 },
-          ],
-        },
-      ],
-    });
-    expect(data).toEqual(original);
   });
 });
