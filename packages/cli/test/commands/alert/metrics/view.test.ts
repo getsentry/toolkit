@@ -119,14 +119,14 @@ describe("alert metrics view", () => {
     await func.call(context, { web: false, json: false }, "test-org/9");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
-    expect(output).toContain("Metric alert rule in test-org:");
-    expect(output).toContain("ID:           9");
-    expect(output).toContain("Name:         All Errors");
-    expect(output).toContain("Status:       disabled");
-    expect(output).toContain("Query:        (none)");
-    expect(output).toContain("Projects:     (all)");
-    expect(output).toContain("Environment:  prod");
-    expect(output).toContain("Owner:        team:ops");
+    expect(output).toContain("Metric alert rule in test-org");
+    expect(output).toMatch(/ID\s+│\s+9/);
+    expect(output).toMatch(/Name\s+│\s+All Errors/);
+    expect(output).toMatch(/Status\s+│\s+disabled/);
+    expect(output).toMatch(/Query\s+│\s+\(none\)/);
+    expect(output).toMatch(/Projects\s+│\s+\(all\)/);
+    expect(output).toMatch(/Environment\s+│\s+prod/);
+    expect(output).toMatch(/Owner\s+│\s+team:ops/);
   });
 
   test("--web opens the metric alerts page without fetching a rule", async () => {

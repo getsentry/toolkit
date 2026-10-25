@@ -225,6 +225,9 @@ sentry alert metrics view my-org/12345
 
 # View by name
 sentry alert metrics view my-org/'P95 latency alert'
+
+# Inspect native thresholds and notification workflows
+sentry alert metrics view my-org/12345 --json
 ```
 
 ### `sentry alert metrics create <target>`
