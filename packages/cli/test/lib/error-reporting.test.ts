@@ -10,6 +10,7 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
+import { ArgumentParseError, FlagNotFoundError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
 import {
@@ -18,6 +19,7 @@ import {
   extractMessagePrefix,
   extractResourceKind,
   normalizeEndpoint,
+  reportArgumentError,
   reportCliError,
 } from "../../src/lib/error-reporting.js";
 import {
@@ -825,5 +827,55 @@ describe("reportCliError integration", () => {
     reportCliError(new ApiError("server fail", 500));
     expect(captureSpy).toHaveBeenCalled();
     expect(metricSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("reportArgumentError", () => {
+  let messageSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    messageSpy = vi.spyOn(Sentry, "captureMessage");
+  });
+
+  afterEach(() => {
+    messageSpy.mockRestore();
+  });
+
+  test("captures one info message with the parser's error class", () => {
+    const error = new ArgumentParseError(
+      "period",
+      "bogus",
+      new ValidationError("Invalid period 'bogus'", "period"),
+    );
+    reportArgumentError(error, 'Failed to parse "bogus" for period');
+    expect(messageSpy).toHaveBeenCalledWith("invalid_argument", {
+      level: "info",
+      tags: { "argument_error.class": "ArgumentParseError" },
+      contexts: {
+        invalid_argument: {
+          error_class: "ArgumentParseError",
+          cause_class: "ValidationError",
+          message: 'Failed to parse "bogus" for period',
+        },
+      },
+    });
+  });
+
+  test("reports scanner errors that wrap no parser error", () => {
+    reportArgumentError(
+      new FlagNotFoundError("nope", []),
+      "No flag registered for --nope",
+    );
+    expect(messageSpy).toHaveBeenCalledWith(
+      "invalid_argument",
+      expect.objectContaining({
+        contexts: {
+          invalid_argument: expect.objectContaining({
+            error_class: "FlagNotFoundError",
+            cause_class: null,
+          }),
+        },
+      }),
+    );
   });
 });
