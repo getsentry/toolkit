@@ -5,7 +5,10 @@
  * `--json` output across all CLI commands.
  */
 
+import { createRequire } from "node:module";
 import type { Writer } from "../../types/index.js";
+
+const _require = createRequire(import.meta.url);
 
 /**
  * Get a nested value from an object using a dot-notated path.
@@ -141,13 +144,6 @@ export function filterFields<T>(data: T, fields: string[]): Partial<T> {
 }
 
 /**
- * Regex to match comma-separated field items.
- * For nested square-brackets, the comma inside is ignored. This is for handling
- * typed fields, like some attributes, which use the syntax `tags[name,type]`.
- */
-const FIELD_ITEM_RE = /(?:\[[^\]]*\]|[^,])+/g;
-
-/**
  * Parse a comma-separated fields string into a trimmed, deduplicated array.
  *
  * Handles whitespace around commas and filters out empty segments:
@@ -161,11 +157,12 @@ const FIELD_ITEM_RE = /(?:\[[^\]]*\]|[^,])+/g;
  * @returns Parsed field path list (may be empty if input is all whitespace/commas)
  */
 export function parseFieldsList(input: string): string[] {
-  return [
-    ...new Set(
-      (input.match(FIELD_ITEM_RE) ?? []).map((f) => f.trim()).filter(Boolean),
-    ),
-  ];
+  // The local viewer imports other helpers here before CLI artifacts are built.
+  // Load the generated parser only when a command actually parses --fields.
+  const { parse } = _require(
+    "../../generated/field-list-grammar.js",
+  ) as typeof import("../../generated/field-list-grammar.js");
+  return [...new Set(parse(input))];
 }
 
 /**

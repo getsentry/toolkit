@@ -11,14 +11,16 @@ import {
   Token,
 } from "@sentry/toolkit-core/search-syntax";
 import type { SentryContext } from "../../context.js";
-import { paginate } from "../../lib/api/infrastructure.js";
+import {
+  attributeCursorAfter,
+  fetchAttributeTypePage,
+  type AttributeTypePage,
+} from "../../lib/api/attribute-pagination.js";
 import type {
-  ListTraceItemAttributesOptions,
   TraceItemAttributeDataset,
   TraceItemAttributeDefinition,
   TraceItemAttributeValueType,
 } from "../../lib/api/traces.js";
-import { listTraceItemAttributes } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { buildDatasetParser, datasetDisplayName } from "../../lib/datasets.js";
 import {
@@ -50,13 +52,11 @@ import {
   LIST_PERIOD_FLAG,
   PERIOD_ALIASES,
   paginationHint,
-  targetPatternExplanation,
 } from "../../lib/list-command.js";
 import {
   jsonTransformListResult,
   type ListResult,
 } from "../../lib/org-list.js";
-import { isGlobFilter } from "../../lib/list-filter.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type OrgOptionalTarget,
@@ -103,7 +103,7 @@ type AttributeListFlags = {
 type AttributeFilter = {
   /** The `has:` terms, as Sentry's `query`: keys must co-occur with all of them */
   query?: string;
-  /** The free text: Sentry matches it as a substring of attribute keys */
+  /** The free text: Sentry matches it as a substring of attribute names */
   name?: string;
 };
 
@@ -154,7 +154,7 @@ export function parseAttributeFilter(
       `The filter accepts a single search term, got "${name}".`,
     );
   }
-  if (name && isGlobFilter(name)) {
+  if (name && /[*?]/.test(name)) {
     throw new ValidationError(
       `Globs aren't supported in the filter ("${name}"). Use plain text.`,
     );
@@ -230,46 +230,6 @@ export function buildUsageTip(
   return `Tip: Filter or add to columns with: sentry ${command} ${target} -q ${shellQuote(`has:${key}`)} --fields ${shellQuote(key)}`;
 }
 
-/** One attribute type's rows for a page, and the cursors around it. */
-type TypePage = {
-  type: TraceItemAttributeValueType;
-  data: TraceItemAttributeDefinition[];
-  startCursor?: string;
-  nextCursor?: string;
-};
-
-/**
- * Fetch up to `limit` keys of one attribute type.
- *
- * The endpoint pages each type separately, so one request per type gives each
- * its own cursor and lets {@link paginate} handle it like any list endpoint.
- */
-async function fetchTypePage(
-  org: string,
-  type: TraceItemAttributeValueType,
-  options: Omit<
-    ListTraceItemAttributesOptions,
-    "attributeTypes" | "perPage" | "cursor"
-  >,
-  limit: number,
-  startCursor: string | undefined,
-): Promise<TypePage> {
-  const { data, nextCursor } = await paginate(
-    { limit, cursor: startCursor },
-    async (perPage, cursor) => {
-      const page = await listTraceItemAttributes(org, {
-        ...options,
-        attributeTypes: [type],
-        perPage,
-        cursor,
-      });
-      // Sentry returns its look-ahead row (perPage + 1) instead of trimming it
-      return { ...page, data: page.data.slice(0, perPage) };
-    },
-  );
-  return { type, data, startCursor, nextCursor };
-}
-
 /**
  * Pick up to `limit` rows across types, sorted by name for display.
  * Taken in sorted order by name, then type.
@@ -277,7 +237,7 @@ async function fetchTypePage(
  * @internal Exported for testing
  */
 export function selectAcrossTypes(
-  pages: readonly TypePage[],
+  pages: readonly Pick<AttributeTypePage, "type" | "data">[],
   limit: number,
 ): TraceItemAttributeDefinition[] {
   const heads = pages.map(() => 0);
@@ -330,24 +290,14 @@ export const listCommand = buildListCommand("attribute", {
     fullDescription:
       "List the attribute keys available on spans, logs, or metrics datasets.\n" +
       "Attributes are typed key-value data attached to each span, log or metric sample.\n\n" +
-      "Columns:\n" +
-      "  KEY          Name identifier; can be used for other commands in -q/--fields\n" +
-      "               e.g. span list -q 'has:tags[cart.total,number]'\n" +
-      "  TYPE         Value type of: string, number, boolean, array\n" +
-      "  SOURCE       One of: sentry (built-in) or user (set by your SDK)\n" +
-      "  ALIASES      Other names the attribute can be queried by\n" +
-      "  DESCRIPTION  What the attribute means; deprecated keys name replacements (pass --context)\n" +
-      "  EXAMPLES     Sample values seen for the attribute (pass --context)\n\n" +
-      "Target patterns:\n" +
-      "  sentry attribute list                 # auto-detect org from DSN or config\n" +
-      "  sentry attribute list <org>/          # all projects in the organization\n" +
-      "  sentry attribute list <org>/<proj>    # one project\n" +
-      "  sentry attribute list <project>       # find project across all orgs\n\n" +
-      `${targetPatternExplanation()}\n\n` +
+      "Use the exact key to filter data or select fields in other commands.\n" +
+      "Built-in and virtual keys can appear even when no matching item was observed.\n" +
+      "These are API discovery candidates, not an exhaustive inventory of stored data.\n\n" +
       "Filter (space-separated terms in one argument):\n" +
-      "  <text>       Attribute keys containing <text> (case-sensitive)\n" +
+      "  <text>       Attribute names containing <text> (case-sensitive)\n" +
       "  has:<key>    Attributes seen on the same items as <key>\n\n" +
-      "Alias: `sentry attributes` → `sentry attribute list`",
+      "Numeric, boolean, and array custom keys include their type, for example tags[cart.total,number].\n" +
+      "Search for their name (cart.total), then use the returned key in queries and fields.",
     examples: [
       {
         description: "List span attribute keys for a project",
@@ -359,16 +309,16 @@ export const listCommand = buildListCommand("attribute", {
       },
       {
         description:
-          "String attributes whose keys contain gen_ai (case-sensitive)",
+          "String attributes whose names contain gen_ai (case-sensitive)",
         command: "sentry attribute list my-org/ gen_ai --type string",
       },
       {
-        description: "Attributes seen on the same spans as an attribute",
+        description: "Discover candidates alongside an attribute",
         command: "sentry attribute list my-org/ has:gen_ai.request.model",
       },
       {
         description:
-          "Attributes seen alongside several keys (one quoted argument)",
+          "Discover candidates alongside several keys (one quoted argument)",
         command:
           "sentry attribute list my-org/ 'has:gen_ai.request.model has:gen_ai.usage.input_tokens'",
       },
@@ -377,7 +327,8 @@ export const listCommand = buildListCommand("attribute", {
         command: "sentry attribute list my-org/ 'gen_ai has:http.method'",
       },
       {
-        description: "Attributes seen in the last 24 hours",
+        description:
+          "Discover candidates using the last 24 hours (includes built-in and virtual keys)",
         command: "sentry attribute list my-org/ --period 24h",
       },
       {
@@ -391,6 +342,26 @@ export const listCommand = buildListCommand("attribute", {
       {
         description: "Show the next page of the previous listing (same flags)",
         command: "sentry attribute list my-org/my-project -n 100 -c next",
+      },
+      {
+        description: "Filter spans that have a discovered key",
+        command:
+          "sentry span list my-org/my-project -q 'has:gen_ai.request.model'",
+      },
+      {
+        description: "Find a custom numeric attribute by name",
+        command:
+          "sentry attribute list my-org/my-project cart.total --type number",
+      },
+      {
+        description: "Show a discovered typed key as a span column",
+        command:
+          "sentry span list my-org/my-project --fields 'tags[cart.total,number]'",
+      },
+      {
+        description: "Group a metric by a discovered attribute",
+        command:
+          "sentry explore my-org/ --dataset metrics -m llm.token_usage -F gen_ai.request.model",
       },
       {
         description: "Select fields as JSON",
@@ -418,7 +389,7 @@ export const listCommand = buildListCommand("attribute", {
         {
           placeholder: "filter",
           brief:
-            "Text in attribute keys and/or has:<key> terms, e.g. 'gen_ai has:http.method'",
+            "Text in attribute names and/or has:<key> terms, e.g. 'gen_ai has:http.method'",
           parse: String,
           optional: true,
         },
@@ -504,7 +475,7 @@ export const listCommand = buildListCommand("attribute", {
           requestTypes
             .filter((type) => !exhausted.has(type))
             .map((type) =>
-              fetchTypePage(
+              fetchAttributeTypePage(
                 org,
                 type,
                 options,
@@ -537,13 +508,7 @@ export const listCommand = buildListCommand("attribute", {
       const shownOfType = shown.filter(
         (attribute) => attribute.attributeType === type,
       ).length;
-      if (shownOfType >= page.data.length) {
-        return page.nextCursor ?? null;
-      }
-      // Rows cut by --limit come back next page: resume at the start offset
-      // (`value:offset:isPrev`) plus the rows shown, not the API's cursor.
-      const start = Number(page.startCursor?.split(":")[1] ?? 0);
-      return `0:${start + shownOfType}:0`;
+      return attributeCursorAfter(page, shownOfType);
     });
     const nextCursor = cursors.some((c) => c !== null)
       ? encodeCompoundCursor(cursors)

@@ -201,6 +201,13 @@ describe("parseAttributeFilter", () => {
     expect(parseAttributeFilter("  ")).toEqual({});
   });
 
+  test("accepts literal brackets in attribute name searches", () => {
+    expect(parseAttributeFilter("tags[")).toEqual({ name: "tags[" });
+    expect(parseAttributeFilter("tags[cart.total,number]")).toEqual({
+      name: "tags[cart.total,number]",
+    });
+  });
+
   test("rejects values, negation, OR, and an empty has:", () => {
     for (const bad of [
       "span.op:db",
@@ -469,7 +476,7 @@ describe("listCommand.func", () => {
     expect(first.data.map((a: { name: string }) => a.name)).toEqual(["a", "c"]);
     expect(first.hasMore).toBe(true);
     // Types sorted: array|boolean|number|string; only strings remain.
-    expect(first.nextCursor).toBe("|||0:1:0");
+    expect(first.nextCursor).toEqual(expect.any(String));
 
     listSpy.mockClear();
     const second = JSON.parse(
@@ -482,7 +489,10 @@ describe("listCommand.func", () => {
     expect(listSpy).toHaveBeenCalledTimes(1);
     expect(listSpy).toHaveBeenCalledWith(
       "my-org",
-      expect.objectContaining({ attributeTypes: ["string"], cursor: "0:1:0" }),
+      expect.objectContaining({
+        attributeTypes: ["string"],
+        cursor: undefined,
+      }),
     );
 
     const back = JSON.parse(
@@ -498,6 +508,109 @@ describe("listCommand.func", () => {
     await expect(run({ cursor: "next" }, "my-org/")).rejects.toThrow(
       ValidationError,
     );
+  });
+
+  test("retains aliased and synthetic keys across overlapping server pages", async () => {
+    resolveSpy.mockResolvedValue({ org: "my-org" });
+    // OrganizationTraceItemAttributesEndpoint pages aliases before stored
+    // keys, serializes stored keys first, and repeats synthetic keys from RPC.
+    const pages: Record<string, { data: Attr[]; nextCursor?: string }> = {
+      first: {
+        data: [attr("alias.a"), attr("alias.b"), attr("alias.c")],
+        nextCursor: "0:2:0",
+      },
+      "0:2:0": {
+        data: [
+          attr("stored.a"),
+          attr("stored.b"),
+          attr("sentry.service"),
+          attr("alias.c"),
+        ],
+        nextCursor: "0:4:0",
+      },
+      "0:4:0": {
+        data: [
+          attr("stored.b"),
+          attr("stored.c"),
+          attr("stored.d"),
+          attr("sentry.service"),
+        ],
+        nextCursor: "0:6:0",
+      },
+      "0:6:0": {
+        data: [attr("stored.d"), attr("stored.e"), attr("sentry.service")],
+        nextCursor: "0:8:0",
+      },
+      "0:8:0": { data: [attr("sentry.service")] },
+    };
+    listSpy.mockImplementation(async (_org, options) => {
+      expect(options.perPage).toBe(2);
+      const page = pages[options.cursor ?? "first"];
+      expect(page).toBeDefined();
+      return page!;
+    });
+    const collected: string[] = [];
+    for (let index = 0; index < 5; index++) {
+      const page = JSON.parse(
+        await run(
+          {
+            json: true,
+            limit: 2,
+            type: ["string"],
+            cursor: index ? "next" : undefined,
+          },
+          "my-org/",
+        ),
+      );
+      collected.push(...page.data.map((row: { key: string }) => row.key));
+      expect(page.hasMore).toBe(index < 4);
+      expect(page.hasPrev).toBe(index > 0);
+    }
+    expect(collected).toHaveLength(9);
+    expect(new Set(collected).size).toBe(9);
+    expect(collected.toSorted()).toEqual([
+      "alias.a",
+      "alias.b",
+      "alias.c",
+      "sentry.service",
+      "stored.a",
+      "stored.b",
+      "stored.c",
+      "stored.d",
+      "stored.e",
+    ]);
+    const previous = JSON.parse(
+      await run(
+        { json: true, limit: 2, type: ["string"], cursor: "prev" },
+        "my-org/",
+      ),
+    );
+    expect(previous.data.map((row: { key: string }) => row.key)).toEqual([
+      "stored.c",
+      "stored.d",
+    ]);
+  });
+
+  test("continues mixed types past 100 rows without losing partially selected pages", async () => {
+    resolveSpy.mockResolvedValue({ org: "my-org" });
+    const data = Array.from({ length: 180 }, (_, index) =>
+      attr(
+        `key.${String(index).padStart(3, "0")}`,
+        index % 2 ? "number" : "string",
+        "user",
+      ),
+    );
+    mockAttributes(data);
+    const first = JSON.parse(await run({ json: true, limit: 125 }, "my-org/"));
+    const next = JSON.parse(
+      await run({ json: true, limit: 125, cursor: "next" }, "my-org/"),
+    );
+    expect(
+      [...first.data, ...next.data]
+        .map((row: { key: string }) => row.key)
+        .toSorted(),
+    ).toEqual(data.map((row) => row.key).toSorted());
+    expect(next.hasMore).toBe(false);
   });
 
   test("prints a usage tip on its own line after the count", async () => {

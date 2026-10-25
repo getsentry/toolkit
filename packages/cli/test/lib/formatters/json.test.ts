@@ -137,6 +137,26 @@ describe("parseFieldsList", () => {
       "title",
     ]);
   });
+
+  test("keeps nested typed keys and quoted aggregate arguments together", () => {
+    expect(
+      parseFieldsList(
+        'id,sum_if(tags[cart.total,number],"region:us,eu"),tags[items[*],array]',
+      ),
+    ).toEqual([
+      "id",
+      'sum_if(tags[cart.total,number],"region:us,eu")',
+      "tags[items[*],array]",
+    ]);
+  });
+
+  test("preserves literal paths with unmatched punctuation", () => {
+    expect(parseFieldsList("id,custom[,title")).toEqual([
+      "id",
+      "custom[",
+      "title",
+    ]);
+  });
 });
 
 describe("writeJson with fields", () => {

@@ -48,9 +48,9 @@ const VERSION: string = pkg.version;
 /** Node version for SEA binaries. "lts" resolves to the latest LTS via fossilize. */
 const NODE_VERSION = "lts";
 
-/** Files that use _require() for lazy relative imports (circular dep breaking). */
+/** Files whose lazy relative imports must be included in the native bundle. */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema)|list-command|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema)|formatters[\\/]json|list-command|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 
 /** Build-time constants injected into the binary */

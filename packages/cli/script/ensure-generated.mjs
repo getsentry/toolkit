@@ -23,6 +23,8 @@ const SCHEMA = "src/generated/api-schema.json";
 const GRAMMAR_OUTPUTS = [
   "src/generated/org-project-target-grammar.js",
   "src/generated/org-project-target-grammar.d.ts",
+  "src/generated/field-list-grammar.js",
+  "src/generated/field-list-grammar.d.ts",
 ];
 /** Produced by `generate:docs`; imported at runtime by `src/`. */
 const DOCS_OUTPUTS = [

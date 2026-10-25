@@ -529,9 +529,7 @@ function resolveDatasetConfig(params: {
         ...timeRangeToApiParams(timeRange),
       }).catch((error: unknown): never => {
         throw toExploreFieldError(error, {
-          dataset: legacyTransactions
-            ? "spans"
-            : (API_TO_USER_DATASET.get(dataset) ?? dataset),
+          dataset: datasetDisplayName(legacyTransactions ? "spans" : dataset),
           fields,
           userFields: (flags.field ?? []).filter(
             (field) => !flags.metric || !isAggregateFieldOrEquation(field),
