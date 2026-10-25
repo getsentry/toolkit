@@ -1983,10 +1983,18 @@ async function buildAccountContextError(
   const targets = candidates.flatMap((candidate) => candidate.targets);
   const alternatives: string[] = [];
   const [exampleTarget, ...otherTargets] = targets;
-  if (exampleTarget && options.formatRecoveryCommand) {
-    alternatives.push(
-      `Retry example:\n    ${options.formatRecoveryCommand(exampleTarget)}`,
-    );
+  const exampleOrg = exampleTarget?.split("/")[0] ?? shownOrgs[0];
+  const otherOrgs = shownOrgs.filter((org) => org !== exampleOrg);
+  const recoveryCommand = exampleTarget
+    ? options.formatRecoveryCommand?.(exampleTarget)
+    : undefined;
+  if (recoveryCommand !== undefined) {
+    alternatives.push(`Retry example:\n    ${recoveryCommand}`);
+  }
+  if (otherOrgs.length > 0) {
+    alternatives.push(`Other available orgs: ${otherOrgs.join(", ")}`);
+  }
+  if (recoveryCommand !== undefined) {
     if (otherTargets.length > 0) {
       alternatives.push(`Other available projects: ${otherTargets.join(", ")}`);
     }
@@ -1996,9 +2004,7 @@ async function buildAccountContextError(
     );
   }
   alternatives.push(
-    ...shownOrgs.map(
-      (org) => `List projects: sentry project list ${shellQuote(`${org}/`)}`,
-    ),
+    `List projects example: sentry project list ${shellQuote(`${exampleOrg}/`)}`,
   );
   const notes = candidates.flatMap((candidate) =>
     candidate.note ? [candidate.note] : [],

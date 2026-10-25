@@ -3,12 +3,12 @@
 ## Context recovery
 
 If auto-detection cannot find a project, authenticated non-interactive runs show
-one copyable retry example and a compact list of other available `org/project`
-targets. Choose the project that matches your task; the retry keeps your query,
-period, limit, sort, and output flags. Navigation keywords such as `--cursor next`
+one copyable retry example and compact lists of other available organizations
+and `org/project` targets. Choose the project that matches your task; the retry
+keeps your query, period, limit, sort, and output flags. Navigation keywords such as `--cursor next`
 become `--cursor first` because the chosen project may have no saved pagination state;
-raw API cursors are preserved. Suggestions are a bounded sample, with
-`sentry project list` commands to discover other projects. Showing suggestions
+raw API cursors are preserved. Suggestions are a bounded sample, with one
+`sentry project list` example to discover other projects. Showing suggestions
 does not save defaults.
 
 ## Search syntax
