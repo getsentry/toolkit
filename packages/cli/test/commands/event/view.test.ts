@@ -209,25 +209,24 @@ describe("parsePositionalArgs", () => {
       expect(result.eventId).toBe("abc123def456");
     });
 
-    test("auto-redirects issue short ID in first arg to issueShortId (CLI-MP)", () => {
-      // "JAVASCRIPT-NUXT-52" matches looksLikeIssueShortId → redirect to issue's
-      // latest event instead of treating it as a project slug (which would fail).
-      const result = parsePositionalArgs([
-        "JAVASCRIPT-NUXT-52",
-        "abc123def456",
-      ]);
-      expect(result.issueShortId).toBe("JAVASCRIPT-NUXT-52");
-      expect(result.eventId).toBe("@latest");
-      expect(result.targetArg).toBeUndefined();
-      expect(result.warning).toContain("issue short ID");
-    });
+    test.each([
+      "7388f6a62b7d436ab77bb5365f97a1ac",
+      "7388F6A6-2B7D-436A-B77B-B5365F97A1AC",
+    ])(
+      "preserves and normalizes the event ID after an issue short ID: %s",
+      (eventId) => {
+        const result = parsePositionalArgs(["JAVASCRIPT-NUXT-52", eventId]);
+        expect(result.issueShortId).toBe("JAVASCRIPT-NUXT-52");
+        expect(result.eventId).toBe("7388f6a62b7d436ab77bb5365f97a1ac");
+        expect(result.targetArg).toBeUndefined();
+        expect(result.warning).toBeUndefined();
+      },
+    );
 
-    test("auto-redirects simple issue short ID like CAM-82X", () => {
-      const result = parsePositionalArgs(["CAM-82X", "95fd7f5a"]);
-      expect(result.issueShortId).toBe("CAM-82X");
-      expect(result.eventId).toBe("@latest");
-      expect(result.targetArg).toBeUndefined();
-      expect(result.warning).toContain("issue short ID");
+    test("rejects an incomplete event ID instead of selecting latest", () => {
+      expect(() => parsePositionalArgs(["CAM-82X", "95fd7f5a"])).toThrow(
+        ValidationError,
+      );
     });
   });
 
@@ -1188,48 +1187,6 @@ describe("viewCommand.func", () => {
     );
     expect(output.eventID).toBe(VALID_EVENT_ID);
     expect(output.attachments).toEqual([]);
-  });
-
-  test("auto-redirects issue short ID in two-arg form via issueShortId path", async () => {
-    // "CAM-82X" as first arg matches looksLikeIssueShortId → sets issueShortId,
-    // NOT targetArg. The resolveIssueShortcut path fetches the latest event.
-    const resolveOrgSpy = vi
-      .spyOn(resolveTarget, "resolveOrg")
-      .mockResolvedValue({
-        org: "cam-org",
-      });
-    const getIssueByShortIdSpy = vi
-      .spyOn(apiClient, "getIssueByShortId")
-      .mockResolvedValue({ id: "999", shortId: "CAM-82X" } as never);
-    const getLatestEventSpy = vi
-      .spyOn(apiClient, "getLatestEvent")
-      .mockResolvedValue(sampleEvent);
-    getSpanTreeLinesSpy.mockResolvedValue({
-      lines: [],
-      spans: null,
-      traceId: null,
-      success: false,
-    });
-
-    const { context } = createMockContext();
-    const func = await viewCommand.loader();
-    // First arg "CAM-82X" is an issue short ID, second arg "95fd7f5a" is ignored
-    await func.call(
-      context,
-      { json: true, web: false, spans: 0 },
-      "CAM-82X",
-      "95fd7f5a",
-    );
-
-    // Should NOT go through resolveProjectBoundSlug (the old buggy path)
-    expect(resolveProjectBoundSlugSpy).not.toHaveBeenCalled();
-    // Should resolve via issue short ID path
-    expect(getIssueByShortIdSpy).toHaveBeenCalledWith("cam-org", "CAM-82X");
-    expect(getLatestEventSpy).toHaveBeenCalled();
-
-    resolveOrgSpy.mockRestore();
-    getIssueByShortIdSpy.mockRestore();
-    getLatestEventSpy.mockRestore();
   });
 
   test("numeric issue ID resolves org via resolveOrg then fetches latest event", async () => {

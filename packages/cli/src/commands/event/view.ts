@@ -374,6 +374,7 @@ type ParsedPositionalArgs = {
  * Handles:
  * - `<event-id>` — event ID only (auto-detect org/project)
  * - `<target> <event-id>` — explicit target + event ID
+ * - `[<org>/]<issue-short-id> <event-id>` — resolve the project from the issue
  * - `<sentry-event-url>` — extract eventId and org from a Sentry event URL
  *   (e.g., `https://sentry.example.com/organizations/my-org/issues/123/events/abc/`)
  * - `<sentry-issue-url>` — extract issueId and org; caller fetches latest event
@@ -458,16 +459,15 @@ export function parsePositionalArgs(args: string[]): ParsedPositionalArgs {
     };
   }
 
-  // Detect issue short ID passed as first arg (e.g., "CAM-82X 95fd7f5a").
-  // Auto-redirect to the issue's latest event instead of treating the short
-  // ID as a project slug (which would fail — slugs are lowercase, short IDs
-  // are uppercase). The second arg is ignored since we fetch the latest event.
-  if (looksLikeIssueShortId(first)) {
+  // An issue identifies the project; an explicit event ID must not be replaced
+  // by latest. Reuse the single-arg parser to preserve an optional org prefix.
+  const issueShortId =
+    slashCount === 1 ? first.slice(first.indexOf("/") + 1) : first;
+  if (looksLikeIssueShortId(issueShortId)) {
     return {
-      eventId: LATEST_EVENT_SENTINEL,
-      targetArg: undefined,
-      issueShortId: first,
-      warning: `'${first}' is an issue short ID, not a project slug. Ignoring second argument '${second}'.`,
+      ...parseSingleArg(first),
+      // Issue shortcuts run before the normal event-ID validation path.
+      eventId: validateHexId(second, "event ID"),
     };
   }
 
@@ -985,8 +985,8 @@ async function resolveIssueIdShortcut(
 /**
  * Handle issue-based shortcuts: issue URLs and issue short IDs.
  *
- * Both paths resolve an issue and fetch its latest event. Extracted from
- * func() to reduce cyclomatic complexity.
+ * Resolve the issue's project for an explicit event ID, or fetch the latest
+ * event when no event was selected. Extracted from func() to reduce complexity.
  *
  * @returns Result with org, data, and hint — or null if not an issue shortcut
  */
@@ -1022,7 +1022,7 @@ async function resolveIssueShortcut(
       );
     }
 
-    // When the user specified a specific event ID (SHORT-ID/EVENT-ID),
+    // When the user specified an event ID (SHORT-ID/ID or SHORT-ID ID),
     // resolve the issue to get the project, then fetch the specific event.
     if (eventId !== LATEST_EVENT_SENTINEL) {
       const issue = await getIssueByShortId(resolved.org, issueShortId);
@@ -1169,6 +1169,8 @@ export const viewCommand = buildCommand({
     brief: "View details of one or more events",
     fullDescription:
       "View detailed information about Sentry events by their IDs.\n\n" +
+      "Pass an issue short ID followed by an event ID to resolve the project from the issue.\n" +
+      "An issue short ID without an event ID shows its latest event.\n\n" +
       "Multiple event IDs can be passed as separate arguments or newline-separated\n" +
       "within a single argument (handy when piping from other commands).\n\n" +
       "Attachment metadata (id, name, size, mimetype, download URL) is included when available.\n" +
@@ -1177,6 +1179,19 @@ export const viewCommand = buildCommand({
       {
         description: "View an event",
         command: "sentry event view abc123def456abc123def456abc12345",
+      },
+      {
+        description: "View a specific event using an issue short ID",
+        command: "sentry event view PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac",
+      },
+      {
+        description: "View a specific event with an explicit organization",
+        command:
+          "sentry event view my-org/PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac",
+      },
+      {
+        description: "View the latest event for an issue",
+        command: "sentry event view PROJ-ABC",
       },
       {
         description: "Open in the browser",
