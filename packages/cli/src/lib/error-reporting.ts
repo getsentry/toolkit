@@ -27,6 +27,17 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
+import {
+  AliasNotFoundError,
+  ArgumentParseError,
+  EnumValidationError,
+  FlagNotFoundError,
+  InvalidNegatedFlagSyntaxError,
+  UnexpectedFlagError,
+  UnexpectedPositionalError,
+  UnsatisfiedFlagError,
+  UnsatisfiedPositionalError,
+} from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
   ApiError,
@@ -434,6 +445,66 @@ export function reportCliError(error: unknown): void {
     setGroupingTags(scope, error);
     setCliErrorContext(scope, error);
     Sentry.captureException(error);
+  });
+}
+
+/** The class name of a thrown value, for event context. */
+function errorClassName(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
+/**
+ * Stricli's argument scanner errors by name. They don't set `name`, and the
+ * minified bundle renames classes, so match them by identity.
+ */
+const ARGUMENT_ERROR_CLASSES = {
+  AliasNotFoundError,
+  ArgumentParseError,
+  EnumValidationError,
+  FlagNotFoundError,
+  InvalidNegatedFlagSyntaxError,
+  UnexpectedFlagError,
+  UnexpectedPositionalError,
+  UnsatisfiedFlagError,
+  UnsatisfiedPositionalError,
+};
+
+/** The Stricli class name of an argument scanner error. */
+function argumentErrorClassName(error: unknown): string {
+  for (const [name, errorClass] of Object.entries(ARGUMENT_ERROR_CLASSES)) {
+    if (error instanceof errorClass) {
+      return name;
+    }
+  }
+  return errorClassName(error);
+}
+
+/**
+ * Report an argument that Stricli could not parse (exit 252) for UX research.
+ *
+ * These are user mistakes rather than CLI bugs, so like `unknown_command`
+ * they go to Sentry as one fixed `info` message that groups into a single
+ * issue. The `invalid_argument` context holds the per-event detail.
+ *
+ * @param error - The error Stricli passed to `exceptionWhileParsingArguments`
+ * @param message - What the user saw, without ANSI color codes
+ */
+export function reportArgumentError(error: unknown, message: string): void {
+  const errorClass = argumentErrorClassName(error);
+  Sentry.captureMessage("invalid_argument", {
+    level: "info",
+    tags: { "argument_error.class": errorClass },
+    contexts: {
+      invalid_argument: {
+        error_class: errorClass,
+        // What the argument's parser threw, e.g. a ValidationError
+        cause_class:
+          error instanceof ArgumentParseError
+            ? errorClassName(error.exception)
+            : null,
+        message: redactCredentialText(message),
+      },
+    },
   });
 }
 
