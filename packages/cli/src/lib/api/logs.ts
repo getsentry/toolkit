@@ -19,6 +19,7 @@ import {
   type TraceLog,
   TraceLogsResponseSchema,
 } from "../../types/index.js";
+import type { ApiReference } from "../api-schema.js";
 import { ApiError } from "../errors.js";
 import { decodeUuidV7Timestamp } from "../hex-id.js";
 import { resolveOrgRegion } from "../region.js";
@@ -34,6 +35,14 @@ import {
   unwrapResult,
 } from "./infrastructure.js";
 import { getTraceItemDetail } from "./traces.js";
+
+const LOG_DATASET = "logs" as const;
+
+/** Shared API discovery context for log listing and item lookup. */
+export const LOGS_API = {
+  fn: "listOrganizationEvents",
+  note: `Uses dataset=${LOG_DATASET}; the CLI adds fields and filters to list or look up log entries.`,
+} satisfies ApiReference;
 
 /** Sort direction for log queries: newest-first or oldest-first. */
 export type LogSortDirection = "newest" | "oldest";
@@ -206,7 +215,7 @@ export async function listLogs(
         ...config,
         path: { organization_id_or_slug: orgSlug },
         query: {
-          dataset: "logs",
+          dataset: LOG_DATASET,
           field: fields,
           project:
             numericProjectId === undefined ? undefined : [numericProjectId],
@@ -336,7 +345,7 @@ async function getLogsBatch(
   ) {
     // `sampling` is supported by the backend but absent from the SDK's query type.
     const queryParams = {
-      dataset: "logs" as const,
+      dataset: LOG_DATASET,
       field: fields,
       project: numericProjectId === undefined ? undefined : [numericProjectId],
       query: `${projectFilter}sentry.item_id:[${ids.join(",")}]`,

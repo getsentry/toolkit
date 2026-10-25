@@ -5,6 +5,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { schemaCommand } from "../../src/commands/schema.js";
 import type { SentryContext } from "../../src/context.js";
+import { getAllEndpoints } from "../../src/lib/api-schema.js";
 import { ResolutionError } from "../../src/lib/errors.js";
 
 const ORG_ISSUES = "/api/0/organizations/{organization_id_or_slug}/issues/";
@@ -35,6 +36,125 @@ function stdoutOf(stdoutWrite: ReturnType<typeof vi.fn>): string {
 }
 
 describe("sentry schema path lookup", () => {
+  test.each([
+    ["listOrganizationIssues"],
+    ["issues", "listOrganizationIssues"],
+    ["GET", ORG_ISSUES],
+  ])("exact lookup preserves the endpoint object for %j", async (...args) => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await schemaCommand.loader();
+    await func.call(context, { json: true, all: false }, ...args);
+    expect(JSON.parse(stdoutOf(stdoutWrite))).toEqual(
+      getAllEndpoints().find(
+        (endpoint) => endpoint.fn === "listOrganizationIssues",
+      ),
+    );
+  });
+
+  test("--all remains an unannotated flat array", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await schemaCommand.loader();
+    await func.call(context, { json: true, all: true });
+    expect(JSON.parse(stdoutOf(stdoutWrite))).toEqual(getAllEndpoints());
+  });
+
+  test.each([
+    {
+      args: ["log", "list"],
+      fn: "listOrganizationEvents",
+      command: "sentry log list",
+      note: "dataset=logs",
+    },
+    {
+      args: ["logs"],
+      fn: "listOrganizationEvents",
+      command: "sentry log list",
+      note: "dataset=logs",
+    },
+    {
+      args: ["trace", "ls"],
+      fn: "listOrganizationEvents",
+      command: "sentry trace list",
+      note: "is_transaction:true",
+    },
+    {
+      args: ["trace", "view"],
+      fn: "getOrganizationTrace",
+      command: "sentry trace view",
+    },
+    {
+      args: ["alert", "metrics", "view"],
+      fn: "getOrganizationDetector",
+      command: "sentry alert metrics view",
+    },
+  ])("discovers the API used by $args", async ({ args, fn, command, note }) => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await schemaCommand.loader();
+    await func.call(context, { json: true, all: false }, ...args);
+    const result = JSON.parse(stdoutOf(stdoutWrite));
+    expect(Array.isArray(result)).toBe(true);
+    const endpoint = result.find(
+      (candidate: { fn: string }) => candidate.fn === fn,
+    );
+    expect(endpoint?.match.relatedCommands).toContainEqual(
+      expect.objectContaining({ command }),
+    );
+    if (note) {
+      expect(
+        endpoint.match.relatedCommands.find(
+          (candidate: { command: string }) => candidate.command === command,
+        ).note,
+      ).toContain(note);
+    }
+  });
+
+  test("--search and positionals share discovery, including a complete nested path", async () => {
+    const positional = createMockContext();
+    const search = createMockContext();
+    const func = await schemaCommand.loader();
+    await func.call(
+      positional.context,
+      { json: true, all: false },
+      "alert",
+      "metrics",
+      "view",
+    );
+    await func.call(
+      search.context,
+      { json: true, all: false, search: "alert" },
+      "metrics",
+      "view",
+    );
+    expect(JSON.parse(stdoutOf(search.stdoutWrite))).toEqual(
+      JSON.parse(stdoutOf(positional.stdoutWrite)),
+    );
+  });
+
+  test("renders the selector and related CLI command in human output", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await schemaCommand.loader();
+    await func.call(context, { json: false, all: false }, "logs");
+    const output = stdoutOf(stdoutWrite);
+    expect(output).toContain("dataset=logs");
+    expect(output).toContain("sentry log list");
+  });
+
+  test("discovery supports existing --fields filtering", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await schemaCommand.loader();
+    await func.call(
+      context,
+      { json: true, all: false, fields: ["fn"] },
+      "log",
+      "list",
+    );
+    const result = JSON.parse(stdoutOf(stdoutWrite));
+    expect(result).toContainEqual({ fn: "listOrganizationEvents" });
+    expect(
+      result.every((endpoint: object) => Object.keys(endpoint).join() === "fn"),
+    ).toBe(true);
+  });
+
   test("METHOD + path returns that endpoint", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await schemaCommand.loader();
@@ -126,7 +246,7 @@ describe("sentry schema path lookup", () => {
     expect(message).toContain(`sentry schema "GET ${ORG_ISSUES}"`);
   });
 
-  test("resource lookup is unchanged", async () => {
+  test("resource discovery preserves the endpoint array JSON shape", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await schemaCommand.loader();
     await func.call(context, { json: true, all: false }, "issues");
@@ -135,7 +255,7 @@ describe("sentry schema path lookup", () => {
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed.length).toBeGreaterThan(3);
     expect(
-      parsed.every((e: { resource: string }) => e.resource === "issues"),
+      parsed.some((e: { fn: string }) => e.fn === "listOrganizationIssues"),
     ).toBe(true);
   });
 });

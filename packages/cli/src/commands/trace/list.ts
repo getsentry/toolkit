@@ -5,6 +5,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
+import { LIST_TRANSACTIONS_API } from "../../lib/api/traces.js";
 import { listTransactions } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import {
@@ -195,6 +196,7 @@ function jsonTransformTraceList(
 
 export const listCommand = buildListCommand("trace", {
   docs: {
+    relatedApi: [LIST_TRANSACTIONS_API],
     brief: "List recent traces in a project",
     fullDescription:
       "List recent traces from Sentry projects.\n\n" +

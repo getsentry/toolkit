@@ -11,7 +11,10 @@
  */
 
 import type { SentryContext } from "../../../context.js";
-import type { MetricAlertRule } from "../../../lib/api/alerts.js";
+import {
+  METRIC_ALERT_API,
+  type MetricAlertRule,
+} from "../../../lib/api/alerts.js";
 import { paginate } from "../../../lib/api/infrastructure.js";
 import { listMetricAlertsPaginated } from "../../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
@@ -493,6 +496,7 @@ const jsonTransformMetricAlertList = jsonTransformListResult;
 
 export const listCommand = buildListCommand("alert metrics", {
   docs: {
+    relatedApi: [METRIC_ALERT_API.list],
     brief: "List metric alert rules",
     fullDescription:
       "List metric alert rules for one or more Sentry organizations.\n\n" +

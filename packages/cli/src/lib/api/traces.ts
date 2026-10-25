@@ -23,6 +23,7 @@ import {
 // Re-export so existing callers (api-client.ts, formatters/trace.ts) don't need to change.
 export type { TraceItemAttribute, TraceItemDetail } from "../../types/index.js";
 
+import type { ApiReference } from "../api-schema.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import { isAllDigits } from "../utils.js";
@@ -36,6 +37,21 @@ import {
 } from "./infrastructure.js";
 
 const log = logger.withTag("api.traces");
+
+const TRANSACTION_DATASET = "spans";
+const TRANSACTION_QUERY = "is_transaction:true";
+
+/** Trace list queries root spans rather than a dedicated traces collection. */
+export const LIST_TRANSACTIONS_API = {
+  fn: "listOrganizationEvents",
+  note: `Uses dataset=${TRANSACTION_DATASET} with ${TRANSACTION_QUERY}; the CLI resolves projects and paginates.`,
+} satisfies ApiReference;
+
+/** Main trace view API; full span attributes may require additional requests. */
+export const TRACE_DETAILS_API = {
+  fn: "getOrganizationTrace",
+  note: "Retrieves the trace tree; the CLI resolves context and may fetch additional span attributes.",
+} satisfies ApiReference;
 
 // ---------------------------------------------------------------------------
 // Trace item (span) detail types
@@ -454,7 +470,7 @@ async function fetchTransactionsPage(
   );
   const projectFilter =
     numericProjectId === undefined ? `project:${projectSlug}` : "";
-  const fullQuery = ["is_transaction:true", projectFilter, options.query]
+  const fullQuery = [TRANSACTION_QUERY, projectFilter, options.query]
     .filter(Boolean)
     .join(" ");
 
@@ -464,7 +480,7 @@ async function fetchTransactionsPage(
       `/organizations/${orgSlug}/events/`,
       {
         params: {
-          dataset: "spans",
+          dataset: TRANSACTION_DATASET,
           field: TRANSACTION_FIELDS,
           project:
             numericProjectId === undefined

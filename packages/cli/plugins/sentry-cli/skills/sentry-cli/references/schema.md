@@ -19,7 +19,7 @@ Browse the Sentry API schema
 
 | Argument | Description |
 |----------|-------------|
-| `<resource...>` | Resource, exact operation ID, or METHOD /path |
+| `<resource...>` | API concept, CLI command path, exact operation ID, or METHOD /path |
 
 **Flags:**
 - `--all - Show all endpoints in a flat list`
@@ -34,8 +34,20 @@ sentry schema
 # Browse issue endpoints
 sentry schema issues
 
-# View details for a specific operation
+# Find list operations (there may be multiple candidates)
 sentry schema issues list
+
+# Find APIs used by log listing
+sentry schema log list
+
+# Find APIs used by trace listing, including command aliases
+sentry schema trace ls
+
+# Find APIs used by a command group
+sentry schema alert metrics
+
+# Find APIs used by a nested command
+sentry schema alert metrics view
 
 # Look up an endpoint by its exact operation ID
 sentry schema listOrganizationEvents

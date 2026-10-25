@@ -11,14 +11,15 @@ import { resolveResourceQuery } from "../../src/commands/schema.js";
 import { OutputError, ResolutionError } from "../../src/lib/errors.js";
 
 describe("resolveResourceQuery", () => {
-  test("returns endpoints for a known resource", () => {
+  test("discovers endpoints for a known resource", () => {
     const result = resolveResourceQuery("issues");
     expect(result.kind).toBe("endpoints");
     if (result.kind === "endpoints") {
       expect(result.endpoints.length).toBeGreaterThan(0);
-      for (const ep of result.endpoints) {
-        expect(ep.resource).toBe("issues");
-      }
+      expect(
+        result.endpoints.some((ep) => ep.fn === "listOrganizationIssues"),
+      ).toBe(true);
+      expect(result.endpoints.every((ep) => ep.match)).toBe(true);
     }
   });
 
@@ -31,10 +32,30 @@ describe("resolveResourceQuery", () => {
     }
   });
 
-  test("does not interpret a partial operation identifier as exact", () => {
-    expect(() => resolveResourceQuery("OrganizationEvents")).toThrow(
-      ResolutionError,
-    );
+  test("treats partial operation names as discovery, never exact selection", () => {
+    const result = resolveResourceQuery("OrganizationEvents");
+    expect(result.kind).toBe("endpoints");
+    if (result.kind === "endpoints") {
+      expect(
+        result.endpoints.some((ep) => ep.fn === "listOrganizationEvents"),
+      ).toBe(true);
+    }
+  });
+
+  test("returns every list candidate instead of selecting a deprecated endpoint", () => {
+    const result = resolveResourceQuery("issues", "list");
+    expect(result.kind).toBe("endpoints");
+    if (result.kind === "endpoints") {
+      expect(
+        result.endpoints.find((ep) => ep.fn === "listOrganizationIssues"),
+      ).toBeDefined();
+      expect(
+        result.endpoints.find(
+          (ep) => ep.deprecated && ep.resource === "issues",
+        ),
+      ).toBeDefined();
+      expect(result.endpoints[0]?.deprecated).toBe(false);
+    }
   });
   test("no-match resource throws ResolutionError instead of listing everything", () => {
     let thrown: unknown;

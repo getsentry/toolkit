@@ -8,6 +8,31 @@
 
 import endpoints from "../generated/api-schema.json";
 
+/** Searchable query parameter metadata from the pinned OpenAPI specification. */
+export type ApiQueryParameter = {
+  name: string;
+  description?: string;
+  type?: string;
+  required: boolean;
+  enum?: (string | number | boolean | null)[];
+};
+
+/** An API used by a command, with context rather than a claim of equivalence. */
+export type ApiReference = {
+  fn: string;
+  note?: string;
+};
+
+export type CommandApiReference = ApiReference & { command: string };
+
+/** Discovery evidence is additive; exact lookups return plain ApiEndpoints. */
+export type SchemaEndpoint = ApiEndpoint & {
+  match?: {
+    reasons: string[];
+    relatedCommands: { command: string; note?: string }[];
+  };
+};
+
 /** A single API endpoint entry from the generated schema */
 export type ApiEndpoint = {
   /** SDK function name from @sentry/api (empty string if unmapped) */
@@ -18,10 +43,13 @@ export type ApiEndpoint = {
   path: string;
   /** Human-readable description of the endpoint */
   description: string;
+  summary?: string;
+  tags?: string[];
   /** Path parameter names extracted from the URL template */
   pathParams: string[];
   /** Query parameter names from the OpenAPI spec */
   queryParams: string[];
+  queryParameters?: ApiQueryParameter[];
   /** Whether the endpoint is deprecated */
   deprecated: boolean;
   /** Resource group name derived from URL (e.g., "projects", "issues") */
@@ -88,10 +116,11 @@ export function parseEndpointQuery(query: string): ParsedEndpointQuery {
 export function findEndpointsByPath(
   path: string,
   method?: string,
+  catalog: readonly ApiEndpoint[] = schema,
 ): ApiEndpoint[] {
   const methodUpper = method?.toUpperCase();
   const normalized = normalizeApiPath(path);
-  const candidates = schema.filter((endpoint) => {
+  const candidates = catalog.filter((endpoint) => {
     if (methodUpper && endpoint.method !== methodUpper) {
       return false;
     }
@@ -129,12 +158,15 @@ export function findEndpointsByPath(
  * Matching is case-insensitive but deliberately not fuzzy: partial operation
  * names can match many unrelated endpoints and should use `--search` instead.
  */
-export function findEndpointsByIdentifier(identifier: string): ApiEndpoint[] {
+export function findEndpointsByIdentifier(
+  identifier: string,
+  catalog: readonly ApiEndpoint[] = schema,
+): ApiEndpoint[] {
   const normalized = identifier.trim().toLowerCase();
   if (!normalized) {
     return [];
   }
-  return schema.filter(
+  return catalog.filter(
     (endpoint) =>
       endpoint.fn.toLowerCase() === normalized ||
       endpoint.operationId.toLowerCase() === normalized,
@@ -153,69 +185,164 @@ export function getEndpointsByResource(resource: string): ApiEndpoint[] {
   return schema.filter((e) => e.resource.toLowerCase() === lower);
 }
 
-/**
- * Get a specific endpoint by resource + operationId substring (case-insensitive).
- * Prefers operationIds that start with the query over substring matches.
- */
-export function getEndpoint(
-  resource: string,
-  operationQuery: string,
-): ApiEndpoint | undefined {
-  const lowerResource = resource.toLowerCase();
-  const lowerQuery = operationQuery.toLowerCase();
+const CAMEL_CASE_BOUNDARY = /([a-z0-9])([A-Z])/g;
+const WORD_SEPARATOR = /[^a-z0-9]+/;
+const PARAM_PLACEHOLDER = /\{[^}]+\}/g;
 
-  const candidates = schema.filter(
-    (e) => e.resource.toLowerCase() === lowerResource,
-  );
-
-  // Priority 1: operationId starts with the query (e.g., "list" → "List an Org's Issues")
-  const startMatch = candidates.find(
-    (e) =>
-      e.operationId.toLowerCase().startsWith(lowerQuery) ||
-      e.fn.toLowerCase().startsWith(lowerQuery),
-  );
-  if (startMatch) {
-    return startMatch;
+/** Conservative English plurals for discovery only, never endpoint identity. */
+function normalizeWord(word: string): string {
+  if (word.length > 4 && word.endsWith("ies")) {
+    return `${word.slice(0, -3)}y`;
   }
+  if (
+    word.length > 3 &&
+    word.endsWith("s") &&
+    !word.endsWith("ss") &&
+    !word.endsWith("us") &&
+    !word.endsWith("is")
+  ) {
+    return word.slice(0, -1);
+  }
+  return word;
+}
 
-  // Priority 2: substring match anywhere in operationId or fn
-  return candidates.find(
-    (e) =>
-      e.operationId.toLowerCase().includes(lowerQuery) ||
-      e.fn.toLowerCase().includes(lowerQuery),
+function words(text: string): Set<string> {
+  return new Set(
+    text
+      .replace(CAMEL_CASE_BOUNDARY, "$1 $2")
+      .toLowerCase()
+      .split(WORD_SEPARATOR)
+      .filter(Boolean)
+      .map(normalizeWord),
   );
 }
 
+type SearchField = { text: string; reason: string; weight: number };
+
+function searchFields(endpoint: ApiEndpoint): SearchField[] {
+  const fields: SearchField[] = [
+    {
+      text: endpoint.resource,
+      reason: `API resource: ${endpoint.resource}`,
+      weight: 80,
+    },
+    { text: endpoint.summary ?? "", reason: "Operation summary", weight: 60 },
+    {
+      text: `${endpoint.fn} ${endpoint.operationId}`,
+      reason: "Operation name",
+      weight: 40,
+    },
+    {
+      text: endpoint.path.replace(PARAM_PLACEHOLDER, ""),
+      reason: "API path",
+      weight: 30,
+    },
+    { text: endpoint.tags?.join(" ") ?? "", reason: "API tags", weight: 20 },
+    { text: endpoint.description, reason: "Operation description", weight: 10 },
+  ];
+  for (const parameter of endpoint.queryParameters ?? []) {
+    fields.push({
+      text: parameter.name,
+      reason: `Query parameter: ${parameter.name}`,
+      weight: 20,
+    });
+    for (const value of parameter.enum ?? []) {
+      fields.push({
+        text: String(value),
+        reason: `Query parameter: ${parameter.name}=${String(value)}`,
+        weight: 100,
+      });
+    }
+    if (parameter.description) {
+      fields.push({
+        text: parameter.description,
+        reason: `Query parameter description: ${parameter.name}`,
+        weight: 10,
+      });
+    }
+  }
+  return fields.sort((a, b) => b.weight - a.weight);
+}
+
+function matchEndpoint(
+  endpoint: ApiEndpoint,
+  tokens: Set<string>,
+  references: readonly CommandApiReference[],
+): { endpoint: SchemaEndpoint; score: number } | undefined {
+  const relatedCommands = references
+    .filter((ref) => ref.fn === endpoint.fn)
+    .map(({ command, note }) => ({ command, ...(note ? { note } : {}) }));
+  const scores = new Map<string, number>();
+  const reasons: string[] = [];
+  for (const field of searchFields(endpoint)) {
+    const fieldWords = words(field.text);
+    const matches = [...tokens].filter((token) => fieldWords.has(token));
+    if (matches.length === 0) {
+      continue;
+    }
+    for (const token of matches) {
+      scores.set(token, Math.max(scores.get(token) ?? 0, field.weight));
+    }
+    reasons.push(field.reason);
+  }
+  if (relatedCommands.length === 0 && scores.size !== tokens.size) {
+    return;
+  }
+  return {
+    endpoint: { ...endpoint, match: { reasons, relatedCommands } },
+    score: [...scores.values()].reduce(
+      (sum, value) => sum + value,
+      relatedCommands.length > 0 ? 1000 : 0,
+    ),
+  };
+}
+
 /**
- * Search endpoints by query string.
- * Path-shaped input (`GET /api/0/...`, `/api/0/...`, or a Sentry API URL)
- * uses path matching. Anything else is a case-insensitive substring of
- * fn, path, description, resource, or operationId.
+ * Discover API capabilities, retaining why each candidate matched. All query
+ * words must match, unless the CLI explicitly declares a related operation.
+ * References must be scoped to this query by getCommandApiReferences; they
+ * establish a semantic match even when the API uses different vocabulary.
+ * Exact identifiers and paths keep their existing, unannotated JSON shape.
  */
-export function searchEndpoints(query: string): ApiEndpoint[] {
+export function searchEndpoints(
+  query: string,
+  catalog: readonly ApiEndpoint[] = schema,
+  references: readonly CommandApiReference[] = [],
+): SchemaEndpoint[] {
   const parsed = parseEndpointQuery(query);
   if (parsed.path) {
-    return findEndpointsByPath(parsed.path, parsed.method);
+    return findEndpointsByPath(parsed.path, parsed.method, catalog);
   }
-
-  const lower = parsed.text.toLowerCase();
-  if (!lower) {
+  const exact = findEndpointsByIdentifier(parsed.text, catalog).filter(
+    (endpoint) => !parsed.method || endpoint.method === parsed.method,
+  );
+  if (exact.length > 0) {
+    return exact;
+  }
+  const tokens = words(parsed.text);
+  if (tokens.size === 0) {
     return [];
   }
-
-  const matches = schema.filter(
-    (e) =>
-      e.fn.toLowerCase().includes(lower) ||
-      e.path.toLowerCase().includes(lower) ||
-      e.description.toLowerCase().includes(lower) ||
-      e.resource.toLowerCase().includes(lower) ||
-      e.operationId.toLowerCase().includes(lower),
-  );
-  if (!parsed.method) {
-    return matches;
+  const matches: { endpoint: SchemaEndpoint; score: number }[] = [];
+  for (const endpoint of catalog) {
+    if (parsed.method && endpoint.method !== parsed.method) {
+      continue;
+    }
+    const match = matchEndpoint(endpoint, tokens, references);
+    if (match) {
+      matches.push(match);
+    }
   }
-  const methodMatches = matches.filter((e) => e.method === parsed.method);
-  return methodMatches.length > 0 ? methodMatches : matches;
+  // A stable tie-breaker prevents catalog insertion order from choosing an API.
+  matches.sort(
+    (a, b) =>
+      Number(a.endpoint.deprecated) - Number(b.endpoint.deprecated) ||
+      b.score - a.score ||
+      a.endpoint.path.localeCompare(b.endpoint.path) ||
+      a.endpoint.method.localeCompare(b.endpoint.method) ||
+      a.endpoint.fn.localeCompare(b.endpoint.fn),
+  );
+  return matches.map((match) => match.endpoint);
 }
 
 function extractApiPath(input: string): string | undefined {

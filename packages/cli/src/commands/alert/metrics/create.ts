@@ -5,6 +5,7 @@
  */
 
 import type { SentryContext } from "../../../context.js";
+import { METRIC_ALERT_API } from "../../../lib/api/alerts.js";
 import { createMetricAlertRule } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
@@ -72,6 +73,7 @@ function resolveMetricCreateOrg(
 
 export const createCommand = buildCommand({
   docs: {
+    relatedApi: [METRIC_ALERT_API.create],
     brief: "Create a metric alert rule",
     fullDescription:
       "Create a metric alert rule (a metric monitor in the detectors API).\n\n" +

@@ -5,6 +5,7 @@
  */
 
 import type { SentryContext } from "../../../context.js";
+import { METRIC_ALERT_API } from "../../../lib/api/alerts.js";
 import {
   getMetricAlertRuleDocument,
   putMetricAlertRule,
@@ -174,6 +175,7 @@ function formatEdited(r: EditResult): string {
 
 export const editCommand = buildCommand({
   docs: {
+    relatedApi: [METRIC_ALERT_API.get, METRIC_ALERT_API.update],
     brief: "Edit a metric alert rule",
     fullDescription:
       "Update a metric alert rule. Pass at least one of --name or --status. " +

@@ -22,6 +22,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { extractApiEndpoints, type OpenApiSpec } from "./lib/api-schema.js";
 
 /** Resolve the root directory of @sentry/api by finding its main entry point. */
 function sentryApiDir(): string {
@@ -44,38 +45,6 @@ async function getOpenApiUrl(): Promise<string> {
   };
   return `https://raw.githubusercontent.com/getsentry/sentry-api-schema/${pkg.version}/openapi-derefed.json`;
 }
-
-/** Regex to extract path parameters from URL templates */
-const PATH_PARAM_PATTERN = /\{(\w+)\}/g;
-
-// Single source of truth for the ApiEndpoint type lives in src/lib/api-schema.ts.
-// Re-export so this file remains a module (required for top-level await).
-export type { ApiEndpoint } from "../src/lib/api-schema.js";
-
-import type { ApiEndpoint } from "../src/lib/api-schema.js";
-
-// ---------------------------------------------------------------------------
-// OpenAPI Types (minimal subset we need)
-// ---------------------------------------------------------------------------
-
-type OpenApiSpec = {
-  paths: Record<string, Record<string, OpenApiOperation>>;
-};
-
-type OpenApiOperation = {
-  operationId?: string;
-  description?: string;
-  deprecated?: boolean;
-  parameters?: OpenApiParameter[];
-};
-
-type OpenApiParameter = {
-  in: "path" | "query" | "header" | "cookie";
-  name: string;
-  required?: boolean;
-  description?: string;
-  schema?: { type?: string };
-};
 
 // ---------------------------------------------------------------------------
 // SDK Function Name Mapping
@@ -129,42 +98,6 @@ async function buildSdkFunctionMap(): Promise<Map<string, string>> {
 }
 
 // ---------------------------------------------------------------------------
-// Resource Derivation
-// ---------------------------------------------------------------------------
-
-/**
- * Derive the resource name from a URL template.
- * Uses the last non-parameter path segment.
- *
- * @example "/api/0/organizations/{org}/issues/" → "issues"
- * @example "/api/0/issues/{issue_id}/" → "issues"
- */
-function deriveResource(url: string): string {
-  const segments = url
-    .split("/")
-    .filter((s) => s.length > 0 && !s.startsWith("{"));
-  const meaningful = segments.filter((s) => s !== "api" && s !== "0");
-  return meaningful.at(-1) ?? "unknown";
-}
-
-/**
- * Extract path parameter names from a URL template.
- */
-function extractPathParams(url: string): string[] {
-  const params: string[] = [];
-  const pattern = new RegExp(
-    PATH_PARAM_PATTERN.source,
-    PATH_PARAM_PATTERN.flags,
-  );
-  let match = pattern.exec(url);
-  while (match !== null) {
-    params.push(match[1]);
-    match = pattern.exec(url);
-  }
-  return params;
-}
-
-// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -181,49 +114,7 @@ const spec = (await response.json()) as OpenApiSpec;
 console.log("Building SDK function name map from @sentry/api...");
 const sdkMap = await buildSdkFunctionMap();
 
-const endpoints: ApiEndpoint[] = [];
-const HTTP_METHODS = ["get", "post", "put", "delete", "patch"];
-
-for (const [urlPath, pathItem] of Object.entries(spec.paths)) {
-  for (const method of HTTP_METHODS) {
-    const operation = pathItem[method] as OpenApiOperation | undefined;
-    if (!operation) {
-      continue;
-    }
-
-    const methodUpper = method.toUpperCase();
-    const sdkKey = `${methodUpper}:${urlPath}`;
-    const fn = sdkMap.get(sdkKey) ?? "";
-
-    const queryParams = (operation.parameters ?? [])
-      .filter((p) => p.in === "query")
-      .map((p) => p.name);
-
-    endpoints.push({
-      fn,
-      method: methodUpper,
-      path: urlPath,
-      description: (operation.description ?? "").trim(),
-      pathParams: extractPathParams(urlPath),
-      queryParams,
-      deprecated:
-        operation.deprecated === true ||
-        fn.startsWith("deprecated") ||
-        (operation.operationId ?? "").toLowerCase().includes("deprecated"),
-      resource: deriveResource(urlPath),
-      operationId: operation.operationId ?? "",
-    });
-  }
-}
-
-// Sort by resource, then method for stable output
-endpoints.sort((a, b) => {
-  const resourceCmp = a.resource.localeCompare(b.resource);
-  if (resourceCmp !== 0) {
-    return resourceCmp;
-  }
-  return a.operationId.localeCompare(b.operationId);
-});
+const endpoints = extractApiEndpoints(spec, sdkMap);
 
 await mkdir(dirname(OUTPUT_PATH), { recursive: true });
 await writeFile(OUTPUT_PATH, JSON.stringify(endpoints, null, 2));
