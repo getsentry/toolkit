@@ -270,6 +270,7 @@ export const SPAN_AGGREGATE_FUNCTIONS = [
   "any",
   "min",
   "max",
+  "failure_rate",
 ] as const;
 
 export type SpanAggregateFunction = (typeof SPAN_AGGREGATE_FUNCTIONS)[number];

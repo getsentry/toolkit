@@ -33,6 +33,7 @@ import {
   OutputError,
   ResolutionError,
   SeerError,
+  USER_QUERY_SYNTAX_FIELD,
   ValidationError,
   WizardError,
 } from "../../src/lib/errors.js";
@@ -355,6 +356,25 @@ describe("classifySilenced", () => {
     ).toBe("user_input_error");
   });
 
+  test("silences a user's server-rejected --query (CLI-1CZ)", () => {
+    expect(
+      classifySilenced(
+        new ValidationError(
+          "Error parsing search query: Invalid category value of 'csp'",
+          USER_QUERY_SYNTAX_FIELD,
+        ),
+      ),
+    ).toBe("user_query_syntax");
+  });
+
+  test("does NOT silence a CLI-side ValidationError with field 'query'", () => {
+    expect(
+      classifySilenced(
+        new ValidationError('Unknown aggregate function "bogus".', "query"),
+      ),
+    ).toBeNull();
+  });
+
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(
@@ -558,6 +578,30 @@ describe("reportCliError integration", () => {
     reportCliError(error);
     return { tags, contexts };
   }
+
+  test("records a user query syntax error as a silenced metric, not an issue", () => {
+    reportCliError(
+      new ValidationError(
+        "Error parsing search query: Invalid category value of 'csp'",
+        USER_QUERY_SYNTAX_FIELD,
+      ),
+    );
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({ reason: "user_query_syntax" }),
+      }),
+    );
+  });
+
+  test("groups 'query' ValidationErrors by message prefix (CLI-1CZ)", () => {
+    const { tags } = capturedScopeTags(
+      new ValidationError('Unknown aggregate function "bogus".', "query"),
+    );
+    expect(tags["cli_error.kind"]).toBe("query: Unknown aggregate function");
+  });
 
   test("captures ContextError (no longer silenced) so its volume stays visible", () => {
     reportCliError(

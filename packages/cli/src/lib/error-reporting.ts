@@ -53,6 +53,7 @@ import {
   SeerError,
   TimeoutError,
   UpgradeError,
+  USER_QUERY_SYNTAX_FIELD,
   ValidationError,
   WizardError,
 } from "./errors.js";
@@ -74,6 +75,7 @@ type SilenceReason =
   | "process_exit"
   | "user_validation"
   | "user_input_error"
+  | "user_query_syntax"
   | "seer_unavailable_self_hosted";
 
 /**
@@ -135,6 +137,19 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   // reason (CLI-1FN).
   if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
+  }
+  // The Sentry server rejected a search query the user typed (e.g.
+  // `issue.category:csp`, `status:401`). toSearchQueryError only uses this
+  // field when the user actually supplied `--query`, so it is a user input
+  // mistake that the CLI has no way to fix. The user already sees the
+  // server's detail plus a syntax hint. Queries the CLI builds itself still
+  // come through as raw 400 ApiErrors and stay captured. Volume stays visible
+  // through the `cli.error.silenced` metric and a structured log (CLI-1CZ).
+  if (
+    error instanceof ValidationError &&
+    error.field === USER_QUERY_SYNTAX_FIELD
+  ) {
+    return "user_query_syntax";
   }
   // A ResolutionError means the user provided a value (event ID, project slug,
   // etc.) that was looked up but not found. This is pure user-input noise, not
@@ -204,6 +219,19 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
       });
     } catch {
       // Logger may not be initialized — ignore.
+    }
+  }
+
+  // Structured log for rejected user queries — keeps the server's parse
+  // detail searchable in Sentry Logs now that these are not issues.
+  if (reason === "user_query_syntax" && error instanceof Error) {
+    try {
+      Sentry.logger.info("cli.query_syntax_silenced", {
+        detail: redactCredentialText(error.message).split("\n", 1)[0] ?? "",
+      });
+    } catch (logError) {
+      // Logger may not be initialized; never block error handling.
+      void logError;
     }
   }
 }
@@ -319,7 +347,16 @@ function deriveErrorKind(error: Error): string | undefined {
   // (e.g. validateHexId throws with no `field`, so using field would
   // collapse every unfielded ValidationError into one group).
   if (error instanceof ValidationError) {
-    return error.field ?? extractMessagePrefix(error.message);
+    if (error.field === undefined) {
+      return extractMessagePrefix(error.message);
+    }
+    // "query" is shared by unrelated validators (aggregate names, empty alert
+    // queries, client-side query sanitizing). Keying on the field alone put
+    // all of them in one issue (CLI-1CZ), so add the message prefix.
+    if (error.field === "query") {
+      return `query: ${extractMessagePrefix(error.message)}`;
+    }
+    return error.field;
   }
   if (error instanceof ApiError) {
     return String(error.status);

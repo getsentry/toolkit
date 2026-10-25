@@ -855,6 +855,14 @@ export const SEARCH_QUERY_HELP =
   "Check your --query syntax (Sentry search reference: https://docs.sentry.io/concepts/search/)";
 
 /**
+ * `ValidationError.field` used when the Sentry server rejects a search query
+ * the user typed. It differs from the generic `"query"` field so error
+ * reporting can tell a user's own query mistake apart from a CLI-side query
+ * validation defect (CLI-1CZ).
+ */
+export const USER_QUERY_SYNTAX_FIELD = "query.user_syntax";
+
+/**
  * Convert a Sentry search-query parse failure into a {@link ValidationError}
  * when the user actually supplied the query; otherwise return the error
  * unchanged.
@@ -899,7 +907,7 @@ export function toSearchQueryError(
     for (const suggestion of [SEARCH_QUERY_HELP, ...extraSuggestions]) {
       lines.push(`  • ${suggestion}`);
     }
-    return new ValidationError(lines.join("\n"), "query");
+    return new ValidationError(lines.join("\n"), USER_QUERY_SYNTAX_FIELD);
   }
   return error;
 }

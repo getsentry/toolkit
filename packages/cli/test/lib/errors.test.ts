@@ -650,7 +650,7 @@ describe("toSearchQueryError", () => {
   test("converts a parse 400 to a ValidationError when the user supplied --query", () => {
     const result = toSearchQueryError(parseError(), "is:403");
     expect(result).toBeInstanceOf(ValidationError);
-    expect((result as ValidationError).field).toBe("query");
+    expect((result as ValidationError).field).toBe("query.user_syntax");
   });
 
   test("includes the server detail and a search-syntax suggestion in the message", () => {

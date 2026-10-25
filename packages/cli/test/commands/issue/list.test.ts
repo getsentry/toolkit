@@ -383,7 +383,7 @@ describe("issue list: error propagation", () => {
       expect.unreachable("Should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ValidationError);
-      expect((error as ValidationError).field).toBe("query");
+      expect((error as ValidationError).field).toBe("query.user_syntax");
       expect((error as Error).message).toContain("Error parsing search query");
     }
   });

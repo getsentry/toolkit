@@ -134,6 +134,10 @@ describe("SPAN_AGGREGATE_FUNCTIONS", () => {
     expect(SPAN_AGGREGATE_FUNCTIONS).not.toContain("spm");
   });
 
+  test("contains failure_rate (CLI-1CZ)", () => {
+    expect(SPAN_AGGREGATE_FUNCTIONS).toContain("failure_rate");
+  });
+
   test("valibot schema validates known functions", () => {
     expect(safeParse(SpanAggregateFunctionSchema, "count").success).toBe(true);
     expect(safeParse(SpanAggregateFunctionSchema, "p95").success).toBe(true);
@@ -967,6 +971,12 @@ describe("mapWidgetTypeToDataset", () => {
 });
 
 describe("validateAggregateNames", () => {
+  test("accepts failure_rate() for the spans dataset (CLI-1CZ)", () => {
+    expect(() =>
+      validateAggregateNames(["count()", "failure_rate()"], "spans"),
+    ).not.toThrow();
+  });
+
   test("accepts comma-separated tracemetrics aggregates", () => {
     expect(() =>
       validateAggregateNames(
