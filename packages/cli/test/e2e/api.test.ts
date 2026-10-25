@@ -244,6 +244,30 @@ describe("sentry api", () => {
     expect(paginationRequests).toHaveLength(0);
   });
 
+  test.each([
+    { endpoint: "api-pagination/?query=foo%23bar#anchor", query: "foo#bar" },
+    { endpoint: "api-pagination/#anchor", query: null },
+  ])(
+    "--cursor ignores URL fragments in $endpoint",
+    async ({ endpoint, query }) => {
+      await ctx.setAuthToken(TEST_TOKEN);
+      const args = ["api", endpoint, "--cursor", nextCursor, "--json"];
+
+      const preview = await ctx.run([...args, "--dry-run"]);
+      expect(preview.exitCode, preview.stderr + preview.stdout).toBe(0);
+      const url = new URL(JSON.parse(preview.stdout).url);
+      expect(url.hash).toBe("");
+      expect(url.searchParams.get("query")).toBe(query);
+      expect(url.searchParams.getAll("cursor")).toEqual([nextCursor]);
+      expect(paginationRequests).toHaveLength(0);
+
+      const result = await ctx.run(args);
+      expect(result.exitCode, result.stderr + result.stdout).toBe(0);
+      expect(paginationRequests.map((sent) => sent.href)).toEqual([url.href]);
+      expect(JSON.parse(result.stdout).body).toEqual([organizationsFixture[1]]);
+    },
+  );
+
   test("empty error bodies report the HTTP status and request", async () => {
     await ctx.setAuthToken(TEST_TOKEN);
 

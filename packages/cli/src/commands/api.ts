@@ -1214,13 +1214,17 @@ function formatApiResponseJson(data: unknown, fields?: string[]): unknown {
   };
 }
 
-/** Compose query parameters, replacing all existing cursors when explicitly set. */
+/**
+ * Compose query parameters without URL fragments, replacing all existing cursors
+ * when an explicit cursor is provided.
+ */
 function resolveRequestEndpoint(
   endpoint: string,
   params: Record<string, string | string[]> | undefined,
   cursor: string | undefined,
 ): string {
-  const composed = appendSearchParams(endpoint, params);
+  const withoutFragment = endpoint.split("#", 1)[0] ?? endpoint;
+  const composed = appendSearchParams(withoutFragment, params);
   if (cursor === undefined) {
     return composed;
   }
