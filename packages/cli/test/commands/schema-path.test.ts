@@ -6,7 +6,7 @@ import { describe, expect, test, vi } from "vitest";
 import { schemaCommand } from "../../src/commands/schema.js";
 import type { SentryContext } from "../../src/context.js";
 import { getAllEndpoints } from "../../src/lib/api-schema.js";
-import { ResolutionError } from "../../src/lib/errors.js";
+import { OutputError, ResolutionError } from "../../src/lib/errors.js";
 
 const ORG_ISSUES = "/api/0/organizations/{organization_id_or_slug}/issues/";
 const SKILL_QUERY = `GET ${ORG_ISSUES}`;
@@ -39,6 +39,7 @@ describe("sentry schema path lookup", () => {
   test.each([
     ["listOrganizationIssues"],
     ["issues", "listOrganizationIssues"],
+    [SKILL_QUERY],
     ["GET", ORG_ISSUES],
   ])("exact lookup preserves the endpoint object for %j", async (...args) => {
     const { context, stdoutWrite } = createMockContext();
@@ -130,6 +131,55 @@ describe("sentry schema path lookup", () => {
     );
   });
 
+  test.each([
+    {
+      args: ["trace", "ls"],
+      search: false,
+      fn: "listOrganizationEvents",
+      command: "sentry trace list",
+    },
+    {
+      args: ["alert", "metrics", "view"],
+      search: true,
+      fn: "getOrganizationDetector",
+      command: "sentry alert metrics view",
+    },
+  ])(
+    "HTTP filters preserve CLI discovery for $args",
+    async ({ args, search, fn, command }) => {
+      const { context, stdoutWrite } = createMockContext();
+      const func = await schemaCommand.loader();
+      await func.call(
+        context,
+        { json: true, all: false, search: search ? "GET" : undefined },
+        ...(search ? args : ["GET", ...args]),
+      );
+      expect(JSON.parse(stdoutOf(stdoutWrite))).toContainEqual(
+        expect.objectContaining({
+          fn,
+          method: "GET",
+          match: expect.objectContaining({
+            relatedCommands: expect.arrayContaining([
+              expect.objectContaining({ command }),
+            ]),
+          }),
+        }),
+      );
+
+      const incompatible = createMockContext();
+      await expect(
+        func.call(
+          incompatible.context,
+          { json: true, all: false, search: search ? "POST" : undefined },
+          ...(search ? args : ["POST", ...args]),
+        ),
+      ).rejects.toBeInstanceOf(search ? OutputError : ResolutionError);
+      expect(stdoutOf(incompatible.stdoutWrite).trim()).toBe(
+        search ? "[]" : "",
+      );
+    },
+  );
+
   test("renders the selector and related CLI command in human output", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await schemaCommand.loader();
@@ -153,26 +203,6 @@ describe("sentry schema path lookup", () => {
     expect(
       result.every((endpoint: object) => Object.keys(endpoint).join() === "fn"),
     ).toBe(true);
-  });
-
-  test("METHOD + path returns that endpoint", async () => {
-    const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
-    await func.call(context, { json: true, all: false }, SKILL_QUERY);
-
-    const parsed = JSON.parse(stdoutOf(stdoutWrite));
-    expect(parsed.fn).toBe("listOrganizationIssues");
-    expect(parsed.method).toBe("GET");
-    expect(parsed.path).toBe(ORG_ISSUES);
-  });
-
-  test("unquoted METHOD and path as two positionals also match", async () => {
-    const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
-    await func.call(context, { json: true, all: false }, "GET", ORG_ISSUES);
-
-    const parsed = JSON.parse(stdoutOf(stdoutWrite));
-    expect(parsed.fn).toBe("listOrganizationIssues");
   });
 
   test("path without METHOD lists methods on that URL", async () => {

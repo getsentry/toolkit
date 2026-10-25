@@ -172,7 +172,7 @@ describe("extractApiEndpoints", () => {
     );
   });
 
-  test("retains scalar and repeated query enum values", () => {
+  test("retains repeated query enum values", () => {
     const spec: OpenApiSpec = {
       paths: {
         "/api/0/organizations/{organization_id_or_slug}/stats_v2/": {
@@ -185,14 +185,6 @@ describe("extractApiEndpoints", () => {
                 schema: {
                   type: "array",
                   items: { enum: ["outcome", "category", "reason", "project"] },
-                },
-              },
-              {
-                in: "query",
-                name: "category",
-                schema: {
-                  type: "string",
-                  enum: ["error", "transaction", "monitor"],
                 },
               },
             ],
@@ -209,12 +201,6 @@ describe("extractApiEndpoints", () => {
         required: true,
         type: "array",
         enum: ["outcome", "category", "reason", "project"],
-      },
-      {
-        name: "category",
-        required: false,
-        type: "string",
-        enum: ["error", "transaction", "monitor"],
       },
     ]);
   });

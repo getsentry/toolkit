@@ -10,25 +10,39 @@ import endpoints from "../generated/api-schema.json";
 
 /** Searchable query parameter metadata from the pinned OpenAPI specification. */
 export type ApiQueryParameter = {
+  /** Parameter name accepted by the endpoint. */
   name: string;
+  /** Usage description from OpenAPI. */
   description?: string;
+  /** OpenAPI schema type, when declared. */
   type?: string;
+  /** Whether the request must include this parameter. */
   required: boolean;
+  /** Allowed scalar values, or item values for an array parameter. */
   enum?: (string | number | boolean | null)[];
 };
 
 /** An API used by a command, with context rather than a claim of equivalence. */
 export type ApiReference = {
+  /** Exact SDK function name identifying the generated endpoint. */
   fn: string;
+  /** Command-specific selectors or context, not a complete API recipe. */
   note?: string;
 };
 
-export type CommandApiReference = ApiReference & { command: string };
+/** An API reference attributed to its public CLI command. */
+export type CommandApiReference = ApiReference & {
+  /** Canonical command path, including the `sentry` prefix. */
+  command: string;
+};
 
 /** Discovery evidence is additive; exact lookups return plain ApiEndpoints. */
 export type SchemaEndpoint = ApiEndpoint & {
+  /** Present only for discovery results, never exact endpoint lookups. */
   match?: {
+    /** Metadata or command relationships that matched the query. */
     reasons: string[];
+    /** Commands matched by this CLI query, not every caller of the endpoint. */
     relatedCommands: { command: string; note?: string }[];
   };
 };
@@ -43,12 +57,15 @@ export type ApiEndpoint = {
   path: string;
   /** Human-readable description of the endpoint */
   description: string;
+  /** Short endpoint description from OpenAPI. */
   summary?: string;
+  /** OpenAPI categories available for discovery. */
   tags?: string[];
   /** Path parameter names extracted from the URL template */
   pathParams: string[];
   /** Query parameter names from the OpenAPI spec */
   queryParams: string[];
+  /** Searchable parameter details, alongside the compatible name-only list. */
   queryParameters?: ApiQueryParameter[];
   /** Whether the endpoint is deprecated */
   deprecated: boolean;
@@ -156,7 +173,7 @@ export function findEndpointsByPath(
  * Find endpoints by an exact SDK function name or OpenAPI operation ID.
  *
  * Matching is case-insensitive but deliberately not fuzzy: partial operation
- * names can match many unrelated endpoints and should use `--search` instead.
+ * names can match many unrelated endpoints and are handled by discovery.
  */
 export function findEndpointsByIdentifier(
   identifier: string,

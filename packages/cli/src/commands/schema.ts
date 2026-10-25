@@ -16,7 +16,6 @@
  *   sentry schema monitor*             → glob search for resources
  */
 
-import { routes } from "../app.js";
 import type { SentryContext } from "../context.js";
 import {
   type ApiEndpoint,
@@ -252,14 +251,6 @@ function noResourceMatchError(resource: string): ResolutionError {
     primaryHint,
     suggestions,
   );
-}
-
-/** Join leftover positionals so `--search GET /api/0/...` (unquoted) still parses. */
-function resolveSearchQuery(search: string, args: string[]): string {
-  if (args.length === 0) {
-    return search;
-  }
-  return [search, ...args].join(" ");
 }
 
 function queryLabel(resource: string, operation?: string): string {
@@ -540,17 +531,33 @@ export const schemaCommand = buildCommand({
       },
     },
   },
-  // Stricli requires AsyncGenerator but schema queries are synchronous (in-memory JSON)
   async *func(this: SentryContext, flags: SchemaFlags, ...args: string[]) {
-    const positionalQuery = args.join(" ");
+    const query = flags.search
+      ? [flags.search, ...args].join(" ")
+      : args.join(" ");
 
-    // --search takes priority
+    // --search takes priority over --all.
+    if (flags.all && !flags.search) {
+      return yield new CommandOutput<SchemaResult>({
+        kind: "endpoints",
+        endpoints: getAllEndpoints(),
+      });
+    }
+
+    if (!query) {
+      return yield new CommandOutput<SchemaResult>({
+        kind: "resources",
+        resources: getResourceSummaries(),
+      });
+    }
+
+    const { routes } = await import("../app.js");
+    const references = getCommandApiReferences(
+      routes as unknown as RouteMap,
+      parseEndpointQuery(query).text,
+    );
+
     if (flags.search) {
-      const query = resolveSearchQuery(flags.search, args);
-      const references = getCommandApiReferences(
-        routes as unknown as RouteMap,
-        query,
-      );
       const results = searchEndpoints(query, undefined, references);
       if (results.length === 0) {
         throw new OutputError({
@@ -564,29 +571,8 @@ export const schemaCommand = buildCommand({
       });
     }
 
-    // --all: flat endpoint list
-    if (flags.all) {
-      return yield new CommandOutput<SchemaResult>({
-        kind: "endpoints",
-        endpoints: getAllEndpoints(),
-      });
-    }
-
-    // No positional args: show resource summary
-    if (!positionalQuery) {
-      const resources = getResourceSummaries();
-      return yield new CommandOutput<SchemaResult>({
-        kind: "resources",
-        resources,
-      });
-    }
-
-    const references = getCommandApiReferences(
-      routes as unknown as RouteMap,
-      positionalQuery,
-    );
     return yield new CommandOutput(
-      resolveResourceQuery(positionalQuery, undefined, references),
+      resolveResourceQuery(query, undefined, references),
     );
   },
 });
