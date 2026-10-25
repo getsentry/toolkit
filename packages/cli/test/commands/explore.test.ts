@@ -80,6 +80,7 @@ let func: ExploreFunc;
 
 function createContext() {
   const stdoutChunks: string[] = [];
+  const stderrChunks: string[] = [];
   return {
     context: {
       stdout: {
@@ -88,14 +89,18 @@ function createContext() {
         }),
       },
       stderr: {
-        write: vi.fn((_s: string) => {
-          /* no-op */
+        write: vi.fn((s: string | Uint8Array) => {
+          stderrChunks.push(
+            typeof s === "string" ? s : new TextDecoder().decode(s),
+          );
+          return true;
         }),
       },
       cwd: "/tmp/test-explore",
       commandPrefix: ["sentry", "explore"],
     },
     getStdout: () => stdoutChunks.join(""),
+    getStderr: () => stderrChunks.join(""),
   };
 }
 
@@ -108,6 +113,42 @@ const MOCK_EVENTS_RESPONSE = {
     fields: { title: "string", "count()": "integer" },
     units: {},
   },
+};
+
+// Shape from events-timeseries responses, with anonymized values and timestamps.
+const MOCK_TIME_SERIES_RESPONSE = {
+  meta: {
+    dataset: "errors",
+    start: 1_735_689_600_000,
+    end: 1_735_689_900_000,
+  },
+  timeSeries: [
+    {
+      yAxis: "count()",
+      meta: { valueType: "integer", valueUnit: null, interval: 60_000 },
+      values: [
+        { timestamp: 1_735_689_600_000, value: 0, incomplete: false },
+        {
+          timestamp: 1_735_689_660_000,
+          value: 12,
+          incomplete: true,
+          incompleteReason: "INGESTION_PENDING",
+          sampleCount: 6,
+          sampleRate: 0.5,
+          confidence: "low",
+        },
+        {
+          timestamp: 1_735_689_720_000,
+          value: null,
+          incomplete: true,
+          incompleteReason: "NOT_ELAPSED",
+          sampleCount: 0,
+          sampleRate: null,
+          confidence: null,
+        },
+      ],
+    },
+  ],
 };
 
 const MOCK_REPLAYS_RESPONSE = [
@@ -129,6 +170,7 @@ const MOCK_REPLAYS_RESPONSE = [
 ];
 
 let queryEventsSpy: ReturnType<typeof spyOn>;
+let queryEventsTimeSeriesSpy: ReturnType<typeof spyOn>;
 let queryMetricsMetaSpy: ReturnType<typeof spyOn>;
 let listReplaysSpy: ReturnType<typeof spyOn>;
 let resolveTargetSpy: ReturnType<typeof spyOn>;
@@ -149,6 +191,8 @@ beforeEach(async () => {
     data: MOCK_EVENTS_RESPONSE,
     nextCursor: undefined,
   });
+  queryEventsTimeSeriesSpy = vi.spyOn(apiClient, "queryEventsTimeSeries");
+  queryEventsTimeSeriesSpy.mockResolvedValue(MOCK_TIME_SERIES_RESPONSE);
   queryMetricsMetaSpy = vi.spyOn(apiClient, "queryMetricsMeta");
   queryMetricsMetaSpy.mockResolvedValue(MOCK_METRICS_META);
   listReplaysSpy = vi.spyOn(apiClient, "listReplays");
@@ -175,6 +219,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   queryEventsSpy.mockRestore();
+  queryEventsTimeSeriesSpy.mockRestore();
   queryMetricsMetaSpy.mockRestore();
   listReplaysSpy.mockRestore();
   resolveTargetSpy.mockRestore();
@@ -191,6 +236,31 @@ const DEFAULT_FLAGS = {
   json: false,
   fresh: false,
 };
+
+const TIME_SERIES_FLAGS = {
+  ...DEFAULT_FLAGS,
+  limit: undefined,
+  "time-series": true,
+};
+
+async function runExploreArgs(args: string[]) {
+  const { context, getStdout, getStderr } = createContext();
+  const cliContext = {
+    ...buildContext(process).forCommand({ prefix: ["sentry", "explore"] }),
+    ...context,
+    process: {
+      ...process,
+      stderr: { ...process.stderr, write: context.stderr.write },
+      exitCode: undefined,
+    },
+  };
+  await run(
+    buildApplication(exploreCommand, { name: "explore" }),
+    args,
+    cliContext,
+  );
+  return { getStdout, getStderr, exitCode: cliContext.process.exitCode };
+}
 
 const parseExploreDataset = (
   exploreCommand.parameters.flags!.dataset as {
@@ -615,6 +685,278 @@ describe("sentry explore", () => {
           fields: ["id", "trace_ids"],
         }),
       );
+    });
+  });
+
+  describe("time series", () => {
+    test("parses --time-series and chooses a usable interval for a five-minute window", async () => {
+      const result = await runExploreArgs([
+        "test-org/",
+        "--time-series",
+        "--period",
+        "5m",
+        "--json",
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          fields: ["count()"],
+          dataset: "errors",
+          statsPeriod: "5m",
+          interval: "1m",
+        }),
+      );
+      expect(JSON.parse(result.getStdout()).timeSeries).toEqual(
+        MOCK_TIME_SERIES_RESPONSE.timeSeries,
+      );
+      expect(queryEventsSpy).not.toHaveBeenCalled();
+      expect(resolveCursorSpy).not.toHaveBeenCalled();
+      expect(advancePaginationStateSpy).not.toHaveBeenCalled();
+      expect(hasPreviousPageSpy).not.toHaveBeenCalled();
+    });
+
+    test("parses explicit intervals and repeated aggregates while preserving target and environment filters", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "web" });
+
+      const result = await runExploreArgs([
+        "test-org/web",
+        "--time-series",
+        "--interval",
+        "15m",
+        "--dataset",
+        "spans",
+        "--period",
+        "7d",
+        "-F",
+        "count()",
+        "-F",
+        "p95(span.duration)",
+        "--environment",
+        "production,canary",
+        "--query",
+        "span.op:http.server",
+        "--json",
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          fields: ["count()", "p95(span.duration)"],
+          dataset: "spans",
+          query:
+            "project:web environment:[production,canary] span.op:http.server",
+          interval: "15m",
+          statsPeriod: "7d",
+        }),
+      );
+    });
+
+    test("passes an absolute time window without a relative period", async () => {
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...TIME_SERIES_FLAGS,
+          period: parsePeriod("2025-01-01T00:00:00Z..2025-01-01T01:00:00Z"),
+          interval: "15m",
+        },
+        "test-org/",
+      );
+
+      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          start: "2025-01-01T00:00:00.000Z",
+          end: "2025-01-01T01:00:00.000Z",
+          interval: "15m",
+        }),
+      );
+      expect(
+        queryEventsTimeSeriesSpy.mock.calls[0]?.[1].statsPeriod,
+      ).toBeUndefined();
+    });
+
+    test("keeps legacy transaction filtering in temporal mode", async () => {
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...TIME_SERIES_FLAGS,
+          dataset: "transactions",
+          query: "span.op:http.server",
+          field: ["p95(span.duration)"],
+        },
+        "test-org/",
+      );
+
+      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          fields: ["p95(span.duration)"],
+          dataset: "spans",
+          query: "span.op:http.server is_transaction:true",
+        }),
+      );
+    });
+
+    test("resolves --metric with the requested aggregation and time window", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "web" });
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...TIME_SERIES_FLAGS,
+          metric: "cache.hit_rate",
+          agg: "avg",
+          period: parsePeriod("7d"),
+        },
+        "test-org/web",
+      );
+
+      expect(queryMetricsMetaSpy).toHaveBeenCalledWith("test-org", {
+        statsPeriod: "7d",
+        project: "web",
+      });
+      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          fields: ["avg(value,cache.hit_rate,distribution,none)"],
+          dataset: "tracemetrics",
+          query: "project:web",
+          statsPeriod: "7d",
+        }),
+      );
+    });
+
+    test("accepts raw metric aggregates without metadata discovery", async () => {
+      const { context } = createContext();
+      const aggregate = "sum(value,llm.token_usage,distribution,none)";
+
+      await func.call(
+        context,
+        {
+          ...TIME_SERIES_FLAGS,
+          dataset: "tracemetrics",
+          field: [aggregate],
+        },
+        "test-org/",
+      );
+
+      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          fields: [aggregate],
+          dataset: "tracemetrics",
+        }),
+      );
+      expect(queryMetricsMetaSpy).not.toHaveBeenCalled();
+    });
+
+    test("preserves zero, null, string values and bucket metadata in the JSON envelope", async () => {
+      const response = {
+        ...MOCK_TIME_SERIES_RESPONSE,
+        timeSeries: [
+          ...MOCK_TIME_SERIES_RESPONSE.timeSeries,
+          {
+            yAxis: "latest_event()",
+            meta: { valueType: "string", valueUnit: null, interval: 60_000 },
+            values: [
+              {
+                timestamp: 1_735_689_600_000,
+                value: "00123",
+                incomplete: false,
+              },
+            ],
+          },
+        ],
+      };
+      queryEventsTimeSeriesSpy.mockResolvedValue(response);
+      const { context, getStdout } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...TIME_SERIES_FLAGS,
+          field: ["count()", "latest_event()"],
+          json: true,
+        },
+        "test-org/",
+      );
+
+      expect(JSON.parse(getStdout())).toEqual({
+        ...response,
+        dataset: "errors",
+      });
+    });
+
+    test("renders human-readable series without pagination hints", async () => {
+      const { context, getStdout } = createContext();
+
+      await func.call(context, TIME_SERIES_FLAGS, "test-org/");
+
+      expect(getStdout()).toContain("count()");
+      expect(getStdout()).toContain("test-org");
+      expect(getStdout()).not.toContain("Next:");
+      expect(getStdout()).not.toContain("Showing 3 results");
+    });
+
+    test.each([
+      { name: "interval without temporal mode", args: ["--interval", "15m"] },
+      {
+        name: "non-aggregate fields",
+        args: ["--time-series", "-F", "project", "-F", "count()"],
+      },
+      { name: "replays", args: ["--time-series", "--dataset", "replays"] },
+      { name: "cursor", args: ["--time-series", "--cursor", "next"] },
+      { name: "sort", args: ["--time-series", "--sort", "-count()"] },
+      { name: "explicit limit", args: ["--time-series", "--limit", "25"] },
+      {
+        name: "invalid interval",
+        args: ["--time-series", "--interval", "bad"],
+      },
+      {
+        name: "metrics without an aggregate",
+        args: ["--time-series", "--dataset", "metrics"],
+      },
+      {
+        name: "metric grouping fields",
+        args: ["--time-series", "--metric", "llm.token_usage", "-F", "project"],
+      },
+    ])("rejects $name before querying the API", async ({ args }) => {
+      const result = await runExploreArgs(["test-org/", ...args]);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.getStderr()).not.toBe("");
+      expect(queryEventsTimeSeriesSpy).not.toHaveBeenCalled();
+      expect(queryEventsSpy).not.toHaveBeenCalled();
+      expect(queryMetricsMetaSpy).not.toHaveBeenCalled();
+      expect(listReplaysSpy).not.toHaveBeenCalled();
+    });
+
+    test("keeps the default tabular path and row limit when temporal mode is omitted", async () => {
+      const result = await runExploreArgs(["test-org/", "--json"]);
+
+      expect(result.exitCode).toBe(0);
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          fields: ["title", "count()"],
+          limit: 25,
+        }),
+      );
+      expect(queryEventsTimeSeriesSpy).not.toHaveBeenCalled();
+      expect(JSON.parse(result.getStdout())).toEqual({
+        ...MOCK_EVENTS_RESPONSE,
+        dataset: "errors",
+        hasMore: false,
+        hasPrev: false,
+      });
     });
   });
 

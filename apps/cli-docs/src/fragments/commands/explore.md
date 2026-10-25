@@ -1,5 +1,28 @@
 
 
+## Time series
+
+Use `--time-series` to see how an aggregate changes over time. The target,
+`--query`, `--environment`, and `--period` filters work as they do for tabular
+queries. Without `--field`, temporal queries count matching events in each time
+bucket. For performance analysis, select aggregates such as `p95(span.duration)`;
+repeat `--field` to request more than one series.
+
+The CLI chooses a bucket interval from the requested time range. Set `--interval`
+to choose an explicit interval, such as `15m`. This flag requires `--time-series`.
+
+Temporal queries support errors, spans, logs, and metrics. Metrics require
+`--metric` or an explicit aggregate in the raw tracemetrics format described
+below. Grouping columns, replays, `--sort`, `--limit`, and `--cursor` are not
+supported in temporal mode. Use a tabular query to break down a series by a field
+or inspect individual events.
+
+JSON output includes `timeSeries`, `meta`, and `dataset`. Each series retains its
+bucket timestamps, values, and available sampling or completeness metadata.
+Null values remain null, and incomplete buckets remain marked as incomplete;
+recent buckets may still be waiting for ingestion or for the interval to end.
+Temporal output has no pagination cursor.
+
 ## Metrics
 
 Use `--metric` (`-m`) to query metrics by name. The CLI auto-resolves the metric's type and unit.
