@@ -5,7 +5,8 @@ builds bundle this private workspace package into their artifacts.
 
 The shared code validates and formats upstream bearer tokens, assembles Sentry
 API URLs, constructs OAuth device-flow form bodies, classifies RFC 8628 polling
-responses, advances retry intervals, recognizes Sentry hostnames and
+responses, advances retry intervals, decides when a Sentry API request may
+be retried and how long to wait (`api-retry`), recognizes Sentry hostnames and
 credential-safe SaaS HTTPS origins, encodes API path identifiers, parses Events
 field expressions the way the Sentry frontend does, parses search queries with
 the Sentry frontend grammar, resolves Events endpoint sorts so the sort column

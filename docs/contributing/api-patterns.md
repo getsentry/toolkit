@@ -73,7 +73,7 @@ fail to resolve for legacy mixed-case project slugs; keep them for display.
 Organization discovery uses `/api/0/organizations/`; a limit over 100 follows
 bounded pages through Sentry's Link cursors. Organization, team, and project
 lists use `@sentry/api` operations to build GET paths and queries. The MCP
-client still owns the request transport, token handling, GET retries, error
+client still owns the request transport, token handling, retries, error
 types, and Zod response validation. Public SaaS hosts use `sentry.io` to list
 organizations across regions. Single-tenant hosts under `*.my.sentry.io` and
 self-hosted instances keep their configured host for this request.
@@ -252,18 +252,26 @@ See error patterns in [common-patterns.md](common-patterns.md#error-handling).
 
 ### Automatic Retries
 
-`SentryApiService.request()` transparently retries transient upstream gateway
-failures (`502`/`503`/`504`) using exponential backoff. Retries are:
+`SentryApiService.request()` transparently retries rate limits (`429`) and
+transient upstream gateway failures (`502`/`503`/`504`), using the shared
+policy in `@sentry/toolkit-core/api-retry`. Retries are:
 
-- **GET-only** — non-idempotent methods (`POST`/`PUT`/`DELETE`) are never
-  retried, so an automatic retry can never replay a mutation.
-- **Gateway-only** — gated on `ApiServerError.isGatewayError()`. Persistent
-  `500`s, `4xx` client errors, and network/configuration errors fail fast.
+- **GET and HEAD only** — writes (`POST`/`PUT`/`DELETE`) are never retried, so
+  an automatic retry can never replay a mutation.
+- **Rate-limit aware** — a `429` waits for its `Retry-After` header, or for
+  Sentry's `X-Sentry-Rate-Limit-Reset`. Concurrency-limit `429`s and gateway
+  errors use jittered exponential backoff.
+- **Capped** — at most 2 retries, 2 seconds per wait, and 3 seconds in total.
+  A longer reset fails at once with an `ApiRateLimitError` whose
+  `retryAfterMs` and user message say when to retry.
+- **Abortable** — aborting the request's `signal` ends the wait.
+- **Status-limited** — persistent `500`s, other `4xx` errors, and
+  network/configuration errors fail fast.
 - **Bypassed by `allowStatuses`** — a status the caller opts into is returned
   as-is from `requestOnce`, never retried.
 
 Callers and tools need no changes: a retried request either resolves normally or
-throws the same `ApiServerError` it would have thrown without retries.
+throws the same error it would have thrown without retries.
 
 ## Best Practices
 

@@ -195,18 +195,27 @@ export class ApiAuthenticationError extends ApiClientError {
 
 /**
  * Rate limit error (429).
- * Includes retry-after information when available.
+ * `retryAfterMs` comes from the response's `Retry-After` or
+ * `X-Sentry-Rate-Limit-Reset` header, when it has one.
  */
 export class ApiRateLimitError extends ApiClientError {
   constructor(
     message: string,
     detail?: string,
     responseBody?: unknown,
-    public readonly retryAfter?: number,
+    public readonly retryAfterMs?: number,
   ) {
     super(message, 429, detail, responseBody);
     this.name = "ApiRateLimitError";
     Object.setPrototypeOf(this, ApiRateLimitError.prototype);
+  }
+
+  override toUserMessage(): string {
+    if (this.retryAfterMs === undefined) {
+      return `${super.toUserMessage()}. Wait a few seconds before retrying, and make fewer requests in parallel.`;
+    }
+    const seconds = Math.max(1, Math.ceil(this.retryAfterMs / 1000));
+    return `${super.toUserMessage()}. Retry in ${seconds} second${seconds === 1 ? "" : "s"}.`;
   }
 }
 
@@ -251,6 +260,7 @@ export function createApiError(
   status: number,
   detail?: string,
   responseBody?: unknown,
+  retryAfterMs?: number,
 ): ApiError {
   // Apply message improvements for known error patterns
   let improvedMessage = message;
@@ -299,18 +309,8 @@ export function createApiError(
       );
     }
 
-    case 429: {
-      // Try to extract retry-after header if available
-      let retryAfter: number | undefined;
-      if (responseBody && typeof responseBody === "object") {
-        if ("retry_after" in responseBody) {
-          retryAfter = Number(responseBody.retry_after);
-        } else if ("retryAfter" in responseBody) {
-          retryAfter = Number(responseBody.retryAfter);
-        }
-      }
-      return new ApiRateLimitError(message, detail, responseBody, retryAfter);
-    }
+    case 429:
+      return new ApiRateLimitError(message, detail, responseBody, retryAfterMs);
 
     default:
       // Generic categorization for other status codes
