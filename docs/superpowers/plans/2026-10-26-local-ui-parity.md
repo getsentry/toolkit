@@ -64,3 +64,7 @@
 - Final review found five issues; all were fixed with red/green regressions. Scoped re-review is clean.
 - Browser QA verified query readability, profile visualization/keyboard controls, AI conversation/tool content and binary image decoding.
 - Decisions: reuse existing React/dependencies/layout; use explicit VS Code protocol links for absolute local source paths; retain original envelope JSON; exclude MCP/Electron as requested.
+
+- CI follow-up: Windows checkout converted byte-counted fixtures to CRLF. Added scoped Git attributes and a real core.autocrlf checkout regression (red: 2,746 vs 2,743 bytes; green: identical bytes). Linux/macOS feature-commit CI passed.
+- Completed origin-only span-v2 AI classification so route classification and inspection agree when content is absent. Regression observed red before fix.
+- Final viewer validation: 308 tests pass across 37 files; typecheck and root lint pass. Full UTC gate again has only the three previously approved unrelated macOS/cache failures (11,399 CLI tests pass). CLI source/cache remain unchanged.

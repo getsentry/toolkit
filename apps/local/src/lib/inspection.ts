@@ -46,11 +46,16 @@ export function isAiPayload(payload: unknown): boolean {
   const p = record(payload),
     data = spanData(p);
   return (
-    /^(?:gen_ai|ai|llm)(?:[._]|$)/i.test(
-      text(p.op) ??
-        text(record(record(p.contexts).trace).op) ??
-        text(data["sentry.op"]) ??
-        "",
+    [
+      p.type,
+      p.op,
+      record(record(p.contexts).trace).op,
+      data["sentry.op"],
+      data["sentry.origin"],
+    ].some(
+      (value) =>
+        typeof value === "string" &&
+        /(?:^|[.\s:_-])(?:ai|gen_ai|llm)(?:$|[.\s:_-])/i.test(value),
     ) ||
     Object.keys(data).some((key) => /^(?:gen_ai|vercel\.ai|ai|llm)\./.test(key))
   );

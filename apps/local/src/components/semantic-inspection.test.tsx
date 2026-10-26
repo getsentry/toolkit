@@ -240,3 +240,36 @@ test("legacy user reports associate by event_id even when the report arrives fir
   );
   expect(onSelect).toHaveBeenCalledWith(error);
 });
+
+test("AI origin metadata remains visible when the SDK did not capture content", () => {
+  const [span] = decodeEnvelope(
+    JSON.stringify([
+      {},
+      [
+        [
+          { type: "span" },
+          {
+            version: 2,
+            items: [
+              {
+                trace_id: "trace",
+                span_id: "origin-only",
+                start_timestamp: 1,
+                end_timestamp: 2,
+                attributes: {
+                  "sentry.origin": { type: "string", value: "auto.ai.vercel" },
+                },
+              },
+            ],
+          },
+        ],
+      ],
+    ]),
+    "origin",
+  );
+  expect(aiItems([span!])).toHaveLength(1);
+  render(<EventDetail item={span!} />);
+  expect(
+    screen.getByText(/Prompt and response content were not captured/),
+  ).toBeDefined();
+});
