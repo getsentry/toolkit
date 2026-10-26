@@ -26,13 +26,14 @@
 
 ## 5. Shared transport
 
-- [ ] 5.1 Move auth headers, 401 refresh, timeouts, GET retry/backoff, redirect validation, and region routing from `cli/src/lib/sentry-client.ts` into `toolkit-core/src/api-transport.ts`, with an injected `CredentialProvider`, `CacheStore`, logger, and span hook. Verify with transport unit tests.
+- [ ] 5.0 Add a pure, Workers-safe retry policy in `toolkit-core/src/api-retry.ts`: retryable statuses; retryable methods (GET, HEAD, and OPTIONS by default, plus an explicit per-request `idempotent` opt-in, such as content-addressed chunk uploads); the delay from `Retry-After` (seconds or HTTP-date) or, on a 429, `X-Sentry-Rate-Limit-Reset`, with a clock-skew guard against the response `Date` and a per-wait and total-wait cap; a jittered exponential fallback, used for concurrency-limit 429s too; and an abortable sleep. The 401 refresh is not part of this policy and stays allowed for any method. MCP `request()` adopts it in the same PR, retrying rate-limited GETs and filling `ApiRateLimitError.retryAfter` from the headers. Verify with toolkit-core unit tests for each `sentry-api-transport` retry scenario and MCP client tests. The CLI's interim local fix switches to this module in a follow-up PR.
+- [ ] 5.1 Move auth headers, 401 refresh (any method), timeouts, idempotent-method retry and backoff through `api-retry`, redirect validation, and region routing from `cli/src/lib/sentry-client.ts` into `toolkit-core/src/api-transport.ts`, with an injected `CredentialProvider`, `CacheStore`, logger, and span hook. The CLI used to retry every method, POSTs included; that was a bug, fixed separately before this move. Verify with transport unit tests.
 - [ ] 5.2 Switch the CLI to the shared transport, wiring in the database credentials, the filesystem store, and telemetry spans. Verify the CLI unit and e2e tests pass.
 - [ ] 5.3 Add a request-scoped fresh-read bypass to the transport, and verify a test that a bypassed request skips cache reads and replaces the entry.
 
 ## 6. MCP transport injection
 
-- [ ] 6.1 Add `fetch` to `McpServerOptions`, and route all `SentryApiService` requests and `@sentry/api` calls through it. Verify an `mcp-server` test where a supplied fetch receives every tool request.
+- [ ] 6.1 Add `fetch` to `McpServerOptions`, and route all `SentryApiService` requests and `@sentry/api` calls through it. `SentryApiService` drops its own retry when it moves onto the transport, so retries do not stack. Verify an `mcp-server` test where a supplied fetch receives every tool request, and a test where a rate-limited GET reaches the API at most `maxRetries + 1` times.
 - [ ] 6.2 Pass the CLI's authenticated fetch from `cli/src/lib/mcp.ts`. Verify a CLI test where `sentry mcp` tool calls hit the shared cache, and `/mcp-qa` stdio QA passes.
 - [ ] 6.3 Add the `fresh` input to read tools through the shared schema helpers. Regenerate definitions, then verify `pnpm run measure-tokens` and the tool tests pass.
 

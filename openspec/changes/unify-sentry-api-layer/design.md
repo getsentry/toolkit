@@ -132,10 +132,13 @@ New `toolkit-core` modules:
   derivation, invalidation prefixes (from `cli/src/lib/cache-keys.ts`), and
   freshness through `http-cache-semantics`. Storage sits behind a
   `CacheStore` interface.
+- `api-retry`: the retry policy. Pure logic with no Node APIs, so Workers
+  can use it. It lands first, ahead of the transport, so the MCP can fix
+  its 429 handling now.
 - `api-transport`: a fetch wrapper that takes a `CredentialProvider` (get the
   token, refresh on 401), an optional `CacheStore`, a logger, a span hook,
-  and retry/timeout options. Redirect validation and region routing move
-  with it.
+  and retry/timeout options. Retries go through `api-retry`. Redirect
+  validation and region routing move with it.
 
 Product code keeps credential storage, error classes, user-facing
 messages, and telemetry setup.
@@ -143,6 +146,37 @@ messages, and telemetry setup.
 _Alternative: a new package._ Rejected for now. `toolkit-core` is already
 the bundled-private shared package, and a split can come later when moving
 code into `@sentry/api`.
+
+### Retries are for idempotent requests and honor rate-limit headers
+
+Neither product handles 429s well today. The CLI retries every method on
+408, 429, and 5xx, POSTs included, and ignores rate-limit headers. The MCP
+retries only GETs on 502, 503, and 504, so a 429 fails at once. In 7 days
+the hosted MCP saw about 32,600 429s from the Sentry API, nearly all on GETs
+("Limit is 40 requests in 1 seconds").
+
+Sentry's 429 body is only `{"detail": ...}`. The timing is in headers:
+`X-Sentry-Rate-Limit-Reset` is the Unix second the next window starts, with
+`-Remaining`, `-Limit`, `-ConcurrentRemaining`, and `-ConcurrentLimit`
+alongside (`src/sentry/middleware/ratelimit.py`). Sentry sends no
+`Retry-After`, but a proxy in front of it can.
+
+`api-retry` decides whether and how long to wait:
+
+- Only GET, HEAD, and OPTIONS are retried, unless a request opts in with
+  `idempotent: true`. A replayed write can duplicate a comment or an alert.
+- `Retry-After` wins when present. Otherwise a 429 waits until
+  `X-Sentry-Rate-Limit-Reset`, measured against the response `Date` when the
+  local clock disagrees with it by more than a couple of seconds.
+- A concurrency-limit 429 (`ConcurrentRemaining: 0`) and a response with no
+  usable header fall back to jittered exponential backoff.
+- Each product sets a per-wait and a total-wait cap. When the header asks for
+  longer, the request fails at once with a rate-limit error that says when
+  to retry, rather than holding a Worker request open.
+- Sleeps take an `AbortSignal`.
+
+The 401 refresh is not a retry in this sense. It replays any method once,
+because the request never reached the endpoint.
 
 ### `CacheStore` is three byte-based operations
 
@@ -384,8 +418,8 @@ bumps move both products together.
 
 ## Migration Plan
 
-1. Land the catalog alignment (#1672) and the CLI cache tier correction,
-   each as its own PR.
+1. Land the catalog alignment (#1672), the CLI cache tier correction, and
+   `api-retry` with the MCP 429 fix, each as its own PR.
 2. Land the pure `toolkit-core` modules (pagination, cache policy, codecs),
    with the CLI switched over and no behavior change.
 3. Land `api-transport` and the CLI switch-over.

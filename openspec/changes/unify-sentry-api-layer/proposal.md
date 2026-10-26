@@ -33,9 +33,14 @@ The shared layer must therefore sit below both products, on `@sentry/api`.
   covers TTL tiers, identity-scoped keys, invalidation after mutations, and
   bypass. Storage becomes a pluggable backend with a byte budget and
   compression.
+- Add a shared retry policy to `@sentry/toolkit-core`: only idempotent
+  requests are retried, and 429s wait for Sentry's rate-limit reset header
+  within a cap. The MCP adopts it first, so rate-limited GETs retry instead of
+  failing.
 - Move the CLI's request transport into `@sentry/toolkit-core`, with
-  credentials, storage, and telemetry injected by the host. It covers retries,
-  timeouts, redirect validation, and region routing.
+  credentials, storage, and telemetry injected by the host. It covers retries
+  through the shared policy, timeouts, redirect validation, and region
+  routing.
 - `runMcpServer()` accepts a host-supplied transport. `sentry mcp` passes the
   CLI's authenticated transport, so local MCP sessions reuse the CLI login,
   refresh, and on-disk cache.
@@ -68,6 +73,8 @@ Out of scope, tracked separately:
 - `sentry-api-response-cache`: Identity-scoped caching of Sentry API GET
   responses. Covers TTL tiers, bypass, invalidation after mutations, and
   bounded, compressed storage.
+- `sentry-api-transport`: When a Sentry API request is retried, how long it
+  waits, and what a caller sees when it gives up.
 - `mcp-host-transport`: How an MCP host supplies credentials and the Sentry
   API transport, including `sentry mcp` reusing the CLI's login and cache.
 
@@ -77,8 +84,8 @@ None.
 
 ## Impact
 
-- `packages/toolkit-core`: new `pagination`, `response-cache`, and transport
-  modules, with tests.
+- `packages/toolkit-core`: new `pagination`, `response-cache`, retry, and
+  transport modules, with tests.
 - `packages/cli/src/lib/api/infrastructure.ts`,
   `packages/cli/src/lib/response-cache.ts`,
   `packages/cli/src/lib/sentry-client.ts`: switch to the shared modules.
