@@ -18,6 +18,7 @@ import { listCommand as teamListCommand } from "../../src/commands/team/list.js"
 import { listCommand as traceListCommand } from "../../src/commands/trace/list.js";
 import { buildCommandInfo } from "../../src/lib/introspect.js";
 import {
+  NAMED_LIST_TARGET_BRIEF,
   ORG_ALL_TARGET_BRIEF,
   PROJECT_TARGET_BRIEF,
 } from "../../src/lib/list-command.js";
@@ -115,7 +116,7 @@ describe("command metadata in generated references", () => {
       ORG_ALL_TARGET_BRIEF,
     );
     expect(brief(teamListCommand, "sentry team list")).toBe(
-      ORG_ALL_TARGET_BRIEF,
+      NAMED_LIST_TARGET_BRIEF,
     );
     expect(brief(traceListCommand, "sentry trace list")).toBe(
       PROJECT_TARGET_BRIEF,
