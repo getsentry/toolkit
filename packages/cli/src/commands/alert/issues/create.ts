@@ -135,7 +135,7 @@ export const createCommand = buildCommand({
         kind: "parsed",
         parse: numberParser,
         default: 30,
-        brief: "Frequency in minutes (default: 30)",
+        brief: "Frequency in minutes",
       },
       environment: {
         kind: "parsed",

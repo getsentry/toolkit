@@ -33,6 +33,7 @@ For monorepos or when DSN detection picks up the wrong project, use a [`.sentryc
 
 The CLI scans source files for DSN URLs (the `https://<key>@<host>/<project-id>` pattern, so self-hosted DSNs match too) using a universal regex — no language-specific parsing is needed. Any text file with a recognized extension is scanned, including:
 
+<!-- GENERATED:START dsn-extensions -->
 | Language Family | File Extensions |
 |----------------|-----------------|
 | JavaScript/TypeScript | `.js`, `.ts`, `.jsx`, `.tsx`, `.mjs`, `.cjs`, `.astro`, `.vue`, `.svelte` |
@@ -48,6 +49,7 @@ The CLI scans source files for DSN URLs (the `https://<key>@<host>/<project-id>`
 | Elixir/Erlang | `.ex`, `.exs`, `.erl` |
 | Lua | `.lua` |
 | Config files | `.json`, `.yaml`, `.yml`, `.toml`, `.xml`, `.properties`, `.config` |
+<!-- GENERATED:END dsn-extensions -->
 
 ### Caching
 
@@ -88,19 +90,23 @@ When you run `sentry issue list`, the CLI:
 
 Aliases are the shortest unique prefix of each project slug. For example:
 
+<!-- GENERATED:START alias-unique-prefix -->
 | Project Slug | Alias |
-|--------------|-------|
+|---|---|
 | `frontend` | `fr` |
 | `functions` | `fu` |
 | `backend` | `b` |
+<!-- GENERATED:END alias-unique-prefix -->
 
 For projects with a common prefix (like `spotlight-electron`, `spotlight-website`), the prefix is stripped first:
 
+<!-- GENERATED:START alias-common-prefix -->
 | Project Slug | Alias |
-|--------------|-------|
+|---|---|
 | `spotlight-electron` | `e` |
 | `spotlight-website` | `w` |
 | `spotlight-backend` | `b` |
+<!-- GENERATED:END alias-common-prefix -->
 
 ### Using Alias-Suffix Format
 
@@ -127,10 +133,12 @@ sentry issue plan b-XYZ
 
 If you work with multiple organizations that have projects with the same slug, the CLI prefixes those aliases with the shortest unique org prefix:
 
+<!-- GENERATED:START alias-cross-org -->
 | Org/Project | Alias |
-|-------------|-------|
+|---|---|
 | `acme/api` | `a/a` |
 | `globex/api` | `g/a` |
+<!-- GENERATED:END alias-cross-org -->
 
 ## Issue ID Formats
 

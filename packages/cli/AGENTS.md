@@ -518,6 +518,9 @@ All command docs and skill files are generated via `pnpm run generate:docs` (whi
 - `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. For a real workflow, sample output, or cross-command guide, put `<!-- allow-commands: <reason> -->` on the line directly above the block.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.
+- Don't restate a value flag's `default` in its `brief`; help and docs already show it (`test/lib/flag-briefs.test.ts`).
+- `pnpm run check:doc-examples` also checks string-literal `sdk.run(…)` examples in the docs, `README.md`, and `src/index.ts`.
+- Lists that mirror code (scanned DSN extensions, alias examples, destructive commands, detected agents) are generated sections in `script/generate-docs-sections.ts`; add new mirrors there instead of hand-writing them.
 
 ### Valibot Schemas for Validation
 

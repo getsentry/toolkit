@@ -16,6 +16,8 @@
  *   - commands/index.md fragment, CONTRIBUTING.md: target syntax (from the
  *     `@form` lines in grammar/org-project-target.pegjs)
  *   - plugins/README.md: skill file layout (paths checked on disk)
+ *   - features.md: DSN-scanned extensions (from TEXT_EXTENSIONS) and project
+ *     alias examples (computed by buildOrgAwareAliases)
  *
  * Unlike generate-command-docs.ts (which produces gitignored files from scratch),
  * this script edits committed files in-place between marker pairs.
@@ -51,6 +53,8 @@ const { extractAllRoutes } = await import("../src/lib/introspect.js");
 const { OAUTH_SCOPES } = await import("../src/lib/oauth.js");
 const { ENV_VAR_REGISTRY } = await import("../src/lib/env-registry.js");
 const { AGENT_DISPLAY_NAMES } = await import("../src/lib/detect-agent.js");
+const { TEXT_EXTENSIONS } = await import("../src/lib/scan/constants.js");
+const { buildOrgAwareAliases } = await import("../src/lib/alias.js");
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
 const TARGET_GRAMMAR = "grammar/org-project-target.pegjs";
 const targetGrammar = await readFile(TARGET_GRAMMAR, "utf-8");
@@ -732,6 +736,91 @@ function generateSkillLayout(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Section: DSN-Scanned Extensions (features.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Language family labels for {@link TEXT_EXTENSIONS}. Generation fails when an
+ * extension is scanned but unlisted here, or listed here but not scanned, so
+ * the features page can't drift from the scanner.
+ */
+const DSN_EXTENSION_FAMILIES: [string, string[]][] = [
+  [
+    "JavaScript/TypeScript",
+    [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".astro", ".vue", ".svelte"],
+  ],
+  ["Python", [".py"]],
+  ["Go", [".go"]],
+  [
+    "JVM (Java, Kotlin, Scala, Groovy)",
+    [".java", ".kt", ".kts", ".scala", ".groovy"],
+  ],
+  [".NET (C#, F#, VB)", [".cs", ".fs", ".vb"]],
+  ["Ruby", [".rb", ".erb"]],
+  ["PHP", [".php"]],
+  ["Swift/Objective-C", [".swift", ".m", ".mm"]],
+  ["Rust", [".rs"]],
+  ["Dart/Flutter", [".dart"]],
+  ["Elixir/Erlang", [".ex", ".exs", ".erl"]],
+  ["Lua", [".lua"]],
+  [
+    "Config files",
+    [".json", ".yaml", ".yml", ".toml", ".xml", ".properties", ".config"],
+  ],
+];
+
+/** Generate the scanned-extension table, checked against TEXT_EXTENSIONS. */
+function generateDsnExtensions(): string {
+  const listed = DSN_EXTENSION_FAMILIES.flatMap(([, exts]) => exts);
+  const unlisted = [...TEXT_EXTENSIONS].filter((ext) => !listed.includes(ext));
+  const unscanned = listed.filter((ext) => !TEXT_EXTENSIONS.has(ext));
+  if (unlisted.length > 0 || unscanned.length > 0) {
+    throw new Error(
+      "DSN_EXTENSION_FAMILIES is out of sync with TEXT_EXTENSIONS: " +
+        `unlisted ${unlisted.join(", ") || "none"}; ` +
+        `not scanned ${unscanned.join(", ") || "none"}`,
+    );
+  }
+  const rows = DSN_EXTENSION_FAMILIES.map(
+    ([family, exts]) =>
+      `| ${family} | ${exts.map((ext) => `\`${ext}\``).join(", ")} |`,
+  );
+  return [
+    "| Language Family | File Extensions |",
+    "|----------------|-----------------|",
+    ...rows,
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Section: Project Alias Examples (features.md)
+// ---------------------------------------------------------------------------
+
+type AliasPair = { org: string; project: string };
+
+/** Render the aliases the CLI generates for `pairs` as a Markdown table. */
+function generateAliasTable(
+  header: string,
+  pairs: AliasPair[],
+  label: (pair: AliasPair) => string,
+): string {
+  const { aliasMap } = buildOrgAwareAliases(pairs);
+  const rows = pairs.map((pair) => {
+    const alias = aliasMap.get(`${pair.org}/${pair.project}`);
+    if (!alias) {
+      throw new Error(`No alias generated for ${pair.org}/${pair.project}`);
+    }
+    return `| \`${label(pair)}\` | \`${alias}\` |`;
+  });
+  return [`| ${header} | Alias |`, "|---|---|", ...rows].join("\n");
+}
+
+const projectSlug = (pair: AliasPair) => pair.project;
+const orgProject = (pair: AliasPair) => `${pair.org}/${pair.project}`;
+const inOrg = (org: string, projects: string[]): AliasPair[] =>
+  projects.map((project) => ({ org, project }));
+
+// ---------------------------------------------------------------------------
 // Section Definitions
 // ---------------------------------------------------------------------------
 
@@ -847,6 +936,48 @@ const sections: SectionDef[] = [
     filePath: "plugins/README.md",
     sectionName: "skill-layout",
     generate: generateSkillLayout,
+  },
+  {
+    filePath: `${DOCS_CONTENT}/features.md`,
+    sectionName: "dsn-extensions",
+    generate: generateDsnExtensions,
+  },
+  {
+    filePath: `${DOCS_CONTENT}/features.md`,
+    sectionName: "alias-unique-prefix",
+    generate: () =>
+      generateAliasTable(
+        "Project Slug",
+        inOrg("acme", ["frontend", "functions", "backend"]),
+        projectSlug,
+      ),
+  },
+  {
+    filePath: `${DOCS_CONTENT}/features.md`,
+    sectionName: "alias-common-prefix",
+    generate: () =>
+      generateAliasTable(
+        "Project Slug",
+        inOrg("acme", [
+          "spotlight-electron",
+          "spotlight-website",
+          "spotlight-backend",
+        ]),
+        projectSlug,
+      ),
+  },
+  {
+    filePath: `${DOCS_CONTENT}/features.md`,
+    sectionName: "alias-cross-org",
+    generate: () =>
+      generateAliasTable(
+        "Org/Project",
+        [
+          { org: "acme", project: "api" },
+          { org: "globex", project: "api" },
+        ],
+        orgProject,
+      ),
   },
 ];
 

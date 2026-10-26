@@ -7,7 +7,8 @@
  *   2. Every fragment file corresponds to an existing route (or is index.md)
  *   3. Fragment files don't accidentally contain frontmatter or the generated marker
  *   4. Top-level fragments (e.g., configuration.md) exist
- *   5. Fragment content covers all subcommands in a route (warnings only)
+ *   5. Fragment content covers all subcommands in a route (errors with
+ *      --strict, which `pnpm run check:fragments` passes)
  *   6. Fragments don't contain Examples sections (examples belong in docs.examples)
  *   7. Fragment shell code blocks don't run `sentry` commands unless marked
  *      with `<!-- allow-commands: <reason> -->` (see fragment-commands.ts)

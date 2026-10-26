@@ -11,6 +11,9 @@
  *      matches a project first, so examples that mean the org must use the
  *      trailing-slash form (`my-org/`)
  *
+ * Library examples that pass only string literals to `sdk.run(…)` get the same
+ * checks, since `run()` takes the same argv as the CLI.
+ *
  * Placeholders (`<org>/<project>`, `[args]`, `...`) are skipped. Generated
  * command pages are not scanned: their examples are checked at the source.
  *
@@ -64,6 +67,9 @@ const EXTRA_DOC_FILES = [
   "plugins/README.md",
 ];
 
+/** Source files whose JSDoc shows `sdk.run(…)` examples. */
+const SDK_EXAMPLE_FILES = ["src/index.ts"];
+
 /** Flags Stricli handles before command dispatch. */
 const BUILTIN_FLAGS = new Set(["help", "help-all", "version"]);
 const BUILTIN_ALIASES = new Set(["h", "H"]);
@@ -85,6 +91,11 @@ const CONTINUATION_RE = /\\\n\s*/g;
 const PLACEHOLDER_RE = /[<>[\]{}]|\.\.\.|…|^\$/;
 const SHORT_ALIAS_RE = /^-([a-zA-Z])$/;
 const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+/** `sdk.run(…)` calls; arguments are checked only when all are string literals. */
+const SDK_RUN_RE = /\bsdk\.run\(([^)]*)\)/g;
+const SDK_RUN_ARGS_RE =
+  /^\s*(?:"[^"\\]*"|'[^'\\]*')(?:\s*,\s*(?:"[^"\\]*"|'[^'\\]*'))*\s*,?\s*$/;
+const STRING_LITERAL_RE = /"([^"\\]*)"|'([^'\\]*)'/g;
 
 type Finding = { file: string; example: string; problem: string };
 
@@ -159,6 +170,23 @@ function extractInvocations(markdown: string): string[] {
   return invocations;
 }
 
+/**
+ * Argv arrays from `sdk.run("issue", "list", …)` calls. Calls with any
+ * non-literal argument (variables, spreads) are skipped.
+ */
+function extractSdkRunArgs(text: string): string[][] {
+  const calls: string[][] = [];
+  for (const [, args = ""] of text.matchAll(SDK_RUN_RE)) {
+    if (!SDK_RUN_ARGS_RE.test(args)) {
+      continue;
+    }
+    calls.push(
+      [...args.matchAll(STRING_LITERAL_RE)].map((m) => m[1] ?? m[2] ?? ""),
+    );
+  }
+  return calls;
+}
+
 /** Whether `--name` (or the boolean negation `--no-name`) is accepted. */
 function hasFlag(cmd: Command, name: string): boolean {
   const flags = cmd.parameters.flags ?? {};
@@ -223,7 +251,11 @@ function isTargetParam(param: PositionalParam | undefined): boolean {
 
 /** Problems with one `sentry …` invocation. */
 function checkInvocation(invocation: string): string[] {
-  const words = tokenize(invocation);
+  return checkWords(tokenize(invocation));
+}
+
+/** Problems with one tokenized `sentry …` invocation. */
+function checkWords(words: string[]): string[] {
   // Skip a `sudo` or `NAME=value` prefix, e.g. `SENTRY_DSN=… sentry monitor run`
   const start = words.findIndex(
     (word) => word !== "sudo" && !ENV_ASSIGNMENT_RE.test(word),
@@ -326,19 +358,27 @@ for (const { source, invocation } of commandExamples(
     findings.push({ file: source, example: invocation, problem });
   }
 }
-for (const file of files) {
+for (const file of [...files, ...SDK_EXAMPLE_FILES]) {
   const content = await readFile(file, "utf-8");
-  for (const invocation of extractInvocations(content)) {
+  const invocations = file.endsWith(".ts") ? [] : extractInvocations(content);
+  for (const invocation of invocations) {
     checked += 1;
     for (const problem of checkInvocation(invocation)) {
       findings.push({ file, example: invocation, problem });
+    }
+  }
+  for (const argv of extractSdkRunArgs(content)) {
+    checked += 1;
+    const example = `sdk.run(${argv.map((a) => JSON.stringify(a)).join(", ")})`;
+    for (const problem of checkWords(["sentry", ...argv])) {
+      findings.push({ file, example, problem });
     }
   }
 }
 
 if (findings.length === 0) {
   console.log(
-    `✓ ${checked} sentry examples in ${files.length} files match the CLI`,
+    `✓ ${checked} sentry examples in ${files.length + SDK_EXAMPLE_FILES.length} files match the CLI`,
   );
   process.exit(0);
 }

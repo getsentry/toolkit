@@ -249,8 +249,7 @@ export const viewCommand = buildCommand({
       renderer: {
         kind: "enum",
         values: ["auto", "kitty", "sixel"],
-        brief:
-          "Graphics renderer (defaults to auto; falls back to auto when unavailable)",
+        brief: "Graphics renderer (falls back to auto when unavailable)",
         default: "auto",
       },
       "no-graphics-cap": {

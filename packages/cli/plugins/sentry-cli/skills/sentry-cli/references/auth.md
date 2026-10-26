@@ -34,7 +34,7 @@ Authenticate with Sentry
 
 **Flags:**
 - `--token <value> - Authenticate using an API token instead of OAuth`
-- `--timeout <value> - Timeout for OAuth flow in seconds (default: 900) - (default: "900")`
+- `--timeout <value> - Timeout for OAuth flow in seconds - (default: "900")`
 - `--force - Replace the stored login for this server without prompting, instead of adding another account`
 - `--url <value> - Sentry instance URL to authenticate against (e.g. https://sentry.example.com). Required for self-hosted; defaults to SaaS (https://sentry.io).`
 - `--read-only - Request only read-only OAuth scopes (project:read, org:read, event:read, member:read, team:read). Useful for handing tokens to AI agents or CI jobs that should not be able to mutate Sentry state.`
