@@ -43,7 +43,9 @@ precedence over `SENTRY_SPOTLIGHT`; otherwise the default is
 not its capability-protected viewer stream URL.
 
 The loader sends `.txt`, `.bin`, and `.envelope` files in sorted order, preserving
-raw bytes and captured timestamps. `--compression` supports `none`, `gzip`, and
+raw bytes and captured timestamps. Bundled byte-counted envelopes disable Git
+line-ending conversion; preserve the original bytes when checking out external
+captures as well. `--compression` supports `none`, `gzip`, and
 `br`; `--interval` is milliseconds between envelopes and `--repeat` is a finite
 number of passes. It stops with a nonzero exit status when a request is rejected
 or times out. The command does not clear existing capture history. Raise the
