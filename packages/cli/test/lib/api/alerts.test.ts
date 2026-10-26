@@ -150,7 +150,9 @@ describe("listMetricAlertsPaginated", () => {
       const url = new URL(new Request(input!, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/detectors/");
       expect(url.searchParams.get("query")).toBe("type:metric_issue");
-      return Response.json([metricDetector({ id: "9", name: "P95 latency" })]);
+      return Response.json([
+        metricDetector({ id: "9", name: "P95 latency", workflowIds: ["42"] }),
+      ]);
     });
 
     const { data } = await listMetricAlertsPaginated("test-org");
@@ -167,6 +169,9 @@ describe("listMetricAlertsPaginated", () => {
       environment: "prod",
       projects: ["backend"],
     });
+    expect(data[0]).not.toHaveProperty("config");
+    expect(data[0]).not.toHaveProperty("conditionGroup");
+    expect(data[0]).not.toHaveProperty("workflowIds");
   });
 });
 
