@@ -2478,6 +2478,51 @@ describe("local receiver to viewer integration", () => {
     }
   });
 
+  test("span drill-down within Traces preserves its active view filter", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      await sendEnvelope(port, "GET /alpha", {
+        traceId: "trace-alpha",
+        spanId: "root-alpha",
+        startTimestamp: 1_699_999_999,
+        spans: [
+          {
+            span_id: "child-alpha",
+            parent_span_id: "root-alpha",
+            op: "db.query",
+            description: "SELECT alpha",
+            start_timestamp: 1_699_999_999.1,
+            timestamp: 1_699_999_999.2,
+          },
+        ],
+      });
+      await sendEnvelope(port, "GET /beta", { traceId: "trace-beta" });
+      renderViewer(port, "/traces?q=alpha");
+      const span = await screen.findByRole("button", {
+        name: "Inspect span SELECT alpha",
+      });
+      fireEvent.click(span);
+      await screen.findByRole("button", { name: "Back to trace" });
+      expect(new URLSearchParams(window.location.search).get("q")).toBe(
+        "alpha",
+      );
+      expect(new URLSearchParams(window.location.search).get("span")).toBe(
+        "child-alpha",
+      );
+      expect(
+        screen.queryByRole("button", { name: "View trace GET /beta" }),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Back to trace" }));
+      await screen.findByRole("button", { name: "Inspect span SELECT alpha" });
+      expect(new URLSearchParams(window.location.search).get("q")).toBe(
+        "alpha",
+      );
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
   test("filters trace groups with global search while retaining their full waterfall", async () => {
     const { server, port } = await startReceiver();
     try {

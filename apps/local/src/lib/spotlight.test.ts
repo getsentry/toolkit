@@ -123,6 +123,39 @@ describe("getStreamUrlFromHash", () => {
     }
   });
 
+  test("restores this tab's remote choice ahead of the browser-wide local receiver", () => {
+    expect(
+      resolveInitialStreamUrl(
+        "",
+        "http://127.0.0.1:8970/stream",
+        "https://receiver.example/stream?token=tab-choice",
+      ),
+    ).toBe("https://receiver.example/stream?token=tab-choice");
+  });
+
+  test("explicit startup links override both stored remote and local choices", () => {
+    const local = "http://127.0.0.1:8970/stream";
+    const remote = "https://receiver.example/stream?token=tab-choice";
+    const fragment = `#${new URLSearchParams({ stream: "http://localhost:9000/stream" })}`;
+    const query = `?${new URLSearchParams({ url: "http://localhost:9012/stream" })}`;
+    expect(resolveInitialStreamUrl(fragment, local, remote, query)).toBe(
+      "http://localhost:9000/stream",
+    );
+    expect(resolveInitialStreamUrl("", local, remote, query)).toBe(
+      "http://localhost:9012/stream",
+    );
+  });
+
+  test("falls back to the saved local receiver when the tab's remote choice is invalid", () => {
+    expect(
+      resolveInitialStreamUrl(
+        "",
+        "http://127.0.0.1:8970/stream",
+        "http://receiver.example/stream?token=unsafe",
+      ),
+    ).toBe("http://127.0.0.1:8970/stream");
+  });
+
   test("uses CLI pairing, saved endpoints, then the default in priority order", () => {
     expect(
       resolveInitialStreamUrl(

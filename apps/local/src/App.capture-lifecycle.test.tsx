@@ -14,6 +14,10 @@ import { BrowserRouter } from "react-router";
 import { ThemeProvider } from "./components/theme-provider.tsx";
 import { LocalWorkspaceRoute } from "./routes/local-workspace-route.tsx";
 import App from "./App.tsx";
+import {
+  REMOTE_STREAM_STORAGE_KEY,
+  STREAM_STORAGE_KEY,
+} from "./lib/spotlight.ts";
 
 const STREAM =
   "http://127.0.0.1:8969/_local/v1/sessions/web/stream?cap=web-read";
@@ -22,6 +26,7 @@ const WORKER_STREAM =
 const DIRECTORY =
   "http://127.0.0.1:8969/_local/v1/ui/sessions?cap=directory-read";
 const EXPIRES_AT = 1_795_000_000_000;
+const REMOTE_STREAM = "https://receiver.example/stream?token=remote-read";
 
 class ControllableEventSource extends EventTarget {
   static instances: ControllableEventSource[] = [];
@@ -43,6 +48,10 @@ function renderCapture({ path = "/live", directory = false } = {}) {
     "",
     `${path}#${new URLSearchParams({ stream: STREAM, ...(directory ? { directory: DIRECTORY } : {}) })}`,
   );
+  return renderViewer();
+}
+
+function renderViewer() {
   return render(
     <ThemeProvider attribute="class" defaultTheme="light">
       <NuqsAdapter>
@@ -54,6 +63,23 @@ function renderCapture({ path = "/live", directory = false } = {}) {
       </NuqsAdapter>
     </ThemeProvider>,
   );
+}
+
+async function openLatestReceiver() {
+  const probe = await openSource();
+  const committed = ControllableEventSource.instances.at(-1)!;
+  return committed === probe ? committed : await openSource(committed);
+}
+
+async function switchReceiver(streamUrl: string) {
+  fireEvent.click(
+    screen.getByRole("button", { name: "Switch receiver", exact: true }),
+  );
+  fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+    target: { value: streamUrl },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Connect", exact: true }));
+  return await openLatestReceiver();
 }
 
 async function openSource(source = ControllableEventSource.instances.at(-1)!) {
@@ -324,6 +350,96 @@ test("a receiver reset describes empty capture history without tab-only recovery
   ).not.toBeNull();
   expect(screen.queryByText(/Clear view only affects this tab/)).toBeNull();
   expect(source.closed).toBe(false);
+});
+
+test("pending deletion disables Reload capture and ignores queued events until clean replay", async () => {
+  let finishReset!: (response: Response) => void;
+  const pendingReset = new Promise<Response>((resolve) => {
+    finishReset = resolve;
+  });
+  const request = vi.fn().mockReturnValue(pendingReset);
+  vi.stubGlobal("fetch", request);
+  renderCapture();
+  const beforeReset = await openSource();
+  await sendEvent(beforeReset, "before pending reset", "before-pending");
+  fireEvent.click(captureAction("Delete captured events"));
+  fireEvent.click(
+    within(
+      screen.getByRole("dialog", { name: "Delete captured events?" }),
+    ).getByRole("button", { name: "Delete captured events", exact: true }),
+  );
+  expect(request).toHaveBeenCalledTimes(1);
+  const reload = screen.getByRole("button", {
+    name: "Reload capture",
+    exact: true,
+  }) as HTMLButtonElement;
+  expect(reload.disabled).toBe(true);
+  fireEvent.click(reload);
+  expect(ControllableEventSource.instances).toHaveLength(1);
+  expect(beforeReset.closed).toBe(true);
+  await sendEvent(beforeReset, "queued before deletion", "queued-before");
+  expect(screen.queryByText("queued before deletion")).toBeNull();
+  await act(async () => finishReset(new Response(null, { status: 204 })));
+  await waitFor(() =>
+    expect(ControllableEventSource.instances).toHaveLength(2),
+  );
+  const replay = await openSource();
+  expect(replay).not.toBe(beforeReset);
+  await sendEvent(replay, "captured after deletion", "after-pending");
+  expect(screen.getByTestId("event-list").textContent).toContain(
+    "captured after deletion",
+  );
+  expect(screen.getByTestId("event-list").textContent).not.toContain(
+    "before pending reset",
+  );
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "Reload capture",
+        exact: true,
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+test("a successful remote connection survives page reload despite an older saved loopback", async () => {
+  window.localStorage.setItem(STREAM_STORAGE_KEY, STREAM);
+  renderCapture();
+  await openSource();
+  const remote = await switchReceiver(REMOTE_STREAM);
+  expect(remote.url).toBe(REMOTE_STREAM);
+  expect(window.sessionStorage.getItem(REMOTE_STREAM_STORAGE_KEY)).toBe(
+    REMOTE_STREAM,
+  );
+  expect(window.localStorage.getItem(STREAM_STORAGE_KEY)).toBe(STREAM);
+  expect(window.location.hash).toBe("");
+  cleanup();
+  renderViewer();
+  const restored = await openSource();
+  expect(restored.url).toBe(REMOTE_STREAM);
+  expect(
+    screen.getByRole("banner", { name: "Capture context" }).textContent,
+  ).toContain("Remote capture");
+});
+
+test("switching from remote to loopback clears the remote choice before page reload", async () => {
+  renderCapture();
+  await openSource();
+  await switchReceiver(REMOTE_STREAM);
+  expect(window.sessionStorage.getItem(REMOTE_STREAM_STORAGE_KEY)).toBe(
+    REMOTE_STREAM,
+  );
+  const local = await switchReceiver(STREAM);
+  expect(new URL(local.url).pathname).toBe(new URL(STREAM).pathname);
+  expect(window.localStorage.getItem(STREAM_STORAGE_KEY)).toBe(STREAM);
+  expect(window.sessionStorage.getItem(REMOTE_STREAM_STORAGE_KEY)).toBeNull();
+  cleanup();
+  renderViewer();
+  const restored = await openSource();
+  expect(new URL(restored.url).origin).toBe(new URL(STREAM).origin);
+  expect(new URL(restored.url).pathname).toBe(new URL(STREAM).pathname);
+  expect(restored.url).not.toBe(REMOTE_STREAM);
 });
 
 test.each(["capturing", "saved"] as const)(

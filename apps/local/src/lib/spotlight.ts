@@ -280,7 +280,7 @@ export function getPreferredStreamUrl(
   return getStreamUrlFromHash(hash) ?? getStreamUrlFromStorage(savedStream);
 }
 
-/** Resolve the bare viewer's receiver in the same safe order as the UI. */
+/** Explicit startup links precede this tab's remote choice and the shared local default. */
 export function resolveInitialStreamUrl(
   hash: string,
   savedLoopbackStream: string | null,
@@ -290,8 +290,8 @@ export function resolveInitialStreamUrl(
   return (
     getStreamUrlFromHash(hash) ??
     getStreamUrlFromQuery(search) ??
-    getStreamUrlFromStorage(savedLoopbackStream) ??
     getRemoteStreamUrlFromStorage(savedRemoteStream) ??
+    getStreamUrlFromStorage(savedLoopbackStream) ??
     DEFAULT_STREAM_URL
   );
 }

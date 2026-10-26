@@ -11,7 +11,7 @@
 
 - No new dependencies, deployment, or PR merge.
 - Preserve routes, older receivers, security boundaries, stale-callback isolation, raw data, and finite replay.
-- Run the root quality gate before committing; only the two previously approved macOS failures may remain.
+- Run the root quality gate before committing; only the three explicitly approved baseline failures may remain.
 
 ## Review Focus
 
@@ -66,15 +66,17 @@
 - [x] Update Local docs and take desktop/mobile screenshots.
 - [x] Run full viewer/Local CLI/root quality gates and real process E2E.
 - [x] Independent review; reproduce/fix actionable findings.
-- [ ] Commit/push to codex/local-session-switcher; refresh PR description/screenshots.
+- [x] Commit/push to codex/local-session-switcher; refresh PR description/screenshots.
 - [ ] Verify final-head CI/feedback and report any external advisory failure accurately.
 
 ## Verification results
 
 - Root typecheck and lint pass.
-- Full workspace test run: all packages pass except the two previously approved
-  macOS failures (musl installer detection and DerivedData additive scan timeout).
-  CLI unit suite: 11,400 passed, 37 skipped, those two failures.
+- Known approved local gate exceptions: macOS musl installer detection,
+  DerivedData additive scan timeout, and the unrelated issue-link response-cache
+  race under coverage. The cache race also reproduces on the pre-UI commit;
+  it remains separate from this PR at the user's request.
+- Latest viewer suite: 278 tests pass.
 - Real Local CLI process E2E: 27 passed.
 - Viewer regressions cover lifecycle deadlines, confirmed deletion, hosted
   permissions, filters, span URL/history, resizing, and repeated parent refreshes.
@@ -82,3 +84,6 @@
   inspected request/log/span views, waterfall, scoped settings, and delete/cancel.
 - Review fixes: stale cleared-view guidance, connection-link URL restoration,
   duplicate request-summary sibling keys, and accessible summary values.
+- Final automated-review fixes preserve the tab's remote receiver on reload,
+  prevent reload during a pending deletion, retain filters during span drill-down,
+  and avoid stale selected-span styling on fallback traces.

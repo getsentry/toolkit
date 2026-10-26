@@ -126,6 +126,11 @@ five receivers, ordered by most recent use; adding another discards the oldest
 entry, and reconnecting moves an existing receiver to the top. No history entry is
 created for a failed connection.
 
+A successful remote connection is restored from this tab’s session storage before
+the browser’s shared local receiver preference. A successful local connection
+clears that tab’s older remote preference. Failed replacements preserve the
+previous choice; another tab’s remote choice is unaffected.
+
 The capture header keeps the selected session and project, capture state, receiver
 connectivity, and last received time together. **Capturing** means the receiver
 accepts events; it does not indicate whether a wrapped app process is running.

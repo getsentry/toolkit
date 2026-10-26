@@ -82,10 +82,16 @@ test("a stale trace selection cannot drill into a duplicate span ID on a fallbac
       onSelect={vi.fn()}
       selectedTraceId="expired-trace"
       selectedSpanId="root"
+      onSelectSpan={vi.fn()}
     />,
   );
   expect(screen.queryByRole("region", { name: "Span detail" })).toBeNull();
   expect(screen.getByRole("table", { name: "Trace spans" })).toBeDefined();
+  expect(
+    screen
+      .getByRole("button", { name: "Inspect span GET /orders" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
 });
 
 test("drilling into a span and returning restores keyboard focus", () => {

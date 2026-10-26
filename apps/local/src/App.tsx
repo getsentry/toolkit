@@ -166,6 +166,11 @@ function saveStreamUrl(streamUrl: string): void {
   } catch {
     // Private browsing or browser policy can disable storage; the current tab still works.
   }
+  try {
+    window.sessionStorage.removeItem(REMOTE_STREAM_STORAGE_KEY);
+  } catch {
+    // A successful local choice must supersede this tab's older remote preference when possible.
+  }
 }
 
 function saveRemoteStreamUrl(streamUrl: string): void {
@@ -939,7 +944,11 @@ export default function App() {
   };
 
   const selectSpan = (traceId: string, spanId: string) => {
-    navigateToCommandTrace("traces", traceId, spanId);
+    if (workspaceView === "traces") {
+      void workspaceQuery.selectSpan(traceId, spanId);
+    } else {
+      navigateToCommandTrace("traces", traceId, spanId);
+    }
     markItemsSeen("traces");
   };
   const requestDeleteCapturedEvents = (trigger: HTMLButtonElement) => {
@@ -1221,8 +1230,10 @@ export default function App() {
                   }
                   expiresAt={sessionExpiresAt ?? currentSession?.expiresAt}
                   latestEventTime={latestEventTime}
-                  onReload={() => connectToEndpoint(streamUrl)}
-                  isReloading={isConnecting}
+                  onReload={() => {
+                    if (!isClearing) connectToEndpoint(streamUrl);
+                  }}
+                  isReloading={isConnecting || isClearing}
                   isAwaitingSession={Boolean(
                     activeDirectoryUrl &&
                     currentEndpoint?.kind === "loopback" &&

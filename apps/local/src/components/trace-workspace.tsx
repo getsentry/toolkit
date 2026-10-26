@@ -169,7 +169,9 @@ export function TraceWorkspace({
         ) : (
           <TraceWaterfall
             trace={selectedTrace}
-            selectedSpanId={selectedSpanId}
+            selectedSpanId={
+              selectedTrace.id === selectedTraceId ? selectedSpanId : undefined
+            }
             onSelectSpan={
               onSelectSpan
                 ? (spanId) => onSelectSpan(selectedTrace.id, spanId)
