@@ -145,11 +145,12 @@ confirm the restored version fails the job rather than guessing a recovery.
 ## Manual Deployment
 
 Manual dispatch cannot deploy a new revision. Use a reviewed change and its
-passing `Test` run to deploy. To restore an owned deployment after its runner
-has stopped, dispatch `Recover Cloudflare Deployment` from `main` with the
-failed deployment run ID and attempt. Verify the active Cloudflare version and
-live smoke-test result; if ownership has changed, investigate rather than
-retrying against mutable history. Never run bare `wrangler rollback`.
+passing `Test` run to deploy. For the main `sentry-mcp` Worker, restore an owned
+deployment after its runner has stopped by dispatching `Recover Cloudflare
+Deployment` from `main` with the failed deployment run ID and attempt. Verify
+the active Cloudflare version and live smoke-test result; if ownership has
+changed, investigate rather than retrying against mutable history. This recovery
+workflow does not target Docs MCP. Never run bare `wrangler rollback`.
 
 ## Cloudflare token migration
 

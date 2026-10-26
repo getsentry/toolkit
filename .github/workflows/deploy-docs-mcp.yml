@@ -29,7 +29,7 @@ jobs:
       DEPLOYMENT_MARKER: toolkit-mcp:${{ github.run_id }}:${{ github.run_attempt }}:${{ github.event.workflow_run.head_sha }}
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
@@ -37,16 +37,40 @@ jobs:
       - name: Require tested revision on main
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
-          test "$current_sha" = "$TESTED_SHA"
+          if [[ "$current_sha" != "$EXPECTED_SHA" ]]; then
+            echo 'The tested revision is no longer at main; refusing deployment.' >&2
+            exit 1
+          fi
 
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "22.23.4"
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          node-version: "22"
+
+      # pnpm/action-setup@v4
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Capture active Docs MCP version
         env:
@@ -71,13 +95,6 @@ jobs:
           pnpm exec wrangler versions upload --experimental-auto-create=false \
             --minify --keep-vars --message "$DEPLOYMENT_MARKER:upload"
 
-      - name: Require tested revision on main before deployment
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
-          test "$current_sha" = "$TESTED_SHA"
-
       - name: Identify uploaded Docs MCP version
         id: uploaded
         env:
@@ -98,6 +115,17 @@ jobs:
           await writeFile(path, JSON.stringify({ ...journal, candidateVersion }), { mode: 0o600 });
           await writeFile(process.env.GITHUB_OUTPUT, `candidate_version=${candidateVersion}\n`, { flag: 'a' });
           NODE
+
+      - name: Require tested revision on main before deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_sha" != "$EXPECTED_SHA" ]]; then
+            echo 'Main advanced before deployment; refusing deployment.' >&2
+            exit 1
+          fi
 
       - name: Deploy exact Docs MCP version
         working-directory: apps/docs-mcp
