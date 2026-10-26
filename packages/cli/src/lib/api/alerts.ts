@@ -11,7 +11,9 @@ import {
   createOrganizationWorkflow,
   deleteOrganizationDetector,
   getOrganizationDetector,
+  type GetOrganizationDetectorResponse,
   getOrganizationWorkflow,
+  type GetOrganizationWorkflowResponse,
   listOrganizationDetectors,
   updateOrganizationDetector,
   updateOrganizationWorkflow,
@@ -64,7 +66,12 @@ export type IssueAlertRule = {
 };
 
 /** A single metric alert rule (threshold-based, org-scoped) */
-export type MetricAlertRule = {
+export type MetricAlertRule = Partial<
+  Pick<
+    GetOrganizationDetectorResponse,
+    "config" | "conditionGroup" | "workflowIds"
+  >
+> & {
   id: string;
   name: string;
   /** 0/"0"/absent = active, 1/"1" = disabled */
@@ -102,6 +109,8 @@ type MetricDetector = {
   dataSources?: Record<string, unknown>[] | null;
   /** Detection settings (`detectionType`, `comparisonDelta`, …), kept on edit. */
   config?: Record<string, unknown> | null;
+  conditionGroup?: GetOrganizationDetectorResponse["conditionGroup"];
+  workflowIds?: GetOrganizationDetectorResponse["workflowIds"];
 };
 
 /**
@@ -291,7 +300,7 @@ export async function listIssueAlertsPaginated(
 export async function getIssueAlertWorkflowDocument(
   orgSlug: string,
   workflowId: string,
-): Promise<Record<string, unknown>> {
+): Promise<GetOrganizationWorkflowResponse> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await getOrganizationWorkflow({
     ...config,
@@ -300,7 +309,7 @@ export async function getIssueAlertWorkflowDocument(
       workflow_id: Number(workflowId),
     },
   });
-  return unwrapResult<Record<string, unknown>>(
+  return unwrapResult<GetOrganizationWorkflowResponse>(
     result,
     "Failed to fetch issue alert rule",
   );
@@ -429,7 +438,8 @@ export async function listMetricAlertsPaginated(
  * Get a single metric alert rule by ID.
  *
  * Reads from the org-scoped `/detectors/{id}/` endpoint and maps the detector
- * onto the flat `MetricAlertRule` shape.
+ * onto the flat `MetricAlertRule` shape, preserving native detection settings,
+ * conditions, and workflow links for inspection. List results stay compact.
  *
  * The `/detectors/{id}/` endpoint returns any detector kind (uptime, cron,
  * error, …), unlike the `type:metric_issue`-filtered list. A non-metric id is
@@ -444,7 +454,13 @@ export async function getMetricAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<MetricAlertRule> {
-  return mapDetectorToMetricAlertRule(await getMetricDetector(orgSlug, ruleId));
+  const detector = await getMetricDetector(orgSlug, ruleId);
+  return {
+    ...mapDetectorToMetricAlertRule(detector),
+    config: detector.config ?? undefined,
+    conditionGroup: detector.conditionGroup,
+    workflowIds: detector.workflowIds,
+  };
 }
 
 /** Fetch a metric-issue detector, rejecting other detector kinds with a 404. */

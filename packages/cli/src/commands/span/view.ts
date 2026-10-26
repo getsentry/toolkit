@@ -370,9 +370,6 @@ export const viewCommand = buildCommand({
     brief: "View details of specific spans",
     fullDescription:
       "View detailed information about one or more spans within a trace.\n\n" +
-      "Target specification:\n" +
-      "  sentry span view <trace-id> <span-id>                        # auto-detect\n" +
-      "  sentry span view <org>/<project>/<trace-id> <span-id>        # explicit\n\n" +
       "The first argument is the trace ID (optionally prefixed with org/project),\n" +
       "followed by one or more span IDs.",
     examples: [

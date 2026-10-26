@@ -133,11 +133,6 @@ export const listCommand = buildListCommand("agent-conversation", {
       "Sort by one canonical conversation.* field. Prefix the field with - for descending order. " +
       "The default is -conversation.age, and conversation ID ascending breaks ties. " +
       "conversation.timeSpan measures elapsed time; conversation.generationDuration sums model call duration.\n\n" +
-      "Target patterns:\n" +
-      "  sentry agent-conversation list              # Auto-detect organization\n" +
-      "  sentry agent-conversation list <org>/       # All projects in an organization\n" +
-      "  sentry agent-conversation list <org>/<proj> # One project\n" +
-      "  sentry agent-conversation list <project>    # Find project across organizations\n\n" +
       targetPatternExplanation(),
     examples: [
       {

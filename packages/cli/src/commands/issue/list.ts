@@ -58,6 +58,7 @@ import {
   appendQueryHint,
   buildListCommand,
   buildListLimitFlag,
+  CURSOR_KEYWORDS,
   LIST_BASE_ALIASES,
   LIST_MAX_LIMIT,
   LIST_TARGET_POSITIONAL,
@@ -99,6 +100,7 @@ import {
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
 import { tipsSuppressed } from "../../lib/tips.js";
+import { shellQuote } from "../../lib/utils.js";
 import {
   type SentryIssue,
   SentryIssueSchema,
@@ -718,6 +720,35 @@ function trimWithProjectGuarantee(
   );
 }
 
+/** Re-run the failed search with an explicit target, preserving search and output flags. */
+function contextRecoveryCommand(target: string, flags: ListFlags): string {
+  const parts = [
+    `sentry issue list ${shellQuote(target)}`,
+    `--limit ${flags.limit}`,
+    `--sort ${flags.sort}`,
+    `--period ${shellQuote(formatTimeRangeFlag(flags.period))}`,
+  ];
+  appendQueryHint(parts, flags.query);
+  if (flags.cursor !== undefined) {
+    // Navigation state belongs to a resolved target; a candidate may have none.
+    const cursor = CURSOR_KEYWORDS.has(flags.cursor) ? "first" : flags.cursor;
+    parts.push(`--cursor ${shellQuote(cursor)}`);
+  }
+  if (flags.json) {
+    parts.push("--json");
+  }
+  if (flags.fields) {
+    parts.push(`--fields ${shellQuote(flags.fields.join(","))}`);
+  }
+  if (flags.fresh) {
+    parts.push("--fresh");
+  }
+  if (flags.compact !== undefined) {
+    parts.push(flags.compact ? "--compact" : "--no-compact");
+  }
+  return parts.join(" ");
+}
+
 /** Build the CLI hint for fetching the next page, preserving active flags. */
 /** Append active non-default issue list flags to a base command string. */
 function appendIssueFlags(base: string, flags: ListFlags): string {
@@ -1194,6 +1225,7 @@ async function handleResolvedTargets(
     await resolveProjectBoundTargets(parsed, {
       cwd,
       usageHint: USAGE_HINT,
+      formatRecoveryCommand: (target) => contextRecoveryCommand(target, flags),
       projectSearchResolution,
       enrichProjectIds: true,
       checkIssueShortId: true,
@@ -1604,12 +1636,6 @@ export const listCommand = buildListCommand("issue", {
     brief: "List issues in a project",
     fullDescription:
       "List issues from Sentry projects.\n\n" +
-      "Target patterns:\n" +
-      "  sentry issue list               # auto-detect from DSN or config\n" +
-      "  sentry issue list <org>/<proj>  # explicit org and project\n" +
-      "  sentry issue list <org>/a,b     # several projects in the same org\n" +
-      "  sentry issue list <org>/        # all projects in org (trailing / required)\n" +
-      "  sentry issue list <project>     # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "In monorepos with multiple Sentry projects, shows issues from all detected projects.\n\n" +
       "The --limit flag specifies the total number of issues to display (max 1000). " +
@@ -1630,6 +1656,10 @@ export const listCommand = buildListCommand("issue", {
       "  Docs:     https://docs.sentry.io/concepts/search/\n\n" +
       "Alias: `sentry issues` → `sentry issue list`",
     examples: [
+      {
+        description: "List issues (project auto-detected)",
+        command: "sentry issue list",
+      },
       {
         description: "List issues in a specific project",
         command: "sentry issue list my-org/frontend",

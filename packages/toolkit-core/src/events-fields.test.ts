@@ -124,7 +124,7 @@ describe("getColumnsAndAggregates", () => {
 });
 
 describe("isTracemetricsAggregate", () => {
-  it("requires the four-argument value form", () => {
+  it("recognizes the four-argument value form", () => {
     expect(
       isTracemetricsAggregate(
         "p50(value,completion.duration_ms,distribution,none)",
@@ -133,5 +133,29 @@ describe("isTracemetricsAggregate", () => {
     expect(isTracemetricsAggregate("count()")).toBe(false);
     expect(isTracemetricsAggregate("p50(span.duration)")).toBe(false);
     expect(isTracemetricsAggregate("equation|count()")).toBe(false);
+  });
+
+  it("recognizes conditional metrics aggregates with a search filter", () => {
+    expect(
+      isTracemetricsAggregate(
+        "count_if(`release:example`,value,request_duration,distribution,none)",
+      ),
+    ).toBe(true);
+    expect(
+      isTracemetricsAggregate(
+        "sum_if(`environment:[production,staging]`,value,request_duration,distribution,none)",
+      ),
+    ).toBe(true);
+  });
+
+  it("still rejects conditional aggregates without the metrics arguments", () => {
+    expect(isTracemetricsAggregate("avg_if(`span.op:db`,span.duration)")).toBe(
+      false,
+    );
+    expect(
+      isTracemetricsAggregate(
+        "count_if(release:example,value,request_duration,distribution,none)",
+      ),
+    ).toBe(false);
   });
 });

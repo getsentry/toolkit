@@ -851,27 +851,17 @@ export const listCommand = buildListCommand("project", {
     brief: "List projects",
     fullDescription:
       "List projects in an organization.\n\n" +
-      "Target patterns:\n" +
-      "  sentry project list                # auto-detect from DSN or config\n" +
-      "  sentry project list <org>/         # all projects in org (paginated)\n" +
-      "  sentry project list <org>/<proj>   # show specific project\n" +
-      "  sentry project list <org>/<proj1>,<proj2>      # show several projects\n" +
-      "  sentry project list <project>      # find project across all orgs\n\n" +
       `${targetPatternExplanation("Cursor pagination (--cursor) requires the <org>/ form.")}\n\n` +
-      "Pagination:\n" +
-      "  sentry project list <org>/ -c next      # next page\n" +
-      "  sentry project list <org>/ -c prev      # previous page\n" +
-      "  sentry project list <org>/ -c <cursor>  # resume at specific cursor\n\n" +
       "A glob after the slash (`<org>/web-*`) lists projects whose slug or name matches. " +
       "When `<org>/<proj>` names no project, it matches project names instead: " +
       "exact or partial matches first, then close (fuzzy) matches. " +
       "Name filters can't be combined with --cursor.\n\n" +
-      "Filtering and output:\n" +
-      "  sentry project list --platform javascript  # filter by platform\n" +
-      "  sentry project list --limit 50              # show more results\n" +
-      "  sentry project list --json                  # output as JSON\n\n" +
       "Alias: `sentry projects` → `sentry project list`",
     examples: [
+      {
+        description: "List projects (organization auto-detected)",
+        command: "sentry project list",
+      },
       {
         description: "List all projects in an organization",
         command: "sentry project list my-org/",
@@ -892,6 +882,22 @@ export const listCommand = buildListCommand("project", {
         description:
           "Projects named like 'frontend' (fuzzy when nothing matches exactly)",
         command: "sentry project list my-org/frontnd",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry project list frontend",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry project list my-org/ -c next",
+      },
+      {
+        description: "Show more results",
+        command: "sentry project list my-org/ --limit 50",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry project list my-org/ --json",
       },
     ],
   },

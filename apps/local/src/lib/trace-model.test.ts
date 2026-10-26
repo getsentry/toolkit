@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { LocalFeedItem } from "./spotlight.js";
+import { decodeEnvelope, type LocalFeedItem } from "./spotlight.js";
 import { buildTraceGroups, traceIdForItem } from "./trace-model.js";
 
 function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
@@ -14,6 +14,150 @@ function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
 }
 
 describe("buildTraceGroups", () => {
+  test.each([undefined, "remote-parent"])(
+    "promotes a late streamed segment title and reparents earlier children (parent: %s)",
+    (parentId) => {
+      const child = {
+        trace_id: "trace-stream",
+        span_id: "query",
+        parent_span_id: "root",
+        name: "SELECT 1",
+        start_timestamp: 1700000000.125,
+        end_timestamp: 1700000000.25,
+        attributes: { "sentry.op": { type: "string", value: "db" } },
+      };
+      const decode = (items: unknown[], id: string) =>
+        decodeEnvelope(
+          JSON.stringify([{}, [[{ type: "span" }, { version: 2, items }]]]),
+          id,
+        );
+      const earlyItems = decode([child], "child");
+      expect(buildTraceGroups(earlyItems)[0]?.roots).toMatchObject([
+        { id: "query" },
+      ]);
+      const items = [
+        ...earlyItems,
+        ...decode(
+          [
+            {
+              trace_id: "trace-stream",
+              span_id: "root",
+              parent_span_id: parentId,
+              name: "GET /orders",
+              start_timestamp: 1700000000,
+              end_timestamp: 1700000001,
+              is_segment: true,
+              attributes: {
+                "sentry.op": { type: "string", value: "http.server" },
+              },
+            },
+          ],
+          "segment",
+        ),
+        ...decode([child], "redelivery"),
+      ];
+      const [trace] = buildTraceGroups(items);
+      expect(trace).toMatchObject({
+        title: "GET /orders",
+        startTimestamp: 1700000000,
+        endTimestamp: 1700000001,
+        durationMs: 1000,
+        itemCount: 3,
+        roots: [{ id: "root", children: [{ id: "query", durationMs: 125 }] }],
+      });
+      expect(trace?.spans).toHaveLength(2);
+      expect(trace?.roots).toHaveLength(1);
+      expect(trace?.roots[0]?.children).toHaveLength(1);
+    },
+  );
+
+  test.each([true, false])(
+    "combines legacy transactions and streamed spans without duplicate spans (transaction first: %s)",
+    (transactionFirst) => {
+      const transaction = decodeEnvelope(
+        JSON.stringify([
+          {},
+          [
+            [
+              { type: "transaction" },
+              {
+                transaction: "GET /orders",
+                start_timestamp: 1700000000,
+                timestamp: 1700000001,
+                contexts: {
+                  trace: {
+                    trace_id: "trace-mixed",
+                    span_id: "root",
+                    op: "http.server",
+                  },
+                },
+                spans: [
+                  {
+                    span_id: "query",
+                    parent_span_id: "root",
+                    description: "SELECT 1",
+                    op: "db",
+                    start_timestamp: 1700000000.125,
+                    timestamp: 1700000000.25,
+                  },
+                ],
+              },
+            ],
+          ],
+        ]),
+        "legacy",
+      );
+      const streamed = decodeEnvelope(
+        JSON.stringify([
+          {},
+          [
+            [
+              { type: "span" },
+              {
+                version: 2,
+                items: [
+                  {
+                    trace_id: "trace-mixed",
+                    span_id: "query",
+                    parent_span_id: "root",
+                    name: "SELECT 1",
+                    start_timestamp: 1700000000.125,
+                    end_timestamp: 1700000000.25,
+                    attributes: {
+                      "sentry.op": { type: "string", value: "db" },
+                    },
+                  },
+                  {
+                    trace_id: "other-trace",
+                    span_id: "query",
+                    name: "other query",
+                    start_timestamp: 1700000002,
+                    end_timestamp: 1700000003,
+                  },
+                ],
+              },
+            ],
+          ],
+        ]),
+        "streamed",
+      );
+      const traces = buildTraceGroups(
+        transactionFirst
+          ? [...transaction, ...streamed]
+          : [...streamed, ...transaction],
+      );
+      expect(traces).toHaveLength(2);
+      const trace = traces.find((value) => value.id === "trace-mixed");
+      expect(trace).toMatchObject({
+        title: "GET /orders",
+        durationMs: 1000,
+        roots: [{ id: "root", children: [{ id: "query", durationMs: 125 }] }],
+      });
+      expect(trace?.spans).toHaveLength(2);
+      expect(trace?.roots[0]?.children).toHaveLength(1);
+    },
+  );
+
   test("reads trace timing in linear work for a long single trace", () => {
     let timestampReads = 0;
     const entries: LocalFeedItem[] = Array.from(
@@ -263,4 +407,38 @@ describe("buildTraceGroups", () => {
       },
     ]);
   });
+});
+
+test("child spans retain their own raw payload independently of the transaction", () => {
+  const payload = {
+    span_id: "query",
+    parent_span_id: "root",
+    op: "db.query",
+    data: { "db.system": "postgresql" },
+    start_timestamp: 1.1,
+    timestamp: 1.2,
+  };
+  const [trace] = buildTraceGroups(
+    decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: "GET /orders",
+              start_timestamp: 1,
+              timestamp: 2,
+              contexts: { trace: { trace_id: "trace", span_id: "root" } },
+              spans: [payload],
+            },
+          ],
+        ],
+      ]),
+      "payload",
+    ),
+  );
+  expect(trace?.spans.find((span) => span.id === "query")?.payload).toEqual(
+    payload,
+  );
 });

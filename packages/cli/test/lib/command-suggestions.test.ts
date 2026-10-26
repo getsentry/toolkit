@@ -1,23 +1,34 @@
 /**
- * Unit tests for the command synonym suggestion registry.
+ * Command synonym registry and CLI error suggestion regressions.
  *
  * Core invariants (case-insensitivity, lookup consistency) could be
  * property-tested, but the map is small and static — unit tests are
  * sufficient here. These verify each telemetry-driven pattern category.
  */
 
-import { describe, expect, test } from "vitest";
-import { routes } from "../../src/app.js";
+import { homedir } from "node:os";
+import { run } from "@stricli/core";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { app, routes } from "../../src/app.js";
 import { getCommandSuggestion } from "../../src/lib/command-suggestions.js";
 import { isRouteMap, type RouteMap } from "../../src/lib/introspect.js";
+import { useTestConfigDir } from "../helpers.js";
 
 describe("getCommandSuggestion", () => {
-  // --- Pattern 1: issue events (most common) ---
-  test("suggests issue view for 'issue/events'", () => {
-    const s = getCommandSuggestion("issue", "events");
-    expect(s).toBeDefined();
-    expect(s!.command).toContain("issue view");
-    expect(s!.explanation).toBeDefined();
+  test("never treats registered commands or aliases as unknown synonyms", () => {
+    for (const group of routes.getAllEntries()) {
+      if (!("getAllEntries" in group.target)) {
+        continue;
+      }
+      for (const command of group.target.getAllEntries()) {
+        for (const token of [command.name.original, ...command.aliases]) {
+          expect(
+            getCommandSuggestion(group.name.original, token),
+            `${group.name.original}/${token}`,
+          ).toBeUndefined();
+        }
+      }
+    }
   });
 
   // --- Pattern 2: view synonyms ---
@@ -40,24 +51,20 @@ describe("getCommandSuggestion", () => {
   });
 
   // --- Pattern 3: mutation commands ---
-  test("suggests sentry api for 'issue/resolve'", () => {
-    const s = getCommandSuggestion("issue", "resolve");
-    expect(s).toBeDefined();
-    expect(s!.command).toContain("sentry api");
-    expect(s!.command).toContain("resolved");
+  test("suggests native resolve for the unambiguous close synonym", () => {
+    expect(getCommandSuggestion("issue", "close")).toEqual({
+      command: "sentry issue resolve <issue-id>",
+    });
   });
 
-  test("suggests sentry api for 'issue/update'", () => {
-    const s = getCommandSuggestion("issue", "update");
-    expect(s).toBeDefined();
-    expect(s!.command).toContain("sentry api");
-  });
-
-  test("suggests sentry api for 'issue/assign'", () => {
-    const s = getCommandSuggestion("issue", "assign");
-    expect(s).toBeDefined();
-    expect(s!.command).toContain("assignedTo");
-  });
+  test.each(["update", "set-status", "assign", "comment"])(
+    "keeps the API suggestion for issue %s without an exact native equivalent",
+    (command) => {
+      expect(getCommandSuggestion("issue", command)?.command).toMatch(
+        /^sentry api /,
+      );
+    },
+  );
 
   // --- Pattern 4: event list is now a real command (no longer a synonym) ---
   test("returns undefined for 'event/list' (now a real command)", () => {
@@ -96,8 +103,8 @@ describe("getCommandSuggestion", () => {
 
   // --- Case insensitivity ---
   test("is case-insensitive on the unknown token", () => {
-    expect(getCommandSuggestion("issue", "Events")).toBeDefined();
-    expect(getCommandSuggestion("issue", "RESOLVE")).toBeDefined();
+    expect(getCommandSuggestion("issue", "Get")).toBeDefined();
+    expect(getCommandSuggestion("issue", "CLOSE")).toBeDefined();
     expect(getCommandSuggestion("cli", "INFO")).toBeDefined();
   });
 
@@ -113,6 +120,60 @@ describe("getCommandSuggestion", () => {
   test("returns undefined for unknown route context", () => {
     expect(getCommandSuggestion("nonexistent", "events")).toBeUndefined();
   });
+});
+
+describe("command error suggestions", () => {
+  const getConfigDir = useTestConfigDir("command-suggestions-");
+  const originalArgv = process.argv;
+  const originalExitCode = process.exitCode;
+
+  afterEach(() => {
+    process.argv = originalArgv;
+    process.exitCode = originalExitCode;
+    vi.restoreAllMocks();
+  });
+
+  async function runIssue(args: string[]): Promise<string> {
+    let stderr = "";
+    process.exitCode = undefined;
+    process.argv = ["node", "sentry", "issue", ...args];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      stderr += String(chunk);
+      return true;
+    });
+    await run(app, ["issue", ...args], {
+      process,
+      env: process.env,
+      cwd: getConfigDir(),
+      homeDir: homedir(),
+      configDir: getConfigDir(),
+      stdout: { write: () => true },
+      stderr: process.stderr,
+      stdin: process.stdin,
+    });
+    return stderr;
+  }
+
+  test.each(["resolve", "ignore", "events"])(
+    "preserves the parse error for native issue %s",
+    async (command) => {
+      const output = await runIssue([command, "TEST-1", "extra"]);
+      expect(output).toContain("extra");
+      expect(output).not.toContain("Tip:");
+    },
+  );
+
+  test.each([
+    ["resolve", "--in", "@commit:", "Invalid --in spec"],
+    ["ignore", "--until", "invalid", "--until"],
+  ])(
+    "preserves the validation error for native issue %s",
+    async (command, flag, value, error) => {
+      const output = await runIssue([command, "TEST-1", flag, value]);
+      expect(output).toContain(error);
+      expect(output).not.toContain("sentry api");
+    },
+  );
 });
 
 describe("routes with defaultCommand", () => {

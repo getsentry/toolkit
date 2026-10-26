@@ -8,6 +8,7 @@
 
 import {
   isAggregateFieldOrEquation,
+  isEquation,
   isTracemetricsAggregate,
 } from "@sentry/toolkit-core/events-fields";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
@@ -18,7 +19,7 @@ import {
   queryEvents,
   queryMetricsMeta,
 } from "../lib/api-client.js";
-import { buildProjectQuery, validateLimit } from "../lib/arg-parsing.js";
+import { validateLimit } from "../lib/arg-parsing.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -26,6 +27,7 @@ import {
   resolveCursor,
 } from "../lib/db/pagination.js";
 import { toSearchQueryError, ValidationError } from "../lib/errors.js";
+import { toExploreFieldError } from "../lib/explore-errors.js";
 import { filterFields } from "../lib/formatters/json.js";
 import { buildMetaColumns } from "../lib/formatters/meta-table.js";
 import { CommandOutput } from "../lib/formatters/output.js";
@@ -35,8 +37,10 @@ import {
   appendSortHint,
   buildListCommand,
   LIST_MAX_LIMIT,
+  ORG_ALL_TARGET_BRIEF,
   PERIOD_ALIASES,
   paginationHint,
+  targetPatternExplanation,
 } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
 import { resolveMetricField } from "../lib/metrics-transform.js";
@@ -49,8 +53,12 @@ import {
   listSupportedReplayFields,
   parseReplayEnvironmentFilter,
 } from "../lib/replay-search.js";
-import { resolveOrgOptionalFromArg } from "../lib/resolve-target.js";
 import { sanitizeQuery } from "../lib/search-query.js";
+import { shellQuote } from "../lib/utils.js";
+import {
+  type OrgOptionalTarget,
+  orgOptionalTarget,
+} from "../lib/target-positional.js";
 import {
   appendPeriodHint,
   PERIOD_BRIEF,
@@ -71,7 +79,6 @@ const DEFAULT_FIELDS = ["title", "count()"];
 const DEFAULT_TRANSACTION_FIELDS = ["transaction", "count()"];
 const LEGACY_TRANSACTION_DATASETS = new Set(["transaction", "transactions"]);
 const IS_TRANSACTION_FILTER = "is_transaction:true";
-const IS_TRANSACTION_FILTER_PATTERN = /(?:^|\s)is_transaction:true(?:\s|$)/;
 
 /** Default dataset */
 const DEFAULT_DATASET = "errors";
@@ -347,7 +354,7 @@ function appendFieldHints(
   const defaults = defaultFieldsForDataset(dataset).join(",");
   if (fieldList.join(",") !== defaults && fieldList.length > 0) {
     for (const f of fieldList) {
-      parts.push(`-F "${f}"`);
+      parts.push(`-F ${shellQuote(f)}`);
     }
   }
 }
@@ -398,10 +405,14 @@ function appendFlagHints(
  * the `tracemetrics` dataset. Standard aggregates like `count()` or
  * `avg(measurements.fcp)` are invalid — the API requires the four-part
  * comma-separated format: `aggregation(value,metric_name,metric_type,unit)`.
+ * Conditional aggregates prepend a filter; equations are validated by the backend.
  */
 function validateMetricsFields(fieldList: string[]): void {
   const badAggs = fieldList.filter(
-    (f) => isAggregateFieldOrEquation(f) && !isTracemetricsAggregate(f),
+    (f) =>
+      isAggregateFieldOrEquation(f) &&
+      !isEquation(f) &&
+      !isTracemetricsAggregate(f),
   );
   if (badAggs.length === 0) {
     return;
@@ -465,19 +476,6 @@ function buildEnvironmentQuery(
   return `environment:[${environment.join(",")}]`;
 }
 
-function resolveEventsDataset(dataset: string, query: string | undefined) {
-  if (!LEGACY_TRANSACTION_DATASETS.has(dataset)) {
-    return { dataset, query };
-  }
-  if (IS_TRANSACTION_FILTER_PATTERN.test(query ?? "")) {
-    return { dataset: "spans", query };
-  }
-  return {
-    dataset: "spans",
-    query: [query, IS_TRANSACTION_FILTER].filter(Boolean).join(" "),
-  };
-}
-
 /**
  * Resolve dataset-specific configuration: sort, query, validation, and fetch.
  *
@@ -497,6 +495,9 @@ function resolveDatasetConfig(params: {
   environment: string[] | undefined;
 }): DatasetConfig {
   const { dataset, fieldList, flags, org, project, environment } = params;
+  const userQuery = sanitizeQuery(flags.query, {
+    allowBoolean: dataset !== "replays",
+  });
 
   if (dataset === "replays") {
     const unsupportedField = fieldList.find(
@@ -519,7 +520,7 @@ function resolveDatasetConfig(params: {
 
     return {
       sort,
-      query: flags.query,
+      query: userQuery,
       fetch: async ({ cursor, limit, timeRange }) => {
         const replayResponse = await listReplays(org, {
           cursor,
@@ -527,7 +528,7 @@ function resolveDatasetConfig(params: {
           fields: getReplayRequestFields(fieldList),
           limit,
           projectSlugs: project ? [project] : undefined,
-          query: flags.query,
+          query: userQuery,
           sort,
           ...timeRangeToApiParams(timeRange),
         });
@@ -541,10 +542,21 @@ function resolveDatasetConfig(params: {
 
   // Non-replay datasets: translate --environment into query filter terms
   // since the Discover/Events API expects environment:... in the query string.
-  const envPrefix = buildEnvironmentQuery(environment);
-  const resolved = resolveEventsDataset(dataset, flags.query);
-  const queryWithEnv =
-    [envPrefix, resolved.query].filter(Boolean).join(" ") || undefined;
+  const legacyTransactions = LEGACY_TRANSACTION_DATASETS.has(dataset);
+  const scope = [
+    project ? `project:${project}` : undefined,
+    buildEnvironmentQuery(environment),
+    legacyTransactions ? IS_TRANSACTION_FILTER : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  // AND binds more tightly than OR, so CLI scope must enclose every user branch.
+  const scopedQuery =
+    legacyTransactions && userQuery === IS_TRANSACTION_FILTER
+      ? undefined
+      : userQuery;
+  const query =
+    scope && scopedQuery ? `${scope} (${scopedQuery})` : scope || scopedQuery;
 
   // Every Events dataset honors sort as long as the sort column is selected.
   // A stable sort is what keeps offset-based cursor pagination from
@@ -554,19 +566,30 @@ function resolveDatasetConfig(params: {
     sort: flags.sort,
   });
 
-  const query = buildProjectQuery(queryWithEnv, project);
   return {
     sort,
     query,
     fetch: async ({ cursor, limit, timeRange }) =>
       await queryEvents(org, {
         fields,
-        dataset: resolved.dataset,
+        dataset: legacyTransactions ? "spans" : dataset,
         query,
         sort,
         limit,
         cursor,
         ...timeRangeToApiParams(timeRange),
+      }).catch((error: unknown): never => {
+        throw toExploreFieldError(error, {
+          dataset: legacyTransactions
+            ? "spans"
+            : (API_TO_USER_DATASET.get(dataset) ?? dataset),
+          fields,
+          userFields: (flags.field ?? []).filter(
+            (field) => !flags.metric || !isAggregateFieldOrEquation(field),
+          ),
+          sort,
+          userSort: flags.sort,
+        });
       }),
   };
 }
@@ -601,15 +624,10 @@ export const exploreCommand = buildListCommand("explore", {
       "  metrics  Custom metrics (tracemetrics format)\n" +
       "  logs     Log entries\n" +
       "  replays  Session replay search\n\n" +
-      "Targets:\n" +
-      "  <org>/<project>  Filter by project (auto-adds project:<slug> to query)\n" +
-      "  <org>/           All projects in org\n" +
-      "  <project>        Bare slug — searches across orgs\n" +
-      "  (omitted)        Auto-detect from DSN/config\n\n" +
-      "Metrics (auto mode — resolves type/unit automatically):\n" +
-      "  sentry explore my-org/ -m llm.token_usage --dataset metrics\n" +
-      "  sentry explore my-org/seer -F gen_ai.request.model -m llm.token_usage --dataset metrics --period 7d\n" +
-      "  sentry explore my-org/ -m cache.hit_rate --agg avg --dataset metrics",
+      "Events queries support AND, OR, and parentheses. Project, environment, " +
+      "and transaction scope apply to the entire query.\n\n" +
+      "A <org>/<project> target adds project:<slug> to the query. " +
+      targetPatternExplanation(),
     examples: [
       {
         description: "Top errors in the last 24 hours, scoped to a project",
@@ -636,6 +654,16 @@ export const exploreCommand = buildListCommand("explore", {
         description: "Filter by error type (combined with the project filter)",
         command:
           'sentry explore my-org/cli -F title -F "count()" -q "error.type:TypeError" --period 1h',
+      },
+      {
+        description: "Combine span filters while keeping the project scope",
+        command:
+          'sentry explore my-org/cli --dataset spans -F "count()" -q "span.op:http.client OR span.status:internal_error"',
+      },
+      {
+        description: "Count a metric only for a matching release",
+        command:
+          "sentry explore my-org/ --dataset metrics -F 'count_if(`release:example`,value,request_duration,distribution,none)'",
       },
       {
         description: "Span operation latency",
@@ -695,9 +723,8 @@ export const exploreCommand = buildListCommand("explore", {
       parameters: [
         {
           placeholder: "target",
-          brief:
-            "Target: <org>/<project>, <org>/, or <project>. Auto-detected if omitted.",
-          parse: String,
+          brief: ORG_ALL_TARGET_BRIEF,
+          parse: orgOptionalTarget,
           optional: true as const,
         },
       ],
@@ -732,7 +759,7 @@ export const exploreCommand = buildListCommand("explore", {
       },
       query: {
         kind: "parsed",
-        parse: sanitizeQuery,
+        parse: String,
         brief: "Search query (Sentry search syntax)",
         optional: true,
       },
@@ -773,13 +800,12 @@ export const exploreCommand = buildListCommand("explore", {
       n: "limit",
     },
   },
-  async *func(this: SentryContext, flags: ExploreFlags, target?: string) {
-    const { cwd } = this;
-    const { org, project } = await resolveOrgOptionalFromArg(
-      target,
-      cwd,
-      "explore",
-    );
+  async *func(
+    this: SentryContext,
+    flags: ExploreFlags,
+    target: OrgOptionalTarget,
+  ) {
+    const { org, project } = await target.resolved;
 
     let dataset = flags.dataset;
     const userSuppliedFields = flags.field && flags.field.length > 0;

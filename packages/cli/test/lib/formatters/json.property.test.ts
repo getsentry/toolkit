@@ -186,6 +186,38 @@ describe("property: filterFields", () => {
     );
   });
 
+  test("nested projections are order-independent, idempotent, and do not mutate data", () => {
+    const items = array(flatObjectArb, { maxLength: 5 });
+    const selectors = uniqueArray(
+      constantFrom(
+        "items",
+        "items.id",
+        "items.data",
+        "items.data.http.method",
+        "items.0",
+        "items.0.data.http.method",
+        "missing.path",
+      ),
+      { minLength: 1 },
+    );
+    fcAssert(
+      property(items, selectors, (values, fields) => {
+        const data = {
+          items: values.map((value, index) => ({
+            id: index,
+            data: { "http.method": value },
+          })),
+        };
+        const original = JSON.stringify(data);
+        const result = filterFields(data, fields);
+        expect(filterFields(data, fields.toReversed())).toEqual(result);
+        expect(filterFields(result, fields)).toEqual(result);
+        expect(JSON.stringify(data)).toBe(original);
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
   test("primitives pass through unchanged", () => {
     fcAssert(
       property(

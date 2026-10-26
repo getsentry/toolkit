@@ -21,6 +21,8 @@ export type LocalFeedItem = {
   text: string;
   payload: unknown;
   metadata?: EventMetadata;
+  envelopeHeader?: Record<string, unknown>;
+  itemHeader?: Record<string, unknown>;
 };
 
 export type EventMetadata = {
@@ -52,14 +54,19 @@ function getNumber(value: unknown): number | undefined {
     : undefined;
 }
 
+function getAttributeValue(
+  attributes: Record<string, unknown>,
+  key: string,
+): unknown {
+  const attribute = attributes[key];
+  return isRecord(attribute) ? attribute.value : attribute;
+}
+
 function getAttributeString(
   attributes: Record<string, unknown>,
   key: string,
 ): string | undefined {
-  const attribute = attributes[key];
-  return isRecord(attribute)
-    ? getString(attribute.value)
-    : getString(attribute);
+  return getString(getAttributeValue(attributes, key));
 }
 
 function getRoute(url: string | undefined): string | undefined {
@@ -74,6 +81,13 @@ function getRoute(url: string | undefined): string | undefined {
   }
 }
 
+function contextFeedback(
+  event: Record<string, unknown>,
+): Record<string, unknown> {
+  const contexts = isRecord(event.contexts) ? event.contexts : {};
+  return isRecord(contexts.feedback) ? contexts.feedback : {};
+}
+
 /** Derive display metadata from this payload without inheriting its parent event. */
 export function getEventMetadata(
   payload: unknown,
@@ -85,7 +99,14 @@ export function getEventMetadata(
   const transaction = getString(event.transaction);
   const description = getString(event.description);
   const message =
-    getString(event.message) ?? getString(event.body) ?? getString(event.name);
+    getString(event.message) ??
+    getString(event.body) ??
+    getString(event.name) ??
+    getString(
+      isRecord(contextFeedback(event))
+        ? contextFeedback(event).message
+        : undefined,
+    );
   const transactionMatch = transaction?.match(/^([A-Z]+)\s+(.+)$/);
   const contexts = isRecord(event.contexts) ? event.contexts : {};
   const trace = isRecord(contexts.trace) ? contexts.trace : event;
@@ -95,12 +116,17 @@ export function getEventMetadata(
       ? event.data
       : {};
   const attributes = isRecord(event.attributes) ? event.attributes : {};
+  const spanAttributes = type === "span" ? attributes : {};
   const request = isRecord(event.request) ? event.request : {};
   const method =
     getString(request.method) ??
     getString(data["http.method"]) ??
+    getAttributeString(spanAttributes, "http.request.method") ??
     transactionMatch?.[1];
-  const url = getString(request.url) ?? getString(data["http.url"]);
+  const url =
+    getString(request.url) ??
+    getString(data["http.url"]) ??
+    getAttributeString(spanAttributes, "url.full");
   const route = getRoute(url) ?? transactionMatch?.[2];
   const startTimestamp = getNumber(event.start_timestamp);
   const timestamp =
@@ -128,7 +154,8 @@ export function getEventMetadata(
     route,
     statusCode:
       getNumber(request.status_code) ??
-      getNumber(data["http.response.status_code"]),
+      getNumber(data["http.response.status_code"]) ??
+      getNumber(getAttributeValue(spanAttributes, "http.response.status_code")),
     spanStatus: getString(trace.status) ?? getString(event.status),
     durationMs,
     traceId: getString(trace.trace_id) ?? getString(event.trace_id),
@@ -146,11 +173,28 @@ export function getEventMetadata(
 }
 
 function getBatchedPayloadItems(payload: unknown, type: string): unknown[] {
-  if (
-    (type !== "span" && type !== "log") ||
-    !isRecord(payload) ||
-    !Array.isArray(payload.items)
-  ) {
+  if (type === "span") {
+    if (!isRecord(payload)) return [];
+    const isContainer = "items" in payload;
+    if (isContainer && (payload.version !== 2 || !Array.isArray(payload.items)))
+      return [];
+    const spans: unknown[] = isContainer
+      ? (payload.items as unknown[])
+      : [payload];
+    return spans.filter(
+      (span) =>
+        isRecord(span) &&
+        getString(span.trace_id) !== undefined &&
+        getString(span.span_id) !== undefined &&
+        getNumber(span.start_timestamp) !== undefined &&
+        getNumber(
+          isContainer
+            ? span.end_timestamp
+            : (span.timestamp ?? span.end_timestamp),
+        ) !== undefined,
+    );
+  }
+  if (type !== "log" || !isRecord(payload) || !Array.isArray(payload.items)) {
     return [payload];
   }
   return payload.items.filter(isRecord);
@@ -222,6 +266,14 @@ export function getStreamUrlFromHash(hash: string): string | undefined {
   );
 }
 
+/** Public viewer query links may select only a credential-free loopback receiver. */
+export function getStreamUrlFromQuery(search: string): string | undefined {
+  const endpoint = parseStreamEndpoint(new URLSearchParams(search).get("url"));
+  if (endpoint?.kind !== "loopback") return;
+  const url = new URL(endpoint.url);
+  return url.pathname === "/stream" && !url.search ? endpoint.url : undefined;
+}
+
 /** Validate a stream endpoint saved by an earlier CLI-launched tab. */
 export function getStreamUrlFromStorage(
   stream: string | null,
@@ -244,16 +296,18 @@ export function getPreferredStreamUrl(
   return getStreamUrlFromHash(hash) ?? getStreamUrlFromStorage(savedStream);
 }
 
-/** Resolve the bare viewer's receiver in the same safe order as the UI. */
+/** Explicit startup links precede this tab's remote choice and the shared local default. */
 export function resolveInitialStreamUrl(
   hash: string,
   savedLoopbackStream: string | null,
   savedRemoteStream: string | null,
+  search = "",
 ): string {
   return (
     getStreamUrlFromHash(hash) ??
-    getStreamUrlFromStorage(savedLoopbackStream) ??
+    getStreamUrlFromQuery(search) ??
     getRemoteStreamUrlFromStorage(savedRemoteStream) ??
+    getStreamUrlFromStorage(savedLoopbackStream) ??
     DEFAULT_STREAM_URL
   );
 }
@@ -284,10 +338,17 @@ export function decodeEnvelope(data: string, eventId: string): LocalFeedItem[] {
           ? `${eventId}:${index}`
           : `${eventId}:${index}:${payloadIndex}`,
       type,
+      envelopeHeader: isRecord(parsed[0]) ? parsed[0] : {},
+      itemHeader: header,
       timestamp: getItemTimestamp(payload),
       text: JSON.stringify(payload, null, 2) ?? String(payload),
       payload,
-      metadata: getEventMetadata(payload, type),
+      metadata: {
+        ...getEventMetadata(payload, type),
+        ...(type === "attachment" && typeof header.filename === "string"
+          ? { title: header.filename }
+          : {}),
+      },
     }));
   });
 }

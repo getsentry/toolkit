@@ -1,3 +1,5 @@
+import { isHostedUiOrigin, LOCAL_SESSION_EVENT } from "./viewer-protocol.js";
+export { isHostedUiOrigin } from "./viewer-protocol.js";
 import { isLoopbackHost } from "./loopback.js";
 /**
  * sentry local serve
@@ -32,6 +34,7 @@ import type { FilterValue, FormatValue } from "../../lib/formatters/local.js";
 import {
   FILTER_VALUES,
   FORMAT_VALUES,
+  printLocalViewerHint,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
   formatItem,
@@ -138,8 +141,6 @@ export function parsePort(value: string): number {
 /** Match localhost origins on any port (http or https), including IPv6. */
 const LOCALHOST_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
-const LOCAL_UI_ORIGIN = "https://local.sentry.dev";
-const LOCAL_UI_PREVIEW_HOST_RE = /^sentry-local-git-[a-z0-9-]+\.sentry\.dev$/;
 
 export { isLoopbackHost } from "./loopback.js";
 
@@ -161,25 +162,6 @@ type LocalReceiverOptions = {
   uiActions?: boolean;
   retention?: LocalRetentionBuffer;
 };
-
-/** Whether an origin is the production or preview Local viewer. */
-export function isHostedUiOrigin(origin: string | undefined): origin is string {
-  if (!origin) {
-    return false;
-  }
-
-  if (!URL.canParse(origin)) {
-    return false;
-  }
-
-  const url = new URL(origin);
-  return (
-    origin === url.origin &&
-    url.protocol === "https:" &&
-    (url.origin === LOCAL_UI_ORIGIN ||
-      LOCAL_UI_PREVIEW_HOST_RE.test(url.hostname))
-  );
-}
 
 function isHostedUiStreamRequest(request: {
   method: string;
@@ -266,6 +248,12 @@ export function buildApp(
 ): Hono {
   const app = new Hono();
 
+  const hostedRetentionCors = cors({
+    origin: (origin) => (isHostedUiOrigin(origin) ? origin : null),
+    allowMethods: ["POST", "OPTIONS"],
+    allowHeaders: ["Content-Type"],
+  });
+
   app.use("*", async (c, next) => {
     c.header("X-Powered-By", SERVER_IDENTIFIER);
     await next();
@@ -292,13 +280,21 @@ export function buildApp(
     const hostedUiOrigin = isHostedUiOrigin(requestOrigin);
     const hostedStreamRequest = isHostedUiStreamRequest(c.req);
 
-    // The hosted UI may only read the event stream. CORS alone cannot stop a
-    // simple cross-origin POST, so reject any other hosted-origin request.
-    if (hostedUiOrigin && !hostedStreamRequest) {
+    const hostedRetentionRequest =
+      hostedUiOrigin &&
+      uiActions &&
+      retention &&
+      c.req.path === "/retention" &&
+      (c.req.method === "POST" ||
+        (c.req.method === "OPTIONS" &&
+          c.req.header("access-control-request-method") === "POST"));
+    // CORS alone cannot stop simple POSTs. Hosted viewers may only read the
+    // stream or change its validated retention limit; other controls stay local.
+    if (hostedUiOrigin && !hostedStreamRequest && !hostedRetentionRequest) {
       return c.body(null, 403);
     }
 
-    if (!hostedStreamRequest) {
+    if (!hostedStreamRequest && !hostedRetentionRequest) {
       return await localhostCors(c, next);
     }
 
@@ -306,8 +302,14 @@ export function buildApp(
       const isPrivateNetworkRequest =
         c.req.header("access-control-request-private-network") === "true";
       c.header("Access-Control-Allow-Origin", requestOrigin);
-      c.header("Access-Control-Allow-Methods", "GET, OPTIONS");
-      c.header("Access-Control-Allow-Headers", "Last-Event-ID");
+      c.header(
+        "Access-Control-Allow-Methods",
+        hostedRetentionRequest ? "POST, OPTIONS" : "GET, OPTIONS",
+      );
+      c.header(
+        "Access-Control-Allow-Headers",
+        hostedRetentionRequest ? "Content-Type" : "Last-Event-ID",
+      );
       if (isPrivateNetworkRequest) {
         c.header("Access-Control-Allow-Private-Network", "true");
       }
@@ -324,14 +326,16 @@ export function buildApp(
       return c.body(null, 204);
     }
 
-    return await hostedStreamCors(c, next);
+    return hostedRetentionRequest
+      ? await hostedRetentionCors(c, next)
+      : await hostedStreamCors(c, next);
   });
 
   app.get("/health", (c) => c.text("OK"));
 
   // These endpoints deliberately describe and manage only the in-memory
-  // receiver session. They remain unavailable to the hosted UI origin; the
-  // CORS guard above limits them to a loopback-served Local UI.
+  // receiver session. Only validated retention updates are available to the
+  // trusted hosted viewer; other controls require a loopback-served Local UI.
   app.get("/capabilities", (c) =>
     uiActions
       ? c.json({
@@ -347,7 +351,7 @@ export function buildApp(
     if (
       !uiActions ||
       !retention ||
-      (origin && !LOCALHOST_ORIGIN_RE.test(origin))
+      (origin && !LOCALHOST_ORIGIN_RE.test(origin) && !isHostedUiOrigin(origin))
     )
       return c.body(null, 403);
     const input: unknown = await c.req.json().catch(() => undefined);
@@ -783,7 +787,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
       },
     });
 
-    if (signal.aborted) {
+    if (signal.aborted || result === "retained") {
       return;
     }
     // On the first attempt, both "no-connection" (HTTP error/no body) and
@@ -826,10 +830,11 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
  * - `"no-connection"` if the server couldn't be reached or aborted
  * - `"connected-then-lost"` if a connection was established (got HTTP 200)
  *   but the stream ended or errored — eligible for reconnection
+ * - `"retained"` after a session's final lifecycle message — never reconnect
  */
 async function attemptSSEConnection(
   opts: ConsumeSSEOnceOptions,
-): Promise<"no-connection" | "connected-then-lost"> {
+): Promise<"no-connection" | "connected-then-lost" | "retained"> {
   let wasConnected = false;
   const augmented = {
     ...opts,
@@ -839,6 +844,7 @@ async function attemptSSEConnection(
   };
   try {
     const completed = await consumeSSEOnce(augmented);
+    if (completed === "retained") return "retained";
     return completed ? "connected-then-lost" : "no-connection";
   } catch (err: unknown) {
     if (isAbortError(err) || opts.signal.aborted) {
@@ -870,10 +876,13 @@ type ConsumeSSEOnceOptions = {
 
 /**
  * Single SSE connection attempt. Returns `true` if a connection was
- * established (received a 200 response), `false` if it never connected.
- * The caller uses this to decide whether to retry on failure.
+ * established (received a 200 response), `false` if it never connected, and
+ * `"retained"` when the session closes after replay. Quiet tails still parse
+ * lifecycle metadata so closing capture terminates them without reconnecting.
  */
-async function consumeSSEOnce(opts: ConsumeSSEOnceOptions): Promise<boolean> {
+async function consumeSSEOnce(
+  opts: ConsumeSSEOnceOptions,
+): Promise<boolean | "retained"> {
   const {
     url,
     activeFilters,
@@ -905,22 +914,28 @@ async function consumeSSEOnce(opts: ConsumeSSEOnceOptions): Promise<boolean> {
   // decide whether mid-stream errors are worth retrying.
   onConnected?.();
 
-  // In quiet mode we still consume the stream to detect disconnection,
-  // but skip parsing/formatting entirely.
-  if (quiet) {
-    for await (const _chunk of res.body) {
-      // drain
-    }
-    return true;
-  }
-
   const decoder = new TextDecoder();
   const state: SSEParserState = { eventType: "", dataLines: [], id: "" };
+  let retained = false;
   const onEvent = (type: string, data: string, id: string) => {
     if (id) {
       onId(id);
     }
-    if (type === SENTRY_CONTENT_TYPE) {
+    if (type === LOCAL_SESSION_EVENT) {
+      try {
+        const event: unknown = JSON.parse(data);
+        if (
+          typeof event === "object" &&
+          event !== null &&
+          "state" in event &&
+          event.state === "retained" &&
+          !("action" in event && event.action === "reset")
+        )
+          retained = true;
+      } catch {
+        logger.debug("Ignoring invalid Local session lifecycle event.");
+      }
+    } else if (!quiet && type === SENTRY_CONTENT_TYPE) {
       processSSEEvent(data, activeFilters, useJson, showAttributes);
     }
   };
@@ -933,12 +948,13 @@ async function consumeSSEOnce(opts: ConsumeSSEOnceOptions): Promise<boolean> {
     partial = lines.pop() ?? "";
     for (const rawLine of lines) {
       feedSSELine(rawLine.replace(CR_RE, ""), state, onEvent);
+      if (retained) return "retained";
     }
   }
   if (partial) {
     feedSSELine(partial.replace(CR_RE, ""), state, onEvent);
   }
-  return true;
+  return retained ? "retained" : true;
 }
 
 /** Parse and format a single SSE data payload from upstream. */
@@ -1105,12 +1121,17 @@ export const serverCommand = buildCommand({
         port: flags.port,
       });
       logger.info("Sentry Local telemetry session");
+      printLocalViewerHint(session.streamUrl, flags.format === "json");
       logger.info(`  Session: ${bold(session.id)} (${session.label})`);
       logger.info(
         `  Capabilities: sentry local session view ${session.id} --json`,
       );
       logger.info("Press Ctrl-C to stop.");
-      await openLocalUiIfRequested(flags.open, session.streamUrl);
+      await openLocalUiIfRequested(
+        flags.open,
+        session.streamUrl,
+        session.directoryUrl,
+      );
 
       const controller = new AbortController();
       const stop = () => controller.abort();
@@ -1137,6 +1158,7 @@ export const serverCommand = buildCommand({
     if (await isServerRunning(url)) {
       await configureExistingRetention(url, flags["max-envelopes"]);
       logger.info(`Connected to existing server at ${bold(url)}`);
+      printLocalViewerHint(url, flags.format === "json");
       await openLocalUiIfRequested(flags.open, url);
       if (activeFilters.size > 0) {
         logger.info(`Filtering: ${[...activeFilters].join(", ")}`);
@@ -1205,6 +1227,7 @@ export const serverCommand = buildCommand({
 
     const listenUrl = formatLocalServerUrl(flags.host, boundPort);
     logger.info("Sentry Local Dev Server");
+    printLocalViewerHint(listenUrl, useJson);
     logger.info(`  Ingest: ${bold(`${listenUrl}/stream`)}`);
     logger.info(`  Events: ${bold(`${listenUrl}/stream`)} (SSE)`);
     logger.info("");

@@ -15,6 +15,12 @@ Work with Sentry cron monitors
 
 Wrap a command with cron monitor check-ins
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<monitor-slug command...>` | Monitor slug followed by the command to run |
+
 **Flags:**
 - `--dsn <value> - DSN to send check-ins to (overrides SENTRY_DSN env var)`
 - `-e, --environment <value> - Environment of the monitor - (default: "production")`
@@ -41,6 +47,13 @@ sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC --
 ### `sentry monitor list [<org/project>] [<filter>]`
 
 List cron monitors
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+| `[<filter>]` | Only names matching a glob (web-*) or text (fuzzy) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of monitors to list - (default: "25")`

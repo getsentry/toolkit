@@ -64,6 +64,7 @@ The CLI uses semantic exit codes. Key ranges for agents:
 | 40–49 | Feature unavailable | Inform user about plan/settings |
 | 50–59 | Operation error | Report to user |
 | 60–69 | Command-specific | Check stderr for details |
+| 252 | Invalid argument | Check the command's `--help` and fix the argument |
 
 See [Exit Codes](/exit-codes/) for the complete reference.
 

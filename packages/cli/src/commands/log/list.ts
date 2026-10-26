@@ -704,14 +704,8 @@ export const listCommand = buildListCommand(
       brief: "List logs from a project",
       fullDescription:
         "List and stream logs from Sentry projects.\n\n" +
-        "Target patterns:\n" +
-        "  sentry log list               # auto-detect from DSN or config\n" +
-        "  sentry log list <org>/<proj>  # explicit org and project\n" +
-        "  sentry log list <project>     # find project across all orgs\n\n" +
         `${TARGET_PATTERN_NOTE}\n\n` +
-        "Trace filtering:\n" +
-        "  sentry log list <trace-id>           # Filter by trace (auto-detect org)\n" +
-        "  sentry log list <org>/<trace-id>     # Filter by trace (explicit org)\n\n" +
+        "Pass a 32-character trace ID instead of a project to filter by trace.\n\n" +
         "Alias: `sentry logs` → `sentry log list`",
       examples: [
         { description: "List the last 100 logs", command: "sentry log list" },
@@ -751,6 +745,10 @@ export const listCommand = buildListCommand(
           description: "Filter JSON output with jq",
           command:
             "sentry log list --json | jq '.data[] | select(.severity == \"error\")'",
+        },
+        {
+          description: "Filter by trace in an explicit organization",
+          command: "sentry log list my-org/abc123def456abc123def456abc12345",
         },
       ],
     },

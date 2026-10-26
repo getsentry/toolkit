@@ -15,6 +15,13 @@ Work with Sentry repositories
 
 List repositories
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+| `[<filter>]` | Only names matching a glob (web-*) or text (fuzzy) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of repositories to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`

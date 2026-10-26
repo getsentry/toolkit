@@ -61,15 +61,7 @@ const docs: OrgListCommandDocs = {
   fullDescription:
     "List integrations installed on an organization (GitHub, GitLab, Slack, Jira, ...).\n\n" +
     "Includes integrations that are disabled or pending deletion.\n\n" +
-    "Target specification:\n" +
-    "  sentry integration list               # auto-detect from DSN or config\n" +
-    "  sentry integration list <org>/        # list all integrations in org (paginated)\n" +
-    "  sentry integration list <org>/<name>  # integrations whose name or provider matches <name>\n" +
-    "  sentry integration list <org>         # list integrations in org\n\n" +
-    "`<name>` is a glob (`<org>/git*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
-    "Pagination:\n" +
-    "  sentry integration list <org>/ -c next  # fetch next page\n" +
-    "  sentry integration list <org>/ -c prev  # fetch previous page\n\n" +
+    "`<org>/<name>` lists integrations whose name or provider matches `<name>`, a glob (`<org>/git*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry integrations` → `sentry integration list`",
   examples: [
     {

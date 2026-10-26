@@ -68,7 +68,8 @@ export const createCommand = buildCommand({
       },
       {
         description: "Create a release from a proposed version",
-        command: "sentry release create $(sentry release propose-version)",
+        command:
+          'sentry release create "$(sentry release propose-version --json | jq -r .version)"',
       },
       {
         description: "Set the release ref and URL",

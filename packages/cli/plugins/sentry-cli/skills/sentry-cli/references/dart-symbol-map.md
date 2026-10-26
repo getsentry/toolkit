@@ -15,6 +15,12 @@ Work with Dart/Flutter symbol maps
 
 Upload a Dart/Flutter symbol map to Sentry
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path>` | Path to the dart symbol map JSON file |
+
 **Flags:**
 - `-d, --debug-id <value> - Debug ID (UUID) from the companion native debug file`
 - `--no-upload - Validate the file without uploading (dry-run)`

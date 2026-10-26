@@ -754,28 +754,56 @@ export function parseOrgProjectArg(
   arg: string | undefined,
   options: { multi?: boolean } = {},
 ): ParsedOrgProject {
+  const { parsed, baseUrl } = parseOrgProjectInput(arg, options);
+  if (baseUrl) {
+    applySentryUrlContext(baseUrl);
+  }
+  return parsed;
+}
+
+/** A parsed org/project argument and the server of a pasted Sentry URL. */
+export type OrgProjectInput = {
+  readonly parsed: ParsedOrgProject;
+  /** Base URL of a pasted Sentry web URL, for `applySentryUrlContext` */
+  readonly baseUrl?: string;
+};
+
+/**
+ * Parse an org/project argument like {@link parseOrgProjectArg}, without
+ * side effects: the server of a pasted Sentry URL is returned as `baseUrl`
+ * instead of applied, so the caller applies it with `applySentryUrlContext`
+ * when it is safe to.
+ */
+export function parseOrgProjectInput(
+  arg: string | undefined,
+  options: { multi?: boolean } = {},
+): OrgProjectInput {
   // Keep only the first non-blank line: agents often pass targets with
   // appended output or notes after a newline (CLI-1RA).
   const trimmed = arg ? firstNonBlankLine(arg) : "";
   if (!trimmed) {
-    return { type: "auto-detect" };
+    return { parsed: { type: "auto-detect" } };
   }
 
   // URL detection — extract org/project from Sentry web URLs
   const urlParsed = parseSentryUrl(trimmed);
   if (urlParsed) {
-    applySentryUrlContext(urlParsed.baseUrl);
-    return orgProjectFromUrl(urlParsed);
+    return {
+      parsed: orgProjectFromUrl(urlParsed),
+      baseUrl: urlParsed.baseUrl,
+    };
   }
 
-  return parseTarget(trimmed, {
-    multi: options.multi === true,
-    checkSlug: validateResourceId,
-    rejectAt: rejectAtSelector,
-    invalid: (message, field) => {
-      throw new ValidationError(message, field);
-    },
-  });
+  return {
+    parsed: parseTarget(trimmed, {
+      multi: options.multi === true,
+      checkSlug: validateResourceId,
+      rejectAt: rejectAtSelector,
+      invalid: (message, field) => {
+        throw new ValidationError(message, field);
+      },
+    }),
+  };
 }
 
 /**

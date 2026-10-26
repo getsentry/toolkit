@@ -15,6 +15,12 @@ Work with Sentry projects
 
 Create one or more projects
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org>/]<name>:<platform>...` | One or more project name and platform pairs |
+
 **Flags:**
 - `-t, --team <value> - Team to create the project under`
 - `-n, --dry-run - Show what would happen without making changes`
@@ -44,6 +50,12 @@ Delete a project
 
 **Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project>` | &lt;org&gt;/&lt;project&gt; or &lt;project&gt; (search across orgs) |
+
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
@@ -66,6 +78,13 @@ sentry project delete my-org/old-project --dry-run
 
 List projects
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+| `[<filter>]` | Only names matching a glob (web-*) or text (fuzzy) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of projects to list - (default: "25")`
 - `-p, --platform <value> - Filter by platform (e.g., javascript, python)`
@@ -75,6 +94,9 @@ List projects
 **Examples:**
 
 ```bash
+# List projects (organization auto-detected)
+sentry project list
+
 # List all projects in an organization
 sentry project list my-org/
 
@@ -89,11 +111,29 @@ sentry project list 'my-org/web-*'
 
 # Projects named like 'frontend' (fuzzy when nothing matches exactly)
 sentry project list my-org/frontnd
+
+# Find a project across organizations
+sentry project list frontend
+
+# Fetch the next page
+sentry project list my-org/ -c next
+
+# Show more results
+sentry project list my-org/ --limit 50
+
+# Output as JSON
+sentry project list my-org/ --json
 ```
 
 ### `sentry project view [<org/project>]`
 
 View details of a project
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/&lt;project&gt; or &lt;project&gt; (search) |
 
 **Flags:**
 - `-w, --web - Open in browser`
@@ -102,11 +142,17 @@ View details of a project
 **Examples:**
 
 ```bash
+# View the auto-detected project
+sentry project view
+
 # View project details
 sentry project view my-org/frontend
 
 # Open the project in the browser
 sentry project view my-org/frontend -w
+
+# Find a project across organizations
+sentry project view frontend
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

@@ -154,11 +154,7 @@ export const downloadCommand = buildCommand({
       "Use --snapshot-id to download a specific snapshot, or --app-id to " +
       "resolve the latest baseline (org auth tokens require --project with a " +
       "project ID or slug for --app-id).\n\n" +
-      "This feature only works with Sentry SaaS.\n\n" +
-      "Usage:\n" +
-      "  sentry snapshots download --snapshot-id 1234567890\n" +
-      "  sentry snapshots download --app-id my-app --branch main\n" +
-      "  sentry snapshots download --app-id my-app --output ./baseline/",
+      "This feature only works with Sentry SaaS.",
     examples: [
       {
         description: "Download a specific baseline snapshot by ID",

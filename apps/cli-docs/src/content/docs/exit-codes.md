@@ -30,7 +30,7 @@ react to failure categories without parsing stderr.
 | 12 | Token Invalid | Auth token rejected by the server |
 | 13 | Host Scope | Request blocked — credentials don't match the target host |
 | 20 | Config Error | Configuration or DSN problem |
-| 21 | Validation Error | Invalid input (malformed ID, bad flag value, etc.) |
+| 21 | Validation Error | Invalid input found while the command runs (malformed ID, unknown value, etc.) |
 | 22 | Missing Context | Required context (org, project) could not be determined |
 | 23 | Not Found | A user-provided identifier could not be resolved |
 | 30 | API Error | Sentry API returned an error response |
@@ -45,6 +45,7 @@ react to failure categories without parsing stderr.
 | 62 | Wizard Deps | Wizard dependency installation failed |
 | 63 | Wizard Codemod | Wizard codemod plan or apply failed |
 | 64 | Wizard Verify | User stopped wizard after verification step |
+| 252 | Invalid Argument | An argument could not be parsed — see [Argument errors](#argument-errors) |
 
 ## Scripting Examples
 
@@ -83,6 +84,18 @@ elif 40 <= result.returncode <= 49:
     print("Feature not available")
 ```
 
+## Argument errors
+
+Arguments are parsed before the command runs. When one can't be parsed, the
+CLI prints `Failed to parse "<input>" for <argument>: <reason>` and exits with
+252, whatever the reason. This covers:
+
+- unknown flags and missing required arguments
+- invalid flag values, such as `--period bogus` or `--limit abc`
+- invalid `<org>/<project>` targets, such as `sentry trace list @latest`
+
+Run the command with `--help` to see the arguments it accepts.
+
 ## Notes
 
 - Exit codes below 128 are safe from collision with Unix signal exits (128+N).
@@ -97,4 +110,5 @@ elif 40 <= result.returncode <= 49:
   verification stopped → 64 (Wizard Verify), other → 61 (Wizard).
 - [Stricli](https://bloomberg.github.io/stricli/) (the CLI framework) uses
   negative exit codes (-5 to -1) for framework-level errors like unknown
-  commands or invalid arguments. These appear as 251–255 in unsigned form.
+  commands (251) or [invalid arguments](#argument-errors) (252). These
+  appear as 251–255 in unsigned form.

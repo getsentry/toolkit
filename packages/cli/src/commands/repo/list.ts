@@ -65,15 +65,7 @@ const docs: OrgListCommandDocs = {
   brief: "List repositories",
   fullDescription:
     "List repositories connected to an organization.\n\n" +
-    "Target specification:\n" +
-    "  sentry repo list               # auto-detect from DSN or config\n" +
-    "  sentry repo list <org>/        # list all repos in org (paginated)\n" +
-    "  sentry repo list <org>/<name>  # repos whose name matches <name>\n" +
-    "  sentry repo list <org>         # list repos in org\n\n" +
-    "`<name>` is a glob (`<org>/getsentry/*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
-    "Pagination:\n" +
-    "  sentry repo list <org>/ -c next  # fetch next page\n" +
-    "  sentry repo list <org>/ -c prev  # fetch previous page\n\n" +
+    "`<org>/<name>` lists repositories whose name (with or without its owner) matches `<name>`, a glob (`<org>/getsentry/*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry repos` → `sentry repo list`",
   examples: [
     {

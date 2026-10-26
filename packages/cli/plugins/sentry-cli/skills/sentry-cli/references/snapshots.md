@@ -15,6 +15,13 @@ Manage and compare snapshots
 
 Compare two directories of snapshot images
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<base-dir>` | Path to the baseline image directory |
+| `<head-dir>` | Path to the head image directory |
+
 **Flags:**
 - `-o, --output <value> - Directory for diff mask images (default: ./diff-output/)`
 - `--threshold <value> - Pixel color difference threshold (0.0-1.0) - (default: "0.01")`
@@ -30,6 +37,9 @@ sentry snapshots diff ./baseline ./head
 
 # Exit non-zero if any images changed, with a custom threshold
 sentry snapshots diff ./baseline ./head --fail-on-diff --threshold 0.02
+
+# Write diff masks to a directory
+sentry snapshots diff ./baseline ./head --output ./diffs/
 ```
 
 ### `sentry snapshots download`
@@ -58,6 +68,12 @@ sentry snapshots download --app-id my-app --output ./baseline/
 ### `sentry snapshots upload <path>`
 
 Upload snapshots to a project
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path>` | Path to the folder containing images to upload |
 
 **Flags:**
 - `--app-id <value> - The application identifier`

@@ -38,7 +38,13 @@ vi.mock("../../src/lib/db/pagination.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../src/lib/db/pagination.js";
-import { ContextError, ValidationError } from "../../src/lib/errors.js";
+import { classifySilenced } from "../../src/lib/error-reporting.js";
+import {
+  ApiError,
+  ContextError,
+  isUserError,
+  ValidationError,
+} from "../../src/lib/errors.js";
 import { DEFAULT_REPLAY_EXPLORE_FIELDS } from "../../src/lib/replay-search.js";
 
 vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -87,6 +93,7 @@ function createContext() {
         }),
       },
       cwd: "/tmp/test-explore",
+      commandPrefix: ["sentry", "explore"],
     },
     getStdout: () => stdoutChunks.join(""),
   };
@@ -150,8 +157,8 @@ beforeEach(async () => {
     nextCursor: undefined,
   });
 
-  // Default: resolveOrgOptionalFromArg returns org-only (auto-detect)
-  resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalFromArg");
+  // Default: resolveOrgOptionalTarget returns org-only (auto-detect)
+  resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
   resolveTargetSpy.mockResolvedValue({ org: "test-org" });
 
   resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
@@ -209,7 +216,7 @@ describe("sentry explore", () => {
       await func.call(context, DEFAULT_FLAGS, "my-org/");
 
       expect(resolveTargetSpy).toHaveBeenCalledWith(
-        "my-org/",
+        { type: "org-all", org: "my-org" },
         "/tmp/test-explore",
         "explore",
       );
@@ -243,7 +250,7 @@ describe("sentry explore", () => {
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "my-org",
-        expect.objectContaining({ query: "project:cli level:error" }),
+        expect.objectContaining({ query: "project:cli (level:error)" }),
       );
     });
 
@@ -257,7 +264,7 @@ describe("sentry explore", () => {
       await func.call(context, DEFAULT_FLAGS, "cli");
 
       expect(resolveTargetSpy).toHaveBeenCalledWith(
-        "cli",
+        { type: "project-search", projectSlug: "cli" },
         "/tmp/test-explore",
         "explore",
       );
@@ -274,7 +281,7 @@ describe("sentry explore", () => {
       await func.call(context, DEFAULT_FLAGS);
 
       expect(resolveTargetSpy).toHaveBeenCalledWith(
-        undefined,
+        { type: "auto-detect" },
         "/tmp/test-explore",
         "explore",
       );
@@ -300,6 +307,115 @@ describe("sentry explore", () => {
   });
 
   describe("API call parameters", () => {
+    test.each(["errors", "spans", "logs"])(
+      "accepts boolean queries through the %s command parser",
+      async (dataset) => {
+        resolveTargetSpy.mockResolvedValue({
+          org: "test-org",
+          project: "backend",
+        });
+        const query =
+          "(span.op:http.client OR span.status:internal_error) AND !has:release";
+        const context = {
+          ...buildContext(process).forCommand({
+            prefix: ["sentry", "explore"],
+          }),
+          ...createContext().context,
+          process: { ...process, exitCode: undefined },
+        };
+        await run(
+          buildApplication(exploreCommand, { name: "explore" }),
+          [
+            "test-org/backend",
+            "--dataset",
+            dataset,
+            "-F",
+            "count()",
+            "-q",
+            query,
+            "--environment",
+            "production",
+            "--json",
+          ],
+          context,
+        );
+        expect(context.process.exitCode).toBe(0);
+        expect(queryEventsSpy).toHaveBeenCalledWith(
+          "test-org",
+          expect.objectContaining({
+            dataset,
+            query: `project:backend environment:production (${query})`,
+          }),
+        );
+      },
+    );
+
+    test("scopes both OR branches when transactions already appears in one branch", async () => {
+      resolveTargetSpy.mockResolvedValue({
+        org: "test-org",
+        project: "backend",
+      });
+      const { context } = createContext();
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "transactions",
+          environment: ["production"],
+          query: "is_transaction:true OR span.op:http.client",
+        },
+        "test-org/backend",
+      );
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          dataset: "spans",
+          query:
+            "project:backend environment:production is_transaction:true (is_transaction:true OR span.op:http.client)",
+        }),
+      );
+    });
+
+    test("keeps Events syntax repairs without rewriting boolean operators", async () => {
+      const { context } = createContext();
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "spans",
+          query: "project:123 OR span.op:[http.client,http.server,]",
+        },
+        "test-org/",
+      );
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          query: "project_id:123 OR span.op:[http.client,http.server]",
+        }),
+      );
+    });
+
+    test.each([
+      "count_if(`release:example`,value,request_duration,distribution,none)",
+      "equation|count_if(`release:example`,value,request_duration,distribution,none) + count_if(`!release:example`,value,request_duration,distribution,none)",
+    ])(
+      "passes valid advanced metrics expressions to the backend: %s",
+      async (field) => {
+        const { context } = createContext();
+        await func.call(
+          context,
+          { ...DEFAULT_FLAGS, dataset: "tracemetrics", field: [field] },
+          "test-org/",
+        );
+        expect(queryEventsSpy).toHaveBeenCalledWith(
+          "test-org",
+          expect.objectContaining({
+            dataset: "tracemetrics",
+            fields: [field],
+          }),
+        );
+      },
+    );
     test("passes default fields and dataset when none specified", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       const { context } = createContext();
@@ -371,7 +487,7 @@ describe("sentry explore", () => {
         expect.objectContaining({
           dataset: "spans",
           fields: ["transaction", "count()"],
-          query: "environment:production is_transaction:true",
+          query: "is_transaction:true (environment:production)",
         }),
       );
     });
@@ -692,6 +808,214 @@ describe("sentry explore", () => {
     });
   });
 
+  describe("backend expression recovery", () => {
+    test.each(["spans", "transaction", "transactions"])(
+      "explains how to count %s without retrying or hiding the failure",
+      async (dataset) => {
+        resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "web" });
+        const detail =
+          "span is invalid for parameter 1 in count. Its a string type field, but it must be one of these types: {'number', 'duration'}";
+        queryEventsSpy.mockRejectedValue(
+          new ApiError("Bad request", 400, detail),
+        );
+        const { context, getStdout } = createContext();
+
+        const error = await func
+          .call(
+            context,
+            {
+              ...DEFAULT_FLAGS,
+              dataset,
+              field: ["span.op", "count(span)"],
+              sort: "-count(span)",
+            },
+            "test-org/web",
+          )
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(ValidationError);
+        expect(error).toMatchObject({ field: "field" });
+        expect((error as Error).message).toContain(detail);
+        expect((error as Error).message).toContain('--field "count(span)"');
+        expect((error as Error).message).toContain('dataset "spans"');
+        expect((error as Error).message).toContain(
+          "Use count() to count spans",
+        );
+        expect(isUserError(error)).toBe(true);
+        expect(classifySilenced(error)).toBeNull();
+        expect(queryEventsSpy).toHaveBeenCalledTimes(1);
+        expect(queryEventsSpy).toHaveBeenCalledWith(
+          "test-org",
+          expect.objectContaining({
+            dataset: "spans",
+            fields: ["span.op", "count(span)"],
+            sort: "-count(span)",
+          }),
+        );
+        expect(advancePaginationStateSpy).not.toHaveBeenCalled();
+        expect(getStdout()).toBe("");
+      },
+    );
+
+    test.each(["min", "max"])(
+      "preserves earliest/latest intent and units for logs %s(timestamp)",
+      async (aggregate) => {
+        resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+        const detail = `timestamp is invalid for parameter 1 in ${aggregate}. Its a string type field, but it must be one of these types: {'number'}`;
+        queryEventsSpy.mockRejectedValue(
+          new ApiError("Bad request", 400, detail),
+        );
+        const { context } = createContext();
+
+        const error = await func
+          .call(
+            context,
+            {
+              ...DEFAULT_FLAGS,
+              dataset: "logs",
+              field: ["severity", `${aggregate}(timestamp)`],
+            },
+            "test-org/",
+          )
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(ValidationError);
+        expect((error as Error).message).toContain(detail);
+        expect((error as Error).message).toContain(
+          `${aggregate}(timestamp_precise)`,
+        );
+        expect((error as Error).message).toContain(
+          "Unix timestamps in nanoseconds",
+        );
+      },
+    );
+
+    test("identifies an unsupported function supplied only through --sort", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      queryEventsSpy.mockRejectedValue(
+        new ApiError("Bad request", 400, "Unknown function p10"),
+      );
+      const { context } = createContext();
+
+      const error = await func
+        .call(
+          context,
+          {
+            ...DEFAULT_FLAGS,
+            dataset: "spans",
+            field: ["span.op", "count()"],
+            sort: "-p10(span.duration)",
+          },
+          "test-org/",
+        )
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({ field: "sort" });
+      expect((error as Error).message).toContain(
+        '--sort "-p10(span.duration)"',
+      );
+      expect((error as Error).message).toContain("Unknown function p10");
+      expect((error as Error).message).toContain("sentry explore --help");
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          fields: ["span.op", "count()", "p10(span.duration)"],
+          sort: "-p10(span.duration)",
+        }),
+      );
+    });
+
+    test("identifies an unsupported function supplied through --field", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      queryEventsSpy.mockRejectedValue(
+        new ApiError("Bad request", 400, "Unknown function p10"),
+      );
+      const { context } = createContext();
+
+      const error = await func
+        .call(
+          context,
+          { ...DEFAULT_FLAGS, dataset: "logs", field: ["p10(duration)"] },
+          "test-org/",
+        )
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ValidationError);
+      expect((error as Error).message).toContain('--field "p10(duration)"');
+      expect((error as Error).message).toContain('dataset "logs"');
+      expect((error as Error).message).not.toContain("attribute list");
+    });
+
+    test.each([
+      ["default fields", {}, "Unknown function count"],
+      [
+        "default fields with a user query",
+        { query: "level:error" },
+        "Unknown function count",
+      ],
+      [
+        "an unrelated user field",
+        { field: ["title"] },
+        "Unknown function count",
+      ],
+      [
+        "a query expression",
+        { query: "p10(duration):>0" },
+        "Unknown function p10",
+      ],
+      [
+        "a spans backend without timestamp aggregates",
+        { dataset: "spans", field: ["min(timestamp)"] },
+        "timestamp is invalid for parameter 1 in min. Its a string type field",
+      ],
+      [
+        "an unknown rejection",
+        { field: ["count()"] },
+        "Invalid dataset configuration",
+      ],
+      [
+        "a generated metric expression",
+        {
+          dataset: "tracemetrics",
+          metric: "llm.token_usage",
+          field: ["sum(value,llm.token_usage,distribution,none)"],
+        },
+        "Unknown function sum",
+      ],
+    ])("preserves the API error for %s", async (_label, flags, detail) => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const original = new ApiError("Bad request", 400, detail);
+      queryEventsSpy.mockRejectedValue(original);
+      const { context } = createContext();
+
+      await expect(
+        func.call(context, { ...DEFAULT_FLAGS, ...flags }, "test-org/"),
+      ).rejects.toBe(original);
+      expect(isUserError(original)).toBe(false);
+      expect(classifySilenced(original)).toBeNull();
+    });
+
+    test("preserves non-400 errors even when their detail mentions a user field", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const original = new ApiError(
+        "Server failure",
+        500,
+        "Unknown function p10",
+      );
+      queryEventsSpy.mockRejectedValue(original);
+      const { context } = createContext();
+
+      await expect(
+        func.call(
+          context,
+          { ...DEFAULT_FLAGS, dataset: "spans", field: ["p10(span.duration)"] },
+          "test-org/",
+        ),
+      ).rejects.toBe(original);
+    });
+  });
+
   describe("metrics dataset validation", () => {
     test("rejects standard aggregates on metrics dataset", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
@@ -985,9 +1309,22 @@ describe("sentry explore", () => {
   });
 
   describe("pagination", () => {
-    test.runIf(process.platform !== "win32")(
-      "a copied next-page hint reuses the cursor for a quoted query",
-      async () => {
+    test.runIf(process.platform !== "win32").each([
+      {
+        dataset: "errors",
+        query: 'transaction:"GET /checkout"',
+        field: ["title", "count()"],
+      },
+      {
+        dataset: "tracemetrics",
+        query: "release:example",
+        field: [
+          "count_if(`release:example`,value,request_duration,distribution,none)",
+        ],
+      },
+    ])(
+      "a copied next-page hint preserves the query and fields for $dataset",
+      async ({ dataset, query, field }) => {
         const actual = await vi.importActual<
           typeof import("../../src/lib/db/pagination.js")
         >("../../src/lib/db/pagination.js");
@@ -1000,10 +1337,13 @@ describe("sentry explore", () => {
           data: MOCK_EVENTS_RESPONSE,
           nextCursor: "page-2",
         });
-        const query = 'transaction:"GET /checkout"';
         const { context, getStdout } = createContext();
 
-        await func.call(context, { ...DEFAULT_FLAGS, query }, "test-org/");
+        await func.call(
+          context,
+          { ...DEFAULT_FLAGS, dataset, query, field },
+          "test-org/",
+        );
 
         const hint = getStdout().match(/Next: (sentry explore[^\n]+)/)?.[1];
         expect(hint).toBeDefined();
@@ -1030,7 +1370,7 @@ describe("sentry explore", () => {
 
         expect(queryEventsSpy).toHaveBeenLastCalledWith(
           "test-org",
-          expect.objectContaining({ query, cursor: "page-2" }),
+          expect.objectContaining({ query, fields: field, cursor: "page-2" }),
         );
       },
     );

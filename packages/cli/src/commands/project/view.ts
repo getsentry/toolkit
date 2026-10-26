@@ -25,6 +25,7 @@ import {
   applyFreshFlag,
   FRESH_ALIASES,
   FRESH_FLAG,
+  PROJECT_TARGET_BRIEF,
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
 import {
@@ -332,13 +333,13 @@ export const viewCommand = buildCommand({
     brief: "View details of a project",
     fullDescription:
       "View detailed information about Sentry projects.\n\n" +
-      "Target patterns:\n" +
-      "  sentry project view                       # auto-detect from DSN or config\n" +
-      "  sentry project view <org>/<project>       # explicit org and project\n" +
-      "  sentry project view <project>             # find project across all orgs\n\n" +
       `${TARGET_PATTERN_NOTE}\n\n` +
       "In monorepos with multiple Sentry projects, shows details for all detected projects.",
     examples: [
+      {
+        description: "View the auto-detected project",
+        command: "sentry project view",
+      },
       {
         description: "View project details",
         command: "sentry project view my-org/frontend",
@@ -346,6 +347,10 @@ export const viewCommand = buildCommand({
       {
         description: "Open the project in the browser",
         command: "sentry project view my-org/frontend -w",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry project view frontend",
       },
     ],
   },
@@ -359,7 +364,7 @@ export const viewCommand = buildCommand({
       parameters: [
         {
           placeholder: "org/project",
-          brief: "<org>/<project>, <project> (search), or omit for auto-detect",
+          brief: PROJECT_TARGET_BRIEF,
           parse: orgProjectTarget(resolveViewTargets),
           optional: true,
         },

@@ -45,7 +45,7 @@ import {
   type OrgListConfig,
 } from "./org-list.js";
 import { splitListTargetAndFilter } from "./list-filter.js";
-import { applyLazyPositionals, rawPositional } from "./positional-parse.js";
+import { applyBoundPositionals, rawPositional } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
@@ -70,6 +70,18 @@ export const LIST_MIN_LIMIT = 1;
 export const LIST_DEFAULT_LIMIT = 25;
 
 /**
+ * Accepted forms of an `[<org>/][<project>]` target that supports org-all
+ * mode. Positional briefs render in `--help`, the generated command docs, and
+ * the skill references, so the target syntax is described here once instead
+ * of in each command's `fullDescription`.
+ */
+export const ORG_ALL_TARGET_BRIEF =
+  "<org>/ (all projects), <org>/<project>, or <project> (search)";
+
+/** Accepted forms of a target that names one project (no org-all mode). */
+export const PROJECT_TARGET_BRIEF = "<org>/<project> or <project> (search)";
+
+/**
  * Positional `org/project` parameter shared by all list commands.
  *
  * Accepts `<org>/`, `<org>/<project>`, or bare `<project>` (search).
@@ -80,7 +92,7 @@ export const LIST_TARGET_POSITIONAL = {
   parameters: [
     {
       placeholder: "org/project",
-      brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
+      brief: ORG_ALL_TARGET_BRIEF,
       parse: parseOrgProjectTarget,
       optional: true as const,
     },
@@ -96,7 +108,7 @@ export const LIST_ORG_TARGET_POSITIONAL = {
   parameters: [
     {
       placeholder: "org/project",
-      brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
+      brief: ORG_ALL_TARGET_BRIEF,
       parse: parseOrgTarget,
       optional: true as const,
     },
@@ -668,8 +680,8 @@ export function buildListCommand<
         args.shift();
       }
     }
-    // A dropped lazy target becomes an omitted one (auto-detect)
-    const finalArgs = applyLazyPositionals(args, params.positional, this);
+    // A dropped bound target becomes an omitted one (auto-detect)
+    const finalArgs = applyBoundPositionals(args, params.positional, this);
     return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 

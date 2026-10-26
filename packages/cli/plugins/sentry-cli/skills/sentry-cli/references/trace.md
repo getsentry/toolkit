@@ -15,6 +15,12 @@ View distributed traces
 
 List recent traces in a project
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/&lt;project&gt; or &lt;project&gt; (search) |
+
 **Flags:**
 - `-n, --limit <value> - Number of traces (1-1000) - (default: "25")`
 - `-q, --query <value> - Search query (Sentry search syntax)`
@@ -51,11 +57,20 @@ sentry trace list -q "transaction:GET /api/users" --period 24h
 
 # Fetch the next page
 sentry trace list my-org/backend -c next
+
+# Find a project across organizations
+sentry trace list backend
 ```
 
 ### `sentry trace view <org/project/trace-id...>`
 
 View details of a specific trace
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/trace-id...>` | [&lt;org&gt;/&lt;project&gt;/]&lt;trace-id&gt; - Target (optional) and trace ID (required) |
 
 **Flags:**
 - `-w, --web - Open in browser`
@@ -80,11 +95,32 @@ sentry trace view PROJ-123
 
 # Open the trace in the browser
 sentry trace view abc123def456abc123def456abc12345 -w
+
+# Find a project across organizations
+sentry trace view cli-server abc123def456abc123def456abc12345
+
+# Select the trace ID and an attribute across the whole span tree
+sentry trace view abc123def456abc123def456abc12345 --json --fields traceId,http.method
+
+# Keep full spans while requesting an additional attribute
+sentry trace view abc123def456abc123def456abc12345 --json --fields spans,http.method
+
+# Select IDs and detail attributes from root spans only
+sentry trace view abc123def456abc123def456abc12345 --json --fields spans.span_id,spans.data.http.method
+
+# Select an additional attribute from immediate child spans
+sentry trace view abc123def456abc123def456abc12345 --json --fields spans.children.additional_attributes.http.method
 ```
 
 ### `sentry trace logs <org/project/trace-id...>`
 
 View logs associated with a trace
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/trace-id...>` | [&lt;org&gt;/[&lt;project&gt;/]]&lt;trace-id&gt; - Optional org/project and required trace ID |
 
 **Flags:**
 - `-w, --web - Open trace in browser`
@@ -114,6 +150,9 @@ sentry trace logs -q 'severity:error' abc123def456abc123def456abc12345
 
 # Output as JSON
 sentry trace logs --json abc123def456abc123def456abc12345
+
+# Logs for a trace in an explicit organization
+sentry trace logs my-org/abc123def456abc123def456abc12345
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
