@@ -78,6 +78,15 @@ View details of one or more events
 # View an event
 sentry event view abc123def456abc123def456abc12345
 
+# View a specific event using an issue short ID
+sentry event view PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac
+
+# View a specific event with an explicit organization
+sentry event view my-org/PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac
+
+# View the latest event for an issue
+sentry event view PROJ-ABC
+
 # Open in the browser
 sentry event view abc123def456abc123def456abc12345 -w
 
