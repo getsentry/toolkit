@@ -672,7 +672,9 @@ export async function runSearchEvents(
       : null;
   // Queries with one literal reading, like a bare trace ID, run directly
   // instead of going through Seer or the embedded agent.
-  const literalQuery = seerDataset ? rewriteLiteralQuery(params.query) : null;
+  const literalQuery = seerDataset
+    ? rewriteLiteralQuery(params.query, seerDataset)
+    : null;
   const seerTranslation =
     params.query && seerDataset && literalQuery === null
       ? await translateWithSeer({

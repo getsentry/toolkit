@@ -218,8 +218,12 @@ export function looksLikeSentrySearchSyntax(
  * - `*` matches everything.
  * - A bare 32-character hex ID is a trace ID.
  * - A single quoted phrase is a full-text search, which Sentry runs as is.
+ *   Sentry matches full text against `message`, which metrics do not have.
  */
-export function rewriteLiteralQuery(query?: string): string | null {
+export function rewriteLiteralQuery(
+  query: string | undefined,
+  dataset: SearchSyntaxDataset,
+): string | null {
   const trimmedQuery = query?.trim();
   if (!trimmedQuery) {
     return null;
@@ -231,6 +235,7 @@ export function rewriteLiteralQuery(query?: string): string | null {
     return `trace:${trimmedQuery.toLowerCase()}`;
   }
   if (
+    dataset !== "metrics" &&
     QUOTED_PHRASE_PATTERN.test(trimmedQuery) &&
     trimmedQuery.slice(1, -1).trim()
   ) {

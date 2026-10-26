@@ -684,31 +684,38 @@ describe("search query helpers", () => {
 
 describe("rewriteLiteralQuery", () => {
   it("rewrites queries with one literal reading", () => {
-    expect(rewriteLiteralQuery("*")).toBe("");
-    expect(rewriteLiteralQuery("  A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6 ")).toBe(
-      "trace:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
-    );
-    expect(rewriteLiteralQuery('"connection refused"')).toBe(
+    expect(rewriteLiteralQuery("*", "spans")).toBe("");
+    expect(
+      rewriteLiteralQuery("  A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6 ", "spans"),
+    ).toBe("trace:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6");
+    expect(rewriteLiteralQuery('"connection refused"', "spans")).toBe(
       '"connection refused"',
     );
-    expect(rewriteLiteralQuery(String.raw`"say \"hi\""`)).toBe(
+    expect(rewriteLiteralQuery(String.raw`"say \"hi\""`, "spans")).toBe(
       String.raw`"say \"hi\""`,
     );
   });
 
   it("leaves everything else for translation", () => {
-    expect(rewriteLiteralQuery(undefined)).toBeNull();
-    expect(rewriteLiteralQuery("")).toBeNull();
-    expect(rewriteLiteralQuery('""')).toBeNull();
-    expect(rewriteLiteralQuery('" "')).toBeNull();
-    expect(rewriteLiteralQuery("TypeError")).toBeNull();
-    expect(rewriteLiteralQuery("slow requests")).toBeNull();
-    expect(rewriteLiteralQuery("a1b2c3d4")).toBeNull();
+    expect(rewriteLiteralQuery(undefined, "spans")).toBeNull();
+    expect(rewriteLiteralQuery("", "spans")).toBeNull();
+    expect(rewriteLiteralQuery('""', "spans")).toBeNull();
+    expect(rewriteLiteralQuery('" "', "spans")).toBeNull();
+    expect(rewriteLiteralQuery("TypeError", "spans")).toBeNull();
+    expect(rewriteLiteralQuery("slow requests", "spans")).toBeNull();
+    expect(rewriteLiteralQuery("a1b2c3d4", "spans")).toBeNull();
     expect(
-      rewriteLiteralQuery("a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6"),
+      rewriteLiteralQuery("a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6", "spans"),
     ).toBeNull();
-    expect(rewriteLiteralQuery('"timeout" in checkout')).toBeNull();
-    expect(rewriteLiteralQuery('"timeout" "refused"')).toBeNull();
+    expect(rewriteLiteralQuery('"timeout" in checkout', "spans")).toBeNull();
+    expect(rewriteLiteralQuery('"timeout" "refused"', "spans")).toBeNull();
+  });
+
+  it("leaves quoted phrases on metrics for translation", () => {
+    expect(rewriteLiteralQuery('"connection refused"', "metrics")).toBeNull();
+    expect(
+      rewriteLiteralQuery("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6", "metrics"),
+    ).toBe("trace:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6");
   });
 });
 
