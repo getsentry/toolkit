@@ -241,7 +241,7 @@ const DEFAULT_FLAGS = {
 const TIME_SERIES_FLAGS = {
   ...DEFAULT_FLAGS,
   limit: undefined,
-  "time-series": true,
+  "time-series": "auto",
 };
 
 async function runExploreArgs(args: string[]) {
@@ -690,10 +690,11 @@ describe("sentry explore", () => {
   });
 
   describe("time series", () => {
-    test("parses --time-series and chooses a usable interval for a five-minute window", async () => {
+    test("parses --time-series auto and chooses a usable interval for a five-minute window", async () => {
       const result = await runExploreArgs([
         "test-org/",
         "--time-series",
+        "auto",
         "--period",
         "5m",
         "--json",
@@ -720,30 +721,36 @@ describe("sentry explore", () => {
     });
 
     test.each([
-      { period: "1h", timeParams: { statsPeriod: "1h" } },
       {
+        timeSeries: "auto",
+        period: "1h",
+        interval: "1m",
+        timeParams: { statsPeriod: "1h" },
+      },
+      {
+        timeSeries: "15m",
         period: "2025-01-01T00:00:00Z..2025-01-01T01:00:00Z",
+        interval: "15m",
         timeParams: {
           start: "2025-01-01T00:00:00.000Z",
           end: "2025-01-01T01:00:00.000Z",
         },
       },
     ])(
-      "accepts the SDK's string period $period",
-      async ({ period, timeParams }) => {
+      "maps SDK timeSeries $timeSeries with period $period to API parameters",
+      async ({ timeSeries, period, interval, timeParams }) => {
         const sdk = createSentrySDK({ cwd: "/tmp/test-explore" });
         await sdk.explore({
           target: "test-org/",
-          timeSeries: true,
+          timeSeries,
           period,
-          interval: "15m",
         });
 
         expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith("test-org", {
           fields: ["count()"],
           dataset: "errors",
           query: undefined,
-          interval: "15m",
+          interval,
           ...timeParams,
         });
       },
@@ -786,6 +793,7 @@ describe("sentry explore", () => {
       const result = await runExploreArgs([
         "test-org/",
         "--time-series",
+        "auto",
         "--dataset",
         "spans",
         "-F",
@@ -836,6 +844,7 @@ describe("sentry explore", () => {
       const result = await runExploreArgs([
         "test-org/",
         "--time-series",
+        "auto",
         "--dataset",
         "metrics",
         "-F",
@@ -858,49 +867,61 @@ describe("sentry explore", () => {
 
     test.each([
       {
-        name: "interval without temporal mode",
+        name: "removed interval flag",
         args: ["--interval", "15m"],
-        error: "--interval requires --time-series",
+        error: "No flag registered for --interval",
+      },
+      {
+        name: "missing time-series value",
+        args: ["--time-series"],
+        error: "Expected input for flag --time-series",
       },
       {
         name: "non-aggregate fields",
-        args: ["--time-series", "-F", "project", "-F", "count()"],
+        args: ["--time-series", "auto", "-F", "project", "-F", "count()"],
         error: "Grouping is not supported: project",
       },
       {
         name: "replays",
-        args: ["--time-series", "--dataset", "replays"],
+        args: ["--time-series", "auto", "--dataset", "replays"],
         error: "The replays dataset is only available as a table",
       },
       {
         name: "cursor",
-        args: ["--time-series", "--cursor", "next"],
+        args: ["--time-series", "auto", "--cursor", "next"],
         error: "--cursor is only available for tables",
       },
       {
         name: "sort",
-        args: ["--time-series", "--sort", "-count()"],
+        args: ["--time-series", "auto", "--sort", "-count()"],
         error: "--sort is only available for tables",
       },
       {
         name: "explicit limit",
-        args: ["--time-series", "--limit", "25"],
+        args: ["--time-series", "auto", "--limit", "25"],
         error: "--limit is only available for tables",
       },
       {
-        name: "invalid interval",
-        args: ["--time-series", "--interval", "bad"],
-        error: 'Invalid interval "bad"',
+        name: "unsupported time-series interval",
+        args: ["--time-series", "20s"],
+        error: 'Invalid interval "20s"',
       },
       {
         name: "metrics without an aggregate",
-        args: ["--time-series", "--dataset", "metrics"],
+        args: ["--time-series", "auto", "--dataset", "metrics"],
         error:
           "The metrics dataset requires --metric or explicit --field flags",
       },
       {
         name: "metric grouping fields",
-        args: ["--time-series", "--metric", "llm.token_usage", "-F", "project"],
+        args: [
+          "--time-series",
+          "auto",
+          "--metric",
+          "llm.token_usage",
+          "-F",
+          "project",
+        ],
         error: "Grouping is not supported: project",
       },
     ])("rejects $name before querying the API", async ({ args, error }) => {

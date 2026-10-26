@@ -28,8 +28,8 @@ describe("generated SDK flag types", () => {
   test("keeps optional Explore limits numeric alongside temporal flags", () => {
     const explore = paramsType("ExploreParams");
     expect(explore).toContain("limit?: number;");
-    expect(explore).toContain("timeSeries?: boolean;");
-    expect(explore).toContain("interval?: string;");
+    expect(explore).toContain("timeSeries?: string;");
+    expect(explore).not.toContain("interval?:");
   });
 
   test("declares variadic flags as arrays and keeps scalar flags scalar", () => {

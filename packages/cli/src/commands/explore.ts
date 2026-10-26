@@ -153,8 +153,8 @@ type ExploreFlags = {
   readonly sort?: string;
   readonly period: TimeRange;
   readonly limit?: number;
-  readonly "time-series"?: boolean;
-  readonly interval?: string;
+  /** Bucket duration or "auto"; omitted for tabular output. */
+  readonly "time-series"?: string;
   readonly cursor?: string;
   readonly json: boolean;
   readonly fresh: boolean;
@@ -527,19 +527,13 @@ function resolveEventsQuery(
 
 /** Reject table-only flags and dimensions before a temporal query is sent. */
 function validateTimeSeriesFlags(flags: ExploreFlags): void {
-  if (!flags["time-series"]) {
-    if (flags.interval !== undefined) {
-      throw new ValidationError(
-        "--interval requires --time-series.",
-        "interval",
-      );
-    }
+  if (flags["time-series"] === undefined) {
     return;
   }
   for (const flag of ["cursor", "limit", "sort"] as const) {
     if (flags[flag] !== undefined) {
       throw new ValidationError(
-        `--${flag} is only available for tables. Time series return all buckets in chronological order; use --period and --interval to control the range and granularity.`,
+        `--${flag} is only available for tables. Time series return all buckets in chronological order; use --period and --time-series to control the range and granularity.`,
         flag,
       );
     }
@@ -691,8 +685,8 @@ export const exploreCommand = buildListCommand("explore", {
       "Supports arbitrary fields including columns (title, project),\n" +
       "aggregates (count(), count_unique(user), p50(span.duration)),\n" +
       "and equations. Results are returned as a table.\n\n" +
-      "Use --time-series to calculate aggregates in time buckets. " +
-      "--interval sets the bucket duration; otherwise it is selected automatically. " +
+      "Use --time-series auto to calculate aggregates in time buckets with an automatic interval, " +
+      "or pass a bucket duration such as --time-series 15m (-b 15m). " +
       "This is a single historical query, not a live stream. " +
       "Grouping, --sort, --limit, and --cursor are table-only.\n\n" +
       "Datasets:\n" +
@@ -754,19 +748,18 @@ export const exploreCommand = buildListCommand("explore", {
       },
       {
         description: "Error counts in 15-minute buckets over the last hour",
-        command:
-          "sentry explore my-org/cli --time-series --period 1h --interval 15m",
+        command: "sentry explore my-org/cli --time-series 15m --period 1h",
       },
       {
         description:
           "Latency over time with automatic bucket duration, as JSON",
         command:
-          'sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series --period 24h --json',
+          'sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series auto --period 24h --json',
       },
       {
         description: "A metric over time using its discovered type and unit",
         command:
-          "sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg --time-series --period 1h",
+          "sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b auto -t 1h",
       },
       {
         description:
@@ -877,16 +870,12 @@ export const exploreCommand = buildListCommand("explore", {
         optional: true,
       },
       "time-series": {
-        kind: "boolean",
-        brief:
-          "Calculate aggregates in time buckets (one query, not a live stream)",
-        default: false,
-      },
-      interval: {
         kind: "parsed",
-        parse: parseTimeSeriesInterval,
+        parse: (value: string) =>
+          value === "auto" ? value : parseTimeSeriesInterval(value),
+        placeholder: "auto|interval",
         brief:
-          "Bucket duration for --time-series (e.g., 1m, 15m, 1h; default: automatic)",
+          "Query time series with automatic or explicit buckets (auto, 1m, 15m, 1h)",
         optional: true,
       },
       period: {
@@ -905,6 +894,7 @@ export const exploreCommand = buildListCommand("explore", {
       q: "query",
       s: "sort",
       n: "limit",
+      b: "time-series",
     },
   },
   async *func(
@@ -917,9 +907,10 @@ export const exploreCommand = buildListCommand("explore", {
 
     let dataset = flags.dataset;
     const userSuppliedFields = flags.field && flags.field.length > 0;
-    let fieldList = flags["time-series"]
-      ? ["count()"]
-      : [...defaultFieldsForDataset(dataset)];
+    let fieldList =
+      flags["time-series"] !== undefined
+        ? ["count()"]
+        : [...defaultFieldsForDataset(dataset)];
     if (userSuppliedFields) {
       fieldList = flags.field;
     }
@@ -972,7 +963,7 @@ export const exploreCommand = buildListCommand("explore", {
       validateMetricsFields(fieldList);
     }
 
-    if (flags["time-series"]) {
+    if (flags["time-series"] !== undefined) {
       const resolved = resolveEventsQuery(
         dataset,
         flags.query,
@@ -980,7 +971,10 @@ export const exploreCommand = buildListCommand("explore", {
         environment,
       );
       const timeParams = timeRangeToApiParams(timeRange);
-      const interval = resolveTimeSeriesInterval(timeParams, flags.interval);
+      const interval = resolveTimeSeriesInterval(
+        timeParams,
+        flags["time-series"] === "auto" ? undefined : flags["time-series"],
+      );
       const response = await withProgress(
         {
           message: `Querying ${resolved.dataset} time series in ${project ? `${org}/${project}` : org}...`,

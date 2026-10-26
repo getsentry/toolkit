@@ -30,8 +30,7 @@ Query aggregate event data (Explore)
 - `-s, --sort <value> - Sort field (prefix with - for desc, e.g., "-count()")`
 - `-e, --environment <value>... - Environment filter (repeatable, comma-separated)`
 - `-n, --limit <value> - Number of table rows (1-1000, default: 25)`
-- `--time-series - Calculate aggregates in time buckets (one query, not a live stream)`
-- `--interval <value> - Bucket duration for --time-series (e.g., 1m, 15m, 1h; default: automatic)`
+- `-b, --time-series <value> - Query time series with automatic or explicit buckets (auto, 1m, 15m, 1h)`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "24h")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
@@ -70,13 +69,13 @@ sentry explore my-org/cli -F span.op -F "p50(span.duration)" -F "p95(span.durati
 sentry explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"
 
 # Error counts in 15-minute buckets over the last hour
-sentry explore my-org/cli --time-series --period 1h --interval 15m
+sentry explore my-org/cli --time-series 15m --period 1h
 
 # Latency over time with automatic bucket duration, as JSON
-sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series --period 24h --json
+sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series auto --period 24h --json
 
 # A metric over time using its discovered type and unit
-sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg --time-series --period 1h
+sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b auto -t 1h
 
 # Sum a custom metric (e.g., LLM token usage) across an organization
 sentry explore my-org/ -m llm.token_usage --dataset metrics --period 7d

@@ -46,8 +46,8 @@ export function parseTimeSeriesInterval(
 ): keyof typeof INTERVAL_SECONDS {
   if (!Object.hasOwn(INTERVAL_SECONDS, value)) {
     throw new ValidationError(
-      `Invalid interval "${value}". Use one of: ${Object.keys(INTERVAL_SECONDS).join(", ")}.`,
-      "interval",
+      `Invalid interval "${value}". Use auto or one of: ${Object.keys(INTERVAL_SECONDS).join(", ")}.`,
+      "time-series",
     );
   }
   return value as keyof typeof INTERVAL_SECONDS;
@@ -87,14 +87,14 @@ export function resolveTimeSeriesInterval(
   const intervalSeconds = INTERVAL_SECONDS[parseTimeSeriesInterval(selected)];
   if (intervalSeconds > seconds) {
     throw new ValidationError(
-      `Interval ${selected} is longer than the requested period. Use a smaller --interval or a wider --period.`,
-      "interval",
+      `Interval ${selected} is longer than the requested period. Use a smaller --time-series interval or a wider --period.`,
+      "time-series",
     );
   }
   if (Math.ceil(seconds / intervalSeconds) > MAX_BUCKETS) {
     throw new ValidationError(
-      `Interval ${selected} produces too many time buckets. Use a larger --interval or a shorter --period.`,
-      "interval",
+      `Interval ${selected} produces too many time buckets. Use a larger --time-series interval or a shorter --period.`,
+      "time-series",
     );
   }
   return selected;

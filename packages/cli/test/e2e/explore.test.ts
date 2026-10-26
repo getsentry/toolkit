@@ -9,7 +9,7 @@ import { createMockServer } from "../mocks/server.js";
 
 const getConfigDir = useTestConfigDir("e2e-explore-");
 const start = Date.UTC(2026, 0, 1);
-const end = start + 120_000;
+const end = start + 240_000;
 
 /** Minimal sanitized timeseries response with numeric, missing, and string values. */
 const response = {
@@ -25,13 +25,13 @@ const response = {
       meta: {
         valueType: "integer",
         valueUnit: null,
-        interval: 60_000,
+        interval: 120_000,
         dataScanned: "partial",
       },
       values: [
         { timestamp: start, value: 0, incomplete: false },
         {
-          timestamp: start + 60_000,
+          timestamp: start + 120_000,
           value: null,
           incomplete: true,
           incompleteReason: "INGESTION_PENDING",
@@ -42,13 +42,13 @@ const response = {
     },
     {
       yAxis: "latest_event()",
-      meta: { valueType: "string", valueUnit: null, interval: 60_000 },
+      meta: { valueType: "string", valueUnit: null, interval: 120_000 },
       values: [{ timestamp: start, value: "00123", incomplete: false }],
     },
   ],
 };
 
-test("queries repeated aggregates and preserves metadata when projecting buckets", async () => {
+test("combines -b buckets with -t period and preserves metadata when projecting repeated aggregates", async () => {
   const requests: URL[] = [];
   const server = createMockServer(
     [
@@ -75,17 +75,16 @@ test("queries repeated aggregates and preserves metadata when projecting buckets
     const args = [
       "explore",
       `${TEST_ORG}/${TEST_PROJECT}`,
-      "--time-series",
+      "-b",
+      "2m",
       "--dataset",
       "spans",
       "-F",
       "count()",
       "-F",
       "latest_event()",
-      "--interval",
-      "1m",
-      "--period",
-      "2026-01-01T00:00:00Z..2026-01-01T00:02:00Z",
+      "-t",
+      "2026-01-01T00:00:00Z..2026-01-01T00:04:00Z",
       "--environment",
       "production,canary",
       "--query",
@@ -101,7 +100,7 @@ test("queries repeated aggregates and preserves metadata when projecting buckets
     expect(Object.fromEntries(params)).toEqual({
       dataset: "spans",
       yAxis: "latest_event()",
-      interval: "1m",
+      interval: "2m",
       query: `project:${TEST_PROJECT} environment:[production,canary] (span.op:http.server OR span.status:internal_error)`,
       start: new Date(start).toISOString(),
       end: new Date(end).toISOString(),
@@ -122,7 +121,7 @@ test("queries repeated aggregates and preserves metadata when projecting buckets
           ...response.timeSeries[0],
           values: [
             { timestamp: start, value: 0 },
-            { timestamp: start + 60_000, value: null },
+            { timestamp: start + 120_000, value: null },
           ],
         },
         {
